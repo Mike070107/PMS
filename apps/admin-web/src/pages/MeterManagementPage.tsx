@@ -1,3 +1,4 @@
+import { captureLocationLabel, captureTimeLabel } from '@pms/shared-types';
 import { wgs84ToGcj02 } from '../lib/meter-geo';
 import ReadingLocationMap from '../components/ReadingLocationMap';
 import MeterPaymentMethods from '../components/MeterPaymentMethods';
@@ -188,6 +189,9 @@ export default function MeterManagementPage() {
   const [locationReading, setLocationReading] = useState<MeterReadingRow | null>(null);
   const [reviewValue, setReviewValue] = useState<number | null>(null);
   const [reviewNote, setReviewNote] = useState('');
+  const [reviewPrice, setReviewPrice] = useState<number | null>(null);
+  const [reviewPriceError, setReviewPriceError] = useState('');
+  const reviewPriceInput = useRef<any>(null);
   const [reviewBusy, setReviewBusy] = useState(false);
 
   const [detail, setDetail] = useState<MeterDetailResp | null>(null);
@@ -200,7 +204,7 @@ export default function MeterManagementPage() {
   const payStorageKey = (id: number) => `meter-pay:${actingTenant?.id || user?.tenantId}:${user?.id}:${id}`;
 
   const [adjustTarget, setAdjustTarget] = useState<MeterChargeRow | null>(null);
-  const [adjustForm] = Form.useForm<{ adjustment: number; note?: string }>();
+  const [adjustForm] = Form.useForm<{ adjustment: number; unitPriceYuan: number; note?: string }>();
   const [adjustBusy, setAdjustBusy] = useState(false);
 
   const [qr, setQr] = useState<{
@@ -458,6 +462,7 @@ export default function MeterManagementPage() {
     setReviewEditing(row.status === 'pending' && canEdit);
     setReviewValueError('');
     setReviewValue(row.readingValue);
+    setReviewPrice((row.billingUnitPriceCents ?? 0) / 100); setReviewPriceError('');
     setReviewNote(row.reviewNote || '');
   };
 
@@ -466,10 +471,11 @@ export default function MeterManagementPage() {
     if (reviewValue === null || !Number.isFinite(reviewValue) || reviewValue < 0 || reviewValue >= 1e10) {
       setReviewValueError('请填写有效的核对读数，最多10位整数和3位小数'); reviewInput.current?.focus(); return;
     }
+    if (review.status === 'pending' && (reviewPrice === null || !Number.isFinite(reviewPrice) || reviewPrice < 0 || reviewPrice > 10000)) { setReviewPriceError('请填写 0 至 10000 元的单价'); reviewPriceInput.current?.focus(); return; }
     setReviewBusy(true);
     try {
       const result = review.status === 'pending'
-        ? await meters.reviewReading(review.id, { readingValue: reviewValue, reviewNote })
+        ? await meters.reviewReading(review.id, { readingValue: reviewValue, reviewNote, unitPriceCents: Math.round(reviewPrice! * 100) })
         : await meters.updateReading(review.id, { readingValue: reviewValue, reviewNote });
       message.success(review.status === 'pending' ? (result.charge ? '已复核，账单已生成' : '已复核') : '读数已更新');
       setReview(result.reading); setReviewValue(result.reading.readingValue); setReviewEditing(false);
@@ -576,18 +582,19 @@ export default function MeterManagementPage() {
   };
 
   const openAdjust = (row: MeterChargeRow) => {
-    adjustForm.setFieldsValue({ adjustment: 0, note: '' });
+    adjustForm.setFieldsValue({ adjustment: row.adjustmentCents / 100, unitPriceYuan: row.unitPriceCents / 100, note: '' });
     setAdjustTarget(row);
   };
 
   const submitAdjust = async () => {
     if (!adjustTarget) return;
     const values = await adjustForm.validateFields().catch(() => null);
-    if (!values) return;
+    if (!values) { adjustForm.scrollToField(adjustForm.getFieldsError().find(field => field.errors.length)?.name || 'unitPriceYuan', { focus: true }); return; }
     setAdjustBusy(true);
     try {
       await meters.adjustCharge(adjustTarget.id, {
         adjustmentCents: Math.round(values.adjustment * 100),
+        unitPriceCents: Math.round(values.unitPriceYuan * 100),
         note: values.note,
       });
       message.success('应收已调整');
@@ -1287,6 +1294,9 @@ export default function MeterManagementPage() {
                   {review.ocrMeterNo ? ` · 识别表号 ${review.ocrMeterNo}` : ''}
                   {review.orientation ? ` · 自动旋转 ${review.orientation}°` : ''}
                 </Descriptions.Item>
+                <Descriptions.Item label="定位来源">{captureLocationLabel(review.captureEvidence)}</Descriptions.Item>
+                <Descriptions.Item label="照片拍摄时间">{captureTimeLabel(review.captureEvidence)}</Descriptions.Item>
+                <Descriptions.Item label="本次计费单价">¥{money(review.billingUnitPriceCents)} / {review.unit}</Descriptions.Item>
                 <Descriptions.Item label="GPS">
                   {review.latitude === null || review.longitude === null ? '未记录' : <Button icon={<EnvironmentOutlined />} shape="circle" aria-label="查看本次抄表定位" title="在地图上查看本次抄表位置" style={{ minWidth: 44, height: 44 }} onClick={() => setLocationReading(review)} />}
                 </Descriptions.Item>
@@ -1312,6 +1322,12 @@ export default function MeterManagementPage() {
                   <label htmlFor="meter-review-value" className="meter-review-label">核对后的读数 *</label>
                   <InputNumber ref={reviewInput} id="meter-review-value" aria-invalid={!!reviewValueError} aria-describedby="meter-review-value-error" status={reviewValueError ? 'error' : undefined} value={reviewValue} onChange={(value) => { setReviewValue(value); setReviewValueError(''); }} precision={3} min={0} style={{ width: '100%' }} suffix={review.unit} disabled={reviewBusy || review.chargeStatus === 'paid'} />
                   {reviewValueError && <div id="meter-review-value-error" role="alert" style={{ color: '#b42332' }}>{reviewValueError}</div>}
+                  {review.status === 'pending' && <>
+                    <label htmlFor="meter-review-price" className="meter-review-label">本次单价（元 / {review.unit}） *</label>
+                    <InputNumber ref={reviewPriceInput} id="meter-review-price" value={reviewPrice} min={0} max={10000} precision={2} disabled={reviewBusy} status={reviewPriceError ? 'error' : undefined} aria-invalid={!!reviewPriceError} aria-describedby="meter-review-price-error" onChange={value => { setReviewPrice(value); setReviewPriceError(''); }} style={{width:'100%'}} />
+                    {reviewPriceError && <div id="meter-review-price-error" role="alert" style={{color:'#b42332'}}>{reviewPriceError}</div>}
+                    <Text type="secondary">只用于本次算账，不修改仪表档案单价。</Text>
+                  </>}
                   <label htmlFor="meter-review-note" className="meter-review-label">复核备注</label>
                   <Input.TextArea id="meter-review-note" disabled={reviewBusy} rows={3} value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} placeholder="改数原因、现场情况" />
                   <Space className="meter-review-actions">
@@ -1472,8 +1488,10 @@ export default function MeterManagementPage() {
         forceRender
       >
         {adjustTarget && (
-          <Form form={adjustForm} layout="vertical">
+          <Form form={adjustForm} name="meter-charge-adjust" layout="vertical" disabled={adjustBusy}>
             <Alert type="info" showIcon message={`当前应收 ¥${money(adjustTarget.receivableCents)}；调整金额填负数表示减免。`} />
+            <Form.Item name="unitPriceYuan" label={`本次单价（元 / ${adjustTarget.unit}）`} rules={[{ required: true, message: '请填写本次单价' }, {type:'number',min:0,max:10000,message:'单价应为 0 至 10000 元'}]} extra={adjustTarget.paidCents > 0 ? '已有收款，单价不可修改' : '按本次用量重新算账，不修改仪表档案或其他账单。'}><InputNumber min={0} max={10000} precision={2} disabled={adjustBusy || adjustTarget.paidCents > 0} style={{width:'100%'}} /></Form.Item>
+            <Form.Item noStyle shouldUpdate>{() => { const price=adjustForm.getFieldValue('unitPriceYuan'), adjustment=adjustForm.getFieldValue('adjustment'); return <p>本次用量 {adjustTarget.usageValue} {adjustTarget.unit} × ¥{price ?? '—'} + 调整 ¥{adjustment ?? '—'} = 应收 ¥{typeof price === 'number' && typeof adjustment === 'number' ? ((Math.round(adjustTarget.usageValue * Math.round(price * 100)) + Math.round(adjustment * 100)) / 100).toFixed(2) : '—'}</p>; }}</Form.Item>
             <Form.Item name="adjustment" label="调整金额（元）" rules={[{ required: true }]}><InputNumber precision={2} style={{ width: '100%' }} suffix="元" /></Form.Item>
             <Form.Item name="note" label="调整原因" rules={[{ required: true, message: '请写清减免/补收原因' }]}><Input.TextArea rows={2} maxLength={500} /></Form.Item>
           </Form>

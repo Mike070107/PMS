@@ -531,6 +531,13 @@ export class UpdateReadingDto {
 export class ReviewReadingDto {
   @IsOptional()
   @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(1000000)
+  unitPriceCents?: number;
+
+  @IsOptional()
+  @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 3 })
   @Min(0)
   @Max(999999999)
@@ -666,6 +673,13 @@ export class PayChargeDto {
 }
 
 export class AdjustChargeDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(1000000)
+  unitPriceCents?: number;
+
   @Type(() => Number)
   @IsInt()
   @Min(-100000000)

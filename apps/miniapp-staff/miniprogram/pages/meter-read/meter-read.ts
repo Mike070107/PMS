@@ -1,3 +1,5 @@
+import { wgs84ToGcj02, captureLocationLabel, captureTimeLabel, type MeterCaptureEvidence } from '@pms/shared-types';
+import { readPhotoMetadata } from '../../utils/meter-photo-metadata';
 import { getMeterLocation } from '../../utils/meter-location';
 import { meters, upload } from '@pms/api-client';
 import type { MeterOcrResp, MeterRow, ReadingResult } from '@pms/api-client';
@@ -92,7 +94,10 @@ Page({
     locationText: '拍照后获取现场定位',
     locationStatus: 'idle',
     locationAt: 0,
-    photoSource: 'camera',
+    photoSource: 'camera' as 'camera' | 'album',
+    captureEvidence: null as MeterCaptureEvidence | null,
+    photoTakenAtText: '照片拍摄时间未记录',
+    captureLocationText: '未获取现场定位',
     ocr: null as MeterOcrResp | null,
     recognizing: false,
     uploading: false,
@@ -166,36 +171,78 @@ Page({
 
   },
 
-  initLocation() {
+  initLocation(): Promise<boolean> {
+    if (this.data.photoSource === 'album') return this.resolvePhotoEvidence(this.data.photoPath, 'album');
     const token = ((this as any).locationToken || 0) + 1;
     (this as any).locationToken = token;
     this.setData({ location: {}, locationAt: 0, locationStatus: 'loading', locationText: '正在获取现场定位…' });
     const pending = getMeterLocation().then((point) => {
       if ((this as any).locationToken !== token) return false;
-      this.setData({ location: { latitude: point.latitude, longitude: point.longitude, accuracy: point.accuracy },
+      const evidence: MeterCaptureEvidence = { ...this.emptyCaptureEvidence('camera'), ...this.data.captureEvidence,
+        photoSource:'camera', locationSource:'device', locationStatus:'ready', locationCapturedAt:new Date(point.capturedAt).toISOString() };
+      this.setData({ captureEvidence:evidence, captureLocationText:captureLocationLabel(evidence), location: { latitude: point.latitude, longitude: point.longitude, accuracy: point.accuracy },
         locationAt: point.capturedAt, locationStatus: 'ready',
         locationText: `已获取现场定位（${point.accuracy === undefined ? '精度未知' : '精度约 ' + Math.round(point.accuracy) + ' 米'}）` });
       return true;
     }).catch((error) => {
       if ((this as any).locationToken !== token) return false;
-      this.setData({ location: {}, locationAt: 0, locationStatus: 'failed', locationText: meterErrText(error) });
+      const evidence: MeterCaptureEvidence = { ...this.emptyCaptureEvidence('camera'), ...this.data.captureEvidence, locationSource:'none',locationStatus:'failed',locationCapturedAt:null };
+      this.setData({ captureEvidence:evidence, captureLocationText:captureLocationLabel(evidence), location: {}, locationAt: 0, locationStatus: 'failed', locationText: meterErrText(error) });
       return false;
     });
     (this as any).locationPromise = pending;
     return pending;
   },
 
+  emptyCaptureEvidence(source: 'camera' | 'album'): MeterCaptureEvidence {
+    return { photoSource:source, locationSource:'none',locationStatus:source==='album'?'missing':'failed',photoTimeSource:'unknown',
+      photoTakenAt:null,photoTakenAtIso:null,locationCapturedAt:null,originalLatitude:null,originalLongitude:null };
+  },
+
+  resolvePhotoEvidence(path: string, source: 'camera' | 'album'): Promise<boolean> {
+    this.setData({ photoSource:source });
+    if (source === 'camera') return this.initLocation();
+    const token = ((this as any).locationToken || 0) + 1;
+    (this as any).locationToken = token;
+    this.setData({ location:{},locationAt:0,locationStatus:'loading',locationText:'正在读取照片 GPS 和拍摄时间…',
+      captureEvidence:null,photoTakenAtText:'正在读取照片拍摄时间…',captureLocationText:'正在读取照片定位…' });
+    const pending = readPhotoMetadata(path).then((metadata) => {
+      if ((this as any).locationToken !== token) return false;
+      const evidence: MeterCaptureEvidence = { ...this.emptyCaptureEvidence('album'),locationStatus:metadata.status,
+        locationSource:metadata.status==='ready'?'photo_exif':'none',photoTimeSource:metadata.photoTakenAt?'exif':'unknown',
+        photoTakenAt:metadata.photoTakenAt,photoTakenAtIso:metadata.photoTakenAtIso,
+        originalLatitude:metadata.latitude ?? null,originalLongitude:metadata.longitude ?? null };
+      const ready=metadata.status==='ready' && metadata.latitude!==undefined && metadata.longitude!==undefined;
+      const coordinates=ready?wgs84ToGcj02(metadata.longitude!,metadata.latitude!):null;
+      this.setData({ captureEvidence:evidence,captureLocationText:captureLocationLabel(evidence),photoTakenAtText:captureTimeLabel(evidence),
+        location:coordinates?{latitude:coordinates[1],longitude:coordinates[0],accuracy:metadata.accuracy}:{},
+        locationAt:ready?Date.now():0,locationStatus:metadata.status,
+        locationText:ready?'已读取照片 GPS（EXIF），不会使用当前位置':metadata.status==='missing'?'照片无定位':metadata.status==='unsupported'?'照片格式暂不支持读取定位，请选择带定位的原始 JPG、PNG 或 HEIC 照片':'未能读取照片定位，请重试或选择原始照片' });
+      return ready;
+    }).catch(() => {
+      if ((this as any).locationToken !== token) return false;
+      const evidence={...this.emptyCaptureEvidence('album'),locationStatus:'unreadable' as const};
+      this.setData({captureEvidence:evidence,captureLocationText:captureLocationLabel(evidence),location:{},locationAt:0,
+        locationStatus:'unreadable',locationText:'未能读取照片定位，请重试或选择原始照片',photoTakenAtText:'照片拍摄时间未记录'});
+      return false;
+    });
+    (this as any).locationPromise=pending;
+    return pending;
+  },
+
   onRetryLocation() { if (this.data.locationStatus !== 'loading' && !this.data.submitting) void this.initLocation(); },
   onLocationSettings() {
+    if (this.data.photoSource === 'album') return;
     wx.openSetting({ success: () => { void this.initLocation(); } });
   },
   onViewCaptureLocation() {
     const point = this.data.location;
     if (point.latitude === undefined || point.longitude === undefined) return;
-    wx.openLocation({ latitude: point.latitude, longitude: point.longitude, name: '本次抄表现场位置', scale: 18,
+    wx.openLocation({ latitude: point.latitude, longitude: point.longitude, name: this.data.photoSource === 'album' ? '照片记录的位置（EXIF）' : '本次抄表现场位置', scale: 18,
       fail: () => wx.showToast({ icon: 'none', title: '地图打开失败，请重试' }) });
   },
   onUnload() {
+    (this as any).photoToken = ((this as any).photoToken || 0) + 1;
     (this as any).locationToken = ((this as any).locationToken || 0) + 1;
     (this as any).cropToken = ((this as any).cropToken || 0) + 1;
   },
@@ -235,11 +282,20 @@ Page({
   },
 
   handlePhoto(path: string, source: 'camera' | 'album' = 'camera') {
-    this.setData({ photoSource: source });
-    void this.initLocation();
+    const token=((this as any).photoToken || 0)+1;
+    (this as any).photoToken=token;
+    (this as any).cropToken=((this as any).cropToken || 0)+1;
+    const now=new Date();
+    const evidence: MeterCaptureEvidence = { ...this.emptyCaptureEvidence(source),
+      photoTimeSource:source==='camera'?'device':'unknown',photoTakenAt:source==='camera'?formatMeterTime(now):null,
+      photoTakenAtIso:source==='camera'?now.toISOString():null };
+    this.setData({ photoSource:source,location:{},locationAt:0,readAtText:'',captureEvidence:evidence,
+      photoTakenAtText:captureTimeLabel(evidence),captureLocationText:captureLocationLabel(evidence) });
+    void this.resolvePhotoEvidence(path,source);
     wx.getImageInfo({
       src: path,
       success: (info) => {
+        if ((this as any).photoToken !== token) return;
         const now = new Date();
         const win = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
         const maxWidth = Math.max(220, Number(win.windowWidth || 375));
@@ -292,6 +348,7 @@ Page({
         void this.uploadAndLocate(path);
       },
       fail: () => {
+        if ((this as any).photoToken !== token) return;
         const win = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
         const maxWidth = Math.max(220, Number(win.windowWidth || 375));
         const maxHeight = Math.max(260, Math.min(500, Math.round(Number(win.windowHeight || 700) * 0.55)));
@@ -743,11 +800,12 @@ Page({
   },
 
   onRetake() {
+    (this as any).photoToken = ((this as any).photoToken || 0) + 1;
     (this as any).locationToken = ((this as any).locationToken || 0) + 1;
     (this as any).cropToken = ((this as any).cropToken || 0) + 1;
     this.setData({
       mode: 'camera',
-      location: {}, locationAt: 0, locationStatus: 'idle', locationText: '拍照后获取现场定位',
+      location: {}, locationAt: 0, locationStatus: 'idle', locationText: '拍照后获取现场定位', photoSource:'camera',captureEvidence:null,photoTakenAtText:'照片拍摄时间未记录',captureLocationText:'未获取现场定位',
       cropOpen: false,
       imgScale: 1,
       imgX: 0,
@@ -849,8 +907,12 @@ Page({
     const value = Number(this.data.valueText);
     const meter = this.data.meter;
     if (!meter) return;
+    const originalPhotoKey=this.data.photoKey;
     if (this.data.locationStatus === 'loading') await (this as any).locationPromise;
-    else if (!this.data.locationAt || Date.now() - this.data.locationAt > 5 * 60 * 1000) await this.initLocation();
+    else if (this.data.photoSource==='album') {
+      if (!this.data.captureEvidence) await this.resolvePhotoEvidence(this.data.photoPath,'album');
+    } else if (!this.data.locationAt || Date.now() - this.data.locationAt > 5 * 60 * 1000) await this.initLocation();
+    if (this.data.photoKey!==originalPhotoKey) return;
     const hasLocation = this.data.location.latitude !== undefined && this.data.location.longitude !== undefined;
     const warning =
       this.data.ocr?.meterNoMatched === false
@@ -862,7 +924,7 @@ Page({
       title: '确认提交这次抄表？',
       content: `表号 ${meter.meterNo}\n本次读数 ${this.data.valueText} ${meter.unit}\n${
         this.data.usageText ? `预计用量 ${this.data.usageText}\n` : ''
-      }${this.data.amountText ? `预计金额 ${this.data.amountText}\n` : ''}拍照时间 ${this.data.readAtText || formatMeterTime(new Date())}\n${hasLocation ? '已附现场定位' : '未获取现场定位，本次将标记“无现场定位”'}${warning}`,
+      }${this.data.amountText ? `预计金额 ${this.data.amountText}\n` : ''}${this.data.photoSource==='album'?'抄表登记时间':'拍照时间'} ${this.data.readAtText || formatMeterTime(new Date())}\n${this.data.photoTakenAtText}\n${hasLocation ? this.data.captureLocationText : this.data.photoSource==='album'?'照片无可用定位，本次按无定位提交':'未获取现场定位，本次将标记“无现场定位”'}${warning}`,
       confirmText: hasLocation ? '读数无误' : '无定位提交',
       cancelText: '再核对',
     });
@@ -894,9 +956,10 @@ Page({
                 recognitionImageKey: this.data.recognitionImageKey || undefined,
                 imageTransform: this.data.recognitionTransform || undefined,
                 recognitionRoi: this.data.recognitionRoi || undefined,
+                captureEvidence:this.data.captureEvidence,
               },
             }
-          : { status: 'skipped' as const },
+          : { status: 'skipped' as const, raw:{captureEvidence:this.data.captureEvidence} },
       });
       this.setData({
         submitting: false,

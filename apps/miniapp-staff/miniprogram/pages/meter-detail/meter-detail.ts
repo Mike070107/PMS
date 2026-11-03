@@ -1,4 +1,5 @@
 import { meters, METER_READING_STATUS_LABELS } from '@pms/api-client';
+import { captureLocationLabel, captureTimeLabel } from '@pms/shared-types';
 import type { MeterChargeRow, MeterDetailResp, MeterReadingRow } from '@pms/api-client';
 import { getSession } from '../../utils/session';
 import { formatMeterTime, meterErrText, readingTextError } from '../../utils/meter';
@@ -11,6 +12,8 @@ interface ChargeView extends MeterChargeRow {
 }
 
 interface ReadingView extends MeterReadingRow {
+  captureLocationText: string;
+  photoTakenAtText: string;
   readAtText: string;
   statusLabel: string;
 }
@@ -74,6 +77,8 @@ Page({
         ...detail,
         readings: detail.readings.map((reading) => ({
           ...reading,
+          captureLocationText: captureLocationLabel(reading.captureEvidence),
+          photoTakenAtText: captureTimeLabel(reading.captureEvidence),
           readAtText: formatMeterTime(reading.readAt),
           statusLabel: METER_READING_STATUS_LABELS[reading.status],
         })),
@@ -246,7 +251,7 @@ Page({
     const error = readingTextError(this.data.reviewValue);
     if (error) { this.setData({ reviewValueError: error, reviewFocus: true }); return; }
     this.setData({ reviewBusy: true, reviewError: '' });
-    const apply = (row: MeterReadingRow) => this.setData({ reviewTarget: { ...row, readAtText: formatMeterTime(row.readAt),
+    const apply = (row: MeterReadingRow) => this.setData({ reviewTarget: { ...row, captureLocationText: captureLocationLabel(row.captureEvidence), photoTakenAtText: captureTimeLabel(row.captureEvidence), readAtText: formatMeterTime(row.readAt),
       statusLabel: METER_READING_STATUS_LABELS[row.status] }, reviewValue: row.readingValueText });
     try {
       const result = await meters.reviewReading(target.id, { readingValue: Number(this.data.reviewValue), reviewNote: this.data.reviewNote.trim() || undefined });
@@ -266,7 +271,7 @@ Page({
     const id = Number(event.currentTarget.dataset.id);
     const reading = this.data.reviewTarget?.id === id ? this.data.reviewTarget : this.data.detail?.readings.find((row) => row.id === id);
     if (!reading || reading.latitude === null || reading.longitude === null) return;
-    wx.openLocation({ latitude: reading.latitude, longitude: reading.longitude, name: '本次抄表现场定位',
+    wx.openLocation({ latitude: reading.latitude, longitude: reading.longitude, name: captureLocationLabel(reading.captureEvidence),
       address: `${reading.meterNo} · ${formatMeterTime(reading.readAt)}`, scale: 18,
       fail: () => wx.showToast({ icon: 'none', title: '地图打开失败，请重试' }) });
   },

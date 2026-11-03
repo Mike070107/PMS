@@ -97,6 +97,44 @@ function reading(value: number, at: string, requestId: string) {
   };
 }
 
+test('本次计费单价独立保存：复核改单价、账单重算，不改档案或其他账单', async () => {
+  const { pg, service } = await fixture();
+  try {
+    const first = await service.createReading(1, reading(2410, '2026-10-30T09:00:00+08:00', 'price-first'), user, access);
+    const reviewed = await service.reviewReading(first.reading.id, { unitPriceCents: 500 } as any, user, access);
+    assert.equal(reviewed.charge!.unitPriceCents, 500);
+    assert.equal(reviewed.charge!.receivableCents, 5000);
+    assert.equal(reviewed.meter.unitPriceCents, 420);
+    const adjusted = await service.adjustCharge(reviewed.charge!.id, { adjustmentCents: -100, unitPriceCents: 600, note: '本次单价更正' } as any, user, access);
+    assert.equal(adjusted.unitPriceCents, 600);
+    assert.equal(adjusted.receivableCents, 5900);
+    const second = await service.createReading(1, reading(2415, '2026-10-31T09:00:00+08:00', 'price-second'), user, access);
+    const next = await service.reviewReading(second.reading.id, {}, user, access);
+    assert.equal(next.charge!.unitPriceCents, 420);
+    assert.equal((await service.readingDetail(first.reading.id, user, access)).charge!.unitPriceCents, 600);
+    await service.payCharge(reviewed.charge!.id, { amountCents: 1000, method: 'cash', clientRequestId: 'price-payment' } as any, user, access);
+    await assert.rejects(service.adjustCharge(reviewed.charge!.id, { adjustmentCents: 0, unitPriceCents: 700 } as any, user, access), /已有收款/);
+  } finally { await pg.close(); }
+});
+
+test('照片EXIF来源和拍摄时间跨保存、复核及列表刷新保留；相册不允许冒用设备位置', async () => {
+  const { pg, service } = await fixture();
+  const evidence = {photoSource:'album',locationSource:'photo_exif',locationStatus:'ready',photoTimeSource:'exif',photoTakenAt:'2026-10-30 09:10:11',photoTakenAtIso:null,locationCapturedAt:null,originalLatitude:31.2,originalLongitude:121.4};
+  try {
+    const created = await service.createReading(1,{...reading(2410,'2026-10-30T09:00:00+08:00','exif-save'),latitude:31.2,longitude:121.4,ocr:{status:'skipped',raw:{captureEvidence:evidence}}} as any,user,access);
+    assert.deepEqual(created.reading.captureEvidence,evidence);
+    await service.reviewReading(created.reading.id,{},user,access);
+    assert.deepEqual((await service.readingDetail(created.reading.id,user,access)).reading.captureEvidence,evidence);
+    assert.deepEqual((await service.listReadings({},user,access)).rows[0].captureEvidence,evidence);
+    await assert.rejects(service.createReading(1,{...reading(2411,'2026-10-31T09:00:00+08:00','invalid-exif'),latitude:31.2,longitude:121.4,ocr:{status:'skipped',raw:{captureEvidence:{...evidence,locationSource:'device'}}}} as any,user,access),/定位来源/);
+    const none={...evidence,locationSource:'none',locationStatus:'missing',originalLatitude:null,originalLongitude:null};
+    await assert.rejects(service.createReading(1,{...reading(2411,'2026-10-31T09:00:00+08:00','invalid-none'),latitude:31.2,longitude:121.4,ocr:{status:'skipped',raw:{captureEvidence:none}}} as any,user,access),/定位来源/);
+    const saved=await service.createReading(1,{...reading(2411,'2026-10-31T09:00:00+08:00','valid-none'),ocr:{status:'skipped',raw:{captureEvidence:none}}} as any,user,access);
+    assert.equal(saved.reading.latitude,null);
+    assert.equal(saved.reading.captureEvidence.locationStatus,'missing');
+  } finally { await pg.close(); }
+});
+
 test('真实迁移/SQL：首次抄表→账单→第二次用量→幂等重试不重复出账', async () => {
   const { pg, service } = await fixture();
   try {

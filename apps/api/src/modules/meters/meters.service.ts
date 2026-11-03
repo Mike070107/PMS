@@ -35,6 +35,7 @@ import {
   yuanToCents,
 } from './meter-billing.util';
 import { formatReadingValue, normalizeMeterNo } from './meter-ocr.util';
+import { validateCaptureEvidence } from './meter-capture.util';
 import type {
   AdjustChargeDto,
   ChargeQueryDto,
@@ -161,7 +162,7 @@ export class MetersService {
     this.assertMeterScope(meter, access);
     const [readings, charges, stats] = await Promise.all([
       this.dataSource.query(
-        `SELECT r.*, cg.id AS charge_id, cg.status AS charge_status, cg.receivable_cents, cg.paid_cents
+        `SELECT r.*, cg.id AS charge_id, cg.status AS charge_status, cg.receivable_cents, cg.paid_cents, cg.unit_price_cents AS charge_unit_price_cents
          FROM meter_readings r LEFT JOIN meter_charges cg ON cg.reading_id = r.id
          WHERE r.meter_id = $1 AND r.tenant_id = $2 ORDER BY r.read_at DESC, r.id DESC LIMIT 30`,
         [id, tenantId],
@@ -428,6 +429,7 @@ export class MetersService {
   // ---------------------------------------------------------------- 抄表
 
   async createReading(id: number, dto: CreateReadingDto, user: AuthUser, access: ResolvedAccess) {
+    validateCaptureEvidence(dto.ocr?.raw, dto.latitude, dto.longitude);
     const tenantId = this.resolveTenantId(user);
     if (dto.clientRequestId) {
       const existing = await this.readingRepo.findOne({
@@ -599,8 +601,8 @@ export class MetersService {
     `;
     const count = await this.dataSource.query(`SELECT count(*)::int AS total ${from}`, params);
     const rows = await this.dataSource.query(
-      `SELECT r.*, m.meter_type, m.name AS meter_name, m.install_address, m.unit, m.community_id,
-         cg.id AS charge_id, cg.status AS charge_status, cg.receivable_cents, cg.paid_cents
+      `SELECT r.*, m.meter_type, m.name AS meter_name, m.install_address, m.unit, m.community_id, m.unit_price_cents AS billing_unit_price_cents,
+         cg.id AS charge_id, cg.status AS charge_status, cg.receivable_cents, cg.paid_cents, cg.unit_price_cents AS charge_unit_price_cents
        ${from}
        ORDER BY r.read_at DESC, r.id DESC LIMIT ${pageSize} OFFSET ${offset}`,
       params,
@@ -758,13 +760,15 @@ export class MetersService {
       }
 
       let charge = await manager.findOne(MeterCharge, { where: { tenantId, readingId: reading.id } });
+      const price = dto.unitPriceCents ?? charge?.unitPriceCents ?? meter.unitPriceCents;
+      if (!Number.isInteger(price) || price < 0 || price > 1000000) throw new BadRequestException("请填写有效单价");
       if (
         meter.billingEnabled &&
-        meter.unitPriceCents > 0 &&
+        price > 0 &&
         usageResult.usage !== null &&
         usageResult.usage > 0
       ) {
-        const amount = amountCentsOf(usageResult.usage, meter.unitPriceCents);
+        const amount = amountCentsOf(usageResult.usage, price);
         if (amount > 2_000_000_000) throw new BadRequestException('本次金额过大，请检查单价和读数');
         if (amount > 0) {
           if (!charge) {
@@ -776,7 +780,7 @@ export class MetersService {
               ownerNameSnapshot: meter.ownerName,
               period: periodOf(reading.readAt),
               usageValue: usageResult.usage.toFixed(3),
-              unitPriceCents: meter.unitPriceCents,
+              unitPriceCents: price,
               amountCents: amount,
               adjustmentCents: 0,
               receivableCents: amount,
@@ -788,6 +792,8 @@ export class MetersService {
               updatedBy: user.id,
             });
           } else {
+            if (charge.paidCents > 0) throw new BadRequestException("已有收款，不能重算单价");
+            charge.unitPriceCents = price;
             charge.usageValue = usageResult.usage.toFixed(3);
             charge.amountCents = amount;
             charge.receivableCents = amount + charge.adjustmentCents;
@@ -1063,21 +1069,36 @@ export class MetersService {
 
   async adjustCharge(id: number, dto: AdjustChargeDto, user: AuthUser, access: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user);
-    const charge = await this.chargeRepo.findOne({ where: { id, tenantId } });
-    if (!charge) throw new NotFoundException('账单不存在');
-    const meter = await this.findMeter(charge.meterId, tenantId);
-    this.assertMeterScope(meter, access);
-    if (charge.status === 'paid' || charge.status === 'void') throw new BadRequestException('已结清或已作废的账单不能调整');
-    const receivable = charge.amountCents + Math.round(dto.adjustmentCents);
-    if (receivable < 0) throw new BadRequestException('调整后应收不能为负');
-    if (receivable < charge.paidCents) throw new BadRequestException('调整后应收不能小于已收金额');
-    charge.adjustmentCents = Math.round(dto.adjustmentCents);
-    charge.receivableCents = receivable;
-    charge.status = charge.paidCents >= receivable ? 'paid' : charge.paidCents > 0 ? 'partial' : 'unpaid';
-    charge.note = dto.note ? `${charge.note ? `${charge.note}；` : ''}${dto.note}` : charge.note;
-    charge.updatedBy = user.id;
-    await this.chargeRepo.save(charge);
-    return this.mapCharge(charge, meter);
+    const result = await this.dataSource.transaction(async manager => {
+      const locked = await manager.query('SELECT id FROM meter_charges WHERE id=$1 AND tenant_id=$2 FOR UPDATE', [id,tenantId]);
+      if (!locked.length) throw new NotFoundException('账单不存在');
+      const charge = await manager.findOne(MeterCharge, {where:{id,tenantId}});
+      if (!charge) throw new NotFoundException('账单不存在');
+      const meter = await manager.findOne(Meter, {where:{id:charge.meterId,tenantId}});
+      if (!meter) throw new NotFoundException('仪表不存在');
+      this.assertMeterScope(meter, access);
+      if (charge.status === 'paid' || charge.status === 'void') throw new BadRequestException('已结清或已作废的账单不能调整');
+      const price = dto.unitPriceCents ?? charge.unitPriceCents;
+      if (!Number.isInteger(price) || price < 0 || price > 1000000) throw new BadRequestException('请填写有效单价');
+      if (price !== charge.unitPriceCents && charge.paidCents > 0) throw new BadRequestException('已有收款，不能修改单价');
+      const amount = amountCentsOf(Number(charge.usageValue), price);
+      if (!Number.isSafeInteger(amount) || amount > 2000000000) throw new BadRequestException('本次金额过大，请检查单价和读数');
+      const adjustment = Math.round(dto.adjustmentCents);
+      if (!Number.isFinite(adjustment)) throw new BadRequestException('请填写有效调整金额');
+      const receivable = amount + adjustment;
+      if (receivable < 0) throw new BadRequestException('调整后应收不能为负');
+      if (receivable < charge.paidCents) throw new BadRequestException('调整后应收不能小于已收金额');
+      charge.unitPriceCents = price;
+      charge.amountCents = amount;
+      charge.adjustmentCents = adjustment;
+      charge.receivableCents = receivable;
+      charge.status = charge.paidCents >= receivable ? 'paid' : charge.paidCents > 0 ? 'partial' : 'unpaid';
+      charge.note = dto.note ? `${charge.note ? `${charge.note}；` : ''}${dto.note}` : charge.note;
+      charge.updatedBy = user.id;
+      await manager.save(charge);
+      return {charge,meter};
+    });
+    return this.mapCharge(result.charge, result.meter);
   }
 
   async voidCharge(id: number, user: AuthUser, access: ResolvedAccess) {
@@ -1248,6 +1269,7 @@ export class MetersService {
           charge_status: charge?.status ?? null,
           receivable_cents: charge?.receivableCents ?? null,
           paid_cents: charge?.paidCents ?? null,
+          charge_unit_price_cents: charge?.unitPriceCents ?? null,
         },
         meter,
       ),
@@ -1354,6 +1376,8 @@ export class MetersService {
       photoWidth: row.photoWidth ?? row.photo_width ?? null,
       photoHeight: row.photoHeight ?? row.photo_height ?? null,
       roi: row.roi ?? null,
+      captureEvidence: (row.ocrRaw ?? row.ocr_raw)?.captureEvidence ?? null,
+      billingUnitPriceCents: Number(row.charge_unit_price_cents ?? row.billing_unit_price_cents ?? meter?.unitPriceCents ?? 0),
       ocrStatus: row.ocrStatus ?? row.ocr_status,
       ocrProvider: row.ocrProvider ?? row.ocr_provider,
       ocrConfidence: row.ocrConfidence ?? row.ocr_confidence,

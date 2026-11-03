@@ -8,7 +8,7 @@ const apiRequire=createRequire(path.resolve(__dirname,'../../api/package.json'))
 const ts=apiRequire('typescript');
 const crop=apiRequire(path.resolve(__dirname,'../miniprogram/utils/crop.ts'));
 const meter=apiRequire(path.resolve(__dirname,'../miniprogram/utils/meter.ts'));
-function fixture({render=async()=>'/crop.png',locate=async()=>({latitude:31.2,longitude:121.4,accuracy:8,capturedAt:Date.now()})}={}) {
+function fixture({render=async()=>'/crop.png',locate=async()=>({latitude:31.2,longitude:121.4,accuracy:8,capturedAt:Date.now()}),metadata=async()=>({status:'missing',photoTakenAt:null,photoTakenAtIso:null})}={}) {
  let definition, request, submission;
  const originalKey='uploads/original.jpg';
  const client={upload:{uploadTempFile:async()=>({objectKey:'uploads/crop.png'})},meters:{
@@ -20,6 +20,8 @@ function fixture({render=async()=>'/crop.png',locate=async()=>({latitude:31.2,lo
  const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
  vm.runInNewContext(code,{exports:{},Page:config=>definition=config,wx,setTimeout,clearTimeout,console,require:name=>{
    if(name==='@pms/api-client')return client;
+   if(name==='@pms/shared-types')return {...apiRequire(path.resolve(__dirname,'../../../packages/shared-types/src/geo.ts')),...apiRequire(path.resolve(__dirname,'../../../packages/shared-types/src/meter-capture.ts'))};
+   if(name.endsWith('/meter-photo-metadata'))return {readPhotoMetadata:metadata};
    if(name.endsWith('/crop'))return crop;
    if(name.endsWith('/meter'))return meter;
    if(name.endsWith('/meter-location'))return {getMeterLocation:locate};
@@ -63,4 +65,18 @@ test('拍照定位：后发定位优先，过期回调不能覆盖新坐标；�
 });
 test('拍照定位：提交前补取定位，坐标和精度进入原有保存接口',async()=>{
  const f=fixture();f.page.data.valueText='00881';await f.page.submit();assert.equal(f.submission.latitude,31.2);assert.equal(f.submission.longitude,121.4);assert.equal(f.submission.accuracy,8);
+});
+
+
+test('相册有GPS：不请求当前位置，保存照片GPS、来源和拍摄时间，提交前不刷新成设备位置',async()=>{
+ let deviceCalls=0;const f=fixture({locate:async()=>{deviceCalls++;throw Error('不得请求');},metadata:async()=>({status:'ready',latitude:31.2,longitude:121.4,accuracy:12,photoTakenAt:'2026-11-03 09:10:11 +08:00',photoTakenAtIso:'2026-11-03T01:10:11.000Z'})});
+ await f.page.resolvePhotoEvidence('/original.jpg','album');assert.equal(deviceCalls,0);assert.equal(f.page.data.captureEvidence.locationSource,'photo_exif');assert.equal(f.page.data.captureEvidence.originalLatitude,31.2);assert.notEqual(f.page.data.location.latitude,31.2);
+ f.page.data.valueText='00881';await f.page.submit();assert.equal(deviceCalls,0);assert.equal(f.submission.ocr.raw.captureEvidence.locationSource,'photo_exif');assert.equal(f.submission.ocr.raw.captureEvidence.photoTakenAtIso,'2026-11-03T01:10:11.000Z');
+});
+test('相册无GPS：显示照片无定位，清除旧设备坐标；即使提交/重试也不调用手机定位',async()=>{
+ let calls=0;const f=fixture({locate:async()=>{calls++;throw Error('不应获取设备位置');}});f.page.data.location={latitude:30,longitude:120};await f.page.resolvePhotoEvidence('/original.jpg','album');assert.match(f.page.data.locationText,/照片无定位/);assert.equal(f.page.data.location.latitude,undefined);await f.page.initLocation();f.page.data.valueText='00881';await f.page.submit();assert.equal(calls,0);assert.equal(f.submission.latitude,undefined);assert.equal(f.submission.ocr.raw.captureEvidence.locationSource,'none');
+});
+test('相册元数据迟到不能覆盖新照片；未支持格式不谎报为照片无GPS',async()=>{
+ let resolve;const f=fixture({metadata:()=>new Promise(r=>resolve=r)});const pending=f.page.resolvePhotoEvidence('/old.jpg','album');f.page.onRetake();resolve({status:'ready',latitude:31,longitude:121,photoTakenAt:null,photoTakenAtIso:null});await pending;assert.equal(f.page.data.location.latitude,undefined);
+ const g=fixture({metadata:async()=>({status:'unsupported',photoTakenAt:null,photoTakenAtIso:null})});await g.page.resolvePhotoEvidence('/image.webp','album');assert.match(g.page.data.locationText,/格式/);assert.equal(g.page.data.captureEvidence.locationStatus,'unsupported');
 });

@@ -22,13 +22,14 @@
     </view>
 
     <view class="card meter-location-card" aria-live="polite">
-      <view class="meter-location-head"><image class="meter-location-icon" src="/assets/location-pin.svg" mode="aspectFit" /><text>现场定位</text></view>
+      <view class="meter-location-head"><image class="meter-location-icon" src="/assets/location-pin.svg" mode="aspectFit" /><text>{{photoSource === 'album' ? '照片定位' : '现场定位'}}</text></view>
       <view class="meter-location-status {{locationStatus === 'failed' ? 'is-warn' : ''}}">{{locationText}}</view>
-      <view wx:if="{{photoSource === 'album'}}" class="meter-location-help">相册照片记录的是本次选图时的位置，不代表原照片拍摄位置。</view>
+      <view wx:if="{{photoSource === 'album'}}" class="meter-location-help">仅读取原照片 GPS；未记录时显示“照片无定位”，不会使用当前位置。</view>
+      <view wx:if="{{photoPath}}" class="meter-location-help">来源：{{captureLocationText}} · {{photoTakenAtText}}</view>
       <view class="meter-location-actions">
         <button wx:if="{{locationStatus === 'ready'}}" class="mini-btn" bindtap="onViewCaptureLocation">查看位置</button>
-        <button class="mini-btn" loading="{{locationStatus === 'loading'}}" disabled="{{locationStatus === 'loading' || submitting}}" bindtap="onRetryLocation">{{locationStatus === 'ready' ? '重新定位' : '获取定位'}}</button>
-        <button wx:if="{{locationStatus === 'failed'}}" class="mini-btn" bindtap="onLocationSettings">微信定位设置</button>
+        <button class="mini-btn" loading="{{locationStatus === 'loading'}}" disabled="{{locationStatus === 'loading' || submitting}}" bindtap="onRetryLocation">{{photoSource === 'album' ? '重新读取照片 GPS' : locationStatus === 'ready' ? '重新定位' : '获取定位'}}</button>
+        <button wx:if="{{photoSource === 'camera' && locationStatus === 'failed'}}" class="mini-btn" bindtap="onLocationSettings">微信定位设置</button>
       </view>
     </view>
 
@@ -138,7 +139,9 @@
             <text>本次应收</text><text class="is-money">¥{{resultChargeYuan}}</text>
           </view>
           <view wx:else class="meter-done__row"><text>账单</text><text>待复核通过后自动出账</text></view>
-          <view class="meter-done__row"><text>拍照时间</text><text>{{readAtText}}</text></view>
+          <view class="meter-done__row"><text>登记时间</text><text>{{readAtText}}</text></view>
+          <view class="meter-done__row"><text>照片拍摄时间</text><text>{{photoTakenAtText}}</text></view>
+          <view class="meter-done__row"><text>定位来源</text><text>{{captureLocationText}}</text></view>
           <view class="meter-done__row"><text>抄表人</text><text>{{result.reading.operatorName || '本人'}}</text></view>
         </view>
         <view class="meter-done__tip">原图与识别记录已保存，后台可在「抄表管理」复核。</view>
@@ -189,7 +192,7 @@
     </view>
     <view class="crop-hint">{{autoBoxText || '单指拖动 · 双指缩放/旋转 · 框不动'}}</view>
     <scroll-view scroll-y class="crop-sheet" style="height:{{recognizing ? 240 : (digitWarning || error || valueError ? 420 : 340)}}rpx;">
-      <view class="crop-location-state" aria-live="polite"><image src="/assets/location-pin.svg" mode="aspectFit" />{{locationStatus === 'loading' ? '正在获取现场定位…' : locationStatus === 'ready' ? locationText : '尚无现场定位，返回后可重新定位'}}</view>
+      <view class="crop-location-state" aria-live="polite"><image src="/assets/location-pin.svg" mode="aspectFit" />{{locationText}}</view>
       <view wx:if="{{recognizing}}">
         <view class="crop-sheet__hint">{{recognitionStatus || '正在保存全景原图…'}}</view>
         <button class="btn btn--ghost crop-cancel" bindtap="onCancelRecognition">取消等待</button>

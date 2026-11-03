@@ -1270,3 +1270,6 @@ export const DEFAULT_CONTENT_SUGGESTIONS = [
 /** 《房屋修理养护任务单》纸面尺寸表：Web 打印稿和小程序预览共用同一份，别各抄一遍 */
 export * from './maintenance-sheet-geometry';
 export * from './property-address';
+
+export * from './geo';
+export * from './meter-capture';

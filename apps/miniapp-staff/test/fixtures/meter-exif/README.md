@@ -1,0 +1,1 @@
+Synthetic 20x20 images generated locally with Pillow and standards-compliant TIFF/EXIF fields. No user photo or location is used. Expected WGS84 N31.2 E121.4 / S31.2 W121.4; DateTimeOriginal 2026-11-03 09:10:11, offset +08:00 when present. Missing timezone is deliberately unknown. Invalid GPS contains minute=99 and must not be trusted.

@@ -64,7 +64,9 @@
           <view class="meter-review-meta">上次 {{reviewTarget.previousValue === null ? '未设置' : reviewTarget.previousValue}} · 本次 {{reviewTarget.readingValueText}} {{reviewTarget.unit}}</view>
           <view class="meter-review-meta">用量 {{reviewTarget.usageValue === null ? '无底数，未计算' : reviewTarget.usageValue + ' ' + reviewTarget.unit}}</view>
           <button wx:if="{{reviewTarget.latitude !== null && reviewTarget.longitude !== null}}" class="meter-gps-button" aria-label="查看本次抄表定位" data-id="{{reviewTarget.id}}" bindtap="onReadingLocation"><image src="/assets/location-pin.svg" mode="aspectFit" />定位</button>
-          <view wx:else class="meter-review-meta">未记录现场定位</view>
+          <view wx:else class="meter-review-meta">未记录定位坐标</view>
+          <view class="meter-review-meta">来源：{{reviewTarget.captureLocationText}}</view>
+          <view class="meter-review-meta">{{reviewTarget.photoTakenAtText}}</view>
           <block wx:if="{{reviewTarget.status === 'pending' && canSubmit}}">
             <label for="meter-review-value" class="meter-pay-label">核对后的读数 *</label>
             <input id="meter-review-value" class="meter-pay-input {{reviewValueError ? 'is-invalid' : ''}}" aria-label="核对后的读数" aria-invalid="{{!!reviewValueError}}" aria-describedby="meter-review-value-error" focus="{{reviewFocus}}" type="digit" value="{{reviewValue}}" disabled="{{reviewBusy}}" bindinput="onReviewValue" />

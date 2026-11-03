@@ -1,3 +1,4 @@
+import type { MeterCaptureEvidence } from '@pms/shared-types';
 export const METER_READING_STATUS_LABELS = { pending: '待复核', confirmed: '已复核', void: '已作废' } as const;
 import { request } from '../request';
 
@@ -56,6 +57,8 @@ export interface MeterListResp {
 }
 
 export interface MeterReadingRow {
+  captureEvidence?: MeterCaptureEvidence | null;
+  billingUnitPriceCents?: number;
   id: number;
   meterId: number;
   meterNo: string;
@@ -369,7 +372,7 @@ export const meters = {
     data: { readingValue?: number; note?: string; reviewNote?: string; status?: ReadingStatus },
   ) => request<ReadingResult>({ url: `/meters/readings/${id}`, method: 'PUT', data }),
 
-  reviewReading: (id: number, data: { readingValue?: number; reviewNote?: string }) =>
+  reviewReading: (id: number, data: { readingValue?: number; reviewNote?: string; unitPriceCents?: number }) =>
     request<ReadingResult>({ url: `/meters/readings/${id}/review`, method: 'POST', data }),
 
   ocrSamples: (params: {
@@ -429,7 +432,7 @@ export const meters = {
     },
   ) => request<MeterChargeRow>({ url: `/meters/charges/${id}/pay`, method: 'POST', data }),
 
-  adjustCharge: (id: number, data: { adjustmentCents: number; note?: string }) =>
+  adjustCharge: (id: number, data: { adjustmentCents: number; note?: string; unitPriceCents?: number }) =>
     request<MeterChargeRow>({ url: `/meters/charges/${id}/adjust`, method: 'POST', data }),
 
   voidCharge: (id: number) =>
