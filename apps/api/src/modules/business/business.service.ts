@@ -45,6 +45,7 @@ import { DEFAULT_GROUP, STANDARD_MONTHS, normalizeTiers, normalizeVehicleClass, 
 import { Notification } from '../../entities';
 import { NotifyChannel, NotifyStatus } from '../../common/enums';
 import { DeliyunParkingService } from '../access-card-issuance/deliyun-parking.service';
+import { ParkingSpace } from '../../entities/parking-space.entity';
 
 @Injectable()
 export class BusinessService {
@@ -61,6 +62,8 @@ export class BusinessService {
     private readonly logRepo: Repository<BusinessLog>,
     @InjectRepository(House)
     private readonly houseRepo: Repository<House>,
+    @InjectRepository(ParkingSpace)
+    private readonly spaceRepo: Repository<ParkingSpace>,
     @InjectRepository(Building)
     private readonly buildingRepo: Repository<Building>,
     private readonly execution: BusinessExecutionService,
@@ -211,6 +214,26 @@ export class BusinessService {
     };
   }
 
+
+  /** 车位清单：大车库 / 人防车库。按车位号自然序，可按车位号或车牌搜。 */
+  async listParkingSpaces(garage?: string, q?: string) {
+    const g = garage === 'civil' || garage === 'main' ? garage : undefined;
+    const qb = this.spaceRepo.createQueryBuilder('s');
+    if (g) qb.andWhere('s.garage = :g', { g });
+    const kw = (q ?? '').trim();
+    if (kw) qb.andWhere('(s.spaceNo ILIKE :kw OR s.plate ILIKE :kw OR s.houseNo ILIKE :kw)', { kw: `%${kw}%` });
+    qb.orderBy('s.garage', 'ASC').addOrderBy('s.spaceNo', 'ASC');
+    const rows = await qb.getMany();
+    return {
+      rows: rows.map((r) => ({
+        id: r.id, garage: r.garage, spaceNo: r.spaceNo, houseNo: r.houseNo,
+        areaSqm: r.areaSqm, plate: r.plate, ownerName: r.ownerName, ownerTel: r.ownerTel,
+        note: r.note, source: r.source,
+      })),
+      total: rows.length,
+      bound: rows.filter((r) => r.plate && r.plate.trim()).length,
+    };
+  }
   async listRules(query: BusinessRuleQueryDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
     await this.ensureDefaultRules(tenantId, user.id);

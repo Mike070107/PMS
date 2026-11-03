@@ -38,6 +38,11 @@ export class BusinessController {
     private readonly execution: BusinessExecutionService,
   ) {}
 
+  @Get('parking-spaces')
+  parkingSpaces(@Query('garage') garage: string, @Query('q') q: string) {
+    return this.businessService.listParkingSpaces(garage, q);
+  }
+
   @Get('rules')
   @RequirePermission('business', 'view')
   listRules(
