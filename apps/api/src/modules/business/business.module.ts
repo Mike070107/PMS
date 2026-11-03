@@ -13,6 +13,7 @@ import {
   User,
   VehicleIntake,
   ParkingPlateTag,
+  ParkingSpace,
 } from '../../entities';
 import { UploadModule } from '../upload/upload.module';
 import { VehicleIntakeController, VehicleIntakeFormController } from './vehicle-intake.controller';
@@ -27,6 +28,7 @@ import { BusinessService } from './business.service';
     AccessCardIssuanceModule,
     UploadModule,
     TypeOrmModule.forFeature([
+      ParkingSpace,
       AccessCard,
       BusinessLog,
       BusinessRule,
