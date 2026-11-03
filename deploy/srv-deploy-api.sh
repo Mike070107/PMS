@@ -54,13 +54,13 @@ if tar -tzf "$PKG" 2>/dev/null | grep -qx 'api/.pms-fast-release'; then
   wait_for_health() {
     local url="$1"
     local label="$2"
-    for i in $(seq 1 20); do
+    for i in $(seq 1 120); do
       if curl -fsS "$url"; then
         echo
         return 0
       fi
-      echo "waiting for $label ($i/20)..." >&2
-      sleep 1
+      echo "waiting for $label ($i/120, 约 4 分钟)..." >&2
+      sleep 2
     done
     echo "health check failed: $url" >&2
     return 1
@@ -120,13 +120,13 @@ pm2 status
 wait_for_health() {
   local url="$1"
   local label="$2"
-  for i in $(seq 1 20); do
+  for i in $(seq 1 120); do
     if curl -fsS "$url"; then
       echo
       return 0
     fi
-    echo "waiting for $label ($i/20)..." >&2
-    sleep 1
+    echo "waiting for $label ($i/120, 约 4 分钟)..." >&2
+    sleep 2
   done
   echo "health check failed: $url" >&2
   return 1
