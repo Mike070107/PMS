@@ -215,6 +215,25 @@ export class BusinessService {
   }
 
 
+
+  /** 编辑车位：只覆盖传进来的字段（车牌/房号/业主/电话/备注/面积） */
+  async updateParkingSpace(id: number, dto: Partial<{ plate: string; houseNo: string; ownerName: string; ownerTel: string; note: string; areaSqm: string; endDate: string }>) {
+    const row = await this.spaceRepo.findOne({ where: { id } });
+    if (!row) throw new NotFoundException('车位不存在');
+    const clean = (v?: string) => (v === undefined ? undefined : (v.trim() === '' ? null : v.trim()));
+    const plate = clean(dto.plate);
+    if (plate !== undefined) row.plate = plate ? plate.toUpperCase().replace(/\s/g, '') : null;
+    const houseNo = clean(dto.houseNo); if (houseNo !== undefined) row.houseNo = houseNo;
+    const ownerName = clean(dto.ownerName); if (ownerName !== undefined) row.ownerName = ownerName;
+    const ownerTel = clean(dto.ownerTel);
+    // 多个电话统一用 / 分隔（现场常写成 ，、; 或空格）
+    if (ownerTel !== undefined) row.ownerTel = ownerTel ? ownerTel.split(/[\/,，、;；\s]+/).filter(Boolean).join('/') : null;
+    const note = clean(dto.note); if (note !== undefined) row.note = note;
+    const area = clean(dto.areaSqm); if (area !== undefined) row.areaSqm = area;
+    const end = clean(dto.endDate); if (end !== undefined) row.endDate = end;
+    await this.spaceRepo.save(row);
+    return { id: row.id, plate: row.plate, houseNo: row.houseNo, ownerName: row.ownerName, ownerTel: row.ownerTel, note: row.note, areaSqm: row.areaSqm, endDate: row.endDate };
+  }
   /** 车位清单：大车库 / 人防车库。按车位号自然序，可按车位号或车牌搜。 */
   async listParkingSpaces(garage?: string, q?: string) {
     const g = garage === 'civil' || garage === 'main' ? garage : undefined;
@@ -230,7 +249,7 @@ export class BusinessService {
       rows: rows.map((r) => ({
         id: r.id, garage: r.garage, spaceNo: r.spaceNo, houseNo: r.houseNo,
         areaSqm: r.areaSqm, plate: r.plate, ownerName: r.ownerName, ownerTel: r.ownerTel,
-        note: r.note, source: r.source,
+        note: r.note, source: r.source, endDate: r.endDate,
       })),
       total: rows.length,
       bound: rows.filter((r) => r.plate && r.plate.trim()).length,

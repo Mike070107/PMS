@@ -37,6 +37,10 @@ export class ParkingSpace extends TenantEntity {
   ownerTel: string | null;
 
   /** 产权 / 租赁车位 / 公司 … */
+  /** 车牌续费有效期（旧停车系统的 End_Time） */
+  @Column({ name: 'end_date', type: 'date', nullable: true })
+  endDate: string | null;
+
   @Column({ type: 'varchar', length: 60, nullable: true })
   note: string | null;
 

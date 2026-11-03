@@ -38,6 +38,11 @@ export class BusinessController {
     private readonly execution: BusinessExecutionService,
   ) {}
 
+  @Patch('parking-spaces/:id')
+  updateParkingSpace(@Param('id') id: string, @Body() dto: Record<string, string>) {
+    return this.businessService.updateParkingSpace(Number(id), dto);
+  }
+
   @Get('parking-spaces')
   parkingSpaces(@Query('garage') garage: string, @Query('q') q: string) {
     return this.businessService.listParkingSpaces(garage, q);
