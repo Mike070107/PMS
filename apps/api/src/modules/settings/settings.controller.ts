@@ -5,11 +5,20 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../access/permissions.guard';
 import { UpdateTenantSettingsDto } from './dto';
 import { SettingsService } from './settings.service';
+import { CollectionSmsService, CollectionSmsConfigDto } from './collection-sms.service';
 
 @Controller('settings')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SettingsController {
-  constructor(private readonly settingsService: SettingsService) {}
+  constructor(private readonly settingsService: SettingsService, private readonly collectionSms: CollectionSmsService) {}
+
+  @Get('collection-sms')
+  @RequirePermission('settings', 'view')
+  getCollectionSms(@CurrentUser() user:AuthUser){return this.collectionSms.get(user);}
+
+  @Patch('collection-sms')
+  @RequirePermission('settings', 'edit')
+  saveCollectionSms(@Body() dto:CollectionSmsConfigDto,@CurrentUser() user:AuthUser){return this.collectionSms.save(dto,user);}
 
   /** 读设置：报修录入等页面也要读（决定录入页怎么显示），查看权取任一相关页面 */
   @Get()

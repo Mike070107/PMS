@@ -1,4 +1,8 @@
-import { BadRequestException, ForbiddenException, Injectable, OnModuleDestroy, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleDestroy, ServiceUnavailableException } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+import { CollectionSmsService } from '../settings/collection-sms.service';
+import { MisCollectionBatch } from '../../entities/mis-collection-batch.entity';
+import type { MisCollectionPreviewDto } from './mis-fees.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Building, Community, House, User } from '../../entities';
@@ -6,7 +10,7 @@ import { AuthUser } from '../../common/current-user.decorator';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
 import { naturalNumberSql } from '../../common/natural-order';
-import { buildMisFeeQuery, MisFeeQuery, MisHouseFilter, misFeeStatus, misMoneyToCents } from './mis-fees.query';
+import { buildMisFeeQuery, buildMisResidentialQuery, MisResidentialQuery, MisFeeQuery, MisHouseFilter, misFeeStatus, misMoneyToCents } from './mis-fees.query';
 
 // 与用户确认的映射；公寓收费台、北桥和颛桥均不参与物业费查询。
 export const MIS_PROPERTY_OFFICES:Record<string,string[]>={
@@ -15,10 +19,11 @@ export const MIS_PROPERTY_OFFICES:Record<string,string[]>={
 @Injectable()
 export class MisFeesService implements OnModuleDestroy {
  private poolPromise:Promise<any>|null=null;
- constructor(@InjectRepository(Community) private readonly communities:Repository<Community>,@InjectRepository(House) private readonly houses:Repository<House>){}
+ constructor(@InjectRepository(Community) private readonly communities:Repository<Community>,@InjectRepository(House) private readonly houses:Repository<House>,@InjectRepository(MisCollectionBatch) private readonly batches?:Repository<MisCollectionBatch>, private readonly smsSettings?:CollectionSmsService){}
  private configured(){return !!(process.env.MIS_FEES_TENANT_ID&&process.env.MIS_FEES_USER&&process.env.MIS_FEES_PASSWORD);}
  private async scope(user:AuthUser,access?:ResolvedAccess){
   if(!user.tenantId)throw new ForbiddenException('请选择公司后查询');
+  if(!access)throw new ForbiddenException('缺少数据范围授权');
   if(user.tenantId!==Number(process.env.MIS_FEES_TENANT_ID))return [];
   const allowed=scopeCommunityIds(access);
   if(allowed?.length===0)return [];
@@ -85,6 +90,80 @@ export class MisFeesService implements OnModuleDestroy {
   const result=await this.read(built.sql,built.params),summary=result.recordsets[0]?.[0]||{};
   const rows=(result.recordsets[1]||[]).map((r:any)=>{const amountCents=misMoneyToCents(r.amount);return {...r,communityId:communities.find(c=>c.offices.includes(r.officeCode))!.id,communityName:communities.find(c=>c.offices.includes(r.officeCode))!.name,amount:undefined,amountCents,status:misFeeStatus({...r,amountCents})};});
   return {rows,total:Number(summary.total||0),page:built.page,pageSize:built.pageSize,readOnly:true,queriedAt:new Date().toISOString(),sourceLabel:'一通MIS',summary:{receivableCents:misMoneyToCents(summary.receivableAmount),unpaidCents:misMoneyToCents(summary.unpaidAmount),paidCents:misMoneyToCents(summary.paidAmount),refundedCount:Number(summary.refundedCount||0),latestUpdatedAt:summary.latestUpdatedAt||null}};
+ }
+ private async residentialScope(q:MisResidentialQuery,user:AuthUser,access?:ResolvedAccess){
+  let communities=await this.scope(user,access);
+  if(q.houseId)throw new BadRequestException('住宅总览请使用范围与住户查询，不接受内部房号ID');
+  if(q.communityId){if(!communities.some(c=>c.id===q.communityId))throw new ForbiddenException('该小区不在MIS查询授权范围');communities=communities.filter(c=>c.id===q.communityId);}
+  if(!communities.length)throw new ForbiddenException('当前范围没有可查询的一通MIS物业数据');
+  return communities;
+ }
+ async residential(q:MisResidentialQuery,user:AuthUser,access?:ResolvedAccess){
+  const communities=await this.residentialScope(q,user,access),built=buildMisResidentialQuery(q,communities.flatMap(c=>c.offices));
+  const result=await this.read(built.sql,built.params),sets=result.recordsets||[];
+  const meta={sourceLabel:'一通MIS',readOnly:true,queriedAt:new Date().toISOString(),communities,smsAvailable:false,smsReason:'尚未接入审核通过的住宅缴费短信通道；仅可预览，不会发送'};
+  const amounts=(r:any)=>({receivableCents:misMoneyToCents(r.receivableAmount),paidCents:misMoneyToCents(r.paidAmount),unpaidCents:misMoneyToCents(r.unpaidAmount)});
+  if(!q.view||q.view==='dashboard')return {...meta,summary:{...amounts(sets[0]?.[0]||{}),total:Number(sets[0]?.[0]?.total||0),unpaidHouses:Number(sets[0]?.[0]?.unpaidHouses||0),adjustmentCount:Number(sets[0]?.[0]?.adjustmentCount||0)},byFee:(sets[1]||[]).map((r:any)=>({...amounts(r),feeCode:r.feeCode,feeName:r.feeName||'未命名费项',category:r.category,unpaidHouses:Number(r.unpaidHouses||0)}))};
+  if(q.view==='trend')return {...meta,rows:(sets[0]||[]).map((r:any)=>({day:r.day,netCents:misMoneyToCents(r.netAmount),chargedCents:misMoneyToCents(r.chargedAmount),refundedCents:misMoneyToCents(r.refundedAmount)}))};
+  const format=(r:any)=>{const {phone,amount,...safe}=r;const p=String(phone||'').trim();return {...safe,amountCents:misMoneyToCents(amount),billCount:r.billCount===undefined?undefined:Number(r.billCount),phoneMasked:/^1[3-9]\d{9}$/.test(p)?`${p.slice(0,3)}****${p.slice(-4)}`:p?'号码待核实':'未留手机号',contactEligible:/^1[3-9]\d{9}$/.test(p),communityId:communities.find(c=>c.offices.includes(r.officeCode))?.id};};
+  if(q.view==='detail'){if((sets[0]||[]).length>10000)throw new BadRequestException('账单明细超过一万条，请缩小账期或分批');return {...meta,rows:(sets[0]||[]).map(format)};}
+  return {...meta,total:Number(sets[0]?.[0]?.total||0),amountCents:misMoneyToCents(sets[0]?.[0]?.amount),page:q.page||1,pageSize:q.pageSize||20,rows:(sets[1]||[]).map(format)};
+ }
+ async previewCollection(dto:MisCollectionPreviewDto,user:AuthUser,access?:ResolvedAccess){
+  if(!dto.filter||!['keys','all'].includes(dto.selection)||!['print','sms'].includes(dto.purpose))throw new BadRequestException('请确认催缴范围与渠道');
+  const filter:MisResidentialQuery={...dto.filter,houseKeys:undefined,view:'households',status:'unpaid',page:1,pageSize:201};
+  const communities=await this.residentialScope(filter,user,access);
+  let keys=dto.houseKeys||[];
+  if(dto.selection==='all'){
+   const all:any=await this.residential(filter,user,access);
+   if(all.total>200)throw new BadRequestException('筛选结果超过200户，请按小区、楼栋或关键词分批；未截取前200户');
+   keys=all.rows.map((r:any)=>r.houseKey);
+  }
+  if(!keys.length)throw new BadRequestException('没有可生成通知的住户');
+  const detail:any=await this.residential({...filter,view:'detail',houseKeys:keys},user,access);
+  const groups=new Map<string,any>();
+  for(const r of detail.rows){
+   let n=groups.get(r.houseKey);
+   if(!n){n={houseKey:r.houseKey,address:r.address,ownerName:r.ownerName,communityId:r.communityId,communityName:communities.find(c=>c.id===r.communityId)?.name||'',phoneMasked:r.phoneMasked,contactEligible:r.contactEligible,amountCents:0,bills:[]};groups.set(r.houseKey,n);}
+   n.amountCents+=r.amountCents;if(!Number.isSafeInteger(n.amountCents))throw new BadRequestException('通知金额超出安全范围');
+   n.bills.push({id:r.id,feeCode:r.feeCode,feeName:r.feeName||'未命名费用',period:r.period,amountCents:r.amountCents,updatedAt:r.updatedAt||null});
+  }
+  const notices=[...groups.values()].sort((a,b)=>a.address.localeCompare(b.address,'zh-CN',{numeric:true})||a.houseKey.localeCompare(b.houseKey));
+  for(const n of notices)n.bills.sort((a:any,b:any)=>String(a.period).localeCompare(String(b.period))||String(a.id).localeCompare(String(b.id),'en',{numeric:true}));
+  if(!notices.length)throw new ConflictException('所选账单已无待缴余额，请重新查询');
+  const totalCents=notices.reduce((s,n)=>s+n.amountCents,0);if(!Number.isSafeInteger(totalCents))throw new BadRequestException('合计金额超出安全范围');
+  const canonical=JSON.stringify({purpose:dto.purpose,notices});
+  const fingerprint=createHash('sha256').update(canonical).digest('hex');
+  return {notices,totalCents,billCount:notices.reduce((s,n)=>s+n.bills.length,0),fingerprint,queriedAt:detail.queriedAt,sourceLabel:'一通MIS',smsAvailable:false,smsReason:this.smsSettings?(await this.smsSettings.readiness(user.tenantId!)).reason:detail.smsReason,skipped:keys.filter(k=>!groups.has(k)),contactEligibleCount:notices.filter(n=>n.contactEligible).length,contactWarning:'号码来自MIS责任人档案，尚未核实接收意愿与关系；同一号码多户不得直接合并发送。到期日未提供，未判定逾期。'};
+ }
+ private visibleBatch(batch:MisCollectionBatch|undefined|null,communities:{id:number}[]){
+  if(!batch||!batch.communityIds.length||!batch.communityIds.every(id=>communities.some(c=>c.id===id)))throw new NotFoundException('催缴批次不存在或不在当前数据范围');
+  return batch;
+ }
+ async createCollection(dto:MisCollectionPreviewDto,user:AuthUser,access?:ResolvedAccess){
+  const allowed=await this.residentialScope(dto.filter||{},user,access);
+  if(!dto.confirmed||!dto.idempotencyKey||!/^[a-f0-9]{64}$/.test(dto.fingerprint||''))throw new BadRequestException('请先核对通知预览并明确确认');
+  if(!/^[a-f0-9-]{36}$/i.test(dto.idempotencyKey))throw new BadRequestException('批次请求标识不合法');
+  const previous=await this.batches!.findOne({where:{tenantId:user.tenantId!,idempotencyKey:dto.idempotencyKey}});
+  if(previous){this.visibleBatch(previous,allowed);if(previous.createdBy!==user.id||previous.fingerprint!==dto.fingerprint||previous.purpose!==dto.purpose)throw new ConflictException('请求标识已用于其他批次，请重新预览');return previous;}
+  const preview=await this.previewCollection(dto,user,access);
+  if(preview.fingerprint!==dto.fingerprint)throw new ConflictException('MIS余额、账单或联系人发生变化，请重新预览后确认；尚未生成通知');
+  const row=this.batches!.create({tenantId:user.tenantId!,idempotencyKey:dto.idempotencyKey,communityIds:[...new Set(preview.notices.map(n=>Number(n.communityId)))],purpose:dto.purpose,status:dto.purpose==='print'?'generated':'preview_only',fingerprint:preview.fingerprint,houseCount:preview.notices.length,amountCents:String(preview.totalCents),snapshot:preview,createdBy:user.id,updatedBy:user.id});
+  try{return await this.batches!.save(row);}catch(e){
+   if((e as any)?.code!=='23505')throw e;
+   const concurrent=this.visibleBatch(await this.batches!.findOne({where:{tenantId:user.tenantId!,idempotencyKey:dto.idempotencyKey}}),allowed);
+   if(concurrent.createdBy!==user.id||concurrent.fingerprint!==dto.fingerprint||concurrent.purpose!==dto.purpose)throw new ConflictException('批次请求冲突，请重新预览');return concurrent;
+  }
+ }
+ async collectionHistory(q:MisResidentialQuery,user:AuthUser,access?:ResolvedAccess){
+  const allowed=await this.residentialScope(q,user,access),page=q.page||1,pageSize=Math.min(q.pageSize||20,50);
+  const [rows,total]=await this.batches!.createQueryBuilder('b').where('b.tenant_id=:tenant',{tenant:user.tenantId}).andWhere('b.community_ids <@ ARRAY[:...ids]::integer[]',{ids:allowed.map(c=>c.id)}).select(['b.id','b.createdAt','b.createdBy','b.purpose','b.status','b.houseCount','b.amountCents','b.communityIds']).orderBy('b.id','DESC').skip((page-1)*pageSize).take(pageSize).getManyAndCount();
+  return {rows,total,page,pageSize};
+ }
+ async collectionDetail(id:number,user:AuthUser,access?:ResolvedAccess){
+  const allowed=await this.residentialScope({},user,access);
+  if(!Number.isSafeInteger(id)||id<1)throw new BadRequestException('批次编号不合法');
+  return this.visibleBatch(await this.batches!.findOne({where:{id,tenantId:user.tenantId!}}),allowed);
  }
  async onModuleDestroy(){const p=this.poolPromise;this.poolPromise=null;if(p)await p.then(pool=>pool.close()).catch(()=>{});}
 }
