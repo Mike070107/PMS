@@ -5579,3 +5579,13 @@
   - a42bfad2 feat(api): 车位档案——新增 parking_spaces 实体(大车库/二期人防车位清单,unique(garage,space_no)) 与只读接口 GET /business/parking-spaces?garage=main|civil
   - 4d990ba2 merge: beta 收费工作台前端合入 main——彩色图标体系(FeeIcon/ToneIcon/侧栏分组色)、收费流水页、公寓收费台内置、门禁页内发卡、车辆类别按旧库 Car_Brand 识别、收费方式 fieldset 出界修复
 
+## 2026-11-05 00:08 · api · f008ebdd
+
+- 包：`pms-api-fast-20261105-000749.tar.gz`
+- 提交：f008ebdd fix(integration): preserve main SDK contracts and timeout feedback
+- 自上次（620f9365）以来上线的相关提交：
+  - f008ebdd fix(integration): preserve main SDK contracts and timeout feedback
+  - 72367187 feat(web): promote full neighbor UI to official homepage with personal themes
+  - b7c61e06 feat(auth): persist personal UI preferences and fix legacy MIS date compatibility
+  - f2cc610b [verified] feat(fees): add MIS residential reporting and collection snapshots
+
