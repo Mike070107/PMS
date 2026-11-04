@@ -5562,3 +5562,20 @@
 - 自上次（17ae188a）以来上线的相关提交：
   - 1f454a7c feat(meters): preserve photo GPS provenance and allow per-bill pricing
 
+## 2026-11-04 18:13 · api · 620f9365
+
+- 包：`pms-api-fast-20261104-181210.tar.gz`
+- 提交：620f9365 [verified] fix(api): isolate parking spaces and validate updates (A01/A02)
+- 自上次（2c10673e）以来上线的相关提交：
+  - 620f9365 [verified] fix(api): isolate parking spaces and validate updates (A01/A02)
+  - 5aba3c29 feat(api): 系统管理员可自审自己登记的续期——超管(平台/企业)豁免「不能审自己」拦截,并在 review 里落 selfApproval=超管自审 留痕;其余角色规则不变
+  - c4cb9d8e feat(auth): 权限拆分——app:approve-manager 拆成 app:approve-purchase-manager(采购经理环节) 与 app:approve-business-manager(收费/车牌经理环节),旧 key 保留兼容(任一命中即放行);含亲情车待审、新办车牌待审、采购与调拨审批、待办通知与角标
+  - 49a50cf3 deploy: API 部署的临时包、dist 备份、.env 备份与锁文件全部从 /tmp 迁到 /opt/pms-backups/api
+  - cd9baf3d feat(api): 车位可编辑——PATCH /business/parking-spaces/:id 更新车牌/房号/业主/电话/备注/面积/有效期;多电话统一用 / 分隔;新增 end_date(车牌续费有效期)
+  - e84cc710 fix(api): 车位清单按车位号数字自然序(1,2,3…10,100)——字符串序会排成 1,10,100,101
+  - 2667880c deploy: API 健康检查等待放宽到 120 次×2s(约4分钟),避免 DB 同步启动慢被误判失败
+  - 13b5fe80 fix(api): BusinessModule 的 TypeOrmModule.forFeature 补上 ParkingSpace——否则 BusinessService 注入 ParkingSpaceRepository 时 Nest 依赖解析失败,API 起不来
+  - 22dca7f3 fix(api): entities/index.ts 保留 main 上的 Meter* 导出,只追加 ParkingSpace(beta 分支副本缺抄表实体,整文件覆盖会把 meters 模块搞崩)
+  - a42bfad2 feat(api): 车位档案——新增 parking_spaces 实体(大车库/二期人防车位清单,unique(garage,space_no)) 与只读接口 GET /business/parking-spaces?garage=main|civil
+  - 4d990ba2 merge: beta 收费工作台前端合入 main——彩色图标体系(FeeIcon/ToneIcon/侧栏分组色)、收费流水页、公寓收费台内置、门禁页内发卡、车辆类别按旧库 Car_Brand 识别、收费方式 fieldset 出界修复
+
