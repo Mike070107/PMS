@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const TARGETS = {
   api: { label: '线上 API', paths: ['apps/api', 'packages/shared-types', 'pnpm-lock.yaml', 'deploy/srv-deploy-api.sh'] },
-  web: { label: '管理后台', paths: ['apps/admin-web', 'packages/shared-types', 'packages/api-client', 'pnpm-lock.yaml'] },
+  web: { label: '管理后台', paths: ['apps/neighbor-web', 'apps/admin-web', 'packages/shared-types', 'packages/api-client', 'pnpm-lock.yaml'] },
   assistant: { label: 'Windows 数据同步助手', paths: ['tools/data-sync-assistant-v2', 'tools/access-card-agent'] },
   'miniapp-staff': { label: '员工端小程序', paths: ['apps/miniapp-staff', 'packages/shared-types', 'packages/api-client'] },
   'miniapp-owner': { label: '业主端小程序', paths: ['apps/miniapp-owner', 'packages/shared-types', 'packages/api-client'] },
@@ -77,7 +77,7 @@ async function getJson(url) {
 async function check(target, commit) {
   assertSource(target, commit);
   if (target === 'api' || target === 'web') {
-    const app = join(ROOT, 'apps', target === 'web' ? 'admin-web' : 'api');
+    const app = join(ROOT, 'apps', target === 'web' ? 'neighbor-web' : 'api');
     const manifest = JSON.parse(readFileSync(join(app, 'package.json'), 'utf8'));
     for (const dependency of Object.keys({ ...manifest.dependencies, ...manifest.devDependencies })) {
       const file = join(app, 'node_modules', dependency, 'package.json');
@@ -125,7 +125,7 @@ function verifySource(target, commit) {
 }
 function stamp(target, commit) {
   const evidence = verifySource(target, commit);
-  const dist = join(ROOT, `apps/${target === 'web' ? 'admin-web' : 'api'}/dist`);
+  const dist = join(ROOT, `apps/${target === 'web' ? 'neighbor-web' : 'api'}/dist`);
   const files = {};
   let version = `api-${commit.slice(0, 7)}`;
   if (target === 'web') {
