@@ -46,6 +46,7 @@ import { Notification } from '../../entities';
 import { NotifyChannel, NotifyStatus } from '../../common/enums';
 import { DeliyunParkingService } from '../access-card-issuance/deliyun-parking.service';
 import { ParkingSpace } from '../../entities/parking-space.entity';
+import { UpdateParkingSpaceDto } from './parking-space.dto';
 
 @Injectable()
 export class BusinessService {
@@ -227,8 +228,13 @@ export class BusinessService {
 
 
   /** 编辑车位：只覆盖传进来的字段（车牌/房号/业主/电话/备注/面积） */
-  async updateParkingSpace(id: number, dto: Partial<{ plate: string; houseNo: string; ownerName: string; ownerTel: string; note: string; areaSqm: string; endDate: string }>) {
-    const row = await this.spaceRepo.findOne({ where: { id } });
+  async updateParkingSpace(id: number, dto: UpdateParkingSpaceDto, user: AuthUser, access: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    if (!access) throw new ForbiddenException('缺少车位访问范围');
+    const scope = scopeCommunityIds(access);
+    if (scope && !scope.length) throw new NotFoundException('车位不存在');
+    if (!Number.isSafeInteger(id) || id < 1 || id > 2147483647) throw new BadRequestException('车位编号必须为有效的正整数');
+    const row = await this.spaceRepo.findOne({ where: { id, tenantId, ...(scope ? { communityId: In(scope) } : {}) } });
     if (!row) throw new NotFoundException('车位不存在');
     const clean = (v?: string) => (v === undefined ? undefined : (v.trim() === '' ? null : v.trim()));
     const plate = clean(dto.plate);
@@ -241,13 +247,19 @@ export class BusinessService {
     const note = clean(dto.note); if (note !== undefined) row.note = note;
     const area = clean(dto.areaSqm); if (area !== undefined) row.areaSqm = area;
     const end = clean(dto.endDate); if (end !== undefined) row.endDate = end;
+    row.updatedBy = user.id;
     await this.spaceRepo.save(row);
     return { id: row.id, plate: row.plate, houseNo: row.houseNo, ownerName: row.ownerName, ownerTel: row.ownerTel, note: row.note, areaSqm: row.areaSqm, endDate: row.endDate };
   }
   /** 车位清单：大车库 / 人防车库。按车位号自然序，可按车位号或车牌搜。 */
-  async listParkingSpaces(garage?: string, q?: string) {
+  async listParkingSpaces(garage: string | undefined, q: string | undefined, user: AuthUser, access: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    if (!access) throw new ForbiddenException('缺少车位访问范围');
+    const scope = scopeCommunityIds(access);
+    if (scope && !scope.length) return { rows: [], total: 0, bound: 0 };
     const g = garage === 'civil' || garage === 'main' ? garage : undefined;
-    const qb = this.spaceRepo.createQueryBuilder('s');
+    const qb = this.spaceRepo.createQueryBuilder('s').where('s.tenant_id = :tenantId', { tenantId });
+    if (scope) qb.andWhere('s.community_id IN (:...scope)', { scope });
     if (g) qb.andWhere('s.garage = :g', { g });
     const kw = (q ?? '').trim();
     if (kw) qb.andWhere('(s.spaceNo ILIKE :kw OR s.plate ILIKE :kw OR s.houseNo ILIKE :kw)', { kw: `%${kw}%` });

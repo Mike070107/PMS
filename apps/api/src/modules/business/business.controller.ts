@@ -26,6 +26,7 @@ import {
   ReviewDecisionDto,
 } from './dto';
 import { BusinessService } from './business.service';
+import { UpdateParkingSpaceDto } from './parking-space.dto';
 import { BusinessExecutionService } from './business-execution.service';
 import { scopeCommunityIds } from '../access/scope.util';
 
@@ -39,13 +40,26 @@ export class BusinessController {
   ) {}
 
   @Patch('parking-spaces/:id')
-  updateParkingSpace(@Param('id') id: string, @Body() dto: Record<string, string>) {
-    return this.businessService.updateParkingSpace(Number(id), dto);
+  @RequirePermission('business', 'edit')
+  updateParkingSpace(
+    // 联合类型避免全局 transform 在 ParseIntPipe 之前把 "1e0" 转成 1。
+    @Param('id', ParseIntPipe) id: number | string,
+    @Body() dto: UpdateParkingSpaceDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.businessService.updateParkingSpace(Number(id), dto, user, access);
   }
 
   @Get('parking-spaces')
-  parkingSpaces(@Query('garage') garage: string, @Query('q') q: string) {
-    return this.businessService.listParkingSpaces(garage, q);
+  @RequirePermission('business', 'view')
+  parkingSpaces(
+    @Query('garage') garage: string,
+    @Query('q') q: string,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.businessService.listParkingSpaces(garage, q, user, access);
   }
 
   @Get('rules')
