@@ -33,7 +33,8 @@ const maskPhone = (p?: string | null) => (p && p.length >= 7 ? `${p.slice(0, 3)}
 /** 后台菜单分组 → 同一件事在小程序里的入口：一起勾，避免「后台能办、小程序被拒」 */
 const APP_BY_GROUP: Record<string, string[]> = {
   报修工单: ['app:dispatch', 'app:pool', 'app:my-orders', 'app:order-rollback', 'app:order-void', 'app:maintenance-sign', 'app:maintenance-inspect', 'app:repair-create', 'app:my-repairs', 'app:experience-notes'],
-  材料与库存: ['app:materials', 'app:inventory', 'app:stocktakes', 'app:approve-manager', 'app:approve-purchaser'],
+  // 旧的 app:approve-manager 已拆成采购/收费两格，不再出现在勾选列表（仍保留在目录里给旧数据看标签）
+  材料与库存: ['app:materials', 'app:inventory', 'app:stocktakes', 'app:approve-purchase-manager', 'app:approve-business-manager', 'app:approve-purchaser'],
   收费业务: ['app:apartment-cashier', 'app:family-car-approve'],
   系统: ['app:messages'],
 };
@@ -565,7 +566,7 @@ function PermMatrix({ value, onChange, readOnly }: { value: Perm[]; onChange: (p
     onChange([...value.filter((p) => p.pageKey !== k), next]);
   };
   const mapped = new Set(Object.values(APP_BY_GROUP).flat());
-  const extraApp = STAFF_APP_PAGES.filter((p) => !mapped.has(p.key));
+  const extraApp = STAFF_APP_PAGES.filter((p) => !mapped.has(p.key) && !p.legacy);
   const box = (k: string, f: 'canView' | 'canEdit' | 'canDelete', show = true) => (show
     ? <input type="checkbox" checked={get(k)[f]} disabled={readOnly} onChange={(e) => set(k, { [f]: e.target.checked })} />
     : <span className="muted">—</span>);

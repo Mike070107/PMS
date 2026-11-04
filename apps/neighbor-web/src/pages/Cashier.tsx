@@ -45,11 +45,12 @@ interface ChargeResult { title: string; amountCents: number; receiptNo: string; 
 
 /** 执行层状态 → 收银结果页提示 */
 const syncNote = (st: string, err?: string | null) => ({
-  queued: '已排队，正在同步德立云…', running: '正在写入德立云并回读核对…',
-  retry: `德立云暂时不可用，稍后自动重试${err ? `（${err}）` : ''}`,
-  synced: '德立云到期日已更新并回读核对一致',
-  dry_run: '演练模式：已核对德立云并记下将要写入的到期日，未实际写入（在「待处理」查看）',
-  manual: `需人工处理：${err || '德立云数据对不上'}（在「待处理」查看）`,
+  // 文案不要一律写德立云：只续一期/二期停车库时根本没有德立云这一步
+  queued: '已排队，等待现场助手写停车库…', running: '正在写入停车库并回读核对…',
+  retry: `停车库写入暂时不可用，稍后自动重试${err ? `（${err}）` : ''}`,
+  synced: '停车库到期日已更新并回读核对一致',
+  dry_run: '演练模式：已核对并记下将要写入的到期日，未实际写入（在「待处理」查看）',
+  manual: `需人工处理：${err || '停车库数据对不上'}（在「待处理」查看）`,
   failed: `多次失败：${err || '请稍后在「待处理」重试'}`,
   mocked: '未开启自动同步，请在德立云手动续期',
 } as Record<string, string>)[st] || '已提交，在「待处理」查看进展';
@@ -120,11 +121,25 @@ export default function Cashier() {
     return '未配置数据范围';
   }, [session.access, session.actingOffice]);
 
+  // 生产 API 有的版本 /business/search 直接返回数组（旧形状），有的返回 {houses,vehicles,accessCards}。
+  // 两种都吃下来，绝不让 r.houses 是 undefined 时把页面抛成「T is not iterable」。
+  const normSearch = (r: unknown): SearchResult => {
+    if (Array.isArray(r)) {
+      const rows = r as Array<Record<string, unknown>>;
+      const pick = (k: string) => rows.filter((x) => String(x.kind ?? x.type ?? '') === k) as never[];
+      return { houses: pick('house'), vehicles: pick('vehicle'), accessCards: pick('card') };
+    }
+    const o = (r ?? {}) as Partial<SearchResult>;
+    return { houses: o.houses ?? [], vehicles: o.vehicles ?? [], accessCards: o.accessCards ?? [] };
+  };
+
   const searchByQ = useCallback(async (kw: string): Promise<SearchResult> => {
-    const [park, card] = await Promise.all([
-      request<SearchResult>({ url: '/business/search', query: { q: kw, serviceType: 'parking_monthly' } }),
-      request<SearchResult>({ url: '/business/search', query: { q: kw, serviceType: 'access_card' } }),
+    const [parkRaw, cardRaw] = await Promise.all([
+      request<unknown>({ url: '/business/search', query: { q: kw, serviceType: 'parking_monthly' } }),
+      request<unknown>({ url: '/business/search', query: { q: kw, serviceType: 'access_card' } }),
     ]);
+    const park = normSearch(parkRaw);
+    const card = normSearch(cardRaw);
     const uniq = <T extends { id: number }>(a: T[], b: T[]) => [...a, ...b].filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i);
     const merged: SearchResult = { houses: uniq(park.houses, card.houses), vehicles: uniq(park.vehicles, card.vehicles), accessCards: uniq(park.accessCards, card.accessCards) };
     // 车牌不在 PMS 本地表里（生产 parking_vehicles 基本是空的）：真车在现场旧停车库，
@@ -143,7 +158,7 @@ export default function Cashier() {
           const plate = String(f.P_plate ?? f.p_plate ?? f.Car_No ?? '').trim().toUpperCase();
           const room = String(f.Owner__owner_Name ?? f.P_note ?? '').trim();
           if (!plate || !room) continue;
-          const rr = await request<SearchResult>({ url: '/business/search', query: { q: room } });
+          const rr = normSearch(await request<unknown>({ url: '/business/search', query: { q: room } }));
           const hit = rr.houses[0];
           if (!hit) continue;
           if (!merged.houses.some((h) => h.id === hit.id)) merged.houses.push(hit);
@@ -304,24 +319,40 @@ export default function Cashier() {
     finally { setBusy(false); }
   };
 
-  /** 停车收款后跟踪德立云同步：约 20 秒内轮询，拿到终态就更新结果页；更久的去「待处理」看 */
+  /** 停车收款后跟踪现场执行：3 秒一轮、最多 3 分钟，并把已等待秒数写在状态里，别让前台干等 */
   const watchSync = (id: number, title: string) => {
-    let n = 0;
+    const started = Date.now();
+    type TaskState = ChargeResult['tasks'][number]['state'];
+    const setTaskNote = (patch: { state?: TaskState; note?: string }) => {
+      setDone((d) => (d ? { ...d, tasks: d.tasks.map((k) => (k.title === title ? { ...k, ...patch } : k)) } : d));
+    };
     const tick = () => {
-      n += 1;
-      request<Array<{ id: number; externalSyncStatus: string; snapshot?: { execution?: { lastError?: string | null } } }>>({ url: '/business/transactions' })
+      const waited = Math.round((Date.now() - started) / 1000);
+      request<Array<{ id: number; externalSyncStatus: string; snapshot?: { execution?: { lastError?: string | null; steps?: Array<{ label: string; status: string }> } } }>>({ url: '/business/transactions' })
         .then((list) => {
           const t = list.find((x) => x.id === id);
           if (!t) return;
           const st = t.externalSyncStatus;
+          const steps = t.snapshot?.execution?.steps ?? [];
+          const doing = steps.find((x) => x.status === 'pending' || x.status === 'waiting');
           const final = ['synced', 'manual', 'failed', 'dry_run', 'mocked'].includes(st);
-          setDone((d) => (d ? { ...d, tasks: d.tasks.map((k) => (k.title === title
-            ? { ...k, state: st === 'synced' ? 'done' : 'queued', note: syncNote(st, t.snapshot?.execution?.lastError) } : k)) } : d));
-          if (!final && n < 7) setTimeout(tick, 3000);
+          if (final) {
+            setTaskNote({ state: st === 'synced' ? 'done' : 'queued', note: syncNote(st, t.snapshot?.execution?.lastError) });
+            return;
+          }
+          setTaskNote({
+            state: 'queued',
+            note: `已等待 ${waited} 秒${doing ? ` · 正在写 ${doing.label}` : ' · 等待现场助手取任务'}（约 10–40 秒，现场电脑不在线会更久）`,
+          });
+          if (waited < 180) setTimeout(tick, 3000);
+          else setTaskNote({ state: 'queued', note: '现场助手 3 分钟内没有回执，任务已保留：到「待处理」可查看/重试，钱已收、不要重复收款' });
         })
-        .catch(() => { if (n < 7) setTimeout(tick, 3000); });
+        .catch(() => {
+          setTaskNote({ state: 'queued', note: `已等待 ${waited} 秒 · 正在取回执…` });
+          if (waited < 180) setTimeout(tick, 3000);
+        });
     };
-    setTimeout(tick, 2000);
+    setTimeout(tick, 1500);
   };
 
   const reset = () => { setPicked(null); setHouse(null); setResult(null); setBills(null); setDone(null); setErr(''); };

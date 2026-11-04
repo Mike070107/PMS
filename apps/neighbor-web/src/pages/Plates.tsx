@@ -113,7 +113,8 @@ function FamilyList({ kw }: { kw: string }) {
   const [note, setNote] = useState('');
   const [qr, setQr] = useState<{ plate: string; dataUrl: string; expiresAt: string } | null>(null);
   const canEdit = can('family-cars', 'edit');
-  const canManager = can('app:approve-manager', 'edit');
+  // 亲情车 / 新车牌的经理审核走「收费·经理审核」，兼容拆分前的旧 key
+  const canManager = can('app:approve-business-manager', 'edit') || can('app:approve-manager', 'edit');
   const load = useCallback(() => {
     // 接口返回 { rows, today }（不是数组）
     request<{ rows: FamilyCar[] } | FamilyCar[]>({ url: '/family-cars', query: { ...(status ? { status } : {}), ...(kw ? { q: kw } : {}) } })

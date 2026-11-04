@@ -24,8 +24,10 @@ const Standards = lazy(() => import('@/pages/Standards'));
 const Houses = lazy(() => import('@/pages/Houses'));
 const Owners = lazy(() => import('@/pages/Owners'));
 const Experience = lazy(() => import('@/pages/Experience'));
-const ApartmentCashier = lazy(() => import('@/pages/ApartmentCashier'));
+const MigratedApartment = lazy(() => import('@/pages/MigratedApartment'));
+const MigratedMeters = lazy(() => import('@/pages/MigratedMeters'));
 const Fees = lazy(() => import('@/pages/Fees'));
+const ParkingSpaces = lazy(() => import('@/pages/ParkingSpaces'));
 const Reports = lazy(() => import('@/pages/Reports'));
 const Materials = lazy(() => import('@/pages/Materials'));
 const Stocktakes = lazy(() => import('@/pages/Stocktakes'));
@@ -93,8 +95,12 @@ export default function App() {
             <Route path="/houses" element={<Houses />} />
             <Route path="/owners" element={<Owners />} />
             <Route path="/experience" element={<Experience />} />
-            <Route path="/apartment" element={<ApartmentCashier />} />
+            <Route path="/apartment" element={<MigratedApartment />} />
+            <Route path="/apartment-cashier" element={<Navigate to="/apartment" replace />} />
+            <Route path="/meters" element={<MigratedMeters />} />
             <Route path="/fees" element={<Fees />} />
+            <Route path="/parking/main" element={<ParkingSpaces garage="main" />} />
+            <Route path="/parking/civil" element={<ParkingSpaces garage="civil" />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/materials" element={<Materials />} />
             <Route path="/stocktakes" element={<Stocktakes />} />

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { request } from '@pms/api-client';
 import Icon from '@/components/Icon';
-import { money } from '@/lib/format';
+import { money, payLabel } from '@/lib/format';
 
 export interface PaidRow {
   id: string; feeName: string | null; feeCode: string; period: string; amountCents: number;
@@ -68,7 +68,7 @@ export default function PaidHistory({ houseId, label, match }: { houseId: number
                           <td style={{ textAlign: 'right' }} className="money">{money(r.amountCents / 100)}</td>
                           <td>{r.paidAt ? r.paidAt.slice(0, 10) : '—'}</td>
                           <td>{r.receiptNo || r.invoiceNo || '—'}</td>
-                          <td className="muted">{[r.paymentMethod, r.cashier].filter(Boolean).join(' · ') || '—'}</td>
+                          <td className="muted">{[payLabel(r.paymentMethod), r.cashier].filter((x) => x && x !== '—').join(' · ') || '—'}</td>
                         </tr>
                       ))}
                     </tbody>

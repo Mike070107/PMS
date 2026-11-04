@@ -1,0 +1,79 @@
+/* 个人主色只覆盖品牌 token，不修改绿/红/琥珀状态色与支付品牌色。 */
+:root[data-ui-theme] .apartment-cashier{--ac-brand:var(--acc);--ac-dark:var(--acc-h);--ac-line:var(--line)}
+#web .nav a.on{box-shadow:inset 3px 0 0 var(--acc)}
+#web .nav a:focus-visible,#web .navGroupTitle:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+#web .navGroupTitle{min-height:44px}
+#web .navToolbar{display:flex;align-items:center;justify-content:space-between;padding:10px 8px 2px;color:var(--ink3);font-size:12px}
+#web .navToolbar button{width:36px;height:36px;display:grid;place-items:center;border-radius:8px;color:var(--ink2)}
+#web .navToolbar button:hover{background:var(--sunken)}
+#web .side-brand .txt{flex:1;min-width:0}
+#web .sidebar-collapse{width:36px;height:36px;display:grid;place-items:center;border-radius:8px;flex:none;color:var(--ink2)}
+#web .sidebar-collapse:hover{background:var(--sunken)}
+#web .sidebar-collapse .icon{transform:rotate(90deg)}
+#web.sidebar-compact{grid-template-columns:76px minmax(0,1fr)}
+#web.sidebar-compact .side{padding-left:8px;padding-right:8px}
+#web.sidebar-compact .side>.personal-appearance .appearance-trigger{padding:10px 0;gap:0;justify-content:center}
+#web.sidebar-compact .side>.personal-appearance .appearance-trigger>.icon{display:none}
+#web.sidebar-compact .side-brand{padding:0;justify-content:center;flex-wrap:wrap;gap:4px}
+#web.sidebar-compact .side-brand .txt,#web.sidebar-compact .scope-ib small,#web.sidebar-compact .scope-ib>.icon:last-of-type,#web.sidebar-compact .navToolbar,#web.sidebar-compact .navGroupText,#web.sidebar-compact .navGroupChev,#web.sidebar-compact .nav a>span:not(.n),#web.sidebar-compact .meName,#web.sidebar-compact .logout,#web.sidebar-compact .appearance-trigger>span{display:none}
+#web.sidebar-compact .scope-ib{justify-content:center;padding:11px 0}
+#web.sidebar-compact .navGroupTitle,#web.sidebar-compact .nav a{justify-content:center;padding:9px 0;gap:0}
+#web.sidebar-compact .nav a .n{position:absolute;right:0;top:0}
+#web.sidebar-compact .me{justify-content:center;padding:10px 0}
+#web.sidebar-compact .sidebar-collapse .icon{transform:rotate(-90deg)}
+#web .navGroupTitle .navGroupTile{flex:none}
+#web .mobile-menu,#web .mobile-close,#web .side-backdrop{display:none}
+#web .top .search{min-width:0;max-width:420px;flex:1}
+#web .top .search>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.personal-appearance{position:relative;flex:none;margin:8px 0}
+.appearance-trigger{display:flex;align-items:center;gap:9px;width:100%;min-height:44px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink2);font-size:14px;white-space:nowrap}
+.appearance-trigger>span{flex:1;text-align:left}
+.theme-dot{width:17px;height:17px;border-radius:50%;flex:none}
+.appearance-panel{position:fixed;z-index:250;left:16px;bottom:90px;width:min(340px,calc(100vw - 32px));padding:18px;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:var(--sh-l);color:var(--ink);max-height:calc(100dvh - 110px);overflow-y:auto}
+.appearance-panel>header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.appearance-panel header b{font-size:18px}
+.appearance-panel header small{display:block;margin-top:4px;font-size:13px;color:var(--ink2)}
+.appearance-panel>p{margin:18px 0 10px;font-size:14px;font-weight:600}
+.theme-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.theme-option{display:flex;align-items:center;gap:8px;padding:10px 8px;min-height:48px;min-width:0;border:1px solid var(--line);border-radius:9px;background:var(--surface);font-size:14px;white-space:nowrap}
+.theme-option[aria-pressed=true]{border-color:var(--acc);background:var(--acc-w);color:var(--acc-t);font-weight:600}
+.theme-option>i{width:26px;height:26px;display:grid;place-items:center;border-radius:50%;color:#fff;flex:none}
+.sidebar-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.sidebar-options>button{min-height:44px;padding:8px 5px;border:1px solid var(--line);border-radius:9px;font-size:14px;white-space:nowrap}
+.sidebar-options>button[aria-pressed=true]{border-color:var(--acc);color:var(--acc-t);background:var(--acc-w)}
+.appearance-status{font-size:13px;line-height:1.6;color:var(--ink2);margin-top:14px;min-height:42px}
+.appearance-status.is-error{color:var(--dang)}
+.theme-option:focus-visible,.appearance-trigger:focus-visible,.sidebar-options>button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.appearance-mobile{display:none}
+/* 保留原公寓布局；只修复新宿主中fieldset默认尺寸和全局同名cash样式的冲突。 */
+:root[data-ui-theme] .migrated-surface .cashier-payment{min-inline-size:0;width:100%;grid-template-columns:repeat(3,minmax(0,1fr))}
+:root[data-ui-theme] .migrated-surface .cashier-payment>button{width:100%;min-width:0;min-height:92px;align-content:center;overflow:visible}
+:root[data-ui-theme] .migrated-surface .cashier-payment>button.cash{display:grid;padding:8px 4px}
+:root[data-ui-theme] .migrated-surface .cashier-payment>button svg{width:42px;height:auto;max-height:38px;max-width:100%}
+:root[data-ui-theme] .migrated-surface .cashier-payment>button span{display:block;white-space:nowrap}
+@media(max-width:900px){
+ #web,#web.sidebar-compact{grid-template-columns:minmax(0,1fr)}
+ #web .side{display:none}
+ #web .top{height:64px;min-height:64px;padding:0 12px;gap:8px;flex-wrap:nowrap}
+ #web .top .crumb{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ #web .top .crumb b{font-size:17px}
+ #web .top>.search,#web .top>.btn.p{display:none}
+ #web .mobile-menu{display:grid;flex:none}
+ #web .mobile-close{display:grid}
+ #web .top>.ib{flex:none;width:40px;height:40px}
+ #web .appearance-mobile{display:block;margin:0}
+ #web .appearance-mobile .appearance-trigger{border:0;padding:8px;width:40px;height:40px;min-height:40px;justify-content:center}
+ #web .appearance-mobile .appearance-trigger>span,#web .appearance-mobile .appearance-trigger>.icon{display:none}
+ #web .appearance-mobile .appearance-panel{left:auto;right:12px;top:70px;bottom:auto;max-height:calc(100dvh - 88px)}
+ #web.menu-open .side{display:flex;position:fixed;inset:0 auto 0 0;width:min(300px,85vw);z-index:220;padding:14px 10px;box-shadow:var(--sh-l)}
+ #web.menu-open .side-brand .txt,#web.menu-open .scope-ib small,#web.menu-open .scope-ib>.icon:last-of-type,#web.menu-open .navGroupText,#web.menu-open .navGroupChev,#web.menu-open .nav a>span:not(.n),#web.menu-open .meName,#web.menu-open .logout,#web.menu-open .appearance-trigger>span{display:revert}
+ #web.menu-open .side-brand{flex-wrap:nowrap;justify-content:flex-start;padding:2px 6px 0;gap:10px}
+ #web.menu-open .side-brand .sidebar-collapse{display:none}
+ #web.menu-open .navToolbar{display:flex}
+ #web.menu-open .scope-ib{justify-content:flex-start;padding:9px 11px}
+ #web.menu-open .navGroupTitle{justify-content:flex-start;padding:10px 12px;gap:10px}
+ #web.menu-open .nav a{justify-content:flex-start;padding:9px 12px 9px 34px;gap:10px}
+ #web.menu-open .nav a .n{position:static}
+ #web.menu-open .me{justify-content:flex-start;padding:10px 6px 2px}
+ #web.menu-open .side-backdrop{display:block;position:fixed;inset:0;z-index:210;background:rgba(23,32,51,.28);cursor:default}
+}

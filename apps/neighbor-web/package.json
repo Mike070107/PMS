@@ -4,10 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test": "node --test test/residential-bills.test.cjs test/migrated-pages.test.cjs test/ui-theme.test.cjs",
+    "test:migrated-pages": "node --test test/migrated-pages.test.cjs",
+    "test:ui-preferences": "node --test test/ui-theme.test.cjs",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "preview": "vite preview --host"
+    "preview": "vite preview --host",
+    "test:residential-bills": "node --test test/residential-bills.test.cjs"
   },
   "dependencies": {
     "@ant-design/icons": "^5.6.1",

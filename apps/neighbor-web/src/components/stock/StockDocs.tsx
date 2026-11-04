@@ -226,7 +226,8 @@ export function StockDocs({ onClose, onChanged }: { onClose: () => void; onChang
   const [recv, setRecv] = useState<Record<number, string>>({});
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
-  const canApprove = can('app:approve-manager', 'edit');
+  // 调拨单的经理这一步跟采购同属「采购·经理审核」，兼容旧 key
+  const canApprove = can('app:approve-purchase-manager', 'edit') || can('app:approve-manager', 'edit');
   const canEdit = can('inventory', 'edit') || can('app:inventory', 'edit');
 
   const load = () => {

@@ -78,8 +78,13 @@ export default function Records() {
               <div key={t.id} className="lrow">
                 <div className={`li ic ${t.status === 'refunded' ? 'red' : t.amountCents === 0 ? 'blue' : 'green'}`}><Icon name={svcIcon(t.serviceType)} /></div>
                 <div className="lt">
-                  <b>{t.txnNo}{t.amountCents === 0 ? <span className="tag mute" style={{ marginLeft: 8, height: 20 }}>免费</span> : null}</b>
-                  <small>{LABEL[t.serviceType] || t.serviceType}{t.plateNo ? ` · ${t.plateNo}` : ''} · {t.paymentMethod || '—'} · {dayjs(t.createdAt).format('MM-DD HH:mm')}</small>
+                  {/* 第一行给用户看的：办了什么、对着谁；流水号降级成小字，只用于对账 */}
+                  <b>
+                    {LABEL[t.serviceType] || t.serviceType}
+                    {t.plateNo ? <span style={{ marginLeft: 8 }}>{t.plateNo}</span> : null}
+                    {t.amountCents === 0 ? <span className="tag mute" style={{ marginLeft: 8, height: 20 }}>免费</span> : null}
+                  </b>
+                  <small>{dayjs(t.createdAt).format('MM-DD HH:mm')} · {t.paymentMethod || '—'} · 单号 {t.txnNo.slice(-6)}</small>
                 </div>
                 {syncTag(t)}
                 <b className="money" style={{ minWidth: 88, textAlign: 'right', color: t.status === 'refunded' ? 'var(--dang)' : undefined }}>{t.status === 'refunded' ? '−' : ''}{money(t.amountCents / 100)}</b>

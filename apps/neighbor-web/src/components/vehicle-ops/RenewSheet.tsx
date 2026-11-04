@@ -57,12 +57,14 @@ export default function RenewSheet({
   const cloudKnown = cloud !== undefined && cloud !== 'loading';
   const civil = cloudKnown && cloud ? (cloud as DeliyunVehicle) : null;
 
-  const canSubmit = targets.length > 0 && !running && rates !== null && cloudKnown && Number.isFinite(amount) && amount >= 0;
+  // 人防（德立云）只服务二期人防车库：这辆车没开人防就直接续旧库，不等人防状态、不碰德立云
+  const [syncCivil, setSyncCivil] = useState(false);
+  useEffect(() => { setSyncCivil(!!civil?.civilDefenseAuthorized); }, [civil?.civilDefenseAuthorized]);
+  const canSubmit = targets.length > 0 && !running && rates !== null && Number.isFinite(amount) && amount >= 0;
 
   const run = async () => {
     setErr('');
     if (!targets.length) { setErr('这张车牌不在一期/二期旧库里，无法续期'); return; }
-    if (!cloudKnown) { setErr('人防（德立云）状态还在查，请稍候再续期'); return; }
     if (civil?.civilDefenseAuthorized && civil.endDate && dayjs(newEnd).isBefore(dayjs(ymd(civil.endDate)))) {
       setErr(`新到期日 ${newEnd} 早于人防到期日 ${ymd(civil.endDate)}，请核对`); return;
     }
@@ -95,7 +97,7 @@ export default function RenewSheet({
         setLog((l) => [...l, `✓ ${dbName(db)} 已续到 ${newEnd}`]);
       }
       // 人防同步：旧库都成功后，若人防已授权且到期日不同，补一笔德立云续期
-      if (civil?.civilDefenseAuthorized && ymd(civil.endDate || '') !== newEnd) {
+      if (syncCivil && civil?.civilDefenseAuthorized && ymd(civil.endDate || '') !== newEnd) {
         setLog((l) => [...l, '正在同步人防（德立云）到期日…']);
         try {
           await accessCardIssuance.renewDeliyunVehicle({
@@ -151,12 +153,17 @@ export default function RenewSheet({
           </dd>
         </div>
 
-        {/* 人防状态提示 */}
-        <div className="note" style={{ marginBottom: 12, background: !cloudKnown ? 'var(--warn-w)' : 'var(--bg)', color: !cloudKnown ? 'var(--warn)' : 'var(--ink2)', fontSize: 13 }}>
-          {!cloudKnown ? '人防（德立云）状态还在查，查明前不能续期（避免旧库先收费而人防没同步）'
-            : civil?.civilDefenseAuthorized ? `人防已授权，到期 ${ymd(civil.endDate || '') || '未知'}；续期后会一并同步到 ${newEnd}`
-              : '该车未开通人防车库，只续旧库'}
-        </div>
+        {/* 人防只在开通时才有意义：没开通就不查、不等、不写德立云 */}
+        {civil?.civilDefenseAuthorized ? (
+          <label className="note" style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'flex-start', background: 'var(--bg)', color: 'var(--ink2)', fontSize: 13, cursor: 'pointer' }}>
+            <input type="checkbox" checked={syncCivil} onChange={(e) => setSyncCivil(e.target.checked)} style={{ marginTop: 2 }} />
+            <span>这辆车开通了二期人防车库（当前到期 {ymd(civil.endDate || '') || '未知'}）。勾选会把德立云一并续到 {newEnd}；不勾选只续旧库。</span>
+          </label>
+        ) : (
+          <div className="note" style={{ marginBottom: 12, background: 'var(--bg)', color: 'var(--ink2)', fontSize: 13 }}>
+            {!cloudKnown ? '人防状态未查明，本次只续旧库（一期/二期停车库）；不需要等它。' : '该车未开通二期人防车库，只续旧库，不写德立云。'}
+          </div>
+        )}
 
         {targets.length > 1 ? (
           <div className="muted" style={{ fontSize: 12.5, marginBottom: 12 }}>一期二期都有这张牌，会一起续到同一到期日，收款只记一笔（在第一库）。</div>

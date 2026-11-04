@@ -1,4 +1,6 @@
 export * from './request';
+
+export * from './endpoints/meters';
 export * from './envelope';
 export * as auth from './endpoints/auth';
 export * as ai from './endpoints/ai';
@@ -22,27 +24,6 @@ export * as repairExperiences from './endpoints/repair-experiences';
 export * as accessCardIssuance from './endpoints/access-card-issuance';
 export * as apartmentCashier from './endpoints/apartment-cashier';
 export * as familyCars from './endpoints/family-cars';
-export { meters, METER_READING_STATUS_LABELS } from './endpoints/meters';
-export type {
-  MeterRow,
-  MeterReadingRow,
-  MeterChargeRow,
-  MeterDetailResp,
-  MeterOcrResp,
-  MeterSummaryResp,
-  MeterInput,
-  ReadingInput,
-  ReadingResult,
-  ReadingListResp,
-  ChargeListResp,
-  MeterType,
-  MeterStatus,
-  ReadingStatus,
-  ChargeStatus,
-  OcrSampleRow,
-  OcrSampleListResp,
-  OcrSampleStatus,
-} from './endpoints/meters';
 export type {
   AccessCardHistoryRow,
   AccessCardRecentRecord,

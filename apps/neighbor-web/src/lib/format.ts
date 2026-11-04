@@ -86,3 +86,20 @@ export function maskPhone(phone?: string | null) {
   if (!phone) return '—';
   return phone.length >= 7 ? `${phone.slice(0, 3)}****${phone.slice(-4)}` : phone;
 }
+
+const PAY_LABELS: Record<string, string> = {
+  cash: '现金', wechat: '微信', wechatpay: '微信', wx: '微信',
+  alipay: '支付宝', ali: '支付宝',
+  bank: '银行转账', transfer: '银行转账', remittance: '银行转账',
+  card: '刷卡', pos: '刷卡', cheque: '支票', check: '支票',
+  other: '其他', misc: '其他', none: '—',
+};
+
+/** 收款方式 → 中文；已经是中文的原样返回，认不出的英文码一律「其他」，不把内部码露给前台 */
+export function payLabel(v?: string | null): string {
+  const k = (v ?? '').trim();
+  if (!k) return '—';
+  if (/[\u4e00-\u9fa5]/.test(k)) return k;
+  const hit = PAY_LABELS[k.toLowerCase().replace(/[\s_-]/g, '')];
+  return hit ?? '其他';
+}

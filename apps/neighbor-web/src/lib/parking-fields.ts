@@ -19,7 +19,8 @@ const ALIASES = {
   space: ['parkno', 'parkingno', 'spaceno', 'berth', 'garage', 'pspaces', '车位', '地库'],
   begin: ['stratime', 'sarttime', 'starttime', 'startdate', 'begindate'],
   expiry: ['enddate', 'expiredate', 'endtime', '到期', '有效期'],
-  identity: ['carbrand', 'carbeand', 'carlei', '车辆类型', '身份', '性质'],
+  // 顺序即优先级：Car_Brand 是真正的“车辆授权类型”，Car_Lei 只是分类码(1/2)，放在后面
+  identity: ['carbrand', 'carbeand', '车辆类型', '车辆身份', '身份', '性质', 'carlei'],
   note: ['pnote', 'remark', 'note', '备注'],
   effective: ['peffective'],
   download: ['pdownload'],
@@ -71,6 +72,8 @@ export function vehicleIdentity(raw: string): string {
 }
 
 export interface GarageDef {
+  /** 依赖的车库：选它就必须同时选这个（二期大车库/人防都要过二期地面） */
+  requires?: 'phase1' | 'phase2';
   key: 'phase1' | 'phase2' | 'main' | 'civil';
   label: string;
   db: 'parking1' | 'parking2' | 'deliyun';
@@ -81,8 +84,10 @@ export interface GarageDef {
 export const GARAGES: GarageDef[] = [
   { key: 'phase1', label: '一期地面车库', db: 'parking1', channels: [5, 7] },
   { key: 'phase2', label: '二期地面车库', db: 'parking2', channels: [9, 11, 13] },
-  { key: 'main', label: '二期大车库', db: 'parking2', channels: [15, 17, 19, 21] },
-  { key: 'civil', label: '二期人防车库', db: 'deliyun', channels: [] },
+  // 二期大车库 / 二期人防车库 都在二期小区里，进库必须先过二期地面入口，
+  // 所以授权它们时二期地面必须一起授权（requires = 自动带上、且不能单独取消）
+  { key: 'main', label: '二期大车库', db: 'parking2', channels: [15, 17, 19, 21], requires: 'phase2' },
+  { key: 'civil', label: '二期人防车库', db: 'deliyun', channels: [], requires: 'phase2' },
 ];
 
 const bitOn = (str: string, ch: number) => typeof str === 'string' && str.charAt(ch - 1) === '1';

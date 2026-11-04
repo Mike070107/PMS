@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { request } from '@pms/api-client';
 import Icon from '@/components/Icon';
 import { Loading, Sheet, toast } from '@/components/ui';
-import { dayjs, money } from '@/lib/format';
+import { dayjs, money, payLabel } from '@/lib/format';
 import FeeIcon from '@/components/FeeIcon';
 import ToneIcon from '@/components/ToneIcon';
 
@@ -95,7 +95,7 @@ export default function Fees() {
               <tr>
                 <th style={{ width: 120 }}>收据号</th><th style={{ width: 130 }}>时间</th><th>住户</th>
                 <th>收费项目</th><th style={{ width: 100, textAlign: 'right' }}>金额</th>
-                <th style={{ width: 80 }}>方式</th><th style={{ width: 90 }}>状态</th><th style={{ width: 70 }}>操作</th>
+                <th style={{ width: 96 }}>收款方式</th><th style={{ width: 90 }}>状态</th><th style={{ width: 70 }}>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -108,7 +108,7 @@ export default function Fees() {
                     <td><b>{place(r) || '—'}</b><div className="sub2">{r.ownerName || ''}</div></td>
                     <td><span className="feeCell"><FeeIcon name={r.feeName || r.feeCode} size={26} />{r.feeName || r.feeCode || '—'}</span>{r.period ? <span className="muted"> · {r.period}</span> : null}{r.vehiclePlate ? <span className="muted"> · {r.vehiclePlate}</span> : null}</td>
                     <td className="nw" style={{ textAlign: 'right' }}><b>{money(r.amountCents / 100)}</b></td>
-                    <td className="nw">{r.paymentMethod || '—'}</td>
+                    <td className="nw">{payLabel(r.paymentMethod)}</td>
                     <td className="nw"><span className={`tag ${st.tone}`}>{st.text}</span></td>
                     <td className="nw"><button className="btn g sm" onClick={(e) => { e.stopPropagation(); setActive(r); }}>详情</button></td>
                   </tr>
@@ -169,7 +169,7 @@ function BillSheet({ row, onClose, onChanged }: { row: BillRow; onClose: () => v
           <dt>收费项目</dt><dd>{row.feeName || row.feeCode || '—'}{row.period ? ` · ${row.period}` : ''}</dd>
           {row.vehiclePlate ? <><dt>车牌</dt><dd>{row.vehiclePlate}</dd></> : null}
           <dt>金额</dt><dd><b>{money(row.amountCents / 100)}</b>{row.quantity ? `（${row.quantity}${row.unit || ''}）` : ''}</dd>
-          <dt>收款方式</dt><dd>{row.paymentMethod || '—'}</dd>
+          <dt>收款方式</dt><dd>{payLabel(row.paymentMethod)}</dd>
           <dt>收款时间</dt><dd>{row.paidAt ? dayjs(row.paidAt).format('YYYY-MM-DD HH:mm') : '—'}</dd>
           <dt>收费员</dt><dd>{row.cashier || '—'}</dd>
           {row.serviceFrom || row.serviceTo ? <><dt>服务期</dt><dd>{row.serviceFrom || '—'} ~ {row.serviceTo || '—'}</dd></> : null}
