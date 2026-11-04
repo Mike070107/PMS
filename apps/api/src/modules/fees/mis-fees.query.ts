@@ -29,8 +29,8 @@ export function buildMisFeeFilter(q:MisFeeQuery,offices:string[],house?:MisHouse
  const params:Record<string,string|number>={};
  const where=[`l.管理处 IN (${offices.map((o,i)=>{params[`office${i}`]=o;return `@office${i}`;}).join(',')})`,`ISNULL(w.SC,N'0')=N'0'`];
  for(const [key,op,column] of [['periodFrom','>=','w.ZJ_CNY'],['periodTo','<=','w.ZJ_CNY']] as const)if(q[key]){params[key]=q[key]!;where.push(`${column}${op}@${key}`);}
- if(q.paidFrom){params.paidFrom=q.paidFrom;where.push('w.ZJ_SKRQ>=CONVERT(datetime,@paidFrom,23)');}
- if(q.paidTo){params.paidTo=q.paidTo;where.push('w.ZJ_SKRQ<DATEADD(day,1,CONVERT(datetime,@paidTo,23))');}
+ if(q.paidFrom){params.paidFrom=q.paidFrom;where.push("w.ZJ_SKRQ>=CONVERT(datetime,REPLACE(@paidFrom,'-',''),112)");}
+ if(q.paidTo){params.paidTo=q.paidTo;where.push("w.ZJ_SKRQ<DATEADD(day,1,CONVERT(datetime,REPLACE(@paidTo,'-',''),112))");}
  if(q.feeCode){params.feeCode=q.feeCode;where.push('w.ZJ_LX=@feeCode');}
  if(q.status==='unpaid')where.push('w.ZJ_SKRQ IS NULL','w.ZJ_TKRQ IS NULL','w.ZJ_JE>=0');
  if(q.status==='paid')where.push('w.ZJ_SKRQ IS NOT NULL','w.ZJ_TKRQ IS NULL','w.ZJ_JE>=0');
@@ -91,8 +91,10 @@ export function buildMisResidentialQuery(q:MisResidentialQuery,offices:string[])
  }
  if(view==='trend'){
   params.paidFrom=q.paidFrom!;params.paidTo=q.paidTo!;
-  const dateFilter=(column:string)=>`${column}>=CONVERT(datetime,@paidFrom,23) AND ${column}<DATEADD(day,1,CONVERT(datetime,@paidTo,23))`;
-  return {sql:`WITH flows AS (SELECT CONVERT(varchar(10),w.ZJ_SKRQ,23) AS day,w.ZJ_JE AS amount,0 AS refund ${from} AND w.ZJ_JE>=0 AND ${dateFilter('w.ZJ_SKRQ')} UNION ALL SELECT CONVERT(varchar(10),w.ZJ_TKRQ,23) AS day,-w.ZJ_JE AS amount,1 AS refund ${from} AND w.ZJ_JE>=0 AND w.ZJ_SKRQ IS NOT NULL AND ${dateFilter('w.ZJ_TKRQ')}) SELECT day,CONVERT(varchar(50),SUM(amount),2) AS netAmount,CONVERT(varchar(50),SUM(CASE WHEN refund=0 THEN amount ELSE 0 END),2) AS chargedAmount,CONVERT(varchar(50),SUM(CASE WHEN refund=1 THEN -amount ELSE 0 END),2) AS refundedAmount FROM flows GROUP BY day ORDER BY day;`,params};
+  const dateFilter=(column:string)=>`${column}>=CONVERT(datetime,REPLACE(@paidFrom,'-',''),112) AND ${column}<DATEADD(day,1,CONVERT(datetime,REPLACE(@paidTo,'-',''),112))`;
+  const safePaid="CASE WHEN ISDATE(w.ZJ_SKRQ)=1 THEN CONVERT(datetime,w.ZJ_SKRQ) ELSE NULL END";
+  const safeRefund="CASE WHEN ISDATE(w.ZJ_TKRQ)=1 THEN CONVERT(datetime,w.ZJ_TKRQ) ELSE NULL END";
+  return {sql:`WITH flows AS (SELECT CONVERT(varchar(10),${safePaid},23) AS day,w.ZJ_JE AS amount,0 AS refund ${from} AND w.ZJ_JE>=0 AND ${dateFilter(safePaid)} UNION ALL SELECT CONVERT(varchar(10),${safeRefund},23) AS day,-w.ZJ_JE AS amount,1 AS refund ${from} AND w.ZJ_JE>=0 AND w.ZJ_SKRQ IS NOT NULL AND ${dateFilter(safeRefund)}) SELECT day,CONVERT(varchar(50),SUM(amount),2) AS netAmount,CONVERT(varchar(50),SUM(CASE WHEN refund=0 THEN amount ELSE 0 END),2) AS chargedAmount,CONVERT(varchar(50),SUM(CASE WHEN refund=1 THEN -amount ELSE 0 END),2) AS refundedAmount FROM flows GROUP BY day ORDER BY day; SELECT COUNT_BIG(*) AS invalidDateCount ${from} AND ((w.ZJ_SKRQ IS NOT NULL AND ISDATE(w.ZJ_SKRQ)=0) OR (w.ZJ_TKRQ IS NOT NULL AND ISDATE(w.ZJ_TKRQ)=0));`,params};
  }
  const receivable=`CASE WHEN w.ZJ_TKRQ IS NULL AND w.ZJ_JE>=0 THEN w.ZJ_JE ELSE 0 END`;
  const paid=`CASE WHEN w.ZJ_TKRQ IS NULL AND w.ZJ_JE>=0 AND w.ZJ_SKRQ IS NOT NULL THEN w.ZJ_JE ELSE 0 END`;

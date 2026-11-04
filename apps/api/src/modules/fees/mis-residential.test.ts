@@ -63,3 +63,7 @@ test('住宅query builder全部视图明确拒绝paid/unpaid之外状态，不�
  for(const view of ['dashboard','households','trend','detail'])for(const status of ['refunded','adjustment','bogus',''])assert.throws(()=>report({view,status,houseKeys:['01:1:2'],paidFrom:'2026-11-01',paidTo:'2026-11-04'}),/状态/);
  for(const status of ['paid','unpaid'])assert.match(report({view:'households',status}).sql,/WYZJ/);
 });
+
+test('趋势隔离旧库非法日期并返回数据质量计数',()=>{const r=report({view:'trend',paidFrom:'2026-11-01',paidTo:'2026-11-04'});assert.match(r.sql,/CASE WHEN ISDATE\(w\.ZJ_SKRQ\)=1 THEN CONVERT\(datetime,w\.ZJ_SKRQ\) ELSE NULL END/);assert.match(r.sql,/CASE WHEN ISDATE\(w\.ZJ_TKRQ\)=1 THEN CONVERT\(datetime,w\.ZJ_TKRQ\) ELSE NULL END/);assert.match(r.sql,/AS invalidDateCount/)});
+
+test('旧MIS日期参数使用无歧义112样式，不用不兼容的23输入样式',()=>{const r=report({view:'trend',paidFrom:'2026-11-01',paidTo:'2026-11-04'});assert.match(r.sql,/CONVERT\(datetime,REPLACE\(@paidFrom,'-',''\),112\)/);assert.doesNotMatch(r.sql,/CONVERT\(datetime,@paid(?:From|To),23\)/)});

@@ -45,6 +45,7 @@ import {
   WxLoginDto,
   UpdateSelfProfileDto,
 } from './dto';
+import { UpdateUiPreferencesDto, normalizeUiPreferences } from './ui-preferences.dto';
 import { SettingsService } from '../settings/settings.service';
 import { WechatService, type WxSession } from './wechat.service';
 import { formatBuildingText, formatRoomText } from '../../common/address-line.util';
@@ -54,6 +55,25 @@ const STAFF_ROLES: UserRole[] = STAFF_APP_ROLES;
 
 @Injectable()
 export class AuthService {
+  async getUiPreferences(id: number) {
+    const row = await this.userRepo.findOne({ where: { id }, select: ['id','uiPreferences'] });
+    if (!row) throw new UnauthorizedException('账号不存在，请重新登录');
+    return normalizeUiPreferences(row.uiPreferences);
+  }
+
+  async saveUiPreferences(id: number, dto: UpdateUiPreferencesDto) {
+    // 用户ID只由JWT提供；不接收目标userId，也不按代操作租户或管理处修改别人。
+    const patch: UpdateUiPreferencesDto = {};
+    if (dto.theme !== undefined) patch.theme = dto.theme;
+    if (dto.sidebarCollapsed !== undefined) patch.sidebarCollapsed = dto.sidebarCollapsed;
+    const out = await this.userRepo.createQueryBuilder().update(User)
+      .set({ uiPreferences: () => "COALESCE(ui_preferences, '{}'::jsonb) || CAST(:prefs AS jsonb)", updatedBy: id })
+      .where('id = :id AND status = :status', {id, status: UserStatus.ACTIVE})
+      .setParameter('prefs', JSON.stringify(patch)).returning('ui_preferences').execute();
+    if (!out.affected) throw new UnauthorizedException('账号不存在或已停用，请重新登录');
+    return normalizeUiPreferences(out.raw[0]?.ui_preferences);
+  }
+
   private readonly selfProfileAttempts = new Map<number, { at: number; count: number }>();
   async selfProfile(id: number) {
     const user = await this.userRepo.findOne({ where: { id } });
