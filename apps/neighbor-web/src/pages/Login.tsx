@@ -35,7 +35,7 @@ export default function Login() {
           <div className="logo" style={{ width: 42, height: 42, fontSize: 20, borderRadius: 12 }}>邻</div>
           <div>
             <b style={{ fontSize: 19 }}>邻修</b>
-            <div className="muted" style={{ fontSize: 13.5 }}>物业管理平台 · 新版测试环境</div>
+            <div className="muted" style={{ fontSize: 13.5 }}>物业管理平台</div>
           </div>
         </div>
 
@@ -51,7 +51,7 @@ export default function Login() {
         {mode === 'qr' ? <QrPanel onSuccess={finishLogin} /> : <PwdPanel onSuccess={finishLogin} />}
 
         <p className="muted" style={{ fontSize: 13, marginTop: 18, lineHeight: 1.7, borderTop: '1px solid var(--line2)', paddingTop: 14 }}>
-          测试环境与正式系统共用数据和账号，这里做的增删改会直接落到正式数据上。
+          操作将直接保存至你有权限访问的正式数据，请核对后再提交。
         </p>
       </div>
     </div>
