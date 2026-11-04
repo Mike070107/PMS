@@ -5599,3 +5599,10 @@
   - c4cb9d8e feat(auth): 权限拆分——app:approve-manager 拆成 app:approve-purchase-manager(采购经理环节) 与 app:approve-business-manager(收费/车牌经理环节),旧 key 保留兼容(任一命中即放行);含亲情车待审、新办车牌待审、采购与调拨审批、待办通知与角标
   - 4d990ba2 merge: beta 收费工作台前端合入 main——彩色图标体系(FeeIcon/ToneIcon/侧栏分组色)、收费流水页、公寓收费台内置、门禁页内发卡、车辆类别按旧库 Car_Brand 识别、收费方式 fieldset 出界修复
 
+## 2026-11-05 00:16 · web · d021fb58
+
+- 包：`pms-web-20261105-001525.tar.gz`
+- 提交：d021fb58 fix(web): finalize official login wording and reuse brand favicons
+- 自上次（9e4311d5）以来上线的相关提交：
+  - d021fb58 fix(web): finalize official login wording and reuse brand favicons
+
