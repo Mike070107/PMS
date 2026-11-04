@@ -1,8 +1,6 @@
 // 跨端共享：枚举与 DTO 类型。
 // 与 apps/api/src/common/enums.ts 同源，后续如 API 端有调整需双向同步。
 import type { AdminAccess } from './pages';
-export * from './meter-capture';
-export * from './geo';
 
 // ---------- 枚举 ----------
 export enum UserRole {
@@ -1273,3 +1271,6 @@ export const DEFAULT_CONTENT_SUGGESTIONS = [
 /** 《房屋修理养护任务单》纸面尺寸表：Web 打印稿和小程序预览共用同一份，别各抄一遍 */
 export * from './maintenance-sheet-geometry';
 export * from './property-address';
+
+export * from './geo';
+export * from './meter-capture';
