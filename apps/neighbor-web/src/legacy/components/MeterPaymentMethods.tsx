@@ -15,7 +15,7 @@ export default forwardRef(function MeterPaymentMethods({ value, onChange, disabl
   useImperativeHandle(ref, () => ({ focus: () => group.current?.querySelector('button')?.focus() }));
   return <div {...aria} ref={group} role="group" aria-label="收款方式" className="meter-payment-methods">
     {OPTIONS.map((item) => <button type="button" key={item.value} disabled={disabled}
-      className={`meter-payment-method ${item.value}`} aria-pressed={value === item.value}
+      className={`meter-payment-method meter-payment-method--${item.value}`} aria-pressed={value === item.value}
       onClick={() => onChange?.(item.value)}>
       {item.value === 'bank' ? <BankOutlined /> : item.value === 'other' ? <MoreOutlined /> : <PaymentMethodIcon type={item.value} />}
       <span>{item.label}</span>

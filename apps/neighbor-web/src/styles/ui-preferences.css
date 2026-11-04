@@ -49,7 +49,7 @@
 :root[data-ui-theme] .migrated-surface .cashier-payment{min-inline-size:0;width:100%;grid-template-columns:repeat(3,minmax(0,1fr))}
 :root[data-ui-theme] .migrated-surface .cashier-payment>button{width:100%;min-width:0;min-height:92px;align-content:center;overflow:visible}
 :root[data-ui-theme] .migrated-surface .cashier-payment>button.cash{display:grid;padding:8px 4px}
-:root[data-ui-theme] .migrated-surface .cashier-payment>button svg{width:42px;height:auto;max-height:38px;max-width:100%}
+:root[data-ui-theme] .migrated-surface .cashier-payment>button svg{width:42px;height:auto;max-width:100%}
 :root[data-ui-theme] .migrated-surface .cashier-payment>button span{display:block;white-space:nowrap}
 @media(max-width:900px){
  #web,#web.sidebar-compact{grid-template-columns:minmax(0,1fr)}
