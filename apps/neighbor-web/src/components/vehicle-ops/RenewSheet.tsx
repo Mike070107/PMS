@@ -1,3 +1,4 @@
+import DateInput from '@/components/DateInput';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { accessCardIssuance } from '@pms/api-client';
 import type { ParkingQueryRow, ParkingRates, DeliyunVehicle } from '@pms/api-client/src/endpoints/access-card-issuance';
@@ -151,7 +152,7 @@ export default function RenewSheet({
         <div className="veh-dl" style={{ gridTemplateColumns: 'auto 1fr', gap: '10px 12px', marginBottom: 14 }}>
           <dt className="muted">当前到期</dt><dd>{baseEnd || '—（按10号及自然月末规则）'}</dd>
           <dt className="muted">续到</dt>
-          <dd><input className="in" type="date" disabled={running || submitted.current} value={newEnd} onChange={(e) => setEndOverride(e.target.value)} style={{ width: 180 }} /></dd>
+          <dd><DateInput className="in" type="date" disabled={running || submitted.current} value={newEnd} onChange={(e) => setEndOverride(e.target.value)} style={{ width: 180 }} /></dd>
           <dt className="muted">实收金额</dt>
           <dd style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             ¥<input className="in" aria-label="续期实收金额" disabled={running || submitted.current} value={amountStr} onChange={(e) => setAmountStr(e.target.value)}

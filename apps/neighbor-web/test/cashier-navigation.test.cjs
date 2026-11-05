@@ -1,0 +1,7 @@
+const test=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const path=require('node:path');const ts=require('typescript');const vm=require('node:vm');
+const filename=path.resolve(__dirname,'../src/pages/Cashier.tsx');const source=fs.readFileSync(filename,'utf8');const ast=ts.createSourceFile(filename,source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+function handler(label){let found;function walk(n){if(ts.isJsxElement(n)&&n.openingElement.tagName.getText(ast)==='button'&&n.getText(ast).includes(label)){const attr=n.openingElement.attributes.properties.find(p=>p.name?.getText(ast)==='onClick');if(attr?.initializer?.expression)found=attr.initializer.expression.getText(ast)}ts.forEachChild(n,walk)}walk(ast);assert.ok(found,label);return found;}
+for(const [label,expected] of [['今日流水 / 红冲','/fees'],['打印收据','/fees?receipt=SYNTHETIC'],['预缴未来月份','/fees?q=1%2F101']])test(label+' uses SPA route and never creates a new document',()=>{
+ const calls=[];const context={module:{exports:{}},navigate:p=>calls.push(p),nav:p=>calls.push(p),legacyUrl:p=>p,done:{receiptNo:'SYNTHETIC'},house:{buildingNo:'1',roomNo:'101'},window:{location:{set href(v){assert.fail('full document navigation loses session: '+v)}}},encodeURIComponent};
+ vm.runInNewContext(ts.transpileModule('module.exports='+handler(label),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,context);context.module.exports();assert.deepEqual(calls,[expected]);
+});

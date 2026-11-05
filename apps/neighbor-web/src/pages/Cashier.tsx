@@ -8,7 +8,7 @@ import UniSearch, { type UniPick } from '@/components/cashier/UniSearch';
 import PayMethods from '@/components/PayMethods';
 import Icon from '@/components/Icon';
 import type { IconName } from '@/components/Icon';
-import { legacyUrl } from '@/lib/legacy';
+import { useNavigate } from 'react-router-dom';
 import { ErrorNote, toast } from '@/components/ui';
 import { useSession } from '@/lib/auth';
 import { dayjs, money } from '@/lib/format';
@@ -68,6 +68,7 @@ const maskPhone = (p?: string | null) => (p && p.length >= 7 ? `${p.slice(0, 3)}
  * 金额一律服务端试算；收款只登记，后续 MIS/停车/写卡在「待处理」跟踪，不在这里谎称已核验。
  */
 export default function Cashier() {
+  const navigate = useNavigate();
   const session = useSession();
   const [tree, setTree] = useState<AddressCommunity[] | null>(null);
   const [rules, setRules] = useState<BusinessRule[]>([]);
@@ -369,7 +370,7 @@ export default function Cashier() {
             <div className="amt money">{money(done.amountCents / 100)}</div>
             <p>{house?.communityName} {house?.buildingNo}/{house?.roomNo} · {done.title} · {pay}{done.receiptNo !== '—' ? ` · 收据号 ${done.receiptNo}` : ''}</p>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 18 }}>
-              {done.receiptNo !== '—' ? <button className="btn" onClick={() => { window.location.href = legacyUrl(`/fees?receipt=${encodeURIComponent(done.receiptNo)}`); }}><Icon name="print" size={18} />打印收据</button> : null}
+              {done.receiptNo !== '—' ? <button className="btn" onClick={() => navigate(`/fees?receipt=${encodeURIComponent(done.receiptNo)}`)}><Icon name="print" size={18} />打印收据</button> : null}
               <button className="btn p" onClick={() => { setDone(null); if (house) loadBills(house); }}><Icon name="receipt" size={18} />继续给本户办理</button>
               <button className="btn" onClick={reset}><Icon name="search" size={18} />换一户</button>
             </div>
@@ -402,7 +403,7 @@ export default function Cashier() {
           <div className="h1row"><ToneIcon kind="cashier" /><h1 style={{ fontSize: 22 }}>收银台</h1></div>
           <p>找到住户 → 按项目办理 → 一次确认收款 <span className="tag mute" style={{ marginLeft: 8 }}><Icon name="building" />数据范围：{scopeLabel}</span></p>
         </div>
-        <div className="act"><button className="btn" onClick={() => { window.location.href = legacyUrl('/fees'); }}><Icon name="receipt" size={18} />今日流水 / 红冲</button></div>
+        <div className="act"><button className="btn" onClick={() => navigate('/fees')}><Icon name="receipt" size={18} />今日流水 / 红冲</button></div>
       </div>
 
       {err ? <ErrorNote>{err}</ErrorNote> : null}
@@ -460,7 +461,7 @@ export default function Cashier() {
             {isBillTab ? (
               <div style={{ marginTop: 16 }}>
                 <div className="panelHd"><b>未缴{billLabel}</b>{tabArrears ? <span className="tag dang">待缴 {tabBills.length} 笔 · {money(tabArrears / 100)}</span> : <span className="tag ok"><Icon name="check" />无待缴</span>}
-                  <button className="btn g sm" style={{ marginLeft: 'auto' }} onClick={() => { window.location.href = legacyUrl(`/fees?q=${encodeURIComponent(`${house.buildingNo}/${house.roomNo}`)}`); }}><Icon name="plus" size={16} />预缴未来月份</button>
+                  <button className="btn g sm" style={{ marginLeft: 'auto' }} onClick={() => navigate(`/fees?q=${encodeURIComponent(`${house.buildingNo}/${house.roomNo}`)}`)}><Icon name="plus" size={16} />预缴未来月份</button>
                 </div>
                 {bills === null ? <div className="empty">正在实时查询 MIS 应收…</div>
                   : billErr ? <div className="card" style={{ padding: 28, textAlign: 'center' }}><span style={{ color: 'var(--dang)' }}>MIS 查询未完成：{billErr}</span><div className="muted" style={{ marginTop: 6, fontSize: 13 }}>不代表无待缴，请稍后重新选择该住户再查</div></div>

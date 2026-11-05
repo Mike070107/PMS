@@ -9,6 +9,7 @@ import './styles/design.css';
 import './styles/app.css';
 import './styles/large.css';
 import './styles/guards.css';
+import './styles/calendar.css';
 import { startLayoutGuard } from './lib/layoutGuard';
 
 /**
