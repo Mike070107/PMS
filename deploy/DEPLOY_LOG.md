@@ -5615,3 +5615,17 @@
   - 084d932a [verified] fix(api): expire web sessions at Beijing midnight
   - fb9bc1ad [verified] fix(api): isolate receipt items by house and accumulate linearly
 
+## 2026-11-05 11:23 · web · 7e6fbeb6
+
+- 包：`pms-web-20261105-112309.tar.gz`
+- 提交：7e6fbeb6 deploy: api → f50eca7e
+- 自上次（d021fb58）以来上线的相关提交：
+  - f50eca7e [verified] fix(web): clarify theme picker and tint scoped sidebar
+  - e9f65018 [verified] fix(web): clarify audit results and secure technical details
+  - ec073203 [verified] fix(web): enforce day session and reject stale identity callbacks
+  - b5e9792b [verified] fix(web): preserve house selection intent and replacement typing
+  - dc441909 [verified] fix(web): enforce logs visibility and page permission
+  - 33c38670 [verified] fix(web): isolate house detail state and recover failed loads
+  - e53f9429 [verified] fix(web): load property filters on demand and distinguish request failures
+  - e733d31c [verified] fix(web): isolate migrated payment card styles
+
