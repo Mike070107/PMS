@@ -24,7 +24,7 @@ function Waiting({text='正在读取MIS'}:{text?:string}){const [seconds,set]=us
 function State({value,children}:{value:{loading:boolean;error:string};children:React.ReactNode}){return value.loading?<Waiting/>:value.error?<ErrorNote>{value.error}</ErrorNote>:<>{children}</>}
 function BillTable({bills}:{bills:Notice['bills']}){return <div className="rb-scroll"><table className="t"><thead><tr><th>收费项目</th><th>所属账期</th><th>金额</th></tr></thead><tbody>{bills.map(b=><tr key={b.id}><td><span className="feeCell"><FeeIcon name={b.feeName} size={24}/>{b.feeName}</span></td><td>{periodLabel(b.period)}</td><td>¥{cents(b.amountCents)}</td></tr>)}</tbody></table></div>}
 export default function ResidentialBills(){
- const session=useSession(),editable=can('fees','edit'),[rev,setRev]=useState(0),[tab,setTab]=useState<'overview'|'houses'|'history'>('overview');
+ const session=useSession(),editable=can('fees','edit'),[rev,setRev]=useState(0),[tab,setTab]=useState<'overview'|'houses'|'history'>('houses');
  const [category,setCategory]=useState<Category>('all'),[community,setCommunity]=useState(''),[fee,setFee]=useState(''),[term,setTerm]=useState('');
  const [from,setFrom]=useState(chinaDate().slice(0,4)+'-01'),[to,setTo]=useState(chinaDate().slice(0,4)+'-12'),[mode,setMode]=useState<'week'|'month'>('month');
  const [status,setStatus]=useState<'unpaid'|'paid'>('unpaid'),[page,setPage]=useState(1),[historyPage,setHistoryPage]=useState(1),[checked,setChecked]=useState<string[]>([]),[all,setAll]=useState(false);
