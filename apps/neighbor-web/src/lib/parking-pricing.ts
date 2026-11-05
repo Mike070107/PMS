@@ -36,9 +36,11 @@ export function priceTable(months: number, tiers: PriceTier[]): { amountCents: n
   return { amountCents: hit.amountCents, breakdown: `${months} 个月` };
 }
 
-/** 按规则配置计价：分组走价格表，旧规则走单价+套餐 */
+/** 价格表必须精确命中；旧单价+套餐规则仍沿用原有组合算法。 */
 export function priceRule(months: number, unitPriceCents: number, cfg: ParkingRuleConfig): { amountCents: number; breakdown: string } {
-  return cfg.priceMode === 'table' ? priceTable(months, cfg.tiers ?? []) : priceParking(months, unitPriceCents, cfg.tiers ?? []);
+  if (!Number.isInteger(months) || months < 1 || months > MAX_MONTHS) throw new Error(`缴费月数要在 1~${MAX_MONTHS} 之间`);
+  if (cfg.priceMode !== 'table') return priceParking(months, unitPriceCents, cfg.tiers ?? []);
+  return priceTable(months, normalizeTiers(cfg.tiers ?? []));
 }
 
 /**

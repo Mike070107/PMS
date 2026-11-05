@@ -3,6 +3,8 @@
  * 状态记在 business_transactions.external_sync_status（varchar 20）与 snapshot.execution 上，不新增表。
  */
 
+import { parkingRenewalWindow } from './parking-renewal-window';
+
 /** 外部同步状态（写入 external_sync_status） */
 export type ExternalSyncStatus =
   | 'mocked' //   旧数据/未接入的业务（门禁卡等，P2 再接）
@@ -104,13 +106,10 @@ export function addMonthsClamped(date: string, months: number): string {
 }
 
 /**
- * 续期区间：还没到期的车接着原到期日往后续，已过期（或没有到期日）的从今天起算。
- * 结束日 = 开始日 + N 个月 − 1 天（例：01-01 续 6 个月 → 06-30）。
+ * 与车辆弹窗共用：未到期从原到期月份顺延完整N月；已到期走10号口径，均取自然月末。
  */
 export function renewalWindow(input: { currentEndDate?: string | null; today: string; months: number }): { startDate: string; endDate: string } {
-  const { currentEndDate, today, months } = input;
-  const start = isDate(currentEndDate) && currentEndDate >= today ? addDays(currentEndDate, 1) : today;
-  return { startDate: start, endDate: addDays(addMonthsClamped(start, months), -1) };
+  return parkingRenewalWindow(input);
 }
 
 /** 一笔款拆到多套停车系统记账（旧库每条续期都要写金额）：按分均分，余数给第一条 */

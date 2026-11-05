@@ -1,0 +1,10 @@
+.renewal-months{display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-width:0}
+.renewal-months__presets{display:flex;gap:8px;flex-wrap:wrap;min-width:0}
+.renewal-months__presets>.chip{min-height:40px;white-space:nowrap}
+.renewal-months__stepper{display:inline-flex;align-items:center;gap:8px;flex:none}
+.renewal-months__stepper>.btn{min-width:40px;min-height:40px;justify-content:center;padding:6px;font-size:20px}
+.renewal-months__stepper>label{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.renewal-months__stepper input{width:72px;min-width:0;min-height:44px;text-align:center;font-variant-numeric:tabular-nums}
+.renewal-months__error{color:var(--dang);font-size:14px}
+.renewal-months__stepper input[aria-invalid="true"]{border-color:var(--dang)}
+@media(max-width:640px){.renewal-months__presets>.chip,.renewal-months__stepper>.btn{min-height:44px;min-width:44px}}
