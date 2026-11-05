@@ -13,6 +13,7 @@ function load(file, deps = {}, suffix = '') {
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
   const module = { exports: {} };
   vm.runInNewContext(code, { module, exports: module.exports, URLSearchParams, console, require(id) {
+    if (id.endsWith('.css')) return {};
     if (id in deps) return deps[id];
     if (id.startsWith('.')) return load(path.resolve(path.dirname(file), id + '.ts'));
     if (id.startsWith('@/')) throw Error('Unexpected internal dependency: ' + id);

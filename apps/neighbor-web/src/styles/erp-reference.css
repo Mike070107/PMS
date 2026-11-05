@@ -1,0 +1,191 @@
+/* ERP reference layer: neutral operating surfaces, personal primary actions.
+ * Screen-only: receipts, notices and maintenance print portals keep their layout.
+ * Chart colours are intentionally separate from --acc and semantic status tokens.
+ */
+@media screen {
+  #web {
+    --erp-canvas: #f5f6f8;
+    --erp-surface: #fff;
+    --erp-border: #e5e8ed;
+    --erp-muted: #647084;
+    --erp-chart-blue: #3976d7;
+    --erp-chart-teal: #24999c;
+    --erp-chart-secondary: #87859f;
+    --erp-shadow: 0 1px 3px rgba(25, 39, 57, .04);
+    --bg: var(--erp-canvas);
+    --surface: var(--erp-surface);
+    --sunken: #f7f8fa;
+    --raise: #fcfcfd;
+    --line: var(--erp-border);
+    --line2: #eff1f4;
+    --mute-w: #f1f3f6;
+    --sh: var(--erp-shadow);
+    --r: 10px;
+    background: var(--erp-canvas);
+    font-size: 16px;
+    font-variant-numeric: tabular-nums;
+  }
+  #web .side {
+    background: var(--erp-surface);
+    border-right-color: var(--erp-border);
+  }
+  #web .main > .top {
+    background: var(--erp-surface);
+    border-bottom-color: var(--erp-border);
+    box-shadow: none;
+  }
+  #web .content { background: var(--erp-canvas); }
+  #web .side .scope-ib {
+    background: var(--sunken);
+    border: 1px solid var(--erp-border);
+    color: var(--ink2);
+    min-height: 44px;
+  }
+  #web .side .nav a:hover,
+  #web .side .navGroupTitle:hover,
+  #web .side .navToolbar button:hover,
+  #web .side .sidebar-collapse:hover { background: var(--sunken); }
+  #web .side .nav a.on {
+    background: var(--acc-w);
+    color: var(--acc-t);
+    box-shadow: inset 3px 0 0 var(--acc);
+  }
+  #web .side .navGroupTitle.active-group:not(.open) {
+    background: var(--sunken);
+    color: var(--acc-t);
+  }
+  #web .side .me { border-top-color: var(--erp-border); }
+
+  /* Cards, operational toolbars and tabs; no generic header/table/button reset. */
+  #web .card,
+  #web .wc,
+  #web .set-sec,
+  #web .erp-panel {
+    background: var(--erp-surface);
+    border: 1px solid var(--erp-border);
+    border-radius: 10px;
+    box-shadow: var(--erp-shadow);
+  }
+  #web .board .col {
+    background: #eef1f5;
+    border: 1px solid var(--erp-border);
+  }
+  #web .wo-bar,
+  #web .erp-toolbar {
+    gap: 12px;
+    align-items: center;
+  }
+  #web .erp-toolbar { display: flex; flex-wrap: wrap; }
+  #web .btn,
+  #web .chip,
+  #web .in,
+  #web .tabs button,
+  #web .seg button {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  #web .btn { border-radius: 8px; }
+  #web .btn.p {
+    background: var(--acc);
+    border-color: var(--acc);
+    color: #fff;
+    box-shadow: none;
+  }
+  #web .btn.p:hover { background: var(--acc-h); border-color: var(--acc-h); }
+  #web .chip.on {
+    background: var(--acc-w);
+    border-color: var(--acc);
+    color: var(--acc-t);
+  }
+  #web .tabs { border-bottom-color: var(--erp-border); }
+  #web .tabs button.on { color: var(--acc-t); border-bottom-color: var(--acc); }
+  #web .seg { background: #edf0f4; }
+  #web .seg button.on { background: #fff; color: var(--acc-t); }
+  #web .t th {
+    background: #f7f8fa;
+    color: var(--ink2);
+    font-size: 16px;
+    border-bottom-color: var(--erp-border);
+  }
+  #web .t td { font-size: 16px; border-bottom-color: var(--line2); }
+  #web .t tr.row:hover td { background: #f7f9fc; }
+  #web .top > .ib,
+  #web .side .sidebar-collapse,
+  #web .side .navToolbar button,
+  #web .side .mobile-close {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  #web .appearance-trigger { font-size: 16px; }
+
+  /* Legacy AntD already gets fontSize/controlHeight/personal primary from
+   * ConfigProvider. Only neutral surfaces and undersized variants are unified. */
+  #web .migrated-surface .ant-card {
+    background: var(--erp-surface);
+    border-color: var(--erp-border);
+    box-shadow: var(--erp-shadow);
+  }
+  #web .migrated-surface .ant-card-head {
+    background: #fff;
+    border-bottom-color: var(--erp-border);
+  }
+  #web .migrated-surface .ant-table-thead > tr > th {
+    background: #f7f8fa;
+    color: var(--ink2);
+    border-bottom-color: var(--erp-border);
+    font-weight: 600;
+    font-size: 16px;
+  }
+  #web .migrated-surface .ant-table-tbody > tr > td {
+    border-bottom-color: var(--line2);
+    font-size: 16px;
+  }
+  #web .migrated-surface .ant-table-tbody > tr.ant-table-row:hover > td { background: #f7f9fc; }
+  #web .migrated-surface .ant-btn,
+  #web .migrated-surface .ant-input:not(textarea),
+  #web .migrated-surface .ant-input-affix-wrapper,
+  #web .migrated-surface .ant-picker,
+  #web .migrated-surface .ant-select-single .ant-select-selector {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  #web .migrated-surface .ant-select-single { height: 44px; }
+  #web .migrated-surface .ant-tabs-tab { min-height: 44px; font-size: 16px; }
+
+  /* Body-mounted portals: explicit operational classes only. Preserve status
+   * chips, destructive actions, payment logos and provider-controlled colours. */
+  .ant-modal .ant-modal-content,
+  .ant-drawer .ant-drawer-content,
+  .appearance-panel {
+    background: #fff;
+    color: var(--ink);
+    border: 1px solid #e5e8ed;
+    border-radius: 10px;
+  }
+  .ant-modal .ant-modal-header,
+  .ant-drawer .ant-drawer-header { background: #fff; border-bottom-color: #e5e8ed; }
+  .ant-modal .ant-modal-close,
+  .ant-drawer .ant-drawer-close { min-width: 44px; min-height: 44px; }
+  .ant-select-dropdown,
+  .ant-picker-dropdown .ant-picker-panel-container,
+  .ant-dropdown .ant-dropdown-menu,
+  .ant-cascader-dropdown {
+    background: #fff;
+    border: 1px solid #e5e8ed;
+    box-shadow: 0 8px 28px rgba(25, 39, 57, .12);
+  }
+  .ant-select-dropdown .ant-select-item,
+  .ant-dropdown .ant-dropdown-menu-item,
+  .ant-cascader-dropdown .ant-cascader-menu-item { min-height: 44px; font-size: 16px; }
+}
+@media screen and (max-width: 900px) {
+  #web .top > .ib,
+  #web .appearance-mobile .appearance-trigger {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    flex-shrink: 0;
+  }
+  #web .content { padding: 18px 16px 80px; }
+  #web .erp-toolbar { gap: 8px; }
+}

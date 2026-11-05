@@ -1,0 +1,1 @@
+import {session} from './access-browser-auth';export * from './access-browser-auth';session.access={...session.access,pages:{business:{view:true,edit:false},dashboard:{view:true},fees:{view:true},'work-orders':{view:true}}};

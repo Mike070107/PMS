@@ -1,3 +1,4 @@
+import './erp-today.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { WorkOrderListItem } from '@pms/shared-types';
@@ -30,7 +31,8 @@ export default function Today() {
   const [failure,setFailure]=useState<{key:string;message:string}|null>(null),[retry,setRetry]=useState(0);
   const date=new Date(Date.now()+8*3600000).toISOString().slice(0,10),scope=JSON.stringify([session.generation,session.user?.id,session.actingTenant?.id,session.access?.scopeAll,session.access?.communityIds]),key=JSON.stringify([scope,date,retry]);
   const generation=useRef({key,n:0});if(generation.current.key!==key)generation.current={key,n:generation.current.n+1};
-  useEffect(()=>{let alive=true;repairs.list({scope:'all'}).then(r=>{if(alive)setOrders(r)}).catch(()=>{if(alive)setOrders([])});return()=>{alive=false}},[scope]);
+  const [ordersErr,setOrdersErr]=useState<{scope:string;message:string}|null>(null),[ordersRetry,setOrdersRetry]=useState(0);const ordersScope=useRef(scope);const visibleOrders=ordersScope.current===scope?orders:null,orderFailure=ordersErr?.scope===scope?ordersErr.message:'';
+  useEffect(()=>{let alive=true;setOrders(null);setOrdersErr(null);repairs.list({scope:'all'}).then(r=>{if(alive){ordersScope.current=scope;setOrders(r)}}).catch(()=>{if(alive)setOrdersErr({scope,message:'工单读取失败，数量未获取，请重试'})});return()=>{alive=false}},[scope,ordersRetry]);
   useEffect(()=>{const n=++generation.current.n;let alive=true;const valid=()=>alive&&generation.current.key===key&&generation.current.n===n;setFailure(null);
     request<{rows:Txn[];summary:{paidCents:number;refundedCents:number;paidCount:number;byService:Array<{serviceType:string;paidCents:number;paidCount:number}>}}>({url:'/business/transaction-ledger',query:{from:date,to:date,page:1,pageSize:20}}).then(data=>{if(!valid())return;if(!Array.isArray(data.rows)||!Array.isArray(data.summary?.byService)||!Number.isSafeInteger(data.summary.paidCents))throw Error('bad contract');setLedger({key,data})}).catch(()=>{if(valid()){setLedger(null);setFailure({key,message:'今日流水读取失败，金额未获取，请重试'})}});return()=>{alive=false};
   },[key]);
@@ -42,7 +44,7 @@ export default function Today() {
   const maxSum=Math.max(parkSum,cardSum,propertySum,1),amount=(n:number)=>data?money(n/100):'—';
 
   const repairStat = useMemo(() => {
-    const list = orders ?? [];
+    const list = visibleOrders ?? [];
     const active = list.filter((o) => isActive(o.status));
     const by = (s: WorkOrderStatus) => list.filter((o) => o.status === s).length;
     return {
@@ -53,7 +55,7 @@ export default function Today() {
       overdue: active.filter((o) => isOverdue(o)).length,
       active: active.length,
     };
-  }, [orders]);
+  }, [visibleOrders]);
 
   const name = session.user?.name || session.user?.loginAccount || '管理员';
   const officeName = session.actingOffice?.name || (session.access?.scopeAll ? '全部管理处' : '');
@@ -81,34 +83,31 @@ export default function Today() {
         </div>
       </div>
 
+      {orderFailure?<div role="alert" className="note">{orderFailure}<button className="btn" onClick={()=>setOrdersRetry(n=>n+1)}>重试工单</button></div>:null}
       {error?<div role="alert" className="note">{error}<button className="btn" onClick={()=>setRetry(n=>n+1)}>重试</button></div>:!data?<div role="status" className="note">正在读取今日流水与全筛选汇总…</div>:null}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,380px),1fr))', gap: 20, alignItems: 'start' }}>
+      <div className="erp-today-kpis" aria-label="今日工作指标">
+        <div className="erp-kpi"><div className="k">今日实收</div><div className="v money" data-testid="today-income">{amount(income)}</div></div>
+        <div className="erp-kpi"><div className="k">退款</div><div className="v money">{amount(refund)}</div></div>
+        <div className="erp-kpi"><div className="k">收款笔数</div><div className="v">{data ? `${data.summary.paidCount} 笔` : '—'}</div></div>
+        <div className="erp-kpi"><div><div className="k">进行中工单</div><div className="v">{orderFailure ? '—' : visibleOrders === null ? '加载中…' : `${repairStat.active} 单`}</div></div></div>
+      </div>
+      <div className="erp-today-workspace">
         <div>
-          <div className="hero">
-            <div className="lbl"><Icon name="wallet" size={17} />今日PMS前台收款（含MIS物业费 / 泊位费 · 北京时间）</div>
-            <div className="big money"><span data-testid="today-income">{amount(income)}</span></div>
-            <div className="split" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(100px,1fr))",gap:12}}>
-              <div><div className="k">实收</div><div className="v money">{amount(income)}</div></div>
-              <div><div className="k">退款</div><div className="v money">{amount(refund)}</div></div>
-              <div><div className="k">收款笔数</div><div className="v">{data?data.summary.paidCount:'—'} 笔</div></div>
-              <div><div className="k">进行中工单</div><div className="v">{repairStat.active} 单</div></div>
-            </div>
-          </div>
-
-          <div className="statRow" style={{ marginTop: 20 }}>
-            <div className="stat"><div className="ic blue"><Icon name="car" /></div><div className="v money">{money(parkSum / 100)}</div><div className="k">停车 · {bySvc('parking_monthly').length} 笔</div></div>
-            <div className="stat"><div className="ic amber"><Icon name="key" /></div><div className="v money">{money(cardSum / 100)}</div><div className="k">门禁卡 · {bySvc('access_card').length} 笔</div></div>
-            <div className="stat"><div className="ic green"><Icon name="home" /></div><div className="v money">{amount(propertySum)}</div><div className="k">MIS物业费 / 泊位费</div></div>
+          <div className="card" style={{ padding: '18px 20px' }}>
+            <div className="side-h"><Icon name="wallet" size={19} />主工作区</div>
+            <p style={{ color: 'var(--ink2)', margin: '12px 0' }}>{name} · {officeName || '本账号范围'}</p>
+            <p>PMS新登记的物业费、泊位费、停车与门禁均计入；源MIS历史另查。</p>
+            <button className="btn" onClick={() => nav('/bills')}><Icon name="home" size={18} />账单与待缴</button>
           </div>
 
           <div className="card" style={{ marginTop: 20, padding: '18px 20px' }}>
             <div className="side-h"><Icon name="chart" size={19} style={{ color: 'var(--acc-t)' }} />今日分项收入</div>
             <div style={{ marginTop: 12 }}>
-              {[['停车月租', parkSum, 'var(--acc)'], ['门禁卡', cardSum, 'var(--warn)'], ['物业/泊位', propertySum, 'var(--ok)']].map(([nm, v, col]) => (
-                <div key={nm as string} style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
-                  <div style={{ width: 80, fontSize: 13.5, color: 'var(--ink2)' }}>{nm as string}</div>
+              {!data ? <p>分项收入未获取</p> : [['停车月租', parkSum, 'var(--acc)'], ['门禁卡', cardSum, 'var(--warn)'], ['物业/泊位', propertySum, 'var(--ok)']].map(([nm, v, col]) => (
+                <div key={nm as string} className="erp-income-row">
+                  <div style={{ width: 80, fontSize: 16, color: 'var(--ink2)' }}>{nm as string}</div>
                   <div style={{ flex: 1, height: 10, borderRadius: 6, background: 'var(--line2)', overflow: 'hidden' }}><div style={{ height: '100%', borderRadius: 6, width: `${Math.round((v as number) / maxSum * 100)}%`, background: col as string }} /></div>
-                  <div style={{ width: 100, textAlign: 'right', fontWeight: 700, fontSize: 14 }}>{money((v as number) / 100)}</div>
+                  <div style={{ width: 100, textAlign: 'right', fontWeight: 700, fontSize: 16 }}>{money((v as number) / 100)}</div>
                 </div>
               ))}
             </div>
@@ -116,9 +115,7 @@ export default function Today() {
         </div>
 
         <div>
-          <button className="btn p lg" style={{ width: '100%', justifyContent: 'center', marginBottom: 16 }} onClick={() => nav('/cashier')}>
-            <Icon name="cash" />开始收费办理
-          </button>
+
 
           <div className="card" style={{ overflow: 'hidden' }}>
             <div className="side-h" style={{ padding: '16px 18px 2px' }}><Icon name="alert" size={19} style={{ color: 'var(--warn)' }} />需要处理</div>
@@ -127,7 +124,7 @@ export default function Today() {
                 <button key={r.t} className="lrow click" onClick={() => nav(r.to)}>
                   <div className={`li ic ${r.n ? r.tone : 'blue'}`}><Icon name={r.icon} /></div>
                   <div className="lt"><b>{r.t}</b><small>{r.d}</small></div>
-                  <b style={{ fontSize: 20, color: r.n && (r.tone === 'red' || r.tone === 'amber') ? 'var(--dang)' : 'var(--ink)' }}>{orders === null ? '…' : r.n}</b>
+                  <b style={{ fontSize: 20, color: r.n && (r.tone === 'red' || r.tone === 'amber') ? 'var(--dang)' : 'var(--ink)' }}>{orderFailure ? '—' : visibleOrders === null ? '…' : r.n}</b>
                 </button>
               ))}
               <button className="lrow click" onClick={() => nav('/pending')}>

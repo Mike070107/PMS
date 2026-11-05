@@ -1,0 +1,23 @@
+.erp-reports{min-width:0;font-size:16px;--ac-brand:#327cba}
+.erp-report-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin:4px 0 20px}
+.erp-report-kpis .stat{background:#fff;border:1px solid var(--line);border-radius:10px;min-width:0;padding:18px}.erp-report-kpis .v{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.erp-reports .secTitle{font-size:18px;margin:0 0 16px;font-weight:600}
+.erp-report-breakdowns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-bottom:20px}
+.erp-report-breakdown,.erp-report-trend{padding:20px;min-width:0;background:#fff;border:1px solid var(--line)}
+.erp-report-trend{margin-bottom:20px}.erp-report-trend summary{min-height:44px;cursor:pointer;padding:12px 0}
+.erp-reports .fees-trend-chart{overflow-x:auto;min-width:0}.erp-reports .fees-trend-chart svg{display:block;width:100%;min-width:660px;height:auto;min-height:260px}
+/* Reuse the legacy chart's geometry without its decorative gradient area. */
+.erp-reports .fees-trend-chart polygon{display:none}.erp-reports .fees-trend-chart text{fill:var(--ink2);font-size:16px}
+.erp-reports .fees-chart-grid{stroke:var(--line);stroke-width:1}.erp-reports .fees-chart-zero{stroke:#8196a7;stroke-width:1.5}
+.erp-reports .fees-chart-point{fill:#327cba;cursor:pointer}.erp-reports .fees-chart-point:focus{outline:none;stroke:#238e9a;stroke-width:5}
+.erp-reports .fees-chart-legend,.erp-reports .fees-chart-readout{display:flex;gap:16px;flex-wrap:wrap;color:var(--ink2);min-height:44px;align-items:center;font-size:16px}
+.erp-reports .fees-chart-legend i{display:inline-block;width:18px;height:3px;background:#327cba;vertical-align:middle;margin-right:8px}
+.erp-reports .fees-chart-readout strong{font-variant-numeric:tabular-nums;color:var(--ink)}
+.erp-reports .fees-breakdown-row{padding:12px 0;border-top:1px solid var(--line2)}
+.erp-reports .fees-breakdown-label{display:flex;justify-content:space-between;gap:16px;overflow-wrap:anywhere}.erp-reports .fees-breakdown-label strong{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.erp-reports .fees-breakdown-track{height:8px;background:#eef2f5;position:relative;margin:10px 0}
+.erp-reports .fees-breakdown-track i{position:absolute;height:8px;background:#327cba}.erp-reports .fees-breakdown-track i.is-negative{background:#238e9a}.erp-reports .fees-breakdown-zero{position:absolute;height:12px;top:-2px;width:1px;background:#73899b;z-index:1}
+.erp-reports .fees-breakdown-row small{font-size:16px;color:var(--ink2)}
+.erp-report-table{overflow:auto}.erp-report-table table{width:100%;border-collapse:collapse;font-size:16px}.erp-report-table th,.erp-report-table td{padding:12px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}.erp-report-table .num{text-align:right;font-variant-numeric:tabular-nums}
+.erp-reports .wo-bar input,.erp-reports .wo-bar select,.erp-reports .chip{min-height:44px;max-width:100%;font-size:16px}
+@media(max-width:760px){.erp-report-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.erp-report-kpis .stat{padding:14px}.erp-report-breakdowns{grid-template-columns:minmax(0,1fr)}.erp-report-trend,.erp-report-breakdown{padding:16px}.erp-reports .wo-bar{gap:8px!important}.erp-reports .wo-bar input{width:calc(50% - 20px)!important;min-width:0}.erp-reports .wo-bar select{margin-left:0!important;width:100%!important}.erp-reports .fees-breakdown-label{flex-wrap:wrap}}
