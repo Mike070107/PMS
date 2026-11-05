@@ -5678,3 +5678,10 @@
 - 自上次（1f034dad）以来上线的相关提交：
   - a103f38e [verified] feat: unify address picking and repair intake location learning
 
+## 2026-11-05 22:30 · web · eccad7ec
+
+- 包：`pms-web-20261105-222949.tar.gz`
+- 提交：eccad7ec deploy: api → a103f38e
+- 自上次（1f034dad）以来上线的相关提交：
+  - a103f38e [verified] feat: unify address picking and repair intake location learning
+
