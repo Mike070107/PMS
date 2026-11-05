@@ -1,0 +1,1 @@
+const session={generation:1,user:{id:7,name:'合成员工'},actingTenant:{id:1},access:{scopeAll:false,communityIds:[10],pages:{fees:{view:true,edit:true},business:{view:true,edit:true}}}};export const useSession=()=>session;export const can=()=>true;

@@ -57,7 +57,7 @@ function assertRemarks(h, unpaid) {
     assert.equal(nodes(bills[0].props.children).filter(n => ['ck', 'bt', 'ba money'].includes(n.props?.className)).length, 3);
     assert.match(bills[0].props.className, /sel/); bills[0].props.onClick(); h.render();
     assert.doesNotMatch(h.nodes().find(n => n.type === 'button' && n.props.className?.startsWith('billRow')).props.className, /sel/);
-    assert.equal(h.find('button', n => text(n).includes('请在物业系统收款')).props.disabled, true);
+    const panel=h.find('MisCollectionPanel');assert.equal(panel.props.houseId,712);assert.equal(panel.props.bills.length,fixtures.length-1);assert.ok(['物业费','泊位费'].includes(panel.props.label));
   } else {
     assert.equal(h.nodes().filter(n => n.type === 'th').map(text).at(-1), '备注');
     assert.equal(h.nodes().filter(n => n.type === 'th').length, 7);

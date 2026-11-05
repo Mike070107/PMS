@@ -1,0 +1,39 @@
+import {useEffect,useRef,useState} from 'react';import {request} from '@pms/api-client';import {useSession} from '@/lib/auth';import {can} from '@/lib/perm';import {money,payLabel} from '@/lib/format';import PayMethods from '@/components/PayMethods';import FeeIcon from '@/components/FeeIcon';import MisPostingStatus from './MisPostingStatus';
+interface Props{houseId:number;label:string;bills:Array<{id:string;amountCents:number;feeName:string;period:string}>;loading?:boolean;onSaved:()=>void}
+interface Readiness{enabled:boolean;methods:string[];reason:string}
+interface Command{houseId:number;billIds:string[];amountCents:number;paymentMethod:string;confirmed:true;idempotencyKey:string}
+interface Posting{id:number;txnNo:string;amountCents:number;externalSyncStatus:string;receiptNo?:string;paymentMethod?:string}
+export default function MisCollectionPanel(props:Props){
+ const session=useSession(),actor=JSON.stringify([session.actingTenant?.id,session.user?.id,props.houseId]),context=JSON.stringify([actor,session.generation,session.access?.scopeAll,session.access?.communityIds]),storageKey='pms.mis.pending:'+actor;
+ const [ready,setReady]=useState<{context:string;data:Readiness}|null>(null),[error,setError]=useState(''),[retry,setRetry]=useState(0),[pay,setPay]=useState(''),[confirmedStamp,setConfirmedStamp]=useState(''),[busy,setBusy]=useState(false),[posting,setPosting]=useState<{actor:string;data:Posting}|null>(null);
+ const [pending,setPending]=useState<{actor:string;command:Command}|null>(()=>{try{const raw=sessionStorage.getItem(storageKey);if(!raw)return null;const command=JSON.parse(raw);if(command.houseId!==props.houseId||!Array.isArray(command.billIds)||!command.billIds.every((s:unknown)=>typeof s==='string'&&/^[1-9]\d{0,17}$/.test(s))||typeof command.idempotencyKey!=='string'||!/^[a-f0-9-]{36}$/.test(command.idempotencyKey)||!Number.isSafeInteger(command.amountCents))throw Error('invalid');return{actor,command}}catch{return{actor,command:null as unknown as Command}}});
+ const [resumeContext,setResumeContext]=useState('');
+ const running=useRef(false),generation=useRef({context,n:0});if(generation.current.context!==context)generation.current={context,n:generation.current.n+1};
+ const currentPending=pending?.actor===actor?pending:null,record=posting?.actor===actor?posting.data:null,readiness=ready?.context===context?ready.data:null;
+ const total=props.bills.reduce((s,b)=>s+b.amountCents,0),validBills=props.bills.length>0&&props.bills.length<=120&&new Set(props.bills.map(b=>b.id)).size===props.bills.length&&props.bills.every(b=>/^[1-9]\d{0,17}$/.test(b.id)&&Number.isSafeInteger(b.amountCents)&&b.amountCents>=0)&&Number.isSafeInteger(total)&&total<=2147483647;
+ const stamp=JSON.stringify([context,props.bills.map(b=>[b.id,b.amountCents]),pay]),confirmed=confirmedStamp===stamp,canEdit=can('fees','edit'),enabled=!!readiness?.enabled&&canEdit&&!props.loading&&validBills&&readiness.methods.includes(pay);
+ useEffect(()=>{let alive=true;const n=++generation.current.n;request<Readiness>({url:'/fees/mis/postings/readiness'}).then(r=>{if(alive&&generation.current.context===context&&generation.current.n===n){setReady({context,data:r});setPay(v=>r.methods.includes(v)?v:r.methods.includes('cash')?'cash':r.methods[0]||'')}}).catch(()=>{if(alive&&generation.current.context===context)setError('MIS收款条件读取失败，请重试')});return()=>{alive=false;generation.current.n++}},[context,retry]);
+ const accept=(data:Posting)=>{if(!Number.isSafeInteger(data.id)||data.id<1)throw Error('invalid result');setPosting({actor,data});setError('');props.onSaved()};
+ const submit=async()=>{if(running.current||!enabled||!confirmed||currentPending)return;running.current=true;setBusy(true);setError('');const n=generation.current.n;let saved=false;
+  try{const command:Command={houseId:props.houseId,billIds:props.bills.map(b=>b.id),amountCents:total,paymentMethod:pay,confirmed:true,idempotencyKey:crypto.randomUUID()};sessionStorage.setItem(storageKey,JSON.stringify(command));saved=true;setPending({actor,command});const data=await request<Posting>({method:'POST',url:'/fees/mis/postings',data:command,timeout:25000});if(generation.current.context===context&&generation.current.n===n)accept(data)}
+  catch{if(generation.current.context===context&&generation.current.n===n)setError(saved?'本次登记结果未确认：请核对原办理单，不要重新收款':'浏览器未能保存原单标识，尚未提交，请恢复存储后重试')}
+  finally{running.current=false;if(generation.current.context===context&&generation.current.n===n)setBusy(false)}
+ };
+ const recover=async(resume=false)=>{if(running.current||!currentPending?.command||resume&&(!canEdit||!readiness?.enabled||resumeContext!==context))return;running.current=true;setBusy(true);const n=generation.current.n;try{const r=await request<{found:boolean;posting?:Posting}>({url:'/fees/mis/postings/lookup',query:{key:currentPending.command.idempotencyKey}});if(generation.current.context!==context||generation.current.n!==n)return;if(r.found&&r.posting)accept(r.posting);else if(r.found===false&&resume){const data=await request<Posting>({method:'POST',url:'/fees/mis/postings',data:currentPending.command,timeout:25000});if(generation.current.context===context&&generation.current.n===n)accept(data)}else if(r.found===false){setResumeContext(context);setError('原办理单暂未查到；不要再收钱，可用原标识继续保存本次收款')}else throw Error('unconfirmed lookup')}catch{if(generation.current.context===context&&generation.current.n===n)setError('原办理单核对/保存未完成，请重试，不要重新收款')}finally{running.current=false;if(generation.current.context===context&&generation.current.n===n)setBusy(false)}};
+ return <div className="card cart2"><div className="cartHd"><b>{props.label}本次办理</b></div><div className="cartBody">
+  <p>当前员工：{session.user?.name||'本人'} · 收款人和MIS方式由服务端映射，不能在浏览器指定。</p><p>{readiness?.reason||'正在核对当前员工的MIS收款映射…'}</p>
+  {!canEdit?<p>当前账号只有查看权限，不可登记收款。</p>:null}{error?<div role="alert" className="note">{error}</div>:null}
+  {record?<><MisPostingStatus id={record.id}/><button className="btn" onClick={()=>{try{sessionStorage.removeItem(storageKey);setPending(null);setPosting(null);setConfirmedStamp('');props.onSaved()}catch{setError('原单本地标识未能清理，请保留原单核对')}}}>办理其他账单（本笔已登记）</button></>:currentPending?<div><p>原收款请求已保留，结果未确认；切换或刷新后也应先核对原办理单。</p><button className="btn" disabled={busy||!currentPending.command} onClick={()=>void recover()}>核对原办理单</button>{!currentPending.command?<p>本机原单标识损坏，请到办理记录核查，不能新建收款。</p>:null}</div>:<>
+   {props.bills.map(b=><div className="cartItem" key={b.id}><FeeIcon name={b.feeName} size={26}/><div className="cx"><b>{b.feeName}</b><small>{b.period}</small></div><span className="money">{money(b.amountCents/100)}</span></div>)}
+   <div className="cartTot"><span>本次应收</span><b>{money(total/100)}</b></div>
+   {readiness?.enabled&&canEdit?<div className="payPick"><PayMethods value={pay} options={readiness.methods.map(value=>({value,label:payLabel(value)}))} onChange={v=>setPay(v)}/></div>:null}
+   {enabled?<label style={{display:'flex',gap:10,alignItems:'center',margin:'14px 0'}}><input type="checkbox" checked={confirmed} onChange={e=>setConfirmedStamp(e.target.checked?stamp:'')}/>已实际收到 {payLabel(pay)} {money(total/100)}，确认到账</label>:null}
+   <button className="btn p lg" style={{width:'100%',justifyContent:'center'}} disabled={!enabled||!confirmed||busy} onClick={()=>void submit()}>{busy?'保存本次收款…':`确认收款 · ${money(total/100)}`}</button>
+   {!readiness?<button className="btn" onClick={()=>setRetry(n=>n+1)}>重新核对收款条件</button>:null}
+   {props.bills.length&&!validBills?<p>账单含负数、重复或无法确认的金额/标识，请先在MIS核对，不会猜金额或登记收款。</p>:null}
+  </>}
+  {currentPending&&!record&&resumeContext===context&&canEdit&&readiness?.enabled?<button className="btn" disabled={busy} onClick={()=>void recover(true)}>继续保存原收款（不再收钱）</button>:null}
+  <p className="muted">预缴应收生成协议尚未核实，不在PMS生成未来月份；原MIS账单整月缴纳、不拆月、不减免。</p>
+ </div></div>;
+}
+

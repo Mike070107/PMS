@@ -32,7 +32,7 @@ function nodes(n) {
 }
 function hooks(values) {
   let i = 0;
-  return { useState(init) { const at = i++; return [at < values.length ? values[at] : typeof init === 'function' ? init() : init, () => {}]; }, useMemo: fn => fn(), useCallback: fn => fn, useEffect() {} };
+  return { useState(init) { const at = i++; return [at < values.length ? values[at] : typeof init === 'function' ? init() : init, () => {}]; }, useRef: v => ({current:v}), useMemo: fn => fn(), useCallback: fn => fn, useEffect() {} };
 }
 const base = { requestId: 1, communityId: 1, assigneeId: null, assigneeName: null, candidateIds: [], createdAt: '2026-01-01T00:00:00Z', slaDueAt: '2000-01-01T00:00:00Z', summaryContent: '隔离测试', urgent: false };
 const orders = [

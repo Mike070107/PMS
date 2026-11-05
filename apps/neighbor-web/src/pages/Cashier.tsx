@@ -6,6 +6,7 @@ import type { AddressCommunity } from '@pms/shared-types';
 import HousePicker, { type PickedHouse } from '@/components/HousePicker';
 import UniSearch, { type UniPick } from '@/components/cashier/UniSearch';
 import PayMethods from '@/components/PayMethods';
+import MisCollectionPanel from '@/components/cashier/MisCollectionPanel';
 import Icon from '@/components/Icon';
 import type { IconName } from '@/components/Icon';
 import { useNavigate } from 'react-router-dom';
@@ -280,12 +281,7 @@ export default function Cashier() {
     if (!house || !canCharge || (cartTotal > 0 && !confirmed)) return;
     setBusy(true); setErr('');
     try {
-      if (isBillTab) {
-        const res = await request<{ paidCount: number; receiptNo: string }>({ method: 'POST', url: '/fees/bills/pay', data: { ids: selBillRows.map((b) => b.id), paidAt: dayjs().format('YYYY-MM-DD'), paymentMethod: pay } });
-        setDone({ title: `${billLabel} ${selBillRows.length} 笔`, amountCents: selBillTotal, receiptNo: res.receiptNo, tasks: [
-          { icon: 'home', title: 'MIS 物业费记账', note: '已提交，执行与核验在「待处理」跟踪', state: 'queued' },
-        ] });
-      } else if (tab === 'pk' && parkCarts.length) {
+      if (tab === 'pk' && parkCarts.length) {
         // 一辆车一笔流水（各自续期、各自重试）；中途失败时已登记的照常保留，没登记的提示重办
         const okList: Array<{ c: ParkingCart; txn: { id: number; txnNo: string; externalSyncStatus: string } }> = [];
         let failMsg = '';
@@ -477,7 +473,7 @@ export default function Cashier() {
                       );
                     })}
                 <PaidHistory key={`${house.id}-${tab}`} houseId={house.id} label={billLabel} match={(n) => (tab === 'bw' ? isBerth(n) : !isBerth(n))} />
-                <div className="note2" style={{ marginTop: 14 }}><Icon name="alert" />{billLabel}应收为 MIS 实时数据；MIS 写账未打通前，请在物业系统收款。{billLabel}整月缴纳、不拆单月、不减免；预缴会先在 MIS 生成正式应收，读回确认后再加入可收清单。</div>
+                <div className="note2" style={{ marginTop: 14 }}><Icon name="alert" />{billLabel}应收为 MIS 实时数据；本次收款条件、本人映射和原单状态见右侧。整月缴纳、不拆月、不减免。未来月份生成协议尚未核实，请在原MIS生成正式应收后刷新，不在PMS猜写账。</div>
               </div>
             ) : null}
 
@@ -536,7 +532,7 @@ export default function Cashier() {
             ) : null}
           </div>
 
-          <div className="card cart2">
+          {isBillTab?<MisCollectionPanel key={`${house.id}-${tab}`} houseId={house.id} label={billLabel} bills={selBillRows} loading={bills===null||!!billErr} onSaved={()=>{setSelBills([]);void loadBills(house);}}/>:<div className="card cart2">
             <div className="cartHd"><Icon name="receipt" /><b>本次办理</b><span className="cnt">{isBillTab ? billLabel : tab === 'pk' ? '停车缴费' : '门禁卡'}</span></div>
             <div className="cartBody">
               {isBillTab ? (
@@ -569,7 +565,7 @@ export default function Cashier() {
               </button>
               <div className="muted" style={{ fontSize: 12.5, textAlign: 'center', marginTop: 10 }}>系统只登记收款，后续 MIS / 停车 / 写卡自动执行并核验</div>
             </div>
-          </div>
+          </div>}
         </div>
       )}
 
