@@ -24,8 +24,8 @@ interface Report {
 }
 
 const PM_LABEL: Record<string, string> = { cash: '现金', wechat: '微信', alipay: '支付宝', bank: '银行', pos: '刷卡', transfer: '转账', other: '其他' };
-const fmtD = (d: Date) => d.toISOString().slice(0, 10);
-const firstOfMonth = () => { const d = new Date(); return fmtD(new Date(d.getFullYear(), d.getMonth(), 1)); };
+const fmtD = (d: Date) => d.toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+const firstOfMonth = () => fmtD(new Date()).slice(0, 8) + '01';
 const daysAgo = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return fmtD(d); };
 
 function Growth({ v }: { v: number }) {
