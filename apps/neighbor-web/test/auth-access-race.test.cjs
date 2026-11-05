@@ -61,6 +61,13 @@ const flush = async () => { await Promise.resolve(); await Promise.resolve(); aw
 const access = n => ({ communityIds: [n] });
 const equalAccess = (auth, expected) => assert.equal(JSON.stringify(auth.getAccess()), JSON.stringify(expected));
 
+test('login card shrinks to its container while retaining desktop maximum width', () => {
+  const page = component(load(), 'pages/Login.tsx', []).render();
+  const style = page.props.children.props.style;
+  assert.equal(style.width, '100%', 'fixed width must not overflow a narrow viewport');
+  assert.equal(style.maxWidth, 440, 'retain the existing desktop size');
+});
+
 test('real auth rejects late success/failure for A→B and identical-token A→B→A', () => {
   for (const aba of [false, true]) {
     const h = load(); h.login(1); const old = h.auth.captureIdentity();

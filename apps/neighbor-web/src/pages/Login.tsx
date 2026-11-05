@@ -32,7 +32,7 @@ export default function Login() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)', padding: 20 }}>
-      <div className="card" style={{ width: 440, padding: '30px 32px 26px', boxShadow: 'var(--sh-m)' }}>
+      <div className="card" style={{ width: '100%', maxWidth: 440, padding: '30px 32px 26px', boxShadow: 'var(--sh-m)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 20 }}>
           <div className="logo" style={{ width: 42, height: 42, fontSize: 20, borderRadius: 12 }}>邻</div>
           <div>
