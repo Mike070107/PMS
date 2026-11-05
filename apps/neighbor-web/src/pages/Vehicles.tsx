@@ -15,8 +15,6 @@ import { RebindSheet, GaragesSheet } from '@/components/vehicle-ops/RebindGarage
 import { HistorySheet, OwnerInfoSheet, CreatePmsOwnerSheet } from '@/components/vehicle-ops/HistoryAndOwnerSheets';
 import ToneIcon from '@/components/ToneIcon';
 
-interface AccessCard { id: number; cardNo: string; houseId: number; status: string }
-
 type CloudState = 'loading' | DeliyunVehicle | null | undefined;
 
 function go(path: string) { window.location.href = legacyUrl(path); }
@@ -29,7 +27,7 @@ function daysLeft(dateStr: string): number | null {
 }
 
 /**
- * 住户车辆与门禁：一个房号 / 车牌的完整档案。
+ * 住户车辆：一个房号 / 车牌的完整档案。
  *
  * 停车库查询是「提交任务 → 轮询结果」的异步接口（本地网关去读现场库）。
  * 一张车牌可能同时在一期 / 二期库里，这里按车牌并组展示：车辆授权类型、
@@ -62,28 +60,10 @@ export default function Vehicles() {
   const [query, setQuery] = useState<ParkingQuery | null>(null);
   const [polling, setPolling] = useState(false);
   const [err, setErr] = useState('');
-  const [cards, setCards] = useState<AccessCard[] | null>(null);
-  const [cardErr, setCardErr] = useState('');
   const [cloud, setCloud] = useState<Record<string, CloudState>>({});
-  const [tab, setTab] = useState<'vehicles' | 'cards'>('vehicles');
   const timer = useRef<number | null>(null);
 
   useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current); }, []);
-
-  const loadCards = useCallback(async (kw: string) => {
-    setCards(null);
-    setCardErr('');
-    try {
-      const r = await request<{ accessCards: AccessCard[] }>({
-        url: '/business/search',
-        query: { q: kw, serviceType: 'access_card' },
-      });
-      setCards(r.accessCards ?? []);
-    } catch (e) {
-      setCardErr(e instanceof Error ? e.message : '门禁卡读取失败');
-      setCards([]);
-    }
-  }, []);
 
   const poll = useCallback(async (id: number, left: number) => {
     if (left <= 0) { setPolling(false); setErr('停车库查询超时，现场网关可能不在线'); return; }
@@ -109,7 +89,6 @@ export default function Vehicles() {
     setQuery(null);
     setCloud({});
     setPolling(true);
-    void loadCards(kw);
     try {
       const created = await accessCardIssuance.createParkingQuery(kw);
       setQuery(created);
@@ -154,7 +133,6 @@ export default function Vehicles() {
         </div>
         <div className="act">
           <button className="btn p" onClick={() => setNewOpen(true)}><Icon name="plus" size={16} />新车登记</button>
-          <button className="btn" onClick={() => nav('/access-cards')}><Icon name="key" size={16} />门禁管理</button>
         </div>
       </div>
 
@@ -168,17 +146,6 @@ export default function Vehicles() {
         <Btn kind="p" size="lg" disabled={polling} onClick={() => void search()}>{polling ? '现场库查询中…' : '查询'}</Btn>
       </div>
 
-      <div className="seg" style={{ marginBottom: 16 }}>
-        <button className={tab === 'vehicles' ? 'on' : ''} onClick={() => setTab('vehicles')}>
-          车辆查询{groups.length ? ` · ${groups.length}` : ''}
-        </button>
-        <button className={tab === 'cards' ? 'on' : ''} onClick={() => setTab('cards')}>
-          门禁卡{cards ? ` · ${cards.length}` : ''}
-        </button>
-      </div>
-
-      {tab === 'vehicles' ? (
-        <>
           {!query && !polling ? (
             <Card style={{ padding: '52px 20px' }}>
               <div className="empty">输入房号或车牌，从现场停车库读出这个房号的车辆档案</div>
@@ -204,35 +171,6 @@ export default function Vehicles() {
           {query && !polling && !rows.length ? (
             <Card style={{ padding: 36 }}><div className="empty">停车库里没有查到「{query.term}」的记录</div></Card>
           ) : null}
-        </>
-      ) : (
-        cards === null ? (
-          <Card style={{ padding: 40 }}><Loading text="读取门禁卡…" /></Card>
-        ) : (
-          <Card style={{ overflow: 'hidden' }}>
-            <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <b>门禁卡</b>
-              <span className="muted">{cards.length} 张</span>
-              {cardErr ? <span className="muted" style={{ color: 'var(--dang)' }}>{cardErr}</span> : null}
-              <button className="btn sm" style={{ marginLeft: 'auto' }} onClick={() => nav('/access-cards')}>门禁管理</button>
-            </div>
-            {cards.length ? (
-              <table className="t">
-                <thead><tr><th>卡号</th><th>状态</th></tr></thead>
-                <tbody>
-                  {cards.map((c) => (
-                    <tr key={c.id}>
-                      <td><b>{c.cardNo}</b></td>
-                      <td className="sub">{c.status}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : <div className="empty" style={{ padding: 22 }}>这个搜索下没有门禁卡记录</div>}
-          </Card>
-        )
-      )}
-
       {newOpen ? (
         <Sheet open onClose={() => { setNewOpen(false); setNewQr(null); }} width={520} title="新车登记" subtitle="业主扫码自己填车牌与资料">
           <div style={{ padding: '4px 2px' }}>
