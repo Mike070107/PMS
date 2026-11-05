@@ -23,6 +23,7 @@ import {
 import type { FamilyCarFile, FamilyCarStatus } from '../../entities';
 import { AccessService, ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
+import { addNaturalOrderBy } from '../../common/natural-order';
 import { NotificationsService } from '../notifications/notifications.service';
 import { detectUploadContentType } from '../upload/upload.controller';
 import { ObjectStorageService } from '../upload/object-storage.service';
@@ -144,7 +145,10 @@ export class FamilyCarService {
     }
     // 已作废的只在「全部」里出现，清册默认不显示
     if (query.status !== 'all') qb.andWhere(`fc.status <> 'void'`);
-    qb.orderBy('fc.lane', 'ASC').addOrderBy('fc.building_no::int', 'ASC').addOrderBy('fc.room_no', 'ASC').addOrderBy('fc.id', 'DESC');
+    qb.orderBy('fc.lane', 'ASC');
+    addNaturalOrderBy(qb, 'fc.building_no');
+    addNaturalOrderBy(qb, 'fc.room_no');
+    qb.addOrderBy('fc.id', 'DESC');
     const rows = await qb.getMany();
     const today = shanghaiDate();
     return { rows: rows.map((row) => this.view(row, today)), today };
