@@ -5650,3 +5650,10 @@
 - 自上次（302d7b5d）以来上线的相关提交：
   - 61c0f696 feat(family-cars): publish independent menu with verified access guards
 
+## 2026-11-05 18:23 · api · 94c26058
+
+- 包：`pms-api-fast-20261105-182235.tar.gz`
+- 提交：94c26058 fix(family-cars): tolerate nonnumeric building numbers in list sorting
+- 自上次（f50eca7e）以来上线的相关提交：
+  - 94c26058 fix(family-cars): tolerate nonnumeric building numbers in list sorting
+
