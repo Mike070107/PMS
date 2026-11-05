@@ -20,10 +20,12 @@ export default function Login() {
 
   const finishLogin = useCallback(async (accessToken: string, user: AdminLoginResp['user']) => {
     auth.setLogin({ accessToken, tokenType: 'Bearer', user });
+    const identity = auth.captureIdentity();
     try {
       const meResp = await authApi.me();
-      auth.setAccess(meResp?.access ?? null);
-    } catch { auth.setAccess(null); }
+      auth.setAccess(meResp?.access ?? null, identity);
+    } catch { auth.setAccess(null, identity); }
+    if (!auth.isCurrent(identity)) return;
     toast('登录成功');
     nav('/today', { replace: true });
   }, [nav]);

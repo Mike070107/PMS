@@ -53,10 +53,13 @@ export default function App() {
   // 权限（页面可见性和管理处切换）来自 /auth/me；登录态可能是别的标签页留下的
   useEffect(() => {
     if (!session.token) return;
+    const identity = auth.captureIdentity();
+    let active = true;
     authApi.me()
-      .then((r) => auth.setAccess(r.access ?? null))
+      .then((r) => { if (active) auth.setAccess(r.access ?? null, identity); })
       .catch(() => undefined);
-  }, [session.token]);
+    return () => { active = false; };
+  }, [session.token, session.generation]);
 
   // 业主手机扫码填写页：不需要登录，也不套后台外壳
   if (loc.pathname.startsWith('/m/plate/')) {
