@@ -52,7 +52,7 @@ import { sortedHouses } from '@pms/shared-types';
 import { request } from '../lib/api';
 import { centsToYuan, exportXlsx } from '../lib/exportXlsx';
 import { handleGone } from '../lib/gone';
-import { usePagePerm } from '../lib/auth';
+import { useAuth, usePagePerm } from '../lib/auth';
 import MisPropertyFees from '../components/MisPropertyFees';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
 import { FeeBreakdownChart, FeeTrendChart } from '../components/FeeReportCharts';
@@ -2215,18 +2215,34 @@ function DetailField({ label, value, color }: { label: string; value: string; co
 }
 
 export function HouseDetailModal({ houseId, onClose }: { houseId: number | null; onClose: () => void }) {
-  const { message } = AntdApp.useApp();
-  const [data, setData] = useState<HouseDetail | null>(null);
+  const session = useAuth();
+  const scopeKey = JSON.stringify([session.user?.id,session.user?.tenantId,session.actingTenant?.id,session.actingOffice?.id]);
+  const [loaded, setLoaded] = useState<{houseId:number; scopeKey:string; data:HouseDetail} | null>(null);
+  const data = loaded?.houseId === houseId && loaded.scopeKey === scopeKey ? loaded.data : null;
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const [reloadVersion, setReloadVersion] = useState(0);
+  const [activeTab, setActiveTab] = useState('bills');
+  useEffect(() => { setActiveTab('bills'); }, [houseId, scopeKey]);
 
   useEffect(() => {
-    if (!houseId) { setData(null); return; }
+    setLoaded(null);
+    setLoadError('');
+    if (!houseId) {setLoading(false);return;}
+    let current = true;
     setLoading(true);
     request<HouseDetail>({ url: `/fees/houses/${houseId}` })
-      .then(setData)
-      .catch((e: any) => message.error(e?.message || '加载失败'))
-      .finally(() => setLoading(false));
-  }, [houseId, message]);
+      .then(data => {
+        if(!current) return;
+        if(!data?.house || data.house.id !== houseId || !Array.isArray(data.bills) || !Array.isArray(data.standards)) {
+          throw new Error('缴费明细返回不完整，请重试；当前未获得完整账单和收费标准。');
+        }
+        setLoaded({houseId,scopeKey,data});
+      })
+      .catch((e: any) => { if(current) setLoadError(typeof e?.message === 'string' && /[\u4e00-\u9fff]/.test(e.message) ? e.message : '缴费明细读取失败，请稍后重试。'); })
+      .finally(() => { if(current) setLoading(false); });
+    return () => { current = false; };
+  }, [houseId, scopeKey, reloadVersion]);
 
   const house = data?.house;
 
@@ -2255,18 +2271,23 @@ export function HouseDetailModal({ houseId, onClose }: { houseId: number | null;
           </Col>
         </Row>
       )}
+      {loadError && <Alert type="error" showIcon message="缴费明细加载失败" description={loadError}
+        action={<Button onClick={() => setReloadVersion(v => v + 1)}>重试</Button>} style={{marginBottom:16}} />}
       <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
         items={[
           {
             key: 'bills',
-            label: `账单（${data?.bills.length ?? 0}）`,
+            label: `账单（${data ? data.bills.length : loading ? '读取中' : '未获取'}）`,
             children: (
               <Table<BillRow>
                 rowKey="id"
                 size="small"
                 loading={loading}
                 dataSource={data?.bills ?? []}
-                tableLayout="fixed"
+                                locale={{emptyText:loadError ? '读取失败，请点击重试' : loading ? '正在读取账单…' : '暂无账单'}}
+                                tableLayout="fixed"
                 scroll={{ x: 720, y: 380 }}
                 pagination={{ pageSize: 24, showSizeChanger: false }}
                 columns={[
@@ -2291,14 +2312,15 @@ export function HouseDetailModal({ houseId, onClose }: { houseId: number | null;
           },
           {
             key: 'standards',
-            label: `收费标准（${data?.standards.length ?? 0}）`,
+            label: `收费标准（${data ? data.standards.length : loading ? '读取中' : '未获取'}）`,
             children: (
               <Table<StandardRow>
                 rowKey={row=>row.id??row.feeCode}
                 size="small"
                 loading={loading}
                 dataSource={data?.standards ?? []}
-                tableLayout="fixed"
+                                locale={{emptyText:loadError ? '读取失败，请点击重试' : loading ? '正在读取收费标准…' : '暂无收费标准'}}
+                                tableLayout="fixed"
                 scroll={{ x: 640 }}
                 pagination={false}
                 columns={[
