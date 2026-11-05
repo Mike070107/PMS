@@ -87,7 +87,8 @@ test('公寓收费提交进入日志管理且不记录住户隐私', () => {
 test('暂未配置中文名的接口也按路由分别统计，不再全部混成一个事件', () => {
   const upload = resolveBusinessAction('POST', '/api/v1/upload');
   const notice = resolveBusinessAction('POST', '/api/v1/notifications/templates/test');
-  assert.equal(upload.label, '新增/提交附件');
+  assert.equal(upload.label, '上传业务附件');
+  assert.equal(upload.known, true);
   assert.notEqual(upload.code, notice.code);
 });
 

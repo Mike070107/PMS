@@ -9,6 +9,7 @@ import { AccessService } from '../access/access.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { businessActionCodesByArea, listBusinessActions, resolveBusinessAction } from './business-action';
 import { buildApiErrorAlert } from './alert-presentation';
+import { auditClassPredicate, presentOperation, safeLogPath, redactSensitiveLog } from './log-presentation';
 import { safeFeedbackAttachments } from './feedback-attachment';
 import {
   ClientErrorDto,
@@ -121,14 +122,14 @@ export class ObservabilityService {
         message:
           input.statusCode < 400
             ? business.label
-            : `${business.label}失败：${input.errorMessage || '未知原因'}`,
+            : `${business.label.replace(/（(?:通过|拒绝)）/g, '')}请求失败（HTTP ${input.statusCode}）`,
         detail: {
           operationLabel: business.label,
           businessArea: business.area,
           objectType: business.objectType || null,
           objectId: business.objectId || null,
           ...(business.detail || {}),
-          ...(input.errorMessage ? { errorMessage: input.errorMessage } : {}),
+          // 操作日志不采集异常自由文本，避免把审批原因或敏感表单内容带入审计。
         },
       });
     } catch {
@@ -302,6 +303,10 @@ export class ObservabilityService {
   async list(user: AuthUser, query: SystemLogQueryDto) {
     const tenantId = requireTenant(user);
     const qb = this.logRepo.createQueryBuilder('log').where('log.tenant_id = :tenantId', { tenantId });
+    if (query.auditClass) {
+      const filter = auditClassPredicate(query.auditClass);
+      qb.andWhere(filter.sql, filter.params);
+    }
     if (query.category) qb.andWhere('log.category = :category', { category: query.category });
     if (query.level) qb.andWhere('log.level = :level', { level: query.level });
     if (query.source) qb.andWhere('log.source = :source', { source: query.source });
@@ -350,20 +355,21 @@ export class ObservabilityService {
     const userById = new Map(users.map((row) => [row.id, row]));
     return {
       list: rows.map((row) => {
-        const legacyBusiness = row.category === 'operation' && !row.detail?.operationLabel
-          ? resolveBusinessAction(row.requestMethod || row.action.split(' ')[0] || '', row.requestPath || row.action.replace(/^\w+\s+/, ''))
-          : null;
+        const presentation = presentOperation(row);
         return {
           ...row,
-          detail: legacyBusiness
+          requestPath: row.requestPath ? safeLogPath(row.requestPath) : row.requestPath,
+          presentation,
+          detail: presentation
             ? {
                 ...(row.detail || {}),
-                operationLabel: legacyBusiness.label,
-                businessArea: legacyBusiness.area,
-                objectType: legacyBusiness.objectType || null,
-                objectId: legacyBusiness.objectId || null,
+                operationLabel: presentation.actionLabel,
+                businessArea: presentation.moduleLabel,
+                objectType: presentation.objectType,
+                objectId: presentation.objectId,
               }
             : row.detail,
+          ...(redactSensitiveLog(row) || {}),
           actorName: row.actorUserId
             ? userById.get(row.actorUserId)?.name || userById.get(row.actorUserId)?.loginAccount || `用户 #${row.actorUserId}`
             : '系统',
@@ -615,7 +621,7 @@ function requireTenant(user: AuthUser) {
 }
 
 function normalizePath(value: string) {
-  const path = String(value || '/').split('?')[0];
+  const path = safeLogPath(value);
   return clip(path.replace(/\/+$/, '') || '/', 240);
 }
 

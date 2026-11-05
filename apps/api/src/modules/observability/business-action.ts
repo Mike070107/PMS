@@ -2,7 +2,10 @@
  * 把写接口翻译成业务人员能看懂、也能长期统计的操作事件。
  * action code 一旦上线就不随文案改名；中文 label 可以持续优化。
  */
+import { ADDITIONAL_BUSINESS_ACTIONS } from './additional-business-actions';
+
 export interface BusinessAction {
+  known: boolean;
   code: string;
   label: string;
   area: string;
@@ -50,7 +53,7 @@ const RULES: Rule[] = [
   { method: 'PATCH', pattern: /^\/stocks\/(\d+)$/, code: 'stock_update', label: '修改库存', area: '库存', objectType: 'stock' },
   { method: 'POST', pattern: /^\/goods-receipts(?:\/general)?$/, code: 'stock_receive', label: '办理入库', area: '库存', objectType: 'goods_receipt' },
   { method: 'POST', pattern: /^\/transfer-orders$/, code: 'stock_transfer_create', label: '新建库存调拨', area: '库存', objectType: 'transfer_order' },
-  { method: 'POST', pattern: /^\/transfer-orders\/(\d+)\/approve$/, code: 'stock_transfer_approve', label: '审批库存调拨', area: '库存', objectType: 'transfer_order' },
+  { method: 'POST', pattern: /^\/transfer-orders\/(\d+)\/approve$/, code: 'stock_transfer_approve', label: '审核库存调拨（通过）', area: '库存', objectType: 'transfer_order' },
   { method: 'POST', pattern: /^\/transfer-orders\/(\d+)\/receive$/, code: 'stock_transfer_receive', label: '确认调拨收货', area: '库存', objectType: 'transfer_order' },
   { method: 'POST', pattern: /^\/stocktakes$/, code: 'stocktake_create', label: '发起库存盘点', area: '盘点', objectType: 'stocktake' },
   { method: 'POST', pattern: /^\/stocktakes\/(\d+)\/items\/(\d+)\/count$/, code: 'stocktake_count', label: '录入实盘数量', area: '盘点', objectType: 'stocktake' },
@@ -59,9 +62,9 @@ const RULES: Rule[] = [
   { method: 'POST', pattern: /^\/purchase-requests$/, code: 'purchase_request_create', label: '提交采购申请', area: '采购', objectType: 'purchase_request' },
   { method: 'POST', pattern: /^\/purchase-requests\/submit-to-manager$/, code: 'purchase_request_submit_manager', label: '采购申请提交主管', area: '采购', objectType: 'purchase_request' },
   { method: 'PATCH', pattern: /^\/purchase-requests\/(\d+)\/items$/, code: 'purchase_request_items_update', label: '修改采购申请明细', area: '采购', objectType: 'purchase_request' },
-  { method: 'POST', pattern: /^\/purchase-requests\/(\d+)\/reject-item$/, code: 'purchase_request_item_reject', label: '驳回采购申请明细', area: '采购', objectType: 'purchase_request' },
-  { method: 'POST', pattern: /^\/purchase-requests\/(\d+)\/(?:manager-approve|purchaser-approve)$/, code: 'purchase_request_approve', label: '审批采购申请', area: '采购', objectType: 'purchase_request' },
-  { method: 'POST', pattern: /^\/purchase-requests\/(\d+)\/reject$/, code: 'purchase_request_reject', label: '驳回采购申请', area: '采购', objectType: 'purchase_request' },
+  { method: 'POST', pattern: /^\/purchase-requests\/(\d+)\/reject-item$/, code: 'purchase_request_item_reject', label: '审核采购申请明细（拒绝）', area: '采购', objectType: 'purchase_request' },
+  { method: 'POST', pattern: /^\/purchase-requests\/(\d+)\/(?:manager-approve|purchaser-approve)$/, code: 'purchase_request_approve', label: '审核采购申请（通过）', area: '采购', objectType: 'purchase_request' },
+  { method: 'POST', pattern: /^\/purchase-requests\/(\d+)\/reject$/, code: 'purchase_request_reject', label: '审核采购申请（拒绝）', area: '采购', objectType: 'purchase_request' },
   { method: 'POST', pattern: /^\/purchase-orders$/, code: 'purchase_order_create', label: '生成采购单', area: '采购', objectType: 'purchase_order' },
   { method: 'POST', pattern: /^\/materials$/, code: 'material_create', label: '新增材料 SKU', area: '材料', objectType: 'material' },
   { method: 'PATCH', pattern: /^\/materials\/(\d+)$/, code: 'material_update', label: '修改材料 SKU', area: '材料', objectType: 'material' },
@@ -75,7 +78,7 @@ const RULES: Rule[] = [
   { method: 'PATCH', pattern: /^\/warehouse-locations\/(\d+)$/, code: 'warehouse_location_update', label: '修改仓库库位', area: '库存', objectType: 'warehouse_location' },
   { method: 'POST', pattern: /^\/suppliers$/, code: 'supplier_create', label: '新增供应商', area: '采购', objectType: 'supplier' },
   { method: 'PATCH', pattern: /^\/suppliers\/(\d+)$/, code: 'supplier_update', label: '修改供应商', area: '采购', objectType: 'supplier' },
-  { method: 'POST', pattern: /^\/transfer-orders\/(\d+)\/reject$/, code: 'stock_transfer_reject', label: '驳回库存调拨', area: '库存', objectType: 'transfer_order' },
+  { method: 'POST', pattern: /^\/transfer-orders\/(\d+)\/reject$/, code: 'stock_transfer_reject', label: '审核库存调拨（拒绝）', area: '库存', objectType: 'transfer_order' },
   { method: 'POST', pattern: /^\/settings\/ai\/samples$/, code: 'ai_sample_create', label: '新增 AI 识别样例', area: 'AI 配置', objectType: 'ai_sample' },
   { method: 'PATCH', pattern: /^\/settings\/ai\/samples\/(\d+)$/, code: 'ai_sample_update', label: '修改 AI 识别样例', area: 'AI 配置', objectType: 'ai_sample' },
   { method: 'DELETE', pattern: /^\/settings\/ai\/samples\/(\d+)$/, code: 'ai_sample_delete', label: '删除 AI 识别样例', area: 'AI 配置', objectType: 'ai_sample' },
@@ -89,8 +92,8 @@ const RULES: Rule[] = [
   { method: 'PATCH', pattern: /^\/staff\/(\d+)$/, code: 'staff_update', label: '修改员工', area: '用户权限', objectType: 'staff' },
   { method: 'POST', pattern: /^\/roles$/, code: 'role_create', label: '新增业务角色', area: '用户权限', objectType: 'role' },
   { method: 'PATCH', pattern: /^\/roles\/(\d+)$/, code: 'role_update', label: '修改业务角色权限', area: '用户权限', objectType: 'role' },
-  { method: 'POST', pattern: /^\/audits\/(\d+)\/approve$/, code: 'owner_audit_approve', label: '通过业主入驻审核', area: '业主', objectType: 'owner_audit' },
-  { method: 'POST', pattern: /^\/audits\/(\d+)\/reject$/, code: 'owner_audit_reject', label: '驳回业主入驻审核', area: '业主', objectType: 'owner_audit' },
+  { method: 'POST', pattern: /^\/audits\/(\d+)\/approve$/, code: 'owner_audit_approve', label: '审核业主入驻（通过）', area: '业主', objectType: 'owner_audit' },
+  { method: 'POST', pattern: /^\/audits\/(\d+)\/reject$/, code: 'owner_audit_reject', label: '审核业主入驻（拒绝）', area: '业主', objectType: 'owner_audit' },
   { method: 'POST', pattern: /^\/audits\/(\d+)\/revert$/, code: 'owner_audit_revert', label: '撤回业主审核结果', area: '业主', objectType: 'owner_audit' },
   { method: 'POST', pattern: /^\/owners-mgmt$/, code: 'owner_create', label: '新增业主档案', area: '业主', objectType: 'owner' },
   { method: 'POST', pattern: /^\/owners-mgmt\/import$/, code: 'owner_import', label: '导入业主档案', area: '业主', objectType: 'owner' },
@@ -98,7 +101,7 @@ const RULES: Rule[] = [
   { method: 'DELETE', pattern: /^\/owners-mgmt\/(\d+)$/, code: 'owner_delete', label: '删除业主档案', area: '业主', objectType: 'owner' },
   { method: 'POST', pattern: /^\/fees\/bills$/, code: 'fee_bill_create', label: '新增物业费账单', area: '收费', objectType: 'fee_bill' },
   { method: 'POST', pattern: /^\/fees\/cashier\/charges$/, code: 'apartment_charge_create', label: '办理公寓收费', area: '收费', objectType: 'fee_bill' },
-  { method: 'POST', pattern: /^\/fees\/cashier\/receipts\/[^/]+\/reprint$/, code: 'apartment_receipt_reprint', label: '补打公寓收费小票', area: '收费', objectType: 'fee_bill' },
+  { method: 'POST', pattern: /^\/fees\/cashier\/receipts\/[^/]+\/reprint$/, code: 'apartment_receipt_reprint', label: '请求补打公寓收费小票', area: '收费', objectType: 'fee_bill' },
   { method: 'POST', pattern: /^\/fees\/cashier\/receipts\/[^/]+\/refund$/, code: 'apartment_charge_refund', label: '红冲公寓收费收据', area: '收费', objectType: 'fee_bill' },
   { method: 'PATCH', pattern: /^\/fees\/bills\/(\d+)$/, code: 'fee_bill_update', label: '修改物业费账单', area: '收费', objectType: 'fee_bill' },
   { method: 'DELETE', pattern: /^\/fees\/bills\/(\d+)$/, code: 'fee_bill_delete', label: '删除物业费账单', area: '收费', objectType: 'fee_bill' },
@@ -116,7 +119,7 @@ const RULES: Rule[] = [
   { method: 'PATCH', pattern: /^\/business\/rules\/(\d+)$/, code: 'business_rule_update', label: '修改收费业务规则', area: '收费', objectType: 'business_rule' },
   { method: 'POST', pattern: /^\/maintenance-orders$/, code: 'maintenance_order_create', label: '新建计划维保单', area: '维保', objectType: 'maintenance_order' },
   { method: 'PATCH', pattern: /^\/maintenance-orders\/(\d+)$/, code: 'maintenance_order_update', label: '修改计划维保单', area: '维保', objectType: 'maintenance_order' },
-  { method: 'DELETE', pattern: /^\/maintenance-orders\/(\d+)$/, code: 'maintenance_order_delete', label: '删除计划维保单', area: '维保', objectType: 'maintenance_order' },
+  { method: 'DELETE', pattern: /^\/maintenance-orders\/(\d+)$/, code: 'maintenance_order_delete', label: '作废计划维保单', area: '维保', objectType: 'maintenance_order' },
   { method: 'POST', pattern: /^\/maintenance-orders\/(\d+)\/inspect$/, code: 'maintenance_order_inspect', label: '提交维保验收', area: '维保', objectType: 'maintenance_order' },
   { method: 'POST', pattern: /^\/maintenance-orders\/(\d+)\/(?:sign-token|inspect-token)$/, code: 'maintenance_order_sign_prepare', label: '生成维保签字凭证', area: '维保', objectType: 'maintenance_order' },
   { method: 'POST', pattern: /^\/quota-items$/, code: 'maintenance_quota_create', label: '新增维保定额', area: '维保', objectType: 'quota_item' },
@@ -134,7 +137,7 @@ const RULES: Rule[] = [
   { method: 'DELETE', pattern: /^\/buildings\/(\d+)$/, code: 'building_delete', label: '删除楼栋', area: '基础档案', objectType: 'building' },
   { method: 'POST', pattern: /^\/houses$/, code: 'house_create', label: '新增房屋', area: '基础档案', objectType: 'house' },
   { method: 'PATCH', pattern: /^\/houses\/(\d+)$/, code: 'house_update', label: '修改房屋', area: '基础档案', objectType: 'house' },
-  { method: 'DELETE', pattern: /^\/houses\/(\d+)$/, code: 'house_delete', label: '删除房屋', area: '基础档案', objectType: 'house' },
+  { method: 'DELETE', pattern: /^\/houses\/(\d+)$/, code: 'house_delete', label: '归档房屋', area: '基础档案', objectType: 'house' },
   { method: 'POST', pattern: /^\/community-spots$/, code: 'community_spot_create', label: '新增公区点位', area: '基础档案', objectType: 'community_spot' },
   { method: 'PATCH', pattern: /^\/community-spots\/(\d+)$/, code: 'community_spot_update', label: '修改公区点位', area: '基础档案', objectType: 'community_spot' },
   { method: 'DELETE', pattern: /^\/community-spots\/(\d+)$/, code: 'community_spot_delete', label: '删除公区点位', area: '基础档案', objectType: 'community_spot' },
@@ -147,6 +150,10 @@ const RULES: Rule[] = [
   { method: 'POST', pattern: /^\/staff\/(\d+)\/unbind-wx$/, code: 'staff_unbind_wechat', label: '解绑员工微信', area: '用户权限', objectType: 'staff' },
 ];
 
+// 原有语义规则优先，扩展字典不覆盖已上线 code。
+export const businessActionRules: readonly Readonly<Rule>[] = [...RULES, ...ADDITIONAL_BUSINESS_ACTIONS];
+const ALL_RULES = businessActionRules;
+
 /** 报修新增走 body 分支，不在 RULES 里，补进筛选项，否则下拉少两条。 */
 const EXTRA_ACTIONS: Array<{ code: string; label: string; area: string }> = [
   { code: 'repair_create_quick_ai', label: 'AI 随手拍报修', area: '报修' },
@@ -156,7 +163,7 @@ const EXTRA_ACTIONS: Array<{ code: string; label: string; area: string }> = [
 /** 给筛选下拉用：按业务模块分组的操作清单。code 是上线后不改名的那个。 */
 export function listBusinessActions() {
   const byArea = new Map<string, Map<string, string>>();
-  for (const item of [...EXTRA_ACTIONS, ...RULES]) {
+  for (const item of [...EXTRA_ACTIONS, ...ALL_RULES]) {
     if (!byArea.has(item.area)) byArea.set(item.area, new Map());
     byArea.get(item.area)!.set(item.code, item.label);
   }
@@ -168,7 +175,7 @@ export function listBusinessActions() {
 
 /** 某个业务模块下的全部 action code，用于「只看这个模块」的筛选。 */
 export function businessActionCodesByArea(area: string) {
-  return [...new Set([...EXTRA_ACTIONS, ...RULES].filter((item) => item.area === area).map((item) => item.code))];
+  return [...new Set([...EXTRA_ACTIONS, ...ALL_RULES].filter((item) => item.area === area).map((item) => item.code))];
 }
 
 export function resolveBusinessAction(
@@ -183,6 +190,7 @@ export function resolveBusinessAction(
   if (verb === 'POST' && path === '/repair-requests') {
     const quick = body?.entryMode === 'quick_ai';
     return {
+      known: true,
       code: quick ? 'repair_create_quick_ai' : 'repair_create_form',
       label: quick ? 'AI 随手拍报修' : '填写表单报修',
       area: '报修',
@@ -192,12 +200,13 @@ export function resolveBusinessAction(
     };
   }
 
-  for (const rule of RULES) {
+  for (const rule of ALL_RULES) {
     if (rule.method !== verb) continue;
     const match = path.match(rule.pattern);
     if (!match) continue;
     return {
       code: rule.code,
+      known: true,
       label: rule.label,
       area: rule.area,
       objectType: rule.objectType,
@@ -206,7 +215,7 @@ export function resolveBusinessAction(
     };
   }
 
-  const generic = verb === 'DELETE' ? '删除' : verb === 'POST' ? '新增/提交' : '修改';
+
   const firstSegment = path.split('/').filter(Boolean)[0] || 'business';
   const moduleLabel = FALLBACK_MODULE_LABELS[firstSegment] || '业务';
   const routeCode = path
@@ -216,7 +225,8 @@ export function resolveBusinessAction(
     .join('_') || 'business';
   return {
     code: `${verb.toLowerCase()}_${routeCode}`.slice(0, 120),
-    label: `${generic}${moduleLabel}`,
+    known: false,
+    label: `提交${moduleLabel}请求（业务动作未标注）`,
     area: moduleLabel,
     objectId: positiveInt(path.match(/\/(\d+)(?:\/|$)/)?.[1]),
     detail: safeBusinessDetail(body, result),
@@ -247,6 +257,8 @@ function safeBusinessDetail(body?: any, result?: any): Record<string, unknown> {
     'communityId', 'buildingId', 'houseId', 'assigneeId', 'warehouseId',
     'materialId', 'repairType', 'skill', 'entryMode', 'urgent', 'status',
   ].forEach(copy);
+  if (['approve', 'approved', 'reject', 'rejected', 'return', 'reupload', 'void'].includes(body?.decision)) detail.decision = body.decision;
+  if (typeof body?.approved === 'boolean') detail.approved = body.approved;
   if (Array.isArray(body?.items)) detail.itemCount = body.items.length;
   if (Array.isArray(body?.materials)) detail.materialCount = body.materials.length;
   const orderNo = result?.workOrder?.orderNo || result?.orderNo || result?.requestNo;
