@@ -5643,3 +5643,10 @@
 - 自上次（5362d23d）以来上线的相关提交：
   - 302d7b5d fix(bills): open unpaid household list by default
 
+## 2026-11-05 17:35 · web · 61c0f696
+
+- 包：`pms-web-20261105-173511.tar.gz`
+- 提交：61c0f696 feat(family-cars): publish independent menu with verified access guards
+- 自上次（302d7b5d）以来上线的相关提交：
+  - 61c0f696 feat(family-cars): publish independent menu with verified access guards
+
