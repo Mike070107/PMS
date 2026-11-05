@@ -52,7 +52,7 @@ export default function RenewSheet({
   const isFamily = identity === '亲情车';
   const rateKey = rateKeyOf(identity);
   const targets = useMemo(() => rows.filter((r) => r.database === 'parking1' || r.database === 'parking2'), [rows]);
-  const baseEnd = useMemo(() => {
+  const localBaseEnd = useMemo(() => {
     const ends = targets.map((r) => ymd(field(r.fields, 'expiry'))).filter(Boolean).sort();
     return ends.length ? ends[ends.length - 1] : '';
   }, [targets]);
@@ -66,13 +66,15 @@ export default function RenewSheet({
   const rateAmount = isFamily ? 0 : (rates?.[rateKey]?.[String(months)] ?? null);
   const manualAmount = amountStr.trim() !== '';
   const amount = manualAmount ? (/^\d+(?:\.\d{1,2})?$/.test(amountStr) ? Number(amountStr) : NaN) : rateAmount;
-  const newEnd = endOverride || renewalEndDate(baseEnd || undefined, months);
   const cloudKnown = cloud !== undefined && cloud !== 'loading';
   const civil = cloudKnown && cloud ? (cloud as DeliyunVehicle) : null;
 
   // 人防（德立云）只服务二期人防车库：这辆车没开人防就直接续旧库，不等人防状态、不碰德立云
   const [syncCivil, setSyncCivil] = useState(false);
   useEffect(() => { setSyncCivil(!!civil?.civilDefenseAuthorized); }, [civil?.civilDefenseAuthorized]);
+  const civilEnd = syncCivil && civil?.civilDefenseAuthorized ? ymd(civil.endDate || '') : '';
+  const baseEnd = [localBaseEnd, civilEnd].filter(Boolean).sort().pop() || '';
+  const newEnd = endOverride || renewalEndDate(baseEnd || undefined, months);
   const canSubmit = formContext === context && targets.length > 0 && !running && !submitted.current && monthsValid && Number.isInteger(months) && months >= 1 && months <= 60 && amount !== null && Number.isFinite(amount) && amount >= 0 && amount <= 1000000 && dayjs(newEnd).isValid() && (!baseEnd || newEnd >= baseEnd);
 
   const run = async () => {

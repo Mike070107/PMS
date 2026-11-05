@@ -112,7 +112,7 @@ export function Sheet({
   return (
     <>
       <div className="sheet-mask" onClick={onClose} />
-      <aside className="sheet" role="dialog" aria-label={typeof title === 'string' ? title : '详情'} style={width ? { width } : undefined}>
+      <aside className="sheet" role="dialog" aria-label={typeof title === 'string' ? title : '详情'} style={width ? { width, maxWidth: '100vw' } : { maxWidth: '100vw' }}>
         <div className="sh-h">
           <div className="l1" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span>{subtitle}</span>

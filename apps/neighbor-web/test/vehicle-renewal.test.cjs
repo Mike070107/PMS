@@ -25,6 +25,10 @@ test('vehicle renewal uses the common 1-60 month control and does not turn a mis
   h.amount().props.onChange({target:{value:'0'}});assert.equal(h.button().props.disabled,false,'explicit manual zero is allowed');
   await h.button().props.onClick();await flush();assert.equal(h.calls[0].payload.amount,0);assert.equal(h.calls[0].payload.months,17);
 });
+test('selected civil-defense renewal starts from the latest authorized system date',async()=>{
+ const h=make();h.props.cloud={id:9,civilDefenseAuthorized:true,endDate:'2028-01-31'};h.render();await flush();
+ await h.button().props.onClick();await flush();assert.equal(h.calls[0]?.payload.endDate,'2028-02-29');
+});
 test('rapid repeated submit does not renew or charge twice',async()=>{
  const h=make();h.render();await flush();const b=h.button();b.props.onClick();b.props.onClick();await flush();assert.equal(h.calls.length,1);
 });

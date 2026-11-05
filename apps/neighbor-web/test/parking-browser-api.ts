@@ -1,0 +1,4 @@
+import {parkingRenewalWindow} from '@/lib/parking-renewal-window';
+const w=window as any;w.__parkingCalls=[];
+export async function request(o:any){w.__parkingCalls.push(o);if(o.url!=='/business/estimate')throw Error('隔离验收禁止调用真实接口');const d=o.data;await new Promise(r=>setTimeout(r,d.months===2?700:40));if(![1,2,3,6,12].includes(d.months))throw Error('此月数未配置价格');return {...parkingRenewalWindow({today:'2026-11-06',currentEndDate:d.currentEndDate,months:d.months}),quantity:d.months,amountCents:d.months===1?0:18000*d.months,breakdown:'隔离价格表'};}
+export const accessCardIssuance={parkingFeeRates:async()=>({owner:{1:0,2:360,3:540,6:1080,12:1800},tenant:{1:260}}),createParkingOperation:async(data:any)=>{w.__parkingCalls.push(data);await new Promise(r=>setTimeout(r,300));return{id:1,status:'completed'}},renewDeliyunVehicle:async(data:any)=>{w.__parkingCalls.push(data)}};
