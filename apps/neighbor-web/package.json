@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test test/residential-bills.test.cjs test/migrated-pages.test.cjs test/ui-theme.test.cjs test/houses-loading.test.cjs test/house-detail-modal.test.cjs test/logs-permissions.test.cjs",
+    "test": "node --test test/residential-bills.test.cjs test/migrated-pages.test.cjs test/ui-theme.test.cjs test/houses-loading.test.cjs test/house-detail-modal.test.cjs test/logs-permissions.test.cjs test/unisearch-display.test.cjs",
     "test:migrated-pages": "node --test test/migrated-pages.test.cjs",
     "test:ui-preferences": "node --test test/ui-theme.test.cjs",
     "dev": "vite",

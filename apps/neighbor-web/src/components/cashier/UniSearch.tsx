@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AddressCommunity } from '@pms/shared-types';
 import Icon from '@/components/Icon';
+import './UniSearch.css';
 
 /**
  * 收银台统一查询框（照旧页「门禁发卡」的选房输入框做）：一个入口，既能输入也能点选。
@@ -46,6 +47,8 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
   width?: number | string;
 }) {
   const [text, setText] = useState('');
+  const [selectionText, setSelectionText] = useState<string | null>(null);
+  const [selectionRevision, setSelectionRevision] = useState(0);
   const [open, setOpen] = useState(false);
   const [cid, setCid] = useState<number | null>(null);
   const [bid, setBid] = useState<number | null>(null);
@@ -55,6 +58,26 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
   const box = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const seq = useRef(0);
+  const pickSeq = useRef(0);
+  // 所有用户意图共用失效入口，避免只给某一条异步路径补保护。
+  const invalidate = () => {
+    pickSeq.current += 1;
+    seq.current += 1;
+    setRes(null);
+    setBusy(false);
+    setErr('');
+    return pickSeq.current;
+  };
+  useEffect(() => {
+    invalidate();
+    return () => {pickSeq.current += 1; seq.current += 1;};
+  }, [communities]);
+
+  useEffect(() => {
+    // React 已提交受控 value 和 ref，再按展示值全选；不主动 focus，避免异步回填抢焦点。
+    const el = input.current;
+    if (selectionText !== null && el && document.activeElement === el) el.select();
+  }, [selectionText, selectionRevision]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -76,7 +99,7 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
         .catch((e) => { if (seq.current === my) { setRes(null); setErr(e instanceof Error ? e.message : '查询失败'); } })
         .finally(() => { if (seq.current === my) setBusy(false); });
     }, 300);
-    return () => window.clearTimeout(t);
+    return () => { window.clearTimeout(t); seq.current += 1; };
   }, [kw, typed, search]);
 
   const comms = useMemo(() => communities.filter((c) => c.buildings.length), [communities]);
@@ -124,19 +147,40 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
   }, [houses, typed, kw]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** 点选 → 拼成 228/5/201 这种带弄号的短写去查；唯一命中直接选中 */
-  const pickFromColumns = (c: AddressCommunity, b: { lane: string | null; buildingNo: string } | null, roomNo: string | null) => {
-    const term = b ? (roomNo ? `${b.lane || ''}/${b.buildingNo}/${roomNo}` : `${b.lane || ''}/${b.buildingNo}`) : c.name;
+  const pickFromColumns = (c: AddressCommunity, b: AddressCommunity['buildings'][number] | null, roomNo: string | null) => {
+    const term = b ? [b.lane, b.buildingNo, roomNo].filter(Boolean).join('/') : c.name;
+    const my = invalidate();
+    setBusy(true);
+    setSelectionText(null);
     setText(term);
     setOpen(true);
     void search(term).then((r) => {
+      if(my !== pickSeq.current) return;
       setRes(r);
-      const exact = roomNo ? r.houses.find((h) => h.roomNo === roomNo) : null;
-      if (exact) { onPick({ kind: 'house', hit: exact, all: r }); setOpen(false); return; }
-      if (r.houses.length === 1) { onPick({ kind: 'house', hit: r.houses[0], all: r }); setOpen(false); }
-    }).catch(() => { /* 结果留在列表里 */ });
+      const selected = roomNo ? b?.houses.find(h => h.roomNo === roomNo) : null;
+      const exact = selected ? r.houses.find(h => h.id === selected.id && h.communityId === c.id) : null;
+      if (exact) { choose({kind:'house',hit:exact,all:r}); return; }
+      if(roomNo){setErr('未查到所选房间，请重新选择或重试；不会自动替换成其他住户。');return;}
+      const matches = r.houses.filter(h => h.communityId === c.id && (!b || (h.buildingNo === b.buildingNo && (h.lane || '') === (b.lane || ''))));
+      if (matches.length === 1) choose({kind:'house',hit:matches[0],all:r});
+    }).catch((e) => {
+      if (my === pickSeq.current) setErr(e instanceof Error ? e.message : '查询失败，请重试');
+    }).finally(() => {
+      if (my === pickSeq.current) setBusy(false);
+    });
   };
 
-  const choose = (p: UniPick) => { onPick(p); setOpen(false); };
+  const choose = (p: UniPick) => {
+    invalidate();
+    setSelectionRevision((value) => value + 1);
+    if(p.kind === 'house') {
+      const h = p.hit;
+      const building = /^\d+$/.test(h.buildingNo) ? `${h.buildingNo}号楼` : h.buildingNo;
+      const room = /^\d+$/.test(h.roomNo) ? `${h.roomNo}室` : h.roomNo;
+      setSelectionText([h.communityName, `${h.lane ? `${h.lane}弄` : ''}${building}`, room].filter(Boolean).join(' / '));
+    } else setSelectionText(null);
+    onPick(p); setOpen(false);
+  };
 
   /**
    * 回车：不能只等防抖那次查询的结果（多半还没回来，按下去像没反应）。
@@ -149,14 +193,22 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
       const h = shownHouses.find((x) => (parsed.room ? x.roomNo.startsWith(parsed.room) : false)) ?? shownHouses[0];
       if (h) { pickFromColumns(curC, curB, h.roomNo); return; }
     }
-    let r = res;
-    if (!r) {
-      setBusy(true);
-      try { r = await search(term); setRes(r); }
-      catch (e) { setErr(e instanceof Error ? e.message : '查询失败'); }
-      finally { setBusy(false); }
+    // Enter 查询属于本次输入意图；不能复用上一查询词的结果。
+    const my = invalidate();
+    setBusy(true);
+    setErr('');
+    let r: UniResult;
+    try {
+      r = await search(term);
+      if (my !== pickSeq.current) return;
+      setRes(r);
+    } catch (e) {
+      if (my === pickSeq.current) setErr(e instanceof Error ? e.message : '查询失败');
+      return;
+    } finally {
+      if (my === pickSeq.current) setBusy(false);
     }
-    if (!r) return;
+    if (my !== pickSeq.current) return;
     const total = r.houses.length + r.vehicles.length + r.accessCards.length;
     if (total === 1) {
       if (r.houses.length === 1) return choose({ kind: 'house', hit: r.houses[0], all: r });
@@ -178,14 +230,14 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
       <div className={`addr-search-row ${open ? 'on' : ''}`} style={{ height: 48 }}
         onMouseDown={(e) => { if (e.target !== input.current) { e.preventDefault(); input.current?.focus(); } setOpen(true); }}>
         <Icon name="search" size={18} />
-        <input ref={input} className="in" style={{ fontSize: 16 }} value={text}
+        <input ref={input} className="in" style={{ fontSize: 16 }} value={selectionText ?? text} title={selectionText ?? text}
           placeholder={placeholder ?? '房号 228/5/201、5/201、姓名、手机尾号、车牌尾号'}
-          onFocus={() => setOpen(true)}
-          onChange={(e) => { setText(e.target.value); setCid(null); setBid(null); setOpen(true); }}
+          onFocus={(event) => {setOpen(true); if(selectionText) event.currentTarget.select();}}
+          onChange={(e) => {invalidate(); setSelectionText(null); setText(e.target.value); setCid(null); setBid(null); setOpen(true); }}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void submit(); } if (e.key === 'Escape') setOpen(false); }} />
         {text ? (
           <button type="button" className="addr-search-x" title="清空"
-            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setText(''); setRes(null); setCid(null); setBid(null); input.current?.focus(); }}>✕</button>
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); invalidate(); setSelectionText(null); setText(''); setCid(null); setBid(null); input.current?.focus(); }}>✕</button>
         ) : null}
       </div>
 
@@ -195,7 +247,7 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
             <div className="as-cols">
               <div className="as-col">
                 {filteredComms.map((c) => (
-                  <button type="button" key={c.id} className={c.id === curC?.id ? 'on' : ''} onClick={() => { setCid(c.id); setBid(null); }}>
+                  <button type="button" key={c.id} className={c.id === curC?.id ? 'on' : ''} onClick={() => { invalidate(); setSelectionText(null); setText(''); setCid(c.id); setBid(null); }}>
                     <span className="l">{c.name}</span><span className="ar">›</span>
                   </button>
                 ))}
