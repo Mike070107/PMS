@@ -5685,3 +5685,12 @@
 - 自上次（1f034dad）以来上线的相关提交：
   - a103f38e [verified] feat: unify address picking and repair intake location learning
 
+## 2026-11-06 00:08 · web · 9c120930
+
+- 包：`pms-web-20261106-000735.tar.gz`
+- 提交：9c120930 Merge branch 'feat/calendar-unification'
+- 自上次（eccad7ec）以来上线的相关提交：
+  - 9c120930 Merge branch 'feat/calendar-unification'
+  - f34c0448 [verified] fix: preserve session on cashier internal navigation
+  - cbe1e0b1 [verified] feat: unify calendar controls and responsive date panels
+
