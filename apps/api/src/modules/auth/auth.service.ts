@@ -1072,6 +1072,10 @@ export class AuthService {
   }
 
   private issueTokens(user: User, authMethod: 'password' | 'wechat' = 'password') {
+    // Absolute Beijing midnight; capture once so iat rounding/clock rollover cannot shift exp.
+    const now = Date.now();
+    const iat = Math.floor(now / 1000);
+    const exp = (Math.floor((now + 8 * 3600000) / 86400000) + 1) * 86400 - 8 * 3600;
     const payload = {
       sub: user.id,
       tenantId: user.tenantId,
@@ -1080,7 +1084,7 @@ export class AuthService {
       credentialVersion: user.credentialVersion ?? 0,
     };
     return {
-      accessToken: this.jwt.sign(payload),
+      accessToken: this.jwt.sign({ ...payload, iat }, { expiresIn: exp - iat }),
       tokenType: 'Bearer',
       user: {
         id: user.id,
