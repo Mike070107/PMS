@@ -21,6 +21,7 @@ function harness(file, props = {}) {
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.resolve(__dirname, '../src', file), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText, {
     module, exports: module.exports, console, Error,
     require(id) {
+      if (id === 'react-router-dom') return { useNavigate: () => () => {} };
       if (id === 'react') return react;
       if (id === 'react/jsx-runtime') return require(id);
       if (id === '@pms/api-client') return { address: { tree: () => Promise.resolve([]) }, request: o => { assert.ok(!o.method || o.method === 'GET', 'remarks must not write'); return new Promise((resolve, reject) => requests.push({ o, resolve, reject })); } };
