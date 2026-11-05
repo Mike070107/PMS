@@ -13,13 +13,20 @@ function harness(lane=null,buildingNo='2',roomNo='201'){
   focus(){this.focusCalls++;if(document.activeElement!==this){document.activeElement=this;input().props.onFocus({currentTarget:this})}},
   select(){this.selectCalls++;this.selectionStart=0;this.selectionEnd=this.value.length},
   blur(){document.activeElement=null}};
- const module={exports:{}};const sandbox={module,exports:module.exports,Error,console,document,window:{setTimeout(fn){const id=++timerId;timers.set(id,fn);return id},clearTimeout(id){timers.delete(id)}},require(id){if(id==='react')return react;if(id==='react/jsx-runtime')return require(id);return{__esModule:true,default:'Icon'}}};
+ const module={exports:{}};const sandbox={module,exports:module.exports,Error,console,document,window:{setTimeout(fn){const id=++timerId;timers.set(id,fn);return id},clearTimeout(id){timers.delete(id)}},require(id){if(id==='react')return react;if(id==='react/jsx-runtime')return require(id);return{__esModule:true,default:id.includes('HouseAddressPicker')?'HouseAddressPicker':'Icon'}}};
  vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.resolve(__dirname,'../src/components/cashier/UniSearch.tsx'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,sandbox);
  function render(){let n=0;do{dirty=false;cursor=0;ui=module.exports.default(props);
   if(dom.value!==input().props.value){dom.value=input().props.value;dom.selectionStart=dom.selectionEnd=dom.value.length}
   input().ref.current=dom;
   while(effects.length)effects.shift()();assert.ok(++n<25)}while(dirty);return ui}
- function nodes(node=ui,out=[]){if(Array.isArray(node))node.forEach(n=>nodes(n,out));else if(node&&typeof node==='object'){out.push(node);if(node.props?.children!==undefined)nodes(node.props.children,out)}return out}
+ // Project the shared picker contract into the existing fake DOM; Cascader itself is tested separately.
+ function project(p){
+  const input={type:'input',ref:p.inputRef,props:{value:p.displayText??p.searchText??'',onFocus:e=>{p.onOpenChange(true);if(p.displayText)e.currentTarget.select()},onChange:e=>p.onSearchText(e.target.value),onKeyDown:e=>{if(e.key==='Enter')p.onSubmitText(p.searchText)}}};
+  const buttons=[];for(const c of p.communities){buttons.push({type:'button',props:{children:c.name,onClick:()=>p.onPicked({communityId:c.id})}});for(const b of c.buildings){buttons.push({type:'button',props:{children:b.lane?`${b.lane}弄${b.buildingNo}号`:`${b.buildingNo}号楼`,onClick:()=>p.onPicked({communityId:c.id,buildingId:b.id})}});for(const h of b.houses)buttons.push({type:'button',props:{children:h.roomNo,onClick:()=>p.onPicked({communityId:c.id,buildingId:b.id,houseId:h.id,roomNo:h.roomNo})}})}}
+  buttons.push({type:'button',props:{title:'清空',onMouseDown:()=>{p.onChange([]);p.onPicked(null)}}});
+  return[input,...buttons,p.extraResults];
+ }
+ function nodes(node=ui,out=[]){if(Array.isArray(node))node.forEach(n=>nodes(n,out));else if(node&&typeof node==='object'){out.push(node);if(node.type==='HouseAddressPicker')nodes(project(node.props),out);else if(node.props?.children!==undefined)nodes(node.props.children,out)}return out}
  const input=()=>nodes().find(n=>n.type==='input');
  const click=s=>{const e=nodes().find(n=>n.type==='button'&&text(n).replace(/›/g,'')===s);assert.ok(e,'missing '+s);e.props.onClick();render()};
  function focus(){dom.focus();render()}
@@ -32,6 +39,7 @@ function harness(lane=null,buildingNo='2',roomNo='201'){
  return{begin,render,input,click,complete,hit,requests,picked,dom,document,focus,type,enter,clear,flushTimers,props,unmount(){for(const slot of slots)slot?.cleanup?.()}};
 }
 function text(n){if(n==null||typeof n==='boolean')return'';if(typeof n==='string'||typeof n==='number')return String(n);if(Array.isArray(n))return n.map(text).join('');return text(n.props?.children)}
+test('只选楼栋即使查到唯一住户也不擅自选户，保留第三列供明确点室号',async()=>{const h=harness();h.render();h.focus();h.click(h.hit.communityName);h.click('2号楼');await h.complete();assert.equal(h.picked.length,0)});
 test('无弄号公寓选户后回填小区和完整房号，不出现空前缀斜杠',async()=>{const h=harness();h.begin();assert.equal(h.requests.at(-1).term,'2/201');await h.complete();assert.equal(h.input().props.value,'示例公寓颛桥店 / 2号楼 / 201室');assert.equal(h.picked[0].hit.id,9)});
 test('住宅回填保留真实弄号，查询词仍为原数字短写',async()=>{const h=harness('228','3','502');h.begin();assert.equal(h.requests.at(-1).term,'228/3/502');await h.complete();assert.equal(h.input().props.value,'示例公寓颛桥店 / 228弄3号楼 / 502室')});
 test('房号查询返回同室号其他户时，不替换用户点选的房屋',async()=>{const h=harness();h.begin();await h.complete([{...h.hit,id:88,communityId:22,communityName:'其他小区'}]);assert.equal(h.picked.length,0)});

@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { AddressCommunity } from '@pms/shared-types';
-import HouseAddressPicker, { type PickedAddress } from '@/components/HouseAddressPicker';
+import HouseAddressPicker, { PUBLIC_AREA_VALUE, type PickedAddress } from '@/components/HouseAddressPicker';
 
 /**
  * 房号选择：直接复用旧后台的 HouseAddressPicker（antd Cascader 三列联动）。
@@ -27,7 +27,7 @@ export interface PickedHouse {
 }
 
 export default function HousePicker({
-  communities, value, onPick, disabled, onFallbackSearch, onClear, onIncomplete,
+  communities, value, onPick, disabled, placeholder, onTextChange, onFallbackSearch, onClear, onIncomplete, allowPublicArea = false, onPublicPick, publicValue, selectionRevision,
 }: {
   communities: AddressCommunity[];
   value?: PickedHouse | null;
@@ -39,7 +39,18 @@ export default function HousePicker({
   onTextChange?: (text: string) => void;
   /** 只选到楼栋（「不肯说」）或数据不全时触发：提示用户再点到室号 */
   onIncomplete?: () => void;
+  allowPublicArea?: boolean;
+  onPublicPick?: (picked: PickedAddress) => void;
+  publicValue?: PickedAddress | null;
+  /** Increment to explicitly reset an in-progress partial navigation when value is already null. */
+  selectionRevision?: number;
 }) {
+  const [incomplete, setIncomplete] = useState(false);
+  // A partial path is navigation, never a chargeable household. Parent may clear
+  // the previous household in onIncomplete without collapsing the new columns.
+  const [navigationPath, setNavigationPath] = useState<Array<number | string> | null>(null);
+  useEffect(() => { if (value || publicValue) setNavigationPath(null); }, [value, publicValue]);
+  useEffect(() => { setNavigationPath(null); setIncomplete(false); }, [selectionRevision, communities]);
   /**
    * 小区列的排序：有住宅房号的排在前面，纯商铺/办公（房号全是汉字或都带商铺名）排到最后。
    * 服务端按 id 返回，早期建的商铺小区会挤在最前面，办公室选房号时看着乱。
@@ -56,18 +67,21 @@ export default function HousePicker({
   }, [communities]);
 
   const cascaderValue = useMemo<Array<number | string>>(() => {
+    if (navigationPath) return navigationPath;
+    if (allowPublicArea && publicValue?.locationKind === 'public') return [publicValue.communityId, publicValue.buildingId!, PUBLIC_AREA_VALUE];
     if (!value) return [];
     const list: Array<number | string> = [value.communityId, value.buildingId];
     if (value.houseId) list.push(value.houseId);
     return list;
-  }, [value]);
+  }, [value, publicValue, allowPublicArea, navigationPath]);
 
   const toPicked = (p: PickedAddress): PickedHouse | null => {
-    if (!p.buildingId || !p.houseId || !p.roomNo) return null;
+    if (p.locationKind === 'public' || !p.buildingId || !p.houseId || !p.roomNo) return null;
     const community = communities.find((c) => c.id === p.communityId);
     const building = community?.buildings.find((b) => b.id === p.buildingId);
     if (!community || !building) return null;
     const house = building.houses.find((h) => h.id === p.houseId);
+    if (!house || house.roomNo !== p.roomNo) return null;
     const laneText = building.lane ? `${building.lane}弄` : '';
     return {
       communityId: community.id,
@@ -91,14 +105,24 @@ export default function HousePicker({
       <HouseAddressPicker
         communities={ordered}
         value={cascaderValue}
+        onChange={next => {
+          if (!disabled) setNavigationPath(next.length > 0 && next.length < 3 ? next : null);
+        }}
+        disabled={disabled}
+        placeholder={placeholder}
+        allowPublicArea={allowPublicArea}
+        onSearchText={onTextChange}
         onPicked={(p) => {
+          if (disabled) return;
+          setIncomplete(false);
           if (!p) { onClear?.(); return; }
+          if (p.locationKind === 'public' && allowPublicArea && onPublicPick) { onPublicPick(p); return; }
           const full = toPicked(p);
           if (full) onPick(full);
-          else onIncomplete?.();
+          else { setIncomplete(true); onIncomplete?.(); }
         }}
       />
-      {disabled ? <div className="hp-mask" /> : null}
+      {incomplete ? <div role="status">请继续选择具体室号</div> : null}
       {onFallbackSearch ? (
         <button type="button" className="hp-fallback-link" onClick={onFallbackSearch}>
           按车牌 / 姓名 / 电话查 →

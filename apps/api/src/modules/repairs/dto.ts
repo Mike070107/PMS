@@ -15,7 +15,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 
 export class AiAssistTraceDto {
   @IsString()
@@ -50,6 +50,13 @@ export class CreateRepairRequestDto {
   @IsString()
   @MaxLength(255)
   addressText?: string;
+
+  /** 具体位置独立存储；不从完整地址、联系人等字段推断。 */
+  @IsOptional()
+  @Transform(({ value }) => typeof value === 'string' ? value.replace(/\s+/gu, ' ').trim() : value)
+  @IsString()
+  @MaxLength(60)
+  locationText?: string;
 
   @IsOptional()
   @IsString()

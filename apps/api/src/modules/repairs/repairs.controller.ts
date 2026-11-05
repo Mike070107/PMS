@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -64,6 +65,20 @@ import { RepairsService } from './repairs.service';
 @UseGuards(JwtAuthGuard, RolesOrPermissionGuard)
 export class RepairsController {
   constructor(private readonly repairsService: RepairsService) {}
+
+  @Get('repair-location-suggestions')
+  @RequirePermission('work-orders', 'view')
+  locationSuggestions(
+    @Query('communityId') communityId: string,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    // 保留词法输入，不能让 transform/ParseInt 接受 1e1、01、前后空白或重复参数。
+    if (typeof communityId !== 'string' || !/^[1-9]\d*$/.test(communityId) || Number(communityId) > 2147483647) {
+      throw new BadRequestException('communityId 必须为规范正整数');
+    }
+    return this.repairsService.locationSuggestions(Number(communityId), user, access);
+  }
 
   /** 报修类型配置弹窗的管理处 Tab：按本人范围算。必须声明在 repair-type-rules/:id 之前 */
   @Get('repair-type-rules/offices')

@@ -1,3 +1,5 @@
+import HouseAddressPicker from '@/components/HouseAddressPicker';
+import type { AddressCommunity } from '@pms/shared-types';
 import { PaymentMethodIcon as LegacyPaymentIcon } from '../components/PaymentMethodIcon';
 import {
   ApartmentOutlined,
@@ -18,15 +20,13 @@ import {
   UserOutlined,
   WalletOutlined,
 } from '@ant-design/icons';
-import { App, AutoComplete, Button, Checkbox, DatePicker, Empty, Input, InputNumber, Modal, Pagination, Select, Spin, Switch, Tag } from 'antd';
+import { App, AutoComplete, Button, Checkbox, DatePicker, Empty, Input, InputNumber, Modal, Pagination, Spin, Switch, Tag } from 'antd';
 import {
   APARTMENT_FEE_TYPES,
   FEE_PAYMENT_METHOD_LABELS,
-  buildingLabel,
   cashierQuantityFromAmount,
   formatFeeMoney,
   placeLabel,
-  roomLabel,
 } from '@pms/shared-types';
 import dayjs from 'dayjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -176,36 +176,43 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
   useEffect(() => {
     setBuildings([]);
     setBuildingId(undefined);
+    setLoadingBuildings(false);
     if (!communityId) return;
     if (preview) {
       setBuildings([{ id: 34, communityId, communityName: '馨香臣寓吴泾店', buildingNo: 'A栋34号' }, { id: 35, communityId, communityName: '馨香臣寓吴泾店', buildingNo: 'B栋35号' }, { id: 39, communityId, communityName: '馨香臣寓吴泾店', buildingNo: 'C栋39号' }]);
       setBuildingId(34);
       return;
     }
+    let active = true;
     setLoadingBuildings(true);
     request<Building[]>({ url: '/buildings', query: { communityId } })
       .then((rows) => {
+        if (!active) return;
         setBuildings(rows);
         if (rows.length === 1) setBuildingId(rows[0].id);
       })
-      .catch((error) => message.error(error?.message || '楼栋加载失败'))
-      .finally(() => setLoadingBuildings(false));
+      .catch((error) => { if (active) message.error(error?.message || '楼栋加载失败'); })
+      .finally(() => { if (active) setLoadingBuildings(false); });
+    return () => { active = false; };
   }, [communityId, message, preview]);
 
   useEffect(() => {
     setHouses([]);
     setHouseId(undefined);
+    setLoadingHouses(false);
     if (!buildingId) return;
     if (preview) {
       setHouses([{ id: 101, communityId: 20, communityName: '馨香臣寓吴泾店', buildingId, buildingNo: buildings.find((item) => item.id === buildingId)?.buildingNo || 'A栋34号', roomNo: '101', fullAddress: '龙吴路4787弄34号101室', owner: { id: 1, name: '示例住户', phone: '138****8000' }, owners: [] }, { id: 102, communityId: 20, communityName: '馨香臣寓吴泾店', buildingId, buildingNo: buildings.find((item) => item.id === buildingId)?.buildingNo || 'A栋34号', roomNo: '102', fullAddress: '龙吴路4787弄34号102室', owner: null, owners: [] }]);
       setHouseId(101);
       return;
     }
+    let active = true;
     setLoadingHouses(true);
     request<House[]>({ url: '/houses', query: { buildingId } })
-      .then((list) => setHouses(sortedHouses(list)))
-      .catch((error) => message.error(error?.message || '房号加载失败'))
-      .finally(() => setLoadingHouses(false));
+      .then((list) => { if (active) setHouses(sortedHouses(list)); })
+      .catch((error) => { if (active) message.error(error?.message || '房号加载失败'); })
+      .finally(() => { if (active) setLoadingHouses(false); });
+    return () => { active = false; };
   }, [buildingId, buildings, message, preview]);
 
   useEffect(() => {
@@ -475,12 +482,33 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
     })),
   } : null);
 
-  const buildingOptions = useMemo(() => buildings.map((item) => ({
-    value: item.id,
-    label: buildings.some((other) => other.communityId !== item.communityId)
-      ? `${item.communityName ? `${item.communityName} · ` : ''}${buildingLabel(item.buildingNo)}`
-      : buildingLabel(item.buildingNo),
-  })), [buildings]);
+  const addressCommunities = useMemo<AddressCommunity[]>(() => communities.map((community) => ({
+    ...community, parentId: null, isGroup: false, mainLane: null,
+    buildings: community.id !== communityId ? [] : buildings.filter((building) => building.communityId === community.id).map((building) => ({
+      id: building.id, buildingNo: building.buildingNo, lane: building.lane ?? null, roadName: null,
+      houses: building.id !== buildingId ? [] : houses.filter((room) => room.communityId === community.id && room.buildingId === building.id).map((room) => ({
+        id: room.id, roomNo: room.roomNo, propertyType: '', shopName: null,
+        ownerName: room.owner?.name, ownerPhone: room.owner?.phone,
+      })),
+    })),
+  })), [communities, communityId, buildings, buildingId, houses]);
+
+  // changeOnSelect reports partial paths: load only the selected store/building.
+  // Never treat the shared picker's “不肯说” as a chargeable room.
+  const changeAddress = (path: Array<number | string>) => {
+    if (contactSaving.current) return;
+    const nextCommunity = communities.find((row) => row.id === path[0])?.id;
+    const nextBuilding = nextCommunity === communityId
+      ? buildings.find((row) => row.communityId === nextCommunity && row.id === path[1])?.id : undefined;
+    const nextHouse = nextBuilding === buildingId && nextCommunity === communityId
+      ? houses.find((row) => row.communityId === nextCommunity && row.buildingId === nextBuilding && row.id === path[2])?.id : undefined;
+    if (nextCommunity !== communityId) { setBuildings([]); setBuildingId(undefined); setHouses([]); setHouseId(undefined); }
+    else if (nextBuilding !== buildingId) { setHouses([]); setHouseId(undefined); }
+    setCommunityId(nextCommunity);
+    setBuildingId(nextBuilding);
+    setHouseId(nextHouse);
+    if (path.length > 2 && !nextHouse) message.info('请选择具体房间后收费');
+  };
 
   return (
     <div className="apartment-cashier">
@@ -489,9 +517,12 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
           <section className="cashier-card">
             <header className="cashier-card__heading cashier-room-heading"><span>1</span><h2>选择收费房间</h2><div className="cashier-backfill-controls"><Checkbox checked={backfillMode} onChange={(event) => { setBackfillMode(event.target.checked); if (event.target.checked) { setBackfillAt(dayjs().second(0).millisecond(0)); request<{ rows: TodayRow[] }>({ url: '/fees/cashier/today', query: { backfill: true, pageSize: 100 } }).then((data) => setBackfillRows(data.rows)).catch((error) => message.error(error?.message || '今日补录流水读取失败')); } }}>补录收费记录</Checkbox>{backfillMode && <label><b>收款时间</b><DatePicker showTime={{ format: 'HH:mm' }} format="YYYY-MM-DD HH:mm" allowClear={false} value={backfillAt} disabledDate={(date) => date && date.startOf('day').isAfter(dayjs().startOf('day'))} onChange={(value) => value && setBackfillAt(value.second(0).millisecond(0))} /></label>}</div><small>来自 PMS 房产资料</small></header>
             <div className="cashier-room-form">
-              <label><b>小区</b><Select value={communityId} onChange={(value) => { if (!contactSaving.current) setCommunityId(value); }} options={communities.map((item) => ({ value: item.id, label: item.name }))} placeholder="选择小区" showSearch optionFilterProp="label" /></label>
-              <label><b>楼栋</b><Select loading={loadingBuildings} value={buildingId} onChange={(value) => { if (!contactSaving.current) setBuildingId(value); }} options={buildingOptions} placeholder={communityId ? '选择楼栋' : '请先选择小区'} disabled={!communityId} showSearch optionFilterProp="label" /></label>
-              <label><b>房号</b><Select loading={loadingHouses} value={houseId} onChange={(value) => { if (!contactSaving.current) setHouseId(value); }} options={houses.map((item) => ({ value: item.id, label: roomLabel(item.roomNo) }))} placeholder={buildingId ? '选择房号' : '请先选择楼栋'} disabled={!buildingId} showSearch optionFilterProp="label" /></label>
+              <label style={{ gridColumn: '1 / -1' }}><b>收费地址（小区 / 楼栋 / 房间）</b><HouseAddressPicker
+                communities={addressCommunities}
+                value={[communityId, buildingId, houseId].filter((id): id is number => id !== undefined)}
+                onChange={changeAddress}
+                loading={loadingBuildings || loadingHouses}
+              /></label>
               <label><b>姓名</b><Input value={ownerName} disabled={!canEdit || !house || savingContact || submitting} maxLength={60} status={contactError?.field === 'name' ? 'error' : undefined} onBlur={() => void saveContact('name')} onPressEnter={(event) => event.currentTarget.blur()} onChange={(event) => setOwnerName(event.target.value)} prefix={<UserOutlined />} placeholder="PMS 暂无姓名，可在此补录" />{contactError?.field === 'name' && <small role="alert">{contactError.message}</small>}</label>
               <label><b>手机号</b><Input value={ownerPhone} disabled={!canEdit || !house || savingContact || submitting} status={contactError?.field === 'phone' ? 'error' : undefined} onBlur={() => void saveContact('phone')} onPressEnter={(event) => event.currentTarget.blur()} onChange={(event) => setOwnerPhone(event.target.value)} prefix={<PhoneOutlined />} placeholder="PMS 暂无手机号，可在此补录" maxLength={30} />{contactError?.field === 'phone' && <small role="alert">{contactError.message}</small>}</label>
               {savingContact && <span role="status">正在保存用户信息…</span>}

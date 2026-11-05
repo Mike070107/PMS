@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react';
-import { REPAIR_TYPE_OPTIONS } from '@pms/shared-types';
+import { DEFAULT_LOCATION_SUGGESTIONS, REPAIR_TYPE_OPTIONS } from '@pms/shared-types';
 import { repairs } from '@pms/api-client';
 import { Btn, ErrorNote, Field, Sheet, toast } from '@/components/ui';
 import Icon from '@/components/Icon';
 import HousePicker, { type PickedHouse } from '@/components/HousePicker';
+import type { PickedAddress } from '@/components/HouseAddressPicker';
 import { useAddressTree } from '@/lib/address-tree';
+import LocationSuggestions from '@/components/LocationSuggestions';
+import { locationOptions, normalizeLocation } from '@/lib/repair-location-options';
+import './NewOrderSheet.css';
 
 /**
  * 登记报修：设计稿把它做成「右侧面板一页填完」。
  *
  * 地址是一个输入框：直接打 228/6/502 联想，或点选 小区 → 楼栋 → 室号，
- * 选中后自动带出业主姓名和电话；公共区域报修切到「公共区域」直接写位置。
+ * 选中后自动带出业主姓名和电话；楼栋下直接选择公共区域，不借用住户。
  */
 /** 收银台已经选定住户时，带着这户直接开报修（不用再选一次房号） */
 export interface RepairPrefill {
@@ -31,10 +35,13 @@ export default function NewOrderSheet({
   initialHouse?: RepairPrefill | null;
 }) {
   const { communities, error: treeErr } = useAddressTree();
-  const [mode, setMode] = useState<'house' | 'area'>('house');
+  const [publicArea, setPublicArea] = useState<PickedAddress | null>(null);
+  const [nameEdited, setNameEdited] = useState(false);
+  const [phoneEdited, setPhoneEdited] = useState(false);
   const [picked, setPicked] = useState<PickedHouse | null>(null);
   const [spot, setSpot] = useState('');
-  const [areaText, setAreaText] = useState('');
+  const [pickerRevision, setPickerRevision] = useState(0);
+
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [repairType, setRepairType] = useState('');
@@ -44,40 +51,67 @@ export default function NewOrderSheet({
   const [err, setErr] = useState('');
   /** 带户进来时锁定地址；点「改地址」解锁回到选房 */
   const [fixed, setFixed] = useState<RepairPrefill | null>(null);
+  const [learnedLocations, setLearnedLocations] = useState<unknown>([]);
+  const [locationError, setLocationError] = useState(false);
+  const selectedCommunityId = fixed?.communityId ?? picked?.communityId ?? publicArea?.communityId;
+  const locations = locationOptions(DEFAULT_LOCATION_SUGGESTIONS, learnedLocations);
+  useEffect(() => {
+    let active = true;
+    setLearnedLocations([]); setLocationError(false);
+    if (open && selectedCommunityId) {
+      repairs.locationSuggestions(selectedCommunityId).then(result => {
+        if (!active) return;
+        if (!result || !Array.isArray(result.items)) throw new Error('常用位置响应无效');
+        setLearnedLocations(result.items);
+      }).catch(() => { if (active) setLocationError(true); });
+    }
+    return () => { active = false; };
+  }, [open, selectedCommunityId]);
 
   useEffect(() => {
     if (!open) return;
     setErr('');
+    setPickerRevision(value => value + 1);
     // 每次打开按传入的住户重置：带户就锁地址、带出联系人；不带户就空白选房
     setFixed(initialHouse ?? null);
-    setMode('house');
-    setPicked(null); setSpot(''); setAreaText('');
+    setPublicArea(null); setNameEdited(false); setPhoneEdited(false);
+    setPicked(null); setSpot(''); setPublicArea(null);
     setContactName(initialHouse?.contactName ?? '');
     setContactPhone(initialHouse?.contactPhone ?? '');
     setContent(''); setRepairType(''); setUrgent(false);
   }, [open, initialHouse]);
 
   const reset = () => {
-    setFixed(null); setPicked(null); setSpot(''); setAreaText('');
+    setPickerRevision(value => value + 1);
+    setFixed(null); setPicked(null); setSpot(''); setPublicArea(null); setNameEdited(false); setPhoneEdited(false);
     setContactName(''); setContactPhone(''); setContent(''); setRepairType(''); setUrgent(false); setErr('');
   };
 
   const fullAddress = fixed
-    ? [fixed.addressText, spot.trim()].filter(Boolean).join(' ')
-    : mode === 'house'
-      ? [picked?.text, spot.trim()].filter(Boolean).join(' ')
-      : areaText.trim();
+      ? [fixed.addressText, spot.trim()].filter(Boolean).join(' ')
+      : [picked?.text ?? publicArea?.fullText, spot.trim()].filter(Boolean).join(' ');
 
-  const submit = async () => {
-    if (!fixed && mode === 'house' && !picked) { setErr('请选房号，或切到「公共区域」写地址'); return; }
-    if (!fixed && mode === 'area' && !areaText.trim()) { setErr('请填写公共区域地址'); return; }
+    const fillContact = (name = '', phone = '') => {
+      if (!nameEdited) setContactName(name);
+      if (!phoneEdited) setContactPhone(phone);
+    };
+    const clearAddress = () => {
+      setPicked(null); setPublicArea(null); setSpot(''); fillContact();
+    };
+
+    const submit = async () => {
+      if (!fixed && !picked && !publicArea) { setErr('请选择房号，或在楼栋下选择公共区域'); return; }
+      const communityId = fixed?.communityId ?? picked?.communityId ?? publicArea?.communityId;
+      if (!communityId) { setErr('所选地址缺少小区，请重新选择'); return; }
+
     if (!content.trim()) { setErr('请填写问题描述'); return; }
     setBusy(true);
     setErr('');
     try {
       const r = await repairs.create({
-        communityId: fixed?.communityId ?? picked?.communityId ?? communities[0]?.id ?? 0,
+        communityId,
         addressText: fullAddress,
+        locationText: normalizeLocation(spot) || undefined,
         contactName: contactName.trim() || undefined,
         contactPhone: contactPhone.trim() || undefined,
         repairType: repairType || undefined,
@@ -101,92 +135,100 @@ export default function NewOrderSheet({
       title="登记报修"
       headExtra={null}
     >
+      <div className="new-order-form">
+      {treeErr && !fixed ? <ErrorNote>{treeErr}</ErrorNote> : null}
       {err ? <ErrorNote>{err}</ErrorNote> : null}
 
-      <Field label="报修地址 *" hint={fixed ? '收银台已选定这户；如要改到别处，点「改地址」' : '直接输入 228/6/502 查找，或点选 小区 → 楼栋 → 室号；选中自动带出业主和电话'}>
-        {fixed ? (
-          <>
+
+
+      <section className="new-order-section" aria-label="报修位置">
+        <Field label="报修位置 *">
+          {fixed ? (
             <div className="fixed-addr">
-              <Icon name="home" size={16} />
-              <b style={{ flex: 1 }}>{fixed.addressText}</b>
-              <button type="button" className="btn g sm" onClick={() => { setFixed(null); setSpot(''); }}>改地址</button>
+              <Icon name="home" size={18} />
+              <b>{fixed.addressText}</b>
+              <button type="button" className="btn g sm" onClick={() => { setFixed(null); clearAddress(); }}>改地址</button>
             </div>
-            <input className="in" style={{ marginTop: 8 }} value={spot}
-              onChange={(e) => setSpot(e.target.value)}
-              placeholder="具体位置（选填）：卫生间、厨房、阳台…" />
-          </>
-        ) : (
-          <>
-            <div className="chips" style={{ marginBottom: 8 }}>
-              <button className={`chip ${mode === 'house' ? 'on' : ''}`} onClick={() => setMode('house')}>住户房号</button>
-              <button className={`chip ${mode === 'area' ? 'on' : ''}`} onClick={() => setMode('area')}>公共区域</button>
-            </div>
+          ) : (
+            <>
+              <HousePicker
+                              communities={communities}
+                              value={picked}
+                              publicValue={publicArea}
+                selectionRevision={pickerRevision}
+                              allowPublicArea
+                              disabled={busy}
+                              placeholder="先选小区、楼栋，再选室号或公共区域"
+                              onPick={(p) => {
+                                if (publicArea || (picked && picked.houseId !== p.houseId)) setSpot('');
+                                setPublicArea(null); setPicked(p);
+                                fillContact(p.ownerName ?? '', p.ownerPhone ?? '');
+                              }}
+                              onPublicPick={(p) => {
+                                setPicked(null); setPublicArea(p); setSpot(''); fillContact();
+                              }}
+                              onIncomplete={clearAddress}
+                              onClear={clearAddress}
+                            />
+            </>
+          )}
+        </Field>
+        <Field label="具体位置">
+          <input className="in" aria-label="具体位置" maxLength={60} value={spot}
+            onChange={(e) => setSpot(e.target.value)} placeholder="选填，如大门、厨房、4楼电梯口" />
+          <LocationSuggestions options={locations} value={spot} onSelect={setSpot} disabled={busy} />
+                    {locationError ? <div className="muted" role="status">常用位置暂时未能加载，仍可手动填写。</div> : null}
+        </Field>
+      </section>
 
-            {mode === 'house' ? (
-              <>
-                <HousePicker
-                  communities={communities}
-                  value={picked}
-                  placeholder="输入 228/6/502，或点选 小区 → 楼栋 → 室号"
-                  onPick={(p) => {
-                    setPicked(p);
-                    if (p.ownerName && !contactName) setContactName(p.ownerName);
-                    if (p.ownerPhone && !contactPhone) setContactPhone(p.ownerPhone);
-                  }}
-                  onClear={() => setPicked(null)}
-                />
-                {picked ? (
-                  <input className="in" style={{ marginTop: 8 }} value={spot}
-                    onChange={(e) => setSpot(e.target.value)}
-                    placeholder="具体位置（选填）：卫生间、厨房、阳台…" />
-                ) : null}
-              </>
-            ) : (
-              <input className="in" value={areaText} onChange={(e) => setAreaText(e.target.value)}
-                placeholder="例如：枫桦景苑二期 3号楼 大堂 / 地下车库 B2 水泵房" />
-            )}
-          </>
-        )}
-      </Field>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div className="new-order-contact">
         <Field label="联系人">
-          <input className="in" value={contactName} onChange={(e) => setContactName(e.target.value)} />
+          <input className="in" aria-label="联系人" autoComplete="name" value={contactName}
+            onChange={(e) => { setNameEdited(true); setContactName(e.target.value); }} />
         </Field>
         <Field label="手机号">
-          <input className="in" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
+          <input className="in" aria-label="手机号" type="tel" autoComplete="tel" value={contactPhone}
+            onChange={(e) => { setPhoneEdited(true); setContactPhone(e.target.value); }} />
         </Field>
       </div>
 
+      <section className="new-order-section new-order-problem" aria-label="问题描述">
       <Field label="问题描述 *">
-        <textarea className="in" value={content} onChange={(e) => setContent(e.target.value)} placeholder="地漏返水，楼下天花板渗水…" />
+        <textarea className="in" aria-label="问题描述" rows={4} value={content} onChange={(e) => setContent(e.target.value)} placeholder="地漏返水，楼下天花板渗水…" />
       </Field>
 
-      <Field label="报修类型">
-        <div className="chips">
-          {REPAIR_TYPE_OPTIONS.map((t) => (
-            <button key={t.value} className={`chip ${repairType === t.value ? 'on' : ''}`}
-              onClick={() => setRepairType(repairType === t.value ? '' : t.value)}>{t.label}</button>
-          ))}
-        </div>
-      </Field>
+      </section>
 
-      <Field label="紧急程度">
-        <div className="seg">
-          <button className={!urgent ? 'on' : ''} onClick={() => setUrgent(false)}>普通</button>
-          <button className={urgent ? 'on' : ''} onClick={() => setUrgent(true)}>紧急 · 2 小时内</button>
-        </div>
-      </Field>
+      <details className="new-order-section new-order-secondary" aria-label="补充信息">
+            <summary>更多设置 <span className="muted">· 自动识别类型，默认普通报修</span></summary>
+            <Field label="报修类型">
+              <div className="chips">
+                {REPAIR_TYPE_OPTIONS.map((t) => (
+                  <button type="button" key={t.value} aria-pressed={repairType === t.value} className={`chip ${repairType === t.value ? 'on' : ''}`}
+                    onClick={() => setRepairType(repairType === t.value ? '' : t.value)}>{t.label}</button>
+                ))}
+              </div>
+            </Field>
+
+            <Field label="紧急程度">
+              <div className="seg">
+                <button type="button" aria-pressed={!urgent} className={!urgent ? 'on' : ''} onClick={() => setUrgent(false)}>普通</button>
+                <button type="button" aria-pressed={urgent} className={urgent ? 'on' : ''} onClick={() => setUrgent(true)}>紧急 · 2 小时内</button>
+              </div>
+            </Field>
+
+            </details>
 
       <div className="note" style={{ marginBottom: 14 }}>
         照片附件还没接：需要带照片的话，先在现有后台或小程序里登记。
       </div>
 
-      <button className="btn p lg" style={{ width: '100%', justifyContent: 'center' }} disabled={busy} onClick={() => void submit()}>
+      <button type="button" className="btn p lg" style={{ width: '100%', justifyContent: 'center' }} disabled={busy} onClick={() => void submit()}>
         {busy ? '提交中…' : '提交报修'}
       </button>
       <div style={{ height: 8 }} />
-      <Btn kind="g" onClick={() => { reset(); toast('已清空'); }}>清空</Btn>
+      <Btn kind="g" disabled={busy} onClick={() => { reset(); toast('已清空'); }}>清空</Btn>
+      </div>
     </Sheet>
   );
 }

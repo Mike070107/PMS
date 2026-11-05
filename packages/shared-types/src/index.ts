@@ -338,6 +338,8 @@ export interface RepairCreateReq {
   buildingId?: number;
   houseId?: number;
   addressText?: string;
+  /** 独立具体位置，服务端归一空白，最多60字符；成功且未作废的报修用于常用项统计。 */
+  locationText?: string;
   contactName?: string;
   contactPhone?: string;
   repairType?: string;

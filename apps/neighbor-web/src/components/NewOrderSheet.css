@@ -1,0 +1,28 @@
+.new-order-form { min-width: 0; }
+.new-order-contact { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.new-order-form .field { min-width: 0; }
+.new-order-form .in { box-sizing: border-box; width: 100%; min-width: 0; font-size: 16px; min-height: 44px; }
+.new-order-section { margin-bottom: 20px; }
+.new-order-section > .field:last-child { margin-bottom: 0; }
+.new-order-modes { margin-bottom: 10px; }
+.new-order-form .fixed-addr b { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.new-order-form .fixed-addr .btn { flex-shrink: 0; }
+.new-order-spots { display: flex; flex-wrap: nowrap; align-items: flex-start; gap: 8px; margin-top: 10px; position: relative; min-width: 0; }
+.new-order-spots-more { position: relative; flex: none; }
+.new-order-spots-more summary { display: inline-flex; align-items: center; list-style: none; cursor: pointer; }
+.new-order-spots-more summary::-webkit-details-marker { display: none; }
+.new-order-spots-menu { position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; display: flex; flex-wrap: wrap; gap: 8px; width: min(360px, calc(100vw - 64px)); max-height: 240px; overflow-y: auto; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper, #fff); box-shadow: 0 8px 24px #0002; }
+.new-order-spots-measure { position: fixed; top: 0; left: -20000px; display: flex; gap: 8px; width: max-content; visibility: hidden; pointer-events: none; }
+.new-order-spots-measure .chip { display: inline-flex; align-items: center; }
+.new-order-form .chips { flex-wrap: wrap; }
+.new-order-form .chip { flex: none; white-space: nowrap; min-height: 44px; }
+.new-order-problem { padding-top: 18px; border-top: 1px solid var(--line); }
+.new-order-problem .field > label { font-size: 18px; font-weight: 700; }
+.new-order-problem textarea.in { min-height: 128px; resize: vertical; }
+.new-order-secondary { padding-top: 16px; border-top: 1px solid var(--line); }
+.new-order-secondary > summary { cursor: pointer; font-size: 16px; font-weight: 600; min-height: 44px; }
+.new-order-secondary[open] > summary { margin-bottom: 14px; }
+.new-order-secondary > summary .muted { font-size: 14px; font-weight: 400; }
+.new-order-form .seg { display: flex; flex-wrap: wrap; min-width: 0; }
+.new-order-form .seg button { min-height: 44px; white-space: nowrap; }
+.new-order-form button:focus-visible { outline: 2px solid var(--acc, #0f766e); outline-offset: 2px; }

@@ -1110,6 +1110,50 @@ export class RepairsService implements OnModuleInit {
     );
   }
 
+  /** 只读学习结果：每条成功且未作废的报修就是一次使用，不维护额外计数。 */
+  async locationSuggestions(communityId: number, user: AuthUser, access?: ResolvedAccess) {
+    if (!Number.isInteger(communityId) || communityId < 1 || communityId > 2147483647) {
+      throw new BadRequestException('communityId 必须为规范正整数');
+    }
+    const tenantId = this.resolveTenantId(user);
+    const resolved = access ?? (await this.accessService.getAccess(user));
+    // 不能将缺少 access 解释为全公司；与路由 work-orders view 权限保持一致。
+    if (!resolved || !(resolved.isPlatformAdmin || resolved.isTenantAdmin || resolved.pages?.['work-orders']?.view)) {
+      throw new ForbiddenException('没有查看工单的权限');
+    }
+    const scope = this.scopeIds(resolved);
+    if (scope && !scope.includes(communityId)) {
+      throw new ForbiddenException('该小区不在你的管理范围内');
+    }
+    await this.validateLocation({ communityId } as CreateRepairRequestDto, tenantId);
+    const rows = await this.repairRequestRepo.createQueryBuilder('r')
+      .select('r.locationText', 'text')
+      .addSelect('COUNT(*)', 'count')
+      .where('r.tenantId = :tenantId', { tenantId })
+      .andWhere('r.communityId = :communityId', { communityId })
+      .andWhere('r.deletedAt IS NULL')
+      // EXISTS counts each request once even when several work orders reference it.
+      .andWhere(qb => {
+        const validOrder = qb.subQuery()
+          .select('1')
+          .from(WorkOrder, 'locationOrder')
+          .where('locationOrder.tenantId = r.tenantId')
+          .andWhere('locationOrder.requestId = r.id')
+          .andWhere('locationOrder.deletedAt IS NULL')
+          .andWhere('locationOrder.status <> :locationVoided')
+          .getQuery();
+        return 'EXISTS ' + validOrder;
+      }, { locationVoided: WorkOrderStatus.VOIDED })
+      .andWhere('r.locationText IS NOT NULL')
+      .andWhere("r.locationText <> ''")
+      .groupBy('r.locationText')
+      .orderBy('COUNT(*)', 'DESC')
+      .addOrderBy('MIN(r.id)', 'ASC')
+      .limit(100)
+      .getRawMany<{ text: string; count: string }>();
+    return { items: rows.map(row => ({ text: row.text, count: Number(row.count) })) };
+  }
+
   private scopeIds(access?: ResolvedAccess): number[] | null {
     return scopeCommunityIds(access);
   }
@@ -5511,6 +5555,7 @@ export class RepairsService implements OnModuleInit {
           buildingId: dto.buildingId ?? null,
           houseId: dto.houseId ?? null,
           addressText: dto.addressText ?? null,
+          locationText: dto.locationText?.replace(/\s+/gu, ' ').trim() || null,
           contactName: contact.name,
           contactPhone: contact.phone,
           reporterRole,
