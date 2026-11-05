@@ -10,7 +10,7 @@ import { AuthUser } from '../../common/current-user.decorator';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
 import { naturalNumberSql } from '../../common/natural-order';
-import { buildMisFeeQuery, buildMisResidentialQuery, MisResidentialQuery, MisFeeQuery, MisHouseFilter, misFeeStatus, misMoneyToCents } from './mis-fees.query';
+import { buildMisFeeFilter, buildMisFeeQuery, buildMisResidentialQuery, MisResidentialQuery, MisFeeQuery, MisHouseFilter, misFeeStatus, misMoneyToCents } from './mis-fees.query';
 
 // 与用户确认的映射；公寓收费台、北桥和颛桥均不参与物业费查询。
 export const MIS_PROPERTY_OFFICES:Record<string,string[]>={
@@ -164,6 +164,20 @@ export class MisFeesService implements OnModuleDestroy {
   const allowed=await this.residentialScope({},user,access);
   if(!Number.isSafeInteger(id)||id<1)throw new BadRequestException('批次编号不合法');
   return this.visibleBatch(await this.batches!.findOne({where:{id,tenantId:user.tenantId!}}),allowed);
+ }
+ /** Additive read-only preflight for collection; existing bill queries and their filters stay unchanged. */
+ async postingContext(houseId:number,billIds:string[],user:AuthUser,access?:ResolvedAccess):Promise<import('./mis-posting.service').MisPostingContext>{
+  const communities=await this.scope(user,access);if(!communities.length)throw new ForbiddenException('当前范围没有MIS收款授权');
+  if(!Number.isSafeInteger(houseId)||houseId<1||!Array.isArray(billIds)||!billIds.length||billIds.length>120||new Set(billIds).size!==billIds.length||billIds.some(id=>typeof id!=='string'||!/^[1-9]\d{0,17}$/.test(id)))throw new BadRequestException('MIS房号或账单标识非法');
+  const h=await this.houses.createQueryBuilder('h').innerJoin(Building,'b','b.id=h.building_id AND b.tenant_id=h.tenant_id').where('h.id=:id AND h.tenant_id=:tenantId AND h.archived_at IS NULL',{id:houseId,tenantId:user.tenantId}).select(['h.room_no AS "roomNo"','h.road_name AS road','b.road_name AS "buildingRoad"','b.community_id AS "communityId"','b.lane AS lane','b.building_no AS "buildingNo"']).getRawOne<any>();
+  const community=communities.find(c=>c.id===Number(h?.communityId));if(!h||!community)throw new ForbiddenException('该住户不在MIS收款授权范围');
+  const house:MisHouseFilter={road:h.road||h.buildingRoad,lane:h.lane||'',buildingNo:h.buildingNo,roomNo:h.roomNo,shop:h.roomNo==='商铺'};if(!house.road)throw new BadRequestException('房号缺少路名，无法安全匹配MIS住户');
+  const built=buildMisFeeFilter({status:'unpaid'},community.offices,house);
+  const ids=billIds.map((id,i)=>{built.params['postingBill'+i]=id;return '@postingBill'+i}).join(',');
+  const result=await this.read(`SELECT CONVERT(varchar(30),w.ZJ_ID) AS id,CONVERT(varchar(30),w.ZH_ID) AS ownerId,l.管理处 AS officeCode,w.ZJ_LX AS feeCode,w.ZJ_CNY AS period,CONVERT(varchar(50),w.ZJ_JE,2) AS amount ${built.from} AND w.ZJ_ID IN (${ids}) AND s.房屋性质 IN (N'01',N'04') AND w.ZL_ID IS NULL ORDER BY w.ZJ_ID`,built.params);
+  const rows=result.recordset||[];if(rows.length!==billIds.length||new Set(rows.map((r:any)=>r.id)).size!==billIds.length||new Set(rows.map((r:any)=>r.ownerId)).size!==1)throw new ConflictException('账单已收、已变更或不属于同一MIS住户，请重新核对，未登记收款');
+  const bills=rows.map((r:any)=>{if(!/^\d+\.\d{2}00$/.test(r.amount))throw new BadRequestException('源库金额不是可收整分金额，请先在MIS核实');return{id:String(r.id),feeCode:r.feeCode,period:r.period,amountCents:misMoneyToCents(r.amount)}});
+  return {houseId,communityId:community.id,address:`${community.name}/${house.lane?house.lane+'弄':''}${house.buildingNo}号${house.roomNo}`,ownerId:String(rows[0].ownerId),officeCodes:community.offices,bills};
  }
  async onModuleDestroy(){const p=this.poolPromise;this.poolPromise=null;if(p)await p.then(pool=>pool.close()).catch(()=>{});}
 }

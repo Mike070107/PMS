@@ -1,0 +1,22 @@
+import 'reflect-metadata';import assert from 'node:assert/strict';import test from 'node:test';import {PGlite} from '@electric-sql/pglite';import {DataSource} from 'typeorm';
+import {BusinessTransaction} from '../../entities/business-transaction.entity';import {MisPostingService} from './mis-posting.service';
+test('real TypeORM Repository.save transaction, durable idempotency, cross-key bill exclusion and recovery with isolated PostgreSQL',async()=>{
+ const db=new PGlite();const ds=new DataSource({type:'postgres',entities:[BusinessTransaction]});await(ds as any).buildMetadatas();
+ // Single isolated PGlite session, leased per QueryRunner. No network/PostgreSQL connection is opened.
+ let tail=Promise.resolve();const queries:string[]=[];
+ const client={on(){},removeListener(){},query:async(sql:string,params:any[])=>{queries.push(sql);const r=await db.query(sql,params);return{...r,rowCount:r.affectedRows??r.rows.length}}};
+ (ds.driver as any).master={connect(cb:any){const prior=tail;let release:()=>void;tail=new Promise<void>(r=>release=r);void prior.then(()=>cb(null,client,()=>release()))}};(ds as any).isInitialized=true;
+ const old=[process.env.MIS_POSTING_MODE,process.env.MIS_POSTING_MAPPING];process.env.MIS_POSTING_MODE='on';process.env.MIS_POSTING_MAPPING=JSON.stringify({tenants:{'1':{collectors:{'7':{id:'SYNTHETIC',name:'隔离员工'}},methods:{cash:{id:1,name:'现金'}}}}});
+ try{await db.exec(`CREATE TABLE business_transactions(id serial PRIMARY KEY,tenant_id int NOT NULL,created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now(),created_by int,updated_by int,txn_no varchar(40) NOT NULL,service_type varchar(40) NOT NULL,status varchar(20) NOT NULL,rule_id int,community_id int,house_id int,owner_id int,target_type varchar(30),target_id int,quantity int,start_date date,end_date date,amount_cents int,payment_method varchar(30),external_sync_status varchar(20),invoice_status varchar(20),remark varchar(500),snapshot jsonb NOT NULL DEFAULT '{}',UNIQUE(tenant_id,txn_no));`);
+ const repo=ds.getRepository(BusinessTransaction),reader:any={postingContext:async()=>({houseId:11,communityId:10,address:'合成小区1号101室',ownerId:'900719925474099999',officeCodes:['01'],bills:[{id:'900719925474099991',feeCode:'01',period:'202601',amountCents:12345}]})};let writes=0;const connector:any={inspect:async()=>({state:'unpaid'}),post:async()=>{writes++;return{state:'synced'}}};
+ const service=new MisPostingService(repo,reader,connector),dto={houseId:11,billIds:['900719925474099991'],amountCents:12345,paymentMethod:'cash',confirmed:true,idempotencyKey:'123e4567-e89b-42d3-a456-426614174000'},user:any={id:7,tenantId:1},access:any={scopeAll:false,communityIds:[10]};
+ const [a,b]=await Promise.all([service.create(dto,user,access),service.create(dto,user,access)]);assert.equal(a.id,b.id);assert.equal(await repo.count(),1);assert.equal(writes,0);
+ const saved=await repo.findOneByOrFail({id:a.id});assert.equal(saved.status,'paid');assert.equal(saved.externalSyncStatus,'mis_queued');assert.equal((saved.snapshot.mis as any).command.ownerId,'900719925474099999');assert.equal(saved.amountCents,12345);
+ assert.equal((await service.detail(a.id,user,access)).amountCents,12345);await assert.rejects(()=>service.detail(a.id,{...user,tenantId:2},access),/不存在|范围/);await assert.rejects(()=>service.detail(a.id,user,{scopeAll:false,communityIds:[]} as any),/不存在|范围/);
+ await assert.rejects(()=>service.create({...dto,idempotencyKey:'223e4567-e89b-42d3-a456-426614174000'},user,access),/已经登记/);assert.equal(await repo.count(),1);
+ await Promise.all([service.runOne(a.id),service.runOne(a.id)]);assert.equal(writes,1);const after=await repo.findOneByOrFail({id:a.id});assert.equal(after.status,'paid');assert.equal(after.externalSyncStatus,'synced');
+ await repo.query("UPDATE business_transactions SET external_sync_status='mis_running',updated_at='2000-01-01' WHERE id=$1",[a.id]);await service.sweep();assert.equal(writes,1);assert.equal((await repo.findOneByOrFail({id:a.id})).externalSyncStatus,'mis_manual');
+ await service.retry(a.id,user,access);assert.equal((await repo.findOneByOrFail({id:a.id})).externalSyncStatus,'mis_queued');assert.equal(writes,1);
+ assert.ok(queries.some(q=>q.includes('pg_advisory_xact_lock')));assert.ok(queries.some(q=>q.startsWith('INSERT INTO "business_transactions"')));assert.ok(queries.some(q=>q==='COMMIT'));
+ }finally{for(const[i,key]of ['MIS_POSTING_MODE','MIS_POSTING_MAPPING'].entries())old[i]===undefined?delete process.env[key]:process.env[key]=old[i];await db.close()}
+});
