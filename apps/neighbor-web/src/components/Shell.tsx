@@ -59,7 +59,7 @@ export const NAV: NavItem[] = [
   { key: 'settings', name: '系统设置', rail: '设置', icon: 'gear', to: '/settings', group: '系统' },
   { key: 'qr', name: '楼栋报修码', rail: '报修码', icon: 'qr', to: '/qr', group: '系统' },
   { key: 'intranet', name: '内网应用', rail: '内网', icon: 'globe', to: '/intranet', group: '系统' },
-  { key: 'logs', name: '日志', rail: '日志', icon: 'log', to: '/logs', group: '系统' },
+  { key: 'logs', permissionKey: 'logs', name: '日志', rail: '日志', icon: 'log', to: '/logs', group: '系统' },
 ];
 
 /** 分类分组：每组一个标题 + 图标文字一行的菜单项 */

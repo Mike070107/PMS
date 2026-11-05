@@ -6,6 +6,8 @@ import Icon from '@/components/Icon';
 import type { IconName } from '@/components/Icon';
 import { Loading } from '@/components/ui';
 import ToneIcon from '@/components/ToneIcon';
+import {useSession} from '@/lib/auth';
+import {can} from '@/lib/perm';
 
 interface Overview {
   periodHours: number;
@@ -35,6 +37,9 @@ const uptime = (s: number) => (s >= 86400 ? `${Math.floor(s / 86400)} 天` : `${
  * 走 /observability/overview、/observability/logs。异常反馈的状态流转与明细导出仍在旧页。
  */
 export default function Logs() {
+  const session = useSession();
+  const canView = can('logs', 'view');
+  const scopeKey = JSON.stringify([session.user?.id,session.user?.tenantId,session.actingTenant?.id,session.actingOffice?.id]);
   const [ov, setOv] = useState<Overview | null>(null);
   const [cat, setCat] = useState('');
   const [onlyFail, setOnlyFail] = useState(false);
@@ -42,15 +47,25 @@ export default function Logs() {
   const [page, setPage] = useState(1);
   const [logs, setLogs] = useState<LogList | null>(null);
 
-  useEffect(() => { request<Overview>({ url: '/observability/overview' }).then(setOv).catch(() => setOv(null)); }, []);
   useEffect(() => {
+    if(!canView) return;
+    let current = true;
+    setOv(null);
+    request<Overview>({url:'/observability/overview'}).then(r=>{if(current)setOv(r);}).catch(()=>{if(current)setOv(null);});
+    return () => {current = false;};
+  }, [canView, scopeKey]);
+  useEffect(() => {
+    if(!canView) return;
+    let current = true;
     setLogs(null);
     const t = setTimeout(() => {
       request<LogList>({ url: '/observability/logs', query: { page, pageSize: 30, category: cat || undefined, success: onlyFail ? false : undefined, keyword: kw.trim() || undefined } })
-        .then(setLogs).catch(() => setLogs({ list: [], total: 0, page: 1, pageSize: 30 }));
+        .then(r=>{if(current)setLogs(r);}).catch(()=>{if(current)setLogs({list:[],total:0,page:1,pageSize:30});});
     }, kw ? 350 : 0);
-    return () => clearTimeout(t);
-  }, [cat, onlyFail, kw, page]);
+    return () => {current=false;clearTimeout(t);};
+  }, [cat, onlyFail, kw, page, canView, scopeKey]);
+
+  if(!canView) return <div className="card" role="alert" style={{padding:32}}><h1>无权访问日志管理</h1><p>当前账号没有日志管理的查看权限。</p></div>;
 
   const pages = logs ? Math.max(1, Math.ceil(logs.total / logs.pageSize)) : 1;
   const rt = ov?.runtime;
