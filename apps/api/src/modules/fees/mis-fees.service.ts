@@ -10,6 +10,8 @@ import { AuthUser } from '../../common/current-user.decorator';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
 import { naturalNumberSql } from '../../common/natural-order';
+import {buildMisLedgerQuery,MisLedgerQuery,MisLedgerAddress} from './mis-ledger.query';
+import {resolveAddressForTenant} from '../../common/address-lookup';
 import { buildMisFeeFilter, buildMisFeeQuery, buildMisResidentialQuery, MisResidentialQuery, MisFeeQuery, MisHouseFilter, misFeeStatus, misMoneyToCents } from './mis-fees.query';
 
 // 与用户确认的映射；公寓收费台、北桥和颛桥均不参与物业费查询。
@@ -46,6 +48,21 @@ export class MisFeesService implements OnModuleDestroy {
   const sql=require('mssql'),pool=await this.pool(),req=pool.request();
   for(const [key,value] of Object.entries(params))req.input(key,typeof value==='number'?sql.Int:sql.NVarChar(4000),value);
   try{return await req.query(text);}catch{throw new ServiceUnavailableException('一通MIS查询未完成，请稍后重试；未使用旧数据替代');}
+ }
+ async ledger(q:MisLedgerQuery,user:AuthUser,access?:ResolvedAccess){
+  let communities=await this.scope(user,access);if(q.communityId){if(!communities.some(c=>c.id===q.communityId))throw new ForbiddenException('该小区不在MIS流水查询范围');communities=communities.filter(c=>c.id===q.communityId)}if(!communities.length)throw new ForbiddenException('当前范围没有已映射的MIS小区');
+  const count=(v:unknown)=>{const n=Number(v??0);if(!Number.isSafeInteger(n)||n<0)throw new ServiceUnavailableException('MIS流水计数无法确认，请缩小范围重试');return n};
+  let addresses:MisLedgerAddress[]|undefined;
+  if(q.q?.trim()){const hit=await resolveAddressForTenant(this.communities.manager.connection,user.tenantId!,q.q);if(hit){
+   if(hit.level==='community'){const selected=communities.filter(c=>hit.communityIds.includes(c.id));if(selected.length){communities=selected;q={...q,q:undefined}}else addresses=[]}
+   else{addresses=[];if(hit.allHouseIds.length){const houses=await this.houses.createQueryBuilder('h').innerJoin(Building,'b','b.id=h.building_id AND b.tenant_id=h.tenant_id').where('h.tenant_id=:tenantId',{tenantId:user.tenantId}).andWhere('h.id IN (:...houseIds)',{houseIds:hit.allHouseIds}).andWhere('b.community_id IN (:...communityIds)',{communityIds:communities.map(c=>c.id)}).select(['h.room_no AS "roomNo"','h.road_name AS "road"','b.road_name AS "buildingRoad"','b.community_id AS "communityId"','b.lane AS lane','b.building_no AS "buildingNo"']).getRawMany<any>();const unique=new Map<string,MisLedgerAddress>();for(const h of houses){const community=communities.find(c=>c.id===Number(h.communityId));if(!community)continue;const buildingOnly=hit.level==='building'&&h.roomNo!=='商铺',address={road:h.road||h.buildingRoad,lane:h.lane||'',buildingNo:h.buildingNo,roomNo:buildingOnly?'':h.roomNo,shop:h.roomNo==='商铺',offices:community.offices,buildingOnly};unique.set(JSON.stringify(address),address)}addresses=[...unique.values()]}}
+  }}
+  let built=buildMisLedgerQuery(q,communities.flatMap(c=>c.offices),addresses),result=await this.read(built.sql,built.params),sets=result.recordsets||[],total=count(sets[0]?.[0]?.total);
+  const page=Math.min(built.page,Math.max(1,Math.ceil(total/built.pageSize)));if(q.view!=='stats'&&page!==built.page){built=buildMisLedgerQuery({...q,page},communities.flatMap(c=>c.offices),addresses);result=await this.read(built.sql,built.params);sets=result.recordsets||[];total=count(sets[0]?.[0]?.total)}
+  const raw=sets[0]?.[0]||{},meta={sourceLabel:'一通MIS',readOnly:true,queriedAt:new Date().toISOString(),total,page:built.page,pageSize:built.pageSize,summary:{paidNetCents:misMoneyToCents(raw.paidNetAmount),adjustmentCents:misMoneyToCents(raw.adjustmentAmount),refundedOriginalCents:misMoneyToCents(raw.refundedOriginalAmount)}};
+  if(q.view==='stats'){const project=(rows:any[])=>rows.map(r=>({key:String(r.key??''),name:String(r.name||'未记录'),count:count(r.count),amountCents:misMoneyToCents(r.amount),adjustmentCents:misMoneyToCents(r.adjustmentAmount)}));return{...meta,rows:[],byFee:project(sets[1]||[]),byMethod:project(sets[2]||[]),byCashier:project(sets[3]||[]),byDay:project(sets[4]||[])}}
+  const rows=(sets[1]||[]).map((r:any)=>{const community=communities.find(c=>c.offices.includes(r.officeCode));if(!community)throw new ServiceUnavailableException('MIS返回范围无法确认，未显示数据');const {amount,...safe}=r,amountCents=misMoneyToCents(amount);return{...safe,id:String(r.id),amountCents,status:misFeeStatus({...r,amountCents}),communityId:community.id,communityName:community.name}});
+  return{...meta,rows};
  }
  async metadata(user:AuthUser,access?:ResolvedAccess){
   const communities=await this.scope(user,access);

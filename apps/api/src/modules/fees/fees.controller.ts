@@ -36,6 +36,7 @@ import {
 } from './dto';
 import { FeesService } from './fees.service';
 import { MisFeesService } from './mis-fees.service';
+import {MisLedgerQueryDto} from './mis-ledger.dto';
 import { MisFeesQueryDto, MisHouseSearchDto, MisResidentialQueryDto, MisCollectionPreviewDto } from './mis-fees.dto';
 
 /**
@@ -52,6 +53,10 @@ export class FeesController {
   @Get('mis/options')
   @RequirePermission('fees','view')
   misOptions(@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.metadata(user,access);}
+
+  @Get('mis/ledger')
+  @RequirePermission('fees','view')
+  misLedger(@Query() query:MisLedgerQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.ledger(query,user,access);}
 
   @Get('mis/bills')
   @RequirePermission('fees','view')
