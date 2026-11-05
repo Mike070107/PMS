@@ -5606,3 +5606,12 @@
 - 自上次（9e4311d5）以来上线的相关提交：
   - d021fb58 fix(web): finalize official login wording and reuse brand favicons
 
+## 2026-11-05 11:22 · api · f50eca7e
+
+- 包：`pms-api-fast-20261105-112146.tar.gz`
+- 提交：f50eca7e [verified] fix(web): clarify theme picker and tint scoped sidebar
+- 自上次（f008ebdd）以来上线的相关提交：
+  - 726e10af [verified] fix(api): explain audit actions and redact sensitive history
+  - 084d932a [verified] fix(api): expire web sessions at Beijing midnight
+  - fb9bc1ad [verified] fix(api): isolate receipt items by house and accumulate linearly
+
