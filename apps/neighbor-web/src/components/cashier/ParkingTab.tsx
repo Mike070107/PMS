@@ -5,6 +5,7 @@ import Icon from '@/components/Icon';
 import { dayjs, money } from '@/lib/format';
 import { field as fieldOf, vehicleIdentity } from '@/lib/parking-fields';
 import NewPlateCard, { type Intake } from './NewPlateCard';
+import RenewalMonths from './RenewalMonths';
 
 /** 车辆授权类型 → 颜色：亲情车（蓝）/ 住户车（绿）/ 租户车（琥珀），一眼分得开 */
 function identityTone(t?: string | null) {
@@ -364,8 +365,13 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
   const [months, setMonths] = useState(6);
   const [ruleId, setRuleId] = useState<number | null>(null);
   const [off, setOff] = useState<string[]>([]);
-  const [est, setEst] = useState<Estimate | null>(null);
+  const [quotedEst, setEst] = useState<Estimate | null>(null);
+  const [estimateKey, setEstimateKey] = useState('');
+  const [monthsValid, setMonthsValid] = useState(true);
   const [estErr, setEstErr] = useState('');
+  const quoteGeneration = useRef(0);
+  const [quoteRevision, setQuoteRevision] = useState(0);
+  const invalidateQuote = () => { quoteGeneration.current++; setQuoteRevision(value => value + 1); setEst(null); setEstErr(''); onCart(sel.plate, null); };
   // 非标准续期
   const [custom, setCustom] = useState(false);
   const [cs, setCs] = useState('');
@@ -396,36 +402,44 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
   }, [own, classOptions, group, needClass]);
   const pickClass = async (v: string) => {
     if (!onClass) return;
-    setClsBusy(true); setClsErr('');
+    invalidateQuote(); setClsBusy(true); setClsErr('');
     try { await onClass(v); } catch (e) { setClsErr(e instanceof Error ? e.message : '分类保存失败'); } finally { setClsBusy(false); }
   };
-  const fallback = rules.filter((r) => r.serviceType === 'parking_monthly' && r.enabled && (r.communityId == null || r.communityId === house.communityId) && !r.config?.parkingTarget);
+  const fallback = rules.filter((r) => r.serviceType === 'parking_monthly' && r.enabled && (r.communityId == null || r.communityId === house.communityId) && !r.config?.parkingTarget && !r.config?.parkingTargets?.length);
   const usable = candidates.length ? candidates : needClass ? [] : fallback;
   useEffect(() => { setRuleId(usable[0]?.id ?? null); }, [usable.map((r) => r.id).join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
   const rule = usable.find((r) => r.id === ruleId) ?? null;
-  // 可选月数：车辆类别按价格表；旧规则仍是 1/3/6/12
-  const monthOptions = useMemo(() => (rule?.config?.priceMode === 'table' && rule.config.tiers?.length
-    ? [...rule.config.tiers].map((t) => t.months).sort((a, b) => a - b) : [1, 3, 6, 12]), [rule]);
-  useEffect(() => { if (!monthOptions.includes(months)) setMonths(monthOptions.includes(6) ? 6 : monthOptions[0]); }, [monthOptions.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const ends = lots.map((l) => l.endDate).filter((d): d is string => !!d).sort();
-  const currentEnd = ends[0] ?? null;
+  const currentEnd = ends[ends.length - 1] ?? null;
   const mismatch = new Set(ends).size > 1;
   const defaultStart = currentEnd && !expired(currentEnd) ? dayjs(currentEnd).add(1, 'day').format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD');
   useEffect(() => { if (custom && !cs) { setCs(defaultStart); setCe(dayjs(defaultStart).add(1, 'month').subtract(1, 'day').format('YYYY-MM-DD')); } }, [custom]); // eslint-disable-line react-hooks/exhaustive-deps
   const customOk = custom && /^\d{4}-\d{2}-\d{2}$/.test(cs) && /^\d{4}-\d{2}-\d{2}$/.test(ce) && ce >= cs;
   const days = customOk ? dayjs(ce).diff(dayjs(cs), 'day') + 1 : 0;
+  // 绑定完整报价上下文（同 id 规则改价、系统引用或身份变化也必须重新试算）。
+  const quoteKey = JSON.stringify([quoteRevision, sel.plate, house.id, house.communityId, house.owner?.id, rule, lots, vehicleClass, months, monthsValid, custom, cs, ce, amt, amtTouched, reason, label, clsBusy]);
+  const currentQuoteKey = useRef(quoteKey);
+  if (currentQuoteKey.current !== quoteKey) { currentQuoteKey.current = quoteKey; quoteGeneration.current++; }
+  const est = estimateKey === quoteKey && (custom || monthsValid) && !clsBusy ? quotedEst : null;
 
   useEffect(() => {
-    if (!rule || !lots.length || (custom && !customOk)) { setEst(null); onCart(sel.plate, null); if (custom && cs && ce && !customOk) setEstErr('结束日期不能早于开始日期'); return; }
+    const generation = ++quoteGeneration.current;
+    if (!rule || !lots.length || clsBusy || (!custom && !monthsValid) || (custom && !customOk)) { setEst(null); onCart(sel.plate, null); if (custom && cs && ce && !customOk) setEstErr('结束日期不能早于开始日期'); return; }
     let alive = true;
     setEstErr('');
+    setEst(null);
+    onCart(sel.plate, null);
     const data = custom
       ? { serviceType: 'parking_monthly', ruleId: rule.id, houseId: house.id, ownerId: house.owner?.id, plateNo: sel.plate, startDate: cs, endDate: ce }
       : { serviceType: 'parking_monthly', ruleId: rule.id, houseId: house.id, ownerId: house.owner?.id, plateNo: sel.plate, months, currentEndDate: currentEnd || undefined };
     request<Estimate>({ method: 'POST', url: '/business/estimate', data })
       .then((e) => {
-        if (!alive) return;
-        setEst(e);
+        if (!alive || generation !== quoteGeneration.current) return;
+        if ((!custom && e.quantity !== months) || !Number.isSafeInteger(e.amountCents) || e.amountCents < 0 || !e.startDate || !e.endDate) {
+          setEst(null); onCart(sel.plate, null); setEstErr('试算结果与当前续期不一致，请重新选择月份重试'); return;
+        }
+        setEst(e); setEstimateKey(quoteKey);
         const base = { plate: label ?? sel.plate, rule, months: e.quantity, currentEndDate: currentEnd, systems: lots.map((l) => l.ref), systemsLabel: lots.map((l) => l.label).join(' + '), ...(intakeId ? { intakeId } : {}) };
         if (!custom) { onCart(sel.plate, { ...base, months, estimate: e, custom: null }); return; }
         const yuan = amtTouched ? Number(amt) : e.amountCents / 100;
@@ -434,10 +448,10 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
         if (cents < 0 || !reason.trim()) { onCart(sel.plate, null); return; }
         onCart(sel.plate, { ...base, estimate: { ...e, amountCents: cents }, custom: { startDate: cs, endDate: ce, manualAmountCents: cents, reason: reason.trim(), standardAmountCents: e.amountCents } });
       })
-      .catch((e) => { if (alive) { setEst(null); onCart(sel.plate, null); setEstErr(e instanceof Error ? e.message : '试算失败'); } });
+      .catch((e) => { if (alive && generation === quoteGeneration.current) { setEst(null); onCart(sel.plate, null); setEstErr(e instanceof Error ? e.message : '试算失败'); } });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sel.plate, rule?.id, months, currentEnd, lots.map((l) => l.key).join(','), custom, cs, ce, amt, amtTouched, reason, label]);
+  }, [quoteKey]);
 
 
   return (
@@ -450,7 +464,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
               <div className="muted" style={{ fontSize: 13.5, marginBottom: 6 }}>{intakeId ? '一笔款同时开通以下车库（不开的取消勾选）：' : '一笔款同时续这辆车在以下系统的有效期（不续的取消勾选）：'}</div>
               {sel.lots.map((l) => (
                 <label key={l.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginRight: 16, fontSize: 15 }}>
-                  <input type="checkbox" checked={!off.includes(l.key)} onChange={(e) => setOff((p) => (e.target.checked ? p.filter((x) => x !== l.key) : [...p, l.key]))} />
+                  <input type="checkbox" checked={!off.includes(l.key)} onChange={(e) => { invalidateQuote(); setOff((p) => (e.target.checked ? p.filter((x) => x !== l.key) : [...p, l.key])); }} />
                   {l.label}{l.endDate ? <span className="muted">（至 {l.endDate}）</span> : null}
                 </label>
               ))}
@@ -469,7 +483,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
           {usable.length > 1 ? (
             <div className="quickMonths" style={{ marginTop: 0, marginBottom: 10 }}>
               <span style={{ fontSize: 14, color: 'var(--ink2)', marginRight: 4 }}>收费标准：</span>
-              {usable.map((r) => <button key={r.id} className={`chip ${ruleId === r.id ? 'on' : ''}`} onClick={() => setRuleId(r.id)}>{r.name} · {money(r.unitPriceCents / 100)}/月</button>)}
+              {usable.map((r) => <button key={r.id} className={`chip ${ruleId === r.id ? 'on' : ''}`} onClick={() => { invalidateQuote(); setRuleId(r.id); }}>{r.name} · {money(r.unitPriceCents / 100)}/月</button>)}
             </div>
           ) : null}
           {needClass ? null : !usable.length ? (
@@ -481,11 +495,11 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
             <>
               <div className="quickMonths" style={{ marginTop: 0 }}>
                 <span style={{ fontSize: 14, color: 'var(--ink2)', marginRight: 4 }}>续：</span>
-                {monthOptions.map((m) => <button key={m} className={`chip ${!custom && months === m ? 'on' : ''}`} onClick={() => { setCustom(false); setMonths(m); }}>{m} 个月</button>)}
-                <button className={`chip ${custom ? 'on' : ''}`} onClick={() => setCustom(true)}><Icon name="clock" size={14} />自定日期</button>
+                <RenewalMonths value={months} active={!custom} onValidityChange={valid => { if (!valid) invalidateQuote(); setMonthsValid(valid); }} onChange={m => { invalidateQuote(); setCustom(false); setMonthsValid(true); setMonths(m); }} />
+                <button className={`chip ${custom ? 'on' : ''}`} onClick={() => { invalidateQuote(); setCustom(true); }}><Icon name="clock" size={14} />自定日期</button>
                 {!custom ? (
                   <span style={{ marginLeft: 'auto', fontSize: 14 }}>
-                    {est ? <>{est.startDate} → <b>{est.endDate}</b> · <b className="money">{money(est.amountCents / 100)}</b>{est.breakdown && /套餐/.test(est.breakdown) ? <small className="muted">（{est.breakdown}）</small> : null}</> : estErr ? <span style={{ color: 'var(--dang)' }}>{estErr}</span> : usable.length ? <span className="muted">计算中…</span> : null}
+                    {est ? <>{est.startDate} → <b>{est.endDate}</b> · <b className="money">{money(est.amountCents / 100)}</b>{est.breakdown && /套餐/.test(est.breakdown) ? <small className="muted">（{est.breakdown}）</small> : null}</> : estErr ? <span style={{ color: 'var(--dang)' }}>{estErr}</span> : !monthsValid ? <span style={{ color: 'var(--dang)' }}>月份未填写正确，不能试算或收款</span> : usable.length ? <span className="muted">计算中…</span> : null}
                   </span>
                 ) : null}
               </div>

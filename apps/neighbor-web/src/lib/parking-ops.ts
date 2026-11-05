@@ -11,6 +11,7 @@ import { accessCardIssuance } from '@pms/api-client';
 import type { ParkingOperation, ParkingOperationKind, ParkingQueryRow } from '@pms/api-client/src/endpoints/access-card-issuance';
 import { dayjs } from '@/lib/format';
 import { field, rawBits } from '@/lib/parking-fields';
+import { parkingRenewalWindow } from './parking-renewal-window';
 
 /** 旧库记录主键 P_id（= sourceRecordId） */
 export function pidOf(f: ParkingQueryRow['fields']): string {
@@ -50,12 +51,7 @@ export function createIdempotencyKey(): string {
  * - 都落到自然月最后一天，YYYY-MM-DD（不按“今天+30天”这种精确日）。
  */
 export function renewalEndDate(currentEndDate: string | null | undefined, months: number): string {
-  const today = dayjs();
-  const end = currentEndDate && dayjs(currentEndDate).isValid() ? dayjs(currentEndDate) : null;
-  const anchor = end && end.isAfter(today, 'day')
-    ? end
-    : (today.date() <= 10 ? today : today.add(1, 'month'));
-  return anchor.add(Math.max(months, 1) - 1, 'month').endOf('month').format('YYYY-MM-DD');
+  return parkingRenewalWindow({ currentEndDate, months, today: dayjs().format('YYYY-MM-DD') }).endDate;
 }
 
 /** 多库续期只在第一库记一次收款，其余记 0，避免费用报表重复计数 */

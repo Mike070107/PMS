@@ -60,6 +60,15 @@ test('适用车库重叠判断：空 = 全部车库', () => {
   assert.equal(targetsOverlap(['a'], ['c']), false);
 });
 
+test('价格表只允许显式配置档位，月价不授权推导或重复套餐', () => {
+  const cfg = { priceMode: 'table' as const, tiers: [{ months: 1, amountCents: 18000 }, { months: 3, amountCents: 50000 }, { months: 12, amountCents: 200000 }] };
+  assert.equal(priceRule(3, 100, cfg).amountCents, 50000);
+  assert.equal(priceRule(12, 100, cfg).amountCents, 200000);
+  for (const months of [2, 4, 13, 24, 60]) assert.throws(() => priceRule(months, 100, cfg), /没有定/);
+  assert.throws(() => priceRule(1, 999999, { priceMode: 'table', tiers: [] }), /还没有设价格/);
+  for (const months of [0, 1.5, 61]) assert.throws(() => priceRule(months, 100, cfg), /1~60/);
+});
+
 test('分组名最长 20 字', () => {
   assert.equal(normalizeVehicleClass(' 小车内场 缴费费率180 '), '小车内场缴费费率180');
   assert.throws(() => normalizeVehicleClass('一'.repeat(21)), /最多 20 个字/);
