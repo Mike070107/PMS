@@ -5657,3 +5657,10 @@
 - 自上次（f50eca7e）以来上线的相关提交：
   - 94c26058 fix(family-cars): tolerate nonnumeric building numbers in list sorting
 
+## 2026-11-05 21:29 · api · 1f034dad
+
+- 包：`pms-api-fast-20261105-212808.tar.gz`
+- 提交：1f034dad [verified] fix: ship completed family-car and office workflows
+- 自上次（94c26058）以来上线的相关提交：
+  - 1f034dad [verified] fix: ship completed family-car and office workflows
+
