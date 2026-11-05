@@ -5671,3 +5671,10 @@
 - 自上次（61c0f696）以来上线的相关提交：
   - 1f034dad [verified] fix: ship completed family-car and office workflows
 
+## 2026-11-05 22:28 · api · a103f38e
+
+- 包：`pms-api-fast-20261105-222651.tar.gz`
+- 提交：a103f38e [verified] feat: unify address picking and repair intake location learning
+- 自上次（1f034dad）以来上线的相关提交：
+  - a103f38e [verified] feat: unify address picking and repair intake location learning
+
