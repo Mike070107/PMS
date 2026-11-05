@@ -41,10 +41,11 @@ function controllerWrites() {
   return routes;
 }
 
-test('从所有 Controller 源码提取的 293 个写接口均有明确中文业务动作及筛选模块', () => {
+test('所有 Controller 写接口均有明确中文业务动作及筛选模块（保留历史口径并覆盖新增MIS）', () => {
   const routes = controllerWrites();
-  assert.equal(routes.length, 293);
-  assert.deepEqual(new Set(routes.map((r) => `${r.method} ${r.path}`)), new Set(LEGACY_ACTION_CODES.map(([m, p]) => `${m} ${p}`)));
+  const added=[['POST','/fees/mis/postings'],['POST','/fees/mis/postings/:id/retry']];
+  assert.equal(routes.length, LEGACY_ACTION_CODES.length+added.length);
+  assert.deepEqual(new Set(routes.map((r) => `${r.method} ${r.path}`)), new Set([...LEGACY_ACTION_CODES,...added].map(([m, p]) => `${m} ${p}`)));
   const issues: string[] = [];
   for (const route of routes) {
     const path = route.path.replace(/:[^/]+/g, '31');

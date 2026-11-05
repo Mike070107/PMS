@@ -116,6 +116,8 @@ const TEMPLATES: ReadonlyArray<readonly [string, string, string, string, string]
   ["POST", "/fees/templates", "post_fees_templates", "新建收费模板", "收费"],
   ["PATCH", "/fees/templates/:id", "patch_fees_templates_id", "修改收费模板", "收费"],
   ["POST", "/fees/templates/:id/disable", "post_fees_templates_id_disable", "停用收费模板", "收费"],
+  ["POST", "/fees/mis/postings", "post_fees_mis_postings", "登记MIS账单收款", "收费"],
+  ["POST", "/fees/mis/postings/:id/retry", "post_fees_mis_postings_id_retry", "核对原单并申请重试MIS销账", "收费"],
   ["POST", "/fees/mis/collections/preview", "post_fees_mis_collections_preview", "预览物业费催缴单", "收费"],
   ["POST", "/fees/mis/collections", "post_fees_mis_collections", "创建物业费催缴任务", "收费"],
   ["PATCH", "/fees/cashier/houses/:houseId/contact", "patch_fees_cashier_houses_id_contact", "修改公寓收费联系资料", "收费"],

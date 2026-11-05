@@ -50,6 +50,15 @@ export class MisPostingService{
   const row=await this.repo.findOne({where:{id,tenantId:user.tenantId!}});if(!row||!['mis_property','mis_berth'].includes(row.serviceType)||scope&&(!row.communityId||!scope.includes(row.communityId)))throw new ForbiddenException('办理单不存在或不在当前数据范围');
   const mis=row.snapshot.mis as any;return{id:row.id,txnNo:row.txnNo,serviceType:row.serviceType,status:row.status,amountCents:row.amountCents,paymentMethod:mis?.command?.paymentMethod||row.paymentMethod,createdAt:row.createdAt,createdBy:row.createdBy,houseId:row.houseId,communityId:row.communityId,address:(row.snapshot.house as any)?.address||'',externalSyncStatus:row.externalSyncStatus,receiptNo:mis?.command?.receiptNo||null,bills:mis?.command?.bills||[],execution:{attempts:Number(mis?.attempts||0),lastError:mis?.lastError||null,startedAt:mis?.startedAt||null,finishedAt:mis?.finishedAt||null},sourceLabel:'一通MIS'};
  }
+ async lookup(key:string,user:AuthUser,access?:ResolvedAccess){
+  this.scope(user,access);if(typeof key!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(key))throw new BadRequestException('原办理标识非法');
+  const row=await this.repo.findOne({where:{tenantId:user.tenantId!,txnNo:'MIS-'+key.toLowerCase()}});if(!row)return{found:false};if(row.createdBy!==user.id)throw new ForbiddenException('只能恢复本人原办理单');return{found:true,posting:await this.detail(row.id,user,access)};
+ }
+ readiness(user:AuthUser,access?:ResolvedAccess){
+  const scope=this.scope(user,access);const configured=process.env.MIS_POSTING_MODE==='on'&&Number(process.env.MIS_FEES_TENANT_ID)===user.tenantId&&!!process.env.MIS_FEES_USER&&!!process.env.MIS_FEES_PASSWORD&&(!scope||scope.length>0);
+  const methods=['cash','wechat','alipay','bank','card','other'].filter(method=>{try{resolveMisCollector(process.env.MIS_POSTING_MAPPING,user.tenantId!,user.id,method);return true}catch{return false}});
+  return {enabled:configured&&methods.length>0,methods:configured?methods:[],sourceLabel:'一通MIS',reason:!configured?'MIS正式收款尚未启用，本页仅核对应收，请在物业系统收款':!methods.length?'当前员工的MIS收款人/收款方式映射尚未核实，不可收款':'本次仍会核对源账单、本人收款映射与封帐，确认前不会登记收款'};
+ }
  private scope(user:AuthUser,access?:ResolvedAccess){if(!user.tenantId||!access)throw new ForbiddenException('缺少公司或数据范围授权');return scopeCommunityIds(access);}
  async create(dto:CreateMisPosting,user:AuthUser,access?:ResolvedAccess):Promise<BusinessTransaction>{
   const scope=this.scope(user,access);
