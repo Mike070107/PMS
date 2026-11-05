@@ -5,6 +5,7 @@ import { Loading, Sheet, toast } from '@/components/ui';
 import { dayjs, money, payLabel } from '@/lib/format';
 import FeeIcon from '@/components/FeeIcon';
 import ToneIcon from '@/components/ToneIcon';
+import MisFeeLedger from './MisFeeLedger';
 
 interface BillRow {
   id: number; receiptNo: string | null; originalReceiptNo: string | null; reversalReceiptNo: string | null;
@@ -34,7 +35,11 @@ const PAGE = 30;
  * 可补打收据（进日志可追溯）与红冲（原单号保留，不物理删除）。
  * 数据：GET /fees/bills；补打/红冲走 /fees/cashier/receipts/:receiptNo/*。
  */
-export default function Fees() {
+export default function Fees(){
+ const [source,setSource]=useState<'mis'|'local'>('mis');
+ return <><div className="chips" style={{display:'flex',gap:8,flexWrap:'nowrap',overflowX:'auto',marginBottom:14}}><button className={`chip ${source==='mis'?'on':''}`} onClick={()=>setSource('mis')}>MIS实收原账</button><button className={`chip ${source==='local'?'on':''}`} onClick={()=>setSource('local')}>本系统公寓流水</button></div>{source==='mis'?<MisFeeLedger/>:<LocalFees/>}</>;
+}
+function LocalFees() {
   const [q, setQ] = useState('');
   const [status, setStatus] = useState<'' | 'paid' | 'unpaid' | 'refunded'>('');
   const [page, setPage] = useState(1);
