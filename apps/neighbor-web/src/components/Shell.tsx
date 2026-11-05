@@ -10,6 +10,7 @@ import type { IconName } from '@/components/Icon';
 import { legacyUrl } from '@/lib/legacy';
 import { statusOf } from '@/lib/format';
 import { can } from '@/lib/perm';
+import { canViewPath } from '@/lib/page-access';
 
 /**
  * 导航 = 图标竖栏（图标优先）。收费工作台相关的在最上面，
@@ -37,6 +38,7 @@ export const NAV: NavItem[] = [
   { key: 'vehicles', name: '车辆管理', rail: '车辆', icon: 'car', to: '/vehicles', group: '车辆管理' },
   { key: 'access-cards', name: '门禁管理', rail: '门禁', icon: 'key', to: '/access-cards', group: '收费' },
   { key: 'plates', name: '车牌登记审核', rail: '车牌', icon: 'key', to: '/plates', group: '车辆管理' },
+  { key: 'family-cars', name: '亲情车管理', rail: '亲情车', icon: 'car', to: '/family-cars', group: '车辆管理' },
   { key: 'garage-main', name: '大车库车位', rail: '大车库', icon: 'car', to: '/parking/main', group: '车辆管理' },
   { key: 'garage-civil', name: '人防车位', rail: '人防', icon: 'shield', to: '/parking/civil', group: '车辆管理' },
   { key: 'records', name: '办理记录', rail: '办理记录', icon: 'receipt', to: '/records', group: '收费' },
@@ -66,7 +68,7 @@ export const NAV: NavItem[] = [
 const GROUPS: Array<{ title: string; keys: string[]; icon: IconName; tone: string }> = [
   { title: '总览', keys: ['today'], icon: 'today', tone: 'green' },
   { title: '收费办理', keys: ['cashier', 'meters', 'apartment', 'access-cards', 'bills', 'records', 'pending', 'standards'], icon: 'wallet', tone: 'blue' },
-  { title: '车辆管理', keys: ['vehicles', 'plates', 'garage-main', 'garage-civil'], icon: 'car', tone: 'slate' },
+  { title: '车辆管理', keys: ['vehicles', 'plates', 'family-cars', 'garage-main', 'garage-civil'], icon: 'car', tone: 'slate' },
   { title: '报修养护', keys: ['work-orders', 'maint', 'notes'], icon: 'wrench', tone: 'orange' },
   { title: '库存与盘点', keys: ['purchase', 'stock', 'count', 'sku'], icon: 'box', tone: 'green' },
   { title: '分析', keys: ['reports'], icon: 'chart', tone: 'violet' },
@@ -105,12 +107,19 @@ export default function Shell() {
 
   useEffect(() => {
     let alive = true;
-    notifications.unreadCount().then((r) => { if (alive) setUnread(r.count); }).catch(() => undefined);
-    import('@pms/api-client').then(({ repairs }) => repairs.badgeCounts())
-      .then((b) => { if (alive) setCounts({ dispatch: b.dispatch, accept: b.pool }); })
-      .catch(() => undefined);
+    const identity = { token: session.token, generation: session.generation };
+    const access = session.access;
+    const current = () => alive && auth.isCurrent(identity) && auth.getAccess() === access;
+    setCounts({ dispatch: 0, accept: 0 });
+    notifications.unreadCount().then((r) => { if (current()) setUnread(r.count); }).catch(() => undefined);
+    // Match badge-counts' server guard, not the web work-orders page permission.
+    if (['app:pool', 'app:dispatch', 'app:my-orders'].some((key) => can(key, 'view'))) {
+      import('@pms/api-client').then(({ repairs }) => current() ? repairs.badgeCounts() : undefined)
+        .then((b) => { if (b && current()) setCounts({ dispatch: b.dispatch, accept: b.pool }); })
+        .catch(() => { if (current()) setCounts({ dispatch: 0, accept: 0 }); });
+    }
     return () => { alive = false; };
-  }, [loc.pathname]);
+  }, [loc.pathname, session.token, session.generation, session.access]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -124,6 +133,7 @@ export default function Shell() {
   useEffect(()=>{setMobileOpen(false)},[loc.pathname]);
 
   const goto = (item: NavItem) => {
+    if (!item.to || !canViewPath(item.to,session.access)) return;
     setMobileOpen(false);
     setCmdk(false);
     if (item.prod) { window.location.href = item.prod; return; }
@@ -140,7 +150,7 @@ export default function Shell() {
   const filtered = useMemo(() => {
     const kw = q.trim();
     const list = kw ? NAV.filter((i) => i.name.includes(kw) || i.key.includes(kw)) : NAV;
-    return list.filter(i=>!i.permissionKey||can(i.permissionKey,'view')).slice(0, 12);
+    return list.filter(i=>!!i.to&&canViewPath(i.to,session.access)&&(!i.permissionKey||can(i.permissionKey,'view'))).slice(0, 12);
   }, [q, session.access]);
 
   const badgeOf = (key: string) =>
@@ -179,7 +189,7 @@ export default function Shell() {
 
         <div className="navToolbar"><span>功能导航</span><button type="button" title="收起所有分组" aria-label="收起所有分组" onClick={()=>setOpenGroups([])}><Icon name="chev" size={14}/></button></div>
         <nav className="nav" aria-label="业务功能">
-          {GROUPS.filter(g=>g.keys.some(k=>{const item=NAV.find(n=>n.key===k);return item&&(!item.permissionKey||can(item.permissionKey,'view'))})).map((g) => (
+          {GROUPS.filter(g=>g.keys.some(k=>{const item=NAV.find(n=>n.key===k);return item&&!!item.to&&canViewPath(item.to,session.access)&&(!item.permissionKey||can(item.permissionKey,'view'))})).map((g) => (
             <div key={g.title}>
               <button className={`navGroupTitle ${openGroups.includes(g.title) ? 'open' : ''} ${g.title===activeGroup?'active-group':''}`} title={g.title} aria-expanded={openGroups.includes(g.title)} aria-controls={`nav-group-${g.title}`} onClick={() => toggleGroup(g.title)}>
                 <span className={"ic-tile navGroupTile t-" + g.tone}><Icon name={g.icon} size={13} /></span>
@@ -188,7 +198,7 @@ export default function Shell() {
               </button>
               <div id={`nav-group-${g.title}`} role="group" aria-label={g.title}>{!openGroups.includes(g.title) ? null : g.keys.map((k) => {
                 const item = NAV.find((n) => n.key === k);
-                if (!item || (item.permissionKey && !can(item.permissionKey, 'view'))) return null;
+                if (!item || !item.to || !canViewPath(item.to,session.access) || (item.permissionKey && !can(item.permissionKey, 'view'))) return null;
                 const on = item.key === page;
                 const badge = badgeOf(item.key);
                 return (
@@ -227,9 +237,9 @@ export default function Shell() {
             <span>搜索功能、工单号…</span>
             <kbd>Ctrl K</kbd>
           </div>
-          <button className="btn p" onClick={() => nav('/cashier')}>
+          {canViewPath('/cashier',session.access) ? <button className="btn p" onClick={() => nav('/cashier')}>
             <Icon name="cash" size={18} />收费办理
-          </button>
+          </button> : null}
           <ThemePicker mobile/>
           <button className="ib" title="通知" onClick={() => { window.location.href = '/dashboard'; }}>
             <Icon name="bell" />
@@ -254,7 +264,7 @@ export default function Shell() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   const kw = q.trim();
-                  if (/^WO-/i.test(kw)) { setCmdk(false); nav(`/work-orders?q=${encodeURIComponent(kw)}`); return; }
+                  if (/^WO-/i.test(kw) && canViewPath('/work-orders',session.access)) { setCmdk(false); nav(`/work-orders?q=${encodeURIComponent(kw)}`); return; }
                   if (filtered[0]) goto(filtered[0]);
                 }
               }}

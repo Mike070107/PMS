@@ -1,4 +1,4 @@
-import { Suspense, lazy as reactLazy, useEffect, type ComponentType } from 'react';
+import { Suspense, lazy as reactLazy, useEffect, useState, type ComponentType } from 'react';
 
 /** 懒加载失败（发布后旧页面文件已不在）时刷新一次拿新版，而不是白屏 */
 function lazy<T extends ComponentType<any>>(load: () => Promise<{ default: T }>) {
@@ -10,7 +10,8 @@ function lazy<T extends ComponentType<any>>(load: () => Promise<{ default: T }>)
 }
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { auth as authApi } from '@pms/api-client';
-import { auth, useSession } from '@/lib/auth';
+import { auth, useSession, type SessionIdentity } from '@/lib/auth';
+import { canViewPath, firstAllowedPath } from '@/lib/page-access';
 import Shell from '@/components/Shell';
 import Login from '@/pages/Login';
 import { Loading, Toaster } from '@/components/ui';
@@ -44,22 +45,31 @@ const Purchase = lazy(() => import('@/pages/Purchase'));
 const Stock = lazy(() => import('@/pages/Stock'));
 const Settings = lazy(() => import('@/pages/Settings'));
 const Plates = lazy(() => import('@/pages/Plates'));
+const FamilyCars = lazy(() => import('@/pages/FamilyCars'));
 const PlateForm = lazy(() => import('@/pages/PlateForm'));
 
 export default function App() {
   const session = useSession();
   const loc = useLocation();
+  const [verifiedIdentity, setVerifiedIdentity] = useState<SessionIdentity | null>(null);
+  const [accessFailed, setAccessFailed] = useState(false);
+  const [accessRetry, setAccessRetry] = useState(0);
 
   // 权限（页面可见性和管理处切换）来自 /auth/me；登录态可能是别的标签页留下的
   useEffect(() => {
     if (!session.token) return;
     const identity = auth.captureIdentity();
     let active = true;
+    setAccessFailed(false);
     authApi.me()
-      .then((r) => { if (active) auth.setAccess(r.access ?? null, identity); })
-      .catch(() => undefined);
+      .then((r) => {
+        if (!active || !auth.isCurrent(identity)) return;
+        auth.setAccess(r.access ?? null, identity);
+        setVerifiedIdentity(identity);
+      })
+      .catch(() => { if (active && auth.isCurrent(identity)) setAccessFailed(true); });
     return () => { active = false; };
-  }, [session.token, session.generation]);
+  }, [session.token, session.generation, accessRetry]);
 
   // 业主手机扫码填写页：不需要登录，也不套后台外壳
   if (loc.pathname.startsWith('/m/plate/')) {
@@ -82,13 +92,23 @@ export default function App() {
     );
   }
 
+  // 必须先拿到当前登录代次的真实权限，再挂载任何后台框架或业务页。
+  if (!verifiedIdentity || !auth.isCurrent(verifiedIdentity) || accessFailed) {
+    return <main className="empty" role={accessFailed ? 'alert' : 'status'} style={{ padding: 60 }}>
+      {accessFailed ? <><p>无法读取页面权限，请重试或重新登录。</p><button className="btn" onClick={() => setAccessRetry(n => n + 1)}>重试</button><button className="btn" onClick={() => auth.clear()}>退出登录</button></> : <Loading text="正在核对页面权限…" />}
+    </main>;
+  }
+  const landing = firstAllowedPath(session.access);
+  if (!landing) return <main className="empty" role="status" style={{ padding: 60 }}><p>当前账号未获授任何后台页面权限，请联系管理员。</p><button className="btn" onClick={() => setAccessRetry(n => n + 1)}>重新核对权限</button><button className="btn" onClick={() => auth.clear()}>退出登录</button></main>;
+  if (!canViewPath(loc.pathname, session.access)) return <Navigate to={landing} replace />;
+
   return (
     <>
       <Suspense fallback={<div style={{ padding: 60 }}><Loading /></div>}>
         <Routes>
-          <Route path="/login" element={<Navigate to="/today" replace />} />
+          <Route path="/login" element={<Navigate to={landing} replace />} />
           <Route element={<Shell />}>
-            <Route path="/" element={<Navigate to="/today" replace />} />
+            <Route path="/" element={<Navigate to={landing} replace />} />
             <Route path="/today" element={<Today />} />
             <Route path="/work-orders" element={<WorkOrders />} />
             <Route path="/cashier" element={<Cashier />} />
@@ -121,7 +141,8 @@ export default function App() {
             <Route path="/stock" element={<Stock />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/plates" element={<Plates />} />
-            <Route path="*" element={<Navigate to="/today" replace />} />
+            <Route path="/family-cars" element={<FamilyCars />} />
+            <Route path="*" element={<Navigate to={landing} replace />} />
           </Route>
         </Routes>
       </Suspense>

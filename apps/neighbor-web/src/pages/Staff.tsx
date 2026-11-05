@@ -4,6 +4,8 @@ import { ADMIN_PAGES, REPAIR_TYPE_OPTIONS, STAFF_APP_PAGES } from '@pms/shared-t
 import Icon from '@/components/Icon';
 import { Btn, Field, Loading, Sheet, toast } from '@/components/ui';
 import ToneIcon from '@/components/ToneIcon';
+import { can } from '@/lib/perm';
+import { useSession } from '@/lib/auth';
 
 /* ───────── 类型 ───────── */
 interface Assignment { officeId: number | null; skills: string[] }
@@ -50,23 +52,29 @@ type Tab = 'staff' | 'roles' | 'templates';
  * 「在哪里做」只看员工工作范围：一个岗位一个角色，不用按管理处复制。
  */
 export default function Staff() {
-  const [tab, setTab] = useState<Tab>('staff');
+  const session = useSession();
+  const canStaff = can('users', 'view'), canRoles = can('roles', 'view');
+  const [selectedTab, setTab] = useState<Tab>('staff');
+  const tab: Tab = (selectedTab === 'staff' ? canStaff : canRoles) ? selectedTab : canStaff ? 'staff' : 'roles';
   const [staff, setStaff] = useState<StaffRow[] | null>(null);
   const [roles, setRoles] = useState<RoleRow[]>([]);
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [offices, setOffices] = useState<Office[]>([]);
 
-  const loadStaff = () => request<StaffRow[]>({ url: '/staff' }).then(setStaff).catch(() => setStaff([]));
-  const loadRoles = () => Promise.all([
-    request<RoleRow[]>({ url: '/roles' }).then(setRoles).catch(() => setRoles([])),
-    request<TemplateRow[]>({ url: '/roles/templates' }).then(setTemplates).catch(() => setTemplates([])),
+  const loadStaff = () => !canStaff ? Promise.resolve() : request<StaffRow[]>({ url: '/staff' }).then(setStaff).catch(() => setStaff([]));
+  const loadRoles = () => !canStaff && !canRoles ? Promise.resolve([]) : Promise.all([
+    request<RoleRow[]>({ url: canRoles ? '/roles' : '/roles/assignable' }).then(rows => setRoles(rows.map(r => ({ ...r, enabled: r.enabled !== false })))).catch(() => setRoles([])),
+    canRoles ? request<TemplateRow[]>({ url: '/roles/templates' }).then(setTemplates).catch(() => setTemplates([])) : Promise.resolve(),
   ]);
   useEffect(() => {
-    void loadStaff(); void loadRoles();
-    request<{ offices: Office[] }>({ url: '/offices' }).then((r) => setOffices(r.offices || [])).catch(() => setOffices([]));
-  }, []);
+    if (canStaff) void loadStaff(); else setStaff([]);
+    void loadRoles();
+    setOffices((session.access?.offices ?? []).map(o => ({ ...o, enabled: true })));
+  }, [session.access, canStaff, canRoles]);
 
-  if (staff === null) return <Loading />;
+  if (!canStaff && !canRoles) return null;
+  if (canStaff && staff === null) return <Loading />;
+  const staffRows = staff ?? [];
   const officeName = (id: number | null) => (id === null ? '全部管理处' : offices.find((o) => o.id === id)?.name?.replace(/管理处$/, '') || `#${id}`);
 
   return (
@@ -77,12 +85,12 @@ export default function Staff() {
           <p>员工在哪个管理处做什么工种 · 角色决定能做什么 · 权限模板给多个角色共用</p>
         </div>
         <div className="seg" style={{ marginLeft: 'auto' }}>
-          {([['staff', `员工 ${staff.length}`], ['roles', `业务角色 ${roles.filter((r) => r.enabled).length}`], ['templates', `权限模板 ${templates.length}`]] as Array<[Tab, string]>).map(([k, n]) => (
+          {([['staff', `员工 ${staffRows.length}`], ['roles', `业务角色 ${roles.filter((r) => r.enabled).length}`], ['templates', `权限模板 ${templates.length}`]] as Array<[Tab, string]>).filter(([k]) => k === 'staff' ? canStaff : canRoles).map(([k, n]) => (
             <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{n}</button>
           ))}
         </div>
       </div>
-      {tab === 'staff' ? <StaffTab list={staff} roles={roles} offices={offices} officeName={officeName} reload={loadStaff} /> : null}
+      {tab === 'staff' ? <StaffTab list={staffRows} roles={roles} offices={offices} officeName={officeName} reload={loadStaff} /> : null}
       {tab === 'roles' ? <RolesTab roles={roles} templates={templates} reload={loadRoles} /> : null}
       {tab === 'templates' ? <TemplatesTab roles={roles} templates={templates} reload={loadRoles} /> : null}
     </>
