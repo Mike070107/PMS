@@ -5629,3 +5629,10 @@
   - e53f9429 [verified] fix(web): load property filters on demand and distinguish request failures
   - e733d31c [verified] fix(web): isolate migrated payment card styles
 
+## 2026-11-05 11:37 · web · 5362d23d
+
+- 包：`pms-web-20261105-113649.tar.gz`
+- 提交：5362d23d [verified] fix(web): constrain login card on narrow screens
+- 自上次（7e6fbeb6）以来上线的相关提交：
+  - 5362d23d [verified] fix(web): constrain login card on narrow screens
+
