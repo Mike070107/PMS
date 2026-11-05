@@ -2,7 +2,7 @@ import {createContext,useContext,useEffect,useLayoutEffect,useMemo,useSyncExtern
 import {ConfigProvider} from 'antd';
 import {request} from '@pms/api-client';
 import {auth,useSession} from '@/lib/auth';
-import {createPreferenceStore,DEFAULT_PREFERENCES,preferenceKey,THEMES,type UiPreferences,type PreferenceSnapshot} from '@/lib/ui-preferences-core';
+import {createPreferenceStore,DEFAULT_PREFERENCES,preferenceKey,THEMES,themeTokens,type UiPreferences,type PreferenceSnapshot} from '@/lib/ui-preferences-core';
 import '@/styles/ui-preferences.css';
 type UiContext=PreferenceSnapshot&{palette:typeof THEMES[number];update:(patch:Partial<UiPreferences>)=>Promise<boolean>;reload:()=>Promise<void>};
 const Context=createContext<UiContext|null>(null);
@@ -18,7 +18,7 @@ function PreferenceSession({identity,loggedIn,children}:{identity:string;loggedI
  const palette=THEMES.find(t=>t.id===snapshot.preferences.theme)??THEMES[0];
  useLayoutEffect(()=>{
   const root=document.documentElement;root.dataset.uiTheme=palette.id;
-  for(const [key,value] of Object.entries({'--acc':palette.primary,'--acc-h':palette.hover,'--acc-w':palette.soft,'--acc-t':palette.text,'--acc-b':palette.link}))root.style.setProperty(key,value);
+  for(const [key,value] of Object.entries(themeTokens(palette)))root.style.setProperty(key,value);
  },[palette]);
  useEffect(()=>{void store.start();return()=>store.dispose()},[store]);
  return <Context.Provider value={{...snapshot,palette,update:store.update,reload:store.start}}><ConfigProvider theme={{token:{colorPrimary:palette.primary,fontSize:16,controlHeight:44,borderRadius:8}}}>{children}</ConfigProvider></Context.Provider>;

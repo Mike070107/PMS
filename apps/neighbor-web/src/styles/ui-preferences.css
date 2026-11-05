@@ -77,3 +77,11 @@
  #web.menu-open .me{justify-content:flex-start;padding:10px 6px 2px}
  #web.menu-open .side-backdrop{display:block;position:fixed;inset:0;z-index:210;background:rgba(23,32,51,.28);cursor:default}
 }
+
+/* Sidebar surface follows the user's theme; business surfaces stay neutral. */
+#web .side{background:var(--sidebar-bg,var(--surface))}
+#web .side .scope-ib{background:rgba(255,255,255,.65);color:var(--acc-t)}
+#web .side .nav a:hover,#web .side .navGroupTitle:hover,#web .side .navToolbar button:hover,#web .side .sidebar-collapse:hover{background:rgba(255,255,255,.55)}
+#web .side .nav a.on{background:#fff;color:var(--acc-t);box-shadow:inset 3px 0 0 var(--acc)}
+#web .side .navGroupTitle.active-group:not(.open){background:rgba(255,255,255,.65);color:var(--acc-t)}
+#web .side .me{border-top-color:rgba(23,32,51,.10)}

@@ -1,11 +1,14 @@
 export const THEMES = [
- {id:'slate',name:'经典钢蓝',primary:'#2d4e73',hover:'#223c59',soft:'#e9eff6',text:'#2b4a6d',link:'#3a648f'},
- {id:'ocean',name:'海青蓝',primary:'#176179',hover:'#10485b',soft:'#e7f2f6',text:'#16586e',link:'#216c84'},
- {id:'jade',name:'青松绿',primary:'#256659',hover:'#1b4d43',soft:'#e8f2ee',text:'#215c50',link:'#32796a'},
- {id:'indigo',name:'静谧靛紫',primary:'#575181',hover:'#423d65',soft:'#eeecf5',text:'#514a79',link:'#6b6196'},
- {id:'sand',name:'暖砂棕',primary:'#795b3b',hover:'#5d452c',soft:'#f5efe7',text:'#705335',link:'#896747'},
- {id:'rose',name:'雾玫瑰',primary:'#80546b',hover:'#634052',soft:'#f5ebf0',text:'#774e64',link:'#91647d'},
+ {id:'slate',sidebar:'#e5edf7',name:'经典钢蓝',primary:'#2d4e73',hover:'#223c59',soft:'#e9eff6',text:'#2b4a6d',link:'#3a648f'},
+ {id:'ocean',sidebar:'#e1f0f4',name:'海青蓝',primary:'#176179',hover:'#10485b',soft:'#e7f2f6',text:'#16586e',link:'#216c84'},
+ {id:'jade',sidebar:'#e1efe8',name:'青松绿',primary:'#256659',hover:'#1b4d43',soft:'#e8f2ee',text:'#215c50',link:'#32796a'},
+ {id:'indigo',sidebar:'#eae6f5',name:'静谧靛紫',primary:'#575181',hover:'#423d65',soft:'#eeecf5',text:'#514a79',link:'#6b6196'},
+ {id:'sand',sidebar:'#f1e7da',name:'暖砂棕',primary:'#795b3b',hover:'#5d452c',soft:'#f5efe7',text:'#705335',link:'#896747'},
+ {id:'rose',sidebar:'#f3e4ec',name:'雾玫瑰',primary:'#80546b',hover:'#634052',soft:'#f5ebf0',text:'#774e64',link:'#91647d'},
 ] as const;
+export function themeTokens(palette:typeof THEMES[number]):Record<string,string>{
+ return {'--acc':palette.primary,'--acc-h':palette.hover,'--acc-w':palette.soft,'--acc-t':palette.text,'--acc-b':palette.link,'--sidebar-bg':palette.sidebar};
+}
 export type UiTheme=typeof THEMES[number]['id'];
 export interface UiPreferences {theme:UiTheme;sidebarCollapsed:boolean}
 export interface PreferenceSnapshot {preferences:UiPreferences;status:'loading'|'idle'|'saving'|'saved'|'error';error:string}
