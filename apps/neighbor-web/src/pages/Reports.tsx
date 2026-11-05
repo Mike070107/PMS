@@ -1,3 +1,4 @@
+import DateInput from '@/components/DateInput';
 import { useEffect, useMemo, useState } from 'react';
 import { address, request } from '@pms/api-client';
 import type { AddressCommunity } from '@pms/shared-types';
@@ -95,9 +96,9 @@ export default function Reports() {
       </div>
 
       <div className="wo-bar" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <input className="in" type="date" style={{ width: 150 }} value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
+        <DateInput className="in" type="date" style={{ width: 150 }} value={from} max={to} onChange={(e) => setFrom(e.target.value)} />
         <span className="muted">至</span>
-        <input className="in" type="date" style={{ width: 150 }} value={to} min={from} max={fmtD(new Date())} onChange={(e) => setTo(e.target.value)} />
+        <DateInput className="in" type="date" style={{ width: 150 }} value={to} min={from} max={fmtD(new Date())} onChange={(e) => setTo(e.target.value)} />
         <div className="chips">
           <button className="chip" onClick={() => preset(daysAgo(6), fmtD(new Date()))}>近7天</button>
           <button className="chip" onClick={() => preset(daysAgo(29), fmtD(new Date()))}>近30天</button>

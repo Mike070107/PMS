@@ -1,5 +1,6 @@
 import {createContext,useContext,useEffect,useLayoutEffect,useMemo,useSyncExternalStore,type ReactNode} from 'react';
 import {ConfigProvider} from 'antd';
+import zhCN from 'antd/es/locale/zh_CN';
 import {request} from '@pms/api-client';
 import {auth,useSession} from '@/lib/auth';
 import {createPreferenceStore,DEFAULT_PREFERENCES,preferenceKey,THEMES,themeTokens,type UiPreferences,type PreferenceSnapshot} from '@/lib/ui-preferences-core';
@@ -21,7 +22,7 @@ function PreferenceSession({identity,loggedIn,children}:{identity:string;loggedI
   for(const [key,value] of Object.entries(themeTokens(palette)))root.style.setProperty(key,value);
  },[palette]);
  useEffect(()=>{void store.start();return()=>store.dispose()},[store]);
- return <Context.Provider value={{...snapshot,palette,update:store.update,reload:store.start}}><ConfigProvider theme={{token:{colorPrimary:palette.primary,fontSize:16,controlHeight:44,borderRadius:8}}}>{children}</ConfigProvider></Context.Provider>;
+ return <Context.Provider value={{...snapshot,palette,update:store.update,reload:store.start}}><ConfigProvider locale={zhCN} theme={{token:{colorPrimary:palette.primary,fontSize:16,controlHeight:44,borderRadius:8},components:{DatePicker:{cellWidth:38,cellHeight:36,textHeight:36,borderRadiusLG:12,zIndexPopup:2200}}}}>{children}</ConfigProvider></Context.Provider>;
 }
 export default function UiPreferencesProvider({children}:{children:ReactNode}){
  const session=useSession(),identity=preferenceKey(session.user);

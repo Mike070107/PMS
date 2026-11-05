@@ -1,3 +1,4 @@
+import DateInput from '@/components/DateInput';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { request } from '@pms/api-client';
 import { dayjs } from '@/lib/format';
@@ -183,7 +184,7 @@ function EditSheet({ row, onClose, onDone }: { row: SpaceRow; onClose: () => voi
         <label className="fl">房号<input className="in" value={houseNo} onChange={(e) => setHouseNo(e.target.value)} /></label>
         <label className="fl">业主<input className="in" value={ownerName} onChange={(e) => setOwnerName(e.target.value)} /></label>
         <label className="fl">电话<input className="in" value={ownerTel} onChange={(e) => setOwnerTel(e.target.value)} placeholder="多个电话用 / 隔开" /></label>
-        <label className="fl">车牌续费有效期<input className="in" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></label>
+        <label className="fl">车牌续费有效期<DateInput className="in" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></label>
         <label className="fl">面积（㎡）<input className="in" value={area} onChange={(e) => setArea(e.target.value.replace(/[^\d.]/g, ''))} /></label>
         <label className="fl">备注<input className="in" value={note} onChange={(e) => setNote(e.target.value)} placeholder="如：产权 / 租赁车位 / 来源停车系统" /></label>
         {err ? <div className="note" style={{ background: 'var(--dang-w)', color: 'var(--dang)' }}>{err}</div> : null}

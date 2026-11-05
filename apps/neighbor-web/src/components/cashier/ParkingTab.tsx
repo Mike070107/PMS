@@ -1,3 +1,4 @@
+import DateInput from '@/components/DateInput';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { accessCardIssuance, request } from '@pms/api-client';
 import type { ParkingQuery } from '@pms/api-client/src/endpoints/access-card-issuance';
@@ -492,8 +493,8 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
               {custom ? (
                 <div className="custom-renew">
                   <div className="cr-grid">
-                    <label>开始日期<input className="in" type="date" value={cs} onChange={(e) => setCs(e.target.value)} /></label>
-                    <label>结束日期<input className="in" type="date" value={ce} min={cs || undefined} onChange={(e) => setCe(e.target.value)} /></label>
+                    <label>开始日期<DateInput className="in" type="date" value={cs} onChange={(e) => setCs(e.target.value)} /></label>
+                    <label>结束日期<DateInput className="in" type="date" value={ce} min={cs || undefined} onChange={(e) => setCe(e.target.value)} /></label>
                     <label>实收金额（元）<input className="in" type="number" min={0} step="0.01" value={amt} onChange={(e) => { setAmt(e.target.value); setAmtTouched(true); }} /></label>
                   </div>
                   <div className="muted" style={{ fontSize: 13.5, margin: '6px 0' }}>

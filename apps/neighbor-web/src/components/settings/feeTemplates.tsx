@@ -1,3 +1,4 @@
+import DateInput from '@/components/DateInput';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { request } from '@pms/api-client';
 import { FEE_ITEMS, formatFeeMoney } from '@pms/shared-types';
@@ -239,7 +240,7 @@ export function FeeTemplatesSection({ canEdit }: { canEdit: boolean }) {
           <div className="set-note" style={{ margin: 0 }}>保存为新版本，不修改已生成账单；住户的个别调整继续优先于模板。</div>
           <div className="set-inline">
             <label className="set-field" style={{ flex: 1, minWidth: 220 }}>模板名称<input className="in" maxLength={80} value={editor.name} onChange={(e) => setEditor({ ...editor, name: e.target.value })} /></label>
-            <label className="set-field">生效日期<input className="in" type="date" min={today()} value={editor.effectiveFrom} onChange={(e) => setEditor({ ...editor, effectiveFrom: e.target.value })} /></label>
+            <label className="set-field">生效日期<DateInput className="in" type="date" min={today()} value={editor.effectiveFrom} onChange={(e) => setEditor({ ...editor, effectiveFrom: e.target.value })} /></label>
           </div>
           <div className="set-field">收费项目 / 单价（元） / 单位 / 计费方式 / 周期</div>
           {editor.items.map((it, i) => (
@@ -260,7 +261,7 @@ export function FeeTemplatesSection({ canEdit }: { canEdit: boolean }) {
       <FormModal open={!!assignment} title="批量套用模板" okText="确认套用" onClose={() => setAssignment(null)} onOk={() => void assign()} busy={saving}>
         {assignment ? <>
           <p style={{ margin: 0 }}><b>{assignment.count} 户</b>将套用「{template?.name}」。{assignment.all ? '作用于所选整栋或整个门店 / 小区，不受搜索条件和分页限制。' : ''}</p>
-          <label>生效日期<input className="in" type="date" min={today()} value={assignment.date} onChange={(e) => setAssignment({ ...assignment, date: e.target.value })} /></label>
+          <label>生效日期<DateInput className="in" type="date" min={today()} value={assignment.date} onChange={(e) => setAssignment({ ...assignment, date: e.target.value })} /></label>
           <label className="set-inline" style={{ fontWeight: 400 }}><input type="checkbox" checked={assignment.preserve} onChange={(e) => setAssignment({ ...assignment, preserve: e.target.checked })} />保留住户已有的个别单价调整</label>
           {!assignment.preserve ? <ResultNote ok={false}>本次将清除选中住户的个别调整，全部使用模板价格</ResultNote> : null}
         </> : null}
@@ -269,7 +270,7 @@ export function FeeTemplatesSection({ canEdit }: { canEdit: boolean }) {
       <FormModal open={!!exception} title={`个别调整 · ${exception ? `${bLabel(exception)}${exception.room_no}室` : ''}`} onClose={() => setException(null)} onOk={() => void saveException()} busy={saving}>
         {exception ? <>
           <p style={{ margin: 0 }}>只勾选需要例外设置的项目，未勾选的继续跟随模板。</p>
-          <label>生效日期<input className="in" type="date" min={today()} value={excDate} onChange={(e) => setExcDate(e.target.value)} /></label>
+          <label>生效日期<DateInput className="in" type="date" min={today()} value={excDate} onChange={(e) => setExcDate(e.target.value)} /></label>
           {!excItems.length ? <ResultNote ok={false}>该模板在所选日期还没生效，请调整日期</ResultNote> : null}
           {excItems.map((it) => (
             <div key={it.feeCode} className="set-inline">
@@ -288,7 +289,7 @@ export function FeeTemplatesSection({ canEdit }: { canEdit: boolean }) {
       <FormModal open={!!legacy} width={800} title="原逐户标准归并预览" okText="确认归并" onClose={() => setLegacy(null)} onOk={() => { if (legacy?.houses) void migrate(); }} busy={saving}>
         {legacy ? <>
           <div className="set-note" style={{ margin: 0 }}><b>{legacy.houses} 户可归并为 {legacy.groups.length} 个模板。</b>只处理还没套用模板的住户，按全部收费项目、金额和原始签报标准精确分组；已有模板不覆盖，原标准与账单历史不删除。</div>
-          <label>生效日期<input className="in" type="date" min={today()} value={legacyDate} onChange={(e) => setLegacyDate(e.target.value)} /></label>
+          <label>生效日期<DateInput className="in" type="date" min={today()} value={legacyDate} onChange={(e) => setLegacyDate(e.target.value)} /></label>
           {legacy.groups.length ? <table className="t"><thead><tr><th>分组</th><th style={{ textAlign: 'right' }}>户数</th><th>收费项目与单价</th></tr></thead>
             <tbody>{legacy.groups.map((g, i) => <tr key={i}><td className="nw">原标准模板 {i + 1}</td><td className="nw" style={{ textAlign: 'right' }}>{g.houseIds.length}</td><td className="sub">{g.items.map((it) => `${LABELS[it.feeCode]} ${formatFeeMoney(it.unitPriceCents)}/${it.unit}`).join('；')}</td></tr>)}</tbody></table>
             : <div className="empty">没有需要归并的住户</div>}
