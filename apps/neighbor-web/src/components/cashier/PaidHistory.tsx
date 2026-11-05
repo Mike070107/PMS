@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { request } from '@pms/api-client';
 import Icon from '@/components/Icon';
 import { money, payLabel } from '@/lib/format';
+import './mis-remarks.css';
 
 export interface PaidRow {
   id: string; feeName: string | null; feeCode: string; period: string; amountCents: number;
-  paidAt: string | null; receiptNo: string | null; invoiceNo: string | null; paymentMethod: string | null; cashier: string | null;
+  paidAt: string | null; receiptNo: string | null; invoiceNo: string | null; paymentMethod: string | null; cashier: string | null; remark?: string | null;
 }
 
 /** 一户的 MIS 已缴记录：物业费、泊位费两个页签共用一次查询（按房屋缓存） */
@@ -43,7 +44,7 @@ export default function PaidHistory({ houseId, label, match }: { houseId: number
   const total = rows?.reduce((s, r) => s + r.amountCents, 0) ?? 0;
 
   return (
-    <div className="card" style={{ marginTop: 14, overflow: 'hidden' }}>
+    <div className="card mis-paid-history" style={{ marginTop: 14, overflow: 'hidden' }}>
       <button className="hist-hd" onClick={toggle}>
         <Icon name="chev" size={16} style={{ transform: open ? 'rotate(90deg)' : undefined, transition: '.15s' }} />
         <b>历史缴费记录</b>
@@ -58,8 +59,9 @@ export default function PaidHistory({ houseId, label, match }: { houseId: number
             : !rows!.length ? <div className="muted" style={{ padding: '14px 16px' }}>已查询 MIS：这一户没有{label}的缴费记录</div>
               : (
                 <>
+                  <div className="mis-paid-scroll">
                   <table className="tbl">
-                    <thead><tr><th>账期</th><th>项目</th><th style={{ textAlign: 'right' }}>金额</th><th>缴费日期</th><th>收据号</th><th>收款</th></tr></thead>
+                    <thead><tr><th>账期</th><th>项目</th><th style={{ textAlign: 'right' }}>金额</th><th>缴费日期</th><th>收据号</th><th>收款</th><th>备注</th></tr></thead>
                     <tbody>
                       {shown.map((r) => (
                         <tr key={r.id} style={{ cursor: 'default' }}>
@@ -69,10 +71,12 @@ export default function PaidHistory({ houseId, label, match }: { houseId: number
                           <td>{r.paidAt ? r.paidAt.slice(0, 10) : '—'}</td>
                           <td>{r.receiptNo || r.invoiceNo || '—'}</td>
                           <td className="muted">{[payLabel(r.paymentMethod), r.cashier].filter((x) => x && x !== '—').join(' · ') || '—'}</td>
+                          <td><span className="mis-remark-value">{r.remark?.trim() ? r.remark : '—'}</span></td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                  </div>
                   {rows!.length > 24 && !all ? <button className="btn g sm" style={{ margin: '8px 12px 12px' }} onClick={() => setAll(true)}>显示全部 {rows!.length} 笔</button> : null}
                 </>
               )

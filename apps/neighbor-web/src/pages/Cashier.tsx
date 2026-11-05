@@ -16,6 +16,7 @@ import { accessStatusLabel, legacyStatusLabel, rawTitle } from '@/lib/access-car
 import NewOrderSheet, { type RepairPrefill } from '@/components/NewOrderSheet';
 import FeeIcon from '@/components/FeeIcon';
 import ToneIcon from '@/components/ToneIcon';
+import '@/components/cashier/mis-remarks.css';
 
 type ServiceType = 'parking_monthly' | 'access_card';
 type Tab = 'wy' | 'bw' | 'pk' | 'ac';
@@ -37,8 +38,8 @@ interface AccessCard { id: number; cardNo: string; houseId: number; ownerId: num
 interface SearchResult { houses: HouseHit[]; vehicles: Vehicle[]; accessCards: AccessCard[] }
 interface Estimate { unitPriceCents: number; quantity: number; startDate: string | null; endDate: string | null; amountCents: number; summary: string }
 /** 物业费/泊位费应收：实时读 MIS（/fees/mis/bills），id 是 MIS 侧单据号 */
-interface Bill { id: string; feeName: string; period: string; amountCents: number; status: string }
-interface MisRow { id: string; feeName: string | null; feeCode: string; period: string; amountCents: number; status: string }
+interface Bill { id: string; feeName: string; period: string; amountCents: number; status: string; remark?: string | null }
+interface MisRow { id: string; feeName: string | null; feeCode: string; period: string; amountCents: number; status: string; remark?: string | null }
 
 interface ResultTask { icon: IconName; title: string; note: string; state: 'done' | 'queued' }
 interface ChargeResult { title: string; amountCents: number; receiptNo: string; tasks: ResultTask[] }
@@ -176,7 +177,7 @@ export default function Cashier() {
     request<{ rows: MisRow[] }>({ url: '/fees/mis/bills', query: { houseId: h.id, status: 'unpaid', page: 1, pageSize: 300 }, timeout: 25000 })
       .then((r) => {
         const own: Bill[] = r.rows
-          .map((m) => ({ id: m.id, feeName: m.feeName || m.feeCode, period: m.period, amountCents: m.amountCents, status: m.status }))
+          .map((m) => ({ id: m.id, feeName: m.feeName || m.feeCode, period: m.period, amountCents: m.amountCents, status: m.status, remark: m.remark }))
           .sort((a, b) => a.period.localeCompare(b.period));
         setBills(own); setSelBills(own.map((b) => b.id));
       })
@@ -422,7 +423,7 @@ export default function Cashier() {
         </div>
       ) : (
         <div className="cash2" style={{ marginTop: 18 }}>
-          <div>
+          <div className="cashier-mis-bills">
             <div className="card">
               <div className="ownerHead">
                 <div className="ownerAv">{initial}</div>
@@ -469,7 +470,7 @@ export default function Cashier() {
                       return (
                         <button key={b.id} className={`billRow ${on ? 'sel' : ''}`} onClick={() => setSelBills((s) => on ? s.filter((x) => x !== b.id) : [...s, b.id])}>
                           <div className="ck"><Icon name="check" /></div>
-                          <div className="bt"><span className="feeCell"><FeeIcon name={b.feeName} size={26} /><b>{b.feeName}{b.period ? ` · ${b.period}` : ''}</b></span><small>收据状态：{b.status === 'unpaid' ? '未缴' : b.status}</small></div>
+                          <div className="bt"><span className="feeCell"><FeeIcon name={b.feeName} size={26} /><b>{b.feeName}{b.period ? ` · ${b.period}` : ''}</b></span><small>收据状态：{b.status === 'unpaid' ? '未缴' : b.status}</small><div className="mis-remark"><span className="mis-remark-label">备注</span><span className="mis-remark-value">{b.remark?.trim() ? b.remark : '—'}</span></div></div>
                           <div className="ba money">{money(b.amountCents / 100)}</div>
                         </button>
                       );

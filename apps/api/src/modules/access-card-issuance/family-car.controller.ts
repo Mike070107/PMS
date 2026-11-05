@@ -112,7 +112,7 @@ export class FamilyCarController {
 
   @Get()
   @RequirePermission(['family-cars', ...MANAGER], 'view')
-  list(@Query() query: { status?: string; lane?: string; q?: string }, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+  list(@Query() query: { status?: string; lane?: string; q?: string; page?: unknown; pageSize?: unknown }, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
     return this.service.list(query, user, access);
   }
 
@@ -126,6 +126,12 @@ export class FamilyCarController {
   @RequirePermission('family-cars', 'view')
   houseContext(@Param('houseId', ParseIntPipe) houseId: number, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
     return this.service.houseContext(houseId, user, access);
+  }
+
+  @Get(':id/materials')
+  @RequirePermission(['family-cars', ...MANAGER], 'view')
+  materials(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.service.materials(id, user, access);
   }
 
   @Get(':id')

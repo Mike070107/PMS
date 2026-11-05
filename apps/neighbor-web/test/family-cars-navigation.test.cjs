@@ -11,7 +11,7 @@ function harness(access, pathname = '/family-cars', states = {}) {
   let component = '', index = 0;
   const session = { token: 'synthetic', generation: 1, user: { name: '测试' }, access };
   const jsx = (type, props) => ({ type, props });
-  const react = { Fragment: 'Fragment', Suspense: 'Suspense', lazy: f => ({ lazy: String(f) }), useState(v) { const i = index++; return [states[component]?.[i] ?? (typeof v === 'function' ? v() : v), value => writes.push({ component, index: i, value })]; }, useMemo: f => f(), useCallback: f => f, useEffect: f => effects.push(f) };
+  const react = { Fragment: 'Fragment', Suspense: 'Suspense', lazy: f => ({ lazy: String(f) }), useState(v) { const i = index++; return [states[component]?.[i] ?? (typeof v === 'function' ? v() : v), value => writes.push({ component, index: i, value })]; }, useMemo: f => f(), useRef: value => ({ current: value }), useCallback: f => f, useEffect: f => effects.push(f) };
   const cache = {};
   function load(file) {
     if (cache[file]) return cache[file];
@@ -27,7 +27,7 @@ function harness(access, pathname = '/family-cars', states = {}) {
         if (id === '@/lib/perm') return { can: (k, action) => !!access.pages?.[k]?.[action] };
         if (id === '@/lib/page-access') return load('lib/page-access.ts');
         if (id === '@/components/UiPreferencesProvider') return { useUiPreferences: () => ({ preferences: {}, update() {} }) };
-        if (id === '@pms/api-client') return { notifications: { unreadCount: async () => ({ count: 0 }) }, request: async o => { requests.push(o); return o.url === '/family-cars' ? { rows: [] } : []; } };
+        if (id === '@pms/api-client') return { notifications: { unreadCount: async () => ({ count: 0 }) }, request: async o => { requests.push(o); return o.url === '/family-cars' ? { rows: [], today: '2026-11-05', total: 0, page: 1, pageSize: 20 } : []; } };
         if (id === '@/lib/format') return { dayjs: () => ({ format: () => '测试日期' }) };
         return { default: id, Loading: 'Loading', Toaster: 'Toaster', toast() {} };
       }
@@ -117,6 +117,20 @@ test('moved family page preserves search, filters, details, files, garages, vali
   }
   const unauthorized = harness(grants('business'));
   assert.equal(unauthorized.render('pages/FamilyCars.tsx'), null);
+});
+
+test('family narrow layout keeps search shrinkable, filters in one scroll row and all nine table columns', () => {
+  const h = harness(grants('family-cars'), '/family-cars', { FamilyList: ['', [family], family] });
+  const ui = h.expand(h.render('pages/FamilyCars.tsx'));
+  const header = nodes(ui).find(n => n.props?.className === 'ph');
+  assert.equal(header.props.style.flexWrap, 'wrap');
+  const form = nodes(ui).find(n => n.type === 'form'); assert.equal(form.props.style.minWidth, 0);
+  const filters = nodes(ui).find(n => n.props?.className === 'quickMonths');
+  assert.equal(filters.props.style.flexWrap, 'nowrap'); assert.equal(filters.props.style.overflowX, 'auto');
+  const table = nodes(ui).find(n => n.props?.['data-testid'] === 'family-cars-table');
+  assert.equal(nodes(table).filter(n => n.type === 'th').length, 9);
+  assert.ok(nodes(ui).some(n => n.props?.className === 'card t-scroll' && n.props.style.overflowX === 'auto'));
+  assert.ok(nodes(ui).filter(n => n.type === 'td' && n.props.colSpan).every(n => n.props.colSpan === 9));
 });
 
 test('old registration page contains only the original intake list and no family tab', () => {

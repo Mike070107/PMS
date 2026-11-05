@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { accessCardIssuance, request } from '@pms/api-client';
 import Icon from '@/components/Icon';
 import { Loading, toast } from '@/components/ui';
@@ -13,6 +13,10 @@ interface FamilyCar {
   status: string; statusLabel: string; mode: 'new' | 'existing'; startDate: string | null; endDate: string | null;
   daysLeft: number | null; expiringSoon: boolean; garages: string[]; garageNumbers: Record<string, string>;
   fileCount: number; lastError: string | null; createdAt: string;
+}
+interface FamilyMaterials {
+  id: number; plate: string;
+  files: Array<{ index: number; fileName: string; contentType: string; fileUrl: string; source: string; uploadedAt?: string }>;
 }
 interface FamilyDetail extends FamilyCar {
   files: Array<{ index: number; fileName: string; contentType: string; fileUrl: string; source: string }>;
@@ -31,10 +35,10 @@ export default function FamilyCars() {
   if (!canFamily) return null;
   return (
     <>
-      <div className="ph" style={{ marginBottom: 14 }}>
+      <div className="ph" style={{ marginBottom: 14, flexWrap: 'wrap' }}>
         <div><div className="h1row"><ToneIcon kind="plates" /><h1 style={{ fontSize: 22 }}>亲情车管理</h1></div><p>亲情车登记、资料审核、有效期与授权车库；到期续登 · 失败重试</p></div>
-        <form style={{ display: 'flex', gap: 8 }} onSubmit={(e) => { e.preventDefault(); setKw(q.trim()); }}>
-          <input className="in" style={{ width: 260 }} value={q} onChange={(e) => setQ(e.target.value)} placeholder="车牌 / 房号 / 姓名 / 电话" />
+        <form style={{ display: 'flex', gap: 8, minWidth: 0, maxWidth: '100%' }} onSubmit={(e) => { e.preventDefault(); setKw(q.trim()); }}>
+          <input className="in" style={{ width: 260, minWidth: 0, flex: 1 }} value={q} onChange={(e) => setQ(e.target.value)} placeholder="车牌 / 房号 / 姓名 / 电话" />
           <button className="btn p"><Icon name="search" size={16} />查询</button>
         </form>
       </div>
@@ -53,13 +57,77 @@ function FamilyList({ kw }: { kw: string }) {
   const canEdit = can('family-cars', 'edit');
   // 与亲情车控制器 MANAGER 保持一致；旧采购经理键不授予亲情车审批权。
   const canManager = ['family-cars-approve', 'app:family-car-approve', 'app:approve-business-manager'].some(key => can(key, 'edit'));
+  const [error, setError] = useState('');
+  const [paging, setPaging] = useState({ kw, page: 1, pageSize: 20 });
+  // 查询词属于页码身份；新词在首帧即用第一页，不由 effect 二次重置。
+  const page = paging.kw === kw ? paging.page : 1;
+  // React 的同组件 render 状态调整：提交新词前归一化页码，禁止 A→B→A 复用旧页。
+  if (paging.kw !== kw) setPaging({ ...paging, kw, page: 1 });
+  const pageSize = paging.pageSize;
+  const [meta, setMeta] = useState<{ total: number; page: number; pageSize: number } | null>(null);
+  const generation = useRef(0);
+  const mounted = useRef(false);
+  const detailGeneration = useRef(0);
+  const materialsGeneration = useRef(0);
+  const [materials, setMaterials] = useState<{ id: number; plate: string; files: FamilyMaterials['files'] | null; error: string } | null>(null);
+  const readMaterials = async (c: { id: number; plate: string }) => {
+    if (!mounted.current) return;
+    const turn = ++materialsGeneration.current;
+    ++detailGeneration.current; setOpen(null);
+    setMaterials({ id: c.id, plate: c.plate, files: null, error: '' });
+    try {
+      const r = await request<FamilyMaterials>({ method: 'GET', url: `/family-cars/${c.id}/materials` });
+      if (!mounted.current || turn !== materialsGeneration.current) return;
+      if (!r || r.id !== c.id || r.plate !== c.plate || !Array.isArray(r.files) || r.files.some(f => !f || !Number.isSafeInteger(f.index) || typeof f.fileName !== 'string' || typeof f.contentType !== 'string' || typeof f.fileUrl !== 'string' || typeof f.source !== 'string')) throw new Error('服务返回的办理资料格式异常，请重试');
+      setMaterials({ id: c.id, plate: c.plate, files: r.files, error: '' });
+    } catch (e) {
+      if (!mounted.current || turn !== materialsGeneration.current) return;
+      setMaterials({ id: c.id, plate: c.plate, files: null, error: e instanceof Error && /[\u3400-\u9fff]/.test(e.message) ? e.message : '服务或网络暂时异常，请稍后重试' });
+    }
+  };
   const load = useCallback(() => {
-    // 接口返回 { rows, today }（不是数组）
-    request<{ rows: FamilyCar[] } | FamilyCar[]>({ url: '/family-cars', query: { ...(status ? { status } : {}), ...(kw ? { q: kw } : {}) } })
-      .then((r) => setRows(Array.isArray(r) ? r : r?.rows ?? [])).catch(() => setRows([]));
-  }, [status, kw]);
-  useEffect(() => { setRows(null); load(); }, [load]);
-  const detail = async (id: number) => setOpen(await request<FamilyDetail>({ url: `/family-cars/${id}` }));
+    if (!mounted.current) return;
+    const turn = ++generation.current;
+    setRows(null);
+    setMeta(null);
+    setOpen(null);
+    ++detailGeneration.current;
+    ++materialsGeneration.current; setMaterials(null);
+    setError('');
+    request<{ rows: FamilyCar[]; today: string; total: number; page: number; pageSize: number }>({ url: '/family-cars', query: { page, pageSize, ...(status ? { status } : {}), ...(kw ? { q: kw } : {}) } })
+      .then((r) => {
+        if (turn !== generation.current) return;
+        const list = Array.isArray(r) ? r : r?.rows;
+        if (!Array.isArray(list) || list.some(c => !c || typeof c !== 'object' || typeof c.id !== 'number' || typeof c.plate !== 'string' || (c.garages != null && !Array.isArray(c.garages)))) {
+          throw new Error('服务返回的数据格式异常，请重试；若仍失败请联系管理员');
+        }
+        if (Array.isArray(r) || r.total == null) throw new Error('服务尚未支持分页，请联系管理员升级服务后重试；暂未获取总数');
+        if (!Number.isSafeInteger(r.total) || r.total < 0 || !Number.isSafeInteger(r.page) || r.page < 1 || r.page > Math.max(1, Math.ceil(r.total / r.pageSize)) || ![20, 50, 100].includes(r.pageSize) || r.pageSize !== pageSize || list.length > r.pageSize || list.length > r.total) throw new Error('服务返回的分页数据格式异常，请重试');
+        setMeta({ total: r.total, page: r.page, pageSize: r.pageSize });
+        setRows(list);
+      })
+      .catch((e: unknown) => {
+        if (turn !== generation.current) return;
+        setError(e instanceof Error && /[\u3400-\u9fff]/.test(e.message) ? e.message : '服务或网络暂时异常，请稍后重试');
+      });
+  }, [status, kw, page, pageSize]);
+  useEffect(() => {
+    mounted.current = true;
+    load();
+    // 单调代次：包括 A→B→A、重试和卸载，不让迟到成功或错误覆盖当前状态。
+    return () => { mounted.current = false; ++generation.current; ++detailGeneration.current; ++materialsGeneration.current; };
+  }, [load]);
+  const detail = async (id: number) => {
+    const turn = ++detailGeneration.current;
+    ++materialsGeneration.current; setMaterials(null);
+    try {
+      const r = await request<FamilyDetail>({ url: `/family-cars/${id}` });
+      if (mounted.current && turn === detailGeneration.current) setOpen(r);
+    } catch { if (mounted.current && turn === detailGeneration.current) toast('办理详情读取失败，请重新点击办理详情重试'); }
+  };
+  const toggleDetail = (id: number) => {
+    if (open?.id === id) { ++detailGeneration.current; setOpen(null); } else void detail(id);
+  };
   const act = async (label: string, fn: () => Promise<unknown>) => {
     setBusy(true);
     try { await fn(); toast(`${label}：已提交`); setNote(''); if (open) await detail(open.id); load(); }
@@ -125,8 +193,8 @@ function FamilyList({ kw }: { kw: string }) {
 
   return (
     <>
-      <div className="quickMonths" style={{ marginTop: 0, marginBottom: 10 }}>
-        {FAMILY_FILTERS.map(([k, l]) => <button key={k} className={`chip ${status === k ? 'on' : ''}`} onClick={() => setStatus(k)}>{l}</button>)}
+      <div className="quickMonths" style={{ marginTop: 0, marginBottom: 10, flexWrap: 'nowrap', overflowX: 'auto', maxWidth: '100%' }}>
+        {FAMILY_FILTERS.map(([k, l]) => <button key={k} className={`chip ${status === k ? 'on' : ''}`} onClick={() => { setStatus(k); setPaging({ kw, page: 1, pageSize }); }}>{l}</button>)}
         {canEdit ? <button className="btn sm" style={{ marginLeft: 'auto' }} disabled={pull?.step === 'running'} onClick={() => void startPull()}><Icon name="sync" size={15} />从旧停车库拉取</button> : null}
       </div>
       {pull ? (
@@ -153,24 +221,37 @@ function FamilyList({ kw }: { kw: string }) {
             <button className="btn sm" style={{ marginTop: 8 }} onClick={() => setQr(null)}>收起</button></div>
         </div>
       ) : null}
-      {rows === null ? <Loading /> : (
-        <div className="card" style={{ overflow: 'hidden' }}>
-          <table className="tbl">
-            <thead><tr><th>车牌</th><th>房号</th><th>车主 · 关系</th><th>授权车库</th><th>有效期</th><th>状态</th><th>问题</th></tr></thead>
+      {error ? <div className="card" role="alert" data-testid="family-cars-error">
+        <p>亲情车查询失败：{error}</p><button className="btn sm" onClick={load}>重试</button>
+      </div> : rows === null ? <div role="status" data-testid="family-cars-loading"><Loading />正在查询亲情车…</div> : (
+        <div className="card t-scroll" style={{ overflowX: 'auto' }}>
+          <table className="tbl" data-testid="family-cars-table" style={{ minWidth: 1120 }}>
+            <thead><tr><th>车牌</th><th>房号</th><th>车主 · 关系</th><th>授权车库</th><th>有效期</th><th>状态</th><th>办理资料</th><th>问题</th><th>操作</th></tr></thead>
             <tbody>
               {rows.map((c) => (
                 <Fragment key={c.id}>
-                  <tr key={c.id} className={open?.id === c.id ? 'sel' : ''} onClick={() => (open?.id === c.id ? setOpen(null) : void detail(c.id))}>
+                  <tr key={c.id} className={open?.id === c.id ? 'sel' : ''} onClick={() => toggleDetail(c.id)}>
                     <td><b className="plate">{c.plate}</b></td>
                     <td>{c.roomKey}<div className="muted" style={{ fontSize: 13 }}>{c.ownerName}</div></td>
                     <td>{c.carOwnerName || '—'}{c.relation ? ` · ${c.relation}` : ''}<div className="muted" style={{ fontSize: 13 }}>{c.carOwnerPhone}</div></td>
                     <td>{(c.garages ?? []).map((g) => <span key={g} className="tag mute" style={{ marginRight: 4 }}>{GARAGE[g] || g}{c.garageNumbers?.[g] ? ` ${c.garageNumbers[g]}` : ''}</span>)}</td>
                     <td>{c.startDate ? `${c.startDate} ~ ${c.endDate}` : '—'}{c.daysLeft != null ? <div className="muted" style={{ fontSize: 13, color: c.expiringSoon ? 'var(--dang)' : undefined }}>剩 {c.daysLeft} 天</div> : null}</td>
                     <td><span className={`tag ${familyTone(c.status)}`}>{c.statusLabel}</span></td>
+                    <td className="nw"><button className="btn sm" data-testid={`family-cars-materials-${c.id}`} onClick={e => { e.stopPropagation(); void readMaterials(c); }}>{c.fileCount > 0 ? `查看资料（${c.fileCount}）` : '暂无资料'}</button></td>
                     <td style={{ color: 'var(--dang)', fontSize: 13.5, maxWidth: 260 }}>{c.lastError || ''}</td>
+                    <td className="nw"><button className="btn sm" onClick={e => { e.stopPropagation(); toggleDetail(c.id); }}>办理详情</button></td>
                   </tr>
+                  {materials?.id === c.id ? <tr style={{ cursor: 'default' }}><td colSpan={9} style={{ background: 'var(--sunken)', padding: 14 }}>
+                    <section data-testid="family-cars-materials" aria-label={`${materials.plate} 办理资料`}>
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}><b>{materials.plate} · 办理资料</b><button className="btn sm" onClick={() => { ++materialsGeneration.current; setMaterials(null); }}>关闭资料</button></div>
+                      {materials.error ? <div role="alert">办理资料读取失败：{materials.error} <button className="btn sm" onClick={() => void readMaterials(c)}>重试资料</button></div> : materials.files === null ? <div role="status"><Loading />正在读取办理资料…</div> : <div className="np-files">
+                        {materials.files.map(f => <a key={f.index} href={f.fileUrl} target="_blank" rel="noreferrer" title={f.fileName} aria-label={f.fileName}>{f.contentType.startsWith('image/') ? <img src={f.fileUrl} alt={f.fileName} /> : <span className="np-pdf"><Icon name="file" size={22} />{f.contentType === 'application/pdf' ? 'PDF' : '文件'}</span>}</a>)}
+                        {!materials.files.length ? <span className="muted">还没有办理资料</span> : null}
+                      </div>}
+                    </section>
+                  </td></tr> : null}
                   {open?.id === c.id ? (
-                    <tr key={`d${c.id}`} style={{ cursor: 'default' }}><td colSpan={7} style={{ background: 'var(--sunken)', padding: 14 }}>
+                    <tr key={`d${c.id}`} style={{ cursor: 'default' }}><td colSpan={9} style={{ background: 'var(--sunken)', padding: 14 }}>
                       <div className="np-files" style={{ marginBottom: 10 }}>
                         {(open.files ?? []).map((f) => <a key={f.index} href={f.fileUrl} target="_blank" rel="noreferrer" title={f.fileName}>{f.contentType.startsWith('image/') ? <img src={f.fileUrl} alt="" /> : <span className="np-pdf"><Icon name="file" size={22} />PDF</span>}</a>)}
                         {!open.files.length ? <span className="muted">还没有资料</span> : null}
@@ -195,11 +276,17 @@ function FamilyList({ kw }: { kw: string }) {
                   ) : null}
                 </Fragment>
               ))}
-              {!rows.length ? <tr style={{ cursor: 'default' }}><td colSpan={7} className="muted" style={{ textAlign: 'center', padding: 26 }}>没有亲情车登记</td></tr> : null}
+              {!rows.length ? <tr style={{ cursor: 'default' }}><td colSpan={9} className="muted" style={{ textAlign: 'center', padding: 26 }}>没有亲情车登记</td></tr> : null}
             </tbody>
           </table>
         </div>
       )}
+      <div data-testid="family-cars-pagination" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'center', marginTop: 18 }}>
+        <span className="muted">{meta ? `共 ${meta.total} 辆 · 第 ${meta.page} / ${Math.max(1, Math.ceil(meta.total / meta.pageSize))} 页` : '总数未获取'}</span>
+        <button className="btn sm" disabled={!meta || meta.page <= 1} onClick={() => meta && setPaging({ kw, page: meta.page - 1, pageSize })}>上一页</button>
+        <button className="btn sm" disabled={!meta || meta.page * meta.pageSize >= meta.total} onClick={() => meta && setPaging({ kw, page: meta.page + 1, pageSize })}>下一页</button>
+        <label>每页 <select className="in" aria-label="每页条数" style={{ width: 'auto' }} value={pageSize} onChange={e => setPaging({ kw, page: 1, pageSize: Number(e.target.value) })}>{[20, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}</select> 辆</label>
+      </div>
       <div className="note2" style={{ marginTop: 12 }}><Icon name="alert" />亲情车不收费、每次有效一年；到期前 30 天提醒，到期自动停用车库权限。新登记在收银台「停车缴费 → 亲情车」生成二维码。</div>
     </>
   );

@@ -218,7 +218,7 @@ async function requestViaFetch<T>(
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
     try {
-      const j = await res.json();
+      const j = await res.json() as { message?: string; error?: string } | null;
       msg = j?.message || j?.error || msg;
     } catch {}
     throw new ApiError(res.status, msg, res.status);
@@ -394,7 +394,8 @@ function currentClientRoute(): string | undefined {
       const current = pages[pages.length - 1];
       return current?.route ? `/${current.route}` : undefined;
     }
-    if (typeof window !== 'undefined') return `${window.location.pathname}${window.location.search}`;
+    const browser = (globalThis as typeof globalThis & { window?: { location: { pathname: string; search: string } } }).window;
+    if (browser) return `${browser.location.pathname}${browser.location.search}`;
   } catch {}
   return undefined;
 }

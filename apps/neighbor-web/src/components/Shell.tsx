@@ -192,7 +192,7 @@ export default function Shell() {
           {GROUPS.filter(g=>g.keys.some(k=>{const item=NAV.find(n=>n.key===k);return item&&!!item.to&&canViewPath(item.to,session.access)&&(!item.permissionKey||can(item.permissionKey,'view'))})).map((g) => (
             <div key={g.title}>
               <button className={`navGroupTitle ${openGroups.includes(g.title) ? 'open' : ''} ${g.title===activeGroup?'active-group':''}`} title={g.title} aria-expanded={openGroups.includes(g.title)} aria-controls={`nav-group-${g.title}`} onClick={() => toggleGroup(g.title)}>
-                <span className={"ic-tile navGroupTile t-" + g.tone}><Icon name={g.icon} size={13} /></span>
+                <span className={"ic-tile navGroupTile t-" + g.tone}><Icon name={g.icon} size={22} /></span>
                 <span className="navGroupText">{g.title}</span>
                 <Icon name="chev" size={14} className="navGroupChev" />
               </button>
@@ -210,7 +210,7 @@ export default function Shell() {
                     onClick={(e)=>{if(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;e.preventDefault();goto(item)}}
                     title={item.name}
                   >
-                    <Icon name={item.icon} />
+                    <Icon name={item.icon} size={22} />
                     <span>{item.name}</span>
                     {badge ? <span className="n">{badge}</span> : item.legacy ? <span className="leg">旧</span> : null}
                   </a>

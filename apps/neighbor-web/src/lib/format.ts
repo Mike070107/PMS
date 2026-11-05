@@ -37,7 +37,7 @@ export const BOARD_COLUMNS: string[] = [
   WorkOrderStatus.DONE_PENDING_REVIEW,
 ];
 
-export const ACTIVE_STATUSES: string[] = BOARD_COLUMNS.filter((s) => s !== 'pending_accept');
+export const ACTIVE_STATUSES: string[] = [...BOARD_COLUMNS.filter((s) => s !== 'pending_accept'), WorkOrderStatus.DISPATCHED];
 
 /**
  * 调度台上的环节，只分两档「派没派出去」：

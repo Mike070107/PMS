@@ -126,12 +126,25 @@ export class FamilyCarService {
 
   // ---------------- 查询 ----------------
 
-  async list(query: { status?: string; lane?: string; q?: string }, user: AuthUser, access?: ResolvedAccess) {
+  async list(query: { status?: string; lane?: string; q?: string; page?: unknown; pageSize?: unknown }, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
+    const status = query.status;
+    if (status && (typeof status !== 'string' || (status !== 'all' && !Object.prototype.hasOwnProperty.call(FAMILY_STATUS_LABEL, status)))) {
+      throw new BadRequestException('亲情车状态无效');
+    }
+    const paginated = query.page !== undefined || query.pageSize !== undefined;
+    const positiveInteger = (value: unknown, fallback: number, max: number) => {
+      if ((typeof value !== 'string' && typeof value !== 'number') || !/^\d+$/.test(String(value))) return fallback;
+      const n = Number(value);
+      return Number.isSafeInteger(n) && n > 0 ? Math.min(n, max) : fallback;
+    };
+    let page = positiveInteger(query.page, 1, Number.MAX_SAFE_INTEGER);
+    const pageSize = positiveInteger(query.pageSize, 20, 100);
+    const today = shanghaiDate();
     const qb = this.repo.createQueryBuilder('fc').where('fc.tenant_id = :tenantId', { tenantId });
     const scope = scopeCommunityIds(access);
     if (scope) {
-      if (!scope.length) return { rows: [], today: shanghaiDate() };
+      if (!scope.length) return paginated ? { rows: [], today, total: 0, page: 1, pageSize } : { rows: [], today };
       qb.andWhere(`fc.house_id IN (SELECT h.id FROM houses h JOIN buildings b ON b.id = h.building_id WHERE b.community_id IN (:...scope))`, { scope });
     }
     if (query.lane) qb.andWhere('fc.lane = :lane', { lane: query.lane });
@@ -143,15 +156,27 @@ export class FamilyCarService {
         OR fc.car_owner_phone ILIKE :like OR fc.owner_phone ILIKE :like OR fc.remark ILIKE :like
         OR concat(fc.lane, '/', fc.building_no, '/', fc.room_no) ILIKE :like)`, { like, plateLike });
     }
-    // 已作废的只在「全部」里出现，清册默认不显示
-    if (query.status !== 'all') qb.andWhere(`fc.status <> 'void'`);
+    // 空状态保留旧清册默认口径；all含作废，具体状态必须精确过滤。
+    if (status && status !== 'all') qb.andWhere('fc.status = :status', { status });
+    else if (!status) qb.andWhere(`fc.status <> 'void'`);
     qb.orderBy('fc.lane', 'ASC');
     addNaturalOrderBy(qb, 'fc.building_no');
     addNaturalOrderBy(qb, 'fc.room_no');
     qb.addOrderBy('fc.id', 'DESC');
+    const total = paginated ? await qb.getCount() : undefined;
+    if (paginated) {
+      page = Math.min(page, Math.max(1, Math.ceil(total! / pageSize)));
+      qb.offset((page - 1) * pageSize).limit(pageSize);
+    }
     const rows = await qb.getMany();
-    const today = shanghaiDate();
-    return { rows: rows.map((row) => this.view(row, today)), today };
+    const result = { rows: rows.map((row) => this.view(row, today)), today };
+    return paginated ? { ...result, total: total!, page, pageSize } : result;
+  }
+
+  /** 办理资料独立读取：只校验范围并映射附件，不触发详情中的停车同步。 */
+  async materials(id: number, user: AuthUser, access?: ResolvedAccess) {
+    const car = await this.load(id, user, access);
+    return { id: car.id, plate: car.plate, files: this.materialFiles(car) };
   }
 
   async get(id: number, user: AuthUser, access?: ResolvedAccess) {
@@ -1172,10 +1197,14 @@ export class FamilyCarService {
     };
   }
 
+  private materialFiles(car: FamilyCar) {
+    return car.files.map((file, index) => ({ index, fileName: file.fileName, contentType: file.contentType, source: file.source, uploadedAt: file.uploadedAt, fileUrl: `/api/v1/upload/file?key=${encodeURIComponent(file.objectKey)}` }));
+  }
+
   private detail(car: FamilyCar, today = shanghaiDate()) {
     return {
       ...this.view(car, today),
-      files: car.files.map((file, index) => ({ index, fileName: file.fileName, contentType: file.contentType, source: file.source, uploadedAt: file.uploadedAt, fileUrl: `/api/v1/upload/file?key=${encodeURIComponent(file.objectKey)}` })),
+      files: this.materialFiles(car),
       proofUploadId: car.proofUploadId,
       officeNote: car.officeNote,
       officeReviewedAt: car.officeReviewedAt,

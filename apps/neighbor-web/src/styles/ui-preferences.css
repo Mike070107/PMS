@@ -85,3 +85,13 @@
 #web .side .nav a.on{background:#fff;color:var(--acc-t);box-shadow:inset 3px 0 0 var(--acc)}
 #web .side .navGroupTitle.active-group:not(.open){background:rgba(255,255,255,.65);color:var(--acc-t)}
 #web .side .me{border-top-color:rgba(23,32,51,.10)}
+
+/* Navigation uses one readable scale; hierarchy comes from weight and indentation. */
+#web .side .navGroupTitle,
+#web .side .nav a{font-size:16px;line-height:1.45;min-height:44px}
+#web .side .navGroupTitle{gap:10px}
+#web .side .navGroupText,
+#web .side .nav a>span:not(.n):not(.leg){font-size:16px;line-height:1.45}
+#web .side .navGroupTitle .navGroupTile{width:30px;height:30px;border-radius:8px;flex:none}
+#web .side .navGroupTitle .navGroupTile>.icon,
+#web .side .nav a>.icon{width:22px!important;height:22px!important;flex:none}
