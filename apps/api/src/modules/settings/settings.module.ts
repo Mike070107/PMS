@@ -7,11 +7,12 @@ import { SettingsService } from './settings.service';
 import { CollectionSmsService } from './collection-sms.service';
 import { CollectionSmsLogService } from './collection-sms-log.service';
 import { CollectionSmsCallbackController } from './collection-sms-callback.controller';
+import { NoticeTemplateService } from './notice-template.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([TenantConfig, User, House, MisCollectionSms])],
   controllers: [SettingsController, CollectionSmsCallbackController],
-  providers: [SettingsService, CollectionSmsService, CollectionSmsLogService],
-  exports: [SettingsService, CollectionSmsService, CollectionSmsLogService],
+  providers: [SettingsService, CollectionSmsService, CollectionSmsLogService, NoticeTemplateService],
+  exports: [SettingsService, CollectionSmsService, CollectionSmsLogService, NoticeTemplateService],
 })
 export class SettingsModule {}

@@ -6,11 +6,12 @@ import { PermissionsGuard } from '../access/permissions.guard';
 import { UpdateTenantSettingsDto } from './dto';
 import { SettingsService } from './settings.service';
 import { CollectionSmsService, CollectionSmsConfigDto } from './collection-sms.service';
+import { NoticeTemplateService, type NoticeTemplate } from './notice-template.service';
 
 @Controller('settings')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SettingsController {
-  constructor(private readonly settingsService: SettingsService, private readonly collectionSms: CollectionSmsService) {}
+  constructor(private readonly settingsService: SettingsService, private readonly collectionSms: CollectionSmsService, private readonly noticeTemplate: NoticeTemplateService) {}
 
   @Get('collection-sms')
   @RequirePermission('settings', 'view')
@@ -19,6 +20,15 @@ export class SettingsController {
   @Patch('collection-sms')
   @RequirePermission('settings', 'edit')
   saveCollectionSms(@Body() dto:CollectionSmsConfigDto,@CurrentUser() user:AuthUser){return this.collectionSms.save(dto,user);}
+
+  /** 打印通知单的抬头、联系方式、银行信息与须知 */
+  @Get('notice-template')
+  @RequirePermission('settings', 'view')
+  getNoticeTemplate(@CurrentUser() user:AuthUser){return this.noticeTemplate.get(user);}
+
+  @Patch('notice-template')
+  @RequirePermission('settings', 'edit')
+  saveNoticeTemplate(@Body() dto:Partial<NoticeTemplate>,@CurrentUser() user:AuthUser){return this.noticeTemplate.save(dto,user);}
 
   /** 读设置：报修录入等页面也要读（决定录入页怎么显示），查看权取任一相关页面 */
   @Get()
