@@ -16,7 +16,7 @@ export function sumCents(values:number[]){return values.reduce((a,b)=>{if(!Numbe
 export function cents(value:number){if(!Number.isSafeInteger(value))throw new Error('金额超出安全范围');return (value/100).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2})}
 export function periodLabel(value:string){return /^\d{6}$/.test(value)?value.slice(0,4)+'年'+Number(value.slice(4))+'月':value||'未记录'}
 export function escapeHtml(value:unknown){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!))}
-export function feeCategory(name:string):Category{return /泊位|车位/.test(name)?'berth':/物业/.test(name)?'property':'other'}
+export function feeCategory(name:string):Category{return /泊位|车位|停车/.test(name)?'berth':/物业/.test(name)||(/管理费/.test(name)&&!/停车/.test(name))?'property':'other'}
 export function noticeSmsText(n:Notice){
  const valid=/^(?!0000)\d{4}(0[1-9]|1[0-2])$/;
  const periods=[...new Set(n.bills.map(b=>b.period).filter(p=>valid.test(p)))].sort();

@@ -64,7 +64,7 @@ export interface MisResidentialQuery extends MisFeeQuery {
  category?: 'all'|'property'|'berth'|'other';
  houseKeys?: string[];
 }
-const categorySql = `CASE WHEN f.XM LIKE N'%泊位%' OR f.XM LIKE N'%车位%' THEN 'berth' WHEN f.XM LIKE N'%物业%' THEN 'property' ELSE 'other' END`;
+const categorySql = `CASE WHEN f.XM LIKE N'%泊位%' OR f.XM LIKE N'%车位%' OR f.XM LIKE N'%停车%' THEN 'berth' WHEN f.XM LIKE N'%物业%' OR (f.XM LIKE N'%管理费%' AND f.XM NOT LIKE N'%停车%') THEN 'property' ELSE 'other' END`;
 /** No DDL/DML; same source joins/filter as existing MIS bill reader; SQL Server 2008 compatible. */
 export function buildMisResidentialQuery(q:MisResidentialQuery,offices:string[]){
  if(q.status!==undefined&&!['paid','unpaid'].includes(q.status))throw new BadRequestException('住宅账单状态仅支持paid或unpaid');
