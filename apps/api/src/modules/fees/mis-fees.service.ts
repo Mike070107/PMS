@@ -25,13 +25,16 @@ const logger=new Logger('MisFeesService');
 
 /** 对账 CSV：单次最多 2 万户，按 5000 户一页循环取数；口径固定为待缴责任对象。 */
 const EXPORT_ROW_CAP=20000,EXPORT_PAGE_SIZE=5000,EXPORT_STATUS_CHUNK=1000;
-/** 重复催收抑制：近 30 天打印登记数 + 短信数 >= 2 视为「低响应」，阈值先写死，后续可配置。 */
+/**
+ * 重复催收抑制口径（task-10）：近 30 天次数 = 打印登记数 + 短信条数，直接相加，不按户去重，
+ * 同一批既有打印又有短信算 2 次；阈值 2、窗口 30 天先写死为常量，后续从设置页配置化（不加表/字段）。
+ */
 const NOTIFY_COUNT_WINDOW_DAYS=30,NOTIFY_SUPPRESS_MIN=2;
 const EXPORT_CSV_HEADER='小区,房号,业主,电话(脱敏),待缴金额(元),账期起,账期止,笔数,通知状态';
-/** 文本单元格：含逗号/引号/换行时按 RFC4180 转义；公式起始字符前加单引号，避免 Excel 当成公式执行。 */
+/** 文本单元格：含逗号/引号/换行时按 RFC4180 转义；OWASP 建议对 = + - @ 以及前导 Tab/CR 加单引号，避免 Excel 当成公式执行。 */
 function csvText(value:unknown){
  let text=String(value??'');
- if(/^[=+\-@]/.test(text))text="'"+text;
+ if(/^[=+\-@\t\r]/.test(text))text="'"+text;
  return /[",\r\n]/.test(text)?'"'+text.replace(/"/g,'""')+'"':text;
 }
 function exportFileName(now:Date){
@@ -200,6 +203,7 @@ export class MisFeesService implements OnModuleDestroy {
  /**
   * 对账 CSV 导出：复用 households 的筛选参数（communityId/category/feeCode/periodFrom/periodTo/q），
   * 内部按 5000 户一页循环取全量，超过 2 万户直接 400 提示缩小范围；口径固定为待缴责任对象。
+  * 首屏 total 未超限、但导出期间户数增长超过上限时，流内停止写入并在末尾追加「已截断」警告，不静默截断。
   * 返回流（UTF-8 BOM + RFC4180 转义），由 controller 以附件下载；不写库、不改 MIS。
   */
  async exportResidentialCsv(q:MisResidentialQuery,user:AuthUser,access?:ResolvedAccess){
@@ -213,7 +217,7 @@ export class MisFeesService implements OnModuleDestroy {
   const stream=Readable.from(this.exportCsvChunks({...q,view:'households',status:'unpaid'} as MisResidentialQuery,user,access,first,total));
   return {stream,filename,disposition,rowCount:total};
  }
- /** 逐页取数、逐行输出；不在内存里拼完整 CSV。 */
+ /** 逐页取数、逐行输出；不在内存里拼完整 CSV。导出期间户数增长超过上限时停止写入并在末尾追加截断警告，不静默截断。 */
  private async *exportCsvChunks(q:MisResidentialQuery,user:AuthUser,access:ResolvedAccess|undefined,first:any,total:number){
   yield '\uFEFF'+EXPORT_CSV_HEADER+'\r\n';
   let written=0;
@@ -224,8 +228,13 @@ export class MisFeesService implements OnModuleDestroy {
    const communities:any[]=data.communities||first.communities||[];
    const statuses=await this.notificationStatusChunked(rows.map((row:any)=>String(row.houseKey??'')),user);
    for(const row of rows){
+    // HTTP 200 与响应头在前面的分页取数时就已发出，这里再抛错会让客户端只拿到不完整 CSV；改为停止写入并显式告知已截断。
+    if(written>=EXPORT_ROW_CAP){
+     logger.warn(`对账CSV导出超过上限已截断 tenantId=${user.tenantId} cap=${EXPORT_ROW_CAP} initialTotal=${total} written=${written}`);
+     yield csvText(`导出已截断：待缴户数超过上限 ${EXPORT_ROW_CAP} 户，本次只导出前 ${EXPORT_ROW_CAP} 户，请缩小范围后重新导出`)+'\r\n';
+     return;
+    }
     written++;
-    if(written>EXPORT_ROW_CAP)throw new Error(`导出期间待缴户数超过 ${EXPORT_ROW_CAP} 户，已中止；请缩小范围后重试`);
     yield exportCsvLine(row,communities,statuses.get(String(row.houseKey??'')))+'\r\n';
    }
    if(rows.length<EXPORT_PAGE_SIZE)break;
@@ -244,7 +253,8 @@ export class MisFeesService implements OnModuleDestroy {
   * 清单「通知状态」：一次性按 houseKey IN 批量取最近一次打印/短信，查询次数与户数无关，禁止 N+1。
   * 打印登记表没有 house_key，只能经批次快照 snapshot.notices[].houseKey 关联；短信表直接按 house_key 过滤。
   * 「已打印」= 有打印登记且批次快照含该户；「已发送」= 短信 status 为 submitted/delivered；queued（演练）与 failed 不算通知。
-  * 重复催收抑制：同一条 UNION ALL 顺带统计近 30 天打印登记数与短信数（库里聚合，不额外查询），合计 >= 2 视为低响应。
+  * 重复催收抑制：同一条 UNION ALL 顺带统计近 30 天打印登记数与短信数（库里聚合，不额外查询），
+  * 两项直接相加（同一批既有打印又有短信算 2 次），合计 >= 2 视为低响应；阈值/窗口为常量，后续配置化。
   */
  private async notificationStatus(houseKeys:string[],user:AuthUser){
   type Row={printedAt:string|null;printedPaper:'A5'|'A4'|null;smsAt:string|null;smsStatus:'submitted'|'delivered'|null;printCount30d:number;smsCount30d:number;count30d:number;suppressed:boolean};

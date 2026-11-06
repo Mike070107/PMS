@@ -33,3 +33,36 @@ test('对账CSV导出：UTF-8 BOM、表头与逐户行数、5000分页全量、�
  await assert.rejects(s.exportResidentialCsv({status:'paid'},user,access),/待缴/,'已缴视图不是对账导出');
  await assert.rejects(s.exportResidentialCsv({houseKeys:['01:1:1']},user,access),/全量/,'导出不接受逐个住户');
 });
+
+test('对账CSV导出：导出期间户数增长超上限时停止写入并追加截断警告，不在已发响应头后抛错',async()=>{
+ const s:any=Object.create(MisFeesService.prototype);
+ const row=(i:number)=>({houseKey:`01:${i+1}:1`,officeCode:'01',communityId:10,address:'合成花园'+i+'号',ownerName:'业主'+i,phoneMasked:'138****1234',amountCents:100,billCount:1,periodFrom:'202501',periodTo:'202501'});
+ // 首屏 total=20000 未超限，但第一页意外带回 20001 行（模拟导出期间增长）；流内到第 20001 行必须停止写入，不能抛普通 Error。
+ s.residential=async()=>({rows:Array.from({length:20001},(_,i)=>row(i)),total:20000,amountCents:0,communities:[{id:10,name:'合成花园'}]});
+ s.notificationStatus=async()=>new Map();
+ const user:any={id:7,tenantId:1},access:any={scopeAll:true};
+ const file=await s.exportResidentialCsv({},user,access);
+ const parts:string[]=[];for await(const chunk of file.stream)parts.push(String(chunk));
+ const lines=parts.join('').replace(/^\uFEFF/,'').trimEnd().split('\r\n');
+ assert.equal(lines.length,1+20000+1,'表头 + 上限内 20000 行 + 1 行明确截断警告');
+ assert.match(lines[lines.length-1],/超过上限 20000 户/,'截断警告必须写明上限');
+ assert.match(lines[lines.length-1],/已截断/);
+ assert.match(lines[lines.length-1],/缩小范围/);
+});
+
+test('对账CSV导出：公式注入防护覆盖 = + - @ 与前导 Tab/CR，普通值不变',async()=>{
+ const s:any=Object.create(MisFeesService.prototype);
+ const ownerNames=['=SUM(1)','+cmd','@evil','-1+1','\tTAB','\rCR','普通业主'];
+ s.residential=async()=>({rows:ownerNames.map((ownerName,i)=>({houseKey:`01:${i+1}:1`,officeCode:'01',communityId:10,address:'甲1号',ownerName,phoneMasked:'138****1234',amountCents:100,billCount:1,periodFrom:'202501',periodTo:'202501'})),total:ownerNames.length,amountCents:0,communities:[{id:10,name:'合成花园'}]});
+ s.notificationStatus=async()=>new Map();
+ const file=await s.exportResidentialCsv({}, {id:7,tenantId:1} as any, {scopeAll:true} as any);
+ const parts:string[]=[];for await(const chunk of file.stream)parts.push(String(chunk));
+ const text=parts.join('');
+ for(const value of ['=SUM(1)','+cmd','@evil','-1+1']){
+  assert.ok(text.includes("甲1号,'"+value+','),value+' 必须以单引号开头，避免 Excel 当公式执行');
+  assert.ok(!text.includes('甲1号,'+value+','),value+' 不能原样导出');
+ }
+ assert.ok(text.includes("甲1号,'\tTAB,"),'OWASP 建议：前导 Tab 也要加单引号');
+ assert.ok(text.includes('甲1号,"\'\rCR",'),'OWASP 建议：前导 CR 加单引号并按 RFC4180 加引号');
+ assert.ok(text.includes('甲1号,普通业主,'),'普通文本不加前缀，不破坏原有内容');
+});
