@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import { collectionEffects as calculateCollectionEffects, effectDay, promiseProgress } from './mis-collection-effect';
 import { validateMisFeeRange } from './mis-fees.query';
 import { CollectionSmsService } from '../settings/collection-sms.service';
+import { DEFAULT_FOLLOWUP_RULE } from '../settings/collection-followup.service';
+import { TenantConfig } from '../../entities/tenant-config.entity';
 import { MisCollectionBatch } from '../../entities/mis-collection-batch.entity';
 import type { MisCollectionPreviewDto } from './mis-fees.dto';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -305,7 +307,43 @@ export class MisFeesService implements OnModuleDestroy {
   const where:any={tenantId:user.tenantId!,communityId:In(ids),...(requested.length?{houseKey:In(requested)}:{})};
   const holds=(await this.collectionRepo(MisCollectionHold).find({where:{...where,status:'active'},order:{id:'DESC'}})).filter(h=>h.until>=today);
   const events=await this.collectionRepo(MisCollectionEvent).find({where,order:{id:'DESC'},take:200});
-  return {today,followupHouseholds:new Set(rows.filter(p=>p.overdue).map(p=>p.houseKey)).size,promises:requested.length?rows.filter(p=>requested.includes(p.houseKey)):rows,holds,events,timelineScope:'责任对象跟进（跨批次）'};
+  const overdueHouseholds=new Set(rows.filter(p=>p.overdue).map(p=>p.houseKey)).size;
+  // 今日待跟进：大额且久未人工跟进的待缴户。全程只读，不写库、不改MIS账务；规则缺失时按设置模块默认值。
+  let rule:{amountCents:number;inactiveDays:number;enabled:boolean}={...DEFAULT_FOLLOWUP_RULE};
+  try{
+   const stored=await this.collectionRepo(TenantConfig).findOne({where:{tenantId:user.tenantId!,key:'collection_followup_rule'}});
+   const value=(stored?.value||{}) as Partial<typeof DEFAULT_FOLLOWUP_RULE>;
+   rule={amountCents:Math.max(0,Math.round(Number(value.amountCents??DEFAULT_FOLLOWUP_RULE.amountCents)||0)),inactiveDays:Math.min(365,Math.max(1,Math.round(Number(value.inactiveDays??DEFAULT_FOLLOWUP_RULE.inactiveDays)||DEFAULT_FOLLOWUP_RULE.inactiveDays))),enabled:(value.enabled??DEFAULT_FOLLOWUP_RULE.enabled)!==false};
+  }catch{
+   // 规则存储不可读（未配置/跟催存储未就绪）时退回默认规则，不让整页跟进失败；不写任何数据。
+   rule={...DEFAULT_FOLLOWUP_RULE};
+  }
+  let largeInactive:Array<{houseKey:string;address:string;amountCents:number;lastContactAt:string|null;days:number|null;never:boolean}>=[];
+  let stats={avgAmountCents:0,hitCount:0,hitAmountCents:0,thresholdCents:rule.amountCents,inactiveDays:rule.inactiveDays,scanned:0};
+  if(rule.enabled){
+   // _aging:false 表示这是内部分页：放宽 pageSize 上限到2万，并跳过 residential() 自带的账龄全量扫描。
+   const scan:any=await this.residential({communityId:q.communityId,view:'households',status:'unpaid',page:1,pageSize:5000,_aging:false} as any,user,access);
+   const scannedRows:any[]=scan.rows||[],scannedKeys=[...new Set(scannedRows.map(r=>String(r.houseKey)))];
+   // 「上次人工跟进」只认事件表的人工动作（电话/承诺/冻结）；撤销类记录是更正操作，不算一次人工跟进。
+   const manualEvents=scannedKeys.length?await this.collectionRepo(MisCollectionEvent).find({where:{tenantId:user.tenantId!,houseKey:In(scannedKeys),action:In(['phone','promise','hold'])},order:{createdAt:'DESC'},select:{houseKey:true,createdAt:true}}):[];
+   const lastContact=new Map<string,Date>();
+   for(const event of manualEvents)if(!lastContact.has(event.houseKey))lastContact.set(event.houseKey,event.createdAt);
+   const todayStart=Date.parse(today+'T00:00:00Z'),dayMs=86400000;
+   const daysSince=(last:Date)=>Math.max(0,Math.round((todayStart-Date.parse(effectDay(last)+'T00:00:00Z'))/dayMs));
+   const hits:typeof largeInactive=[];
+   for(const row of scannedRows){
+    const amountCents=Number(row.amountCents)||0;if(amountCents<rule.amountCents)continue;
+    const last=lastContact.get(String(row.houseKey))||null,days=last?daysSince(last):null;
+    if(days!==null&&days<rule.inactiveDays)continue;
+    hits.push({houseKey:String(row.houseKey),address:String(row.address||''),amountCents,lastContactAt:last?last.toISOString():null,days,never:days===null});
+   }
+   hits.sort((a,b)=>b.amountCents-a.amountCents||a.houseKey.localeCompare(b.houseKey));
+   largeInactive=hits.slice(0,100);
+   const population=Number(scan.total)||scannedRows.length;
+   const populationCents=Number.isFinite(Number(scan.amountCents))?Number(scan.amountCents):scannedRows.reduce((sum,row)=>sum+(Number(row.amountCents)||0),0);
+   stats={avgAmountCents:population?Math.round(populationCents/population):0,hitCount:hits.length,hitAmountCents:hits.reduce((sum,row)=>sum+row.amountCents,0),thresholdCents:rule.amountCents,inactiveDays:rule.inactiveDays,scanned:scannedRows.length};
+  }
+  return {today,followupHouseholds:Math.max(overdueHouseholds,largeInactive.length),promises:requested.length?rows.filter(p=>requested.includes(p.houseKey)):rows,holds,events,largeInactive,stats,rule,timelineScope:'责任对象跟进（跨批次）'};
  }
  /** 已缴原账只读入口：复用既有住宅明细SQL，归因不读取updatedate作为收款日。 */
  async paidCollectionBills(houseKeys:string[],user:AuthUser,access?:ResolvedAccess){
