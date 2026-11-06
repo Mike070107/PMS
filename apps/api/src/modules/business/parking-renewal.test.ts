@@ -2,6 +2,18 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BusinessService } from './business.service';
 import { parkingRenewalWindow } from './parking-renewal-window';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
+import { CompleteBusinessDto, EstimateBusinessDto } from './dto';
+
+test('试算和收款DTO都不能把空白实收转换为0元', async () => {
+  for (const Dto of [EstimateBusinessDto, CompleteBusinessDto]) {
+    for (const manualAmountCents of ['', ' ', false]) {
+      const errors = await validate(plainToInstance(Dto, { serviceType: 'parking_monthly', ruleId: 18, manualAmountCents }));
+      assert.ok(errors.some(e => e.property === 'manualAmountCents'), JSON.stringify({ dto: Dto.name, manualAmountCents }));
+    }
+  }
+});
 
 const service: any = Object.create(BusinessService.prototype);
 service.today = () => '2026-11-05';
@@ -11,6 +23,16 @@ test('配置的0元价格按真实服务试算保留，不因免费拒绝续期'
   const free = { ...rule, config: { priceMode: 'table', tiers: [{ months: 1, amountCents: 0 }] } };
   assert.equal(service.estimateParking(free, { months: 1, currentEndDate: '2026-11-30' }, 91).amountCents, 0);
   assert.equal(service.estimateParking(free, { months: 1, currentEndDate: '2026-11-30' }, 91).endDate, '2026-12-31');
+});
+
+test('自定日期明确实收150元不被缺少2个月标准档位拦截', () => {
+  const table = { ...rule, config: { ...rule.config, priceMode: 'table' } };
+  const result = service.estimateParking(table, { serviceType: 'parking_monthly', startDate: '2026-11-06', endDate: '2026-12-31', manualAmountCents: 15000, customReason: '优惠减免' }, 91);
+  assert.equal(result.amountCents, 15000);
+  assert.equal(result.standardAmountCents, null, '没有配置标准价必须保留未知，不能编造成0元');
+  assert.equal(result.requiresReview, true);
+  assert.equal(result.startDate, '2026-11-06');
+  assert.equal(result.endDate, '2026-12-31');
 });
 
 test('日期边界与合法月份范围', () => {
@@ -38,4 +60,46 @@ test('真实服务拒绝非法月份及无月价时的未配置档位', () => {
   }
   const annual = { ...rule, config: { ...rule.config, priceMode: 'table', tiers: [{ months: 12, amountCents: 150000 }] } };
   assert.throws(() => service.estimateParking(annual, { months: 3 }, 91), (e: any) => e.getStatus() === 400);
+});
+
+
+test('自定日期明确0元合法，缺价不能替代明确金额和原因', async () => {
+  const table = { ...rule, config: { ...rule.config, priceMode: 'table' } };
+  const dto: any = { serviceType: 'parking_monthly', ruleId: 18, startDate: '2026-11-06', endDate: '2026-12-31', manualAmountCents: 0, customReason: '优惠减免' };
+  for (const Dto of [EstimateBusinessDto, CompleteBusinessDto]) {
+    assert.equal((await validate(plainToInstance(Dto, dto))).length, 0);
+  }
+  const result = service.estimateParking(table, dto, 91);
+  assert.equal(result.amountCents, 0); assert.equal(result.requiresReview, true); assert.equal(result.standardAmountCents, null);
+  for (const invalid of [
+    { ...dto, manualAmountCents: undefined }, { ...dto, manualAmountCents: null },
+    { ...dto, manualAmountCents: -1 }, { ...dto, manualAmountCents: 0.1 },
+    { ...dto, customReason: ' ' }, { ...dto, endDate: '2026-02-30' },
+    { ...dto, startDate: undefined }, { ...dto, endDate: undefined },
+    { ...dto, startDate: '2027-01-01' }, { ...dto, startDate: undefined, endDate: undefined, months: 1 },
+  ]) assert.throws(() => service.estimateParking(table, invalid, 91));
+});
+
+
+test('新办与已有车辆的0元/150元自定日期登记保留待审核，不提前下发停车系统', async () => {
+  for (const intake of [false, true]) for (const amount of [0, 15000]) {
+    const saved: any[] = [], logs: any[] = []; let kicked = 0, attached = 0, notified = 0;
+    const svc: any = Object.create(BusinessService.prototype);
+    Object.assign(svc, {
+      ruleRepo: { findOne: async () => ({ ...rule, communityId: 1, config: { ...rule.config, priceMode: 'table' } }) },
+      houseRepo: { findOne: async () => ({ id: 1, buildingId: 2 }) },
+      buildingRepo: { findOne: async () => ({ id: 2, communityId: 1 }) },
+      tagRepo: { findOne: async () => ({ vehicleClass: '住户车-1' }) },
+      vehicleRepo: { findOne: async () => ({ id: 3, plateNo: '沪TEST01' }), save: async (v: any) => v },
+      txnRepo: { create: (v: any) => v, save: async (v: any) => { const row = { id: 40, ...v }; saved.push(row); return row; } },
+      logRepo: { create: (v: any) => v, save: async (v: any) => { logs.push(...v); return v; } },
+      intakes: { claimForPayment: async () => ({ row: { id: 5, vehicleClass: '住户车-1' }, plate: '沪TEST01', approved: true }), attachPayment: async () => { attached++; } },
+      execution: { initialFor: () => ({ status: 'queued' }), kick: () => { kicked++; } },
+      notifyReviewers: async () => { notified++; },
+    });
+    const result = await svc.complete({ serviceType: 'parking_monthly', ruleId: 18, houseId: 1, plateNo: '沪TEST01', startDate: '2026-11-06', endDate: '2026-12-31', manualAmountCents: amount, customReason: '优惠减免', paymentMethod: 'cash', ...(intake ? { intakeId: 5 } : {}) }, { id: 7, tenantId: 91 }, { scopeAll: false, communityIds: [1] });
+    assert.equal(saved.length, 1); assert.equal(result.amountCents, amount); assert.equal(result.externalSyncStatus, 'review');
+    assert.equal(result.snapshot.review.standardAmountCents, null); assert.equal(result.snapshot.review.manualAmountCents, amount);
+    assert.ok(logs.some(v => v.action === 'review_requested')); assert.equal(kicked, 0); assert.equal(notified, 1); assert.equal(attached, intake ? 1 : 0);
+  }
 });

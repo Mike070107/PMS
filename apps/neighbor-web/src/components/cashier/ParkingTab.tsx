@@ -37,7 +37,7 @@ export interface ParkHouse { id: number; communityId: number | null; lane?: stri
 export type SystemRef =
   | { kind: 'local'; database: 'parking1' | 'parking2'; sourceRecordId: string; previousEndDate: string | null; label: string }
   | { kind: 'deliyun'; park: string; label: string };
-interface Estimate { unitPriceCents: number; quantity: number; startDate: string | null; endDate: string | null; amountCents: number; summary: string; breakdown?: string; vehicleClass?: string | null }
+interface Estimate { unitPriceCents: number; quantity: number; startDate: string | null; endDate: string | null; amountCents: number; standardAmountCents?: number | null; requiresReview?: boolean; summary: string; breakdown?: string; vehicleClass?: string | null }
 
 /** 一辆车在某套停车系统里的一条登记 */
 interface Lot {
@@ -54,7 +54,7 @@ export interface ParkingCart {
   /** 新办车牌：扫码登记单编号（车牌由业主填，可能还没填） */
   intakeId?: number;
   /** 非标准续期：自定起止日期 + 手填实收金额，提交后等物业经理审核 */
-  custom?: { startDate: string; endDate: string; manualAmountCents: number; reason: string; standardAmountCents: number } | null;
+  custom?: { startDate: string; endDate: string; manualAmountCents: number; reason: string; standardAmountCents: number | null } | null;
 }
 
 interface DeliyunRow { id: string; plate: string; parkingSpace?: string | null; cardNo: string | null; cardType: string | null; endDate: string | null; garageNames: string[]; civilDefenseAuthorized: boolean; cardPoolId: string | null }
@@ -378,7 +378,6 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
   const [cs, setCs] = useState('');
   const [ce, setCe] = useState('');
   const [amt, setAmt] = useState('');
-  const [amtTouched, setAmtTouched] = useState(false);
   const [reason, setReason] = useState('');
   useEffect(() => () => onCart(sel.plate, null), []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -418,8 +417,10 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
   useEffect(() => { if (custom && !cs) { setCs(defaultStart); setCe(dayjs(defaultStart).add(1, 'month').subtract(1, 'day').format('YYYY-MM-DD')); } }, [custom]); // eslint-disable-line react-hooks/exhaustive-deps
   const customOk = custom && /^\d{4}-\d{2}-\d{2}$/.test(cs) && /^\d{4}-\d{2}-\d{2}$/.test(ce) && ce >= cs;
   const days = customOk ? dayjs(ce).diff(dayjs(cs), 'day') + 1 : 0;
+  const enteredCents = /^\d+(?:\.\d{1,2})?$/.test(amt.trim()) ? Math.round(Number(amt) * 100) : null;
+  const manualCents = enteredCents != null && Number.isSafeInteger(enteredCents) && enteredCents >= 0 ? enteredCents : null;
   // 绑定完整报价上下文（同 id 规则改价、系统引用或身份变化也必须重新试算）。
-  const quoteKey = JSON.stringify([quoteRevision, sel.plate, house.id, house.communityId, house.owner?.id, rule, lots, vehicleClass, months, monthsValid, custom, cs, ce, amt, amtTouched, reason, label, clsBusy]);
+  const quoteKey = JSON.stringify([quoteRevision, sel.plate, house.id, house.communityId, house.owner?.id, rule, lots, vehicleClass, months, monthsValid, custom, cs, ce, amt, reason, label, clsBusy]);
   const currentQuoteKey = useRef(quoteKey);
   if (currentQuoteKey.current !== quoteKey) { currentQuoteKey.current = quoteKey; quoteGeneration.current++; }
   const est = estimateKey === quoteKey && (custom || monthsValid) && !clsBusy ? quotedEst : null;
@@ -427,27 +428,25 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
   useEffect(() => {
     const generation = ++quoteGeneration.current;
     if (!rule || !lots.length || clsBusy || (!custom && !monthsValid) || (custom && !customOk)) { setEst(null); onCart(sel.plate, null); if (custom && cs && ce && !customOk) setEstErr('结束日期不能早于开始日期'); return; }
+    if (custom && (manualCents == null || !reason.trim())) { setEst(null); onCart(sel.plate, null); setEstErr('请明确填写实收金额（0元请填0）和原因'); return; }
     let alive = true;
     setEstErr('');
     setEst(null);
     onCart(sel.plate, null);
     const data = custom
-      ? { serviceType: 'parking_monthly', ruleId: rule.id, houseId: house.id, ownerId: house.owner?.id, plateNo: sel.plate, startDate: cs, endDate: ce }
+      ? { serviceType: 'parking_monthly', ruleId: rule.id, houseId: house.id, ownerId: house.owner?.id, plateNo: sel.plate, startDate: cs, endDate: ce, manualAmountCents: manualCents!, customReason: reason.trim() }
       : { serviceType: 'parking_monthly', ruleId: rule.id, houseId: house.id, ownerId: house.owner?.id, plateNo: sel.plate, months, currentEndDate: currentEnd || undefined };
     request<Estimate>({ method: 'POST', url: '/business/estimate', data })
       .then((e) => {
         if (!alive || generation !== quoteGeneration.current) return;
-        if ((!custom && e.quantity !== months) || !Number.isSafeInteger(e.amountCents) || e.amountCents < 0 || !e.startDate || !e.endDate) {
+        if ((!custom && e.quantity !== months) || (custom && (e.startDate !== cs || e.endDate !== ce || e.amountCents !== manualCents)) || !Number.isSafeInteger(e.amountCents) || e.amountCents < 0 || !e.startDate || !e.endDate) {
           setEst(null); onCart(sel.plate, null); setEstErr('试算结果与当前续期不一致，请重新选择月份重试'); return;
         }
         setEst(e); setEstimateKey(quoteKey);
         const base = { plate: label ?? sel.plate, rule, months: e.quantity, currentEndDate: currentEnd, systems: lots.map((l) => l.ref), systemsLabel: lots.map((l) => l.label).join(' + '), ...(intakeId ? { intakeId } : {}) };
         if (!custom) { onCart(sel.plate, { ...base, months, estimate: e, custom: null }); return; }
-        const yuan = amtTouched ? Number(amt) : e.amountCents / 100;
-        if (!amtTouched) setAmt((e.amountCents / 100).toFixed(2));
-        const cents = Math.round((Number.isFinite(yuan) ? yuan : -1) * 100);
-        if (cents < 0 || !reason.trim()) { onCart(sel.plate, null); return; }
-        onCart(sel.plate, { ...base, estimate: { ...e, amountCents: cents }, custom: { startDate: cs, endDate: ce, manualAmountCents: cents, reason: reason.trim(), standardAmountCents: e.amountCents } });
+        if (manualCents == null || !reason.trim()) { onCart(sel.plate, null); return; }
+        onCart(sel.plate, { ...base, estimate: e, custom: { startDate: cs, endDate: ce, manualAmountCents: manualCents, reason: reason.trim(), standardAmountCents: e.standardAmountCents ?? null } });
       })
       .catch((e) => { if (alive && generation === quoteGeneration.current) { setEst(null); onCart(sel.plate, null); setEstErr(e instanceof Error ? e.message : '试算失败'); } });
     return () => { alive = false; };
@@ -507,18 +506,18 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
               {custom ? (
                 <div className="custom-renew">
                   <div className="cr-grid">
-                    <label>开始日期<DateInput className="in" type="date" value={cs} onChange={(e) => setCs(e.target.value)} /></label>
-                    <label>结束日期<DateInput className="in" type="date" value={ce} min={cs || undefined} onChange={(e) => setCe(e.target.value)} /></label>
-                    <label>实收金额（元）<input className="in" type="number" min={0} step="0.01" value={amt} onChange={(e) => { setAmt(e.target.value); setAmtTouched(true); }} /></label>
+                    <label>开始日期<DateInput className="in" type="date" value={cs} onChange={(e) => { invalidateQuote(); setCs(e.target.value); }} /></label>
+                    <label>结束日期<DateInput className="in" type="date" value={ce} min={cs || undefined} onChange={(e) => { invalidateQuote(); setCe(e.target.value); }} /></label>
+                    <label>实收金额（元）<input className="in" type="number" min={0} step="0.01" value={amt} aria-label="自定日期实收金额" placeholder="请输入金额，0元请填0" onChange={(e) => { invalidateQuote(); setAmt(e.target.value); }} /></label>
                   </div>
                   <div className="muted" style={{ fontSize: 13.5, margin: '6px 0' }}>
-                    {days ? `共 ${days} 天` : ''}{est ? ` · 按标准约 ${money(est.amountCents / 100)}（${est.quantity} 个月）` : ''}{amtTouched ? <a style={{ marginLeft: 8, cursor: 'pointer', textDecoration: 'underline' }} onClick={() => { setAmtTouched(false); }}>恢复为标准金额</a> : null}
+                    {days ? `共 ${days} 天` : ''}{est?.standardAmountCents != null ? ` · 标准参考 ${money(est.standardAmountCents / 100)}（${est.quantity} 个月）` : est ? ' · 该区间未配置标准价，按明确实收提交审核' : ''}
                     {estErr ? <span style={{ color: 'var(--dang)', marginLeft: 8 }}>{estErr}</span> : null}
                   </div>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                     <span style={{ fontSize: 14, color: 'var(--ink2)' }}>原因：</span>
-                    {['对齐到月底', '补缴差额', '按天计费', '优惠减免'].map((t) => <button key={t} className={`chip ${reason === t ? 'on' : ''}`} onClick={() => setReason(t)}>{t}</button>)}
-                    <input className="in" style={{ height: 36, flex: 1, minWidth: 180 }} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="写明为什么不按整月续（必填，经理审核看这句）" />
+                    {['对齐到月底', '补缴差额', '按天计费', '优惠减免'].map((t) => <button key={t} className={`chip ${reason === t ? 'on' : ''}`} onClick={() => { invalidateQuote(); setReason(t); }}>{t}</button>)}
+                    <input className="in" style={{ height: 36, flex: 1, minWidth: 180 }} value={reason} onChange={(e) => { invalidateQuote(); setReason(e.target.value); }} placeholder="写明为什么不按整月续（必填，经理审核看这句）" />
                   </div>
                   <div className="note2" style={{ marginTop: 8 }}><Icon name="alert" />非标准续期先登记收款，提交物业经理审核；审核通过后系统才续期，驳回则不续期、由前台按原因退款或重办。</div>
                 </div>

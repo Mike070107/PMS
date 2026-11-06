@@ -10,7 +10,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   BusinessBillingUnit,
   BusinessServiceType,
@@ -110,7 +110,20 @@ export class EstimateBusinessDto {
   @IsString()
   endDate?: string;
 
-  /** 续期：这辆车当前的到期日（多套系统取最早的），未到期时接着它往后续 */
+  /** 非标准续期（自定开始/结束日期）的实收金额（分）；填了就要物业经理审核后才执行 */
+  @IsOptional()
+  @Transform(({ value }) => typeof value === 'number' ? value
+    : typeof value === 'string' && /^\d+$/.test(value.trim()) ? Number(value) : Number.NaN)
+  @IsInt()
+  @Min(0)
+  manualAmountCents?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  customReason?: string;
+
+  /** 续期：这辆车当前的到期日（多套系统取最晚的），未到期时接着它往后续 */
   @IsOptional()
   @IsString()
   @MaxLength(20)
@@ -170,18 +183,6 @@ export class CompleteBusinessDto extends EstimateBusinessDto {
   @IsString()
   @MaxLength(500)
   remark?: string;
-
-  /** 非标准续期（自定开始/结束日期）的实收金额（分）；填了就要物业经理审核后才执行 */
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  manualAmountCents?: number;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(200)
-  customReason?: string;
 
   @IsOptional()
   @IsArray()

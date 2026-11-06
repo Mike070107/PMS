@@ -1,6 +1,6 @@
 const test=require('node:test');const assert=require('node:assert/strict');const fs=require('node:fs');const path=require('node:path');const vm=require('node:vm');const ts=require('typescript');
 function make(){
- const state=[],effects=[],refs=[],requests=[],carts=[];let si=0,ei=0,ri=0,pending=[];let props;
+ const state=[],effects=[],refs=[],requests=[],carts=[];let si=0,ei=0,ri=0,pending=[];let props,lastTree;
  function Months(){}
  const react={useState(init){const i=si++;if(!(i in state))state[i]=i===1?18:init;return[state[i],v=>state[i]=typeof v==='function'?v(state[i]):v]},useMemo:f=>f(),useRef(init){const i=ri++;return refs[i]??(refs[i]={current:init})},useEffect(fn,deps){const i=ei++;if(!effects[i]||deps.some((v,j)=>v!==effects[i].deps[j]))pending.push({i,fn,deps})},useCallback:f=>f};
  const module={exports:{}};const jsx=(type,props)=>({type,props});
@@ -13,9 +13,9 @@ function make(){
  }});
  props={car:{plate:'SYNTHETIC',lots:[{key:'a',targetKey:'local:test',ref:{},label:'合成停车场',endDate:null}]},rules:[{id:18,serviceType:'parking_monthly',enabled:true,communityId:1,unitPriceCents:15000,config:{priceMode:'table',vehicleClass:'住户车-1',isDefault:true,tiers:[{months:1,amountCents:15000},{months:12,amountCents:150000}]}}],house:{id:1,communityId:1,buildingNo:'1',roomNo:'101'},onCart:(_p,c)=>carts.push(c),vehicleClass:'住户车-1'};
  const nodes=n=>!n||typeof n!=='object'?[]:[n,...[n.props?.children].flat(Infinity).flatMap(nodes)];
- function render(){si=ei=ri=0;const tree=module.exports.CarRenewal(props);return nodes(tree).find(n=>n.type===Months).props}
+ function render(){si=ei=ri=0;const tree=lastTree=module.exports.CarRenewal(props);return nodes(tree).find(n=>n.type===Months).props}
  function commit(){const todo=pending;pending=[];for(const e of todo){effects[e.i]?.cleanup?.();effects[e.i]={deps:e.deps,cleanup:e.fn()}}}
- return{render,commit,requests,carts,props,unmount(){effects.forEach(e=>e?.cleanup?.())},quote:(months)=>({quantity:months,amountCents:months===12?150000:months*15000,startDate:'2027-01-01',endDate:'2027-12-31'})};
+ return{render,commit,requests,carts,props,nodes:()=>nodes(lastTree),unmount(){effects.forEach(e=>e?.cleanup?.())},quote:(months)=>({quantity:months,amountCents:months===12?150000:months*15000,startDate:'2027-01-01',endDate:'2027-12-31'})};
 }
 test('invalid manual draft clears the cart and cannot revive after late quote',async()=>{
  const h=make();h.render();h.commit();const old=h.requests.at(-1);
@@ -58,4 +58,22 @@ test('month change clears chargeable cart immediately and ignores old success be
  h.render().onChange(12);assert.equal(h.carts.at(-1),null);
  old.resolve(h.quote(11));await flush();assert.equal(h.carts.at(-1),null,'old quote must not reactivate the prior month cart');
  h.render();h.commit();h.requests.at(-1).resolve(h.quote(12));await flush();assert.equal(h.carts.at(-1).months,12);assert.equal(h.carts.at(-1).estimate.amountCents,150000);
+});
+
+
+test('custom dates keep amount blank, explicit zero is quoted and clearing it invalidates cart',async()=>{
+ const h=make();h.render();h.commit();h.requests.at(-1).resolve(h.quote(6));await flush();h.render();
+ h.nodes().find(n=>n.type==='button'&&JSON.stringify(n.props.children).includes('自定日期')).props.onClick();
+ h.render();h.commit();h.render();h.commit();
+ const amount=()=>h.nodes().find(n=>n.type==='input'&&n.props.type==='number');
+ assert.equal(amount().props.value,'','自定日期金额必须默认留空');
+ const reason=h.nodes().find(n=>n.type==='input'&&n.props.placeholder?.includes('写明为什么'));
+ reason.props.onChange({target:{value:'优惠减免'}});h.render();h.commit();
+ assert.equal(h.carts.at(-1),null,'空白金额不能作为免费单');
+ amount().props.onChange({target:{value:'0'}});h.render();h.commit();
+ const req=h.requests.at(-1);assert.equal(req.o.data.manualAmountCents,0);assert.equal(req.o.data.customReason,'优惠减免');
+ req.resolve({...h.quote(2),amountCents:0,standardAmountCents:null,requiresReview:true,startDate:req.o.data.startDate,endDate:req.o.data.endDate});await flush();
+ assert.equal(h.carts.at(-1).custom.manualAmountCents,0);assert.equal(h.carts.at(-1).custom.standardAmountCents,null);
+ h.render();amount().props.onChange({target:{value:''}});assert.equal(h.carts.at(-1),null,'删除金额应立即撤下可收款项');
+ h.render();h.commit();assert.equal(amount().props.value,'');assert.equal(h.carts.at(-1),null);
 });

@@ -41,7 +41,7 @@ import { findParkingTarget, PARKING_TARGETS, targetsForCommunity, validateRuleTa
 import { addDays, addMonthsClamped, renewalWindow } from './business-execution.util';
 import { AccessService } from '../access/access.service';
 import { VehicleIntakeService } from './vehicle-intake.service';
-import { DEFAULT_GROUP, STANDARD_MONTHS, normalizeTiers, normalizeVehicleClass, priceRule, targetsOverlap, upgradeToTable, type ParkingRuleConfig } from './parking-pricing';
+import { DEFAULT_GROUP, STANDARD_MONTHS, MissingParkingPriceError, normalizeTiers, normalizeVehicleClass, priceRule, targetsOverlap, upgradeToTable, type ParkingRuleConfig } from './parking-pricing';
 import { Notification } from '../../entities';
 import { NotifyChannel, NotifyStatus } from '../../common/enums';
 import { DeliyunParkingService } from '../access-card-issuance/deliyun-parking.service';
@@ -628,7 +628,7 @@ export class BusinessService {
     if (custom) {
       snapshot.review = {
         reason: dto.customReason!.trim(), requestedBy: user.id, requestedAt: new Date().toISOString(),
-        startDate: estimate.startDate, endDate: estimate.endDate, manualAmountCents: amountCents, standardAmountCents: estimate.amountCents,
+        startDate: estimate.startDate, endDate: estimate.endDate, manualAmountCents: amountCents, standardAmountCents: 'standardAmountCents' in estimate ? estimate.standardAmountCents : estimate.amountCents,
       };
     }
 
@@ -741,11 +741,26 @@ export class BusinessService {
     if (rule.billingUnit !== BusinessBillingUnit.MONTH) {
       throw new BadRequestException('停车月租规则必须按月计费');
     }
+    const hasDates = dto.startDate != null || dto.endDate != null;
+    const hasManual = dto.manualAmountCents != null;
+    if (hasDates) {
+      const validDay = (d: unknown): d is string => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)
+        && Number.isFinite(Date.parse(d + 'T00:00:00Z')) && new Date(d + 'T00:00:00Z').toISOString().slice(0, 10) === d;
+      if (!validDay(dto.startDate) || !validDay(dto.endDate)) throw new BadRequestException('开始日期和结束日期都要填，且必须是真实日期 YYYY-MM-DD');
+      if (dto.endDate < dto.startDate) throw new BadRequestException('结束日期不能早于开始日期');
+    }
+    if (hasManual && (!hasDates || !Number.isSafeInteger(dto.manualAmountCents) || dto.manualAmountCents! < 0
+      || typeof dto.customReason !== 'string' || !dto.customReason.trim())) {
+      throw new BadRequestException('自定日期必须明确填写非负实收金额和原因');
+    }
     const quantity = dto.months ?? this.monthsBetween(dto.startDate, dto.endDate);
-    if (!quantity || quantity < 1) throw new BadRequestException('请选择缴费月数');
-    let priced: { amountCents: number; breakdown: string };
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 60) throw new BadRequestException('请选择1至60的整数月数');
+    let priced: { amountCents: number; breakdown: string } | null = null;
     try { priced = priceRule(quantity, rule.unitPriceCents, (rule.config ?? {}) as ParkingRuleConfig); }
-    catch (e) { throw new BadRequestException((e as Error).message); }
+    catch (e) {
+      // 明确实收会进入经理审核；只允许缺标准月档，不掩盖其他计价异常。
+      if (!(hasDates && hasManual && e instanceof MissingParkingPriceError)) throw new BadRequestException((e as Error).message);
+    }
     const current = /^\d{4}-\d{2}-\d{2}/.test(dto.currentEndDate || '') ? dto.currentEndDate!.slice(0, 10) : null;
     // 续期：没到期的接着原到期日续，已过期的从今天起；结束日 = 开始 + N 月 − 1 天
     const win = dto.startDate ? null : renewalWindow({ currentEndDate: current, today: this.today(), months: quantity });
@@ -763,9 +778,11 @@ export class BusinessService {
       quantity,
       startDate,
       endDate,
-      amountCents: priced.amountCents,
+      amountCents: hasManual ? dto.manualAmountCents! : priced!.amountCents,
+      standardAmountCents: priced?.amountCents ?? null,
+      requiresReview: hasManual,
       summary: `停车月租 ${quantity} 个月`,
-      breakdown: priced.breakdown,
+      breakdown: priced?.breakdown ?? '标准价格未配置；按明确实收登记，经理审核后执行',
       vehicleClass: ((rule.config ?? {}) as ParkingRuleConfig).vehicleClass ?? null,
       tenantId,
     };

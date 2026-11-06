@@ -1,4 +1,3 @@
-/* 与 apps/api/src/modules/business/parking-pricing.ts 完全相同的副本，仅用于界面预览；收款金额以服务端试算为准。 */
 /**
  * 停车月租计价：单价 × 月数，叠加自建的「套餐档」（例如 12 个月 1500 元）。
  *
@@ -26,12 +25,16 @@ export interface ParkingRuleConfig {
 export const DEFAULT_GROUP = '默认分组';
 export const STANDARD_MONTHS = [1, 2, 3, 6, 12];
 
+export class MissingParkingPriceError extends Error {
+  name = 'MissingParkingPriceError';
+}
+
 /** 缴费规则分组：月数必须在价格表里，金额就是表里那格 */
 export function priceTable(months: number, tiers: PriceTier[]): { amountCents: number; breakdown: string } {
   const hit = tiers.find((t) => t.months === months);
   if (!hit) {
     const list = tiers.map((t) => t.months).sort((a, b) => a - b).join('、');
-    throw new Error(list ? `这个缴费规则分组没有定 ${months} 个月的价格，可选：${list} 个月` : '这个缴费规则分组还没有设价格');
+    throw new MissingParkingPriceError(list ? `这个缴费规则分组没有定 ${months} 个月的价格，可选：${list} 个月` : '这个缴费规则分组还没有设价格');
   }
   return { amountCents: hit.amountCents, breakdown: `${months} 个月` };
 }
