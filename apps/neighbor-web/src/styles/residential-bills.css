@@ -27,3 +27,6 @@
 .rb-owners-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
 .rb-owners-grid>div{display:flex;flex-direction:column;gap:3px;min-width:0}.rb-owners-grid span{font-size:12.5px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rb-owners-grid b{font-size:14px;font-variant-numeric:tabular-nums}.rb-owners-grid small{font-size:11.5px;color:var(--ink3)}
 @media(max-width:900px){.rb-owners-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.rb-warn-banner{display:flex;align-items:flex-start;gap:10px;padding:14px 16px;margin:0 0 14px;background:#fff4e5;border:1px solid #f0b46a;border-left:4px solid #d9822b;border-radius:8px;color:#7a3f00}
+.rb-warn-banner b{display:block;font-size:14.5px;margin-bottom:3px}.rb-warn-banner span{display:block;font-size:13px;line-height:1.55;color:#8a4a05}

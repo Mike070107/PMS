@@ -131,7 +131,7 @@ export class MisFeesService implements OnModuleDestroy {
   const totalHouses=Number(sets[0]?.[0]?.total||0),totalAmount=misMoneyToCents(sets[0]?.[0]?.amount);
   let aging:any=undefined;
   if((q as any)._aging!==false&&!q.houseKeys?.length){
-   const scan:any=await this.residential({...q,view:'households',page:1,pageSize:2000,_aging:false} as any,user,access);
+   const scanCap=20000;const scan:any=await this.residential({...q,view:'households',page:1,pageSize:Math.min(Math.max(totalHouses,1),scanCap),_aging:false} as any,user,access);
    const buckets:Record<string,{count:number;amountCents:number}>={'0-30':{count:0,amountCents:0},'31-60':{count:0,amountCents:0},'61-90':{count:0,amountCents:0},'90+':{count:0,amountCents:0}};
    const now=new Date(),monthsNow=now.getFullYear()*12+now.getMonth();
    const owners=new Map<string,{count:number;amountCents:number}>();
@@ -146,7 +146,7 @@ export class MisFeesService implements OnModuleDestroy {
     buckets[key].count+=1;buckets[key].amountCents+=amount;
    }
    const topOwners=[...owners.entries()].map(([name,v])=>({name,...v})).sort((a,b)=>b.amountCents-a.amountCents).slice(0,10);
-   aging={buckets,owners:topOwners,ownerCount:owners.size,total:totalHouses,amountCents:totalAmount,truncated:scan.total>2000,scanned:scan.rows.length};
+   aging={buckets,owners:topOwners,ownerCount:owners.size,total:totalHouses,amountCents:totalAmount,truncated:scan.rows.length<Number(scan.total||0),scanned:scan.rows.length,scanCap};
   }
   return {...meta,total:totalHouses,amountCents:totalAmount,page:q.page||1,pageSize:q.pageSize||20,aging,rows:(sets[1]||[]).map(format)};
  }
