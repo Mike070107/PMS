@@ -343,7 +343,9 @@ export class MisFeesService implements OnModuleDestroy {
   const preview=await this.previewCollection(dto,user,access);
   if(!preview.notices.length)throw new ConflictException('所选住户均已冻结或无待缴余额，未创建批次');
   if(preview.fingerprint!==dto.fingerprint)throw new ConflictException('MIS余额、账单或联系人发生变化，请重新预览后确认；尚未生成通知');
-  const row=this.batches!.create({tenantId:user.tenantId!,idempotencyKey:dto.idempotencyKey,communityIds:[...new Set(preview.notices.map(n=>Number(n.communityId)))],purpose:dto.purpose,status:dto.purpose==='print'?'generated':'preview_only',fingerprint:preview.fingerprint,houseCount:preview.notices.length,amountCents:String(preview.totalCents),snapshot:preview,createdBy:user.id,updatedBy:user.id});
+  const tplRow=await this.collectionRepo(TenantConfig).findOne({where:{tenantId:user.tenantId!,key:'residential_notice_template'}});
+  const noticeTemplate=(tplRow?.value as any)??null;
+  const row=this.batches!.create({tenantId:user.tenantId!,idempotencyKey:dto.idempotencyKey,communityIds:[...new Set(preview.notices.map(n=>Number(n.communityId)))],purpose:dto.purpose,status:dto.purpose==='print'?'generated':'preview_only',fingerprint:preview.fingerprint,houseCount:preview.notices.length,amountCents:String(preview.totalCents),snapshot:{...preview,noticeTemplate},createdBy:user.id,updatedBy:user.id});
   try{return await this.batches!.save(row);}catch(e){
    if((e as any)?.code!=='23505')throw e;
    const concurrent=this.visibleBatch(await this.batches!.findOne({where:{tenantId:user.tenantId!,idempotencyKey:dto.idempotencyKey}}),allowed);
