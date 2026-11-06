@@ -26,6 +26,9 @@ importers:
       miniprogram-automator:
         specifier: ^0.12.1
         version: 0.12.1
+      playwright-core:
+        specifier: ^1.64.1
+        version: 1.64.1
 
   apps/admin-web:
     dependencies:
@@ -3463,6 +3466,11 @@ packages:
 
   pixelmatch@4.0.2:
     resolution: {integrity: sha512-J8B6xqiO37sU/gkcMglv6h5Jbd9xNER7aHzpfRdNmV4IbQBzBpe4l9XmbG+xPF/znacgu2jfEw+wHffaq/YkXA==}
+    hasBin: true
+
+  playwright-core@1.64.1:
+    resolution: {integrity: sha512-BC4s8y6SEVA6Q1rSxZTto8hI1KUI3xXlHGZgvGqP4IqPdI/a6FX9H29IDNz7vKo9l21b6LfYosScPL6M3xxyDQ==}
+    engines: {node: '>=20'}
     hasBin: true
 
   pluralize@8.0.0:
@@ -8165,6 +8173,8 @@ snapshots:
   pixelmatch@4.0.2:
     dependencies:
       pngjs: 3.4.0
+
+  playwright-core@1.64.1: {}
 
   pluralize@8.0.0: {}
 
