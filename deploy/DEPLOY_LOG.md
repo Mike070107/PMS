@@ -6093,3 +6093,10 @@
   - 5b247f02 fix(bills): 折叠区标题按页签动态显示；清掉 CollectionFollowups 死参数
   - 8818b2a2 test(bills): 更新 overview 期望，含小区对比请求
 
+## 2026-11-07 01:07 · api · 26100d8b
+
+- 包：`pms-api-fast-20261107-010717.tar.gz`
+- 提交：26100d8b feat(bills): 对账 CSV 导出（流式、BOM、脱敏、含通知状态）
+- 自上次（8818b2a2）以来上线的相关提交：
+  - 26100d8b feat(bills): 对账 CSV 导出（流式、BOM、脱敏、含通知状态）
+
