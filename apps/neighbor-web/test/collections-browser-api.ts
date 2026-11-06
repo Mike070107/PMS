@@ -14,7 +14,7 @@ export async function request<T>(o:any):Promise<T>{w.__calls.push(JSON.parse(JSO
  if(o.url==='/fees/mis/collections/preview')return preview() as T;
  if(o.url==='/fees/mis/collections')return (o.method==='POST'?batch():{rows:[batch(),batch(2)],total:2}) as T;
  if(o.url==='/fees/mis/collections/effect'){if(w.__failEffect)throw Error('合成效果查询失败，请重试');return {rows:[{id:1,day:'2026-11-01',notifiedCents:120000,recoveredCents:30000,recoveryRate:25,clearedHouseholds:0,averagePaymentDays:3,amountWeightedDays:3,details:[{...row,notifiedCents:120000,recoveredCents:30000,cleared:false}]}],total:1,summary:{notifiedCents:120000,recoveredCents:30000,recoveryRate:25,clearedHouseholds:0},invalidPaidDateCount:1} as T}
- if(o.url==='/fees/mis/collections/1/prints'){if(w.__failPrint){w.__failPrint=false;throw Error('合成打印登记失败，未打印')}w.__events.push('registered');const p={id:prints.length+1,...o.data,printedAt:'2026-11-06T00:00:00Z',noticePageCount:2,operatorId:7};prints.push(p);return p as T}
+ if(o.url==='/fees/mis/collections/1/prints'){if(w.__failPrint){w.__failPrint=false;throw Error('合成打印登记失败，未打印')}w.__events.push('registered');const p={id:prints.length+1,...o.data,printedAt:'2026-11-06T00:00:00Z',noticePageCount:1,operatorId:7};prints.push(p);return p as T}
  if(o.url==='/fees/mis/collections/1'||o.url==='/fees/mis/collections/2')return batch(o.url.endsWith('/2')?2:1) as T;
  throw Error('unhandled isolated fixture endpoint');
 }

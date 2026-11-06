@@ -57,6 +57,7 @@ export class MisCollectionFollowupDto {
 }
 
 export class MisCollectionPrintDto {
+ @IsOptional() @IsIn([8,12]) rowsPerPage?:8|12;
  @IsIn(['A5','A4']) paper:'A5'|'A4';
  @IsInt() @Min(1) @Max(100000) pageCount:number;
  @IsUUID() requestKey:string;
