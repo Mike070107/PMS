@@ -37,7 +37,7 @@ export function FollowupTodayMetric(){
   const c=useContext(Context);
   return <><b>{c.data?c.data.followupHouseholds:'—'}</b><em>{c.data?'个责任对象':'读取中'}</em></>;
 }
-export default function CollectionFollowups({communityId,version,editable,onChanged,children}:{houseKeys:string[];communityId?:number;version:string;editable:boolean;onChanged:()=>void;children:React.ReactNode}){
+export default function CollectionFollowups({communityId,version,editable,onChanged,children}:{communityId?:number;version:string;editable:boolean;onChanged:()=>void;children:React.ReactNode}){
  const [query,setQuery]=useState(''),[keyword,setKeyword]=useState('');
  const [status,setStatus]=useState<FollowupStatus>('all'),[sort,setSort]=useState<Sort>('amount');
  const [rows,setRows]=useState<QueueRow[]>([]),[meta,setMeta]=useState<{total:number;amountCents:number;stats:Stats;rule:Rule}|null>(null);
