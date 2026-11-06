@@ -166,3 +166,30 @@
  .rb-table-head>div:first-child{gap:6px}
  .rb-select-tools{width:100%}
 }
+
+/* ── 通知状态列：A5/A4 已打印（蓝）· 短信已发（绿）· 未通知（灰），hover 看日期 ── */
+/* 清单从 6 列变 7 列，放宽表格最小宽度，窄屏用横向滚动而不是挤压内容 */
+.rb .rb-table{min-width:920px}
+.rb-notify-cell{min-width:112px}
+.rb-notify-tags{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.rb-notify-tag{display:inline-flex;align-items:center;gap:4px;font-size:12px;line-height:1.6;padding:1px 8px;border-radius:999px;white-space:nowrap;background:var(--mute-w);color:var(--ink2)}
+.rb-notify-tag i{width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block;flex:none}
+.rb-notify-tag.print{background:var(--acc-w);color:var(--acc-t)}
+.rb-notify-tag.sms{background:var(--ok-w);color:var(--ok)}
+.rb-notify-tag.none{background:var(--mute-w);color:var(--ink3)}
+.rb-notify-hint{font-size:12.5px;line-height:1.6;padding:2px 10px;border-radius:999px;background:var(--warn-w);color:var(--warn);white-space:nowrap}
+/* 批量生成前的重复通知确认条：可继续，不阻断 */
+.rb-notify-confirm{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:12px 16px;margin:0 0 12px;background:var(--warn-w);border:1px solid #f0b46a;border-left:4px solid #d9822b;border-radius:8px;color:#7a3f00}
+.rb-notify-confirm-main{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1 1 320px}
+.rb-notify-confirm-main b{font-size:14.5px}
+.rb-notify-confirm-main span{font-size:13px;line-height:1.55;color:#8a4a05}
+.rb-notify-confirm .rb-actions{display:flex;gap:8px;flex:none}
+.rb-notify-confirm .btn{min-height:36px;height:36px}
+@media(max-width:700px){
+ .rb-notify-tag{font-size:0;padding:3px;background:transparent;gap:0}
+ .rb-notify-tag i{width:9px;height:9px}
+ .rb-notify-tag.none{background:transparent}
+ .rb-notify-cell{min-width:40px}
+ .rb-notify-confirm .rb-actions{width:100%}
+ .rb-notify-confirm .rb-actions .btn{flex:1}
+}
