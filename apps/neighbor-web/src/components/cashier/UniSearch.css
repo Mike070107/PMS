@@ -1,0 +1,13 @@
+/* Keep all three address levels inside the picker on narrow screens. */
+@media (max-width: 600px) {
+  .uni-box .as-cols {
+    grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));
+  }
+  .uni-box .as-col {
+    min-width: 0;
+  }
+  .uni-box .as-col > button {
+    min-width: 0;
+    padding-inline: 6px;
+  }
+}

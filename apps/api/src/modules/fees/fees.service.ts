@@ -725,7 +725,7 @@ export class FeesService {
       .offset((page - 1) * pageSize)
       .limit(pageSize)
       .getRawMany<any>();
-    const itemsByReceipt = await this.receiptItems(tenantId, headers.map((row) => row.receiptNo));
+    const itemsByReceipt = await this.receiptItems(tenantId, headers.map((row) => ({ houseId, receiptNo: row.receiptNo })));
     return {
       rows: headers.map((row) => ({
         receiptNo: row.receiptNo,
@@ -737,7 +737,7 @@ export class FeesService {
         remark: row.remark,
         amountCents: Number(row.amountCents),
         status: row.refunded ? FeeBillStatus.REFUNDED : FeeBillStatus.PAID,
-        items: itemsByReceipt.get(row.receiptNo) ?? [],
+        items: itemsByReceipt.get(`${houseId}:${row.receiptNo}`) ?? [],
       })),
       total: Number(count?.total || 0),
       page,
@@ -793,7 +793,7 @@ export class FeesService {
     };
 
     const summary = await base()
-      .select('COUNT(DISTINCT f.receipt_no)', 'total')
+      .select('COUNT(DISTINCT (f.house_id, f.receipt_no))', 'total')
       .addSelect('COALESCE(SUM(f.amount_cents), 0)', 'totalCents')
       .getRawOne<any>();
     const headers = await base()
@@ -820,11 +820,12 @@ export class FeesService {
       .addGroupBy('h.room_no')
       .orderBy('MAX(f.paid_at)', 'DESC')
       .addOrderBy('f.receipt_no', 'DESC')
+      .addOrderBy('f.house_id', 'ASC')
       .offset((page - 1) * pageSize)
       .limit(pageSize)
       .getRawMany<any>();
 
-    const itemsByReceipt = await this.receiptItems(tenantId, headers.map((row) => row.receiptNo));
+    const itemsByReceipt = await this.receiptItems(tenantId, headers.map((row) => ({ houseId: Number(row.houseId), receiptNo: row.receiptNo })));
     return {
       rows: headers.map((row) => ({
         receiptNo: row.receiptNo,
@@ -842,7 +843,7 @@ export class FeesService {
         remark: row.remark,
         amountCents: Number(row.amountCents),
         status: row.refunded ? FeeBillStatus.REFUNDED : FeeBillStatus.PAID,
-        items: itemsByReceipt.get(row.receiptNo) ?? [],
+        items: itemsByReceipt.get(`${Number(row.houseId)}:${row.receiptNo}`) ?? [],
       })),
       total: Number(summary?.total || 0),
       page,
@@ -921,6 +922,9 @@ export class FeesService {
       const bills = await manager.find(FeeBill, {
         where: { tenantId, receiptNo }, order: { id: 'ASC' }, lock: { mode: 'pessimistic_write' },
       });
+      if (bills.some((bill) => bill.houseId !== original[0].houseId)) {
+        throw new BadRequestException('该历史收据号对应多套房屋，无法唯一定位收据，请核对房屋及原收据；暂不能退款或补打');
+      }
       bills.forEach((bill) => this.assertCommunityInScope(bill.communityId, access));
       assertReceiptRefundable(bills);
       await manager.query('SELECT pg_advisory_xact_lock($1,$2)', [tenantId, place.communityId]);
@@ -1905,16 +1909,24 @@ export class FeesService {
     );
   }
 
-  private async receiptItems(tenantId: number, receiptNos: string[]) {
+  private async receiptItems(tenantId: number, receipts: { houseId: number; receiptNo: string }[]) {
     const byReceipt = new Map<string, ReturnType<FeesService['mapReceiptItem']>[]>();
-    if (!receiptNos.length) return byReceipt;
+    if (!receipts.length) return byReceipt;
+    const byHouse = new Map<number, string[]>();
+    for (const { houseId, receiptNo } of receipts) {
+      const receiptNos = byHouse.get(houseId) ?? [];
+      receiptNos.push(receiptNo);
+      byHouse.set(houseId, receiptNos);
+    }
     const bills = await this.billRepo.find({
-      where: { tenantId, receiptNo: In(receiptNos) },
+      where: [...byHouse].map(([houseId, receiptNos]) => ({ tenantId, houseId, receiptNo: In(receiptNos) })),
       order: { id: 'ASC' },
     });
     bills.forEach((bill) => {
-      const key = bill.receiptNo as string;
-      byReceipt.set(key, [...(byReceipt.get(key) ?? []), this.mapReceiptItem(bill)]);
+      const key = `${bill.houseId}:${bill.receiptNo}`;
+      const items = byReceipt.get(key) ?? [];
+      items.push(this.mapReceiptItem(bill));
+      byReceipt.set(key, items);
     });
     return byReceipt;
   }
@@ -1925,7 +1937,11 @@ export class FeesService {
       order: { id: 'ASC' },
     });
     if (!bills.length) throw new NotFoundException('收据不存在');
-    this.assertCommunityInScope(bills[0].communityId, access);
+    // 旧库收据号可能跨户复用；不能截取有权限的部分后把它当作整张收据。
+    if (bills.some((bill) => bill.houseId !== bills[0].houseId)) {
+      throw new BadRequestException('该历史收据号对应多套房屋，无法唯一定位收据，请核对房屋及原收据；暂不能退款或补打');
+    }
+    bills.forEach((bill) => this.assertCommunityInScope(bill.communityId, access));
     return bills;
   }
 

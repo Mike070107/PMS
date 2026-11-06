@@ -4,6 +4,8 @@ import { ADMIN_PAGES, REPAIR_TYPE_OPTIONS, STAFF_APP_PAGES } from '@pms/shared-t
 import Icon from '@/components/Icon';
 import { Btn, Field, Loading, Sheet, toast } from '@/components/ui';
 import ToneIcon from '@/components/ToneIcon';
+import { can } from '@/lib/perm';
+import { useSession } from '@/lib/auth';
 
 /* ───────── 类型 ───────── */
 interface Assignment { officeId: number | null; skills: string[] }
@@ -33,7 +35,8 @@ const maskPhone = (p?: string | null) => (p && p.length >= 7 ? `${p.slice(0, 3)}
 /** 后台菜单分组 → 同一件事在小程序里的入口：一起勾，避免「后台能办、小程序被拒」 */
 const APP_BY_GROUP: Record<string, string[]> = {
   报修工单: ['app:dispatch', 'app:pool', 'app:my-orders', 'app:order-rollback', 'app:order-void', 'app:maintenance-sign', 'app:maintenance-inspect', 'app:repair-create', 'app:my-repairs', 'app:experience-notes'],
-  材料与库存: ['app:materials', 'app:inventory', 'app:stocktakes', 'app:approve-manager', 'app:approve-purchaser'],
+  // 旧的 app:approve-manager 已拆成采购/收费两格，不再出现在勾选列表（仍保留在目录里给旧数据看标签）
+  材料与库存: ['app:materials', 'app:inventory', 'app:stocktakes', 'app:approve-purchase-manager', 'app:approve-business-manager', 'app:approve-purchaser'],
   收费业务: ['app:apartment-cashier', 'app:family-car-approve'],
   系统: ['app:messages'],
 };
@@ -49,23 +52,29 @@ type Tab = 'staff' | 'roles' | 'templates';
  * 「在哪里做」只看员工工作范围：一个岗位一个角色，不用按管理处复制。
  */
 export default function Staff() {
-  const [tab, setTab] = useState<Tab>('staff');
+  const session = useSession();
+  const canStaff = can('users', 'view'), canRoles = can('roles', 'view');
+  const [selectedTab, setTab] = useState<Tab>('staff');
+  const tab: Tab = (selectedTab === 'staff' ? canStaff : canRoles) ? selectedTab : canStaff ? 'staff' : 'roles';
   const [staff, setStaff] = useState<StaffRow[] | null>(null);
   const [roles, setRoles] = useState<RoleRow[]>([]);
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [offices, setOffices] = useState<Office[]>([]);
 
-  const loadStaff = () => request<StaffRow[]>({ url: '/staff' }).then(setStaff).catch(() => setStaff([]));
-  const loadRoles = () => Promise.all([
-    request<RoleRow[]>({ url: '/roles' }).then(setRoles).catch(() => setRoles([])),
-    request<TemplateRow[]>({ url: '/roles/templates' }).then(setTemplates).catch(() => setTemplates([])),
+  const loadStaff = () => !canStaff ? Promise.resolve() : request<StaffRow[]>({ url: '/staff' }).then(setStaff).catch(() => setStaff([]));
+  const loadRoles = () => !canStaff && !canRoles ? Promise.resolve([]) : Promise.all([
+    request<RoleRow[]>({ url: canRoles ? '/roles' : '/roles/assignable' }).then(rows => setRoles(rows.map(r => ({ ...r, enabled: r.enabled !== false })))).catch(() => setRoles([])),
+    canRoles ? request<TemplateRow[]>({ url: '/roles/templates' }).then(setTemplates).catch(() => setTemplates([])) : Promise.resolve(),
   ]);
   useEffect(() => {
-    void loadStaff(); void loadRoles();
-    request<{ offices: Office[] }>({ url: '/offices' }).then((r) => setOffices(r.offices || [])).catch(() => setOffices([]));
-  }, []);
+    if (canStaff) void loadStaff(); else setStaff([]);
+    void loadRoles();
+    setOffices((session.access?.offices ?? []).map(o => ({ ...o, enabled: true })));
+  }, [session.access, canStaff, canRoles]);
 
-  if (staff === null) return <Loading />;
+  if (!canStaff && !canRoles) return null;
+  if (canStaff && staff === null) return <Loading />;
+  const staffRows = staff ?? [];
   const officeName = (id: number | null) => (id === null ? '全部管理处' : offices.find((o) => o.id === id)?.name?.replace(/管理处$/, '') || `#${id}`);
 
   return (
@@ -76,12 +85,12 @@ export default function Staff() {
           <p>员工在哪个管理处做什么工种 · 角色决定能做什么 · 权限模板给多个角色共用</p>
         </div>
         <div className="seg" style={{ marginLeft: 'auto' }}>
-          {([['staff', `员工 ${staff.length}`], ['roles', `业务角色 ${roles.filter((r) => r.enabled).length}`], ['templates', `权限模板 ${templates.length}`]] as Array<[Tab, string]>).map(([k, n]) => (
+          {([['staff', `员工 ${staffRows.length}`], ['roles', `业务角色 ${roles.filter((r) => r.enabled).length}`], ['templates', `权限模板 ${templates.length}`]] as Array<[Tab, string]>).filter(([k]) => k === 'staff' ? canStaff : canRoles).map(([k, n]) => (
             <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{n}</button>
           ))}
         </div>
       </div>
-      {tab === 'staff' ? <StaffTab list={staff} roles={roles} offices={offices} officeName={officeName} reload={loadStaff} /> : null}
+      {tab === 'staff' ? <StaffTab list={staffRows} roles={roles} offices={offices} officeName={officeName} reload={loadStaff} /> : null}
       {tab === 'roles' ? <RolesTab roles={roles} templates={templates} reload={loadRoles} /> : null}
       {tab === 'templates' ? <TemplatesTab roles={roles} templates={templates} reload={loadRoles} /> : null}
     </>
@@ -565,7 +574,7 @@ function PermMatrix({ value, onChange, readOnly }: { value: Perm[]; onChange: (p
     onChange([...value.filter((p) => p.pageKey !== k), next]);
   };
   const mapped = new Set(Object.values(APP_BY_GROUP).flat());
-  const extraApp = STAFF_APP_PAGES.filter((p) => !mapped.has(p.key));
+  const extraApp = STAFF_APP_PAGES.filter((p) => !mapped.has(p.key) && !p.legacy);
   const box = (k: string, f: 'canView' | 'canEdit' | 'canDelete', show = true) => (show
     ? <input type="checkbox" checked={get(k)[f]} disabled={readOnly} onChange={(e) => set(k, { [f]: e.target.checked })} />
     : <span className="muted">—</span>);

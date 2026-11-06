@@ -6,12 +6,18 @@ import { FeesService } from './fees.service';
 import { FeeTemplatesService } from './fee-templates.service';
 import { FeeTemplatesController } from './fee-templates.controller';
 import { MisFeesService } from './mis-fees.service';
+import { SettingsModule } from '../settings/settings.module';
+import { MisPostingService } from './mis-posting.service';
+import { MisPostingConnector } from './mis-posting.connector';
+import { MisPostingController } from './mis-posting.controller';
+import { BusinessTransaction } from '../../entities/business-transaction.entity';
+import { MisCollectionBatch } from '../../entities/mis-collection-batch.entity';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([FeeBill, FeeStandard, House, Building, Community, User]),
+  imports: [SettingsModule,
+    TypeOrmModule.forFeature([BusinessTransaction, MisCollectionBatch, FeeBill, FeeStandard, House, Building, Community, User]),
   ],
-  controllers: [FeesController, FeeTemplatesController],
-  providers: [FeesService, FeeTemplatesService, MisFeesService],
+  controllers: [FeesController, FeeTemplatesController, MisPostingController],
+  providers: [FeesService, FeeTemplatesService, MisFeesService, MisPostingService, MisPostingConnector, { provide: 'MIS_POSTING_CONNECTOR', useExisting: MisPostingConnector }],
 })
 export class FeesModule {}

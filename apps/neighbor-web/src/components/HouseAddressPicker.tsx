@@ -1,6 +1,6 @@
 import { Cascader, Typography } from 'antd';
 import type { DefaultOptionType } from 'antd/es/cascader';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import {
   buildingMatchKeys,
@@ -22,8 +22,10 @@ const { Text } = Typography;
 
 /** 「不肯说」——业主不愿意报房号时只落到楼栋 */
 export const UNKNOWN_HOUSE_VALUE = '__unknown_house__';
+export const PUBLIC_AREA_VALUE = '__public_area__';
 
 export interface PickedAddress {
+  locationKind?: 'public';
   communityId: number;
   communityName: string;
   buildingId?: number;
@@ -39,7 +41,7 @@ export interface PickedAddress {
 type AddrOption = DefaultOptionType & {
   value: number | string;
   keys: MatchKeys;
-  kind: 'community' | 'building' | 'house';
+  kind: 'community' | 'building' | 'house' | 'public';
   community: AddressCommunity;
   building?: AddressBuilding;
   house?: AddressHouse;
@@ -48,14 +50,16 @@ type AddrOption = DefaultOptionType & {
 
 const UNKNOWN_KEYS: MatchKeys = { exact: [], prefix: [], loose: ['不肯说'] };
 
-function buildOptions(communities: AddressCommunity[]): AddrOption[] {
+function buildOptions(communities: AddressCommunity[], allowPublicArea = false): AddrOption[] {
   return communities
     .filter((community) => !community.isGroup)
     .map((community) => ({
       value: community.id,
       label: community.mainLane ? `${community.name}（${community.mainLane}弄）` : community.name,
       kind: 'community' as const,
-      keys: communityMatchKeys(community),
+            // Lazy consumers load buildings after this level is picked; do not close as a leaf.
+            isLeaf: false,
+            keys: communityMatchKeys(community),
       community,
       children: community.buildings.map((building) => ({
         value: building.id,
@@ -65,6 +69,10 @@ function buildOptions(communities: AddressCommunity[]): AddrOption[] {
         community,
         building,
         children: [
+          ...(allowPublicArea ? [{
+            value: PUBLIC_AREA_VALUE, label: '本楼栋公共区域', kind: 'public' as const,
+            keys: { exact: [], prefix: [], loose: ['公共区域'] }, community, building, isLeaf: true,
+          }] : []),
           {
             value: UNKNOWN_HOUSE_VALUE,
             label: '不肯说',
@@ -112,7 +120,8 @@ function pathText(path: AddrOption[]): string {
   const building = path[1]?.building;
   const house = path[2]?.house;
   const roomNo = path[2] && !house ? '' : house?.roomNo;
-  return formatFullAddress(community.name, building, roomNo);
+  const text = formatFullAddress(community.name, building, roomNo);
+  return path[2]?.kind === 'public' ? `${text}/公共区域` : text;
 }
 
 export function describePickedAddress(path: AddrOption[]): PickedAddress | null {
@@ -121,6 +130,7 @@ export function describePickedAddress(path: AddrOption[]): PickedAddress | null 
   const building = path[1]?.building;
   const house = path[2]?.house;
   return {
+    ...(path[2]?.kind === 'public' ? { locationKind: 'public' as const } : {}),
     communityId: community.id,
     communityName: community.name,
     buildingId: building?.id,
@@ -142,6 +152,22 @@ export default function HouseAddressPicker(props: {
   id?: string;
   /** 挂载就展开下拉（搜索框里点「选地址」时用） */
   autoOpen?: boolean;
+  allowPublicArea?: boolean;
+  placeholder?: string;
+  disabled?: boolean;
+  /** Search integrations keep the editable query separate from the selected address. */
+  searchText?: string;
+  onSearchText?: (text: string) => void;
+  onSubmitText?: (text: string) => void;
+  displayText?: string;
+  selectionRevision?: number;
+  inputRef?: { current: HTMLInputElement | null };
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  extraResults?: React.ReactNode;
+  /** all permits community/building suggestions; default retains house-only search. */
+  selectionLevel?: 'house' | 'all';
+  showCopy?: boolean;
 }) {
   const {
     communities,
@@ -156,10 +182,26 @@ export default function HouseAddressPicker(props: {
   const controlled = Object.prototype.hasOwnProperty.call(props, 'value');
   const [internalValue, setInternalValue] = useState<Array<number | string>>([]);
   const selectedValue = controlled ? value : internalValue;
-  const options = useMemo(() => buildOptions(communities), [communities]);
+  const options = useMemo(() => buildOptions(communities, props.allowPublicArea), [communities, props.allowPublicArea]);
   const allPaths = useMemo(() => flattenPaths(options), [options]);
-  const [searchValue, setSearchValue] = useState('');
-  const [open, setOpen] = useState(!!autoOpen);
+  const [internalSearch, setInternalSearch] = useState('');
+  const searchValue = props.searchText ?? internalSearch;
+  const setSearchValue = (text: string) => setInternalSearch(text);
+  const [internalOpen, setInternalOpen] = useState(!!autoOpen);
+  const open = props.disabled ? false : props.open ?? internalOpen;
+  const setOpen = (next: boolean) => { setInternalOpen(next); props.onOpenChange?.(next); };
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [commitRevision, setCommitRevision] = useState(0);
+  useEffect(() => {
+    const input = boxRef.current?.querySelector('input') ?? null;
+    if (props.inputRef) props.inputRef.current = input;
+  });
+  useEffect(() => {
+    const input = boxRef.current?.querySelector('input') ?? null;
+    if (props.displayText && input && document.activeElement === input) input.select();
+    // displayText also contains ordinary keystrokes: only a committed selection
+    // or explicit submission may replace the user's caret with a full selection.
+  }, [commitRevision, props.selectionRevision]); // eslint-disable-line react-hooks/exhaustive-deps
   // 按过上下键就说明用户自己在挑高亮项，Enter 交还给 Cascader 原生处理
   // （左右键只是在输入框里移光标，不算）
   const arrowUsedRef = useRef(false);
@@ -187,6 +229,7 @@ export default function HouseAddressPicker(props: {
   };
 
   const commitPath = (path: AddrOption[]) => {
+    setCommitRevision(revision => revision + 1);
     const next = path.map((item) => item.value);
     if (!controlled) setInternalValue(next);
     onChange?.(next);
@@ -201,6 +244,11 @@ export default function HouseAddressPicker(props: {
    * 所以「228/4/201 + 回车」= 直接填上 枫桦景苑二期/228弄4号/201。
    */
   const onKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (props.disabled) return;
+    if (event.key === 'Enter' && props.onSubmitText && !arrowUsedRef.current) {
+      setCommitRevision(revision => revision + 1);
+      event.preventDefault(); event.stopPropagation(); props.onSubmitText(searchValue); return;
+    }
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       arrowUsedRef.current = true;
       return;
@@ -211,7 +259,8 @@ export default function HouseAddressPicker(props: {
     let best: AddrOption[] | null = null;
     let bestScore = 0;
     for (const path of allPaths) {
-      if (path[path.length - 1]?.kind !== 'house') continue;
+      const kind = path[path.length - 1]?.kind;
+      if (kind !== 'house' && kind !== 'public') continue;
       const score = scoreAddressPath(tokens, path.map((item) => item.keys));
       if (score > bestScore) {
         bestScore = score;
@@ -225,16 +274,22 @@ export default function HouseAddressPicker(props: {
   };
 
   const currentText = useMemo(() => {
+    if (props.displayText !== undefined) return props.displayText;
     if (!selectedValue?.length) return '';
     const community = options.find((item) => item.value === selectedValue[0]);
     if (!community) return '';
     const building = community.children?.find((item) => item.value === selectedValue[1]);
     const house = building?.children?.find((item) => item.value === selectedValue[2]);
     return pathText([community, building, house].filter(Boolean) as AddrOption[]);
-  }, [selectedValue, options]);
+  }, [selectedValue, options, props.displayText]);
 
   return (
-    <div className="house-address-picker">
+    <div ref={boxRef} className="house-address-picker" onKeyDownCapture={(event) => {
+      // Capture before rc-select's own Enter handler can commit a different path.
+      if (event.key === 'Enter' && props.onSubmitText && !arrowUsedRef.current) onKeyDown(event);
+    }} onFocus={(event) => {
+      if (selectedValue?.length && props.displayText && event.target instanceof HTMLInputElement) event.target.select();
+    }}>
       <Cascader
         id={id}
         className="house-address-picker-control"
@@ -242,11 +297,13 @@ export default function HouseAddressPicker(props: {
         options={options}
         value={selectedValue}
         loading={loading}
+        disabled={props.disabled}
         changeOnSelect
         allowClear
-        placeholder="输入 228/4/201，或点选 小区 → 楼栋 → 室号"
+        placeholder={props.placeholder ?? "输入 228/4/201，或点选 小区 → 楼栋 → 室号"}
         dropdownStyle={{ width: 720, maxWidth: 'calc(100vw - 32px)' }}
         displayRender={() => currentText}
+        dropdownRender={props.extraResults ? (menus) => <>{menus}{props.extraResults}</> : undefined}
         open={open}
         onDropdownVisibleChange={(v) => {
           setOpen(v);
@@ -255,7 +312,12 @@ export default function HouseAddressPicker(props: {
         }}
         searchValue={searchValue}
         onSearch={(next) => {
+          if (props.disabled) return;
+          // rc-select emits an empty search on close. It is not a new user intent;
+          // a real deletion has already made the DOM input empty before onSearch.
+          if (!next && props.searchText !== undefined && boxRef.current?.querySelector('input')?.value) return;
           setSearchValue(next);
+          props.onSearchText?.(next);
           arrowUsedRef.current = false;
         }}
         onKeyDown={onKeyDown}
@@ -266,24 +328,33 @@ export default function HouseAddressPicker(props: {
           filter: (input, path) => {
             if (!input.trim()) return false;
             const leaf = (path as AddrOption[])[path.length - 1];
-            return leaf?.kind === 'house' && scoreOf(input, path as AddrOption[]) > 0;
+            return (props.selectionLevel === 'all' || leaf?.kind === 'house' || leaf?.kind === 'public') && scoreOf(input, path as AddrOption[]) > 0;
           },
           sort: (a, b, input) =>
             scoreOf(input, b as AddrOption[]) - scoreOf(input, a as AddrOption[]),
           render: (_input, path) => pathText(path as AddrOption[]) || '—',
         }}
-        onChange={(next, selectedOptions) => {
-          const opts = (selectedOptions || []) as AddrOption[];
+        onChange={(next) => {
+          if (props.disabled) return;
+          // Resolve against the current scoped tree, not an old popup's option objects.
+          const opts: AddrOption[] = [];
+          let level = options;
+          for (const v of (next || []) as Array<number | string>) {
+            const option = level.find(item => item.value === v);
+            if (!option) return;
+            opts.push(option); level = option.children ?? [];
+          }
           if (!controlled) setInternalValue((next as Array<number | string>) || []);
+          setCommitRevision(revision => revision + 1);
           onChange?.((next as Array<number | string>) || []);
           onPicked?.(describePickedAddress(opts));
           setSearchValue('');
           // 选到「室号」(叶子)就收起下拉；点小区/楼栋是在逐级展开，保持打开
           const leaf = opts[opts.length - 1];
-          if (leaf?.kind === 'house') setOpen(false);
+          if (leaf?.kind === 'house' || leaf?.kind === 'public') setOpen(false);
         }}
       />
-      {currentText && (
+      {props.showCopy !== false && currentText && (
         // 选中的地址在 Cascader 里选不中也复制不了，这里给一份可选中 / 一键复制的纯文本
         <Text
           style={{ fontSize: 13, display: 'inline-block', marginTop: 8, userSelect: 'text' }}

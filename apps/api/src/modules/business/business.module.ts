@@ -13,6 +13,7 @@ import {
   User,
   VehicleIntake,
   ParkingPlateTag,
+  ParkingSpace,
 } from '../../entities';
 import { UploadModule } from '../upload/upload.module';
 import { VehicleIntakeController, VehicleIntakeFormController } from './vehicle-intake.controller';
@@ -21,12 +22,15 @@ import { AccessCardIssuanceModule } from '../access-card-issuance/access-card-is
 import { BusinessExecutionService } from './business-execution.service';
 import { BusinessController } from './business.controller';
 import { BusinessService } from './business.service';
+import { BusinessLedgerController } from './business-ledger.controller';
+import { BusinessLedgerService } from './business-ledger.service';
 
 @Module({
   imports: [
     AccessCardIssuanceModule,
     UploadModule,
     TypeOrmModule.forFeature([
+      ParkingSpace,
       AccessCard,
       BusinessLog,
       BusinessRule,
@@ -41,7 +45,7 @@ import { BusinessService } from './business.service';
       ParkingPlateTag,
     ]),
   ],
-  controllers: [BusinessController, VehicleIntakeController, VehicleIntakeFormController],
-  providers: [BusinessService, BusinessExecutionService, VehicleIntakeService],
+  controllers: [BusinessLedgerController, BusinessController, VehicleIntakeController, VehicleIntakeFormController],
+  providers: [BusinessLedgerService, BusinessService, BusinessExecutionService, VehicleIntakeService],
 })
 export class BusinessModule {}

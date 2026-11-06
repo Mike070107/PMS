@@ -67,7 +67,14 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
     void request<Intake>({ method: 'POST', url: `/vehicle-intakes/${it.id}/garages`, data: { garages: next, garageNumbers: n } })
       .then((x) => onChange({ ...x, log: x.log ?? it.log, qr: qr ?? undefined })).catch((e) => setErr(e instanceof Error ? e.message : '车库保存失败'));
   };
-  const togglePick = (k: string) => saveGarages(picked.includes(k) ? picked.filter((x) => x !== k) : [...picked, k]);
+  // 二期大车库 / 人防都在二期小区内，进库先过二期地面：选它们自动带上 phase2，取消 phase2 连带取消
+  const togglePick = (k: string) => {
+    const has = picked.includes(k);
+    let next = has ? picked.filter((x) => x !== k) : [...picked, k];
+    if (!has && (k === 'main' || k === 'civil') && !next.includes('phase2')) next = [...next, 'phase2'];
+    if (has && k === 'phase2') next = next.filter((x) => x !== 'main' && x !== 'civil');
+    void saveGarages(next);
+  };
   // 付费车还没选过车库：目录到了默认选第一个（一般是地面车库），前台可再改
   useEffect(() => { if (it.kind === 'paid' && !picked.length && !it.garages.length && targets.length && canEditGarages) saveGarages([targets[0].key]); }, [targets.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const [, tick] = useState(0);

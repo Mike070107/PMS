@@ -64,9 +64,11 @@ function Test-DependencyChanges([string] $target, [string[]] $changedFiles) {
 }
 
 function Make-WebPackage([string] $stamp) {
-    Run '构建管理后台' { pnpm --filter '@pms/admin-web' build }
+    $env:VITE_BASE = '/'
+    $env:VITE_APP_VERSION = "2.0.$(Get-Date -Format 'yyyyMMdd-HHmm')"
+    Run '构建正式新版管理后台' { pnpm --filter '@pms/neighbor-web' build }
     Run '记录 Web 制品身份' { node deploy/release-check.mjs stamp web $SourceCommit }
-    $dist = Join-Path $RepoRoot 'apps\admin-web\dist'
+    $dist = Join-Path $RepoRoot 'apps\neighbor-web\dist'
     if (-not (Test-Path (Join-Path $dist 'index.html'))) { Die 'Web 构建没有生成 dist/index.html' }
     $package = Join-Path $RepoRoot ("deploy\pms-web-" + $stamp + '.tar.gz')
     Run '压缩 Web 静态资源' { tar -czf $package -C $dist . }
@@ -120,6 +122,8 @@ Push-Location $RepoRoot
 $releaseLock = $null
 $previousBuildCommit = $env:VITE_BUILD_COMMIT
 $previousApiBase = $env:VITE_API_BASE_URL
+$previousWebBase = $env:VITE_BASE
+$previousWebVersion = $env:VITE_APP_VERSION
 try {
     $gitDirectory = Git @('rev-parse', '--path-format=absolute', '--git-common-dir')
     try { $releaseLock = [IO.File]::Open((Join-Path $gitDirectory 'pms-production.lock'), 'OpenOrCreate', 'ReadWrite', 'None') }
@@ -135,7 +139,7 @@ try {
     $SourceCommit = Git @('rev-parse', 'HEAD')
     $env:VITE_BUILD_COMMIT = $SourceCommit
     $env:VITE_API_BASE_URL = '/api/v1'
-    Run '发布检查自测' { node --test deploy/release-check.test.mjs }
+    Run '发布检查自测' { node --test deploy/release-check.test.mjs deploy/neighbor-production.test.mjs }
     $targets = if ($Target -eq 'auto') { @('api', 'web', 'assistant') } else { @($Target) }
     $definitions = (& node deploy/release-check.mjs definitions) | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0) { Die '无法读取发布目标定义' }
@@ -185,5 +189,7 @@ finally {
     if ($releaseLock) { $releaseLock.Dispose() }
     $env:VITE_BUILD_COMMIT = $previousBuildCommit
     $env:VITE_API_BASE_URL = $previousApiBase
+    $env:VITE_BASE = $previousWebBase
+    $env:VITE_APP_VERSION = $previousWebVersion
     Pop-Location
 }

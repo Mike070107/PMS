@@ -8,6 +8,7 @@ import { Loading, toast, Sheet, ConfirmModal, Field } from '@/components/ui';
 import HousePicker, { type PickedHouse } from '@/components/HousePicker';
 import { useAddressTree } from '@/lib/address-tree';
 import ToneIcon from '@/components/ToneIcon';
+import { can } from '@/lib/perm';
 
 interface LastInteraction { kind: 'repair'; at: string; label: string }
 interface OwnerHouse { id: number; roomNo: string; buildingNo: string; lane: string | null; communityName: string | null }
@@ -32,7 +33,9 @@ const extraPhones = (note: string | null) => (note || '').split(/[,，;；/、\n
  */
 export default function Owners() {
   const session = useSession();
-  const [tab, setTab] = useState<'audit' | 'dir'>('audit');
+  const canAudit = can('owners', 'view'), canDirectory = can('properties', 'view');
+  const [selectedTab, setTab] = useState<'audit' | 'dir'>('audit');
+  const tab = (selectedTab === 'audit' ? canAudit : canDirectory) ? selectedTab : canAudit ? 'audit' : 'dir';
   const [tree, setTree] = useState<AddressCommunity[]>([]);
   const [audits, setAudits] = useState<Audit[] | null>(null);
   const [owners, setOwners] = useState<OwnerRow[] | null>(null);
@@ -42,15 +45,16 @@ export default function Owners() {
   const [busy, setBusy] = useState<number | null>(null);
   const [active, setActive] = useState<OwnerRow | null>(null);
 
-  useEffect(() => { address.tree().then(setTree).catch(() => setTree([])); }, []);
-  const loadAudits = () => { setAudits(null); request<Audit[]>({ url: '/owners/audits', query: { status: 'pending' } }).then(setAudits).catch(() => setAudits([])); };
+  useEffect(() => { if (canDirectory) address.tree().then(setTree).catch(() => setTree([])); }, [canDirectory]);
+  const loadAudits = () => { if (!canAudit) return; setAudits(null); request<Audit[]>({ url: '/owners/audits', query: { status: 'pending' } }).then(setAudits).catch(() => setAudits([])); };
   const loadOwners = () => {
+    if (!canDirectory) return;
     setOwners(null);
     request<OwnerRow[]>({ url: '/owners-mgmt', query: { communityId: communityId || undefined, status: archived ? 'disabled' : 'active', q: q.trim() || undefined } })
       .then(setOwners).catch(() => setOwners([]));
   };
-  useEffect(loadAudits, []);
-  useEffect(loadOwners, [communityId, archived]);
+  useEffect(loadAudits, [canAudit]);
+  useEffect(loadOwners, [communityId, archived, canDirectory]);
 
   const communities = useMemo(() => {
     const list = tree.filter((c) => !c.isGroup);
@@ -59,6 +63,8 @@ export default function Owners() {
     const ids = new Set(a.communityIds ?? []);
     return list.filter((c) => ids.has(c.id));
   }, [tree, session.access]);
+
+  if (!canAudit && !canDirectory) return null;
 
   const approve = async (a: Audit) => {
     setBusy(a.id);
@@ -84,8 +90,8 @@ export default function Owners() {
       </div>
 
       <div className="seg" style={{ display: 'inline-flex', marginBottom: 16 }}>
-        <button className={tab === 'audit' ? 'on' : ''} onClick={() => setTab('audit')}><Icon name="shield" size={16} />待核实{pendN ? ` (${pendN})` : ''}</button>
-        <button className={tab === 'dir' ? 'on' : ''} onClick={() => setTab('dir')}><Icon name="users" size={16} />业主档案</button>
+        {canAudit ? <button className={tab === 'audit' ? 'on' : ''} onClick={() => setTab('audit')}><Icon name="shield" size={16} />待核实{pendN ? ` (${pendN})` : ''}</button> : null}
+        {canDirectory ? <button className={tab === 'dir' ? 'on' : ''} onClick={() => setTab('dir')}><Icon name="users" size={16} />业主档案</button> : null}
       </div>
 
       {tab === 'audit' ? (

@@ -126,7 +126,9 @@ export function buildSession(me: MeResp | null): StaffSession {
   const canSeeDispatch = can('app:dispatch', 'view');
   const canSeeMyOrders = can('app:my-orders', 'view');
   const canApproveFamilyCar = can('app:family-car-approve', 'view');
-  const canApproveAsManager = can('app:approve-manager', 'edit');
+  // 经理这一步已拆成「采购·经理审核」；旧 key 仍算（已有授权不能失效）
+  const canApproveAsManager =
+    can('app:approve-purchase-manager', 'edit') || can('app:approve-manager', 'edit');
   const canApproveAsPurchaser = can('app:approve-purchaser', 'edit');
   return {
     me,

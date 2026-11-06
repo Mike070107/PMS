@@ -3,6 +3,7 @@ import { accessCardIssuance, address, request } from '@pms/api-client';
 import type { AccessCardIssueBatch, AccessCardIssueItem } from '@pms/api-client/src/endpoints/access-card-issuance';
 import type { AddressCommunity } from '@pms/shared-types';
 import { useSession } from '@/lib/auth';
+import { can } from '@/lib/perm';
 import { dayjs } from '@/lib/format';
 import Icon from '@/components/Icon';
 import { Loading, toast } from '@/components/ui';
@@ -30,6 +31,7 @@ const cardStatusLabel = (v?: string | null) => CARD_STATUS[v || ''] ?? { text: v
  */
 export default function AccessCards() {
   const session = useSession();
+  const canEdit = can('business', 'edit');
   const [tree, setTree] = useState<AddressCommunity[]>([]);
   const [picked, setPicked] = useState<PickedHouse | null>(null);
   const [cards, setCards] = useState<CardRow[] | null>(null);
@@ -87,6 +89,7 @@ export default function AccessCards() {
   }, [batch]);
 
   const startBatch = async () => {
+    if (!can('business', 'edit')) return;
     if (!picked?.houseId) { toast('先选一户'); return; }
     setBusy('create');
     try {
@@ -105,6 +108,7 @@ export default function AccessCards() {
   };
 
   const retryAccess = async (item: AccessCardIssueItem) => {
+    if (!can('business', 'edit')) return;
     if (!batch) return;
     setBusy(`retry-${item.id}`);
     try { setBatch(await accessCardIssuance.retryAccessUpload(batch.id, item.id)); toast('已重新下发'); }
@@ -118,7 +122,7 @@ export default function AccessCards() {
     <>
       <div className="ph" style={{ marginBottom: 14 }}>
         <div>
-          <div className="h1row"><ToneIcon kind="cards" /><h1 style={{ fontSize: 22 }}>门禁管理</h1></div>
+          <div className="h1row"><ToneIcon kind="cards" /><h1 style={{ fontSize: 22 }}>门禁卡管理</h1></div>
           <p>按户发卡、查卡与发卡历史；写卡由装了读卡器的工作站自动完成</p>
         </div>
         <div className="act">
@@ -153,7 +157,7 @@ export default function AccessCards() {
                 <b style={{ fontSize: 20, minWidth: 28, textAlign: 'center' }}>{qty}</b>
                 <button className="btn" onClick={() => setQty((n) => Math.min(20, n + 1))}>＋</button>
                 <span className="muted">张</span>
-                <button className="btn p" style={{ marginLeft: 'auto' }} disabled={busy === 'create'} onClick={() => void startBatch()}>
+                <button className="btn p" style={{ marginLeft: 'auto' }} disabled={!canEdit || busy === 'create'} onClick={() => void startBatch()}>
                   <Icon name="key" size={16} />{busy === 'create' ? '建立中…' : '开始发卡'}
                 </button>
               </div>
@@ -180,7 +184,7 @@ export default function AccessCards() {
                             <td className="nw"><span className={`tag ${as.tone}`} title={rawTitle(it.accessStatus)}>{as.text}</span></td>
                             <td className="nw"><span className={`tag ${ls.tone}`} title={rawTitle(it.legacySyncStatus)}>{ls.text}</span></td>
                             <td className="nw">
-                              {canRetry ? <button className="btn g sm" disabled={busy === `retry-${it.id}`} onClick={() => void retryAccess(it)}><Icon name="refresh" size={15} />重试下发</button> : null}
+                              {canEdit && canRetry ? <button className="btn g sm" disabled={busy === `retry-${it.id}`} onClick={() => void retryAccess(it)}><Icon name="refresh" size={15} />重试下发</button> : null}
                             </td>
                           </tr>
                         );

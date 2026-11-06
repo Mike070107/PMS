@@ -50,14 +50,17 @@ export async function refreshTabBadges(page: any): Promise<number> {
 
   // 审批页先看经理那一步（采购申请必须先过经理），角标口径跟着它；
   // 亲情车待审是同一屏的另一摊，两笔要加起来一次设，否则后到的会把前一个数覆盖掉
-  if (can('app:approve-manager') || can('app:approve-purchaser') || can('app:family-car-approve')) {
-    const status = can('app:approve-manager')
+  // 经理这一步的采购权限：新 key 或拆分前的旧 key 任一命中
+  const canPurchaseManager = can('app:approve-purchase-manager') || can('app:approve-manager');
+  const canFamilyManager = can('app:family-car-approve') || can('app:approve-business-manager');
+  if (canPurchaseManager || can('app:approve-purchaser') || canFamilyManager) {
+    const status = canPurchaseManager
       ? PurchaseRequestStatus.MANAGER_REVIEW
       : PurchaseRequestStatus.PURCHASER_REVIEW;
-    const purchaseTask = can('app:approve-manager') || can('app:approve-purchaser')
+    const purchaseTask = canPurchaseManager || can('app:approve-purchaser')
       ? purchases.listRequests({ status }).then((list) => list.length).catch(() => 0)
       : Promise.resolve(0);
-    const familyTask = can('app:family-car-approve')
+    const familyTask = canFamilyManager
       ? familyCars.pendingManager().then((list) => list.length).catch(() => 0)
       : Promise.resolve(0);
     Promise.all([purchaseTask, familyTask])

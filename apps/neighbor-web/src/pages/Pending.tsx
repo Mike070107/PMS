@@ -51,7 +51,8 @@ export default function Pending() {
   const [ready, setReady] = useState<AccessCardReadiness | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
 
-  const canReview = can('app:approve-manager', 'edit');
+  // 收费类经理审核：新 key 或拆分前的旧 key 任一命中
+  const canReview = can('app:approve-business-manager', 'edit') || can('app:approve-manager', 'edit');
   const [reviews, setReviews] = useState<Txn[]>([]);
   const [rejecting, setRejecting] = useState<{ id: number; reason: string } | null>(null);
   const load = () => {
@@ -130,7 +131,7 @@ export default function Pending() {
     else if (t.externalSyncStatus === 'dry_run' && ex?.planned) why = `将把德立云到期日 ${ex.planned.previousEndDate} → ${ex.planned.endDate}`;
     else if (ex?.lastError) why = ex.lastError;
     else if (t.externalSyncStatus === 'retry' && ex?.nextAt) why = `第 ${ex.attempts} 次未成功，${dayjs(ex.nextAt).format('HH:mm')} 自动再试`;
-    else if (t.externalSyncStatus === 'queued' || t.externalSyncStatus === 'running') why = '正在同步德立云，完成后自动回读核对到期日';
+    else if (t.externalSyncStatus === 'queued' || t.externalSyncStatus === 'running') why = '正在写入停车库（本次勾选的车库系统），完成后自动回读核对到期日';
     return (
       <div key={t.id} className="pendRow">
         <div className={`pi ic ${s.tone}`}><Icon name="car" /></div>

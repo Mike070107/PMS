@@ -31,6 +31,10 @@ export class FeedbackAttachmentDto {
 
 export class SystemLogQueryDto {
   @IsOptional()
+  @IsIn(['approval', 'archive_delete', 'permission'])
+  auditClass?: 'approval' | 'archive_delete' | 'permission';
+
+  @IsOptional()
   @IsIn(LOG_CATEGORIES)
   category?: (typeof LOG_CATEGORIES)[number];
 

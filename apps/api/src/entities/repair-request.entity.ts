@@ -22,6 +22,10 @@ export class RepairRequest extends TenantEntity {
   @Column({ name: 'address_text', type: 'varchar', length: 255, nullable: true })
   addressText: string | null;
 
+  /** 登记时独立填写的具体位置，仅成功且未作废的报修用于常用项统计。 */
+  @Column({ name: 'location_text', type: 'varchar', length: 60, nullable: true })
+  locationText: string | null;
+
   @Column({ name: 'contact_name', type: 'varchar', length: 60, nullable: true })
   contactName: string | null;
 

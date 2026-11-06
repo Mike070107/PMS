@@ -5562,3 +5562,164 @@
 - 自上次（17ae188a）以来上线的相关提交：
   - 1f454a7c feat(meters): preserve photo GPS provenance and allow per-bill pricing
 
+## 2026-11-04 18:13 · api · 620f9365
+
+- 包：`pms-api-fast-20261104-181210.tar.gz`
+- 提交：620f9365 [verified] fix(api): isolate parking spaces and validate updates (A01/A02)
+- 自上次（2c10673e）以来上线的相关提交：
+  - 620f9365 [verified] fix(api): isolate parking spaces and validate updates (A01/A02)
+  - 5aba3c29 feat(api): 系统管理员可自审自己登记的续期——超管(平台/企业)豁免「不能审自己」拦截,并在 review 里落 selfApproval=超管自审 留痕;其余角色规则不变
+  - c4cb9d8e feat(auth): 权限拆分——app:approve-manager 拆成 app:approve-purchase-manager(采购经理环节) 与 app:approve-business-manager(收费/车牌经理环节),旧 key 保留兼容(任一命中即放行);含亲情车待审、新办车牌待审、采购与调拨审批、待办通知与角标
+  - 49a50cf3 deploy: API 部署的临时包、dist 备份、.env 备份与锁文件全部从 /tmp 迁到 /opt/pms-backups/api
+  - cd9baf3d feat(api): 车位可编辑——PATCH /business/parking-spaces/:id 更新车牌/房号/业主/电话/备注/面积/有效期;多电话统一用 / 分隔;新增 end_date(车牌续费有效期)
+  - e84cc710 fix(api): 车位清单按车位号数字自然序(1,2,3…10,100)——字符串序会排成 1,10,100,101
+  - 2667880c deploy: API 健康检查等待放宽到 120 次×2s(约4分钟),避免 DB 同步启动慢被误判失败
+  - 13b5fe80 fix(api): BusinessModule 的 TypeOrmModule.forFeature 补上 ParkingSpace——否则 BusinessService 注入 ParkingSpaceRepository 时 Nest 依赖解析失败,API 起不来
+  - 22dca7f3 fix(api): entities/index.ts 保留 main 上的 Meter* 导出,只追加 ParkingSpace(beta 分支副本缺抄表实体,整文件覆盖会把 meters 模块搞崩)
+  - a42bfad2 feat(api): 车位档案——新增 parking_spaces 实体(大车库/二期人防车位清单,unique(garage,space_no)) 与只读接口 GET /business/parking-spaces?garage=main|civil
+  - 4d990ba2 merge: beta 收费工作台前端合入 main——彩色图标体系(FeeIcon/ToneIcon/侧栏分组色)、收费流水页、公寓收费台内置、门禁页内发卡、车辆类别按旧库 Car_Brand 识别、收费方式 fieldset 出界修复
+
+## 2026-11-05 00:08 · api · f008ebdd
+
+- 包：`pms-api-fast-20261105-000749.tar.gz`
+- 提交：f008ebdd fix(integration): preserve main SDK contracts and timeout feedback
+- 自上次（620f9365）以来上线的相关提交：
+  - f008ebdd fix(integration): preserve main SDK contracts and timeout feedback
+  - 72367187 feat(web): promote full neighbor UI to official homepage with personal themes
+  - b7c61e06 feat(auth): persist personal UI preferences and fix legacy MIS date compatibility
+  - f2cc610b [verified] feat(fees): add MIS residential reporting and collection snapshots
+
+## 2026-11-05 00:09 · web · 9e4311d5
+
+- 包：`pms-web-20261105-000910.tar.gz`
+- 提交：9e4311d5 deploy: api → f008ebdd
+- 自上次（5144fdc4）以来上线的相关提交：
+  - f008ebdd fix(integration): preserve main SDK contracts and timeout feedback
+  - 72367187 feat(web): promote full neighbor UI to official homepage with personal themes
+  - c4cb9d8e feat(auth): 权限拆分——app:approve-manager 拆成 app:approve-purchase-manager(采购经理环节) 与 app:approve-business-manager(收费/车牌经理环节),旧 key 保留兼容(任一命中即放行);含亲情车待审、新办车牌待审、采购与调拨审批、待办通知与角标
+  - 4d990ba2 merge: beta 收费工作台前端合入 main——彩色图标体系(FeeIcon/ToneIcon/侧栏分组色)、收费流水页、公寓收费台内置、门禁页内发卡、车辆类别按旧库 Car_Brand 识别、收费方式 fieldset 出界修复
+
+## 2026-11-05 00:16 · web · d021fb58
+
+- 包：`pms-web-20261105-001525.tar.gz`
+- 提交：d021fb58 fix(web): finalize official login wording and reuse brand favicons
+- 自上次（9e4311d5）以来上线的相关提交：
+  - d021fb58 fix(web): finalize official login wording and reuse brand favicons
+
+## 2026-11-05 11:22 · api · f50eca7e
+
+- 包：`pms-api-fast-20261105-112146.tar.gz`
+- 提交：f50eca7e [verified] fix(web): clarify theme picker and tint scoped sidebar
+- 自上次（f008ebdd）以来上线的相关提交：
+  - 726e10af [verified] fix(api): explain audit actions and redact sensitive history
+  - 084d932a [verified] fix(api): expire web sessions at Beijing midnight
+  - fb9bc1ad [verified] fix(api): isolate receipt items by house and accumulate linearly
+
+## 2026-11-05 11:23 · web · 7e6fbeb6
+
+- 包：`pms-web-20261105-112309.tar.gz`
+- 提交：7e6fbeb6 deploy: api → f50eca7e
+- 自上次（d021fb58）以来上线的相关提交：
+  - f50eca7e [verified] fix(web): clarify theme picker and tint scoped sidebar
+  - e9f65018 [verified] fix(web): clarify audit results and secure technical details
+  - ec073203 [verified] fix(web): enforce day session and reject stale identity callbacks
+  - b5e9792b [verified] fix(web): preserve house selection intent and replacement typing
+  - dc441909 [verified] fix(web): enforce logs visibility and page permission
+  - 33c38670 [verified] fix(web): isolate house detail state and recover failed loads
+  - e53f9429 [verified] fix(web): load property filters on demand and distinguish request failures
+  - e733d31c [verified] fix(web): isolate migrated payment card styles
+
+## 2026-11-05 11:37 · web · 5362d23d
+
+- 包：`pms-web-20261105-113649.tar.gz`
+- 提交：5362d23d [verified] fix(web): constrain login card on narrow screens
+- 自上次（7e6fbeb6）以来上线的相关提交：
+  - 5362d23d [verified] fix(web): constrain login card on narrow screens
+
+## 2026-11-05 17:04 · web · 302d7b5d
+
+- 包：`pms-web-20261105-170410.tar.gz`
+- 提交：302d7b5d fix(bills): open unpaid household list by default
+- 自上次（5362d23d）以来上线的相关提交：
+  - 302d7b5d fix(bills): open unpaid household list by default
+
+## 2026-11-05 17:35 · web · 61c0f696
+
+- 包：`pms-web-20261105-173511.tar.gz`
+- 提交：61c0f696 feat(family-cars): publish independent menu with verified access guards
+- 自上次（302d7b5d）以来上线的相关提交：
+  - 61c0f696 feat(family-cars): publish independent menu with verified access guards
+
+## 2026-11-05 18:23 · api · 94c26058
+
+- 包：`pms-api-fast-20261105-182235.tar.gz`
+- 提交：94c26058 fix(family-cars): tolerate nonnumeric building numbers in list sorting
+- 自上次（f50eca7e）以来上线的相关提交：
+  - 94c26058 fix(family-cars): tolerate nonnumeric building numbers in list sorting
+
+## 2026-11-05 21:29 · api · 1f034dad
+
+- 包：`pms-api-fast-20261105-212808.tar.gz`
+- 提交：1f034dad [verified] fix: ship completed family-car and office workflows
+- 自上次（94c26058）以来上线的相关提交：
+  - 1f034dad [verified] fix: ship completed family-car and office workflows
+
+## 2026-11-05 21:30 · web · 1f034dad
+
+- 包：`pms-web-20261105-212808.tar.gz`
+- 提交：1f034dad [verified] fix: ship completed family-car and office workflows
+- 自上次（61c0f696）以来上线的相关提交：
+  - 1f034dad [verified] fix: ship completed family-car and office workflows
+
+## 2026-11-05 22:28 · api · a103f38e
+
+- 包：`pms-api-fast-20261105-222651.tar.gz`
+- 提交：a103f38e [verified] feat: unify address picking and repair intake location learning
+- 自上次（1f034dad）以来上线的相关提交：
+  - a103f38e [verified] feat: unify address picking and repair intake location learning
+
+## 2026-11-05 22:30 · web · eccad7ec
+
+- 包：`pms-web-20261105-222949.tar.gz`
+- 提交：eccad7ec deploy: api → a103f38e
+- 自上次（1f034dad）以来上线的相关提交：
+  - a103f38e [verified] feat: unify address picking and repair intake location learning
+
+## 2026-11-06 00:08 · web · 9c120930
+
+- 包：`pms-web-20261106-000735.tar.gz`
+- 提交：9c120930 Merge branch 'feat/calendar-unification'
+- 自上次（eccad7ec）以来上线的相关提交：
+  - 9c120930 Merge branch 'feat/calendar-unification'
+  - f34c0448 [verified] fix: preserve session on cashier internal navigation
+  - cbe1e0b1 [verified] feat: unify calendar controls and responsive date panels
+
+## 2026-11-06 08:29 · api · 8ea0437b
+
+- 包：`pms-api-fast-20261106-082745.tar.gz`
+- 提交：8ea0437b style: remove trailing blank lines from accepted MIS integration
+- 自上次（a103f38e）以来上线的相关提交：
+  - 8ea0437b style: remove trailing blank lines from accepted MIS integration
+  - 76688668 merge: integrate verified parking renewal with MIS ledgers and ERP increment
+  - 2149dd85 feat: add scoped MIS source ledger paging and full-filter statistics
+  - 1ba8787c feat: expose scoped paged collection ledger and original MIS receipt lookup
+  - f2c5c065 feat: persist MIS collection facts and safe posting queue
+  - 8c8ccc05 test: verify parking entry integration and narrow drawers
+  - ebdd67de fix: preserve parking renewal months prices and dates
+
+## 2026-11-06 08:30 · web · d7e7e50a
+
+- 包：`pms-web-20261106-083005.tar.gz`
+- 提交：d7e7e50a deploy: api → 8ea0437b
+- 自上次（9c120930）以来上线的相关提交：
+  - 8ea0437b style: remove trailing blank lines from accepted MIS integration
+  - cd05d2e8 fix: preserve Beijing report dates and verify ERP calendar interaction
+  - 76688668 merge: integrate verified parking renewal with MIS ledgers and ERP increment
+  - 784ed012 feat: integrate neutral ERP shell and real dashboard reporting incrementally
+  - d39364be feat: isolate access-card navigation from vehicle management with scoped UI guards
+  - 37f01cc9 feat: expose MIS source collection list and statistics without mixing local receipts
+  - 2d3d4606 feat: wire MIS collection and original receipt recovery with paged records
+  - 8c8ccc05 test: verify parking entry integration and narrow drawers
+  - f64fa8fc Merge branch 'main' into fix/parking-renewal-final
+  - ebdd67de fix: preserve parking renewal months prices and dates
+

@@ -46,6 +46,7 @@ import { Notification } from '../../entities';
 import { NotifyChannel, NotifyStatus } from '../../common/enums';
 import { DeliyunParkingService } from '../access-card-issuance/deliyun-parking.service';
 import { ParkingSpace } from '../../entities/parking-space.entity';
+import { UpdateParkingSpaceDto } from './parking-space.dto';
 
 @Injectable()
 export class BusinessService {
@@ -137,9 +138,13 @@ export class BusinessService {
     const scope = scopeCommunityIds(access);
     if (scope && (txn.communityId == null || !scope.includes(txn.communityId))) throw new ForbiddenException('这笔不在你的管理范围内');
     if (txn.externalSyncStatus !== 'review') throw new BadRequestException('这笔已经审核过了');
-    if (txn.createdBy === user.id) throw new ForbiddenException('不能审核自己收款登记的续期，请由其他有审批权限的人处理');
+    // 系统管理员可以自审（值班时一个人也要能走完），其余人仍然不能审自己登记的单子；
+    // 自审会在审计里留痕，出问题能查是谁自审了哪笔。
+    const isAdmin = !!access?.isTenantAdmin || !!access?.isPlatformAdmin;
+    const selfApproval = txn.createdBy === user.id;
+    if (selfApproval && !isAdmin) throw new ForbiddenException('不能审核自己收款登记的续期，请由其他有审批权限的人处理');
     if (!approve && !reason?.trim()) throw new BadRequestException('驳回请写原因');
-    const review = { ...((txn.snapshot?.review as Record<string, unknown>) || {}), decidedBy: user.id, decidedAt: new Date().toISOString(), decision: approve ? 'approved' : 'rejected', decisionReason: reason?.trim() || null };
+    const review = { ...((txn.snapshot?.review as Record<string, unknown>) || {}), decidedBy: user.id, decidedAt: new Date().toISOString(), decision: approve ? 'approved' : 'rejected', decisionReason: reason?.trim() || null, selfApproval: selfApproval && isAdmin ? '超管自审' : null };
     const exec = this.execution.initialFor(BusinessServiceType.PARKING_MONTHLY);
     // 新办车牌：金额通过了，但业主资料还没审核通过的，继续等资料
     const intakeId = (txn.snapshot?.intake as { id?: number } | undefined)?.id;
@@ -166,7 +171,13 @@ export class BusinessService {
   /** 通知能审批的物业经理（按小区所属管理处收窄） */
   private async notifyReviewers(tenantId: number, communityId: number | null, title: string, payload: Record<string, unknown>, operatorId: number) {
     try {
-      let ids = await this.access.userIdsWithPermission(tenantId, 'app:approve-manager', 'edit');
+      // 收费类经理审核：新 key 与拆分前的旧 key 任一命中都算（旧授权不能失效）
+      const managerIdSets = await Promise.all(
+        ['app:approve-business-manager', 'app:approve-manager'].map((key) =>
+          this.access.userIdsWithPermission(tenantId, key, 'edit'),
+        ),
+      );
+      let ids = [...new Set(managerIdSets.flat())];
       const officeId = communityId ? (await this.communityRepo.findOne({ where: { id: communityId, tenantId } }))?.officeId ?? null : null;
       if (officeId) { const cover = await this.access.filterUsersCoveringOffice(tenantId, ids, officeId); ids = ids.filter((x) => cover.has(x)); }
       ids = ids.filter((x) => x !== operatorId);
@@ -215,20 +226,52 @@ export class BusinessService {
   }
 
 
+
+  /** 编辑车位：只覆盖传进来的字段（车牌/房号/业主/电话/备注/面积） */
+  async updateParkingSpace(id: number, dto: UpdateParkingSpaceDto, user: AuthUser, access: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    if (!access) throw new ForbiddenException('缺少车位访问范围');
+    const scope = scopeCommunityIds(access);
+    if (scope && !scope.length) throw new NotFoundException('车位不存在');
+    if (!Number.isSafeInteger(id) || id < 1 || id > 2147483647) throw new BadRequestException('车位编号必须为有效的正整数');
+    const row = await this.spaceRepo.findOne({ where: { id, tenantId, ...(scope ? { communityId: In(scope) } : {}) } });
+    if (!row) throw new NotFoundException('车位不存在');
+    const clean = (v?: string) => (v === undefined ? undefined : (v.trim() === '' ? null : v.trim()));
+    const plate = clean(dto.plate);
+    if (plate !== undefined) row.plate = plate ? plate.toUpperCase().replace(/\s/g, '') : null;
+    const houseNo = clean(dto.houseNo); if (houseNo !== undefined) row.houseNo = houseNo;
+    const ownerName = clean(dto.ownerName); if (ownerName !== undefined) row.ownerName = ownerName;
+    const ownerTel = clean(dto.ownerTel);
+    // 多个电话统一用 / 分隔（现场常写成 ，、; 或空格）
+    if (ownerTel !== undefined) row.ownerTel = ownerTel ? ownerTel.split(/[\/,，、;；\s]+/).filter(Boolean).join('/') : null;
+    const note = clean(dto.note); if (note !== undefined) row.note = note;
+    const area = clean(dto.areaSqm); if (area !== undefined) row.areaSqm = area;
+    const end = clean(dto.endDate); if (end !== undefined) row.endDate = end;
+    row.updatedBy = user.id;
+    await this.spaceRepo.save(row);
+    return { id: row.id, plate: row.plate, houseNo: row.houseNo, ownerName: row.ownerName, ownerTel: row.ownerTel, note: row.note, areaSqm: row.areaSqm, endDate: row.endDate };
+  }
   /** 车位清单：大车库 / 人防车库。按车位号自然序，可按车位号或车牌搜。 */
-  async listParkingSpaces(garage?: string, q?: string) {
+  async listParkingSpaces(garage: string | undefined, q: string | undefined, user: AuthUser, access: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    if (!access) throw new ForbiddenException('缺少车位访问范围');
+    const scope = scopeCommunityIds(access);
+    if (scope && !scope.length) return { rows: [], total: 0, bound: 0 };
     const g = garage === 'civil' || garage === 'main' ? garage : undefined;
-    const qb = this.spaceRepo.createQueryBuilder('s');
+    const qb = this.spaceRepo.createQueryBuilder('s').where('s.tenant_id = :tenantId', { tenantId });
+    if (scope) qb.andWhere('s.community_id IN (:...scope)', { scope });
     if (g) qb.andWhere('s.garage = :g', { g });
     const kw = (q ?? '').trim();
     if (kw) qb.andWhere('(s.spaceNo ILIKE :kw OR s.plate ILIKE :kw OR s.houseNo ILIKE :kw)', { kw: `%${kw}%` });
-    qb.orderBy('s.garage', 'ASC').addOrderBy('s.spaceNo', 'ASC');
+    // 车位号按数字自然序（1,2,3…10,100），字符串序会排成 1,10,100,101
+    qb.orderBy('s.garage', 'ASC');
+    addNaturalOrderBy(qb, 's.spaceNo');
     const rows = await qb.getMany();
     return {
       rows: rows.map((r) => ({
         id: r.id, garage: r.garage, spaceNo: r.spaceNo, houseNo: r.houseNo,
         areaSqm: r.areaSqm, plate: r.plate, ownerName: r.ownerName, ownerTel: r.ownerTel,
-        note: r.note, source: r.source,
+        note: r.note, source: r.source, endDate: r.endDate,
       })),
       total: rows.length,
       bound: rows.filter((r) => r.plate && r.plate.trim()).length,

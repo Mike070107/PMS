@@ -97,7 +97,12 @@ export class ImportFamilyCarsDto {
   @IsOptional() @IsBoolean() dryRun?: boolean;
 }
 
-const MANAGER = ['family-cars-approve', 'app:family-car-approve'] as const;
+// 「收费·经理审核」也管亲情车待审：新 key 拆出来之后与原有的两格并列
+const MANAGER = [
+  'family-cars-approve',
+  'app:family-car-approve',
+  'app:approve-business-manager',
+] as const;
 
 /** 亲情车管理：清册、登记、资料、办公室审核、物业经理审核、开通、停用 */
 @Controller('family-cars')
@@ -107,7 +112,7 @@ export class FamilyCarController {
 
   @Get()
   @RequirePermission(['family-cars', ...MANAGER], 'view')
-  list(@Query() query: { status?: string; lane?: string; q?: string }, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+  list(@Query() query: { status?: string; lane?: string; q?: string; page?: unknown; pageSize?: unknown }, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
     return this.service.list(query, user, access);
   }
 
@@ -121,6 +126,12 @@ export class FamilyCarController {
   @RequirePermission('family-cars', 'view')
   houseContext(@Param('houseId', ParseIntPipe) houseId: number, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
     return this.service.houseContext(houseId, user, access);
+  }
+
+  @Get(':id/materials')
+  @RequirePermission(['family-cars', ...MANAGER], 'view')
+  materials(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.service.materials(id, user, access);
   }
 
   @Get(':id')

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import DateInput from '@/components/DateInput';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { accessCardIssuance } from '@pms/api-client';
 import type { ParkingQueryRow, ParkingRates, DeliyunVehicle } from '@pms/api-client/src/endpoints/access-card-issuance';
 import { Sheet, toast } from '@/components/ui';
@@ -6,9 +7,10 @@ import Icon from '@/components/Icon';
 import { dayjs } from '@/lib/format';
 import { field, vehicleIdentity } from '@/lib/parking-fields';
 import { createIdempotencyKey, renewalEndDate, allocateRenewalAmounts, rateKeyOf, submitAndPoll, type OpOutcome } from '@/lib/parking-ops';
+import RenewalMonths from '@/components/cashier/RenewalMonths';
 
 type CloudState = 'loading' | DeliyunVehicle | null | undefined;
-const MONTHS = [1, 2, 3, 6, 12];
+
 
 function pidOf(f: ParkingQueryRow['fields']): string {
   const k = Object.keys(f).find((key) => /^pid$/i.test(key.replace(/[\s_\-]/g, '')));
@@ -32,41 +34,59 @@ export default function RenewSheet({
   const [rates, setRates] = useState<ParkingRates | null>(null);
   const [ratesErr, setRatesErr] = useState('');
   const [months, setMonths] = useState(1);
+  const [monthsValid, setMonthsValid] = useState(true);
   const [amountStr, setAmountStr] = useState('');
   const [endOverride, setEndOverride] = useState('');
   const [running, setRunning] = useState(false);
   const [log, setLog] = useState<string[]>([]);
   const [err, setErr] = useState('');
+  const submitted = useRef(false);
 
   useEffect(() => {
-    accessCardIssuance.parkingFeeRates().then(setRates).catch((e) => setRatesErr(e instanceof Error ? e.message : '费率读取失败'));
+    let alive = true;
+    accessCardIssuance.parkingFeeRates().then(r => { if (alive) setRates(r); }).catch((e) => { if (alive) setRatesErr(e instanceof Error ? e.message : '费率读取失败'); });
+    return () => { alive = false; };
   }, []);
 
   const identity = vehicleIdentity(field(rows[0]?.fields, 'identity'));
   const isFamily = identity === '亲情车';
   const rateKey = rateKeyOf(identity);
   const targets = useMemo(() => rows.filter((r) => r.database === 'parking1' || r.database === 'parking2'), [rows]);
-  const baseEnd = useMemo(() => {
+  const localBaseEnd = useMemo(() => {
     const ends = targets.map((r) => ymd(field(r.fields, 'expiry'))).filter(Boolean).sort();
     return ends.length ? ends[ends.length - 1] : '';
   }, [targets]);
 
-  const rateAmount = isFamily ? 0 : (rates?.[rateKey]?.[String(months)] ?? 0);
-  const amount = amountStr.trim() !== '' ? Number(amountStr) : rateAmount;
-  const newEnd = endOverride || renewalEndDate(baseEnd || undefined, months);
+  const context = JSON.stringify([plate, targets, identity]);
+  const [formContext, setFormContext] = useState(context);
+  useEffect(() => {
+    setFormContext(context); setMonths(1); setMonthsValid(true); setAmountStr(''); setEndOverride(''); setErr(''); setLog([]);
+    submitted.current = false;
+  }, [context]);
+  const rateAmount = isFamily ? 0 : (rates?.[rateKey]?.[String(months)] ?? null);
+  const manualAmount = amountStr.trim() !== '';
+  const amount = manualAmount ? (/^\d+(?:\.\d{1,2})?$/.test(amountStr) ? Number(amountStr) : NaN) : rateAmount;
   const cloudKnown = cloud !== undefined && cloud !== 'loading';
   const civil = cloudKnown && cloud ? (cloud as DeliyunVehicle) : null;
 
-  const canSubmit = targets.length > 0 && !running && rates !== null && cloudKnown && Number.isFinite(amount) && amount >= 0;
+  // 人防（德立云）只服务二期人防车库：这辆车没开人防就直接续旧库，不等人防状态、不碰德立云
+  const [syncCivil, setSyncCivil] = useState(false);
+  useEffect(() => { setSyncCivil(!!civil?.civilDefenseAuthorized); }, [civil?.civilDefenseAuthorized]);
+  const civilEnd = syncCivil && civil?.civilDefenseAuthorized ? ymd(civil.endDate || '') : '';
+  const baseEnd = [localBaseEnd, civilEnd].filter(Boolean).sort().pop() || '';
+  const newEnd = endOverride || renewalEndDate(baseEnd || undefined, months);
+  const canSubmit = formContext === context && targets.length > 0 && !running && !submitted.current && monthsValid && Number.isInteger(months) && months >= 1 && months <= 60 && amount !== null && Number.isFinite(amount) && amount >= 0 && amount <= 1000000 && dayjs(newEnd).isValid() && (!baseEnd || newEnd >= baseEnd);
 
   const run = async () => {
-    setErr('');
+      if (submitted.current || running) return;
+      setErr('');
+    if (!canSubmit) { setErr('请核对月份、到期日和金额；未配置档位可手工填写金额，免费办理请明确填写 0'); return; }
     if (!targets.length) { setErr('这张车牌不在一期/二期旧库里，无法续期'); return; }
-    if (!cloudKnown) { setErr('人防（德立云）状态还在查，请稍候再续期'); return; }
-    if (civil?.civilDefenseAuthorized && civil.endDate && dayjs(newEnd).isBefore(dayjs(ymd(civil.endDate)))) {
+    if (syncCivil && civil?.civilDefenseAuthorized && civil.endDate && dayjs(newEnd).isBefore(dayjs(ymd(civil.endDate)))) {
       setErr(`新到期日 ${newEnd} 早于人防到期日 ${ymd(civil.endDate)}，请核对`); return;
     }
-    if (!Number.isFinite(amount) || amount < 0) { setErr('金额不对'); return; }
+    if (amount === null || !Number.isFinite(amount) || amount < 0) { setErr('金额不对'); return; }
+    submitted.current = true;
     setRunning(true);
     setLog([]);
     const batch = createIdempotencyKey();
@@ -95,7 +115,7 @@ export default function RenewSheet({
         setLog((l) => [...l, `✓ ${dbName(db)} 已续到 ${newEnd}`]);
       }
       // 人防同步：旧库都成功后，若人防已授权且到期日不同，补一笔德立云续期
-      if (civil?.civilDefenseAuthorized && ymd(civil.endDate || '') !== newEnd) {
+      if (syncCivil && civil?.civilDefenseAuthorized && ymd(civil.endDate || '') !== newEnd) {
         setLog((l) => [...l, '正在同步人防（德立云）到期日…']);
         try {
           await accessCardIssuance.renewDeliyunVehicle({
@@ -128,35 +148,32 @@ export default function RenewSheet({
         {ratesErr ? <div className="note" style={{ background: 'var(--dang-w)', color: 'var(--dang)' }}>{ratesErr}</div> : null}
 
         <div className="muted" style={{ fontSize: 13, marginBottom: 6 }}>续期月数</div>
-        <div className="chips" style={{ marginBottom: 14 }}>
-          {MONTHS.map((m) => {
-            const amt = isFamily ? 0 : (rates?.[rateKey]?.[String(m)] ?? null);
-            return (
-              <button key={m} className={`chip ${months === m ? 'on' : ''}`} onClick={() => { setMonths(m); setAmountStr(''); setEndOverride(''); }}>
-                {m} 个月{amt !== null ? ` · ¥${amt}` : ''}
-              </button>
-            );
-          })}
-        </div>
+        <RenewalMonths value={months} disabled={running || submitted.current} onValidityChange={setMonthsValid}
+          onChange={m => { setMonths(m); setMonthsValid(true); setAmountStr(''); setEndOverride(''); }} />
 
         <div className="veh-dl" style={{ gridTemplateColumns: 'auto 1fr', gap: '10px 12px', marginBottom: 14 }}>
-          <dt className="muted">当前到期</dt><dd>{baseEnd || '—（按今天起算）'}</dd>
+          <dt className="muted">当前到期</dt><dd>{baseEnd || '—（按10号及自然月末规则）'}</dd>
           <dt className="muted">续到</dt>
-          <dd><input className="in" type="date" value={newEnd} onChange={(e) => setEndOverride(e.target.value)} style={{ width: 180 }} /></dd>
+          <dd><DateInput className="in" type="date" disabled={running || submitted.current} value={newEnd} onChange={(e) => setEndOverride(e.target.value)} style={{ width: 180 }} /></dd>
           <dt className="muted">实收金额</dt>
           <dd style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            ¥<input className="in" value={amountStr} onChange={(e) => setAmountStr(e.target.value.replace(/[^\d.]/g, ''))}
-              placeholder={String(rateAmount)} style={{ width: 120 }} inputMode="decimal" />
-            {isFamily ? <span className="pill s-info">亲情车免费</span> : <span className="muted" style={{ fontSize: 12 }}>默认 ¥{rateAmount}（{rateKey === 'owner' ? '业主' : '租户'}价）</span>}
+            ¥<input className="in" aria-label="续期实收金额" disabled={running || submitted.current} value={amountStr} onChange={(e) => setAmountStr(e.target.value)}
+              placeholder={rateAmount === null ? '请明确填写' : String(rateAmount)} style={{ width: 120 }} inputMode="decimal" />
+            {isFamily ? <span className="pill s-info">亲情车免费</span> : <span className="muted" style={{ fontSize: 12 }}>{rateAmount === null ? '此月数未配置价格，可手工填写；免费填0' : `默认 ¥${rateAmount}（${rateKey === 'owner' ? '业主' : '租户'}价）`}</span>}
           </dd>
         </div>
 
-        {/* 人防状态提示 */}
-        <div className="note" style={{ marginBottom: 12, background: !cloudKnown ? 'var(--warn-w)' : 'var(--bg)', color: !cloudKnown ? 'var(--warn)' : 'var(--ink2)', fontSize: 13 }}>
-          {!cloudKnown ? '人防（德立云）状态还在查，查明前不能续期（避免旧库先收费而人防没同步）'
-            : civil?.civilDefenseAuthorized ? `人防已授权，到期 ${ymd(civil.endDate || '') || '未知'}；续期后会一并同步到 ${newEnd}`
-              : '该车未开通人防车库，只续旧库'}
-        </div>
+        {/* 人防只在开通时才有意义：没开通就不查、不等、不写德立云 */}
+        {civil?.civilDefenseAuthorized ? (
+          <label className="note" style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'flex-start', background: 'var(--bg)', color: 'var(--ink2)', fontSize: 13, cursor: 'pointer' }}>
+            <input type="checkbox" disabled={running || submitted.current} checked={syncCivil} onChange={(e) => setSyncCivil(e.target.checked)} style={{ marginTop: 2 }} />
+            <span>这辆车开通了二期人防车库（当前到期 {ymd(civil.endDate || '') || '未知'}）。勾选会把德立云一并续到 {newEnd}；不勾选只续旧库。</span>
+          </label>
+        ) : (
+          <div className="note" style={{ marginBottom: 12, background: 'var(--bg)', color: 'var(--ink2)', fontSize: 13 }}>
+            {!cloudKnown ? '人防状态未查明，本次只续旧库（一期/二期停车库）；不需要等它。' : '该车未开通二期人防车库，只续旧库，不写德立云。'}
+          </div>
+        )}
 
         {targets.length > 1 ? (
           <div className="muted" style={{ fontSize: 12.5, marginBottom: 12 }}>一期二期都有这张牌，会一起续到同一到期日，收款只记一笔（在第一库）。</div>
@@ -172,7 +189,7 @@ export default function RenewSheet({
 
         <div style={{ display: 'flex', gap: 10 }}>
           <button className="btn p" style={{ flex: 1 }} disabled={!canSubmit} onClick={() => void run()}>
-            <Icon name="cash" size={16} />{running ? '现场执行中…' : `确认续期收费 ¥${Number.isFinite(amount) ? amount : 0}`}
+            <Icon name="cash" size={16} />{running ? '现场执行中…' : submitted.current ? '已提交，请到办理记录核对' : amount === null || !Number.isFinite(amount) ? '请填写实收金额' : amount === 0 ? '确认0元续期' : `确认续期收费 ¥${amount}`}
           </button>
           <button className="btn" disabled={running} onClick={onClose}>取消</button>
         </div>

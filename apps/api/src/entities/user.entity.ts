@@ -12,6 +12,10 @@ import { OwnerSource, UserRole, UserStatus } from '../common/enums';
 @Index(['wxUnionid'])
 @Index(['phone'])
 export class User extends BaseEntity {
+  /** 仅本人的界面偏好；不参与权限、租户或业务规则。 */
+  @Column({ name: 'ui_preferences', type: 'jsonb', default: () => "'{}'::jsonb" })
+  uiPreferences: { theme?: string; sidebarCollapsed?: boolean };
+
   // 平台 superadmin 时为 null
   @Column({ name: 'tenant_id', type: 'int', nullable: true })
   tenantId: number | null;

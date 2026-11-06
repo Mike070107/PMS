@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AddressCommunity } from '@pms/shared-types';
-import Icon from '@/components/Icon';
+import HouseAddressPicker, { type PickedAddress } from '@/components/HouseAddressPicker';
+import './UniSearch.css';
 
 /**
  * 收银台统一查询框（照旧页「门禁发卡」的选房输入框做）：一个入口，既能输入也能点选。
@@ -46,6 +47,10 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
   width?: number | string;
 }) {
   const [text, setText] = useState('');
+  const [browsing, setBrowsing] = useState(false);
+  const [selectedPath, setSelectedPath] = useState<Array<number | string>>([]);
+  const [selectionText, setSelectionText] = useState<string | null>(null);
+  const [selectionRevision, setSelectionRevision] = useState(0);
   const [open, setOpen] = useState(false);
   const [cid, setCid] = useState<number | null>(null);
   const [bid, setBid] = useState<number | null>(null);
@@ -55,13 +60,30 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
   const box = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const seq = useRef(0);
+  const pickSeq = useRef(0);
+  // 所有用户意图共用失效入口，避免只给某一条异步路径补保护。
+  const invalidate = () => {
+    pickSeq.current += 1;
+    seq.current += 1;
+    setRes(null);
+    setBusy(false);
+    setErr('');
+    return pickSeq.current;
+  };
+  useEffect(() => {
+    invalidate();
+    return () => {pickSeq.current += 1; seq.current += 1;};
+  }, [communities]);
 
   useEffect(() => {
-    if (!open) return undefined;
-    const close = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, [open]);
+    // React 已提交受控 value 和 ref，再按展示值全选；不主动 focus，避免异步回填抢焦点。
+    const el = input.current;
+    if (selectionText !== null && el && document.activeElement === el) el.select();
+  }, [selectionText, selectionRevision]);
+
+  // Cascader owns portal-aware outside-click handling; the former box-only
+  // listener treated its body-mounted menus as outside and collapsed columns.
+
 
   const kw = text.trim();
   const typed = kw.length > 0;
@@ -76,7 +98,7 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
         .catch((e) => { if (seq.current === my) { setRes(null); setErr(e instanceof Error ? e.message : '查询失败'); } })
         .finally(() => { if (seq.current === my) setBusy(false); });
     }, 300);
-    return () => window.clearTimeout(t);
+    return () => { window.clearTimeout(t); seq.current += 1; };
   }, [kw, typed, search]);
 
   const comms = useMemo(() => communities.filter((c) => c.buildings.length), [communities]);
@@ -124,19 +146,43 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
   }, [houses, typed, kw]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** 点选 → 拼成 228/5/201 这种带弄号的短写去查；唯一命中直接选中 */
-  const pickFromColumns = (c: AddressCommunity, b: { lane: string | null; buildingNo: string } | null, roomNo: string | null) => {
-    const term = b ? (roomNo ? `${b.lane || ''}/${b.buildingNo}/${roomNo}` : `${b.lane || ''}/${b.buildingNo}`) : c.name;
+  const pickFromColumns = (c: AddressCommunity, b: AddressCommunity['buildings'][number] | null, roomNo: string | null) => {
+    const term = b ? [b.lane, b.buildingNo, roomNo].filter(Boolean).join('/') : c.name;
+    const my = invalidate();
+    setBusy(true);
+    setSelectionText(null);
     setText(term);
     setOpen(true);
     void search(term).then((r) => {
+      if(my !== pickSeq.current) return;
       setRes(r);
-      const exact = roomNo ? r.houses.find((h) => h.roomNo === roomNo) : null;
-      if (exact) { onPick({ kind: 'house', hit: exact, all: r }); setOpen(false); return; }
-      if (r.houses.length === 1) { onPick({ kind: 'house', hit: r.houses[0], all: r }); setOpen(false); }
-    }).catch(() => { /* 结果留在列表里 */ });
+      const selected = roomNo ? b?.houses.find(h => h.roomNo === roomNo) : null;
+      const exact = selected ? r.houses.find(h => h.id === selected.id && h.communityId === c.id) : null;
+      if (exact) { choose({kind:'house',hit:exact,all:r}); return; }
+      if(roomNo){setErr('未查到所选房间，请重新选择或重试；不会自动替换成其他住户。');return;}
+      // Partial selection is navigation/filtering, never consent to charge the only matching household.
+    }).catch((e) => {
+      if (my === pickSeq.current) setErr(e instanceof Error ? e.message : '查询失败，请重试');
+    }).finally(() => {
+      if (my === pickSeq.current) setBusy(false);
+    });
   };
 
-  const choose = (p: UniPick) => { onPick(p); setOpen(false); };
+  const choose = (p: UniPick) => {
+    setBrowsing(false);
+    invalidate();
+    setSelectionRevision((value) => value + 1);
+    if(p.kind === 'house') {
+      const h = p.hit;
+      const c = communities.find(c => c.id === h.communityId);
+      const b = c?.buildings.find(b => b.buildingNo === h.buildingNo && (b.lane || '') === (h.lane || ''));
+      setSelectedPath(b ? [h.communityId, b.id, h.id] : []);
+      const building = /^\d+$/.test(h.buildingNo) ? `${h.buildingNo}号楼` : h.buildingNo;
+      const room = /^\d+$/.test(h.roomNo) ? `${h.roomNo}室` : h.roomNo;
+      setSelectionText([h.communityName, `${h.lane ? `${h.lane}弄` : ''}${building}`, room].filter(Boolean).join(' / '));
+    } else setSelectionText(null);
+    onPick(p); setOpen(false);
+  };
 
   /**
    * 回车：不能只等防抖那次查询的结果（多半还没回来，按下去像没反应）。
@@ -149,14 +195,22 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
       const h = shownHouses.find((x) => (parsed.room ? x.roomNo.startsWith(parsed.room) : false)) ?? shownHouses[0];
       if (h) { pickFromColumns(curC, curB, h.roomNo); return; }
     }
-    let r = res;
-    if (!r) {
-      setBusy(true);
-      try { r = await search(term); setRes(r); }
-      catch (e) { setErr(e instanceof Error ? e.message : '查询失败'); }
-      finally { setBusy(false); }
+    // Enter 查询属于本次输入意图；不能复用上一查询词的结果。
+    const my = invalidate();
+    setBusy(true);
+    setErr('');
+    let r: UniResult;
+    try {
+      r = await search(term);
+      if (my !== pickSeq.current) return;
+      setRes(r);
+    } catch (e) {
+      if (my === pickSeq.current) setErr(e instanceof Error ? e.message : '查询失败');
+      return;
+    } finally {
+      if (my === pickSeq.current) setBusy(false);
     }
-    if (!r) return;
+    if (my !== pickSeq.current) return;
     const total = r.houses.length + r.vehicles.length + r.accessCards.length;
     if (total === 1) {
       if (r.houses.length === 1) return choose({ kind: 'house', hit: r.houses[0], all: r });
@@ -173,51 +227,20 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
   const showBottom = !!err || (busy && !res) || (noCols && !!res?.houses.length) || !!res?.vehicles.length || !!res?.accessCards.length;
   const empty = typed && res && !res.houses.length && !res.vehicles.length && !res.accessCards.length && noCols;
 
-  return (
-    <div ref={box} className="addr-search uni-box" style={{ width, maxWidth: '100%', position: 'relative' }}>
-      <div className={`addr-search-row ${open ? 'on' : ''}`} style={{ height: 48 }}
-        onMouseDown={(e) => { if (e.target !== input.current) { e.preventDefault(); input.current?.focus(); } setOpen(true); }}>
-        <Icon name="search" size={18} />
-        <input ref={input} className="in" style={{ fontSize: 16 }} value={text}
-          placeholder={placeholder ?? '房号 228/5/201、5/201、姓名、手机尾号、车牌尾号'}
-          onFocus={() => setOpen(true)}
-          onChange={(e) => { setText(e.target.value); setCid(null); setBid(null); setOpen(true); }}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void submit(); } if (e.key === 'Escape') setOpen(false); }} />
-        {text ? (
-          <button type="button" className="addr-search-x" title="清空"
-            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setText(''); setRes(null); setCid(null); setBid(null); input.current?.focus(); }}>✕</button>
-        ) : null}
-      </div>
-
-      {open ? (
-        <div className="addr-search-pop uni" style={{ minWidth: '100%' }}>
-          {!noCols ? (
-            <div className="as-cols">
-              <div className="as-col">
-                {filteredComms.map((c) => (
-                  <button type="button" key={c.id} className={c.id === curC?.id ? 'on' : ''} onClick={() => { setCid(c.id); setBid(null); }}>
-                    <span className="l">{c.name}</span><span className="ar">›</span>
-                  </button>
-                ))}
-              </div>
-              <div className="as-col">
-                {curC ? shownBuildings.map((b) => (
-                  <button type="button" key={b.id} className={b.id === curB?.id ? 'on' : ''} onClick={() => { setBid(b.id); pickFromColumns(curC, b, null); }}>
-                    <span className="l">{b.lane ? `${b.lane}弄${b.buildingNo}号` : `${b.buildingNo}号楼`}</span><span className="ar">›</span>
-                  </button>
-                )) : <div className="muted as-empty">先选小区</div>}
-              </div>
-              <div className="as-col">
-                {curC && curB ? shownHouses.map((h) => (
-                  <button type="button" key={h.id} onClick={() => pickFromColumns(curC, curB, h.roomNo)}>
-                    <span className="l">{h.roomNo}</span>{h.ownerName ? <span className="muted">{h.ownerName}</span> : null}
-                  </button>
-                )) : <div className="muted as-empty">{curC ? '再选楼栋' : ''}</div>}
-              </div>
-            </div>
-          ) : null}
-
-          {showBottom ? (
+  const pickAddress = (p: PickedAddress | null) => {
+    setBrowsing(true);
+    if (!p) { invalidate(); setSelectionText(null); setText(''); setSelectedPath([]); setCid(null); setBid(null); return; }
+    const c = communities.find(c => c.id === p.communityId);
+    if (!c) return;
+    if (!p.buildingId) {
+      invalidate(); setSelectionText(null); setText(''); setCid(c.id); setBid(null); return;
+    }
+    const b = c.buildings.find(b => b.id === p.buildingId);
+    if (!b) return;
+    setCid(c.id); setBid(b.id);
+    pickFromColumns(c, b, p.roomNo ?? null);
+  };
+  const extraResults = showBottom ? (
           <div className="as-sugg">
             {err ? <div className="muted as-empty" style={{ color: 'var(--dang)' }}>{err}</div> : null}
             {busy && !res ? <div className="muted as-empty">查询中…</div> : null}
@@ -270,9 +293,16 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
               </>
             ) : null}
           </div>
-          ) : null}
-        </div>
-      ) : null}
+          ) : null;
+  return (
+    <div ref={box} className="addr-search uni-box" style={{ width, maxWidth: '100%', position: 'relative' }}>
+      <HouseAddressPicker communities={communities} value={selectedPath} onChange={setSelectedPath}
+        placeholder={placeholder ?? '房号 / 姓名 / 手机尾号 / 车牌尾号，回车查询'}
+        searchText={browsing ? '' : selectionText ?? text} displayText={selectionText ?? text}
+        selectionRevision={selectionRevision} inputRef={input} showCopy={false}
+        open={open} onOpenChange={setOpen} extraResults={extraResults}
+        onPicked={pickAddress} onSubmitText={() => { void submit(); }}
+        onSearchText={next => { setBrowsing(false); invalidate(); setSelectionText(null); setSelectedPath([]); setText(next); setCid(null); setBid(null); setOpen(true); }} />
     </div>
   );
 }

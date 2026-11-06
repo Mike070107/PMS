@@ -5,14 +5,16 @@ set -e
 # 两个部署并行过一次（2026-08-25）：A 把 .env 挪到 /tmp/api.env.keep，B 紧接着解包写进了
 # 打包机上的开发 .env，A 先把 keep 用掉，B 就没得还原 —— 线上 .env 变成本地开发库的密码，
 # 接口全线连不上数据库。并行部署本来就没有意义，直接拦掉。
-exec 9>/tmp/pms-deploy-api.lock
+BK=/opt/pms-backups/api
+mkdir -p "$BK"
+exec 9>/opt/pms-backups/pms-deploy-api.lock
 if ! flock -n 9; then
   echo "另一个部署正在进行，先等它跑完再来" >&2
   exit 1
 fi
 
 # 传了包路径就部署那一个（回滚用）；不传才取 /tmp 里最新的。2026-09-06 回滚时才发现原来一直不看参数，把坏包又装了一遍
-PKG=${1:-$(ls -t /tmp/pms-api-*.tar.gz | head -1)}
+PKG=${1:-$(ls -t /opt/pms-backups/api/pms-api-*.tar.gz | head -1)}
 if [ ! -f "$PKG" ]; then echo "包不存在：$PKG" >&2; exit 1; fi
 echo "deploying: $PKG"
 
@@ -22,8 +24,8 @@ cd /opt/pms-repair/apps
 # 避免每次发布重复上传约 87MB 的完整 API 包。快速包由 publish-production.ps1 生成，
 # 依赖变化时仍会退回下面的完整包路径。
 if tar -tzf "$PKG" 2>/dev/null | grep -qx 'api/.pms-fast-release'; then
-  STAGE=$(mktemp -d /tmp/pms-api-fast.XXXXXX)
-  OLD_DIST="/tmp/pms-api-dist.bak.$$"
+  STAGE=$(mktemp -d /opt/pms-backups/api/pms-api-fast.XXXXXX)
+  OLD_DIST="/opt/pms-backups/api/pms-api-dist.bak.$$"
   RESTORE_NEEDED=0
   cleanup_fast() {
     rm -rf "$STAGE"
@@ -72,16 +74,16 @@ if tar -tzf "$PKG" 2>/dev/null | grep -qx 'api/.pms-fast-release'; then
   RESTORE_NEEDED=0
   trap - EXIT
   echo "--- 清理旧临时包（各类型保留最近 2 份） ---"
-  ls -t /tmp/pms-api-*.tar.gz 2>/dev/null | tail -n +3 | xargs -r rm -f
+  ls -t /opt/pms-backups/api/pms-api-*.tar.gz 2>/dev/null | tail -n +3 | xargs -r rm -f
   exit 0
 fi
 
 # 1) 备份现有 .env（万一被踩）
-[ -f api/.env ] && cp api/.env /tmp/api.env.bak.$(date +%s)
+[ -f api/.env ] && cp api/.env /opt/pms-backups/api/api.env.bak.$(date +%s)
 
 # 2) 清旧产物（保留 .env，由解包后下一步处理）
 #    keep 文件带上 pid：万一有人绕过锁并行跑，两边也不会抢同一个文件
-KEEP=/tmp/api.env.keep.$$
+KEEP=/opt/pms-backups/api/api.env.keep.$$
 mv api/.env "$KEEP" 2>/dev/null || true
 rm -rf api/dist api/src api/node_modules api/package.json api/nest-cli.json        api/tsconfig.json api/ecosystem.config.cjs        api/.env.example api/.env.production.example 2>/dev/null
 
@@ -101,7 +103,7 @@ mv "$KEEP" api/.env 2>/dev/null || true
 #      否则 pm2 起来连不上库，日志里只剩一堆 password authentication failed。
 if [ ! -f api/.env ] || ! grep -q '^NODE_ENV=production' api/.env; then
   echo "!! api/.env 缺失或不是线上配置，已中止（没有 reload pm2）" >&2
-  echo "   最近的备份：$(ls -t /tmp/api.env.bak.* 2>/dev/null | head -3 | tr '
+  echo "   最近的备份：$(ls -t /opt/pms-backups/api/api.env.bak.* 2>/dev/null | head -3 | tr '
 ' ' ')" >&2
   echo "   恢复：cp <备份> /opt/pms-repair/apps/api/.env && pm2 reload pms-api --update-env" >&2
   exit 1
@@ -138,4 +140,4 @@ echo "--- 域名入口健康检查 ---"
 wait_for_health https://prsznh.cn/api/v1/health "domain"
 
 echo "--- 清理旧临时包（各类型保留最近 2 份） ---"
-ls -t /tmp/pms-api-*.tar.gz 2>/dev/null | tail -n +3 | xargs -r rm -f
+ls -t /opt/pms-backups/api/pms-api-*.tar.gz 2>/dev/null | tail -n +3 | xargs -r rm -f

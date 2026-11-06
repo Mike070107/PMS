@@ -344,6 +344,9 @@ export class CreateParkingQueryDto {
   @MinLength(2)
   @MaxLength(80)
   term: string;
+  @IsOptional()
+  @IsIn(['parking1', 'parking2'])
+  database?: 'parking1' | 'parking2';
 }
 
 export class CreateParkingMovementQueryDto {

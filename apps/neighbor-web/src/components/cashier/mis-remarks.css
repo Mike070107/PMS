@@ -1,0 +1,48 @@
+/* Only the cashier's MIS details; leave the three-part bill row layout intact. */
+.cashier-mis-bills,
+.cashier-mis-bills .billRow > .bt,
+.mis-paid-history {
+  min-width: 0;
+}
+.cashier-mis-bills .billRow > .ba {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.mis-remark {
+  margin-top: 5px;
+  color: var(--ink2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.mis-remark-label {
+  display: block;
+  color: var(--ink3);
+}
+.mis-remark-value {
+  display: block;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  line-height: 1.5;
+}
+.mis-paid-scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.mis-paid-scroll > .tbl {
+  table-layout: fixed;
+  min-width: 1040px;
+}
+.mis-paid-scroll th:last-child {
+  width: 280px;
+}
+.mis-paid-scroll td {
+  overflow-wrap: anywhere;
+}
+.mis-paid-scroll td:nth-child(1),
+.mis-paid-scroll td:nth-child(3),
+.mis-paid-scroll td:nth-child(4) {
+  white-space: nowrap;
+}

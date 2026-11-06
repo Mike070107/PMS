@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { address, request } from '@pms/api-client';
+import { request } from '@pms/api-client';
 import type { AddressCommunity } from '@pms/shared-types';
 import { sortedBuildings } from '@pms/shared-types';
 import { useSession } from '@/lib/auth';
@@ -27,18 +27,47 @@ const tagClass = (t: string) => (typeTone(t) === 'green' ? 'ok' : typeTone(t) ==
  */
 export default function Houses() {
   const session = useSession();
-  const [tree, setTree] = useState<AddressCommunity[] | null>(null);
+  const [communityRows, setCommunityRows] = useState<Array<Pick<AddressCommunity, 'id' | 'name' | 'isGroup'>>>([]);
+  const [buildingRows, setBuildingRows] = useState<Array<{id:number;buildingNo:string;lane?:string|null}>>([]);
+  const [communitiesLoading, setCommunitiesLoading] = useState(true);
+  const [buildingsLoading, setBuildingsLoading] = useState(false);
+  const [communityError, setCommunityError] = useState('');
+  const [buildingError, setBuildingError] = useState('');
+  const [metadataVersion, setMetadataVersion] = useState(0);
+  const [reloadVersion, setReloadVersion] = useState(0);
+  const [submittedQ, setSubmittedQ] = useState('');
+  const scopeKey = JSON.stringify([session.user?.id,session.user?.tenantId,session.actingTenant?.id,session.actingOffice?.id,session.access?.scopeAll,session.access?.communityIds]);
   const [communityId, setCommunityId] = useState<number | 0>(0);
   const [buildingId, setBuildingId] = useState<number | 0>(0);
   const [q, setQ] = useState('');
   const [archived, setArchived] = useState(false);
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<House[] | null>(null);
-  const [total, setTotal] = useState(0);
+  const [total, setTotal] = useState<number | null>(null);
   const [err, setErr] = useState('');
   const [active, setActive] = useState<House | null>(null);
 
-  useEffect(() => { address.tree().then(setTree).catch(() => setTree([])); }, []);
+  // 筛选只需要小区/楼栋元数据，不下载全公司的房号和业主资料。
+  useEffect(() => {
+    let current = true;
+    setCommunitiesLoading(true); setCommunityError(''); setCommunityRows([]);
+    request<Array<Pick<AddressCommunity, 'id' | 'name' | 'isGroup'>>>({url:'/communities'})
+      .then(list => {if(current) setCommunityRows(list);})
+      .catch(e => {if(current) setCommunityError(e instanceof Error ? e.message : '小区加载失败');})
+      .finally(() => {if(current) setCommunitiesLoading(false);});
+    return () => {current = false;};
+  }, [scopeKey, metadataVersion]);
+  useEffect(() => {
+    let current = true;
+    setBuildingRows([]); setBuildingError('');
+    if(!communityId){setBuildingsLoading(false);return;}
+    setBuildingsLoading(true);
+    request<Array<{id:number;buildingNo:string;lane?:string|null}>>({url:'/buildings',query:{communityId}})
+      .then(list => {if(current) setBuildingRows(list);})
+      .catch(e => {if(current) setBuildingError(e instanceof Error ? e.message : '楼栋加载失败');})
+      .finally(() => {if(current) setBuildingsLoading(false);});
+    return () => {current = false;};
+  }, [communityId, scopeKey, metadataVersion]);
 
   const allowedIds = useMemo(() => {
     const a = session.access;
@@ -46,33 +75,42 @@ export default function Houses() {
     return new Set(a.communityIds ?? []);
   }, [session.access]);
   const communities = useMemo(() => {
-    const list = (tree ?? []).filter((c) => !c.isGroup);
+    const list = communityRows.filter((c) => !c.isGroup);
     return allowedIds ? list.filter((c) => allowedIds.has(c.id)) : list;
-  }, [tree, allowedIds]);
-  const buildings = useMemo(() => sortedBuildings(communities.find((c) => c.id === communityId)?.buildings ?? []), [communities, communityId]);
+  }, [communityRows, allowedIds]);
+  const buildings = useMemo(() => sortedBuildings(buildingRows), [buildingRows]);
 
   const query = useMemo(() => ({
     communityId: communityId || undefined,
     buildingId: buildingId || undefined,
-    q: q.trim() || undefined,
+    q: submittedQ || undefined,
     archived: archived ? '1' : undefined,
     page, pageSize: PAGE,
-  }), [communityId, buildingId, q, archived, page]);
+  }), [communityId, buildingId, submittedQ, archived, page]);
 
-  const load = () => {
-    setRows(null); setErr('');
-    request<{ rows: House[]; total: number }>({ url: '/houses', query })
-      .then((r) => { setRows(r.rows); setTotal(r.total); })
-      .catch((e) => { setRows([]); setErr(e instanceof Error ? e.message : '加载失败'); });
-  };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [communityId, buildingId, archived, page]);
+  const load = () => setReloadVersion(v => v + 1);
+  const search = () => {setSubmittedQ(q.trim()); setPage(1); load();};
+  useEffect(() => {
+    let current = true;
+    setRows(null); setTotal(null); setErr('');
+    request<{ rows: House[]; total: number } | House[]>({ url: '/houses', query })
+      .then((r) => {
+        if(!current) return;
+        const list = Array.isArray(r) ? r : r.rows;
+        const count = Array.isArray(r) ? r.length : r.total;
+        if(!Array.isArray(list) || !Number.isSafeInteger(count) || count < 0) throw new Error('房产数据格式异常，请重试');
+        setRows(list); setTotal(count);
+      })
+      .catch((e) => {if(current){setRows([]); setErr(e instanceof Error ? e.message : '加载失败');}});
+    return () => {current = false;};
+  }, [query, reloadVersion, scopeKey]);
 
-  const pages = Math.max(1, Math.ceil(total / PAGE));
+  const pages = Math.max(1, Math.ceil((total ?? 0) / PAGE));
 
   return (
     <>
       <div className="ph" style={{ marginBottom: 14 }}>
-        <div><div className="h1row"><ToneIcon kind="houses" /><h1 style={{ fontSize: 22 }}>房产档案</h1></div><p>按小区楼栋查房、看业主，编辑或归档房产 · 共 {total} 套{archived ? '（已归档）' : ''}</p></div>
+        <div><div className="h1row"><ToneIcon kind="houses" /><h1 style={{ fontSize: 22 }}>房产档案</h1></div><p>按小区楼栋查房、看业主，编辑或归档房产 · {rows === null ? '正在加载房产…' : err ? '总数暂未获取' : <>共 {total ?? 0} 套{archived ? '（已归档）' : ''}</>}</p></div>
       </div>
 
       <div className="wo-bar" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -80,22 +118,25 @@ export default function Houses() {
           <button className={`chip ${!archived ? 'on' : ''}`} onClick={() => { setArchived(false); setPage(1); }}>在册</button>
           <button className={`chip ${archived ? 'on' : ''}`} onClick={() => { setArchived(true); setPage(1); }}>已归档</button>
         </div>
-        <select className="in" style={{ width: 200 }} value={communityId} onChange={(e) => { setCommunityId(Number(e.target.value)); setBuildingId(0); setPage(1); }}>
-          <option value={0}>全部小区</option>
+        <select className="in" style={{ width: 200 }} value={communityId} disabled={communitiesLoading || !!communityError} onChange={(e) => { setCommunityId(Number(e.target.value)); setBuildingId(0); setPage(1); }}>
+          <option value={0}>{communitiesLoading ? '小区加载中…' : communityError ? '小区加载失败' : '全部小区'}</option>
           {communities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        <select className="in" style={{ width: 170 }} value={buildingId} disabled={!communityId} onChange={(e) => { setBuildingId(Number(e.target.value)); setPage(1); }}>
-          <option value={0}>{communityId ? '全部楼栋' : '先选小区'}</option>
+        <select className="in" style={{ width: 170 }} value={buildingId} disabled={!communityId || buildingsLoading || !!buildingError} onChange={(e) => { setBuildingId(Number(e.target.value)); setPage(1); }}>
+          <option value={0}>{!communityId ? '先选小区' : buildingsLoading ? '楼栋加载中…' : buildingError ? '楼栋加载失败' : '全部楼栋'}</option>
           {buildings.map((b) => <option key={b.id} value={b.id}>{b.lane ? `${b.lane}弄${b.buildingNo}号` : `${b.buildingNo}号楼`}</option>)}
         </select>
         <input className="in" style={{ width: 240 }} value={q} placeholder="搜房号 / 业主 / 地址，回车"
-          onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { setPage(1); load(); } }} />
-        <button className="btn" onClick={() => { setPage(1); load(); }}><Icon name="search" size={18} />查询</button>
+          onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') search(); }} />
+        <button className="btn" onClick={search}><Icon name="search" size={18} />查询</button>
       </div>
 
+      {communityError || buildingError ? <div className="note2" role="alert"><Icon name="alert" />{communityError ? `小区列表加载失败：${communityError}` : `楼栋列表加载失败：${buildingError}`}<button className="btn sm" onClick={() => setMetadataVersion(v => v + 1)}>重试筛选项</button></div> : null}
       {err ? <div className="note2" style={{ background: 'var(--dang-w)', color: 'var(--dang)', borderColor: '#eccac6', marginTop: 4 }}><Icon name="alert" />{err}</div> : null}
 
-      {rows === null ? <Loading /> : rows.length === 0 ? (
+      {rows === null ? <Loading /> : err ? (
+        <div className="card" style={{padding:32,marginTop:4}}><p>房产列表尚未加载成功，并不表示没有房产。</p><button className="btn" onClick={load}>重试加载</button></div>
+      ) : rows.length === 0 ? (
         <div className="card" style={{ padding: 48, textAlign: 'center', marginTop: 4 }}><span className="muted">{archived ? '没有已归档的房产' : '没有匹配的房产'}</span></div>
       ) : (
         <div className="card" style={{ overflow: 'hidden', marginTop: 4 }}>

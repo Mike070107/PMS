@@ -36,7 +36,8 @@ import {
 } from './dto';
 import { FeesService } from './fees.service';
 import { MisFeesService } from './mis-fees.service';
-import { MisFeesQueryDto, MisHouseSearchDto } from './mis-fees.dto';
+import {MisLedgerQueryDto} from './mis-ledger.dto';
+import { MisFeesQueryDto, MisHouseSearchDto, MisResidentialQueryDto, MisCollectionPreviewDto } from './mis-fees.dto';
 
 /**
  * 物业费（纯管理端页面），走页面权限矩阵。
@@ -53,6 +54,10 @@ export class FeesController {
   @RequirePermission('fees','view')
   misOptions(@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.metadata(user,access);}
 
+  @Get('mis/ledger')
+  @RequirePermission('fees','view')
+  misLedger(@Query() query:MisLedgerQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.ledger(query,user,access);}
+
   @Get('mis/bills')
   @RequirePermission('fees','view')
   misBills(@Query() query:MisFeesQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.list(query,user,access);}
@@ -60,6 +65,26 @@ export class FeesController {
   @Get('mis/houses')
   @RequirePermission('fees','view')
   misHouses(@Query() query:MisHouseSearchDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.searchHouses(query.communityId,query.q,user,access);}
+
+  @Get('mis/residential')
+  @RequirePermission('fees','view')
+  misResidential(@Query() q:MisResidentialQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.residential(q,user,access);}
+
+  @Post('mis/collections/preview')
+  @RequirePermission('fees','edit')
+  misCollectionPreview(@Body() body:MisCollectionPreviewDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.previewCollection(body,user,access);}
+
+  @Post('mis/collections')
+  @RequirePermission('fees','edit')
+  misCollectionCreate(@Body() body:MisCollectionPreviewDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.createCollection(body,user,access);}
+
+  @Get('mis/collections')
+  @RequirePermission('fees','view')
+  misCollectionHistory(@Query() q:MisResidentialQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.collectionHistory(q,user,access);}
+
+  @Get('mis/collections/:id')
+  @RequirePermission('fees','view')
+  misCollectionDetail(@Param('id',ParseIntPipe) id:number|string,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.collectionDetail(Number(id),user,access);}
 
   // ---------- 账单 ----------
 

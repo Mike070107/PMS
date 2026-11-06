@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Header, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, Patch, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { UpdateUiPreferencesDto } from './ui-preferences.dto';
 import { AuthService } from './auth.service';
 import { QrLoginService } from './qr-login.service';
 import { WebLoginTicketPurpose } from '../../entities/web-login-ticket.entity';
@@ -28,6 +29,20 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly qrLoginService: QrLoginService,
   ) {}
+
+  @Get('ui-preferences')
+  @UseGuards(JwtAuthGuard)
+  @Header('Cache-Control', 'no-store')
+  getUiPreferences(@CurrentUser() user: AuthUser) {
+    return this.authService.getUiPreferences(user.id);
+  }
+
+  @Patch('ui-preferences')
+  @UseGuards(JwtAuthGuard)
+  @Header('Cache-Control', 'no-store')
+  saveUiPreferences(@CurrentUser() user: AuthUser, @Body() dto: UpdateUiPreferencesDto) {
+    return this.authService.saveUiPreferences(user.id, dto);
+  }
 
   @Get('self-profile')
   @UseGuards(JwtAuthGuard)

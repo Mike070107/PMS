@@ -15,6 +15,14 @@ import type {
 } from '@pms/shared-types';
 import { request } from '../request';
 
+export interface RepairLocationSuggestions {
+  items: Array<{ text: string; count: number }>;
+}
+
+/** 仅在选择小区后读取；按成功且未作废的真实报修次数排序。 */
+export const locationSuggestions = (communityId: number) =>
+  request<RepairLocationSuggestions>({ url: '/repair-location-suggestions', query: { communityId } });
+
 export interface PublicRepairType {
   repairType: string;
   label: string;

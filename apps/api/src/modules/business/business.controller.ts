@@ -26,6 +26,7 @@ import {
   ReviewDecisionDto,
 } from './dto';
 import { BusinessService } from './business.service';
+import { UpdateParkingSpaceDto } from './parking-space.dto';
 import { BusinessExecutionService } from './business-execution.service';
 import { scopeCommunityIds } from '../access/scope.util';
 
@@ -38,9 +39,27 @@ export class BusinessController {
     private readonly execution: BusinessExecutionService,
   ) {}
 
+  @Patch('parking-spaces/:id')
+  @RequirePermission('business', 'edit')
+  updateParkingSpace(
+    // 联合类型避免全局 transform 在 ParseIntPipe 之前把 "1e0" 转成 1。
+    @Param('id', ParseIntPipe) id: number | string,
+    @Body() dto: UpdateParkingSpaceDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.businessService.updateParkingSpace(Number(id), dto, user, access);
+  }
+
   @Get('parking-spaces')
-  parkingSpaces(@Query('garage') garage: string, @Query('q') q: string) {
-    return this.businessService.listParkingSpaces(garage, q);
+  @RequirePermission('business', 'view')
+  parkingSpaces(
+    @Query('garage') garage: string,
+    @Query('q') q: string,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.businessService.listParkingSpaces(garage, q, user, access);
   }
 
   @Get('rules')
@@ -80,21 +99,21 @@ export class BusinessController {
     return this.businessService.updateRule(id, dto, user, access);
   }
 
-  /** 物业经理：待审核的非标准停车续期 */
+  /** 物业经理：待审核的非标准停车续期（收费类经理审核：新 key 或拆分前的旧 key 任一命中） */
   @Get('reviews')
-  @RequirePermission(['app:approve-manager', 'business'], 'view')
+  @RequirePermission(['app:approve-business-manager', 'app:approve-manager', 'business'], 'view')
   reviews(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
     return this.businessService.listReviews(user, access);
   }
 
   @Post('transactions/:id/approve')
-  @RequirePermission('app:approve-manager', 'edit')
+  @RequirePermission(['app:approve-business-manager', 'app:approve-manager'], 'edit')
   approveReview(@Param('id', ParseIntPipe) id: number, @Body() dto: ReviewDecisionDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
     return this.businessService.decideReview(id, true, dto.reason, user, access);
   }
 
   @Post('transactions/:id/reject')
-  @RequirePermission('app:approve-manager', 'edit')
+  @RequirePermission(['app:approve-business-manager', 'app:approve-manager'], 'edit')
   rejectReview(@Param('id', ParseIntPipe) id: number, @Body() dto: ReviewDecisionDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
     return this.businessService.decideReview(id, false, dto.reason, user, access);
   }

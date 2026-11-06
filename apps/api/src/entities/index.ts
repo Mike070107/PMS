@@ -67,6 +67,7 @@ import { ExternalAccessApp } from './external-access-app.entity';
 import { LanGatewayAgent } from './lan-gateway-agent.entity';
 import { FeeStandard } from './fee-standard.entity';
 import { FeeBill } from './fee-bill.entity';
+import { MisCollectionBatch } from './mis-collection-batch.entity';
 import { MaintenanceOrder } from './maintenance-order.entity';
 import { MaintenanceSignSession } from './maintenance-sign-session.entity';
 import { QuotaItem } from './quota-item.entity';
@@ -181,6 +182,7 @@ export const entities = [
   LanGatewayAgent,
   FeeStandard,
   FeeBill,
+  MisCollectionBatch,
   MaintenanceOrder,
   MaintenanceSignSession,
   QuotaItem,
@@ -276,6 +278,7 @@ export {
   LanGatewayAgent,
   FeeStandard,
   FeeBill,
+  MisCollectionBatch,
   MaintenanceOrder,
   MaintenanceSignSession,
   QuotaItem,

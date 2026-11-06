@@ -19,6 +19,7 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
+      "jszip": ["../api/node_modules/jszip"],
       "@legacy/*": ["../admin-web/src/*"],
       "@pms/*": ["../../packages/*"]
     }

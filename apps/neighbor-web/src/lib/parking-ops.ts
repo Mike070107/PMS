@@ -11,6 +11,7 @@ import { accessCardIssuance } from '@pms/api-client';
 import type { ParkingOperation, ParkingOperationKind, ParkingQueryRow } from '@pms/api-client/src/endpoints/access-card-issuance';
 import { dayjs } from '@/lib/format';
 import { field, rawBits } from '@/lib/parking-fields';
+import { parkingRenewalWindow } from './parking-renewal-window';
 
 /** 旧库记录主键 P_id（= sourceRecordId） */
 export function pidOf(f: ParkingQueryRow['fields']): string {
@@ -43,10 +44,14 @@ export function createIdempotencyKey(): string {
   return `pms-${Date.now().toString(36)}-${rand}`;
 }
 
-/** 续期到期日：从当前到期日（或今天）起加 N 个月，落到自然月末，YYYY-MM-DD */
+/**
+ * 续期到期日（用户口径）：
+ * - 已到期或没有到期日：10 号（含）之前操作算「当月」1 个月，10 号之后算「下个月」1 个月；
+ * - 还没到期：从原到期日所在月往后顺延；
+ * - 都落到自然月最后一天，YYYY-MM-DD（不按“今天+30天”这种精确日）。
+ */
 export function renewalEndDate(currentEndDate: string | null | undefined, months: number): string {
-  const base = currentEndDate && dayjs(currentEndDate).isValid() ? dayjs(currentEndDate) : dayjs();
-  return base.add(months, 'month').endOf('month').format('YYYY-MM-DD');
+  return parkingRenewalWindow({ currentEndDate, months, today: dayjs().format('YYYY-MM-DD') }).endDate;
 }
 
 /** 多库续期只在第一库记一次收款，其余记 0，避免费用报表重复计数 */

@@ -4,10 +4,19 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test:mis-collection": "node --test test/business-ledger-page.test.cjs test/mis-collection.test.cjs test/mis-browser.test.cjs test/mis-remarks.test.cjs",
+    "test:erp-reference": "node --test test/erp-reference-shell.test.cjs test/erp-reference-pages.test.cjs test/erp-browser.test.cjs test/business-ledger-page.test.cjs",
+    "test": "node --test test/erp-reference-shell.test.cjs test/erp-reference-pages.test.cjs test/erp-browser.test.cjs test/access-cards-menu-split.test.cjs test/access-browser.test.cjs test/business-ledger-page.test.cjs test/mis-collection.test.cjs test/mis-browser.test.cjs test/calendar-controls.test.cjs test/cashier-navigation.test.cjs test/residential-bills.test.cjs test/residential-list.test.cjs test/migrated-pages.test.cjs test/ui-theme.test.cjs test/houses-loading.test.cjs test/unisearch-display.test.cjs test/logs-permissions.test.cjs test/house-detail-modal.test.cjs test/logs-presentation.test.cjs test/web-day-session.test.cjs test/auth-access-race.test.cjs test/page-access.test.cjs test/family-cars-navigation.test.cjs test/family-cars-loading.test.cjs test/mis-remarks.test.cjs test/navigation-scale.test.cjs test/work-order-stages.test.cjs test/residential-notice.test.cjs test/residential-sms.test.cjs test/address-picker-shared.test.cjs test/address-picker-browser.test.cjs test/apartment-address-picker.test.cjs test/new-order-sheet.test.cjs test/repair-location-options.test.cjs test/renewal-months.test.cjs test/vehicle-renewal.test.cjs test/parking-renewal-dates.test.cjs test/parking-renewal-quote.test.cjs test/parking-browser.test.cjs",
+    "test:family-cars": "node --test test/family-cars-navigation.test.cjs test/page-access.test.cjs",
+    "test:page-access": "node --test test/page-access.test.cjs test/family-cars-navigation.test.cjs test/auth-access-race.test.cjs test/logs-permissions.test.cjs",
+    "test:migrated-pages": "node --test test/migrated-pages.test.cjs",
+    "test:ui-preferences": "node --test test/ui-theme.test.cjs",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "preview": "vite preview --host"
+    "preview": "vite preview --host",
+    "test:residential-bills": "node --test test/residential-bills.test.cjs test/residential-list.test.cjs",
+    "test:parking-renewal": "node --test test/renewal-months.test.cjs test/vehicle-renewal.test.cjs test/parking-renewal-dates.test.cjs test/parking-renewal-quote.test.cjs test/parking-browser.test.cjs"
   },
   "dependencies": {
     "@ant-design/icons": "^5.6.1",

@@ -115,7 +115,19 @@ export function GaragesSheet({ plate, rows, cloud, onClose, onDone }: OpProps) {
   const ownerRoom = field(targets[0]?.fields, 'room', true) || '';
   const oldDbSel = [...sel].filter((k) => k !== 'civil');
   const prevOldDb = GARAGES.filter((g) => g.key !== 'civil' && garageState(rows, g).authorized).map((g) => g.key);
-  const toggle = (k: string) => setSel((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  const toggle = (k: string) => setSel((s) => {
+    const n = new Set(s);
+    if (n.has(k)) {
+      n.delete(k);
+      // 取消二期地面时，依赖它的二期大车库/人防一起取消（不然授权了也进不去）
+      if (k === 'phase2') GARAGES.filter((g) => g.requires === 'phase2').forEach((g) => n.delete(g.key));
+    } else {
+      n.add(k);
+      // 选二期大车库/人防一定带上二期地面
+      GARAGES.filter((g) => g.key === k && g.requires).forEach((g) => n.add(g.requires!));
+    }
+    return n;
+  });
 
   // 一二期到期日一致性（phase1 在 parking1，phase2/main 在 parking2）
   const end1 = ymd(field(rows.find((r) => r.database === 'parking1')?.fields, 'expiry'));

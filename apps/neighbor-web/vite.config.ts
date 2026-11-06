@@ -21,6 +21,9 @@ export default defineConfig(({ command }) => ({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),
+      'jszip': path.resolve(__dirname, '../api/node_modules/jszip'),
+      '@pms/api-client': path.resolve(__dirname, '../../packages/api-client/src'),
+      '@pms/shared-types': path.resolve(__dirname, '../../packages/shared-types/src'),
       // 养护单套打表单、手写体、打印：直接复用旧后台已调好的源码（含 14MB 字体），不复制一份
       '@legacy': path.resolve(__dirname, '../admin-web/src'),
     },

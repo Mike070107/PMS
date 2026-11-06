@@ -338,6 +338,8 @@ export interface RepairCreateReq {
   buildingId?: number;
   houseId?: number;
   addressText?: string;
+  /** 独立具体位置，服务端归一空白，最多60字符；成功且未作废的报修用于常用项统计。 */
+  locationText?: string;
   contactName?: string;
   contactPhone?: string;
   repairType?: string;
@@ -1099,6 +1101,7 @@ export const PURCHASE_STATUS_LABELS: Record<PurchaseRequestStatus, string> = {
  * 勾了「采购审批（经理这一步）」就看待经理审的，勾了采购那一步就看待采购确认的。
  */
 export const PENDING_STATUS_BY_APP_PAGE: Record<string, PurchaseRequestStatus> = {
+  'app:approve-purchase-manager': PurchaseRequestStatus.MANAGER_REVIEW,
   'app:approve-manager': PurchaseRequestStatus.MANAGER_REVIEW,
   'app:approve-purchaser': PurchaseRequestStatus.PURCHASER_REVIEW,
 };

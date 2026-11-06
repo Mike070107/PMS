@@ -61,10 +61,10 @@ test('重试间隔：1 / 5 / 15 分钟', () => {
   assert.equal((nextRetryAt(9, t0).getTime() - t0.getTime()) / 60000, 15);
 });
 
-test('续期区间：未到期接着原到期日续，已过期从今天起，结束日 = 开始 + N 月 − 1 天', () => {
+test('续期区间：未到期顺延完整自然月，已过期走10号规则并落月末', () => {
   assert.deepEqual(renewalWindow({ currentEndDate: '2026-12-31', today: '2026-10-29', months: 6 }), { startDate: '2027-01-01', endDate: '2027-06-30' });
-  assert.deepEqual(renewalWindow({ currentEndDate: '2026-10-29', today: '2026-10-29', months: 1 }), { startDate: '2026-10-30', endDate: '2026-11-29' });
-  assert.deepEqual(renewalWindow({ currentEndDate: '2024-12-31', today: '2026-10-29', months: 12 }), { startDate: '2026-10-29', endDate: '2027-10-28' });
+  assert.deepEqual(renewalWindow({ currentEndDate: '2026-10-29', today: '2026-10-29', months: 1 }), { startDate: '2026-10-30', endDate: '2026-11-30' });
+  assert.deepEqual(renewalWindow({ currentEndDate: '2024-12-31', today: '2026-10-29', months: 12 }), { startDate: '2026-10-29', endDate: '2027-10-31' });
   assert.deepEqual(renewalWindow({ currentEndDate: null, today: '2026-11-01', months: 3 }), { startDate: '2026-11-01', endDate: '2027-01-31' });
   assert.equal(addMonthsClamped('2027-01-31', 1), '2027-02-28');
   assert.equal(addMonthsClamped('2028-01-31', 1), '2028-02-29');

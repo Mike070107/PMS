@@ -25,6 +25,10 @@ export class ParkingQuery extends TenantEntity {
   @Column({ name: 'range_end', type: 'date', nullable: true })
   rangeEnd: string | null;
 
+  /** 只查指定库（parking1/parking2）；空=两个库都查 */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  database: string | null;
+
   @Column({ type: 'varchar', length: 20, default: 'pending' })
   status: ParkingQueryStatus;
 

@@ -518,3 +518,34 @@ textarea.in{height:auto;padding:9px 12px;min-height:72px;resize:vertical}
 .h1row{display:flex;align-items:center;gap:11px;min-width:0}
 .navGroupTitle{display:flex;align-items:center;gap:7px}
 .navGroupTile{width:18px;height:18px;border-radius:6px}
+.sp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:10px}
+.sp-card{border:1px solid var(--line);border-radius:12px;background:#fff;padding:12px}
+.sp-card.is-free{background:#fbfcfd;border-style:dashed}
+.sp-top{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.sp-no{font-size:17px;font-weight:700}
+.sp-no small{font-size:11px;color:var(--ink3);margin-left:2px;font-weight:400}
+.sp-plate{font-size:16px;font-weight:700;letter-spacing:.4px;white-space:nowrap;margin-bottom:8px}
+.sp-empty{font-size:13px;color:var(--ink3);font-weight:400}
+.sp-kv{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:0;font-size:12.5px}
+.sp-kv dt{color:var(--ink3)}
+.sp-kv dd{margin:0;color:var(--ink2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 侧栏层级菜单：分组可折叠，字号按老年用户放到 14px（原来 10.5px 太小） */
+.nav .navGroupTitle{width:100%;display:flex;align-items:center;gap:8px;padding:10px 8px;margin-top:2px;
+  border:0;background:none;border-radius:9px;cursor:pointer;text-align:left;
+  font-size:14px;font-weight:700;letter-spacing:0;color:var(--ink2);font-family:inherit}
+.nav .navGroupTitle:hover{background:#f2f5f9;color:var(--ink)}
+.nav .navGroupTitle .navGroupText{flex:1;min-width:0}
+.nav .navGroupTitle .navGroupChev{flex:none;color:var(--ink3);transition:transform .16s}
+.nav .navGroupTitle:not(.open) .navGroupChev{transform:rotate(-90deg)}
+.nav .navGroupTitle.open{color:var(--ink)}
+.navGroupTile{width:20px;height:20px;border-radius:7px}
+/* 分组下的子菜单比一级分组标题小一档，并往右缩进，层级一眼看得出 */
+.nav .navGroupTitle ~ a{padding:7px 10px 7px 34px;font-size:12.5px;gap:9px}
+.nav .navGroupTitle ~ a .icon{width:16px;height:16px}
+.nav a{padding-left:10px}
+/* 侧栏字号放大（现场多为中老年用户）：分组 16px、子项 14.5px，图标同步放大 */
+.nav .navGroupTitle{font-size:16px;padding:11px 8px}
+.nav .navGroupTitle ~ a{font-size:14.5px;padding:9px 10px 9px 36px;gap:10px}
+.nav .navGroupTitle ~ a .icon{width:18px;height:18px}
+.nav a span{line-height:1.4}
+.fl{display:grid;gap:6px;font-size:13px;color:var(--ink2)}

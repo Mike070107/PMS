@@ -128,6 +128,12 @@ function shouldRetry(opts: RequestOptions): boolean {
   return (opts.method ?? 'GET') === 'GET';
 }
 
+/** Ignore delayed unauthorized responses from credentials that are no longer current. */
+function notifyUnauthorized(opts: RequestOptions, header: Record<string,string>) {
+  const token = config?.getToken();
+  if (!opts.anonymous && header.Authorization === (token ? `Bearer ${token}` : undefined)) config?.onUnauthorized?.();
+}
+
 function requestViaWx<T>(
   url: string,
   opts: RequestOptions,
@@ -151,7 +157,7 @@ function requestViaWx<T>(
         const { statusCode, data } = res;
         if (statusCode === 401) {
           // 匿名请求（登录类）的 401 是凭据不对，不是登录态过期，不能踢回登录页
-          if (!opts.anonymous) config?.onUnauthorized?.();
+          notifyUnauthorized(opts, header);
           return reject(
             new ApiError(401, serverMessage(data) || '未登录或登录已过期', statusCode),
           );
@@ -205,14 +211,14 @@ async function requestViaFetch<T>(
   clearTimeout(t);
 
   if (res.status === 401) {
-    if (!opts.anonymous) config?.onUnauthorized?.();
+    notifyUnauthorized(opts, header);
     const body = await res.json().catch(() => null);
     throw new ApiError(401, serverMessage(body) || '未登录或登录已过期', 401);
   }
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
     try {
-      const j = await res.json();
+      const j = await res.json() as { message?: string; error?: string } | null;
       msg = j?.message || j?.error || msg;
     } catch {}
     throw new ApiError(res.status, msg, res.status);
@@ -388,7 +394,8 @@ function currentClientRoute(): string | undefined {
       const current = pages[pages.length - 1];
       return current?.route ? `/${current.route}` : undefined;
     }
-    if (typeof window !== 'undefined') return `${window.location.pathname}${window.location.search}`;
+    const browser = (globalThis as typeof globalThis & { window?: { location: { pathname: string; search: string } } }).window;
+    if (browser) return `${browser.location.pathname}${browser.location.search}`;
   } catch {}
   return undefined;
 }

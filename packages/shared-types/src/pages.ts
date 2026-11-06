@@ -228,9 +228,28 @@ export const STAFF_APP_PAGES: StaffAppPageDef[] = [
     editHint: '改名称型号、补照片和参数、停用',
   },
   {
+    // 2026-11 拆分：原来「采购审批（经理这一步）」一个 key 同时挂着采购和收费两条链，
+    // 勾了采购就顺带能批停车续期 / 亲情车 / 新办车牌。现在按业务拆成两格，各自授权。
+    key: 'app:approve-purchase-manager',
+    label: '采购·经理审核',
+    hint: '看待经理审批的采购单、调拨单',
+    editLabel: '批 / 驳回',
+    editHint: '采购申请要先过这一步',
+  },
+  {
+    key: 'app:approve-business-manager',
+    label: '收费·经理审核',
+    hint: '看亲情车登记待审、新办车牌待审',
+    editLabel: '通过 / 退回',
+    editHint: '收费类业务要过经理这一步',
+  },
+  {
+    // 兼容键：拆分前的旧 key。所有判断都写成「新 key 或旧 key 任一命中」，
+    // 所以已经授权过的角色照旧能用。新角色不要再勾它（勾选列表里已隐藏）。
     key: 'app:approve-manager',
+    legacy: true,
     label: '采购审批（经理这一步）',
-    hint: '看待经理审批的采购单',
+    hint: '看待经理审批的采购单（旧键，仅兼容已有授权）',
     editLabel: '批 / 驳回',
     editHint: '采购申请要先过这一步',
   },
@@ -299,6 +318,11 @@ export interface StaffAppPageDef {
   /** 「编辑」一档的叫法；不填 = 这一页没有操作权可分 */
   editLabel?: string;
   editHint?: string;
+  /**
+   * 已拆分的旧 key：留在目录里只是为了旧数据还能查到标签，
+   * 权限勾选列表里不再出现（判断处一律「新 key 或旧 key 任一命中」）。
+   */
+  legacy?: boolean;
 }
 
 /**
@@ -366,7 +390,8 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'app:inventory': 'e',
       'app:stocktakes': 'e',
       'app:materials': 'e',
-      'app:approve-manager': 'e',
+      'app:approve-purchase-manager': 'e',
+      'app:approve-business-manager': 'e',
       'app:my-repairs': 'v',
       'app:repair-create': 'v',
       'app:messages': 'v',

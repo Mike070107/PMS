@@ -2,6 +2,24 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { isApiEnvelope } from './envelope';
 import { diagnosticRequestPath } from './request-diagnostic';
+import {configure,request} from './request';
+for(const transport of ['fetch','wx'])test(`${transport}:旧账号迟到401不得清除新账号会话`,async()=>{
+ const previousFetch=globalThis.fetch,previousWx=(globalThis as any).wx;
+ let token='synthetic-account-A',cleared=0,finish!:(response:any)=>void;
+ try{
+  configure({baseURL:'https://fixture.invalid/api',getToken:()=>token,onUnauthorized:()=>{cleared++}});
+  if(transport==='fetch'){delete (globalThis as any).wx;globalThis.fetch=(()=>new Promise(r=>{finish=r})) as any}
+  else (globalThis as any).wx={request:(opts:any)=>{finish=()=>opts.success({statusCode:401,data:{message:'expired'}})}};
+  const pending=request({url:'/auth/ui-preferences'});token='synthetic-account-B';finish(new Response('{"message":"expired"}',{status:401}));
+  await assert.rejects(pending,(e:any)=>e.code===401);assert.equal(cleared,0,'旧账号401不能触发当前账号登出');
+ }finally{globalThis.fetch=previousFetch;if(previousWx===undefined)delete (globalThis as any).wx;else (globalThis as any).wx=previousWx}
+});
+test('当前账号401仍触发登出，匿名401不登出',async()=>{
+ const previous=globalThis.fetch,previousWx=(globalThis as any).wx;let cleared=0;
+ try{delete (globalThis as any).wx;configure({baseURL:'https://fixture.invalid/api',getToken:()=> 'synthetic-current',onUnauthorized:()=>{cleared++}});globalThis.fetch=(async()=>new Response('{}',{status:401})) as any;
+ await assert.rejects(request({url:'/auth/ui-preferences'}));assert.equal(cleared,1);await assert.rejects(request({url:'/auth/admin-login',anonymous:true}));assert.equal(cleared,1);
+ }finally{globalThis.fetch=previous;if(previousWx===undefined)delete (globalThis as any).wx;else (globalThis as any).wx=previousWx}
+});
 
 /**
  * 这条口径判错一次，用户看到的是红字报错、而数据其实已经存进去了 ——

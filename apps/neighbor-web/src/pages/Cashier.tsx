@@ -6,9 +6,10 @@ import type { AddressCommunity } from '@pms/shared-types';
 import HousePicker, { type PickedHouse } from '@/components/HousePicker';
 import UniSearch, { type UniPick } from '@/components/cashier/UniSearch';
 import PayMethods from '@/components/PayMethods';
+import MisCollectionPanel from '@/components/cashier/MisCollectionPanel';
 import Icon from '@/components/Icon';
 import type { IconName } from '@/components/Icon';
-import { legacyUrl } from '@/lib/legacy';
+import { useNavigate } from 'react-router-dom';
 import { ErrorNote, toast } from '@/components/ui';
 import { useSession } from '@/lib/auth';
 import { dayjs, money } from '@/lib/format';
@@ -16,6 +17,7 @@ import { accessStatusLabel, legacyStatusLabel, rawTitle } from '@/lib/access-car
 import NewOrderSheet, { type RepairPrefill } from '@/components/NewOrderSheet';
 import FeeIcon from '@/components/FeeIcon';
 import ToneIcon from '@/components/ToneIcon';
+import '@/components/cashier/mis-remarks.css';
 
 type ServiceType = 'parking_monthly' | 'access_card';
 type Tab = 'wy' | 'bw' | 'pk' | 'ac';
@@ -37,19 +39,20 @@ interface AccessCard { id: number; cardNo: string; houseId: number; ownerId: num
 interface SearchResult { houses: HouseHit[]; vehicles: Vehicle[]; accessCards: AccessCard[] }
 interface Estimate { unitPriceCents: number; quantity: number; startDate: string | null; endDate: string | null; amountCents: number; summary: string }
 /** 物业费/泊位费应收：实时读 MIS（/fees/mis/bills），id 是 MIS 侧单据号 */
-interface Bill { id: string; feeName: string; period: string; amountCents: number; status: string }
-interface MisRow { id: string; feeName: string | null; feeCode: string; period: string; amountCents: number; status: string }
+interface Bill { id: string; feeName: string; period: string; amountCents: number; status: string; remark?: string | null }
+interface MisRow { id: string; feeName: string | null; feeCode: string; period: string; amountCents: number; status: string; remark?: string | null }
 
 interface ResultTask { icon: IconName; title: string; note: string; state: 'done' | 'queued' }
 interface ChargeResult { title: string; amountCents: number; receiptNo: string; tasks: ResultTask[] }
 
 /** 执行层状态 → 收银结果页提示 */
 const syncNote = (st: string, err?: string | null) => ({
-  queued: '已排队，正在同步德立云…', running: '正在写入德立云并回读核对…',
-  retry: `德立云暂时不可用，稍后自动重试${err ? `（${err}）` : ''}`,
-  synced: '德立云到期日已更新并回读核对一致',
-  dry_run: '演练模式：已核对德立云并记下将要写入的到期日，未实际写入（在「待处理」查看）',
-  manual: `需人工处理：${err || '德立云数据对不上'}（在「待处理」查看）`,
+  // 文案不要一律写德立云：只续一期/二期停车库时根本没有德立云这一步
+  queued: '已排队，等待现场助手写停车库…', running: '正在写入停车库并回读核对…',
+  retry: `停车库写入暂时不可用，稍后自动重试${err ? `（${err}）` : ''}`,
+  synced: '停车库到期日已更新并回读核对一致',
+  dry_run: '演练模式：已核对并记下将要写入的到期日，未实际写入（在「待处理」查看）',
+  manual: `需人工处理：${err || '停车库数据对不上'}（在「待处理」查看）`,
   failed: `多次失败：${err || '请稍后在「待处理」重试'}`,
   mocked: '未开启自动同步，请在德立云手动续期',
 } as Record<string, string>)[st] || '已提交，在「待处理」查看进展';
@@ -66,6 +69,7 @@ const maskPhone = (p?: string | null) => (p && p.length >= 7 ? `${p.slice(0, 3)}
  * 金额一律服务端试算；收款只登记，后续 MIS/停车/写卡在「待处理」跟踪，不在这里谎称已核验。
  */
 export default function Cashier() {
+  const navigate = useNavigate();
   const session = useSession();
   const [tree, setTree] = useState<AddressCommunity[] | null>(null);
   const [rules, setRules] = useState<BusinessRule[]>([]);
@@ -120,11 +124,25 @@ export default function Cashier() {
     return '未配置数据范围';
   }, [session.access, session.actingOffice]);
 
+  // 生产 API 有的版本 /business/search 直接返回数组（旧形状），有的返回 {houses,vehicles,accessCards}。
+  // 两种都吃下来，绝不让 r.houses 是 undefined 时把页面抛成「T is not iterable」。
+  const normSearch = (r: unknown): SearchResult => {
+    if (Array.isArray(r)) {
+      const rows = r as Array<Record<string, unknown>>;
+      const pick = (k: string) => rows.filter((x) => String(x.kind ?? x.type ?? '') === k) as never[];
+      return { houses: pick('house'), vehicles: pick('vehicle'), accessCards: pick('card') };
+    }
+    const o = (r ?? {}) as Partial<SearchResult>;
+    return { houses: o.houses ?? [], vehicles: o.vehicles ?? [], accessCards: o.accessCards ?? [] };
+  };
+
   const searchByQ = useCallback(async (kw: string): Promise<SearchResult> => {
-    const [park, card] = await Promise.all([
-      request<SearchResult>({ url: '/business/search', query: { q: kw, serviceType: 'parking_monthly' } }),
-      request<SearchResult>({ url: '/business/search', query: { q: kw, serviceType: 'access_card' } }),
+    const [parkRaw, cardRaw] = await Promise.all([
+      request<unknown>({ url: '/business/search', query: { q: kw, serviceType: 'parking_monthly' } }),
+      request<unknown>({ url: '/business/search', query: { q: kw, serviceType: 'access_card' } }),
     ]);
+    const park = normSearch(parkRaw);
+    const card = normSearch(cardRaw);
     const uniq = <T extends { id: number }>(a: T[], b: T[]) => [...a, ...b].filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i);
     const merged: SearchResult = { houses: uniq(park.houses, card.houses), vehicles: uniq(park.vehicles, card.vehicles), accessCards: uniq(park.accessCards, card.accessCards) };
     // 车牌不在 PMS 本地表里（生产 parking_vehicles 基本是空的）：真车在现场旧停车库，
@@ -143,7 +161,7 @@ export default function Cashier() {
           const plate = String(f.P_plate ?? f.p_plate ?? f.Car_No ?? '').trim().toUpperCase();
           const room = String(f.Owner__owner_Name ?? f.P_note ?? '').trim();
           if (!plate || !room) continue;
-          const rr = await request<SearchResult>({ url: '/business/search', query: { q: room } });
+          const rr = normSearch(await request<unknown>({ url: '/business/search', query: { q: room } }));
           const hit = rr.houses[0];
           if (!hit) continue;
           if (!merged.houses.some((h) => h.id === hit.id)) merged.houses.push(hit);
@@ -161,7 +179,7 @@ export default function Cashier() {
     request<{ rows: MisRow[] }>({ url: '/fees/mis/bills', query: { houseId: h.id, status: 'unpaid', page: 1, pageSize: 300 }, timeout: 25000 })
       .then((r) => {
         const own: Bill[] = r.rows
-          .map((m) => ({ id: m.id, feeName: m.feeName || m.feeCode, period: m.period, amountCents: m.amountCents, status: m.status }))
+          .map((m) => ({ id: m.id, feeName: m.feeName || m.feeCode, period: m.period, amountCents: m.amountCents, status: m.status, remark: m.remark }))
           .sort((a, b) => a.period.localeCompare(b.period));
         setBills(own); setSelBills(own.map((b) => b.id));
       })
@@ -263,12 +281,7 @@ export default function Cashier() {
     if (!house || !canCharge || (cartTotal > 0 && !confirmed)) return;
     setBusy(true); setErr('');
     try {
-      if (isBillTab) {
-        const res = await request<{ paidCount: number; receiptNo: string }>({ method: 'POST', url: '/fees/bills/pay', data: { ids: selBillRows.map((b) => b.id), paidAt: dayjs().format('YYYY-MM-DD'), paymentMethod: pay } });
-        setDone({ title: `${billLabel} ${selBillRows.length} 笔`, amountCents: selBillTotal, receiptNo: res.receiptNo, tasks: [
-          { icon: 'home', title: 'MIS 物业费记账', note: '已提交，执行与核验在「待处理」跟踪', state: 'queued' },
-        ] });
-      } else if (tab === 'pk' && parkCarts.length) {
+      if (tab === 'pk' && parkCarts.length) {
         // 一辆车一笔流水（各自续期、各自重试）；中途失败时已登记的照常保留，没登记的提示重办
         const okList: Array<{ c: ParkingCart; txn: { id: number; txnNo: string; externalSyncStatus: string } }> = [];
         let failMsg = '';
@@ -304,24 +317,40 @@ export default function Cashier() {
     finally { setBusy(false); }
   };
 
-  /** 停车收款后跟踪德立云同步：约 20 秒内轮询，拿到终态就更新结果页；更久的去「待处理」看 */
+  /** 停车收款后跟踪现场执行：3 秒一轮、最多 3 分钟，并把已等待秒数写在状态里，别让前台干等 */
   const watchSync = (id: number, title: string) => {
-    let n = 0;
+    const started = Date.now();
+    type TaskState = ChargeResult['tasks'][number]['state'];
+    const setTaskNote = (patch: { state?: TaskState; note?: string }) => {
+      setDone((d) => (d ? { ...d, tasks: d.tasks.map((k) => (k.title === title ? { ...k, ...patch } : k)) } : d));
+    };
     const tick = () => {
-      n += 1;
-      request<Array<{ id: number; externalSyncStatus: string; snapshot?: { execution?: { lastError?: string | null } } }>>({ url: '/business/transactions' })
+      const waited = Math.round((Date.now() - started) / 1000);
+      request<Array<{ id: number; externalSyncStatus: string; snapshot?: { execution?: { lastError?: string | null; steps?: Array<{ label: string; status: string }> } } }>>({ url: '/business/transactions' })
         .then((list) => {
           const t = list.find((x) => x.id === id);
           if (!t) return;
           const st = t.externalSyncStatus;
+          const steps = t.snapshot?.execution?.steps ?? [];
+          const doing = steps.find((x) => x.status === 'pending' || x.status === 'waiting');
           const final = ['synced', 'manual', 'failed', 'dry_run', 'mocked'].includes(st);
-          setDone((d) => (d ? { ...d, tasks: d.tasks.map((k) => (k.title === title
-            ? { ...k, state: st === 'synced' ? 'done' : 'queued', note: syncNote(st, t.snapshot?.execution?.lastError) } : k)) } : d));
-          if (!final && n < 7) setTimeout(tick, 3000);
+          if (final) {
+            setTaskNote({ state: st === 'synced' ? 'done' : 'queued', note: syncNote(st, t.snapshot?.execution?.lastError) });
+            return;
+          }
+          setTaskNote({
+            state: 'queued',
+            note: `已等待 ${waited} 秒${doing ? ` · 正在写 ${doing.label}` : ' · 等待现场助手取任务'}（约 10–40 秒，现场电脑不在线会更久）`,
+          });
+          if (waited < 180) setTimeout(tick, 3000);
+          else setTaskNote({ state: 'queued', note: '现场助手 3 分钟内没有回执，任务已保留：到「待处理」可查看/重试，钱已收、不要重复收款' });
         })
-        .catch(() => { if (n < 7) setTimeout(tick, 3000); });
+        .catch(() => {
+          setTaskNote({ state: 'queued', note: `已等待 ${waited} 秒 · 正在取回执…` });
+          if (waited < 180) setTimeout(tick, 3000);
+        });
     };
-    setTimeout(tick, 2000);
+    setTimeout(tick, 1500);
   };
 
   const reset = () => { setPicked(null); setHouse(null); setResult(null); setBills(null); setDone(null); setErr(''); };
@@ -337,7 +366,7 @@ export default function Cashier() {
             <div className="amt money">{money(done.amountCents / 100)}</div>
             <p>{house?.communityName} {house?.buildingNo}/{house?.roomNo} · {done.title} · {pay}{done.receiptNo !== '—' ? ` · 收据号 ${done.receiptNo}` : ''}</p>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 18 }}>
-              {done.receiptNo !== '—' ? <button className="btn" onClick={() => { window.location.href = legacyUrl(`/fees?receipt=${encodeURIComponent(done.receiptNo)}`); }}><Icon name="print" size={18} />打印收据</button> : null}
+              {done.receiptNo !== '—' ? <button className="btn" onClick={() => navigate(`/fees?receipt=${encodeURIComponent(done.receiptNo)}`)}><Icon name="print" size={18} />打印收据</button> : null}
               <button className="btn p" onClick={() => { setDone(null); if (house) loadBills(house); }}><Icon name="receipt" size={18} />继续给本户办理</button>
               <button className="btn" onClick={reset}><Icon name="search" size={18} />换一户</button>
             </div>
@@ -370,7 +399,7 @@ export default function Cashier() {
           <div className="h1row"><ToneIcon kind="cashier" /><h1 style={{ fontSize: 22 }}>收银台</h1></div>
           <p>找到住户 → 按项目办理 → 一次确认收款 <span className="tag mute" style={{ marginLeft: 8 }}><Icon name="building" />数据范围：{scopeLabel}</span></p>
         </div>
-        <div className="act"><button className="btn" onClick={() => { window.location.href = legacyUrl('/fees'); }}><Icon name="receipt" size={18} />今日流水 / 红冲</button></div>
+        <div className="act"><button className="btn" onClick={() => navigate('/fees')}><Icon name="receipt" size={18} />今日流水 / 红冲</button></div>
       </div>
 
       {err ? <ErrorNote>{err}</ErrorNote> : null}
@@ -391,7 +420,7 @@ export default function Cashier() {
         </div>
       ) : (
         <div className="cash2" style={{ marginTop: 18 }}>
-          <div>
+          <div className="cashier-mis-bills">
             <div className="card">
               <div className="ownerHead">
                 <div className="ownerAv">{initial}</div>
@@ -428,7 +457,7 @@ export default function Cashier() {
             {isBillTab ? (
               <div style={{ marginTop: 16 }}>
                 <div className="panelHd"><b>未缴{billLabel}</b>{tabArrears ? <span className="tag dang">待缴 {tabBills.length} 笔 · {money(tabArrears / 100)}</span> : <span className="tag ok"><Icon name="check" />无待缴</span>}
-                  <button className="btn g sm" style={{ marginLeft: 'auto' }} onClick={() => { window.location.href = legacyUrl(`/fees?q=${encodeURIComponent(`${house.buildingNo}/${house.roomNo}`)}`); }}><Icon name="plus" size={16} />预缴未来月份</button>
+                  <button className="btn g sm" style={{ marginLeft: 'auto' }} onClick={() => navigate(`/fees?q=${encodeURIComponent(`${house.buildingNo}/${house.roomNo}`)}`)}><Icon name="plus" size={16} />预缴未来月份</button>
                 </div>
                 {bills === null ? <div className="empty">正在实时查询 MIS 应收…</div>
                   : billErr ? <div className="card" style={{ padding: 28, textAlign: 'center' }}><span style={{ color: 'var(--dang)' }}>MIS 查询未完成：{billErr}</span><div className="muted" style={{ marginTop: 6, fontSize: 13 }}>不代表无待缴，请稍后重新选择该住户再查</div></div>
@@ -438,13 +467,13 @@ export default function Cashier() {
                       return (
                         <button key={b.id} className={`billRow ${on ? 'sel' : ''}`} onClick={() => setSelBills((s) => on ? s.filter((x) => x !== b.id) : [...s, b.id])}>
                           <div className="ck"><Icon name="check" /></div>
-                          <div className="bt"><span className="feeCell"><FeeIcon name={b.feeName} size={26} /><b>{b.feeName}{b.period ? ` · ${b.period}` : ''}</b></span><small>收据状态：{b.status === 'unpaid' ? '未缴' : b.status}</small></div>
+                          <div className="bt"><span className="feeCell"><FeeIcon name={b.feeName} size={26} /><b>{b.feeName}{b.period ? ` · ${b.period}` : ''}</b></span><small>收据状态：{b.status === 'unpaid' ? '未缴' : b.status}</small><div className="mis-remark"><span className="mis-remark-label">备注</span><span className="mis-remark-value">{b.remark?.trim() ? b.remark : '—'}</span></div></div>
                           <div className="ba money">{money(b.amountCents / 100)}</div>
                         </button>
                       );
                     })}
                 <PaidHistory key={`${house.id}-${tab}`} houseId={house.id} label={billLabel} match={(n) => (tab === 'bw' ? isBerth(n) : !isBerth(n))} />
-                <div className="note2" style={{ marginTop: 14 }}><Icon name="alert" />{billLabel}应收为 MIS 实时数据；MIS 写账未打通前，请在物业系统收款。{billLabel}整月缴纳、不拆单月、不减免；预缴会先在 MIS 生成正式应收，读回确认后再加入可收清单。</div>
+                <div className="note2" style={{ marginTop: 14 }}><Icon name="alert" />{billLabel}应收为 MIS 实时数据；本次收款条件、本人映射和原单状态见右侧。整月缴纳、不拆月、不减免。未来月份生成协议尚未核实，请在原MIS生成正式应收后刷新，不在PMS猜写账。</div>
               </div>
             ) : null}
 
@@ -503,7 +532,7 @@ export default function Cashier() {
             ) : null}
           </div>
 
-          <div className="card cart2">
+          {isBillTab?<MisCollectionPanel key={`${house.id}-${tab}`} houseId={house.id} label={billLabel} bills={selBillRows} loading={bills===null||!!billErr} onSaved={()=>{setSelBills([]);void loadBills(house);}}/>:<div className="card cart2">
             <div className="cartHd"><Icon name="receipt" /><b>本次办理</b><span className="cnt">{isBillTab ? billLabel : tab === 'pk' ? '停车缴费' : '门禁卡'}</span></div>
             <div className="cartBody">
               {isBillTab ? (
@@ -536,7 +565,7 @@ export default function Cashier() {
               </button>
               <div className="muted" style={{ fontSize: 12.5, textAlign: 'center', marginTop: 10 }}>系统只登记收款，后续 MIS / 停车 / 写卡自动执行并核验</div>
             </div>
-          </div>
+          </div>}
         </div>
       )}
 

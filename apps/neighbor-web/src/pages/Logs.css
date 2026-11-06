@@ -1,0 +1,16 @@
+@media (max-width: 640px) {
+  .logs-list .lrow {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    align-items: start;
+    column-gap: 12px;
+    row-gap: 6px;
+  }
+  .logs-list .lt {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .logs-list .log-time {
+    grid-column: 2;
+  }
+}

@@ -2,12 +2,15 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
+import UiPreferencesProvider from './components/UiPreferencesProvider';
 import { configureApi } from './lib/api';
 import { IconSprite } from './components/Icon';
 import './styles/design.css';
 import './styles/app.css';
 import './styles/large.css';
 import './styles/guards.css';
+import './styles/calendar.css';
+import './styles/erp-reference.css';
 import { startLayoutGuard } from './lib/layoutGuard';
 
 /**
@@ -23,6 +26,8 @@ window.addEventListener('vite:preloadError', (event) => {
 });
 
 configureApi();
+document.documentElement.dataset.appVersion = import.meta.env.VITE_APP_VERSION || '';
+document.documentElement.dataset.buildCommit = import.meta.env.VITE_BUILD_COMMIT || '';
 
 /** 子路径部署（/beta/）：路由 basename 跟着 vite base 走 */
 const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
@@ -31,7 +36,7 @@ createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <IconSprite />
     <BrowserRouter basename={basename}>
-      <App />
+      <UiPreferencesProvider><App /></UiPreferencesProvider>
     </BrowserRouter>
   </React.StrictMode>,
 );

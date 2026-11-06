@@ -11,13 +11,14 @@ import {
 import { AiConfigSection, AiRulesSection, AiSamplesSection, AiUsageSection } from '@/components/settings/ai';
 import { FeeTemplatesSection } from '@/components/settings/feeTemplates';
 import ToneIcon from '@/components/ToneIcon';
+import CollectionSmsSection from '@/components/settings/CollectionSmsSection';
 
-type Group = 'fee' | 'order' | 'chain' | 'notice' | 'ai' | 'owner';
+type Group = 'fee' | 'order' | 'chain' | 'notice' | 'sms' | 'ai' | 'owner';
 const GROUPS: Array<{ title: string; items: Array<[Group, string]> }> = [
   { title: '收费', items: [['fee', '收费标准']] },
   { title: '工单', items: [['order', '自动验收与催办'], ['ai', 'AI 填单助手']] },
   { title: '物资', items: [['chain', '采购审批链']] },
-  { title: '通知', items: [['notice', '微信通知']] },
+  { title: '通知', items: [['notice', '微信通知'], ['sms', '催缴短信']] },
   { title: '业主', items: [['owner', '手机号快速识别']] },
 ];
 const ALL = GROUPS.flatMap((g) => g.items.map(([k]) => k));
@@ -57,6 +58,7 @@ export default function Settings() {
         <FeeTemplatesSection canEdit={canEdit} />
       </>
     );
+    if (group === 'sms') return <CollectionSmsSection canEdit={canEdit} />;
     if (group === 'ai') return <><AiConfigSection settings={settings!} save={save} canEdit={canEdit} /><AiSamplesSection canEdit={canEdit} /><AiRulesSection canEdit={canEdit} /><AiUsageSection /></>;
     if (!settings) return err ? null : <Loading />;
     const p = { settings, save, canEdit };

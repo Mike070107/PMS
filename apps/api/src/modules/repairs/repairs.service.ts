@@ -1110,8 +1110,68 @@ export class RepairsService implements OnModuleInit {
     );
   }
 
+  /** 只读学习结果：每条成功且未作废的报修就是一次使用，不维护额外计数。 */
+  async locationSuggestions(communityId: number, user: AuthUser, access?: ResolvedAccess) {
+    if (!Number.isInteger(communityId) || communityId < 1 || communityId > 2147483647) {
+      throw new BadRequestException('communityId 必须为规范正整数');
+    }
+    const tenantId = this.resolveTenantId(user);
+    const resolved = access ?? (await this.accessService.getAccess(user));
+    // 不能将缺少 access 解释为全公司；与路由 work-orders view 权限保持一致。
+    if (!resolved || !(resolved.isPlatformAdmin || resolved.isTenantAdmin || resolved.pages?.['work-orders']?.view)) {
+      throw new ForbiddenException('没有查看工单的权限');
+    }
+    const scope = this.scopeIds(resolved);
+    if (scope && !scope.includes(communityId)) {
+      throw new ForbiddenException('该小区不在你的管理范围内');
+    }
+    await this.validateLocation({ communityId } as CreateRepairRequestDto, tenantId);
+    const rows = await this.repairRequestRepo.createQueryBuilder('r')
+      .select('r.locationText', 'text')
+      .addSelect('COUNT(*)', 'count')
+      .where('r.tenantId = :tenantId', { tenantId })
+      .andWhere('r.communityId = :communityId', { communityId })
+      .andWhere('r.deletedAt IS NULL')
+      // EXISTS counts each request once even when several work orders reference it.
+      .andWhere(qb => {
+        const validOrder = qb.subQuery()
+          .select('1')
+          .from(WorkOrder, 'locationOrder')
+          .where('locationOrder.tenantId = r.tenantId')
+          .andWhere('locationOrder.requestId = r.id')
+          .andWhere('locationOrder.deletedAt IS NULL')
+          .andWhere('locationOrder.status <> :locationVoided')
+          .getQuery();
+        return 'EXISTS ' + validOrder;
+      }, { locationVoided: WorkOrderStatus.VOIDED })
+      .andWhere('r.locationText IS NOT NULL')
+      .andWhere("r.locationText <> ''")
+      .groupBy('r.locationText')
+      .orderBy('COUNT(*)', 'DESC')
+      .addOrderBy('MIN(r.id)', 'ASC')
+      .limit(100)
+      .getRawMany<{ text: string; count: string }>();
+    return { items: rows.map(row => ({ text: row.text, count: Number(row.count) })) };
+  }
+
   private scopeIds(access?: ResolvedAccess): number[] | null {
     return scopeCommunityIds(access);
+  }
+
+  /**
+   * 一组页面 key 的并集：权限 key 拆分后新 / 旧 key 并存，
+   * 「谁该收到这一环的通知」必须两边都找，否则旧授权的人收不到。
+   */
+  private async userIdsWithAnyPermission(
+    tenantId: number,
+    pageKeys: string | string[],
+    action: 'view' | 'edit' | 'delete',
+  ): Promise<number[]> {
+    const keys = Array.isArray(pageKeys) ? pageKeys : [pageKeys];
+    const sets = await Promise.all(
+      keys.map((key) => this.accessService.userIdsWithPermission(tenantId, key, action)),
+    );
+    return [...new Set(sets.flat())];
   }
 
   async listWorkOrders(query: WorkOrdersQueryDto, user: AuthUser, access?: ResolvedAccess) {
@@ -3045,7 +3105,7 @@ export class RepairsService implements OnModuleInit {
       eventKey: 'purchase_pending_office',
       title: '',
     };
-    const userIds = await this.accessService.userIdsWithPermission(tenantId, step.pageKey, step.action);
+    const userIds = await this.userIdsWithAnyPermission(tenantId, step.pageKey, step.action);
     if (!userIds.length) return;
     const officeId = await this.accessService.officeIdOfCommunity(tenantId, workOrder.communityId);
     const coverage = await this.accessService.filterUsersCoveringOffice(tenantId, userIds, officeId);
@@ -4294,7 +4354,7 @@ export class RepairsService implements OnModuleInit {
       );
 
       // 通知下一环节的人：默认是负责派单的人（待汇总），办公室环节关了就是经理 / 采购
-      const dispatcherIds = await this.accessService.userIdsWithPermission(
+      const dispatcherIds = await this.userIdsWithAnyPermission(
         tenantId,
         pendingStep.pageKey,
         pendingStep.action,
@@ -4611,9 +4671,12 @@ export class RepairsService implements OnModuleInit {
 
       // 第一次催办找派单的人，再催就往上找有审批权的（通常是经理）
       const isFirst = urgeCount === 0;
-      const targetIds = await this.accessService.userIdsWithPermission(
+      // 第二次催办往上找「经理审核」这一档：采购 / 收费两个新 key 或旧 key 任一命中都算
+      const targetIds = await this.userIdsWithAnyPermission(
         tenantId,
-        isFirst ? 'app:dispatch' : 'app:approve-manager',
+        isFirst
+          ? 'app:dispatch'
+          : ['app:approve-purchase-manager', 'app:approve-business-manager', 'app:approve-manager'],
         'edit',
       );
       const receivers = await manager.find(User, {
@@ -5492,6 +5555,7 @@ export class RepairsService implements OnModuleInit {
           buildingId: dto.buildingId ?? null,
           houseId: dto.houseId ?? null,
           addressText: dto.addressText ?? null,
+          locationText: dto.locationText?.replace(/\s+/gu, ' ').trim() || null,
           contactName: contact.name,
           contactPhone: contact.phone,
           reporterRole,

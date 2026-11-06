@@ -1,0 +1,36 @@
+/* 全站日历：只影响日期控件；主色沿用个人主题，不修改业务状态色。 */
+.pms-date-input.ant-picker{min-height:44px;min-width:0;max-width:100%;border-radius:9px;background:#fff;box-sizing:border-box;vertical-align:middle;padding:7px 11px}
+.pms-date-input.ant-picker.in{height:auto}
+.pms-date-input .ant-picker-input>input{font-size:16px;font-variant-numeric:tabular-nums;line-height:1.5;min-width:0}
+.pms-date-input .ant-picker-suffix{color:var(--ink3,#7b8798)}
+.pms-date-input.ant-picker-disabled{background:#f5f6f8}
+.ant-picker-dropdown{font-size:16px;max-width:calc(100vw - 16px)}
+.ant-picker-dropdown .ant-picker-panel-container{border:1px solid #e3e8ef;border-radius:12px;box-shadow:0 12px 36px #20364d20;background:#fff;overflow:hidden}
+.ant-picker-dropdown .ant-picker-header{padding:4px 12px;border-bottom:1px solid #edf0f4}
+.ant-picker-dropdown .ant-picker-header button{min-height:40px;font-size:16px}
+.ant-picker-dropdown .ant-picker-header-super-prev-btn,.ant-picker-dropdown .ant-picker-header-prev-btn,.ant-picker-dropdown .ant-picker-header-next-btn,.ant-picker-dropdown .ant-picker-header-super-next-btn{min-width:32px}
+.ant-picker-dropdown .ant-picker-content th{font-size:14px;font-weight:500;color:#778394;height:34px}
+.ant-picker-dropdown .ant-picker-cell{padding:3px 0;font-size:16px}
+.ant-picker-dropdown .ant-picker-cell-inner{border-radius:7px;font-variant-numeric:tabular-nums}
+.ant-picker-dropdown .ant-picker-cell-in-view:not(.ant-picker-cell-disabled){color:#263447}
+.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-selected .ant-picker-cell-inner,.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-range-start .ant-picker-cell-inner,.ant-picker-dropdown .ant-picker-cell-in-view.ant-picker-cell-range-end .ant-picker-cell-inner{color:#fff}
+.ant-picker-dropdown .ant-picker-footer{border-top:1px solid #edf0f4;font-size:15px}
+.ant-picker-dropdown .ant-picker-footer-extra,.ant-picker-dropdown .ant-picker-ranges{padding:4px 12px}
+.ant-picker-dropdown .ant-picker-now-btn,.ant-picker-dropdown .ant-picker-today-btn{display:inline-flex;min-height:36px;align-items:center}
+@media(max-width:740px){
+ .ant-picker-dropdown{position:fixed!important;top:50%!important;left:50%!important;right:auto!important;transform:translate(-50%,-50%)!important}
+ .ant-picker-dropdown .ant-picker-range-arrow{display:none}
+ .ant-picker-dropdown .ant-picker-panel-container{max-height:calc(100dvh - 24px);overflow-y:auto}
+ .ant-picker-dropdown .ant-picker-panels{flex-direction:column}
+ /* 窄屏范围日历只显示一个月，保留翻月选择跨月范围；双月纵叠会超出屏幕。 */
+ .ant-picker-dropdown .ant-picker-panels>.ant-picker-panel:nth-child(2){display:none}
+ .ant-picker-dropdown .ant-picker-panels>.ant-picker-panel:first-child .ant-picker-header-next-btn,.ant-picker-dropdown .ant-picker-panels>.ant-picker-panel:first-child .ant-picker-header-super-next-btn{visibility:visible!important}
+ .ant-picker-dropdown .ant-picker-datetime-panel{flex-direction:column}
+ .ant-picker-dropdown .ant-picker-date-panel,.ant-picker-dropdown .ant-picker-month-panel,.ant-picker-dropdown .ant-picker-year-panel,.ant-picker-dropdown .ant-picker-decade-panel{width:min(320px,calc(100vw - 24px))}
+ .ant-picker-dropdown .ant-picker-content{width:100%!important}
+ .ant-picker-dropdown .ant-picker-date-panel .ant-picker-cell-inner{min-width:34px;height:36px;line-height:36px}
+ .ant-picker-dropdown .ant-picker-time-panel{width:100%;border-inline-start:0;border-top:1px solid #edf0f4}
+ .ant-picker-dropdown .ant-picker-time-panel-column{width:100%;flex:1}
+ .ant-picker-dropdown .ant-picker-time-panel-column{height:120px}
+ .ant-picker-dropdown .ant-picker-header button{min-height:44px}
+}
