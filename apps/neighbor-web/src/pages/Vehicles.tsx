@@ -8,7 +8,7 @@ import { useAddressTree } from '@/lib/address-tree';
 import { Btn, Card, ErrorNote, Loading, Sheet, toast } from '@/components/ui';
 import HousePicker, { type PickedHouse } from '@/components/HousePicker';
 import Icon from '@/components/Icon';
-import { field, vehicleIdentity, GARAGES, garageState, groupByPlate, normPlate } from '@/lib/parking-fields';
+import { field, vehicleIdentity, identityTone, GARAGES, garageState, groupByPlate, normPlate } from '@/lib/parking-fields';
 import RenewSheet from '@/components/vehicle-ops/RenewSheet';
 import { ChangePlateSheet, DownloadSheet, DeleteSheet } from '@/components/vehicle-ops/OtherOpSheets';
 import { RebindSheet, GaragesSheet } from '@/components/vehicle-ops/RebindGarageSheets';
@@ -224,7 +224,7 @@ function VehicleCard({ plate, rows, cloud, onChanged }: { plate: string; rows: P
     <Card className="veh-card">
       <div className="veh-head">
         <div className="veh-plate">{plate}</div>
-        <span className={`pill ${identity === '亲情车' ? 's-info' : 's-done'}`}>{identity}</span>
+        <span className={`tag ${identityTone(identity)}`}>{identity}</span>
         {rows.map((r) => <span key={r.database} className="veh-db">{dbLabel(r.database)}</span>)}
         {expireDays !== null ? (
           <span className={`pill ${expireDays < 0 ? 's-dang' : expireDays <= 30 ? 's-pend' : 's-done'}`} style={{ marginLeft: 'auto' }}>

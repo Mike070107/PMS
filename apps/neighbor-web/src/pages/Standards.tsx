@@ -1,3 +1,4 @@
+import { identityTone } from '@/lib/parking-fields';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { request } from '@pms/api-client';
 import { money } from '@/lib/format';
@@ -97,13 +98,6 @@ function GroupsTab({ groups, all, targets, communities, cid, setCid, counts, can
     isDefault: !!r.config?.isDefault, enabled: r.enabled, ...pricingFields(r),
   } : { name: '', communityId: cid || communities[0]?.id || null, targets: [], isDefault: false, enabled: true, ...pricingFields() });
 
-  /** 车辆类别配色：住户车绿、亲情车蓝、租户车琥珀（和收银台停车缴费同色） */
-  const classTone = (name?: string | null) => {
-    const n = name || '';
-    if (n.includes('亲情')) return 'acc';
-    if (n.includes('租')) return 'warn';
-    return 'ok';
-  };
   const PRESET_CLASSES = ['住户车', '亲情车', '租户车'];
   const quickCreate = (name: string) => {
     if (!canEdit) return;
@@ -157,7 +151,7 @@ function GroupsTab({ groups, all, targets, communities, cid, setCid, counts, can
             <span className="muted" style={{ fontSize: 13 }}>系统三类：</span>
             {PRESET_CLASSES.map((n) => (
               <button key={n} className={`btn sm`} onClick={() => quickCreate(n)} title={`新增「${n}」车辆类别`}>
-                <span className={`tag ${classTone(n)}`} style={{ marginRight: 6 }}>{n}</span>添加
+                <span className={`tag ${identityTone(n)}`} style={{ marginRight: 6 }}>{n}</span>添加
               </button>
             ))}
             <button className="btn p" onClick={() => open()}><Icon name="plus" size={16} />新增车辆类别</button>
@@ -174,7 +168,7 @@ function GroupsTab({ groups, all, targets, communities, cid, setCid, counts, can
               return (
                 <tr key={r.id} style={r.enabled ? undefined : { opacity: 0.55 }}>
                   <td className="nw muted">{i + 1}</td>
-                  <td className="nw"><span className={`tag ${classTone(g)}`}><b style={{ fontWeight: 600 }}>{g}</b></span>{r.config?.isDefault ? <span className="tag mute" style={{ marginLeft: 6 }}>默认</span> : null}</td>
+                  <td className="nw"><span className={`tag ${identityTone(g)}`}><b style={{ fontWeight: 600 }}>{g}</b></span>{r.config?.isDefault ? <span className="tag mute" style={{ marginLeft: 6 }}>默认</span> : null}</td>
                   <td>{cname(r.communityId)}<div className="sub2">{ts.length ? ts.map(tLabel).join('、') : '全部车库'}</div></td>
                   <td style={{ minWidth: 380 }}><div className="set-tags">{r.config?.priceMode === 'monthly' ? <span className="ok">{money((r.config.monthlyPriceCents ?? r.unitPriceCents) / 100)}/月 · {r.config.discountMonths ? `每满${r.config.discountCycleMonths ?? 12}个月减免${r.config.discountMonths}个月` : '不减免'} · 支持所有月份</span> : null}{tiersOf(r).map((t) => <span key={t.months} className="acc">{t.months} 个月 <b>{money(t.amountCents / 100)}</b></span>)}{!tiersOf(r).length ? <span className="warn">未设价格</span> : null}</div></td>
                   <td className="nw" style={{ textAlign: 'right' }}>{counts?.[g] ?? 0}</td>
