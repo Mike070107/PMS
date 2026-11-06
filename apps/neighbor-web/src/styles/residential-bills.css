@@ -30,3 +30,10 @@
 
 .rb-warn-banner{display:flex;align-items:flex-start;gap:10px;padding:14px 16px;margin:0 0 14px;background:#fff4e5;border:1px solid #f0b46a;border-left:4px solid #d9822b;border-radius:8px;color:#7a3f00}
 .rb-warn-banner b{display:block;font-size:14.5px;margin-bottom:3px}.rb-warn-banner span{display:block;font-size:13px;line-height:1.55;color:#8a4a05}
+
+.rb-follow-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 0 14px}
+.rb-follow-list>div{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);min-width:0}
+.rb-follow-list b{flex:1;min-width:0;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rb-follow-list span{font-variant-numeric:tabular-nums;font-weight:600}
+.rb-follow-list small{color:var(--ink3);font-size:12px;white-space:nowrap}
+@media(max-width:900px){.rb-follow-list{grid-template-columns:minmax(0,1fr)}}
