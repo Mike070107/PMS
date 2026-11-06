@@ -5807,3 +5807,10 @@
   - 632a4401 fix(audit): cover collection SMS actions without capturing sensitive payloads
   - d1c6945d fix(parking): connect paid civil-defense registration with create-only safeguards
 
+## 2026-11-06 13:26 · api · cfd931f1
+
+- 包：`pms-api-fast-20261106-132608.tar.gz`
+- 提交：cfd931f1 feat(bills): add collection attribution, followups, print registry and SMS readiness
+- 自上次（632a4401）以来上线的相关提交：
+  - cfd931f1 feat(bills): add collection attribution, followups, print registry and SMS readiness
+
