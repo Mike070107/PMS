@@ -84,8 +84,6 @@
 /* 2. 工具条（动作）：粘在滚动容器顶部，不随表格滚动 */
 .rb-toolbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 12px;margin:0 0 12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh)}
 .rb-toolbar-filters{display:flex;align-items:center;gap:10px;flex:1;min-width:0;flex-wrap:wrap}
-.rb-toolbar-field{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink2);flex:none}
-.rb-toolbar-field .in{width:168px;height:40px;font-size:14px;flex:none}
 .rb-toolbar .rb-search{height:40px;min-width:200px;max-width:420px;flex:1 1 220px}
 .rb-toolbar .chips{flex:none}
 .rb-toolbar .chip{height:34px}
@@ -155,8 +153,6 @@
 @media(max-width:700px){
  .rb-toolbar{position:static}
  .rb-toolbar-filters,.rb-toolbar-actions{flex-basis:100%}
- .rb-toolbar-field{width:100%}
- .rb-toolbar-field .in{width:100%;flex:1}
  .rb-toolbar-actions .btn{flex:1}
  .rb-band-main b{font-size:27px}
  .rb-band-metrics{gap:8px}
@@ -193,3 +189,11 @@
  .rb-notify-confirm .rb-actions{width:100%}
  .rb-notify-confirm .rb-actions .btn{flex:1}
 }
+
+/* ── 页面底部折叠区：小区对比与责任人 Top 10 共用同一个默认收起的 details ── */
+.rb-fold-bottom{margin:16px 0 0}
+.rb-fold-section{min-width:0}
+.rb-fold-section + .rb-fold-section{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.rb-fold-section .rb-section-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 10px}
+.rb-fold-section .rb-section-head b{font-size:15px}
+.rb-fold-section .rb-section-head small{font-size:12.5px;color:var(--ink3)}
