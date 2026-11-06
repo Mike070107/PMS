@@ -5723,3 +5723,10 @@
   - f64fa8fc Merge branch 'main' into fix/parking-renewal-final
   - ebdd67de fix: preserve parking renewal months prices and dates
 
+## 2026-11-06 09:09 · web · 732489be
+
+- 包：`pms-web-20261106-090850.tar.gz`
+- 提交：732489be feat(bills): 缴费通知单版式重做——页眉单据头/房号信息条/合计大写/缴费方式/开通提示（文案与结构契约不变，33 条回归测试通过）
+- 自上次（d7e7e50a）以来上线的相关提交：
+  - 732489be feat(bills): 缴费通知单版式重做——页眉单据头/房号信息条/合计大写/缴费方式/开通提示（文案与结构契约不变，33 条回归测试通过）
+
