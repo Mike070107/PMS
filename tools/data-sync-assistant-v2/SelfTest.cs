@@ -62,6 +62,8 @@ namespace Pms.DataSyncAssistant
                 VerifyAssistantUpdater(root);
                 VerifyProductUpdater();
                 VerifySafeUpgradeRecovery();
+                var accessQueryLog = VerifyAccessQueries();
+                WriteSelfTestLog(accessQueryLog);
             }
             finally
             {
@@ -320,6 +322,16 @@ namespace Pms.DataSyncAssistant
             capabilities = AgentLoop.BuildCapabilities(mapped, true, false, true, true);
             if (!capabilities["controllerUpload"] || !capabilities["historicalAccessGrant"])
                 throw new InvalidOperationException("控制器通信组件就绪后未上报下发能力");
+            // 新增 accessCardQuery 只能如实反映只读查询探测结果；既有读写/控制器能力必须保持原值。
+            capabilities = AgentLoop.BuildCapabilities(mapped, true, false, true, true, true, false, false, true);
+            if (!capabilities["accessCardQuery"] || !capabilities["accessDbRead"] || !capabilities["accessDbWrite"] ||
+                !capabilities["controllerUpload"] || !capabilities["historicalAccessGrant"])
+                throw new InvalidOperationException("只读查询能力键未与既有读写/控制器能力独立上报");
+            capabilities = AgentLoop.BuildCapabilities(mapped, true, false, true, true, true, false, false, false);
+            if (capabilities["accessCardQuery"])
+                throw new InvalidOperationException("只读查询探测失败时未如实上报 accessCardQuery=false");
+            if (!capabilities["accessDbWrite"] || !capabilities["controllerUpload"])
+                throw new InvalidOperationException("探测失败不应影响既有读写/控制器能力上报");
 
             var json = "{\"action\":\"activate_access\",\"itemId\":8,\"displayName\":\"228/16/401/6\",\"wgCardNo\":\"22355403\",\"targetBuildings\":[{\"id\":11,\"buildingNo\":\"11\",\"accessSystem\":\"iccard\"}]}";
             var task = new JavaScriptSerializer().Deserialize<AgentTask>(json);
@@ -838,6 +850,94 @@ namespace Pms.DataSyncAssistant
                 throw new InvalidOperationException("新版启动失败时未选择已存在的旧版回退路径");
             if (UnifiedServiceManager.ChooseFailureAction(false, 0) != UpgradeFailureAction.RetryUnifiedWithoutFallback)
                 throw new InvalidOperationException("没有旧服务时仍可能卸载唯一的新版服务");
+        }
+
+        /**
+         * .88 只读查询：用本机真库副本（或环境变量 PMS_SELFTEST_MJ_MDB / PMS_SELFTEST_IC_MDB 指定）验证
+         * 按房号、按卡号（含 7/8 位补零变体）、按姓名、最近通行记录、楼栋权限五项查询。
+         * 本机无 .88 库副本时跳过（不把缺少副本判为失败）；iCCard 密码只从环境变量 PMS_ICCard_MdbPassword 读取。
+         */
+        private static string VerifyAccessQueries()
+        {
+            var detail = new List<string>();
+            var mjPath = FirstExistingPath(
+                Environment.GetEnvironmentVariable("PMS_SELFTEST_MJ_MDB"),
+                @"D:\PMS-Access-Backups\20260930-125356\MJDataBase.mdb");
+            var icPath = FirstExistingPath(
+                Environment.GetEnvironmentVariable("PMS_SELFTEST_IC_MDB"),
+                @"D:\PMS-Access-Backups\20260930-125356\iCCard.mdb");
+            if (mjPath == null)
+            {
+                detail.Add("SKIP access-query：本机无 MjSystem 真库副本（可用 PMS_SELFTEST_MJ_MDB 指定），跳过五项查询验证");
+                return String.Join("\r\n", detail.ToArray());
+            }
+            var password = Environment.GetEnvironmentVariable("PMS_ICCard_MdbPassword");
+            var config = new AgentConfig
+            {
+                Kind = "access_gateway",
+                MjSystemDatabasePath = mjPath,
+                IcCardDatabasePath = icPath ?? ""
+            };
+
+            var variants = AccessDatabaseQuery.CardVariants("06234735");
+            if (!variants.Contains("06234735") || !variants.Contains("6234735"))
+                throw new InvalidOperationException("卡号 06234735 未生成 8 位原样/去零 7 位两种变体");
+            if (!AccessDatabaseQuery.CardVariants("6234735").Contains("06234735"))
+                throw new InvalidOperationException("7 位卡号 6234735 未生成 8 位补零变体");
+
+            var byCard = AccessDatabaseQuery.QueryByCard(config, password, "06234735");
+            if (!byCard.cards.Any(card => card.accessSystem == "mjsystem"))
+                throw new InvalidOperationException("按卡号 06234735 未命中 MjSystem 卡：" + JoinErrors(byCard.errors));
+            var byPadded = AccessDatabaseQuery.QueryByCard(config, password, "6234735");
+            if (!byPadded.cards.Any(card => card.accessSystem == "mjsystem" && card.cardNo.TrimStart('0') == "6234735"))
+                throw new InvalidOperationException("按去零变体 6234735 未命中同一张 MjSystem 卡");
+            var byRoom = AccessDatabaseQuery.QueryByRoom(config, password, "228/26/602");
+            if (!byRoom.cards.Any(card => !String.IsNullOrWhiteSpace(card.cardNo)))
+                throw new InvalidOperationException("按房号 228/26/602 未查到卡：" + JoinErrors(byRoom.errors));
+            var byName = AccessDatabaseQuery.QueryByName(config, password, "228/26/602/9");
+            if (!byName.cards.Any(card => !String.IsNullOrWhiteSpace(card.cardNo)))
+                throw new InvalidOperationException("按姓名 228/26/602/9 未查到卡：" + JoinErrors(byName.errors));
+            var records = AccessDatabaseQuery.RecentRecords(config, password, "06234735");
+            var groups = AccessDatabaseQuery.Groups(config, password);
+
+            detail.Add("按卡号=06234735 查到 " + byCard.cards.Count + " 张卡（MjSystem）");
+            detail.Add("补零/去零变体=6234735 命中同一张卡：" + byPadded.cards.Count + " 张");
+            detail.Add("按房号=228/26/602 查到 " + byRoom.cards.Count + " 张卡");
+            detail.Add("按姓名=228/26/602/9 查到 " + byName.cards.Count + " 张卡");
+            detail.Add("最近通行记录= " + records.Count + " 条（iCCard 未装密码时仅 MjSystem）");
+            detail.Add("楼栋权限组= " + groups.Count + " 组");
+            if (byCard.errors.Count > 0) detail.Add("库不可读提示：" + JoinErrors(byCard.errors));
+
+            var capability = AccessDatabaseQuery.ProbeCapability(config, password);
+            if (!capability.canQuery)
+                throw new InvalidOperationException("只读查询能力探测未通过：" + capability.message);
+            detail.Add("accessCardQuery 探测=true；" + capability.message);
+            return String.Join("\r\n", detail.ToArray());
+        }
+
+        private static string FirstExistingPath(params string[] candidates)
+        {
+            foreach (var candidate in candidates)
+            {
+                if (!String.IsNullOrWhiteSpace(candidate) && File.Exists(candidate)) return candidate;
+            }
+            return null;
+        }
+
+        private static string JoinErrors(IEnumerable<string> errors)
+        {
+            return String.Join("；", errors.ToArray());
+        }
+
+        private static void WriteSelfTestLog(string detail)
+        {
+            try
+            {
+                File.WriteAllText(
+                    Path.Combine(Path.GetTempPath(), "PmsDataSyncAssistant-self-test.log"),
+                    "self-test ok\r\n" + (detail ?? ""), Encoding.UTF8);
+            }
+            catch { }
         }
 
         private static void AssertRejectsMultipleDoors(Action action, string path)
