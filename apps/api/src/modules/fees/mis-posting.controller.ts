@@ -16,4 +16,3 @@ export class MisPostingController{
  @Get(':id') @RequirePermission('fees','view')
  detail(@Param('id',ParseIntPipe) id:number|string,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.posting.detail(Number(id),user,access);}
 }
-

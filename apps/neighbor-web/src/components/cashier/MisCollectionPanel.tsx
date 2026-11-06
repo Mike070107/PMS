@@ -36,4 +36,3 @@ export default function MisCollectionPanel(props:Props){
   <p className="muted">预缴应收生成协议尚未核实，不在PMS生成未来月份；原MIS账单整月缴纳、不拆月、不减免。</p>
  </div></div>;
 }
-

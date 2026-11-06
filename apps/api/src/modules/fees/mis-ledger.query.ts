@@ -17,4 +17,3 @@ export function buildMisLedgerQuery(q:MisLedgerQuery,offices:string[],addresses?
  const list=`WITH ranked AS(SELECT ROW_NUMBER() OVER(ORDER BY w.ZJ_SKRQ DESC,w.ZJ_ID DESC) AS rowNo,CONVERT(varchar(30),w.ZJ_ID) AS id,l.管理处 AS officeCode,${compiled.address} AS address,z.姓名 AS ownerName,w.ZJ_LX AS feeCode,f.XM AS feeName,w.ZJ_CNY AS period,CONVERT(varchar(50),w.ZJ_JE,2) AS amount,CONVERT(varchar(10),w.ZJ_SKRQ,23) AS paidAt,CONVERT(varchar(10),w.ZJ_TKRQ,23) AS refundedAt,w.凭证号码 AS receiptNo,COALESCE(NULLIF(w.收款方式,N''),m.收款方式) AS paymentMethod,w.收款人 AS cashier,w.备注 AS remark ${from}) SELECT * FROM ranked WHERE rowNo BETWEEN @firstRow AND @lastRow ORDER BY rowNo;`;
  return{sql:summary+list,params,page,pageSize};
 }
-

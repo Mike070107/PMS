@@ -5,4 +5,3 @@ export class BusinessLedgerController{
  @Get() @RequirePermission('business','view')
  list(@Query() q:BusinessLedgerQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.ledger.list(q,user,access);}
 }
-

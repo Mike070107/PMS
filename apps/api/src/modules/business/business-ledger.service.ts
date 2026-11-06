@@ -30,4 +30,3 @@ export class BusinessLedgerService{
   return{rows,total,page,pageSize,summary:{paidCents:safe(totals?.paidCents),refundedCents:safe(totals?.refundedCents),netCents:safe(totals?.netCents),freeCount:safe(totals?.freeCount),syncedCount:safe(totals?.syncedCount),paidCount:safe(totals?.paidCount),byService}};
  }
 }
-

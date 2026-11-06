@@ -8,4 +8,3 @@ export function resolveMisCollector(config:string|undefined,tenantId:number,user
  if(!text(collector?.id)||!text(collector?.name)||!text(payment?.name)||!Number.isInteger(payment?.id)||payment.id<1||payment.id>2147483647)return refuse();
  return {collectorId:collector.id,collectorName:collector.name,paymentMethodId:payment.id,paymentMethod:payment.name};
 }
-

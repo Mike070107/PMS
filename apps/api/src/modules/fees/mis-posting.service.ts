@@ -89,4 +89,3 @@ export class MisPostingService{
   });}catch(e){if((e as any)?.code!=='23505')throw e;const race=await this.repo.findOne({where:{tenantId:user.tenantId!,txnNo}});if(!race)throw new ConflictException('原收款正在保存，请按原单核对，勿重新收款');return match(race);}
  }
 }
-

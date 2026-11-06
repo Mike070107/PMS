@@ -13,4 +13,3 @@ export class MisPostingConnector implements OnModuleDestroy{
  async inspect(command:MisPostingCommand){return inspectMisPosting(command,await this.driver());}
  async onModuleDestroy(){const p=this.poolPromise;this.poolPromise=null;if(p)await p.then(pool=>pool.close()).catch(()=>{});}
 }
-
