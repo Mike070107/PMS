@@ -4,9 +4,12 @@ import { inventory, purchases, request } from '@pms/api-client';
 import type { PurchaseOrderView } from '@pms/api-client/src/endpoints/inventory';
 import { PurchaseRequestStatus } from '@pms/shared-types';
 import type { MaterialView, PurchaseRequestView, WarehouseView } from '@pms/shared-types';
+import { downloadPurchaseRequestForms } from '@legacy/lib/purchaseRequestForm';
 import RequestComposer from '@/components/purchase/RequestComposer';
 import Icon from '@/components/Icon';
+import { useSession } from '@/lib/auth';
 import { can } from '@/lib/perm';
+import { purchaseFormOf } from '@/lib/purchase-form';
 import { Btn, Card, Empty, ErrorNote, Field, Loading, Sheet, toast } from '@/components/ui';
 import { ago, dayjs, money } from '@/lib/format';
 
@@ -39,6 +42,7 @@ export default function Purchase() {
   const [err, setErr] = useState('');
   const [checked, setChecked] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [detail, setDetail] = useState<PurchaseRequestView | null>(null);
   const [composing, setComposing] = useState(false);
   const [ordering, setOrdering] = useState<PurchaseRequestView | null>(null);
@@ -46,6 +50,9 @@ export default function Purchase() {
   const [reject, setReject] = useState<{ req: PurchaseRequestView; lineId?: string; label: string } | null>(null);
   const [reason, setReason] = useState('');
   const canEdit = can('inventory', 'edit');
+  const session = useSession();
+  /** 申购单抬头：当前管理处视角；只有唯一管理处时直接用它，多个视角又没选就留空手填 */
+  const areaName = session.actingOffice?.name || (session.access?.offices?.length === 1 ? session.access.offices[0].name : '');
   const [params, setParams] = useSearchParams();
   // 库存页「申请采购」带 ?new=1 过来：直接打开新建申请（里面可一键带入低库存材料）
   useEffect(() => {
@@ -72,6 +79,23 @@ export default function Purchase() {
   const transit = useMemo(() => orders.filter((o) => o.status === 'placed' || o.status === 'partial').sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [orders]);
   const rows = useMemo(() => (current.status && byStatus ? [...(byStatus[current.status] ?? [])].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')) : []), [byStatus, current.status]);
   const countOf = (s: (typeof STAGES)[number]) => (s.key === 'transit' ? transit.length : s.status && byStatus ? (byStatus[s.status] ?? []).length : 0);
+
+  /**
+   * 审批环节导出 Excel：勾了就导勾选的，没勾就导本环节全部。
+   * 一张申请一个工作表，版式沿用旧后台「下载申购单」的《材料申购单》，
+   * 审批人可以直接打印签字，不用再手抄一遍。
+   */
+  const exportRequests = async (list: PurchaseRequestView[]) => {
+    if (!list.length) { toast('没有可导出的申请'); return; }
+    setExporting(true);
+    try {
+      await downloadPurchaseRequestForms(list.map((r) => purchaseFormOf(r, areaName)), {
+        fileName: list.length > 1 ? `材料申购单_${current.title}_${dayjs().format('YYYYMMDD')}` : undefined,
+      });
+      toast(list.length > 1 ? `已导出 ${list.length} 张申购单` : `已导出 ${list[0].requestNo}`);
+    } catch (e) { toast(e instanceof Error ? e.message : '导出 Excel 失败'); }
+    finally { setExporting(false); }
+  };
 
   const run = async (fn: () => Promise<unknown>, msg: string) => {
     setBusy(true);
@@ -114,10 +138,15 @@ export default function Purchase() {
               </>
             ) : null}
             {stage === 'manager' || stage === 'purchaser' ? (
-              <Btn size="sm" kind="p" disabled={busy || !checked.length} onClick={() => {
-                const fn = stage === 'manager' ? purchases.managerApprove : purchases.purchaserApprove;
-                void run(async () => { for (const id of checked) await fn(id); }, `已通过 ${checked.length} 张`);
-              }}>批量通过 ({checked.length})</Btn>
+              <>
+                <Btn size="sm" disabled={busy || exporting || !rows.length} onClick={() => void exportRequests(checked.length ? rows.filter((r) => checked.includes(r.id)) : rows)}>
+                  <Icon name="download" size={15} />{exporting ? '导出中…' : checked.length ? `导出 Excel（勾选 ${checked.length}）` : `导出 Excel（全部 ${rows.length}）`}
+                </Btn>
+                <Btn size="sm" kind="p" disabled={busy || !checked.length} onClick={() => {
+                  const fn = stage === 'manager' ? purchases.managerApprove : purchases.purchaserApprove;
+                  void run(async () => { for (const id of checked) await fn(id); }, `已通过 ${checked.length} 张`);
+                }}>批量通过 ({checked.length})</Btn>
+              </>
             ) : null}
           </div>
         </div>
@@ -156,7 +185,7 @@ export default function Purchase() {
                   <td className="muted">{ago(r.createdAt)}</td>
                   <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
                     {stage === 'manager' || stage === 'purchaser' ? (
-                      <><Btn size="sm" kind="d" disabled={busy} onClick={() => { setReject({ req: r, label: '整张申请' }); setReason(''); }}>驳回</Btn> <Btn size="sm" kind="p" disabled={busy} onClick={() => void approve(r)}>通过</Btn></>
+                      <><Btn size="sm" disabled={exporting} title="导出 Excel 申购单" onClick={() => void exportRequests([r])}>导出</Btn> <Btn size="sm" kind="d" disabled={busy} onClick={() => { setReject({ req: r, label: '整张申请' }); setReason(''); }}>驳回</Btn> <Btn size="sm" kind="p" disabled={busy} onClick={() => void approve(r)}>通过</Btn></>
                     ) : null}
                     {stage === 'approved' && canEdit ? <Btn size="sm" kind="p" onClick={() => setOrdering(r)}>下单</Btn> : null}
                     {stage === 'rejected' && canEdit ? <Btn size="sm" onClick={() => void run(() => purchases.reopen(r.id), '已退回待汇总，改好后重新提交')}>修改重提</Btn> : null}
@@ -211,6 +240,7 @@ export default function Purchase() {
               </>
             ) : null}
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <Btn disabled={exporting} onClick={() => void exportRequests([detail])}><Icon name="download" size={15} />{exporting ? '导出中…' : '导出 Excel'}</Btn>
               {detail.status === S.MANAGER_REVIEW || detail.status === S.PURCHASER_REVIEW ? (
                 <><Btn kind="p" disabled={busy} onClick={() => void approve(detail)}>通过</Btn><Btn kind="d" disabled={busy} onClick={() => { setReject({ req: detail, label: '整张申请' }); setReason(''); }}>驳回整张</Btn></>
               ) : null}

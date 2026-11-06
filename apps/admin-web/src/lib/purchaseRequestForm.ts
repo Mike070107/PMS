@@ -10,6 +10,9 @@
  *
  * 用 exceljs 不用 SheetJS：这张表的价值在边框和居中，社区版 SheetJS 写不了单元格样式，
  * 导出来是一张没框的表，打印出来不能看。exceljs 按需 import()，不进首屏包。
+ *
+ * 2026-11 新采购流程的审批环节也要导出：一张申请一个工作表，版式完全一致，
+ * 审批人勾一批就能一起下载；单张下载仍走原来的入口和行为。
  */
 
 export interface PurchaseFormItem {
@@ -38,6 +41,11 @@ export interface PurchaseFormData {
   items: PurchaseFormItem[];
 }
 
+export interface PurchaseFormExportOptions {
+  /** 下载文件名（不含 .xlsx）；多张时建议传，不传按第一张的抬头和日期命名 */
+  fileName?: string;
+}
+
 /** 纸面固定 10 行，明细多了就按明细行数走 */
 const MIN_ROWS = 10;
 const HEADERS = ['序号', '材料名称', '规格', '申购量', '备注', '参考图片'];
@@ -56,24 +64,16 @@ async function imageDataUrl(url: string): Promise<string | null> {
   }
 }
 
-export async function downloadPurchaseRequestForm(data: PurchaseFormData): Promise<void> {
-  const ExcelJS = (await import('exceljs')).default ?? (await import('exceljs'));
-  const wb = new ExcelJS.Workbook();
-  wb.creator = '邻修物业管理平台';
-  wb.created = new Date();
-  const ws = wb.addWorksheet('材料申购单', {
-    pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
-  });
+function safeFileName(value: string): string {
+  return value.replace(/[\\/:*?"<>|]/g, '_');
+}
 
-  ws.columns = [
-    { width: 8 },
-    { width: 22 },
-    { width: 30 },
-    { width: 12 },
-    { width: 28 },
-    { width: 18 },
-  ];
-
+/** 画一张纸面申购单；工作簿和版式由调用方给，单张 / 多张共用同一套 */
+async function fillSheet(
+  wb: import('exceljs').Workbook,
+  ws: import('exceljs').Worksheet,
+  data: PurchaseFormData,
+): Promise<void> {
   // ---- 标题 ----
   ws.mergeCells('A1:F1');
   const title = ws.getCell('A1');
@@ -161,6 +161,46 @@ export async function downloadPurchaseRequestForm(data: PurchaseFormData): Promi
   foot.font = { name: '宋体', size: 10, color: { argb: 'FF595959' } };
   foot.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
   ws.getRow(footRow).height = 22;
+}
+
+/**
+ * 一次导出多张：一张申请一个工作表，版式与单张下载完全相同。
+ * 审批环节勾选一批下载时用，单张入口仍走 downloadPurchaseRequestForm。
+ */
+export async function downloadPurchaseRequestForms(
+  list: PurchaseFormData[],
+  options: PurchaseFormExportOptions = {},
+): Promise<void> {
+  if (!list.length) throw new Error('没有可导出的采购申请');
+  const ExcelJS = (await import('exceljs')).default ?? (await import('exceljs'));
+  const wb = new ExcelJS.Workbook();
+  wb.creator = '邻修物业管理平台';
+  wb.created = new Date();
+
+  const usedNames = new Set<string>();
+  for (const data of list) {
+    // 工作表名不能含 : \ / ? * [ ]，且 ≤ 31 字符；单张沿用「材料申购单」，多张用单号区分、重复时补序号
+    const base = list.length === 1
+      ? '材料申购单'
+      : (data.requestNo || '材料申购单').replace(/[:\\/?*[\]]/g, ' ').slice(0, 28) || '材料申购单';
+    let sheetName = base;
+    let n = 2;
+    while (usedNames.has(sheetName)) sheetName = `${base.slice(0, 26)}(${n++})`;
+    usedNames.add(sheetName);
+
+    const ws = wb.addWorksheet(sheetName, {
+      pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+    });
+    ws.columns = [
+      { width: 8 },
+      { width: 22 },
+      { width: 30 },
+      { width: 12 },
+      { width: 28 },
+      { width: 18 },
+    ];
+    await fillSheet(wb, ws, data);
+  }
 
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
@@ -169,14 +209,21 @@ export async function downloadPurchaseRequestForm(data: PurchaseFormData): Promi
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  const fileName = [data.areaName || '未命名管理处', '材料申购单', data.requestNo]
-    .filter(Boolean)
-    .join('_')
-    .replace(/[\\/:*?"<>|]/g, '_');
+  const first = list[0];
+  const fileName = options.fileName
+    ? safeFileName(options.fileName)
+    : list.length === 1
+      ? safeFileName([first.areaName || '未命名管理处', '材料申购单', first.requestNo].filter(Boolean).join('_'))
+      : safeFileName([first.areaName || '全部管理处', '材料申购单', `${list.length}张`].join('_'));
   a.download = `${fileName}.xlsx`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   // 立刻 revoke 在部分浏览器上会让下载中断，挪到下一帧
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** 单张下载（原入口）：文件名保持「管理处_材料申购单_单号.xlsx」 */
+export async function downloadPurchaseRequestForm(data: PurchaseFormData): Promise<void> {
+  await downloadPurchaseRequestForms([data]);
 }
