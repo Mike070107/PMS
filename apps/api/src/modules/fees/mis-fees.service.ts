@@ -24,7 +24,7 @@ export const MIS_PROPERTY_OFFICES:Record<string,string[]>={
 @Injectable()
 export class MisFeesService implements OnModuleDestroy {
  private poolPromise:Promise<any>|null=null;
- constructor(@InjectRepository(Community) private readonly communities:Repository<Community>,@InjectRepository(House) private readonly houses:Repository<House>,@InjectRepository(MisCollectionBatch) private readonly batches?:Repository<MisCollectionBatch>, private readonly smsSettings?:CollectionSmsService, private readonly followupRule?:import('../settings/collection-followup.service').CollectionFollowupService){}
+ constructor(@InjectRepository(Community) private readonly communities:Repository<Community>,@InjectRepository(House) private readonly houses:Repository<House>,@InjectRepository(MisCollectionBatch) private readonly batches?:Repository<MisCollectionBatch>, private readonly smsSettings?:CollectionSmsService){}
  private configured(){return !!(process.env.MIS_FEES_TENANT_ID&&process.env.MIS_FEES_USER&&process.env.MIS_FEES_PASSWORD);}
  private async scope(user:AuthUser,access?:ResolvedAccess){
   if(!user.tenantId)throw new ForbiddenException('请选择公司后查询');
@@ -305,18 +305,7 @@ export class MisFeesService implements OnModuleDestroy {
   const where:any={tenantId:user.tenantId!,communityId:In(ids),...(requested.length?{houseKey:In(requested)}:{})};
   const holds=(await this.collectionRepo(MisCollectionHold).find({where:{...where,status:'active'},order:{id:'DESC'}})).filter(h=>h.until>=today);
   const events=await this.collectionRepo(MisCollectionEvent).find({where,order:{id:'DESC'},take:200});
-  const rule=this.followupRule?await this.followupRule.get(user):{amountCents:180000,inactiveDays:7,enabled:true};
-  let largeInactive:any[]=[],stats:any=null;
-  if(rule.enabled){
-   const scan:any=await this.residential({communityId:q.communityId,view:'households',status:'unpaid',page:1,pageSize:5000},user,access);
-   const avg=scan.total?Math.round(scan.amountCents/scan.total):0;
-   const last=new Map<string,string>();
-   for(const e of events as any[]){const t=String(e.createdAt||'');if(!t)continue;const prev=last.get(e.houseKey);if(!prev||t>prev)last.set(e.houseKey,t)}
-   const hit=(scan.rows as any[]).filter(r=>Number(r.amountCents)>=rule.amountCents).map(r=>{const at=last.get(r.houseKey);const days=at?Math.floor((Date.now()-new Date(at).getTime())/86400000):null;return {houseKey:r.houseKey,address:r.address,amountCents:Number(r.amountCents),lastContactAt:at||null,days,never:!at}}).filter(x=>x.never||(x.days as number)>=rule.inactiveDays).sort((a,b)=>b.amountCents-a.amountCents);
-   largeInactive=hit.slice(0,100);
-   stats={avgAmountCents:avg,hitCount:hit.length,hitAmountCents:hit.reduce((sum,x)=>sum+x.amountCents,0),thresholdCents:rule.amountCents,inactiveDays:rule.inactiveDays,scanned:scan.rows.length};
-  }
-  return {today,followupHouseholds:Math.max(new Set(rows.filter(p=>p.overdue).map(p=>p.houseKey)).size,largeInactive.length),promises:requested.length?rows.filter(p=>requested.includes(p.houseKey)):rows,holds,events,largeInactive,stats,rule,timelineScope:'责任对象跟进（跨批次）'};
+  return {today,followupHouseholds:new Set(rows.filter(p=>p.overdue).map(p=>p.houseKey)).size,promises:requested.length?rows.filter(p=>requested.includes(p.houseKey)):rows,holds,events,timelineScope:'责任对象跟进（跨批次）'};
  }
  /** 已缴原账只读入口：复用既有住宅明细SQL，归因不读取updatedate作为收款日。 */
  async paidCollectionBills(houseKeys:string[],user:AuthUser,access?:ResolvedAccess){
