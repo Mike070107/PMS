@@ -5821,3 +5821,10 @@
 - 自上次（a11c685a）以来上线的相关提交：
   - cfd931f1 feat(bills): add collection attribution, followups, print registry and SMS readiness
 
+## 2026-11-06 14:17 · api · 27942aa2
+
+- 包：`pms-api-fast-20261106-141635.tar.gz`
+- 提交：27942aa2 fix(bills): align print registration with 12-row notices and retain legacy layout
+- 自上次（cfd931f1）以来上线的相关提交：
+  - 27942aa2 fix(bills): align print registration with 12-row notices and retain legacy layout
+
