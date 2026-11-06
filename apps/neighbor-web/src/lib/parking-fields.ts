@@ -71,6 +71,16 @@ export function vehicleIdentity(raw: string): string {
   return s ? `旧库车辆类型 ${s}` : '未标注';
 }
 
+/** 车辆类别固定配色；按可见类别而非旧库来源着色。 */
+export function identityTone(value?: string | null): 'property' | 'ok' | 'acc' | 'warn' | 'mute' {
+  const text = value || '';
+  if (text.includes('产权')) return 'property';
+  if (text.includes('亲情')) return 'acc';
+  if (text.includes('租')) return 'warn';
+  if (text.includes('住户') || text.includes('业主')) return 'ok';
+  return 'mute';
+}
+
 export interface GarageDef {
   /** 依赖的车库：选它就必须同时选这个（二期大车库/人防都要过二期地面） */
   requires?: 'phase1' | 'phase2';

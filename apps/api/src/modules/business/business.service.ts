@@ -919,10 +919,20 @@ export class BusinessService {
         cfg.vehicleClass = normalizeVehicleClass(cfg.vehicleClass) || DEFAULT_GROUP;
         cfg.tiers = normalizeTiers(cfg.tiers);
       } catch (e) { throw new BadRequestException((e as Error).message); }
-      // 旧后台只传单价：按单价生成 1/2/3/6/12 个月的价格表，兼容老入口
-      if (!cfg.tiers.length && dto.unitPriceCents > 0) cfg.tiers = STANDARD_MONTHS.map((m) => ({ months: m, amountCents: dto.unitPriceCents * m }));
-      if (!cfg.tiers.length) throw new BadRequestException('价格表至少要有一个月数和金额');
-      cfg.priceMode = 'table';
+      cfg.priceMode = cfg.priceMode === 'monthly' ? 'monthly' : 'table';
+      if (cfg.priceMode === 'monthly') {
+        try {
+          priceRule(60, dto.unitPriceCents, cfg);
+          const cycle = cfg.discountCycleMonths ?? 12;
+          cfg.discountCycleMonths = cycle;
+          cfg.discountMonths = cfg.discountMonths ?? 0;
+          cfg.tiers = [1, cycle].map(months => ({ months, amountCents: priceRule(months, dto.unitPriceCents, cfg).amountCents }));
+        } catch (e) { throw new BadRequestException((e as Error).message); }
+      } else {
+        // 兼容旧指定月档，不能未经授权把其他类别自动转换。
+        if (!cfg.tiers.length && dto.unitPriceCents > 0) cfg.tiers = STANDARD_MONTHS.map(m => ({ months: m, amountCents: dto.unitPriceCents * m }));
+        if (!cfg.tiers.length) throw new BadRequestException('价格表至少要有一个月数和金额');
+      }
       cfg.parkingTargets = [...new Set((Array.isArray(cfg.parkingTargets) ? cfg.parkingTargets : cfg.parkingTarget ? [cfg.parkingTarget] : []).map(String).filter(Boolean))];
       // 执行层兜底只认单个 parkingTarget：只绑一个车库时才填
       if (cfg.parkingTargets.length === 1) cfg.parkingTarget = cfg.parkingTargets[0]; else delete cfg.parkingTarget;

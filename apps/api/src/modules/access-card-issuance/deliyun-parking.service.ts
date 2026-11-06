@@ -258,6 +258,7 @@ export class DeliyunParkingService {
     remark?: string | null;
     ownerRoom?: string | null;
     parkingSpace?: string | null;
+    createOnly?: boolean;
   }): Promise<DeliyunCivilDefenseResult> {
     if (!this.writeEnabled()) throw new ServiceUnavailableException('德立云车库授权写入尚未启用');
     const plate = normalizePlate(input.plate);
@@ -267,6 +268,7 @@ export class DeliyunParkingService {
     const current = await this.findVehiclesByPlate(plate);
     if (current.rows.length > 1) throw new BadRequestException('德立云存在重复车牌，请先在德立云后台清理');
     const row = current.rows[0];
+    if (row && input.createOnly) throw new BadRequestException('该车牌已存在，自动新办禁止覆盖原车辆');
     const expectedVehicleId = input.vehicleId?.trim() || '';
     if (expectedVehicleId && row?.id !== expectedVehicleId)
       throw new BadRequestException('德立云车辆已变化，请刷新后重新操作');

@@ -87,7 +87,7 @@ export function buildMisResidentialQuery(q:MisResidentialQuery,offices:string[])
  }
  if(view==='detail'){
   if(!q.houseKeys?.length)throw new BadRequestException('请先选择住户');
-  return {sql:`SELECT TOP (10001) ${houseKey} AS houseKey,CONVERT(varchar(30),w.ZJ_ID) AS id,l.管理处 AS officeCode,${address} AS address,z.姓名 AS ownerName,z.移动电话 AS phone,w.ZJ_LX AS feeCode,f.XM AS feeName,w.ZJ_CNY AS period,CONVERT(varchar(50),w.ZJ_JE,2) AS amount,CONVERT(varchar(19),w.updatedate,120) AS updatedAt ${from} AND w.ZJ_SKRQ IS ${q.status==='paid'?'NOT ':''}NULL AND w.ZJ_TKRQ IS NULL AND w.ZJ_JE>0 ORDER BY l.管理处,l.地址2,l.地址3,s.室,z.ZH_ID,w.ZJ_CNY,w.ZJ_LX,w.ZJ_ID;`,params};
+  return {sql:`SELECT TOP (10001) ${houseKey} AS houseKey,CONVERT(varchar(30),w.ZJ_ID) AS id,l.管理处 AS officeCode,${address} AS address,z.姓名 AS ownerName,z.移动电话 AS phone,w.ZJ_LX AS feeCode,f.XM AS feeName,w.ZJ_CNY AS period,CONVERT(varchar(50),w.ZJ_JE,2) AS amount,CONVERT(varchar(19),w.updatedate,120) AS updatedAt,CONVERT(varchar(10),w.ZJ_SKRQ,23) AS paidAt ${from} AND w.ZJ_SKRQ IS ${q.status==='paid'?'NOT ':''}NULL AND w.ZJ_TKRQ IS NULL AND w.ZJ_JE>0 ORDER BY l.管理处,l.地址2,l.地址3,s.室,z.ZH_ID,w.ZJ_CNY,w.ZJ_LX,w.ZJ_ID;`,params};
  }
  if(view==='trend'){
   params.paidFrom=q.paidFrom!;params.paidTo=q.paidTo!;

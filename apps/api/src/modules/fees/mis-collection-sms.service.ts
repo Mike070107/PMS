@@ -54,6 +54,8 @@ export class MisCollectionSmsService {
     const notices = Array.isArray(snapshot?.notices) ? snapshot!.notices! : [];
     if (!notices.length) throw new BadRequestException('批次快照里没有可发送的住户');
 
+    await this.mis.collectionDetail(id,user,access);
+    if((await this.mis.activeCollectionHolds(notices.map(n=>n.houseKey),user,access)).length)throw new BadRequestException("该批次包含冻结住户，请重新预览生成批次；未发送短信");
     const readiness = await this.settings.readiness(tenantId);
     if (!readiness.configured || !readiness.enabled) throw new BadRequestException(readiness.reason);
 

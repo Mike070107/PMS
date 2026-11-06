@@ -549,3 +549,5 @@ textarea.in{height:auto;padding:9px 12px;min-height:72px;resize:vertical}
 .nav .navGroupTitle ~ a .icon{width:18px;height:18px}
 .nav a span{line-height:1.4}
 .fl{display:grid;gap:6px;font-size:13px;color:var(--ink2)}
+
+.tag.property{background:#eee9ff;color:#6e55c5}

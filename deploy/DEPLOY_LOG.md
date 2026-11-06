@@ -5769,3 +5769,55 @@
 - 自上次（1d7a69c7）以来上线的相关提交：
   - d408a4b6 fix(parking): allow explicit custom zero payments without filling amount
 
+## 2026-11-06 11:02 · api · 901ea31f
+
+- 包：`pms-api-fast-20261106-110105.tar.gz`
+- 提交：901ea31f fix(parking): monthly prices with repeating full-cycle discounts
+- 自上次（d408a4b6）以来上线的相关提交：
+  - 901ea31f fix(parking): monthly prices with repeating full-cycle discounts
+  - fbb29016 test: fix MIS ledger HTTP fixture and erp shell postcss dep
+
+## 2026-11-06 11:06 · web · 6e4489c8
+
+- 包：`pms-web-20261106-110545.tar.gz`
+- 提交：6e4489c8 deploy: api → 901ea31f
+- 自上次（cd0cab99）以来上线的相关提交：
+  - 901ea31f fix(parking): monthly prices with repeating full-cycle discounts
+  - fbb29016 test: fix MIS ledger HTTP fixture and erp shell postcss dep
+
+## 2026-11-06 11:40 · api · 30ebab1a
+
+- 包：`pms-api-fast-20261106-114030.tar.gz`
+- 提交：30ebab1a fix(parking): connect paid vehicle registration to legacy queue and device confirmation
+- 自上次（901ea31f）以来上线的相关提交：
+  - 30ebab1a fix(parking): connect paid vehicle registration to legacy queue and device confirmation
+
+## 2026-11-06 11:55 · web · a11c685a
+
+- 包：`pms-web-20261106-115411.tar.gz`
+- 提交：a11c685a fix(parking): distinguish property parking category from resident vehicles
+- 自上次（6e4489c8）以来上线的相关提交：
+  - a11c685a fix(parking): distinguish property parking category from resident vehicles
+
+## 2026-11-06 12:07 · api · 632a4401
+
+- 包：`pms-api-fast-20261106-120642.tar.gz`
+- 提交：632a4401 fix(audit): cover collection SMS actions without capturing sensitive payloads
+- 自上次（30ebab1a）以来上线的相关提交：
+  - 632a4401 fix(audit): cover collection SMS actions without capturing sensitive payloads
+  - d1c6945d fix(parking): connect paid civil-defense registration with create-only safeguards
+
+## 2026-11-06 13:26 · api · cfd931f1
+
+- 包：`pms-api-fast-20261106-132608.tar.gz`
+- 提交：cfd931f1 feat(bills): add collection attribution, followups, print registry and SMS readiness
+- 自上次（632a4401）以来上线的相关提交：
+  - cfd931f1 feat(bills): add collection attribution, followups, print registry and SMS readiness
+
+## 2026-11-06 13:28 · web · d81cc2c4
+
+- 包：`pms-web-20261106-132727.tar.gz`
+- 提交：d81cc2c4 deploy: api → cfd931f1
+- 自上次（a11c685a）以来上线的相关提交：
+  - cfd931f1 feat(bills): add collection attribution, followups, print registry and SMS readiness
+

@@ -4,3 +4,6 @@
 .rb-age{display:inline-block;font-size:12px;line-height:1.6;padding:1px 9px;border-radius:999px;background:var(--mute-w);color:var(--ink2);white-space:nowrap}
 .rb-age.warn{background:var(--warn-w);color:var(--warn)}
 .rb-age.hot{background:var(--dang-w);color:var(--dang)}
+
+/* Fixed drawers use the actual layout viewport, excluding the browser scrollbar. */
+.rb .sheet{max-width:100%!important}

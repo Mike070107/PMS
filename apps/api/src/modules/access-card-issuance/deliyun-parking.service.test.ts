@@ -325,3 +325,8 @@ test('德立云不存在车牌时按月票小型车建档，不记收费', () =>
     remark: '来自PMS',
   });
 });
+
+test('automatic new registration must not update a plate that appeared after duplicate check', async () => {
+ const service:any=Object.create(DeliyunParkingService.prototype);let writes=0;service.writeEnabled=()=>true;service.ensureMiniappSession=async()=>({park:{unitKey:'test'}});service.findVehiclesByPlate=async()=>({rows:[{id:'existing',plate:'沪TEST01'}]});service.vehicleDetail=async()=>({});service.h5Post=async()=>{writes++;return{code:0}};
+ await assert.rejects(service.setCivilDefenseAuthorization({plate:'沪TEST01',authorized:true,createOnly:true}),/已存在/);assert.equal(writes,0);
+});

@@ -4,18 +4,9 @@ import { accessCardIssuance, request } from '@pms/api-client';
 import type { ParkingQuery } from '@pms/api-client/src/endpoints/access-card-issuance';
 import Icon from '@/components/Icon';
 import { dayjs, money } from '@/lib/format';
-import { field as fieldOf, vehicleIdentity } from '@/lib/parking-fields';
+import { field as fieldOf, vehicleIdentity, identityTone } from '@/lib/parking-fields';
 import NewPlateCard, { type Intake } from './NewPlateCard';
 import RenewalMonths from './RenewalMonths';
-
-/** 车辆授权类型 → 颜色：亲情车（蓝）/ 住户车（绿）/ 租户车（琥珀），一眼分得开 */
-function identityTone(t?: string | null) {
-  if (!t) return 'ok';
-  if (t.includes('亲情')) return 'acc';
-  if (t.includes('租')) return 'warn';
-  return 'ok';
-}
-
 
 /** 德立云的车卡类型字段名不统一：亲情车可能写在 cardType / 车池名 / 备注里 */
 const deliyunIdentity = (r: { cardType?: string | null; cardPoolName?: string | null; carType?: string | null; remark?: string | null }): string | null => {
@@ -31,7 +22,7 @@ const identityOf = (f: Record<string, unknown>): string | null => {
 };
 
 /* ───── 类型 ───── */
-export interface ParkRule { id: number; serviceType: string; name: string; communityId: number | null; unitPriceCents: number; enabled: boolean; config?: { parkingTarget?: string; parkingTargets?: string[]; vehicleClass?: string; isDefault?: boolean; priceMode?: 'table'; tiers?: Array<{ months: number; amountCents: number }> } | null }
+export interface ParkRule { id: number; serviceType: string; name: string; communityId: number | null; unitPriceCents: number; enabled: boolean; config?: { parkingTarget?: string; parkingTargets?: string[]; vehicleClass?: string; isDefault?: boolean; priceMode?: 'table' | 'monthly'; tiers?: Array<{ months: number; amountCents: number }> } | null }
 export interface ParkTarget { key: string; label: string; short?: string; system: 'deliyun' | 'local'; billing: 'vehicle' | 'space'; deliyunPark?: string; database?: string }
 export interface ParkHouse { id: number; communityId: number | null; lane?: string | null; buildingNo: string; roomNo: string; owner?: { id: number } | null }
 export type SystemRef =
@@ -312,7 +303,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate }: { hou
                       <span className="tag warn" style={{ marginLeft: 6 }} title={`各系统到期日：${c.mismatch.dates.join(' / ')}`}>到期日不一致</span>
                     ) : null}
                   </td>
-                  <td><span className={`tag ${identityTone(c.identity)}`}>{tags[c.plate] || c.identity || '未标注'}</span></td>
+                  <td><span className={`tag ${identityTone(tags[c.plate] || c.identity)}`}>{tags[c.plate] || c.identity || '未标注'}</span></td>
                   <td>{c.lots.map((l) => <div key={l.key} className="lot-line">{l.label}<small className="muted"> · {l.system === 'deliyun' ? '德立云' : '本地库'}</small></div>)}</td>
                   <td>{c.lots.map((l) => <div key={l.key} className="lot-line">{l.space ? <b>{l.space}</b> : <span className="muted">—</span>}{l.spaceFromNote ? <small className="muted">（取自备注）</small> : null}</div>)}</td>
                   <td>{c.lots.map((l) => <div key={l.key} className="lot-line" style={{ color: expired(l.endDate) ? 'var(--dang)' : undefined }}>{l.endDate || '—'}</div>)}</td>

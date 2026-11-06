@@ -1,0 +1,6 @@
+const test = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), vm = require('node:vm'), ts = require('typescript');
+const root = path.resolve(__dirname, '../src');
+function tone() { const m = { exports: {} }; vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(root, 'lib/parking-fields.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { module: m, exports: m.exports }); return m.exports.identityTone; }
+test('产权车位紫色，与住户绿、亲情蓝、租户琥珀区分，未知中性', () => { const f = tone(); assert.equal(typeof f, 'function'); for (const [name, expected] of [['产权车位','property'],['住户车-1','ok'],['住户车-2','ok'],['业主车','ok'],['亲情车','acc'],['租户车-2','warn'],['未标注','mute'],['','mute']]) assert.equal(f(name), expected, name); });
+test('收银台按实际显示的车辆类别着色，而不是旧库身份', () => { const s=fs.readFileSync(path.join(root,'components/cashier/ParkingTab.tsx'),'utf8'); assert.match(s,/identityTone\(tags\[c\.plate\] \|\| c\.identity\)/); });
+test('收费标准和车辆档案复用同一类别颜色，紫色有专用样式', () => { for (const file of ['pages/Standards.tsx','pages/Vehicles.tsx']) assert.match(fs.readFileSync(path.join(root,file),'utf8'),/identityTone/); assert.match(fs.readFileSync(path.join(root,'styles/design.css'),'utf8'),/\.tag\.property\s*\{/); });

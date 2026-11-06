@@ -4,6 +4,8 @@
  * 请求受理不等于设备执行完成、消息送达或纸张打印完成。
  */
 const TEMPLATES: ReadonlyArray<readonly [string, string, string, string, string]> = [
+  ["POST", "/fees/mis/collections/followups", "post_fees_mis_collections_followups", "登记催缴跟进", "账单催缴"],
+  ["POST", "/fees/mis/collections/:id/prints", "post_fees_mis_collections_id_prints", "登记通知单打印请求", "账单催缴"],
   ["POST", "/access-card-issuance/agents", "post_access_card_issuance_agents", "登记发卡代理", "门禁发卡"],
   ["POST", "/access-card-issuance/parking/queries", "post_access_card_issuance_parking_queries", "请求查询停车车辆", "停车管理"],
   ["POST", "/access-card-issuance/parking/deliyun/renewals", "post_access_card_issuance_parking_deliyun_renewals", "办理德立云车辆续期", "停车管理"],
@@ -118,6 +120,8 @@ const TEMPLATES: ReadonlyArray<readonly [string, string, string, string, string]
   ["POST", "/fees/templates/:id/disable", "post_fees_templates_id_disable", "停用收费模板", "收费"],
   ["POST", "/fees/mis/postings", "post_fees_mis_postings", "登记MIS账单收款", "收费"],
   ["POST", "/fees/mis/postings/:id/retry", "post_fees_mis_postings_id_retry", "核对原单并申请重试MIS销账", "收费"],
+  ["POST", "/fees/mis/collections/:id/sms", "post_fees_mis_collections_id_sms", "申请发送物业费催缴短信", "收费"],
+  ["POST", "/fees/mis/sms/callback", "post_fees_mis_sms_callback", "接收催缴短信发送回执", "收费"],
   ["POST", "/fees/mis/collections/preview", "post_fees_mis_collections_preview", "预览物业费催缴单", "收费"],
   ["POST", "/fees/mis/collections", "post_fees_mis_collections", "创建物业费催缴任务", "收费"],
   ["PATCH", "/fees/cashier/houses/:houseId/contact", "patch_fees_cashier_houses_id_contact", "修改公寓收费联系资料", "收费"],
