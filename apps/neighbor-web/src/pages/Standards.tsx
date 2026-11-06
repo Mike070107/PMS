@@ -37,6 +37,7 @@ export default function Standards() {
   const [rules, setRules] = useState<Rule[] | null>(null);
   const [targets, setTargets] = useState<Target[]>([]);
   const [communities, setCommunities] = useState<Community[]>([]);
+  const [communityError, setCommunityError] = useState('');
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [cid, setCid] = useState<number | 0>(0);
 
@@ -47,7 +48,8 @@ export default function Standards() {
   useEffect(() => {
     void load();
     request<Target[]>({ url: '/business/parking-targets' }).then(setTargets).catch(() => setTargets([]));
-    request<Community[]>({ url: '/communities' }).then(setCommunities).catch(() => setCommunities([]));
+    setCommunityError('');
+    request<Community[]>({ url: '/business/communities' }).then(setCommunities).catch(() => setCommunityError('小区名称读取失败，请刷新重试；未修改小区资料'));
   }, [load]);
 
   const groups = useMemo(() => (rules ?? []).filter((r) => r.serviceType === 'parking_monthly' && (!cid || r.communityId === cid || r.communityId == null)), [rules, cid]);
@@ -63,6 +65,7 @@ export default function Standards() {
       <div className="tabs" style={{ display: 'flex', gap: 22, borderBottom: '1px solid var(--line)', marginBottom: 14 }}>
         {([['groups', '车辆类别'], ['plates', '车牌归属类别'], ['card', '门禁卡']] as const).map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}
       </div>
+      {communityError ? <div className="note" role="alert">{communityError}</div> : null}
       {tab === 'groups' ? <GroupsTab groups={groups} all={rules} targets={targets} communities={communities} cid={cid} setCid={setCid} counts={counts} canEdit={canEdit} reload={load} /> : null}
       {tab === 'plates' ? <PlatesTab groupNames={groupNames} canEdit={canEdit} onChanged={load} /> : null}
       {tab === 'card' ? <CardTab rules={cardRules} communities={communities} canEdit={canEdit} reload={load} /> : null}
@@ -88,7 +91,7 @@ function GroupsTab({ groups, all, targets, communities, cid, setCid, counts, can
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState<Rule | null>(null);
-  const cname = (id: number | null) => (id == null ? '全部小区（通用）' : communities.find((c) => c.id === id)?.name || `小区 #${id}`);
+  const cname = (id: number | null) => (id == null ? '全部小区（通用）' : communities.find((c) => c.id === id)?.name || '小区名称待核实');
   const tLabel = (k: string) => { const t = targets.find((x) => x.key === k); return t?.short || t?.label || k; };
   const targetsOf = (id: number | null) => { const n = communities.find((c) => c.id === id)?.name; return n ? targets.filter((t) => t.communities.includes(n)) : []; };
   const tiersOf = (r: Rule) => [...(r.config?.tiers ?? [])].sort((a, b) => a.months - b.months);
@@ -132,7 +135,7 @@ function GroupsTab({ groups, all, targets, communities, cid, setCid, counts, can
   };
   const toggle = async (r: Rule) => {
     try {
-      await request({ method: 'PATCH', url: `/business/rules/${r.id}`, data: { serviceType: r.serviceType, name: r.name, communityId: r.communityId, billingUnit: r.billingUnit, unitPriceCents: r.unitPriceCents, config: r.config ?? {}, enabled: !r.enabled } });
+      await request({ method: 'PATCH', url: `/business/rules/${r.id}`, data: { serviceType: r.serviceType, name: r.name, communityId: r.communityId, billingUnit: r.serviceType === 'parking_monthly' ? 'month' : r.billingUnit, unitPriceCents: r.unitPriceCents, config: r.config ?? {}, enabled: !r.enabled } });
       toast(r.enabled ? '已停用' : '已启用'); await reload();
     } catch (e) { toast(err(e, '操作失败')); }
   };
@@ -302,7 +305,7 @@ function PlatesTab({ groupNames, canEdit, onChanged }: { groupNames: string[]; c
 function CardTab({ rules, communities, canEdit, reload }: { rules: Rule[]; communities: Community[]; canEdit: boolean; reload: () => Promise<void> }) {
   const [edit, setEdit] = useState<{ r: Rule; price: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const cname = (id: number | null) => (id == null ? '全部小区' : communities.find((c) => c.id === id)?.name || `小区 #${id}`);
+  const cname = (id: number | null) => (id == null ? '全部小区' : communities.find((c) => c.id === id)?.name || '小区名称待核实');
   const save = async () => {
     if (!edit) return;
     const cents = toCents(edit.price);

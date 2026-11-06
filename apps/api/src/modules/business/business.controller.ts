@@ -62,6 +62,12 @@ export class BusinessController {
     return this.businessService.listParkingSpaces(garage, q, user, access);
   }
 
+  @Get('communities')
+  @RequirePermission('business', 'view')
+  feeCommunities(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.businessService.feeCommunities(user, access);
+  }
+
   @Get('rules')
   @RequirePermission('business', 'view')
   listRules(

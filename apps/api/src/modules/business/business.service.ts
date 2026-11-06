@@ -277,6 +277,16 @@ export class BusinessService {
       bound: rows.filter((r) => r.plate && r.plate.trim()).length,
     };
   }
+  /** 收费模块使用的小区名称目录；不依赖房产页面权限，也不返回住户资料。 */
+  async feeCommunities(user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    if (!access) throw new ForbiddenException('缺少数据范围授权');
+    const scope = scopeCommunityIds(access);
+    if (scope && !scope.length) return [];
+    const rows = await this.communityRepo.find({ where: { tenantId, ...(scope ? { id: In(scope) } : {}) }, select: ['id', 'name'], order: { id: 'ASC' } });
+    return rows.filter(row => !scope || scope.includes(row.id));
+  }
+
   async listRules(query: BusinessRuleQueryDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
     await this.ensureDefaultRules(tenantId, user.id);
@@ -738,7 +748,9 @@ export class BusinessService {
   }
 
   private estimateParking(rule: BusinessRule, dto: EstimateBusinessDto, tenantId: number) {
-    if (rule.billingUnit !== BusinessBillingUnit.MONTH) {
+    // 历史导入曾把车位维度写进计价单位；仅兼容已明确按月配置的规则，不扩展其他单位。
+    const legacySpaceMonthly = String(rule.billingUnit) === 'space' && rule.config?.priceMode === 'monthly';
+    if (rule.billingUnit !== BusinessBillingUnit.MONTH && !legacySpaceMonthly) {
       throw new BadRequestException('停车月租规则必须按月计费');
     }
     const hasDates = dto.startDate != null || dto.endDate != null;

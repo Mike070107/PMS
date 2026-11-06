@@ -1,15 +1,19 @@
 import DateInput from '@/components/DateInput';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { accessCardIssuance } from '@pms/api-client';
-import type { ParkingQueryRow, ParkingRates, DeliyunVehicle } from '@pms/api-client/src/endpoints/access-card-issuance';
+import { accessCardIssuance, request } from '@pms/api-client';
+import type { ParkingQueryRow, DeliyunVehicle } from '@pms/api-client/src/endpoints/access-card-issuance';
 import { Sheet, toast } from '@/components/ui';
 import Icon from '@/components/Icon';
 import { dayjs } from '@/lib/format';
 import { field, vehicleIdentity } from '@/lib/parking-fields';
-import { createIdempotencyKey, renewalEndDate, allocateRenewalAmounts, rateKeyOf, submitAndPoll, type OpOutcome } from '@/lib/parking-ops';
+import { createIdempotencyKey, renewalEndDate, allocateRenewalAmounts, submitAndPoll, type OpOutcome } from '@/lib/parking-ops';
 import RenewalMonths from '@/components/cashier/RenewalMonths';
 
 type CloudState = 'loading' | DeliyunVehicle | null | undefined;
+interface FeeCommunity { id: number; name: string }
+interface FeeRule { id: number; communityId: number | null; serviceType: string; enabled: boolean; name: string; unitPriceCents: number; config?: { vehicleClass?: string; parkingTarget?: string; parkingTargets?: string[] } | null }
+interface FeeQuote { quantity: number; amountCents: number; startDate: string; endDate: string }
+
 
 
 function pidOf(f: ParkingQueryRow['fields']): string {
@@ -31,7 +35,13 @@ export default function RenewSheet({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [rates, setRates] = useState<ParkingRates | null>(null);
+  const [rules, setRules] = useState<FeeRule[]>([]);
+  const [communities, setCommunities] = useState<FeeCommunity[]>([]);
+  const [communityId, setCommunityId] = useState<number | null>(null);
+  const [ruleId, setRuleId] = useState<number | null>(null);
+  const [quote, setQuote] = useState<{ key: string; value: FeeQuote } | null>(null);
+  const [quoteError, setQuoteError] = useState('');
+  const quoteGeneration = useRef(0);
   const [ratesErr, setRatesErr] = useState('');
   const [months, setMonths] = useState(1);
   const [monthsValid, setMonthsValid] = useState(true);
@@ -44,13 +54,18 @@ export default function RenewSheet({
 
   useEffect(() => {
     let alive = true;
-    accessCardIssuance.parkingFeeRates().then(r => { if (alive) setRates(r); }).catch((e) => { if (alive) setRatesErr(e instanceof Error ? e.message : '费率读取失败'); });
+    Promise.all([
+      request<FeeRule[]>({ url: '/business/rules', query: { serviceType: 'parking_monthly' } }),
+      request<FeeCommunity[]>({ url: '/business/communities' }),
+    ]).then(([rs, cs]) => {
+      if (!alive) return;
+      setRules(rs); setCommunities(cs); setCommunityId(cs.length === 1 ? cs[0].id : null);
+    }).catch(() => { if (alive) setRatesErr('车辆类别和收费标准读取失败，请关闭后重试'); });
     return () => { alive = false; };
   }, []);
 
   const identity = vehicleIdentity(field(rows[0]?.fields, 'identity'));
-  const isFamily = identity === '亲情车';
-  const rateKey = rateKeyOf(identity);
+  // 旧库身份只作资料展示，收费类别由本次明确选择的规则决定。
   const targets = useMemo(() => rows.filter((r) => r.database === 'parking1' || r.database === 'parking2'), [rows]);
   const localBaseEnd = useMemo(() => {
     const ends = targets.map((r) => ymd(field(r.fields, 'expiry'))).filter(Boolean).sort();
@@ -61,11 +76,13 @@ export default function RenewSheet({
   const [formContext, setFormContext] = useState(context);
   useEffect(() => {
     setFormContext(context); setMonths(1); setMonthsValid(true); setAmountStr(''); setEndOverride(''); setErr(''); setLog([]);
-    submitted.current = false;
+    submitted.current = false; setRuleId(null); setQuote(null); setQuoteError(''); quoteGeneration.current++;
   }, [context]);
-  const rateAmount = isFamily ? 0 : (rates?.[rateKey]?.[String(months)] ?? null);
-  const manualAmount = amountStr.trim() !== '';
-  const amount = manualAmount ? (/^\d+(?:\.\d{1,2})?$/.test(amountStr) ? Number(amountStr) : NaN) : rateAmount;
+  const applicableRules = rules.filter(r => r.enabled && r.serviceType === 'parking_monthly' && communityId != null && (r.communityId == null || r.communityId === communityId) && (() => {
+    const keys = r.config?.parkingTargets ?? (r.config?.parkingTarget ? [r.config.parkingTarget] : []);
+    return !keys.length || targets.some(t => keys.includes(t.database === 'parking1' ? 'local:phase1_parking' : 'local:phase2_parking') || t.database === 'parking2' && keys.includes('local:phase2_main_garage'));
+  })());
+  const selectedRule = applicableRules.find(r => r.id === ruleId) ?? null;
   const cloudKnown = cloud !== undefined && cloud !== 'loading';
   const civil = cloudKnown && cloud ? (cloud as DeliyunVehicle) : null;
 
@@ -75,7 +92,28 @@ export default function RenewSheet({
   const civilEnd = syncCivil && civil?.civilDefenseAuthorized ? ymd(civil.endDate || '') : '';
   const baseEnd = [localBaseEnd, civilEnd].filter(Boolean).sort().pop() || '';
   const newEnd = endOverride || renewalEndDate(baseEnd || undefined, months);
-  const canSubmit = formContext === context && targets.length > 0 && !running && !submitted.current && monthsValid && Number.isInteger(months) && months >= 1 && months <= 60 && amount !== null && Number.isFinite(amount) && amount >= 0 && amount <= 1000000 && dayjs(newEnd).isValid() && (!baseEnd || newEnd >= baseEnd);
+  const quoteKey = JSON.stringify([context, communityId, selectedRule, months, monthsValid, baseEnd]);
+  const currentQuoteKey = useRef(quoteKey);
+  if (currentQuoteKey.current !== quoteKey) { currentQuoteKey.current = quoteKey; quoteGeneration.current++; }
+  useEffect(() => {
+    const generation = ++quoteGeneration.current;
+    setQuote(null); setQuoteError('');
+    if (!selectedRule || !monthsValid) return;
+    let alive = true;
+    request<FeeQuote>({ method: 'POST', url: '/business/estimate', data: { serviceType: 'parking_monthly', ruleId: selectedRule.id, plateNo: plate, months, currentEndDate: baseEnd || undefined } })
+      .then(value => {
+        if (!alive || generation !== quoteGeneration.current) return;
+        if (value.quantity !== months || !Number.isSafeInteger(value.amountCents) || value.amountCents < 0) { setQuoteError('试算结果与当前月份不一致，请重新选择'); return; }
+        setQuote({ key: quoteKey, value });
+      }).catch(() => { if (alive && generation === quoteGeneration.current) setQuoteError('当前类别和月份试算失败，请重新选择或核对收费标准'); });
+    return () => { alive = false; };
+  }, [quoteKey]);
+  const rateAmount = quote?.key === quoteKey ? quote.value.amountCents / 100 : null;
+  const manualAmount = amountStr.trim() !== '';
+  const amount = manualAmount ? (/^\d+(?:\.\d{1,2})?$/.test(amountStr) ? Number(amountStr) : NaN) : rateAmount;
+  const selectRule = (value: string) => { quoteGeneration.current++; setRuleId(value ? Number(value) : null); setQuote(null); setQuoteError(''); setAmountStr(''); setEndOverride(''); };
+
+  const canSubmit = !!selectedRule && formContext === context && targets.length > 0 && !running && !submitted.current && monthsValid && Number.isInteger(months) && months >= 1 && months <= 60 && amount !== null && Number.isFinite(amount) && amount >= 0 && amount <= 1000000 && dayjs(newEnd).isValid() && (!baseEnd || newEnd >= baseEnd);
 
   const run = async () => {
       if (submitted.current || running) return;
@@ -108,6 +146,8 @@ export default function RenewSheet({
             amount: amounts[i],
             months,
             identity,
+            vehicleClass: selectedRule!.config?.vehicleClass || selectedRule!.name,
+            ruleId: selectedRule!.id,
           },
         });
         if (outcome.kind === 'failed') { setErr(`${dbName(db)} 续期失败：${outcome.error}`); setLog((l) => [...l, `✗ ${dbName(db)} 失败`]); setRunning(false); return; }
@@ -147,9 +187,19 @@ export default function RenewSheet({
       <div style={{ padding: '4px 2px' }}>
         {ratesErr ? <div className="note" style={{ background: 'var(--dang-w)', color: 'var(--dang)' }}>{ratesErr}</div> : null}
 
+        <label style={{ display: 'block', marginBottom: 12 }}>适用小区
+          <select className="in" aria-label="续期适用小区" style={{ width: '100%', marginTop: 6 }} value={communityId ?? ''} disabled={running || submitted.current} onChange={e => { setCommunityId(e.target.value ? Number(e.target.value) : null); selectRule(''); }}>
+            <option value="">请选择小区</option>{communities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </label>
+        <label style={{ display: 'block', marginBottom: 12 }}>车辆类别（决定收费标准）
+          <select className="in" aria-label="续期车辆类别" style={{ width: '100%', marginTop: 6 }} value={selectedRule?.id ?? ''} disabled={running || submitted.current || communityId == null} onChange={e => selectRule(e.target.value)}>
+            <option value="">请先选择车辆类别</option>{applicableRules.map(r => <option key={r.id} value={r.id}>{r.config?.vehicleClass || r.name}</option>)}
+          </select>
+        </label>
         <div className="muted" style={{ fontSize: 13, marginBottom: 6 }}>续期月数</div>
-        <RenewalMonths value={months} disabled={running || submitted.current} onValidityChange={setMonthsValid}
-          onChange={m => { setMonths(m); setMonthsValid(true); setAmountStr(''); setEndOverride(''); }} />
+        <RenewalMonths value={months} disabled={running || submitted.current || !selectedRule} onValidityChange={setMonthsValid}
+          onChange={m => { quoteGeneration.current++; setQuote(null); setMonths(m); setMonthsValid(true); setAmountStr(''); setEndOverride(''); }} />
 
         <div className="veh-dl" style={{ gridTemplateColumns: 'auto 1fr', gap: '10px 12px', marginBottom: 14 }}>
           <dt className="muted">当前到期</dt><dd>{baseEnd || '—（按10号及自然月末规则）'}</dd>
@@ -159,7 +209,7 @@ export default function RenewSheet({
           <dd style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             ¥<input className="in" aria-label="续期实收金额" disabled={running || submitted.current} value={amountStr} onChange={(e) => setAmountStr(e.target.value)}
               placeholder={rateAmount === null ? '请明确填写' : String(rateAmount)} style={{ width: 120 }} inputMode="decimal" />
-            {isFamily ? <span className="pill s-info">亲情车免费</span> : <span className="muted" style={{ fontSize: 12 }}>{rateAmount === null ? '此月数未配置价格，可手工填写；免费填0' : `默认 ¥${rateAmount}（${rateKey === 'owner' ? '业主' : '租户'}价）`}</span>}
+            <span className="muted" style={{ fontSize: 12 }}>{!selectedRule ? '先选择车辆类别' : quoteError || (rateAmount === null ? '正在按所选类别试算…' : `标准 ¥${rateAmount}（${selectedRule.config?.vehicleClass || selectedRule.name}）`)}</span>
           </dd>
         </div>
 
