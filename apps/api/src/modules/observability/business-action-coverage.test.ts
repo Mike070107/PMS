@@ -43,7 +43,7 @@ function controllerWrites() {
 
 test('所有 Controller 写接口均有明确中文业务动作及筛选模块（保留历史口径并覆盖新增MIS）', () => {
   const routes = controllerWrites();
-  const added=[['POST','/fees/mis/postings'],['POST','/fees/mis/postings/:id/retry']];
+  const added=[['POST','/fees/mis/postings'],['POST','/fees/mis/postings/:id/retry'],['POST','/fees/mis/collections/:id/sms'],['POST','/fees/mis/sms/callback']];
   assert.equal(routes.length, LEGACY_ACTION_CODES.length+added.length);
   assert.deepEqual(new Set(routes.map((r) => `${r.method} ${r.path}`)), new Set([...LEGACY_ACTION_CODES,...added].map(([m, p]) => `${m} ${p}`)));
   const issues: string[] = [];
@@ -83,7 +83,7 @@ test('扫码授权、登录、刷新、主题和本人资料分开，不把授�
 test('敏感路由和详情不采集票据、密钥、密码、手机号、表单原文或任意用户标签', () => {
   const secret = 'VERY-SENSITIVE-credential';
   const body = { ticket: secret, token: secret, password: secret, phone: secret, phoneCode: secret, content: secret, label: secret, actionLabel: secret };
-  for (const path of [`/vehicle-intake-form/${secret}`, `/external-access-agent/frp-plugin/${secret}`, '/auth/qr-login/scan', '/auth/self-profile', '/upload']) {
+  for (const path of [`/vehicle-intake-form/${secret}`, `/external-access-agent/frp-plugin/${secret}`, '/auth/qr-login/scan', '/auth/self-profile', '/upload', '/fees/mis/sms/callback', '/fees/mis/collections/31/sms']) {
     const action = resolveBusinessAction('POST', path, body, body);
     assert.equal(action.known, true);
     assert.ok(!JSON.stringify(action).includes(secret));
