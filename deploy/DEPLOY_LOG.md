@@ -5849,3 +5849,13 @@
   - 82b925b5 Merge remote-tracking branch 'origin/main'
   - d17ee935 fix(purchase): 申购单抬头跟来源工单管理处，备注补房号位置，照片等比嵌入
 
+## 2026-11-06 15:49 · web · 94c12460
+
+- 包：`pms-web-20261106-154744.tar.gz`
+- 提交：94c12460 deploy: api → ef15a0f3
+- 自上次（f67cbaa9）以来上线的相关提交：
+  - ef15a0f3 fix(parking): select renewal category and scope fee community names
+  - cddcac87 feat(purchase): 审批明细展示报修地址/时间/维修工，可跳转工单详情
+  - 82b925b5 Merge remote-tracking branch 'origin/main'
+  - d17ee935 fix(purchase): 申购单抬头跟来源工单管理处，备注补房号位置，照片等比嵌入
+
