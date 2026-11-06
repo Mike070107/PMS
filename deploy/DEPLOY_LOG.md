@@ -5707,3 +5707,19 @@
   - 8c8ccc05 test: verify parking entry integration and narrow drawers
   - ebdd67de fix: preserve parking renewal months prices and dates
 
+## 2026-11-06 08:30 · web · d7e7e50a
+
+- 包：`pms-web-20261106-083005.tar.gz`
+- 提交：d7e7e50a deploy: api → 8ea0437b
+- 自上次（9c120930）以来上线的相关提交：
+  - 8ea0437b style: remove trailing blank lines from accepted MIS integration
+  - cd05d2e8 fix: preserve Beijing report dates and verify ERP calendar interaction
+  - 76688668 merge: integrate verified parking renewal with MIS ledgers and ERP increment
+  - 784ed012 feat: integrate neutral ERP shell and real dashboard reporting incrementally
+  - d39364be feat: isolate access-card navigation from vehicle management with scoped UI guards
+  - 37f01cc9 feat: expose MIS source collection list and statistics without mixing local receipts
+  - 2d3d4606 feat: wire MIS collection and original receipt recovery with paged records
+  - 8c8ccc05 test: verify parking entry integration and narrow drawers
+  - f64fa8fc Merge branch 'main' into fix/parking-renewal-final
+  - ebdd67de fix: preserve parking renewal months prices and dates
+
