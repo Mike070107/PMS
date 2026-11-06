@@ -50,10 +50,10 @@ function text(node) { if (node == null || typeof node === 'boolean') return ''; 
 function nodes(node, predicate) { if (!node || typeof node !== 'object') return []; if (Array.isArray(node)) return node.flatMap(n => nodes(n, predicate)); return [...(predicate(node) ? [node] : []), ...nodes(node.props?.children, predicate)]; }
 const householdRequests = h => h.requests.filter(r => r.o.query?.view === 'households');
 
-test('切换到overview后选小区/账期只请求dashboard和trend，没有households', async () => {
+test('切换到overview后选小区/账期只请求dashboard/trend/communities，没有households', async () => {
   const h = harness(); let p = await h.metadata(); p.setTab('overview'); p.setCommunity('17'); p.setFrom('2026-01'); p.setTo('2026-12'); p = h.render(); h.flushTimers();
   assert.equal(p.tab, 'overview'); assert.equal(p.ready, true); assert.equal(householdRequests(h).length, 0);
-  assert.deepEqual(h.requests.filter(r => r.o.query?.view).map(r => r.o.query.view).sort(), ['dashboard', 'trend']);
+  assert.deepEqual(h.requests.filter(r => r.o.query?.view).map(r => r.o.query.view).sort(), ['communities', 'dashboard', 'trend'], 'overview 固定读取 总览/趋势/小区对比 三个视图，不得额外请求 households');
   assert.doesNotMatch(text(p.ui), /待缴责任对象|合成责任人/);
 });
 
