@@ -59,7 +59,7 @@ export function buildMisFeeQuery(q:MisFeeQuery,offices:string[],house?:MisHouseF
 }
 
 export interface MisResidentialQuery extends MisFeeQuery {
- view?: 'dashboard'|'households'|'trend'|'detail';
+ view?: 'dashboard'|'households'|'trend'|'detail'|'communities';
  category?: 'all'|'property'|'berth'|'other';
  houseKeys?: string[];
 }
@@ -68,7 +68,7 @@ const categorySql = `CASE WHEN f.XM LIKE N'%泊位%' OR f.XM LIKE N'%车位%' TH
 export function buildMisResidentialQuery(q:MisResidentialQuery,offices:string[]){
  if(q.status!==undefined&&!['paid','unpaid'].includes(q.status))throw new BadRequestException('住宅账单状态仅支持paid或unpaid');
  const view=q.view||'dashboard';
- if(!['dashboard','households','trend','detail'].includes(view))throw new BadRequestException('报表视图不合法');
+ if(!['dashboard','households','trend','detail','communities'].includes(view))throw new BadRequestException('报表视图不合法');
  if(q.category&&!['all','property','berth','other'].includes(q.category))throw new BadRequestException('收费分类不合法');
  validateMisFeeRange(q);
  if(view==='trend'&&(!q.paidFrom||!q.paidTo))throw new BadRequestException('趋势需指定收款日期范围');

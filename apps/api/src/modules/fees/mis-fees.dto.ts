@@ -21,7 +21,7 @@ export class MisFeesQueryDto implements MisFeeQuery {
 }
 export class MisResidentialQueryDto extends MisFeesQueryDto {
  @IsOptional() @IsIn(['paid','unpaid']) declare status?:'paid'|'unpaid';
- @IsOptional() @IsIn(['dashboard','households','trend','detail']) view?:'dashboard'|'households'|'trend'|'detail';
+ @IsOptional() @IsIn(['dashboard','households','trend','detail','communities']) view?:'dashboard'|'households'|'trend'|'detail'|'communities';
  @IsOptional() @IsIn(['all','property','berth','other']) category?:'all'|'property'|'berth'|'other';
  @IsOptional() @Transform(({value})=>typeof value==='string'?value.split(','):value) @IsArray() @ArrayMaxSize(200) @ArrayUnique() @Matches(/^(0[1-4]):[1-9]\d{0,18}:[1-9]\d{0,18}$/,{each:true}) houseKeys?:string[];
 }
