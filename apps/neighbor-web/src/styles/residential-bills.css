@@ -37,3 +37,7 @@
 .rb-follow-list span{font-variant-numeric:tabular-nums;font-weight:600}
 .rb-follow-list small{color:var(--ink3);font-size:12px;white-space:nowrap}
 @media(max-width:900px){.rb-follow-list{grid-template-columns:minmax(0,1fr)}}
+.rb-rule-panel{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;padding:12px 14px;margin:0 0 12px;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.rb-rule-panel label{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--ink2)}
+.rb-rule-panel .in{width:150px;height:36px}
+.rb-rule-panel small{color:var(--ink3);font-size:12px;margin-right:auto}
