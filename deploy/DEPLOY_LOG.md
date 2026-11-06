@@ -5785,3 +5785,10 @@
   - 901ea31f fix(parking): monthly prices with repeating full-cycle discounts
   - fbb29016 test: fix MIS ledger HTTP fixture and erp shell postcss dep
 
+## 2026-11-06 11:40 · api · 30ebab1a
+
+- 包：`pms-api-fast-20261106-114030.tar.gz`
+- 提交：30ebab1a fix(parking): connect paid vehicle registration to legacy queue and device confirmation
+- 自上次（901ea31f）以来上线的相关提交：
+  - 30ebab1a fix(parking): connect paid vehicle registration to legacy queue and device confirmation
+
