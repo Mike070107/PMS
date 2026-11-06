@@ -134,14 +134,19 @@ export class MisFeesService implements OnModuleDestroy {
    const scan:any=await this.residential({...q,view:'households',page:1,pageSize:2000,_aging:false} as any,user,access);
    const buckets:Record<string,{count:number;amountCents:number}>={'0-30':{count:0,amountCents:0},'31-60':{count:0,amountCents:0},'61-90':{count:0,amountCents:0},'90+':{count:0,amountCents:0}};
    const now=new Date(),monthsNow=now.getFullYear()*12+now.getMonth();
+   const owners=new Map<string,{count:number;amountCents:number}>();
    for(const r of scan.rows as any[]){
+    const amount=Number(r.amountCents)||0;
+    const name=String(r.ownerName||'').trim()||'责任人未记录';
+    const o=owners.get(name)||{count:0,amountCents:0};o.count+=1;o.amountCents+=amount;owners.set(name,o);
     const m=/^(\d{4})(0[1-9]|1[0-2])$/.exec(String(r.periodFrom||''));
     if(!m)continue;
     const months=Number(m[1])*12+(Number(m[2])-1),gap=Math.max(0,monthsNow-months);
     const key=gap>3?'90+':gap>2?'61-90':gap>1?'31-60':'0-30';
-    buckets[key].count+=1;buckets[key].amountCents+=r.amountCents||0;
+    buckets[key].count+=1;buckets[key].amountCents+=amount;
    }
-   aging={buckets,total:totalHouses,amountCents:totalAmount,truncated:scan.total>2000,scanned:scan.rows.length};
+   const topOwners=[...owners.entries()].map(([name,v])=>({name,...v})).sort((a,b)=>b.amountCents-a.amountCents).slice(0,10);
+   aging={buckets,owners:topOwners,ownerCount:owners.size,total:totalHouses,amountCents:totalAmount,truncated:scan.total>2000,scanned:scan.rows.length};
   }
   return {...meta,total:totalHouses,amountCents:totalAmount,page:q.page||1,pageSize:q.pageSize||20,aging,rows:(sets[1]||[]).map(format)};
  }
