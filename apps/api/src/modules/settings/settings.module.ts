@@ -6,10 +6,11 @@ import { SettingsController } from './settings.controller';
 import { SettingsService } from './settings.service';
 import { CollectionSmsService } from './collection-sms.service';
 import { CollectionSmsLogService } from './collection-sms-log.service';
+import { CollectionSmsCallbackController } from './collection-sms-callback.controller';
 
 @Module({
   imports: [TypeOrmModule.forFeature([TenantConfig, User, House, MisCollectionSms])],
-  controllers: [SettingsController],
+  controllers: [SettingsController, CollectionSmsCallbackController],
   providers: [SettingsService, CollectionSmsService, CollectionSmsLogService],
   exports: [SettingsService, CollectionSmsService, CollectionSmsLogService],
 })
