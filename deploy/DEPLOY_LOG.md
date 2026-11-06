@@ -6128,3 +6128,10 @@
 - 自上次（a7be3b43）以来上线的相关提交：
   - c8cb1069 fix(bills): 导出超限改为截断警告不再抛错；公式注入补前导 Tab/CR
 
+## 2026-11-07 07:20 · api · 01ddd19f
+
+- 包：`pms-api-fast-20261107-071931.tar.gz`
+- 提交：01ddd19f fix(bills): 打印通知单读取已保存的模板（批次数快照携带 noticeTemplate）
+- 自上次（c8cb1069）以来上线的相关提交：
+  - 01ddd19f fix(bills): 打印通知单读取已保存的模板（批次数快照携带 noticeTemplate）
+
