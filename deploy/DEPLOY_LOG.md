@@ -6135,3 +6135,10 @@
 - 自上次（c8cb1069）以来上线的相关提交：
   - 01ddd19f fix(bills): 打印通知单读取已保存的模板（批次数快照携带 noticeTemplate）
 
+## 2026-11-07 07:21 · web · c7668411
+
+- 包：`pms-web-20261107-072048.tar.gz`
+- 提交：c7668411 deploy: api → 01ddd19f
+- 自上次（89acecba）以来上线的相关提交：
+  - 01ddd19f fix(bills): 打印通知单读取已保存的模板（批次数快照携带 noticeTemplate）
+
