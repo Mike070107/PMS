@@ -8,7 +8,7 @@ import { findParkingTarget } from './parking-targets';
 import { assertFreshParkingPlateCheck } from '../access-card-issuance/parking-query.util';
 import { BusinessServiceType } from '../../common/enums';
 import { AuthUser } from '../../common/current-user.decorator';
-import { DeliyunParkingService } from '../access-card-issuance/deliyun-parking.service';
+import { DeliyunParkingService, shanghaiDateOnly } from '../access-card-issuance/deliyun-parking.service';
 import { AccessCardIssuanceService } from '../access-card-issuance/access-card-issuance.service';
 import {
   aggregateSteps,
@@ -325,9 +325,11 @@ export class BusinessExecutionService {
       const defs = selected.map(key => findParkingTarget(key));
       if (!defs.length || defs.some(d => !d)) throw new BadRequestException('新车登记未选择有效车库');
       // 不把其它德立云场套入枫桦人防新增接口；未选择人防不访问德立云。
-      if (defs.some(d => d!.system !== 'local')) throw new BadRequestException('本次自动新办支持一期地面、二期地面及大车库；人防及其他云停车场新增需单独核验，未执行');
-      const databases = [...new Set(defs.map(d => d!.database!))];
-      const garages = selected.flatMap(k => k === 'local:phase1_parking' ? ['phase1'] : k === 'local:phase2_parking' ? ['phase2'] : ['phase2', 'main']);
+      if (defs.some(d => d!.system !== 'local' && d!.key !== 'deliyun:枫桦景苑')) throw new BadRequestException('该云停车场没有已验证的新增协议，未执行；不能套用枫桦人防接口');
+      const civil = selected.includes('deliyun:枫桦景苑');
+      if (civil && (!intake.garageNumbers.civil?.trim() || !selected.some(k => k === 'local:phase2_parking' || k === 'local:phase2_main_garage'))) throw new BadRequestException('人防新办须明确人防车位号并同时选择二期地面入口');
+      const databases = [...new Set(defs.filter(d => d!.system === 'local').map(d => d!.database!))];
+      const garages = selected.flatMap(k => k === 'local:phase1_parking' ? ['phase1'] : k === 'local:phase2_parking' ? ['phase2'] : k === 'local:phase2_main_garage' ? ['phase2', 'main'] : []);
       if (garages.includes('main') && !intake.garageNumbers.main?.trim()) throw new BadRequestException('大车库新办缺少车位号，未执行');
       const identity = intake.vehicleClass.includes('租') ? '租户车' : intake.vehicleClass.includes('产权') ? '产权车位' : intake.vehicleClass.includes('住户') || intake.vehicleClass.includes('业主') ? '住户车' : '';
       if (!identity) throw new BadRequestException('新办车辆类别无法对应停车库授权类型，请核对');
@@ -380,6 +382,10 @@ export class BusinessExecutionService {
         }
       }
       if (steps.some(s => s.status === 'manual')) return this.finish(txn, 'manual', { ...prev, mode, attempts, steps, nextAt: null, lastError: steps.filter(s => s.status === 'manual').map(s => `[${s.label}] ${s.note}`).join('；') });
+      if (civil && steps.every(s => s.status === 'done')) {
+        steps.push(await this.runCivilRegistration(txn, plate, ownerRoom, intake.garageNumbers.civil, endDate));
+        if (steps.some(s => s.status === 'manual')) return this.finish(txn, 'manual', { ...prev, mode, attempts, steps, nextAt: null, lastError: steps.at(-1)!.note });
+      }
       if (steps.every(s => s.status === 'done')) return this.finish(txn, 'synced', { ...prev, mode, attempts, steps, nextAt: null, lastError: null });
       return wait();
     } catch (error) {
@@ -387,6 +393,45 @@ export class BusinessExecutionService {
       return this.finish(txn, failure.status, { ...prev, mode, attempts, steps, lastError: failure.message,
         nextAt: failure.status === 'retry' ? nextRetryAt(attempts).toISOString() : null });
     }
+  }
+
+  /** 仅枫桦人防：新增前查重，持久记录再调用；未知写结果不自动重放。 */
+  private async runCivilRegistration(txn: BusinessTransaction, plate: string, ownerRoom: string, parkingSpace: string, endDate: string): Promise<ExecutionStep> {
+    const step: ExecutionStep = { key: 'registration:deliyun:枫桦景苑', kind: 'deliyun', label: '二期人防车库', status: 'manual', operationId: null, note: null };
+    const idempotencyKey = `biz:${txn.txnNo}:register:deliyun:枫桦景苑`;
+    const existing = await this.opRepo.findOne({ where: { tenantId: txn.tenantId, idempotencyKey } });
+    if (existing) {
+      step.operationId = existing.id;
+      if (existing.status === 'completed' && existing.result?.verified === true && existing.result?.plate === plate && existing.result?.ownerRoom === ownerRoom && existing.result?.parkingSpace === parkingSpace && existing.result?.endDate === endDate) { step.status = 'done'; step.note = '人防新增已回读核对，不重复新增'; }
+      else step.note = '人防已有原新增任务，执行结果未确认；保留任务，禁止自动重放，请核对后处理';
+      return step;
+    }
+    let op: ParkingOperation | null = null;
+    try {
+      const found = await this.deliyun.findVehiclesByPlate(plate, '枫桦景苑');
+      if (found.rows.length) { step.note = '德立云已有该车牌，不能将他人或已有车辆当作新车覆盖；请核对原登记'; return step; }
+      op = await this.opRepo.save(this.opRepo.create({ tenantId: txn.tenantId, database: 'deliyun', kind: 'add_vehicle', idempotencyKey,
+        payload: { plate, ownerRoom, parkingSpace, endDate, businessTxnNo: txn.txnNo, park: '枫桦景苑' }, expected: {}, sourceRecordId: null, pmsUserId: null,
+        status: 'running', attempt: 1, requestedAt: new Date(), completedAt: null, result: null,
+        leaseAgentKey: null, leaseExpiresAt: null, lastError: null, rollbackOfOperationId: null, createdBy: txn.createdBy, updatedBy: txn.createdBy }));
+      step.operationId = op.id;
+      // 现有人防新增接口始期固定为办理当天；历史起期不能悄悄改成今天。
+      const today = shanghaiDateOnly(new Date());
+      if (String(txn.startDate).slice(0, 10) !== today) throw new BadRequestException('人防新增接口仅支持办理当天起效；此单起期不是今天，未调用新增，请核对');
+      const created = await this.deliyun.setCivilDefenseAuthorization({ plate, authorized: true, createOnly: true, ownerRoom, parkingSpace, beginDate: txn.startDate!, endDate, remark: '来自PMS' });
+      const after = await this.deliyun.findVehiclesByPlate(plate, '枫桦景苑');
+      const row = after.rows[0];
+      if (!created.verified || !created.created || after.rows.length !== 1 || row.id !== created.vehicleId || row.plate !== plate ||
+          row.ownerName !== ownerRoom || row.cardNo !== parkingSpace || row.endDate !== endDate || !row.civilDefenseAuthorized) throw new BadRequestException('人防已发出新增但车牌、房号、车位、日期或授权回读不一致；请核对原任务，勿重复新增');
+      op.status = 'completed'; op.completedAt = new Date(); op.sourceRecordId = created.vehicleId;
+      op.result = { ...created, ownerRoom, parkingSpace, endDate, verified: true };
+      await this.opRepo.save(op);
+      step.status = 'done'; step.note = `人防新车已建立并回读至 ${endDate}；云授权已核对，现场通行未验`;
+    } catch (error) {
+      step.note = error instanceof Error ? error.message.slice(0, 300) : '人防新增结果未确认，请核对原任务';
+      if (op) { op.status = 'failed'; op.lastError = step.note; op.completedAt = new Date(); await this.opRepo.save(op); }
+    }
+    return step;
   }
 
   private async finish(txn: BusinessTransaction, status: ExternalSyncStatus, execution: ExecutionState) {
