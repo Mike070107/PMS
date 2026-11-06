@@ -5828,3 +5828,14 @@
 - 自上次（cfd931f1）以来上线的相关提交：
   - 27942aa2 fix(bills): align print registration with 12-row notices and retain legacy layout
 
+## 2026-11-06 14:18 · web · f67cbaa9
+
+- 包：`pms-web-20261106-141759.tar.gz`
+- 提交：f67cbaa9 deploy: api → 27942aa2
+- 自上次（d81cc2c4）以来上线的相关提交：
+  - 27942aa2 fix(bills): align print registration with 12-row notices and retain legacy layout
+  - 52ae7d39 fix(bills): 短信预览与已审核模版逐字对齐（结尾感叹号）
+  - 59d57489 fix(bills): 12 期一页不拆分；短信文案带房号并按指定措辞
+  - 4916058d Merge remote-tracking branch 'origin/main' into fix/purchase-approval-export-excel
+  - e377d90c fix(purchase): 审批环节补导出 Excel，复用旧版《材料申购单》版式
+
