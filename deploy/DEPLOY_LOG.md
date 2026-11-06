@@ -5799,3 +5799,11 @@
 - 自上次（6e4489c8）以来上线的相关提交：
   - a11c685a fix(parking): distinguish property parking category from resident vehicles
 
+## 2026-11-06 12:07 · api · 632a4401
+
+- 包：`pms-api-fast-20261106-120642.tar.gz`
+- 提交：632a4401 fix(audit): cover collection SMS actions without capturing sensitive payloads
+- 自上次（30ebab1a）以来上线的相关提交：
+  - 632a4401 fix(audit): cover collection SMS actions without capturing sensitive payloads
+  - d1c6945d fix(parking): connect paid civil-defense registration with create-only safeguards
+
