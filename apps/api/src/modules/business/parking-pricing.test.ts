@@ -73,3 +73,23 @@ test('分组名最长 20 字', () => {
   assert.equal(normalizeVehicleClass(' 小车内场 缴费费率180 '), '小车内场缴费费率180');
   assert.throws(() => normalizeVehicleClass('一'.repeat(21)), /最多 20 个字/);
 });
+
+
+test('按月循环以1个月月价和12个月年价覆盖全部1至60个月，不把旧unitPrice当免费', () => {
+  const cfg: any = { priceMode: 'monthly', monthlyPriceCents: 15000, discountCycleMonths: 12, discountMonths: 2 };
+  for (let months = 1; months <= 60; months++) {
+    const result = priceRule(months, 0, cfg);
+    assert.equal(result.amountCents, Math.floor(months / 12) * 150000 + (months % 12) * 15000, String(months));
+  }
+  assert.equal(upgradeToTable(cfg, 15000), null, '读取规则时不能把连续月份模式改回离散月档');
+});
+
+
+test('月单价与满减字段严格校验，明确0元合法，非完整周期不提前减免', () => {
+  const valid:any={priceMode:'monthly',monthlyPriceCents:15000,discountCycleMonths:12,discountMonths:2};
+  for (const patch of [{monthlyPriceCents:undefined},{monthlyPriceCents:null},{monthlyPriceCents:-1},{monthlyPriceCents:0.5},{monthlyPriceCents:'0'},{discountCycleMonths:1},{discountCycleMonths:61},{discountCycleMonths:2.5},{discountMonths:-1},{discountMonths:13},{discountMonths:1.5}]) assert.throws(()=>priceRule(12,15000,{...valid,...patch}));
+  for(let m=1;m<=60;m++)assert.equal(priceRule(m,123,{...valid,monthlyPriceCents:0}).amountCents,0);
+  assert.equal(priceRule(11,0,valid).amountCents,165000);
+  assert.equal(priceRule(23,0,valid).amountCents,315000);
+  assert.equal(priceRule(25,0,valid).amountCents,315000);
+});

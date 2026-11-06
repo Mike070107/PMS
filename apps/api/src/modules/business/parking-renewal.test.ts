@@ -103,3 +103,21 @@ test('新办与已有车辆的0元/150元自定日期登记保留待审核，不
     assert.ok(logs.some(v => v.action === 'review_requested')); assert.equal(kicked, 0); assert.equal(notified, 1); assert.equal(attached, intake ? 1 : 0);
   }
 });
+
+
+test('收费标准保存月单价及满减设置，六类规则覆盖1至60个月且试算不改价格配置', () => {
+  for (const [name, monthlyPriceCents, discountMonths] of [
+    ['住户车-1',15000,2], ['住户车-2',15000,0], ['住户车-3',25000,0],
+    ['租户车-1',15000,0], ['租户车-2',25000,0], ['产权车位',6750,0],
+  ] as const) {
+    const dto: any = { serviceType: 'parking_monthly', billingUnit: 'month', name, unitPriceCents: 0, config: { priceMode: 'monthly', vehicleClass: name, monthlyPriceCents, discountCycleMonths: 12, discountMonths } };
+    service.assertRuleShape(dto);
+    assert.equal(dto.unitPriceCents, monthlyPriceCents); assert.equal(dto.config.priceMode,'monthly');
+    const serialized = JSON.stringify(dto.config);
+    for (let m=1;m<=60;m++) {
+      const quote=service.estimateParking({ ...rule, unitPriceCents:dto.unitPriceCents, config:dto.config }, { serviceType:'parking_monthly', months:m }, 91);
+      assert.equal(quote.amountCents, monthlyPriceCents*(m-Math.floor(m/12)*discountMonths), name+' / '+m);
+    }
+    assert.equal(JSON.stringify(dto.config),serialized);
+  }
+});

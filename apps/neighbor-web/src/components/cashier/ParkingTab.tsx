@@ -31,7 +31,7 @@ const identityOf = (f: Record<string, unknown>): string | null => {
 };
 
 /* ───── 类型 ───── */
-export interface ParkRule { id: number; serviceType: string; name: string; communityId: number | null; unitPriceCents: number; enabled: boolean; config?: { parkingTarget?: string; parkingTargets?: string[]; vehicleClass?: string; isDefault?: boolean; priceMode?: 'table'; tiers?: Array<{ months: number; amountCents: number }> } | null }
+export interface ParkRule { id: number; serviceType: string; name: string; communityId: number | null; unitPriceCents: number; enabled: boolean; config?: { parkingTarget?: string; parkingTargets?: string[]; vehicleClass?: string; isDefault?: boolean; priceMode?: 'table' | 'monthly'; tiers?: Array<{ months: number; amountCents: number }> } | null }
 export interface ParkTarget { key: string; label: string; short?: string; system: 'deliyun' | 'local'; billing: 'vehicle' | 'space'; deliyunPark?: string; database?: string }
 export interface ParkHouse { id: number; communityId: number | null; lane?: string | null; buildingNo: string; roomNo: string; owner?: { id: number } | null }
 export type SystemRef =

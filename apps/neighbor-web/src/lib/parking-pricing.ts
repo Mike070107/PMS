@@ -16,8 +16,11 @@ export interface ParkingRuleConfig {
   vehicleClass?: string;
   /** 价格表：每个可选月数一个金额 */
   tiers?: PriceTier[];
-  /** 'table' = 按价格表精确取价（缴费规则分组）；旧规则没有此字段，按单价+套餐组合 */
-  priceMode?: 'table';
+  /** monthly=月单价+每满完整周期重复减免；table=明确指定档位；无字段为旧套餐算法 */
+  priceMode?: 'table' | 'monthly';
+  monthlyPriceCents?: number;
+  discountCycleMonths?: number;
+  discountMonths?: number;
   /** 本小区（对应车库）的默认分组：没归组的车按它收 */
   isDefault?: boolean;
 }
@@ -39,9 +42,27 @@ export function priceTable(months: number, tiers: PriceTier[]): { amountCents: n
   return { amountCents: hit.amountCents, breakdown: `${months} 个月` };
 }
 
-/** 价格表必须精确命中；旧单价+套餐规则仍沿用原有组合算法。 */
+/** 连续月份：每满12个月按年价，余月按月价；只在完整12月时触发优惠。 */
+export function priceMonthly(months: number, cfg: ParkingRuleConfig): { amountCents: number; breakdown: string } {
+  if (!Number.isInteger(months) || months < 1 || months > MAX_MONTHS) throw new Error(`缴费月数要在 1~${MAX_MONTHS} 之间`);
+  const unit = cfg.monthlyPriceCents;
+  const cycle = cfg.discountCycleMonths === undefined ? 12 : cfg.discountCycleMonths;
+  const free = cfg.discountMonths === undefined ? 0 : cfg.discountMonths;
+  if (unit == null || !Number.isSafeInteger(unit) || unit < 0) throw new MissingParkingPriceError('请明确配置非负月单价，0元请填0');
+  if (!Number.isInteger(cycle) || cycle < 2 || cycle > MAX_MONTHS) throw new Error('满减周期必须是2至60的整数月');
+  if (!Number.isInteger(free) || free < 0 || free > cycle) throw new Error('减免月数须为0至满减周期的整数');
+  const rounds = Math.floor(months / cycle), discounted = rounds * free;
+  const amountCents = (months - discounted) * unit;
+  if (!Number.isSafeInteger(amountCents) || amountCents < 0) throw new Error('按月计费金额超出合法范围');
+  return { amountCents, breakdown: free > 0
+    ? `${months}个月 × ${unit / 100}元/月；每满${cycle}个月减免${free}个月，本次${rounds}轮减免${discounted}个月`
+    : `${months}个月 × ${unit / 100}元/月，不减免` };
+}
+
+/** 明确选择计价模式；不把未知价格当免费，也不套用其他车辆类别。 */
 export function priceRule(months: number, unitPriceCents: number, cfg: ParkingRuleConfig): { amountCents: number; breakdown: string } {
   if (!Number.isInteger(months) || months < 1 || months > MAX_MONTHS) throw new Error(`缴费月数要在 1~${MAX_MONTHS} 之间`);
+  if (cfg.priceMode === 'monthly') return priceMonthly(months, cfg);
   if (cfg.priceMode !== 'table') return priceParking(months, unitPriceCents, cfg.tiers ?? []);
   return priceTable(months, normalizeTiers(cfg.tiers ?? []));
 }
@@ -51,7 +72,7 @@ export function priceRule(months: number, unitPriceCents: number, cfg: ParkingRu
  * 金额与升级前完全一致；没分类的叫「默认分组」并设为默认。已经是分组的原样返回 null。
  */
 export function upgradeToTable(cfg: ParkingRuleConfig, unitPriceCents: number): ParkingRuleConfig | null {
-  if (cfg.priceMode === 'table') return null;
+  if (cfg.priceMode === 'table' || cfg.priceMode === 'monthly') return null;
   const old = cfg.tiers ?? [];
   const months = [...new Set([...STANDARD_MONTHS, ...old.map((t) => t.months)])].sort((a, b) => a - b);
   const next: ParkingRuleConfig = {

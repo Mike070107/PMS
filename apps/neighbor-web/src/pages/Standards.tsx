@@ -5,7 +5,7 @@ import { can } from '@/lib/perm';
 import Icon from '@/components/Icon';
 import { ConfirmModal, Loading, toast } from '@/components/ui';
 import { FormModal, ResultNote, Toggle } from '@/components/settings/parts';
-import { DEFAULT_GROUP, STANDARD_MONTHS, type ParkingRuleConfig, type PriceTier } from '@/lib/parking-pricing';
+import { DEFAULT_GROUP, priceRule, type ParkingRuleConfig } from '@/lib/parking-pricing';
 import ToneIcon from '@/components/ToneIcon';
 
 interface Rule {
@@ -18,17 +18,17 @@ interface Community { id: number; name: string }
 interface PlateTag { id: number; plate: string; vehicleClass: string; houseId: number | null; updatedAt: string }
 
 const yuan = (cents: number) => (cents / 100).toFixed(2).replace(/\.00$/, '');
-const toCents = (s: string) => { const n = Number(s); return s.trim() !== '' && Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : NaN; };
+const toCents = (s: string) => { const n = Math.round(Number(s) * 100); return /^(?:\d+(?:\.\d{1,2})?|\.\d{1,2})$/.test(s.trim()) && Number.isSafeInteger(n) && n >= 0 ? n : NaN; };
 const normPlate = (s: string) => s.toUpperCase().replace(/[\s·.．・-]/g, '');
 const PLATE = /^[\u4e00-\u9fa5][A-Z][A-Z0-9]{5,6}$/;
 const err = (e: unknown, f: string) => (e instanceof Error && e.message ? e.message : f);
 
-type Draft = { id?: number; name: string; communityId: number | null; targets: string[]; isDefault: boolean; enabled: boolean; rows: Array<{ months: string; amount: string }> };
+type Draft = { id?: number; name: string; communityId: number | null; targets: string[]; isDefault: boolean; enabled: boolean; monthlyPrice: string; cycleMonths: string; freeMonths: string };
 
 /**
  * 收费标准 = 车辆类别（住户车/亲情车/租户车 等）。
- * 先建分组（如「默认分组」「小车内场180」「大车500」），分组下按缴费月数各定一个金额；
- * 再把车牌归到分组。收银台续期时，车牌在哪个分组就按哪张价格表收，只能选表里有的月数。
+ * 先建车辆类别，设置月单价及满周期减免月数；
+ * 再把车牌归到类别。收银台按完整周期重复优惠，剩余月份按月累计。
  */
 export default function Standards() {
   const canEdit = can('business', 'edit');
@@ -57,7 +57,7 @@ export default function Standards() {
   return (
     <>
       <div className="ph" style={{ marginBottom: 14 }}>
-        <div><div className="h1row"><ToneIcon kind="standards" /><h1 style={{ fontSize: 22 }}>收费标准</h1></div><p>按车辆类别（住户车/亲情车/租户车）定价、定好每个月数的金额，再把车牌归到类别；收银台按车牌所属类别收费</p></div>
+        <div><div className="h1row"><ToneIcon kind="standards" /><h1 style={{ fontSize: 22 }}>收费标准</h1></div><p>按车辆类别（住户车/亲情车/租户车）定价、设置月价和年价（满12个月一轮），再把车牌归到类别；收银台按车牌所属类别收费</p></div>
       </div>
       <div className="tabs" style={{ display: 'flex', gap: 22, borderBottom: '1px solid var(--line)', marginBottom: 14 }}>
         {([['groups', '车辆类别'], ['plates', '车牌归属类别'], ['card', '门禁卡']] as const).map(([k, l]) => <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}
@@ -69,6 +69,17 @@ export default function Standards() {
   );
 }
 
+function pricingFields(r?: Rule): Pick<Draft, 'monthlyPrice' | 'cycleMonths' | 'freeMonths'> {
+  if (!r) return { monthlyPrice: '', cycleMonths: '12', freeMonths: '0' };
+  const cfg = r.config ?? {};
+  const unit = cfg.monthlyPriceCents ?? cfg.tiers?.find(t => t.months === 1)?.amountCents;
+  const cycle = cfg.discountCycleMonths ?? 12;
+  const annual = cfg.tiers?.find(t => t.months === cycle)?.amountCents;
+  const inferred = annual == null || unit === 0 && annual === 0 ? 0 : unit != null && unit > 0 ? cycle - annual! / unit : NaN;
+  const free = cfg.discountMonths ?? inferred;
+  return { monthlyPrice: unit != null && Number.isSafeInteger(unit) && unit >= 0 ? yuan(unit) : '', cycleMonths: String(cycle), freeMonths: Number.isInteger(free) && free >= 0 && free <= cycle ? String(free) : '' };
+}
+
 /* ───────── 车辆类别 ───────── */
 function GroupsTab({ groups, all, targets, communities, cid, setCid, counts, canEdit, reload }: {
   groups: Rule[]; all: Rule[]; targets: Target[]; communities: Community[]; cid: number; setCid: (v: number) => void; counts: Record<string, number>; canEdit: boolean; reload: () => Promise<void>;
@@ -76,7 +87,6 @@ function GroupsTab({ groups, all, targets, communities, cid, setCid, counts, can
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState<Rule | null>(null);
-  const [fill, setFill] = useState('');
   const cname = (id: number | null) => (id == null ? '全部小区（通用）' : communities.find((c) => c.id === id)?.name || `小区 #${id}`);
   const tLabel = (k: string) => { const t = targets.find((x) => x.key === k); return t?.short || t?.label || k; };
   const targetsOf = (id: number | null) => { const n = communities.find((c) => c.id === id)?.name; return n ? targets.filter((t) => t.communities.includes(n)) : []; };
@@ -84,8 +94,8 @@ function GroupsTab({ groups, all, targets, communities, cid, setCid, counts, can
 
   const open = (r?: Rule) => setDraft(r ? {
     id: r.id, name: r.config?.vehicleClass || r.name, communityId: r.communityId, targets: r.config?.parkingTargets ?? (r.config?.parkingTarget ? [r.config.parkingTarget] : []),
-    isDefault: !!r.config?.isDefault, enabled: r.enabled, rows: tiersOf(r).map((t) => ({ months: String(t.months), amount: yuan(t.amountCents) })),
-  } : { name: '', communityId: cid || communities[0]?.id || null, targets: [], isDefault: false, enabled: true, rows: STANDARD_MONTHS.map((m) => ({ months: String(m), amount: '' })) });
+    isDefault: !!r.config?.isDefault, enabled: r.enabled, ...pricingFields(r),
+  } : { name: '', communityId: cid || communities[0]?.id || null, targets: [], isDefault: false, enabled: true, ...pricingFields() });
 
   /** 车辆类别配色：住户车绿、亲情车蓝、租户车琥珀（和收银台停车缴费同色） */
   const classTone = (name?: string | null) => {
@@ -97,34 +107,30 @@ function GroupsTab({ groups, all, targets, communities, cid, setCid, counts, can
   const PRESET_CLASSES = ['住户车', '亲情车', '租户车'];
   const quickCreate = (name: string) => {
     if (!canEdit) return;
-    setDraft({ name, communityId: cid || communities[0]?.id || null, targets: [], isDefault: false, enabled: true, rows: STANDARD_MONTHS.map((m) => ({ months: String(m), amount: '' })) });
+    setDraft({ name, communityId: cid || communities[0]?.id || null, targets: [], isDefault: false, enabled: true, ...pricingFields() });
   };
 
   const check = (d: Draft): string => {
     if (!d.name.trim()) return '请填写车辆类别名称';
     if (d.name.trim().length > 20) return '车辆类别名称最多 20 个字';
-    if (!d.rows.length) return '价格表至少要有一行';
-    const seen = new Set<number>();
-    for (const r of d.rows) {
-      const m = Number(r.months);
-      if (!Number.isInteger(m) || m < 1 || m > 60) return '缴费月数要填 1~60 的整数';
-      if (seen.has(m)) return `${m} 个月重复了`;
-      seen.add(m);
-      if (Number.isNaN(toCents(r.amount))) return `请填写 ${m} 个月的金额`;
-    }
+    const monthlyPriceCents = toCents(d.monthlyPrice);
+    if (Number.isNaN(monthlyPriceCents)) return '请输入月单价（最多2位小数，0元请填0）';
+    if (!/^\d+$/.test(d.cycleMonths) || !/^\d+$/.test(d.freeMonths)) return '满减周期和减免月数须为整数，0表示不减免';
+    try { priceRule(60, monthlyPriceCents, { priceMode: 'monthly', monthlyPriceCents, discountCycleMonths: Number(d.cycleMonths), discountMonths: Number(d.freeMonths) }); }
+    catch (e) { return err(e, '满减设置不正确'); }
     return '';
   };
   const save = async () => {
     if (!draft) return;
     const problem = check(draft);
     if (problem) return toast(problem);
-    const tiers: PriceTier[] = draft.rows.map((r) => ({ months: Number(r.months), amountCents: toCents(r.amount) })).sort((a, b) => a.months - b.months);
+    const monthlyPriceCents = toCents(draft.monthlyPrice);
     const prev = draft.id ? all.find((r) => r.id === draft.id) : null;
     setBusy(true);
     try {
       await request({ method: draft.id ? 'PATCH' : 'POST', url: draft.id ? `/business/rules/${draft.id}` : '/business/rules', data: {
-        serviceType: 'parking_monthly', name: draft.name.trim(), communityId: draft.communityId, billingUnit: 'month', unitPriceCents: tiers[0].amountCents, enabled: draft.enabled,
-        config: { ...(prev?.config ?? {}), vehicleClass: draft.name.trim(), tiers, parkingTargets: draft.targets, isDefault: draft.isDefault, priceMode: 'table' },
+        serviceType: 'parking_monthly', name: draft.name.trim(), communityId: draft.communityId, billingUnit: 'month', unitPriceCents: monthlyPriceCents, enabled: draft.enabled,
+        config: { ...(prev?.config ?? {}), vehicleClass: draft.name.trim(), tiers: [], parkingTargets: draft.targets, isDefault: draft.isDefault, priceMode: 'monthly', monthlyPriceCents, discountCycleMonths: Number(draft.cycleMonths), discountMonths: Number(draft.freeMonths) },
       } });
       toast('分组已保存'); setDraft(null); await reload();
     } catch (e) { toast(err(e, '保存失败，填写内容已保留')); }
@@ -136,7 +142,6 @@ function GroupsTab({ groups, all, targets, communities, cid, setCid, counts, can
       toast(r.enabled ? '已停用' : '已启用'); await reload();
     } catch (e) { toast(err(e, '操作失败')); }
   };
-  const setRow = (i: number, p: Partial<Draft['rows'][number]>) => draft && setDraft({ ...draft, rows: draft.rows.map((x, j) => (j === i ? { ...x, ...p } : x)) });
   const problem = draft ? check(draft) : '';
   const avail = draft ? targetsOf(draft.communityId) : [];
 
@@ -161,7 +166,7 @@ function GroupsTab({ groups, all, targets, communities, cid, setCid, counts, can
       </div>
       <div className="card t-scroll">
         <table className="t" style={{ minWidth: 960 }}>
-          <thead><tr><th style={{ width: 54 }}>序号</th><th>车辆类别</th><th>适用小区 / 车库</th><th>价格表（缴费月数 → 金额）</th><th style={{ width: 80, textAlign: 'right' }}>车牌数</th><th style={{ width: 90 }}>启用</th>{canEdit ? <th style={{ width: 130 }}>操作</th> : null}</tr></thead>
+          <thead><tr><th style={{ width: 54 }}>序号</th><th>车辆类别</th><th>适用小区 / 车库</th><th>月单价 / 满减规则</th><th style={{ width: 80, textAlign: 'right' }}>车牌数</th><th style={{ width: 90 }}>启用</th>{canEdit ? <th style={{ width: 130 }}>操作</th> : null}</tr></thead>
           <tbody>
             {groups.map((r, i) => {
               const ts = r.config?.parkingTargets ?? (r.config?.parkingTarget ? [r.config.parkingTarget] : []);
@@ -171,7 +176,7 @@ function GroupsTab({ groups, all, targets, communities, cid, setCid, counts, can
                   <td className="nw muted">{i + 1}</td>
                   <td className="nw"><span className={`tag ${classTone(g)}`}><b style={{ fontWeight: 600 }}>{g}</b></span>{r.config?.isDefault ? <span className="tag mute" style={{ marginLeft: 6 }}>默认</span> : null}</td>
                   <td>{cname(r.communityId)}<div className="sub2">{ts.length ? ts.map(tLabel).join('、') : '全部车库'}</div></td>
-                  <td style={{ minWidth: 380 }}><div className="set-tags">{tiersOf(r).map((t) => <span key={t.months} className="acc">{t.months} 个月 <b>{money(t.amountCents / 100)}</b></span>)}{!tiersOf(r).length ? <span className="warn">未设价格</span> : null}</div></td>
+                  <td style={{ minWidth: 380 }}><div className="set-tags">{r.config?.priceMode === 'monthly' ? <span className="ok">{money((r.config.monthlyPriceCents ?? r.unitPriceCents) / 100)}/月 · {r.config.discountMonths ? `每满${r.config.discountCycleMonths ?? 12}个月减免${r.config.discountMonths}个月` : '不减免'} · 支持所有月份</span> : null}{tiersOf(r).map((t) => <span key={t.months} className="acc">{t.months} 个月 <b>{money(t.amountCents / 100)}</b></span>)}{!tiersOf(r).length ? <span className="warn">未设价格</span> : null}</div></td>
                   <td className="nw" style={{ textAlign: 'right' }}>{counts?.[g] ?? 0}</td>
                   <td><Toggle on={r.enabled} disabled={!canEdit} onChange={() => void toggle(r)} /></td>
                   {canEdit ? <td className="nw"><button className="btn g sm" onClick={() => open(r)}><Icon name="edit" size={15} />编辑</button><button className="btn g sm" style={{ color: 'var(--dang)' }} onClick={() => setRemoving(r)}><Icon name="trash" size={15} /></button></td> : null}
@@ -202,30 +207,15 @@ function GroupsTab({ groups, all, targets, communities, cid, setCid, counts, can
             <Toggle on={draft.isDefault} onChange={(isDefault) => setDraft({ ...draft, isDefault })} label={['默认分组', '不是默认分组']} />
             <Toggle on={draft.enabled} onChange={(enabled) => setDraft({ ...draft, enabled })} label={['启用', '停用']} />
           </div>
-          <div className="set-field">价格表
-            <span className="hint">每个可选的缴费月数一行；收银台只能选这里列出的月数，金额就是这一格。</span>
+          <div className="set-field">月单价与满减设置<span className="hint">覆盖所有1–60个月；仅每满一个完整周期减免一次，剩余月份继续按月单价累计。</span></div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,170px),1fr))', gap: 14 }}>
+            <label>月单价（元/月）<input className="in" aria-label="停车月单价" inputMode="decimal" value={draft.monthlyPrice} placeholder="请输入月单价" onChange={e => setDraft({ ...draft, monthlyPrice: e.target.value })} /></label>
+            <label>每满（个月）<input className="in" aria-label="满减周期月数" type="number" min={2} max={60} step={1} value={draft.cycleMonths} onChange={e => setDraft({ ...draft, cycleMonths: e.target.value })} /></label>
+            <label>减免（个月）<input className="in" aria-label="减免月数" type="number" min={0} max={Number(draft.cycleMonths) || 60} step={1} value={draft.freeMonths} onChange={e => setDraft({ ...draft, freeMonths: e.target.value })} /><span className="hint">填0表示不减免</span></label>
           </div>
-          <table className="t">
-            <thead><tr><th style={{ width: 150 }}>缴费月数</th><th>金额（元）</th><th style={{ width: 110 }}>折合每月</th><th style={{ width: 50 }} /></tr></thead>
-            <tbody>{draft.rows.map((r, i) => {
-              const m = Number(r.months); const c = toCents(r.amount);
-              return (
-                <tr key={i}>
-                  <td><span className="set-inline"><input className="in" style={{ width: 70 }} inputMode="numeric" value={r.months} onChange={(e) => setRow(i, { months: e.target.value.replace(/\D/g, '') })} />个月</span></td>
-                  <td><input className="in" style={{ width: 140 }} inputMode="decimal" value={r.amount} placeholder="0" onChange={(e) => setRow(i, { amount: e.target.value })} /></td>
-                  <td className="nw muted">{m > 0 && !Number.isNaN(c) ? `${money(c / 100 / m)}/月` : '—'}</td>
-                  <td><button className="btn g sm" title="删除这一行" onClick={() => setDraft({ ...draft, rows: draft.rows.filter((_, j) => j !== i) })}>✕</button></td>
-                </tr>
-              );
-            })}</tbody>
-          </table>
-          <div className="set-inline">
-            <button className="btn sm" onClick={() => setDraft({ ...draft, rows: [...draft.rows, { months: '', amount: '' }] })}><Icon name="plus" size={14} />加一行</button>
-            <span className="muted" style={{ marginLeft: 8 }}>按月单价一键填：</span>
-            <input className="in" style={{ width: 90 }} inputMode="decimal" placeholder="元/月" value={fill} onChange={(e) => setFill(e.target.value)} />
-            <button className="btn sm" disabled={Number.isNaN(toCents(fill))} onClick={() => setDraft({ ...draft, rows: draft.rows.map((r) => (Number(r.months) > 0 ? { ...r, amount: yuan(toCents(fill) * Number(r.months)) } : r)) })}>填入</button>
-            <button className="btn sm" disabled={Number.isNaN(toCents(fill))} title="12 个月按 10 个月收" onClick={() => { const u = toCents(fill); const rows = draft.rows.some((r) => r.months === '12') ? draft.rows : [...draft.rows, { months: '12', amount: '' }]; setDraft({ ...draft, rows: rows.map((r) => (r.months === '12' ? { ...r, amount: yuan(u * 10) } : r)) }); }}>交 12 个月优惠 2 个月</button>
-          </div>
+          {!problem ? <div className="note2" style={{ marginTop: 14, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            {[2, 3, 6, 12, 13, 24].map(months => <span key={months}>{months}个月 <b>{money(priceRule(months, toCents(draft.monthlyPrice), { priceMode: 'monthly', monthlyPriceCents: toCents(draft.monthlyPrice), discountCycleMonths: Number(draft.cycleMonths), discountMonths: Number(draft.freeMonths) }).amountCents / 100)}</b></span>)}
+          </div> : null}
           {problem ? <ResultNote ok={false}>{problem}</ResultNote> : null}
         </> : null}
       </FormModal>
