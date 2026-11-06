@@ -5792,3 +5792,10 @@
 - 自上次（901ea31f）以来上线的相关提交：
   - 30ebab1a fix(parking): connect paid vehicle registration to legacy queue and device confirmation
 
+## 2026-11-06 11:55 · web · a11c685a
+
+- 包：`pms-web-20261106-115411.tar.gz`
+- 提交：a11c685a fix(parking): distinguish property parking category from resident vehicles
+- 自上次（6e4489c8）以来上线的相关提交：
+  - a11c685a fix(parking): distinguish property parking category from resident vehicles
+
