@@ -5777,3 +5777,11 @@
   - 901ea31f fix(parking): monthly prices with repeating full-cycle discounts
   - fbb29016 test: fix MIS ledger HTTP fixture and erp shell postcss dep
 
+## 2026-11-06 11:06 · web · 6e4489c8
+
+- 包：`pms-web-20261106-110545.tar.gz`
+- 提交：6e4489c8 deploy: api → 901ea31f
+- 自上次（cd0cab99）以来上线的相关提交：
+  - 901ea31f fix(parking): monthly prices with repeating full-cycle discounts
+  - fbb29016 test: fix MIS ledger HTTP fixture and erp shell postcss dep
+
