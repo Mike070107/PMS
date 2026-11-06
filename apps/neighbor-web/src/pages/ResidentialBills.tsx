@@ -91,7 +91,7 @@ export default function ResidentialBills(){
      </section>
      <div className="rb-toolbar" role="toolbar" aria-label="待缴清单工具条">
       <div className="rb-toolbar-filters">
-       <label className="rb-toolbar-field">小区<select className="in" aria-label="工具条小区选择" value={community} onChange={e=>setCommunity(e.target.value)}><option value="">全部授权小区</option>{meta.data.communities.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+       
        <label className="rb-search"><Icon name="search"/><input value={term} onChange={e=>setTerm(e.target.value)} aria-label="搜索MIS账单" placeholder="完整地址、业主姓名或单据号"/></label>
        <div className="chips">{(['unpaid','paid'] as const).map(k=><button className={'chip '+(status===k?'on':'')} key={k} onClick={()=>setStatus(k)}>{k==='unpaid'?'待缴住户':'已缴住户'}</button>)}</div>
       </div>
