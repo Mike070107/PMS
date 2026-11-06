@@ -128,7 +128,22 @@ export class MisFeesService implements OnModuleDestroy {
   if(q.view==='trend')return {...meta,invalidDateCount:Number(sets[1]?.[0]?.invalidDateCount||0),rows:(sets[0]||[]).map((r:any)=>({day:r.day,netCents:misMoneyToCents(r.netAmount),chargedCents:misMoneyToCents(r.chargedAmount),refundedCents:misMoneyToCents(r.refundedAmount)}))};
   const format=(r:any)=>{const {phone,amount,...safe}=r;const p=String(phone||'').trim();return {...safe,amountCents:misMoneyToCents(amount),billCount:r.billCount===undefined?undefined:Number(r.billCount),phoneMasked:/^1[3-9]\d{9}$/.test(p)?`${p.slice(0,3)}****${p.slice(-4)}`:p?'号码待核实':'未留手机号',contactEligible:/^1[3-9]\d{9}$/.test(p),communityId:communities.find(c=>c.offices.includes(r.officeCode))?.id};};
   if(q.view==='detail'){if((sets[0]||[]).length>10000)throw new BadRequestException('账单明细超过一万条，请缩小账期或分批');return {...meta,rows:(sets[0]||[]).map(format)};}
-  return {...meta,total:Number(sets[0]?.[0]?.total||0),amountCents:misMoneyToCents(sets[0]?.[0]?.amount),page:q.page||1,pageSize:q.pageSize||20,rows:(sets[1]||[]).map(format)};
+  const totalHouses=Number(sets[0]?.[0]?.total||0),totalAmount=misMoneyToCents(sets[0]?.[0]?.amount);
+  let aging:any=undefined;
+  if((q as any)._aging!==false&&!q.houseKeys?.length){
+   const scan:any=await this.residential({...q,view:'households',page:1,pageSize:2000,_aging:false} as any,user,access);
+   const buckets:Record<string,{count:number;amountCents:number}>={'0-30':{count:0,amountCents:0},'31-60':{count:0,amountCents:0},'61-90':{count:0,amountCents:0},'90+':{count:0,amountCents:0}};
+   const now=new Date(),monthsNow=now.getFullYear()*12+now.getMonth();
+   for(const r of scan.rows as any[]){
+    const m=/^(\d{4})(0[1-9]|1[0-2])$/.exec(String(r.periodFrom||''));
+    if(!m)continue;
+    const months=Number(m[1])*12+(Number(m[2])-1),gap=Math.max(0,monthsNow-months);
+    const key=gap>3?'90+':gap>2?'61-90':gap>1?'31-60':'0-30';
+    buckets[key].count+=1;buckets[key].amountCents+=r.amountCents||0;
+   }
+   aging={buckets,total:totalHouses,amountCents:totalAmount,truncated:scan.total>2000,scanned:scan.rows.length};
+  }
+  return {...meta,total:totalHouses,amountCents:totalAmount,page:q.page||1,pageSize:q.pageSize||20,aging,rows:(sets[1]||[]).map(format)};
  }
   /** 仅供应短信发送：按责任对象取明文号码，经后端直接给通道，不经前端。 */
   async contactPhones(houseKeys:string[],user:AuthUser,access?:ResolvedAccess){
