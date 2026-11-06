@@ -5755,3 +5755,10 @@
   - 1d7a69c7 feat(bills): 通知单按设计重做——一个月一行、印批次号、去掉旧核对提示、加责任声明（测试同步重写）
   - c0313dba feat(fees): 短信回执回调 + 批次详情发送按钮（调用 /fees/mis/collections/:id/sms）
 
+## 2026-11-06 10:19 · api · d408a4b6
+
+- 包：`pms-api-fast-20261106-101759.tar.gz`
+- 提交：d408a4b6 fix(parking): allow explicit custom zero payments without filling amount
+- 自上次（1d7a69c7）以来上线的相关提交：
+  - d408a4b6 fix(parking): allow explicit custom zero payments without filling amount
+
