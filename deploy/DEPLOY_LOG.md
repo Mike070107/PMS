@@ -6085,3 +6085,11 @@
 - 自上次（b20a91f2）以来上线的相关提交：
   - 3e6c2128 fix(bills): 通知状态加持久化测试与告警；短信时间取送达；跟进事件按户聚合；清理死参数
 
+## 2026-11-07 00:56 · web · 5b247f02
+
+- 包：`pms-web-20261107-005601.tar.gz`
+- 提交：5b247f02 fix(bills): 折叠区标题按页签动态显示；清掉 CollectionFollowups 死参数
+- 自上次（da3a53ec）以来上线的相关提交：
+  - 5b247f02 fix(bills): 折叠区标题按页签动态显示；清掉 CollectionFollowups 死参数
+  - 8818b2a2 test(bills): 更新 overview 期望，含小区对比请求
+
