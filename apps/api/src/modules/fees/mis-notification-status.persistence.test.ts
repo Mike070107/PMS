@@ -123,3 +123,58 @@ test('通知状态：空数组不查库；内部大扫描不加通知查询；�
     await f.pg.close();
   }
 });
+
+test('通知状态：近30天打印+短信计数与低响应抑制判定（>=2 次）', async () => {
+  const f = await fixture();
+  try {
+    const { s } = f;
+    const day = (offset: number) => new Date(Date.now() - offset * 86400000).toISOString();
+    // A：近30天 2 次打印 + 1 次送达短信 = 3 次，应抑制。
+    await f.batch(41, 1, ['01:2:1']);
+    await f.print(1, 41, 'A4', day(10), 'p-count-a-older');
+    await f.print(1, 41, 'A5', day(3), 'p-count-a-latest');
+    // B：一次 40 天前打印（不计数）+ 近30天 1 次短信 = 1 次，不抑制。
+    await f.batch(42, 1, ['01:2:2']);
+    await f.print(1, 42, 'A5', day(40), 'p-count-b-old');
+    // C：最近只有 queued/failed（不算通知），另有一条 45 天前的送达短信（显示状态但不计数）。
+    await f.sms(1, '01:2:1', 'delivered', day(16), day(15));
+    await f.sms(1, '01:2:2', 'submitted', day(5), null);
+    await f.sms(1, '01:2:3', 'delivered', day(46), day(45));
+    await f.sms(1, '01:2:3', 'queued', day(2), null);
+    await f.sms(1, '01:2:3', 'failed', day(1), null);
+    // 跨租户：租户2对同一 houseKey 的打印/短信不能计入租户1。
+    await f.batch(51, 2, ['01:2:1']);
+    await f.print(2, 51, 'A5', day(2), 'p-count-tenant2');
+    await f.sms(2, '01:2:1', 'delivered', day(2), day(2));
+
+    const status = await s.notificationStatus(['01:2:1', '01:2:2', '01:2:3'], { id: 7, tenantId: 1 });
+    const a = status.get('01:2:1');
+    assert.equal(a.printCount30d, 2, '近30天打印登记数');
+    assert.equal(a.smsCount30d, 1, '近30天送达短信数');
+    assert.equal(a.count30d, 3, '合计 = 打印 + 短信');
+    assert.equal(a.suppressed, true, '>=2 次命中抑制');
+    assert.equal(a.printedPaper, 'A5', '最近纸张仍取最近一次打印');
+    assert.equal(a.smsStatus, 'delivered');
+    const b = status.get('01:2:2');
+    assert.equal(b.printCount30d, 0, '40 天前打印不计入近30天');
+    assert.equal(b.smsCount30d, 1);
+    assert.equal(b.count30d, 1);
+    assert.equal(b.suppressed, false);
+    const c = status.get('01:2:3');
+    assert.equal(c.printCount30d, 0);
+    assert.equal(c.smsCount30d, 0, '45 天前送达不计入近30天，queued/failed 从不算通知');
+    assert.equal(c.count30d, 0);
+    assert.equal(c.suppressed, false);
+    assert.equal(c.smsStatus, 'delivered', '旧通知仍显示状态，只是不计数');
+
+    // 清单行只透传计数与判定，页面据此显示「×N」和「低响应」。
+    const rows = ['01:2:1', '01:2:2', '01:2:3'].map((houseKey) => ({ houseKey, amountCents: 1000 }));
+    const page = await s.withNotificationStatus(rows, { id: 7, tenantId: 1 }, { pageSize: 20 } as any);
+    assert.deepEqual(page.map((row: any) => [row.notifiedPrintCount30d, row.notifiedSmsCount30d, row.notifiedCount30d, row.notifySuppressed]), [[2, 1, 3, true], [0, 1, 1, false], [0, 0, 0, false]]);
+
+    const tenant2 = await s.notificationStatus(['01:2:1'], { id: 8, tenantId: 2 });
+    assert.deepEqual([tenant2.get('01:2:1').printCount30d, tenant2.get('01:2:1').smsCount30d, tenant2.get('01:2:1').count30d, tenant2.get('01:2:1').suppressed], [1, 1, 2, true], '租户2只看到自己的计数');
+  } finally {
+    await f.pg.close();
+  }
+});

@@ -25,6 +25,8 @@ const logger=new Logger('MisFeesService');
 
 /** 对账 CSV：单次最多 2 万户，按 5000 户一页循环取数；口径固定为待缴责任对象。 */
 const EXPORT_ROW_CAP=20000,EXPORT_PAGE_SIZE=5000,EXPORT_STATUS_CHUNK=1000;
+/** 重复催收抑制：近 30 天打印登记数 + 短信数 >= 2 视为「低响应」，阈值先写死，后续可配置。 */
+const NOTIFY_COUNT_WINDOW_DAYS=30,NOTIFY_SUPPRESS_MIN=2;
 const EXPORT_CSV_HEADER='小区,房号,业主,电话(脱敏),待缴金额(元),账期起,账期止,笔数,通知状态';
 /** 文本单元格：含逗号/引号/换行时按 RFC4180 转义；公式起始字符前加单引号，避免 Excel 当成公式执行。 */
 function csvText(value:unknown){
@@ -242,23 +244,27 @@ export class MisFeesService implements OnModuleDestroy {
   * 清单「通知状态」：一次性按 houseKey IN 批量取最近一次打印/短信，查询次数与户数无关，禁止 N+1。
   * 打印登记表没有 house_key，只能经批次快照 snapshot.notices[].houseKey 关联；短信表直接按 house_key 过滤。
   * 「已打印」= 有打印登记且批次快照含该户；「已发送」= 短信 status 为 submitted/delivered；queued（演练）与 failed 不算通知。
+  * 重复催收抑制：同一条 UNION ALL 顺带统计近 30 天打印登记数与短信数（库里聚合，不额外查询），合计 >= 2 视为低响应。
   */
  private async notificationStatus(houseKeys:string[],user:AuthUser){
-  const out=new Map<string,{printedAt:string|null;printedPaper:'A5'|'A4'|null;smsAt:string|null;smsStatus:'submitted'|'delivered'|null}>();
+  type Row={printedAt:string|null;printedPaper:'A5'|'A4'|null;smsAt:string|null;smsStatus:'submitted'|'delivered'|null;printCount30d:number;smsCount30d:number;count30d:number;suppressed:boolean};
+  const out=new Map<string,Row>();
   const keys=[...new Set(houseKeys.map(key=>String(key||'')).filter(Boolean))];
   if(!keys.length||!user.tenantId||!this.batches?.manager)return out;
-  // 一条 UNION ALL 覆盖打印与短信两张表；两路都只返回当前页 houseKey 的聚合结果。
-  const sql=`SELECT 'print' AS kind,n->>'houseKey' AS house_key,MAX(p.printed_at) AS notified_at,(array_agg(p.paper ORDER BY p.printed_at DESC,p.id DESC))[1] AS printed_paper,NULL::text AS sms_status FROM mis_collection_prints p JOIN mis_collection_batches b ON b.id=p.batch_id AND b.tenant_id=p.tenant_id CROSS JOIN LATERAL jsonb_array_elements(COALESCE(b.snapshot->'notices','[]'::jsonb)) n WHERE p.tenant_id=$1 AND n->>'houseKey'=ANY($2::text[]) GROUP BY n->>'houseKey' UNION ALL SELECT 'sms' AS kind,house_key,MAX(COALESCE(delivered_at,submitted_at,created_at)) AS notified_at,NULL::text AS printed_paper,(array_agg(status ORDER BY COALESCE(delivered_at,submitted_at,created_at) DESC,id DESC))[1] AS sms_status FROM mis_collection_sms WHERE tenant_id=$1 AND house_key=ANY($2::text[]) AND status IN ('submitted','delivered') GROUP BY house_key`;
+  const cutoff=new Date(Date.now()-NOTIFY_COUNT_WINDOW_DAYS*86400000);
+  // 一条 UNION ALL 覆盖打印与短信两张表；两路都只返回当前页 houseKey 的聚合结果，30 天计数在数据库里算。
+  const sql=`SELECT 'print' AS kind,n->>'houseKey' AS house_key,MAX(p.printed_at) AS notified_at,(array_agg(p.paper ORDER BY p.printed_at DESC,p.id DESC))[1] AS printed_paper,NULL::text AS sms_status,COUNT(*) FILTER (WHERE p.printed_at>=$3::timestamptz)::int AS print_count_30d,0::int AS sms_count_30d FROM mis_collection_prints p JOIN mis_collection_batches b ON b.id=p.batch_id AND b.tenant_id=p.tenant_id CROSS JOIN LATERAL jsonb_array_elements(COALESCE(b.snapshot->'notices','[]'::jsonb)) n WHERE p.tenant_id=$1 AND n->>'houseKey'=ANY($2::text[]) GROUP BY n->>'houseKey' UNION ALL SELECT 'sms' AS kind,house_key,MAX(COALESCE(delivered_at,submitted_at,created_at)) AS notified_at,NULL::text AS printed_paper,(array_agg(status ORDER BY COALESCE(delivered_at,submitted_at,created_at) DESC,id DESC))[1] AS sms_status,0::int AS print_count_30d,COUNT(*) FILTER (WHERE COALESCE(delivered_at,submitted_at,created_at)>=$3::timestamptz)::int AS sms_count_30d FROM mis_collection_sms WHERE tenant_id=$1 AND house_key=ANY($2::text[]) AND status IN ('submitted','delivered') GROUP BY house_key`;
   try{
-   const found:any[]=await this.batches.manager.query(sql,[user.tenantId,keys]);
+   const found:any[]=await this.batches.manager.query(sql,[user.tenantId,keys,cutoff]);
    const iso=(value:unknown)=>{if(!value)return null;const date=value instanceof Date?value:new Date(String(value));return Number.isFinite(date.getTime())?date.toISOString():null};
    for(const row of found||[]){
     const key=String(row.house_key||'');if(!key)continue;
-    const current=out.get(key)||{printedAt:null,printedPaper:null,smsAt:null,smsStatus:null};
-    if(row.kind==='print'){current.printedAt=iso(row.notified_at);current.printedPaper=row.printed_paper==='A4'?'A4':row.printed_paper==='A5'?'A5':null}
-    else{current.smsAt=iso(row.notified_at);current.smsStatus=row.sms_status==='delivered'?'delivered':row.sms_status==='submitted'?'submitted':null}
+    const current=out.get(key)||{printedAt:null,printedPaper:null,smsAt:null,smsStatus:null,printCount30d:0,smsCount30d:0,count30d:0,suppressed:false};
+    if(row.kind==='print'){current.printedAt=iso(row.notified_at);current.printedPaper=row.printed_paper==='A4'?'A4':row.printed_paper==='A5'?'A5':null;current.printCount30d=Number(row.print_count_30d)||0}
+    else{current.smsAt=iso(row.notified_at);current.smsStatus=row.sms_status==='delivered'?'delivered':row.sms_status==='submitted'?'submitted':null;current.smsCount30d=Number(row.sms_count_30d)||0}
     out.set(key,current);
    }
+   for(const value of out.values()){value.count30d=value.printCount30d+value.smsCount30d;value.suppressed=value.count30d>=NOTIFY_SUPPRESS_MIN}
   }catch(error){
    // 通知状态是清单增强信息：查询失败降级为「未记录」不阻断账单清单，但必须留痕，
    // 不能把 SQL 失败静默伪装成「全部未通知」；日志带租户、户数与错误摘要，不含户号和内容。
@@ -269,10 +275,10 @@ export class MisFeesService implements OnModuleDestroy {
  }
  /** 只对真实清单分页附加通知状态；内部 _aging:false 大扫描与超过50行的内部调用不查，避免额外开销。 */
  private async withNotificationStatus(rows:any[],user:AuthUser,q:MisResidentialQuery){
-  const empty=()=>rows.map(row=>({...row,notifiedPrintedAt:null,notifiedPrintedPaper:null,notifiedSmsAt:null,notifiedSmsStatus:null}));
+  const empty=()=>rows.map(row=>({...row,notifiedPrintedAt:null,notifiedPrintedPaper:null,notifiedSmsAt:null,notifiedSmsStatus:null,notifiedPrintCount30d:0,notifiedSmsCount30d:0,notifiedCount30d:0,notifySuppressed:false}));
   if(!rows.length||(q as any)._aging===false||(q.pageSize??20)>50)return empty();
   const status=await this.notificationStatus(rows.map(row=>String(row.houseKey??'')),user);
-  return rows.map(row=>{const one=status.get(String(row.houseKey??''));return {...row,notifiedPrintedAt:one?.printedAt??null,notifiedPrintedPaper:one?.printedPaper??null,notifiedSmsAt:one?.smsAt??null,notifiedSmsStatus:one?.smsStatus??null}});
+  return rows.map(row=>{const one=status.get(String(row.houseKey??''));return {...row,notifiedPrintedAt:one?.printedAt??null,notifiedPrintedPaper:one?.printedPaper??null,notifiedSmsAt:one?.smsAt??null,notifiedSmsStatus:one?.smsStatus??null,notifiedPrintCount30d:one?.printCount30d??0,notifiedSmsCount30d:one?.smsCount30d??0,notifiedCount30d:one?.count30d??0,notifySuppressed:one?.suppressed??false}});
  }
   /** 仅供应短信发送：按责任对象取明文号码，经后端直接给通道，不经前端。 */
   async contactPhones(houseKeys:string[],user:AuthUser,access?:ResolvedAccess){
