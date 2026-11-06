@@ -5762,3 +5762,10 @@
 - 自上次（1d7a69c7）以来上线的相关提交：
   - d408a4b6 fix(parking): allow explicit custom zero payments without filling amount
 
+## 2026-11-06 10:20 · web · cd0cab99
+
+- 包：`pms-web-20261106-101930.tar.gz`
+- 提交：cd0cab99 deploy: api → d408a4b6
+- 自上次（1d7a69c7）以来上线的相关提交：
+  - d408a4b6 fix(parking): allow explicit custom zero payments without filling amount
+
