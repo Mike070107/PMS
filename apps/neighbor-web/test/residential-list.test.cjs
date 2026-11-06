@@ -32,7 +32,7 @@ function harness() {
       if (id === '@/lib/auth') return { useSession: () => session };
       if (id === '@/lib/perm') return { can: () => false };
       if (id === '@/lib/residential-bills') return helperModule.exports;
-      return { __esModule: true, default: () => null, Card: 'Card', Empty: 'Empty', ErrorNote: 'ErrorNote', Sheet: 'Sheet', toast() {} };
+      return { __esModule: true, default: () => null, FollowupCell:'FollowupCell', Card: 'Card', Empty: 'Empty', ErrorNote: 'ErrorNote', Sheet: 'Sheet', toast() {} };
     },
   };
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText, sandbox);

@@ -1,3 +1,4 @@
+import { MisCollectionEffectQueryDto, MisCollectionFollowupDto, MisCollectionPrintDto } from './mis-fees.dto';
 import {
   Body,
   Controller,
@@ -51,9 +52,25 @@ import { MisFeesQueryDto, MisHouseSearchDto, MisResidentialQueryDto, MisCollecti
 export class FeesController {
   constructor(private readonly feesService: FeesService,private readonly misFeesService:MisFeesService,private readonly misCollectionSmsService:MisCollectionSmsService) {}
 
+  @Post('mis/collections/:id/prints')
+  @RequirePermission('fees','edit')
+  registerMisCollectionPrint(@Param('id',ParseIntPipe) id:number,@Body() dto:MisCollectionPrintDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.registerCollectionPrint(id,dto,user,access);}
+
   @Post('mis/collections/:id/sms')
   @RequirePermission('fees','edit')
   misCollectionSms(@Param('id',ParseIntPipe) id:number,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misCollectionSmsService.sendBatch(id,user,access);}
+
+  @Get('mis/collections/followups')
+  @RequirePermission('fees','view')
+  misFollowups(@Query() query:MisResidentialQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.collectionFollowups(query,user,access);}
+
+  @Post('mis/collections/followups')
+  @RequirePermission('fees','edit')
+  recordMisFollowup(@Body() dto:MisCollectionFollowupDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.recordCollectionFollowup(dto,user,access);}
+
+  @Get('mis/collections/effect')
+  @RequirePermission('fees','view')
+  misCollectionEffects(@Query() query:MisCollectionEffectQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.collectionEffects(query,user,access);}
 
   @Get('mis/options')
   @RequirePermission('fees','view')

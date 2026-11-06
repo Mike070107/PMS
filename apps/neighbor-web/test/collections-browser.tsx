@@ -1,0 +1,4 @@
+import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import ResidentialBills from '../src/pages/ResidentialBills';import '../src/styles/design.css';import '../src/styles/app.css';import '../src/styles/large.css';import '../src/styles/guards.css';
+// Local fixture only: observe print calls without a physical printer or browser dialog.
+const append=document.body.appendChild.bind(document.body);document.body.appendChild=((node:any)=>{const result=append(node);if(node.tagName==='IFRAME'){node.contentWindow.print=()=>{(window as any).__events.push('print')}}return result}) as any;
+createRoot(document.getElementById('root')!).render(<MemoryRouter><main style={{padding:12,minWidth:0,maxWidth:'100%',boxSizing:'border-box'}}><p>隔离组件验收 · 合成数据 · 不连接正式接口</p><ResidentialBills/></main></MemoryRouter>);

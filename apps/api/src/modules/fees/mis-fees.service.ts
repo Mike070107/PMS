@@ -1,10 +1,13 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleDestroy, ServiceUnavailableException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
+import { collectionEffects as calculateCollectionEffects, effectDay, promiseProgress } from './mis-collection-effect';
+import { validateMisFeeRange } from './mis-fees.query';
 import { CollectionSmsService } from '../settings/collection-sms.service';
 import { MisCollectionBatch } from '../../entities/mis-collection-batch.entity';
 import type { MisCollectionPreviewDto } from './mis-fees.dto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
+import { MisCollectionPromise, MisCollectionHold, MisCollectionEvent, MisCollectionPrint } from '../../entities/mis-collection-followup.entity';
 import { Building, Community, House, User } from '../../entities';
 import { AuthUser } from '../../common/current-user.decorator';
 import { ResolvedAccess } from '../access/access.service';
@@ -66,9 +69,10 @@ export class MisFeesService implements OnModuleDestroy {
  }
  async metadata(user:AuthUser,access?:ResolvedAccess){
   const communities=await this.scope(user,access);
+  const smsReadiness=this.smsSettings?await this.smsSettings.readiness(user.tenantId!):{configured:false,enabled:false,canSend:false,reason:'短信配置状态尚未取得，请刷新或联系管理员'};
   if(!this.configured()||!communities.length)return {available:false,readOnly:true,communities,feeItems:[],message:!this.configured()?'一通MIS查询连接尚未配置':'当前公司或管理处没有已映射的物业费数据'};
   const result=await this.read('SELECT DH AS code,XM AS name FROM dbo.SETUPSFXM ORDER BY DH');
-  return {available:true,readOnly:true,communities,feeItems:result.recordset,sourceLabel:'一通MIS',message:'查询MIS账单明细，不登记收款，不合并公寓收费流水'};
+  return {available:true,readOnly:true,communities,smsReadiness,feeItems:result.recordset,sourceLabel:'一通MIS',message:'查询MIS账单明细，不登记收款，不合并公寓收费流水'};
  }
  async searchHouses(communityId:number,q:string|undefined,user:AuthUser,access?:ResolvedAccess){
   const allowed=await this.scope(user,access);
@@ -149,8 +153,10 @@ export class MisFeesService implements OnModuleDestroy {
   }
   if(!keys.length)throw new BadRequestException('没有可生成通知的住户');
   const detail:any=await this.residential({...filter,view:'detail',houseKeys:keys},user,access);
+  const holds=await this.activeCollectionHolds(keys,user,access),held=new Set(holds.map(h=>h.houseKey));
   const groups=new Map<string,any>();
   for(const r of detail.rows){
+   if(held.has(r.houseKey))continue;
    let n=groups.get(r.houseKey);
    if(!n){n={houseKey:r.houseKey,address:r.address,ownerName:r.ownerName,communityId:r.communityId,communityName:communities.find(c=>c.id===r.communityId)?.name||'',phoneMasked:r.phoneMasked,contactEligible:r.contactEligible,amountCents:0,bills:[]};groups.set(r.houseKey,n);}
    n.amountCents+=r.amountCents;if(!Number.isSafeInteger(n.amountCents))throw new BadRequestException('通知金额超出安全范围');
@@ -158,11 +164,11 @@ export class MisFeesService implements OnModuleDestroy {
   }
   const notices=[...groups.values()].sort((a,b)=>a.address.localeCompare(b.address,'zh-CN',{numeric:true})||a.houseKey.localeCompare(b.houseKey));
   for(const n of notices)n.bills.sort((a:any,b:any)=>String(a.period).localeCompare(String(b.period))||String(a.id).localeCompare(String(b.id),'en',{numeric:true}));
-  if(!notices.length)throw new ConflictException('所选账单已无待缴余额，请重新查询');
+  if(!notices.length&&!holds.length)throw new ConflictException('所选账单已无待缴余额，请重新查询');
   const totalCents=notices.reduce((s,n)=>s+n.amountCents,0);if(!Number.isSafeInteger(totalCents))throw new BadRequestException('合计金额超出安全范围');
   const canonical=JSON.stringify({purpose:dto.purpose,notices});
   const fingerprint=createHash('sha256').update(canonical).digest('hex');
-  return {notices,totalCents,billCount:notices.reduce((s,n)=>s+n.bills.length,0),fingerprint,queriedAt:detail.queriedAt,sourceLabel:'一通MIS',smsAvailable:false,smsReason:this.smsSettings?(await this.smsSettings.readiness(user.tenantId!)).reason:detail.smsReason,skipped:keys.filter(k=>!groups.has(k)),contactEligibleCount:notices.filter(n=>n.contactEligible).length,contactWarning:'号码来自MIS责任人档案，尚未核实接收意愿与关系；同一号码多户不得直接合并发送。到期日未提供，未判定逾期。'};
+  return {notices,totalCents,billCount:notices.reduce((s,n)=>s+n.bills.length,0),fingerprint,queriedAt:detail.queriedAt,sourceLabel:'一通MIS',excludedHolds:holds.map(h=>({houseKey:h.houseKey,reason:h.reason,until:h.until})),smsAvailable:false,smsReason:this.smsSettings?(await this.smsSettings.readiness(user.tenantId!)).reason:detail.smsReason,skipped:keys.filter(k=>!groups.has(k)&&!held.has(k)),contactEligibleCount:notices.filter(n=>n.contactEligible).length,contactWarning:'号码来自MIS责任人档案，尚未核实接收意愿与关系；同一号码多户不得直接合并发送。到期日未提供，未判定逾期。'};
  }
  private visibleBatch(batch:MisCollectionBatch|undefined|null,communities:{id:number}[]){
   if(!batch||!batch.communityIds.length||!batch.communityIds.every(id=>communities.some(c=>c.id===id)))throw new NotFoundException('催缴批次不存在或不在当前数据范围');
@@ -175,6 +181,7 @@ export class MisFeesService implements OnModuleDestroy {
   const previous=await this.batches!.findOne({where:{tenantId:user.tenantId!,idempotencyKey:dto.idempotencyKey}});
   if(previous){this.visibleBatch(previous,allowed);if(previous.createdBy!==user.id||previous.fingerprint!==dto.fingerprint||previous.purpose!==dto.purpose)throw new ConflictException('请求标识已用于其他批次，请重新预览');return previous;}
   const preview=await this.previewCollection(dto,user,access);
+  if(!preview.notices.length)throw new ConflictException('所选住户均已冻结或无待缴余额，未创建批次');
   if(preview.fingerprint!==dto.fingerprint)throw new ConflictException('MIS余额、账单或联系人发生变化，请重新预览后确认；尚未生成通知');
   const row=this.batches!.create({tenantId:user.tenantId!,idempotencyKey:dto.idempotencyKey,communityIds:[...new Set(preview.notices.map(n=>Number(n.communityId)))],purpose:dto.purpose,status:dto.purpose==='print'?'generated':'preview_only',fingerprint:preview.fingerprint,houseCount:preview.notices.length,amountCents:String(preview.totalCents),snapshot:preview,createdBy:user.id,updatedBy:user.id});
   try{return await this.batches!.save(row);}catch(e){
@@ -191,7 +198,11 @@ export class MisFeesService implements OnModuleDestroy {
  async collectionDetail(id:number,user:AuthUser,access?:ResolvedAccess){
   const allowed=await this.residentialScope({},user,access);
   if(!Number.isSafeInteger(id)||id<1)throw new BadRequestException('批次编号不合法');
-  return this.visibleBatch(await this.batches!.findOne({where:{id,tenantId:user.tenantId!}}),allowed);
+  const batch=this.visibleBatch(await this.batches!.findOne({where:{id,tenantId:user.tenantId!}}),allowed);
+  const prints=await this.collectionRepo(MisCollectionPrint).find({where:{tenantId:user.tenantId!,batchId:id},order:{id:'DESC'}});
+  const keys=((batch.snapshot as any).notices||[]).map((n:any)=>n.houseKey);
+  const timeline=keys.length?await this.collectionRepo(MisCollectionEvent).find({where:{tenantId:user.tenantId!,houseKey:In(keys)},order:{id:'DESC'},take:201}):[];
+  return {...batch,prints,timeline:timeline.slice(0,200),timelineHasMore:timeline.length>200,timelineScope:'批次内责任对象的跟进记录（跨批次）'};
  }
  /** Additive read-only preflight for collection; existing bill queries and their filters stay unchanged. */
  async postingContext(houseId:number,billIds:string[],user:AuthUser,access?:ResolvedAccess):Promise<import('./mis-posting.service').MisPostingContext>{
@@ -206,6 +217,88 @@ export class MisFeesService implements OnModuleDestroy {
   const rows=result.recordset||[];if(rows.length!==billIds.length||new Set(rows.map((r:any)=>r.id)).size!==billIds.length||new Set(rows.map((r:any)=>r.ownerId)).size!==1)throw new ConflictException('账单已收、已变更或不属于同一MIS住户，请重新核对，未登记收款');
   const bills=rows.map((r:any)=>{if(!/^\d+\.\d{2}00$/.test(r.amount))throw new BadRequestException('源库金额不是可收整分金额，请先在MIS核实');return{id:String(r.id),feeCode:r.feeCode,period:r.period,amountCents:misMoneyToCents(r.amount)}});
   return {houseId,communityId:community.id,address:`${community.name}/${house.lane?house.lane+'弄':''}${house.buildingNo}号${house.roomNo}`,ownerId:String(rows[0].ownerId),officeCodes:community.offices,bills};
+ }
+ async registerCollectionPrint(id:number,dto:{paper:'A5'|'A4';pageCount:number;requestKey:string},user:AuthUser,access?:ResolvedAccess){
+  const batch=await this.collectionDetail(id,user,access);if(batch.purpose!=='print')throw new BadRequestException('仅纸质通知批次可登记打印');
+  if(!['A5','A4'].includes(dto.paper)||!/^[a-f0-9-]{36}$/i.test(dto.requestKey||''))throw new BadRequestException('打印纸张或请求标识不合法');
+  const notices=(batch.snapshot as any).notices||[];const noticePageCount=notices.reduce((sum:number,n:any)=>sum+Math.max(1,Math.ceil(n.bills.length/8)),0),pageCount=dto.paper==='A4'?Math.ceil(noticePageCount/2):noticePageCount;
+  if(!pageCount||dto.pageCount!==pageCount)throw new ConflictException('打印页数与批次快照不一致，未登记打印');
+  if((await this.activeCollectionHolds(notices.map((n:any)=>n.houseKey),user,access)).length)throw new ConflictException('该批次包含已冻结住户，请回清单重新预览，未登记打印');
+  const repo=this.collectionRepo(MisCollectionPrint),old=await repo.findOne({where:{tenantId:user.tenantId!,requestKey:dto.requestKey}});
+  const same=(v:MisCollectionPrint)=>{if(v.batchId!==id||v.operatorId!==user.id||v.paper!==dto.paper||v.pageCount!==pageCount)throw new ConflictException('打印标识已用于另一打印请求');return v};if(old)return same(old);
+  try{return await repo.save(repo.create({tenantId:user.tenantId!,batchId:id,operatorId:user.id,pageCount,noticePageCount,paper:dto.paper,printedAt:new Date(),requestKey:dto.requestKey,createdBy:user.id,updatedBy:user.id}));}catch(e){if((e as any)?.code!=='23505')throw e;const found=await repo.findOne({where:{tenantId:user.tenantId!,requestKey:dto.requestKey}});if(!found)throw e;return same(found)}
+ }
+ private collectionRepo<T extends import('typeorm').ObjectLiteral>(entity:import('typeorm').EntityTarget<T>){
+  if(!this.batches?.manager)throw new ServiceUnavailableException('催缴跟进存储尚未就绪');return this.batches.manager.getRepository(entity);
+ }
+ async activeCollectionHolds(keys:string[],user:AuthUser,access?:ResolvedAccess){
+  if(!keys.length)return [];
+  const allowed=await this.residentialScope({},user,access),today=effectDay(new Date());
+  return (await this.collectionRepo(MisCollectionHold).find({where:{tenantId:user.tenantId!,houseKey:In(keys),communityId:In(allowed.map(c=>c.id)),status:'active'}})).filter(h=>h.until>=today);
+ }
+ async recordCollectionFollowup(dto:any,user:AuthUser,access?:ResolvedAccess){
+  const allowed=await this.residentialScope({},user,access);
+  if(!/^(0[1-4]):[1-9]\d{0,18}:[1-9]\d{0,18}$/.test(dto.houseKey||'')||!allowed.some(c=>c.offices.includes(dto.houseKey.split(':')[0])))throw new ForbiddenException('责任对象不在当前授权范围');
+  if(!['phone','promise','hold','cancel_promise','cancel_hold'].includes(dto.action)||!/^[a-f0-9-]{36}$/i.test(dto.requestKey||''))throw new BadRequestException('跟进动作或请求标识不合法');
+  const note=String(dto.note||'').trim();if(!note||note.length>500)throw new BadRequestException('请填写不超过500字的跟进说明');
+  const today=effectDay(new Date());
+  if(dto.action==='promise'){validateMisFeeRange({paidFrom:dto.promisedDate});if(!dto.promisedDate||dto.promisedDate<today||!Number.isSafeInteger(dto.promisedCents)||dto.promisedCents<=0)throw new BadRequestException('承诺日期不能早于今天，承诺金额须为明确正整数分');}
+  if(dto.action==='hold'){validateMisFeeRange({paidFrom:dto.until});if(!['dispute','request','complaint'].includes(dto.reason)||!dto.until||dto.until<today)throw new BadRequestException('请填写有效冻结原因和不早于今天的截止日期');}
+  const canonical={houseKey:dto.houseKey,action:dto.action,note,promisedDate:dto.promisedDate??null,promisedCents:dto.promisedCents??null,reason:dto.reason??null,until:dto.until??null,recordId:dto.recordId??null};
+  const fingerprint=createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+  const communityId=allowed.find(c=>c.offices.includes(dto.houseKey.split(':')[0]))!.id;
+  return this.batches!.manager.transaction(async manager=>{
+   await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`mis-collection:${user.tenantId}:${dto.requestKey}`]);
+   const events=manager.getRepository(MisCollectionEvent),old=await events.findOne({where:{tenantId:user.tenantId!,requestKey:dto.requestKey}});
+   if(old){if(old.fingerprint!==fingerprint||old.createdBy!==user.id)throw new ConflictException('请求标识已用于另一项跟进，请重新提交');return old;}
+   let recordId:number|null=null;
+   if(dto.action==='promise'){
+    const raw:any=await this.residential({view:'detail',status:'unpaid',houseKeys:[dto.houseKey]},user,access);const total=raw.rows.reduce((s:number,b:any)=>s+b.amountCents,0);
+    if(!Number.isSafeInteger(total)||dto.promisedCents>total)throw new BadRequestException('承诺金额不能超过当前MIS待缴余额');
+    const promise=await manager.getRepository(MisCollectionPromise).save(manager.getRepository(MisCollectionPromise).create({tenantId:user.tenantId!,communityId,houseKey:dto.houseKey,promisedDate:dto.promisedDate,promisedCents:String(dto.promisedCents),status:'active',requestKey:dto.requestKey,snapshot:{bills:raw.rows.map((b:any)=>({id:String(b.id),amountCents:b.amountCents})),amountCents:total},createdBy:user.id,updatedBy:user.id}));recordId=promise.id;
+   }else if(dto.action==='hold'){
+    const hold=await manager.getRepository(MisCollectionHold).save(manager.getRepository(MisCollectionHold).create({tenantId:user.tenantId!,communityId,houseKey:dto.houseKey,reason:dto.reason,until:dto.until,status:'active',requestKey:dto.requestKey,createdBy:user.id,updatedBy:user.id}));recordId=hold.id;
+   }else if(dto.action.startsWith('cancel_')){
+    if(!Number.isSafeInteger(dto.recordId)||dto.recordId<=0)throw new BadRequestException('请选择要解除的原跟进记录');
+    const repo=manager.getRepository(dto.action==='cancel_hold'?MisCollectionHold:MisCollectionPromise);const row:any=await repo.findOne({where:{id:dto.recordId,tenantId:user.tenantId!,houseKey:dto.houseKey,communityId}});
+    if(!row)throw new NotFoundException('原跟进不存在或不在当前范围');row.status='cancelled';row.updatedBy=user.id;await repo.save(row);recordId=row.id;
+   }
+   return events.save(events.create({tenantId:user.tenantId!,communityId,houseKey:dto.houseKey,action:dto.action,note,recordId,requestKey:dto.requestKey,fingerprint,createdBy:user.id,updatedBy:user.id}));
+  });
+ }
+ async collectionFollowups(q:{communityId?:number;houseKeys?:string[]},user:AuthUser,access?:ResolvedAccess){
+  const allowed=await this.residentialScope(q,user,access),ids=allowed.map(c=>c.id),today=effectDay(new Date());
+  const promises=await this.collectionRepo(MisCollectionPromise).find({where:{tenantId:user.tenantId!,communityId:In(ids),status:'active'},order:{id:'DESC'}});
+  const keys=[...new Set(promises.map(p=>p.houseKey))],payments=keys.length?await this.paidCollectionBills(keys,user,access):[];
+  const rows=promises.map(p=>{try{const progress=promiseProgress(p,payments);return {...p,...progress,overdue:!progress.fulfilled&&p.promisedDate<=today}}catch(e){throw new BadRequestException((e as Error).message)}});
+  const requested=q.houseKeys||[];if(requested.length>200)throw new BadRequestException('每批最多200个跟进责任对象');for(const key of requested){if(!/^(0[1-4]):[1-9]\d{0,18}:[1-9]\d{0,18}$/.test(key)||!allowed.some(c=>c.offices.includes(key.split(':')[0])))throw new ForbiddenException('跟进对象不在授权范围');}
+  const where:any={tenantId:user.tenantId!,communityId:In(ids),...(requested.length?{houseKey:In(requested)}:{})};
+  const holds=(await this.collectionRepo(MisCollectionHold).find({where:{...where,status:'active'},order:{id:'DESC'}})).filter(h=>h.until>=today);
+  const events=await this.collectionRepo(MisCollectionEvent).find({where,order:{id:'DESC'},take:200});
+  return {today,followupHouseholds:new Set(rows.filter(p=>p.overdue).map(p=>p.houseKey)).size,promises:requested.length?rows.filter(p=>requested.includes(p.houseKey)):rows,holds,events,timelineScope:'责任对象跟进（跨批次）'};
+ }
+ /** 已缴原账只读入口：复用既有住宅明细SQL，归因不读取updatedate作为收款日。 */
+ async paidCollectionBills(houseKeys:string[],user:AuthUser,access?:ResolvedAccess){
+  const out:any[]=[];
+  for(let i=0;i<houseKeys.length;i+=200){const result:any=await this.residential({view:'detail',status:'paid',houseKeys:houseKeys.slice(i,i+200)},user,access);out.push(...result.rows)}
+  return out;
+ }
+ async collectionEffects(q:{communityId?:number;windowDays?:number;from?:string;to?:string;page?:number;pageSize?:number},user:AuthUser,access?:ResolvedAccess){
+  if(q.windowDays!==undefined&&q.windowDays!==30)throw new BadRequestException('当前归因窗口固定T+30天');
+  validateMisFeeRange({paidFrom:q.from,paidTo:q.to,page:q.page,pageSize:q.pageSize});
+  const allowed=await this.residentialScope({communityId:q.communityId},user,access),ids=allowed.map(c=>c.id);
+  const batches=await this.batches!.createQueryBuilder('b').where('b.tenant_id=:tenant',{tenant:user.tenantId}).andWhere('b.community_ids && ARRAY[:...ids]::integer[]',{ids}).orderBy('b.id','ASC').take(10001).getMany();
+  if(batches.length>10000)throw new BadRequestException('归因批次超过一万条，请联系管理员分段核对；未截断统计');
+  if(batches.some(b=>!Array.isArray((b.snapshot as any)?.notices)))throw new BadRequestException("通知快照不完整，未推算催收效果");
+  const candidates=batches.map(b=>({...b,snapshot:{...b.snapshot,notices:((b.snapshot as any).notices||[]).filter((n:any)=>ids.includes(n.communityId))}}));
+  const keys=[...new Set(candidates.flatMap(b=>(b.snapshot as any).notices.map((n:any)=>String(n.houseKey))))] as string[];
+  const payments=keys.length?await this.paidCollectionBills(keys,user,access):[];
+  const effects=calculateCollectionEffects(candidates,payments);
+  const eligible=new Set(batches.filter(b=>b.communityIds.every(id=>ids.includes(id))&&(!q.from||effectDay(b.createdAt)>=q.from)&&(!q.to||effectDay(b.createdAt)<=q.to)).map(b=>b.id));
+  const all=effects.rows.filter(r=>eligible.has(r.id)).sort((a,b)=>b.id-a.id);
+  const notifiedCents=all.reduce((s,r)=>s+r.notifiedCents,0),recoveredCents=all.reduce((s,r)=>s+r.recoveredCents,0);if(!Number.isSafeInteger(notifiedCents)||!Number.isSafeInteger(recoveredCents))throw new BadRequestException('归因汇总金额超出安全范围');
+  const page=q.page||1,pageSize=Math.min(q.pageSize||20,100),total=all.length;
+  return {rows:all.slice((page-1)*pageSize,page*pageSize),total,page,pageSize,summary:{notifiedCents,recoveredCents,recoveryRate:notifiedCents?Math.round(recoveredCents/notifiedCents*10000)/100:0,clearedHouseholds:all.reduce((s,r)=>s+r.clearedHouseholds,0)},policy:effects.policy,invalidPaidDateCount:effects.invalidPaidDateCount,naturalRecoveryCents:effects.naturalRecoveryCents,sourceLabel:'一通MIS',readOnly:true,queriedAt:new Date().toISOString()};
  }
  async onModuleDestroy(){const p=this.poolPromise;this.poolPromise=null;if(p)await p.then(pool=>pool.close()).catch(()=>{});}
 }

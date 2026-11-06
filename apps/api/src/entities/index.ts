@@ -1,3 +1,4 @@
+import { MisCollectionPromise, MisCollectionHold, MisCollectionEvent, MisCollectionPrint } from './mis-collection-followup.entity';
 import { Tenant } from './tenant.entity';
 import { Community } from './community.entity';
 import { Building } from './building.entity';
@@ -183,7 +184,7 @@ export const entities = [
   LanGatewayAgent,
   FeeStandard,
   FeeBill,
-  MisCollectionBatch,
+  MisCollectionBatch, MisCollectionPromise, MisCollectionHold, MisCollectionEvent, MisCollectionPrint,
   MisCollectionSms,
   MaintenanceOrder,
   MaintenanceSignSession,
@@ -280,7 +281,7 @@ export {
   LanGatewayAgent,
   FeeStandard,
   FeeBill,
-  MisCollectionBatch,
+  MisCollectionBatch, MisCollectionPromise, MisCollectionHold, MisCollectionEvent, MisCollectionPrint,
   MisCollectionSms,
   MaintenanceOrder,
   MaintenanceSignSession,

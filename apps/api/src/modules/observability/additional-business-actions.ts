@@ -4,6 +4,8 @@
  * 请求受理不等于设备执行完成、消息送达或纸张打印完成。
  */
 const TEMPLATES: ReadonlyArray<readonly [string, string, string, string, string]> = [
+  ["POST", "/fees/mis/collections/followups", "post_fees_mis_collections_followups", "登记催缴跟进", "账单催缴"],
+  ["POST", "/fees/mis/collections/:id/prints", "post_fees_mis_collections_id_prints", "登记通知单打印请求", "账单催缴"],
   ["POST", "/access-card-issuance/agents", "post_access_card_issuance_agents", "登记发卡代理", "门禁发卡"],
   ["POST", "/access-card-issuance/parking/queries", "post_access_card_issuance_parking_queries", "请求查询停车车辆", "停车管理"],
   ["POST", "/access-card-issuance/parking/deliyun/renewals", "post_access_card_issuance_parking_deliyun_renewals", "办理德立云车辆续期", "停车管理"],
