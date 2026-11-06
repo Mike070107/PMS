@@ -5694,3 +5694,16 @@
   - f34c0448 [verified] fix: preserve session on cashier internal navigation
   - cbe1e0b1 [verified] feat: unify calendar controls and responsive date panels
 
+## 2026-11-06 08:29 · api · 8ea0437b
+
+- 包：`pms-api-fast-20261106-082745.tar.gz`
+- 提交：8ea0437b style: remove trailing blank lines from accepted MIS integration
+- 自上次（a103f38e）以来上线的相关提交：
+  - 8ea0437b style: remove trailing blank lines from accepted MIS integration
+  - 76688668 merge: integrate verified parking renewal with MIS ledgers and ERP increment
+  - 2149dd85 feat: add scoped MIS source ledger paging and full-filter statistics
+  - 1ba8787c feat: expose scoped paged collection ledger and original MIS receipt lookup
+  - f2c5c065 feat: persist MIS collection facts and safe posting queue
+  - 8c8ccc05 test: verify parking entry integration and narrow drawers
+  - ebdd67de fix: preserve parking renewal months prices and dates
+
