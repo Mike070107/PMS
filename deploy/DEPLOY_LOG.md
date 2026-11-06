@@ -5814,3 +5814,10 @@
 - 自上次（632a4401）以来上线的相关提交：
   - cfd931f1 feat(bills): add collection attribution, followups, print registry and SMS readiness
 
+## 2026-11-06 13:28 · web · d81cc2c4
+
+- 包：`pms-web-20261106-132727.tar.gz`
+- 提交：d81cc2c4 deploy: api → cfd931f1
+- 自上次（a11c685a）以来上线的相关提交：
+  - cfd931f1 feat(bills): add collection attribution, followups, print registry and SMS readiness
+
