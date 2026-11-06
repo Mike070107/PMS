@@ -42,7 +42,7 @@ export class MisCollectionSmsService {
     return first === last ? first : `${first}-${last}`;
   }
 
-  async sendBatch(id: number, user: AuthUser, access?: ResolvedAccess) {
+  async sendBatch(id: number, user: AuthUser, access?: ResolvedAccess, body?: { real?: boolean }) {
     const tenantId = user.tenantId;
     if (!tenantId) throw new BadRequestException('请先选择公司');
 
@@ -62,7 +62,8 @@ export class MisCollectionSmsService {
     const config = await this.settings.get(user);
     const credentials = await this.settings.credentials(tenantId);
     const phones = await this.mis.contactPhones(notices.map((n) => n.houseKey), user, access);
-    const dryRun = process.env.SMS_DRY_RUN === 'true';
+    // 安全默认：只有调用方显式 real:true 且环境没有强制演练时才真发。
+    const dryRun = body?.real !== true || process.env.SMS_DRY_RUN === 'true';
     const date = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(new Date());
 
     const rows: SmsLogRow[] = [];

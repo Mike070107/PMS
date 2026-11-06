@@ -58,7 +58,7 @@ export class FeesController {
 
   @Post('mis/collections/:id/sms')
   @RequirePermission('fees','edit')
-  misCollectionSms(@Param('id',ParseIntPipe) id:number,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misCollectionSmsService.sendBatch(id,user,access);}
+  misCollectionSms(@Param('id',ParseIntPipe) id:number,@Body() body:{real?:boolean},@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misCollectionSmsService.sendBatch(id,user,access,body);}
 
   @Get('mis/collections/followups')
   @RequirePermission('fees','view')
