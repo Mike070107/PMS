@@ -298,8 +298,15 @@ export class MisFeesService implements OnModuleDestroy {
    return events.save(events.create({tenantId:user.tenantId!,communityId,houseKey:dto.houseKey,action:dto.action,note,recordId,requestKey:dto.requestKey,fingerprint,createdBy:user.id,updatedBy:user.id}));
   });
  }
- async collectionFollowups(q:{communityId?:number;houseKeys?:string[]},user:AuthUser,access?:ResolvedAccess){
-  const allowed=await this.residentialScope(q,user,access),ids=allowed.map(c=>c.id),today=effectDay(new Date());
+ async collectionFollowups(q:{communityId?:number;houseKeys?:string[];q?:string;status?:'all'|'never'|'overdue'|'contacted';sort?:'amount'|'recent';page?:number;pageSize?:number},user:AuthUser,access?:ResolvedAccess){
+  const allowed=await this.residentialScope({communityId:q.communityId},user,access),ids=allowed.map(c=>c.id),today=effectDay(new Date());
+  // 跟进待办队列：默认按待缴金额降序（价值优先），也支持按最近一次人工跟进倒序；never 始终排在 recent 的最后。
+  const status=q.status??'all',sort=q.sort??'amount',keyword=String(q.q??'').trim();
+  if(!['all','never','overdue','contacted'].includes(status))throw new BadRequestException('跟进筛选不合法');
+  if(!['amount','recent'].includes(sort))throw new BadRequestException('跟进排序不合法');
+  if(keyword.length>60)throw new BadRequestException('搜索关键词过长');
+  if((q.page!==undefined&&(!Number.isSafeInteger(q.page)||q.page<1))||(q.pageSize!==undefined&&(!Number.isSafeInteger(q.pageSize)||q.pageSize<1||q.pageSize>100)))throw new BadRequestException('分页参数不合法');
+  const page=q.page??1,pageSize=q.pageSize??20;
   const promises=await this.collectionRepo(MisCollectionPromise).find({where:{tenantId:user.tenantId!,communityId:In(ids),status:'active'},order:{id:'DESC'}});
   const keys=[...new Set(promises.map(p=>p.houseKey))],payments=keys.length?await this.paidCollectionBills(keys,user,access):[];
   const rows=promises.map(p=>{try{const progress=promiseProgress(p,payments);return {...p,...progress,overdue:!progress.fulfilled&&p.promisedDate<=today}}catch(e){throw new BadRequestException((e as Error).message)}});
@@ -318,32 +325,41 @@ export class MisFeesService implements OnModuleDestroy {
    // 规则存储不可读（未配置/跟催存储未就绪）时退回默认规则，不让整页跟进失败；不写任何数据。
    rule={...DEFAULT_FOLLOWUP_RULE};
   }
-  let largeInactive:Array<{houseKey:string;address:string;amountCents:number;lastContactAt:string|null;days:number|null;never:boolean}>=[];
-  let stats={avgAmountCents:0,hitCount:0,hitAmountCents:0,thresholdCents:rule.amountCents,inactiveDays:rule.inactiveDays,scanned:0};
+  // 队列基数 = 待缴金额达到门槛的全部责任对象；跟进状态只做筛选，不再把「已跟进且在规则天数内」直接剔出视野
+  // （用户反馈：跟进完就找不到了）。stats 保持原口径（命中户数/金额），供头部「共 N 户 · 金额 ¥X」与空态建议使用。
+  let queue:any[]=[],largeInactive:Array<{houseKey:string;address:string;amountCents:number;lastContactAt:string|null;days:number|null;never:boolean}>=[],total=0,totalAmountCents=0,overdueCount=0;
+  let stats={avgAmountCents:0,hitCount:0,hitAmountCents:0,thresholdCents:rule.amountCents,inactiveDays:rule.inactiveDays,scanned:0,neverCount:0,overdueCount:0,contactedCount:0};
   if(rule.enabled){
    // _aging:false 表示这是内部分页：放宽 pageSize 上限到2万，并跳过 residential() 自带的账龄全量扫描。
    const scan:any=await this.residential({communityId:q.communityId,view:'households',status:'unpaid',page:1,pageSize:5000,_aging:false} as any,user,access);
    const scannedRows:any[]=scan.rows||[],scannedKeys=[...new Set(scannedRows.map(r=>String(r.houseKey)))];
    // 「上次人工跟进」只认事件表的人工动作（电话/承诺/冻结）；撤销类记录是更正操作，不算一次人工跟进。
-   const manualEvents=scannedKeys.length?await this.collectionRepo(MisCollectionEvent).find({where:{tenantId:user.tenantId!,houseKey:In(scannedKeys),action:In(['phone','promise','hold'])},order:{createdAt:'DESC'},select:{houseKey:true,createdAt:true}}):[];
-   const lastContact=new Map<string,Date>();
-   for(const event of manualEvents)if(!lastContact.has(event.houseKey))lastContact.set(event.houseKey,event.createdAt);
+   const manualEvents=scannedKeys.length?await this.collectionRepo(MisCollectionEvent).find({where:{tenantId:user.tenantId!,houseKey:In(scannedKeys),action:In(['phone','promise','hold'])},order:{createdAt:'DESC'},select:{houseKey:true,createdAt:true,action:true,note:true}}):[];
+   let lastEvent=new Map<string,{at:Date;action:'phone'|'promise'|'hold';note:string}>(),contactCount=new Map<string,number>();
+   for(const event of manualEvents){contactCount.set(event.houseKey,(contactCount.get(event.houseKey)||0)+1);if(!lastEvent.has(event.houseKey))lastEvent.set(event.houseKey,{at:event.createdAt,action:event.action as 'phone'|'promise'|'hold',note:event.note||''});}
    const todayStart=Date.parse(today+'T00:00:00Z'),dayMs=86400000;
    const daysSince=(last:Date)=>Math.max(0,Math.round((todayStart-Date.parse(effectDay(last)+'T00:00:00Z'))/dayMs));
-   const hits:typeof largeInactive=[];
+   const clipNote=(note:string)=>{const chars=Array.from(note);return chars.length>40?chars.slice(0,40).join('')+'…':note;};
+   const needle=keyword.toLowerCase(),candidates:any[]=[];
    for(const row of scannedRows){
     const amountCents=Number(row.amountCents)||0;if(amountCents<rule.amountCents)continue;
-    const last=lastContact.get(String(row.houseKey))||null,days=last?daysSince(last):null;
-    if(days!==null&&days<rule.inactiveDays)continue;
-    hits.push({houseKey:String(row.houseKey),address:String(row.address||''),amountCents,lastContactAt:last?last.toISOString():null,days,never:days===null});
+    const houseKey=String(row.houseKey),last=lastEvent.get(houseKey)||null,days=last?daysSince(last.at):null;
+    const followupStatus=!last?'never':days!<rule.inactiveDays?'contacted':'overdue';
+    candidates.push({houseKey,address:String(row.address||''),ownerName:String(row.ownerName||''),amountCents,lastContactAt:last?last.at.toISOString():null,days,never:!last,lastAction:last?.action??null,lastNote:last?clipNote(last.note):'',contactCount:contactCount.get(houseKey)||0,followupStatus});
    }
-   hits.sort((a,b)=>b.amountCents-a.amountCents||a.houseKey.localeCompare(b.houseKey));
-   largeInactive=hits.slice(0,100);
    const population=Number(scan.total)||scannedRows.length;
    const populationCents=Number.isFinite(Number(scan.amountCents))?Number(scan.amountCents):scannedRows.reduce((sum,row)=>sum+(Number(row.amountCents)||0),0);
-   stats={avgAmountCents:population?Math.round(populationCents/population):0,hitCount:hits.length,hitAmountCents:hits.reduce((sum,row)=>sum+row.amountCents,0),thresholdCents:rule.amountCents,inactiveDays:rule.inactiveDays,scanned:scannedRows.length};
+   const overdueRows=candidates.filter(r=>r.followupStatus!=='contacted');
+   // 搜索与状态都只筛展示集合，不影响 今日待跟进 计数和空态里的整体命中口径。
+   const matched=candidates.filter(r=>!needle||r.address.toLowerCase().includes(needle)||r.ownerName.toLowerCase().includes(needle)||r.houseKey.includes(needle));
+   const visible=status==='all'?matched:matched.filter(r=>status==='never'?r.never:status==='overdue'?r.followupStatus!=='contacted':r.followupStatus==='contacted');
+   visible.sort((a,b)=>{if(sort==='recent'){const am=a.lastContactAt?Date.parse(a.lastContactAt):-1,bm=b.lastContactAt?Date.parse(b.lastContactAt):-1;return bm-am||b.amountCents-a.amountCents||a.houseKey.localeCompare(b.houseKey);}return b.amountCents-a.amountCents||a.houseKey.localeCompare(b.houseKey);});
+   total=visible.length;totalAmountCents=visible.reduce((sum,row)=>sum+row.amountCents,0);overdueCount=overdueRows.length;
+   queue=visible.slice((page-1)*pageSize,page*pageSize);
+   largeInactive=overdueRows.slice().sort((a,b)=>b.amountCents-a.amountCents||a.houseKey.localeCompare(b.houseKey)).slice(0,100);
+   stats={avgAmountCents:population?Math.round(populationCents/population):0,hitCount:candidates.length,hitAmountCents:candidates.reduce((sum,row)=>sum+row.amountCents,0),thresholdCents:rule.amountCents,inactiveDays:rule.inactiveDays,scanned:scannedRows.length,neverCount:candidates.filter(r=>r.never).length,overdueCount:overdueRows.length,contactedCount:candidates.filter(r=>r.followupStatus==='contacted').length};
   }
-  return {today,followupHouseholds:Math.max(overdueHouseholds,largeInactive.length),promises:requested.length?rows.filter(p=>requested.includes(p.houseKey)):rows,holds,events,largeInactive,stats,rule,timelineScope:'责任对象跟进（跨批次）'};
+  return {today,followupHouseholds:Math.max(overdueHouseholds,overdueCount),promises:requested.length?rows.filter(p=>requested.includes(p.houseKey)):rows,holds,events,rows:queue,total,totalAmountCents,page,pageSize,status,sort,largeInactive,stats,rule,timelineScope:'责任对象跟进（跨批次）'};
  }
  /** 已缴原账只读入口：复用既有住宅明细SQL，归因不读取updatedate作为收款日。 */
  async paidCollectionBills(houseKeys:string[],user:AuthUser,access?:ResolvedAccess){

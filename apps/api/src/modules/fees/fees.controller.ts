@@ -1,4 +1,4 @@
-import { MisCollectionEffectQueryDto, MisCollectionFollowupDto, MisCollectionPrintDto } from './mis-fees.dto';
+import { MisCollectionEffectQueryDto, MisCollectionFollowupDto, MisCollectionFollowupQueryDto, MisCollectionPrintDto } from './mis-fees.dto';
 import {
   Body,
   Controller,
@@ -62,7 +62,7 @@ export class FeesController {
 
   @Get('mis/collections/followups')
   @RequirePermission('fees','view')
-  misFollowups(@Query() query:MisResidentialQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.collectionFollowups(query,user,access);}
+  misFollowups(@Query() query:MisCollectionFollowupQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.collectionFollowups(query,user,access);}
 
   @Post('mis/collections/followups')
   @RequirePermission('fees','edit')

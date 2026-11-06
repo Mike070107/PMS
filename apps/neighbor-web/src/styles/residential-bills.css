@@ -23,12 +23,43 @@
 .rb-warn-banner{display:flex;align-items:flex-start;gap:10px;padding:14px 16px;margin:0 0 14px;background:#fff4e5;border:1px solid #f0b46a;border-left:4px solid #d9822b;border-radius:8px;color:#7a3f00}
 .rb-warn-banner b{display:block;font-size:14.5px;margin-bottom:3px}.rb-warn-banner span{display:block;font-size:13px;line-height:1.55;color:#8a4a05}
 
-.rb-follow-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0 0 14px}
-.rb-follow-list>div{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);min-width:0}
-.rb-follow-list b{flex:1;min-width:0;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rb-follow-list span{font-variant-numeric:tabular-nums;font-weight:600}
-.rb-follow-list small{color:var(--ink3);font-size:12px;white-space:nowrap}
-@media(max-width:900px){.rb-follow-list{grid-template-columns:minmax(0,1fr)}}
+/* ── 跟进提醒：按价值排序的待办队列（搜索 / 状态筛选 / 金额·最近排序 / 加载更多） ── */
+.rb-followup{margin:18px 0 0;min-width:0}
+.rb .rb-followup-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 16px;margin:0 0 12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh)}
+.rb .rb-followup-head-main{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;min-width:0}
+.rb .rb-followup-head-main strong{font-size:15px}
+.rb .rb-followup-count{font-size:13px;color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.rb .rb-followup-head-tools{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;flex:1;min-width:0}
+.rb .rb-followup-head-tools .rb-search{height:38px;min-width:190px;max-width:340px;flex:1 1 190px}
+.rb .rb-followup-head-tools .chips{flex:1 1 auto;min-width:0}
+.rb .rb-followup-head-tools .chip{height:32px}
+.rb .rb-followup-head-tools .btn{min-height:34px;height:34px;padding:0 12px;font-size:13px}
+.rb-followup-card{padding:0;overflow:hidden;min-width:0}
+.rb-followup-scroll{overflow-x:auto;min-width:0}
+.rb .rb-followup-table{width:100%;min-width:760px}
+.rb .rb-followup-table th.rb-num,.rb .rb-followup-table td.rb-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rb .rb-followup-table tbody tr{height:auto}
+.rb .rb-followup-table tbody td{height:auto;padding:10px 14px;vertical-align:middle}
+.rb-followup-house b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px}
+.rb-followup-table td:nth-child(5){max-width:340px}
+.rb-followup-state{display:inline-block;font-size:12px;line-height:1.6;padding:1px 8px;border-radius:999px;background:var(--mute-w);color:var(--ink2);white-space:nowrap}
+.rb-followup-state.never{background:var(--dang-w);color:var(--dang)}
+.rb-followup-state.overdue{background:var(--warn-w);color:var(--warn)}
+.rb-followup-state.contacted{background:var(--ok-w);color:var(--ok)}
+.rb-followup-action{display:inline-block;font-size:12px;font-weight:600;color:var(--acc-t);margin-right:6px;white-space:nowrap}
+.rb-followup-table .rb-sub{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:320px}
+.rb-sortbtn{display:inline-flex;align-items:center;gap:2px;background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;white-space:nowrap}
+.rb-sortbtn:hover{color:var(--acc)}
+.rb-sortbtn.on{color:var(--acc-t);font-weight:700}
+.rb-followup-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 16px;border-top:1px solid var(--line);font-size:12.5px;color:var(--ink2)}
+.rb-followup-foot .btn{min-height:34px;height:34px}
+@media(max-width:900px){
+ .rb .rb-followup-head,.rb .rb-followup-head-tools{flex-basis:100%;justify-content:flex-start}
+ .rb .rb-followup-head-tools .rb-search{flex-basis:100%;max-width:none}
+ .rb .rb-followup-chips{flex:0 1 100%;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;padding-bottom:2px}
+ .rb .rb-followup-chips .chip{flex:none}
+ .rb-followup-table .rb-sub,.rb-followup-house b{max-width:none}
+}
 .rb-rule-panel{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;padding:12px 14px;margin:0 0 12px;background:var(--surface);border:1px solid var(--line);border-radius:10px}
 .rb-rule-panel label{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--ink2)}
 .rb-rule-panel .in{width:150px;height:36px}
@@ -110,11 +141,7 @@
 .rb-fold .rb-scroll{overflow:auto;max-width:100%}
 .rb-fold .t{min-width:720px}
 
-/* 跟进区标题压薄，把首屏让给指标带、工具条和清单 */
-.rb .rb-followup-head{align-items:center;padding:0 2px 8px}
-.rb .rb-followup-head strong{font-size:14px}
-.rb .rb-followup-head small{font-size:12.5px}
-.rb .rb-followup-head .btn{min-height:30px;height:30px;padding:0 10px;font-size:12.5px}
+/* 跟进提醒队列放在待缴清单之后，作为按价值排序的待办工作区；表头排序按钮见 rb-sortbtn。 */
 
 @media(max-width:900px){
  .rb-band{flex-direction:column;gap:12px;padding:14px 16px}

@@ -25,6 +25,16 @@ export class MisResidentialQueryDto extends MisFeesQueryDto {
  @IsOptional() @IsIn(['all','property','berth','other']) category?:'all'|'property'|'berth'|'other';
  @IsOptional() @Transform(({value})=>typeof value==='string'?value.split(','):value) @IsArray() @ArrayMaxSize(200) @ArrayUnique() @Matches(/^(0[1-4]):[1-9]\d{0,18}:[1-9]\d{0,18}$/,{each:true}) houseKeys?:string[];
 }
+/** 跟进提醒待办队列：status 是「人工跟进进度」而非账单状态，不能复用 MisResidentialQueryDto。 */
+export class MisCollectionFollowupQueryDto {
+ @IsOptional() @Type(()=>Number) @IsInt() @Min(1) communityId?:number;
+ @IsOptional() @Transform(({value})=>typeof value==='string'?value.split(','):value) @IsArray() @ArrayMaxSize(200) @ArrayUnique() @Matches(/^(0[1-4]):[1-9]\d{0,18}:[1-9]\d{0,18}$/,{each:true}) houseKeys?:string[];
+ @IsOptional() @IsString() @MaxLength(60) q?:string;
+ @IsOptional() @IsIn(['all','never','overdue','contacted']) status?:'all'|'never'|'overdue'|'contacted';
+ @IsOptional() @IsIn(['amount','recent']) sort?:'amount'|'recent';
+ @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(1000000) page?:number;
+ @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(100) pageSize?:number;
+}
 export class MisCollectionPreviewDto {
  @IsDefined() @ValidateNested() @Type(()=>MisResidentialQueryDto) filter:MisResidentialQueryDto;
  @IsIn(['keys','all']) selection:'keys'|'all';
