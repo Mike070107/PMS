@@ -126,6 +126,17 @@ export class MisFeesService implements OnModuleDestroy {
   if(q.view==='detail'){if((sets[0]||[]).length>10000)throw new BadRequestException('账单明细超过一万条，请缩小账期或分批');return {...meta,rows:(sets[0]||[]).map(format)};}
   return {...meta,total:Number(sets[0]?.[0]?.total||0),amountCents:misMoneyToCents(sets[0]?.[0]?.amount),page:q.page||1,pageSize:q.pageSize||20,rows:(sets[1]||[]).map(format)};
  }
+  /** 仅供应短信发送：按责任对象取明文号码，经后端直接给通道，不经前端。 */
+  async contactPhones(houseKeys:string[],user:AuthUser,access?:ResolvedAccess){
+   if(!houseKeys.length)return new Map<string,string>();
+   if(houseKeys.length>200)throw new BadRequestException('每批最多200户，请分批发送');
+   const communities=await this.residentialScope({} as MisResidentialQuery,user,access);
+   const built=buildMisResidentialQuery({view:'detail',status:'unpaid',houseKeys} as MisResidentialQuery,communities.flatMap(c=>c.offices));
+   const result=await this.read(built.sql,built.params),sets=(result.recordsets||[]) as any[][];
+   const map=new Map<string,string>();
+   for(const r of (sets[0]||[])){const p=String(r.phone||'').trim();if(/^1[3-9]\d{9}$/.test(p))map.set(String(r.houseKey),p);}
+   return map;
+  }
  async previewCollection(dto:MisCollectionPreviewDto,user:AuthUser,access?:ResolvedAccess){
   if(!dto.filter||!['keys','all'].includes(dto.selection)||!['print','sms'].includes(dto.purpose))throw new BadRequestException('请确认催缴范围与渠道');
   const filter:MisResidentialQuery={...dto.filter,houseKeys:undefined,view:'households',status:'unpaid',page:1,pageSize:201};

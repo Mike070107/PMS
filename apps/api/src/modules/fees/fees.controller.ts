@@ -36,6 +36,7 @@ import {
 } from './dto';
 import { FeesService } from './fees.service';
 import { MisFeesService } from './mis-fees.service';
+import { MisCollectionSmsService } from './mis-collection-sms.service';
 import {MisLedgerQueryDto} from './mis-ledger.dto';
 import { MisFeesQueryDto, MisHouseSearchDto, MisResidentialQueryDto, MisCollectionPreviewDto } from './mis-fees.dto';
 
@@ -48,7 +49,11 @@ import { MisFeesQueryDto, MisHouseSearchDto, MisResidentialQueryDto, MisCollecti
 @Controller('fees')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class FeesController {
-  constructor(private readonly feesService: FeesService,private readonly misFeesService:MisFeesService) {}
+  constructor(private readonly feesService: FeesService,private readonly misFeesService:MisFeesService,private readonly misCollectionSmsService:MisCollectionSmsService) {}
+
+  @Post('mis/collections/:id/sms')
+  @RequirePermission('fees','edit')
+  misCollectionSms(@Param('id',ParseIntPipe) id:number,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misCollectionSmsService.sendBatch(id,user,access);}
 
   @Get('mis/options')
   @RequirePermission('fees','view')

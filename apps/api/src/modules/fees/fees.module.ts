@@ -6,6 +6,7 @@ import { FeesService } from './fees.service';
 import { FeeTemplatesService } from './fee-templates.service';
 import { FeeTemplatesController } from './fee-templates.controller';
 import { MisFeesService } from './mis-fees.service';
+import { MisCollectionSmsService } from './mis-collection-sms.service';
 import { SettingsModule } from '../settings/settings.module';
 import { MisPostingService } from './mis-posting.service';
 import { MisPostingConnector } from './mis-posting.connector';
@@ -18,6 +19,6 @@ import { MisCollectionBatch } from '../../entities/mis-collection-batch.entity';
     TypeOrmModule.forFeature([BusinessTransaction, MisCollectionBatch, FeeBill, FeeStandard, House, Building, Community, User]),
   ],
   controllers: [FeesController, FeeTemplatesController, MisPostingController],
-  providers: [FeesService, FeeTemplatesService, MisFeesService, MisPostingService, MisPostingConnector, { provide: 'MIS_POSTING_CONNECTOR', useExisting: MisPostingConnector }],
+  providers: [FeesService, FeeTemplatesService, MisFeesService, MisCollectionSmsService, MisPostingService, MisPostingConnector, { provide: 'MIS_POSTING_CONNECTOR', useExisting: MisPostingConnector }],
 })
 export class FeesModule {}
