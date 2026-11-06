@@ -11,7 +11,8 @@ export function validateMisFeeRange(q:MisFeeQuery){
  if(q.periodFrom&&q.periodTo&&q.periodFrom>q.periodTo)throw new BadRequestException('开始账期不能晚于结束账期');
  for(const value of [q.paidFrom,q.paidTo])if(value&&(!/^\d{4}-\d{2}-\d{2}$/.test(value)||!Number.isFinite(Date.parse(value))||new Date(value).toISOString().slice(0,10)!==value))throw new BadRequestException('收款日期不合法');
  if(q.paidFrom&&q.paidTo&&q.paidFrom>q.paidTo)throw new BadRequestException('开始日期不能晚于结束日期');
- if((q.page!==undefined&&(!Number.isInteger(q.page)||q.page<1||q.page>1000000))||(q.pageSize!==undefined&&(!Number.isInteger(q.pageSize)||q.pageSize<1||q.pageSize>500)))throw new BadRequestException('分页参数不合法');
+ const maxSize=(q as any)._aging===false?20000:500;
+ if((q.page!==undefined&&(!Number.isInteger(q.page)||q.page<1||q.page>1000000))||(q.pageSize!==undefined&&(!Number.isInteger(q.pageSize)||q.pageSize<1||q.pageSize>maxSize)))throw new BadRequestException('分页参数不合法');
 }
 export function misMoneyToCents(value:unknown):number{
  const match=/^(-?)(\d+)(?:\.(\d+))?$/.exec(String(value??'0'));
