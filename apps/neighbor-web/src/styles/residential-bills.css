@@ -7,3 +7,12 @@
 
 /* Fixed drawers use the actual layout viewport, excluding the browser scrollbar. */
 .rb .sheet{max-width:100%!important}
+
+.rb-kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 14px}
+.rb-kpi>div{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.rb-kpi small{display:block;font-size:12.5px;color:var(--ink3)}
+.rb-kpi b{display:block;font-size:24px;font-weight:700;letter-spacing:-.4px;margin-top:4px}
+.rb-kpi em{font-style:normal;font-size:12px;color:var(--ink3)}
+.rb-agebar{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.rb-agebar .chip small{color:var(--ink3);margin-left:2px}
+@media(max-width:900px){.rb-kpi{grid-template-columns:repeat(2,minmax(0,1fr))}}
