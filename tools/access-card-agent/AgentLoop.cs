@@ -22,6 +22,9 @@ namespace Pms.AccessCardAgent
         private readonly Func<string, string> _secretProvider;
         private readonly Action<bool, string> _connectionState;
         private readonly Action<AgentActivity> _activity;
+        private bool _accessCardQuery;
+        private volatile bool _accessQueryProbeRunning;
+        private DateTime _nextAccessCardQueryProbeAt = DateTime.MinValue;
 
         public AgentLoop(AgentConfig config, AgentApiClient api) : this(config, api, null, null, null)
         {
@@ -60,27 +63,29 @@ namespace Pms.AccessCardAgent
                     var controllerUpload = false;
                     var legacyRead = false;
                     var legacyWrite = false;
+                    var accessCardQuery = false;
                     if (_config.Kind == "parking_gateway")
                     {
                         parkingWrite = ParkingDatabase.CanWriteBoth(_config, LoadSecret("parking-db-password.dat"));
                     }
                     if (_config.Kind == "access_gateway")
                     {
-                        // MDB 密码可能尚未安装；缺密码只影响 iCCard，不能让整个心跳失败。
-                        var accessCapability = AccessDatabaseCapabilityProbe.Probe(
-                            _config, LoadOptionalSecret("iccard-db-password.dat"));
-                        accessRead = accessCapability.CanRead;
-                        accessWrite = accessCapability.CanWrite;
-                        controllerUpload = accessCapability.controllerUpload;
+                        // 保持现场 2.5.50 已发布语义：accessDbRead/accessDbWrite/controllerUpload 按代理类型上报。
+                        // 收银台发卡、下发控制器依赖 accessDbWrite/controllerUpload，不能因探测结果改变。
+                        // 本轮只新增只读查询能力 accessCardQuery，且按其真实查询结果上报。
+                        accessRead = true;
+                        accessWrite = true;
+                        controllerUpload = AccessControllerUploader.CanUpload(_config);
+                        accessCardQuery = AccessCardQueryCapability();
                     }
                     if (_config.Kind == "legacy_sync")
                     {
-                        var legacyProbe = LegacyDatabase.Probe(_config, LoadSecret("legacy-db-password.dat"));
-                        legacyRead = String.IsNullOrEmpty(legacyProbe.error);
-                        legacyWrite = legacyProbe.CanWrite;
+                        // 保持现场 2.5.50 已发布语义：legacy_sync 读写能力按代理类型上报，心跳不做写探测。
+                        legacyRead = true;
+                        legacyWrite = true;
                     }
                     _api.Heartbeat(BuildCapabilities(_config, hasReader, parkingWrite, accessWrite,
-                        controllerUpload, accessRead, legacyWrite, legacyRead));
+                        controllerUpload, accessRead, legacyWrite, legacyRead, accessCardQuery));
                     AgentStatus.MarkConnected();
                     SetConnectionState(true, "PMS 心跳正常");
                     if (_config.Kind == "legacy_sync")
@@ -182,12 +187,12 @@ namespace Pms.AccessCardAgent
         {
             // 兼容旧调用：没有探测结果时沿用「按代理身份」的保守默认，供 --connect-test 等场景使用。
             return BuildCapabilities(config, hasReader, parkingWrite, accessWrite, controllerUpload,
-                config.Kind == "access_gateway", config.Kind == "legacy_sync", config.Kind == "legacy_sync");
+                config.Kind == "access_gateway", config.Kind == "legacy_sync", config.Kind == "legacy_sync", false);
         }
 
         internal static Dictionary<string, bool> BuildCapabilities(
             AgentConfig config, bool hasReader, bool parkingWrite, bool accessWrite,
-            bool controllerUpload, bool accessRead, bool legacyWrite, bool legacyRead)
+            bool controllerUpload, bool accessRead, bool legacyWrite, bool legacyRead, bool accessCardQuery)
         {
             var cardProfilesReady = false;
             if (config.Kind == "issuer" && hasReader)
@@ -205,16 +210,44 @@ namespace Pms.AccessCardAgent
                 { "cardWrite", cardProfilesReady },
                 { "legacyDbRead", config.Kind == "legacy_sync" && legacyRead },
                 { "legacyDbWrite", config.Kind == "legacy_sync" && legacyWrite },
-                { "legacyCardQuery", config.Kind == "legacy_sync" && legacyRead },
                 { "accessDbRead", config.Kind == "access_gateway" && accessRead },
                 { "accessDbWrite", config.Kind == "access_gateway" && accessWrite },
-                { "accessCardQuery", config.Kind == "access_gateway" && accessRead },
+                { "accessCardQuery", config.Kind == "access_gateway" && accessCardQuery },
                 { "parkingDbRead", config.Kind == "parking_gateway" },
                 { "parkingDbWrite", config.Kind == "parking_gateway" && parkingWrite },
                 { "controllerUpload", config.Kind == "access_gateway" && controllerUpload },
                 { "historicalAccessGrant", config.Kind == "access_gateway" && accessWrite && controllerUpload },
                 { "remoteDoorControl", config.Kind == "access_gateway" && accessWrite && controllerUpload }
             };
+        }
+
+        /**
+         * .88 只读查询能力：五项查询（房号/卡号含补零变体/姓名/最近通行/楼栋权限）真实执行通过才上报 true。
+         * 10 分钟刷新一次，后台线程探测，不阻塞心跳（API 侧 15 秒无心跳即判离线）；
+         * 任何探测异常都只让 accessCardQuery 保持 false，绝不影响心跳和其它能力。
+         */
+        private bool AccessCardQueryCapability()
+        {
+            if (DateTime.UtcNow < _nextAccessCardQueryProbeAt || _accessQueryProbeRunning) return _accessCardQuery;
+            _nextAccessCardQueryProbeAt = DateTime.UtcNow.AddMinutes(10);
+            _accessQueryProbeRunning = true;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                try
+                {
+                    _accessCardQuery = AccessDatabaseQuery.ProbeCapability(
+                        _config, LoadOptionalSecret("iccard-db-password.dat")).canQuery;
+                }
+                catch
+                {
+                    _accessCardQuery = false;
+                }
+                finally
+                {
+                    _accessQueryProbeRunning = false;
+                }
+            });
+            return _accessCardQuery;
         }
 
         private void HandleLegacyHistory(LegacyHistoryTask task)
