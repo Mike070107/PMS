@@ -5,7 +5,7 @@ const notice=bills=>({houseKey:'01:1:2',address:'合成测试户',ownerName:'合
 test('短信按实际全年账期与金额生成用户指定温和文案',()=>{
  const n=notice(Array.from({length:12},(_,i)=>bill('2026'+String(i+1).padStart(2,'0'))));
  assert.equal(typeof h.noticeSmsText,'function','缺少统一短信草稿生成器');
- assert.equal(h.noticeSmsText(n),'住宅物业服务费用尚有2026年1-12月共计1,827.60元待缴纳。请联系物业管理处核对办理，感谢您对我们工作的支持');
+ assert.equal(h.noticeSmsText(n),'合成测试户业主您好，您有2026年1-12月共计1,827.60元的物业费账单待缴纳，请及时联系物业管理处核对办理，感谢您对我们工作的支持!');
  assert.doesNotMatch(h.noticeSmsText(n),/MIS|尚有.*待核对|提供凭据|已发送/);
 });
 test('短信按真实缺月和跨年分别列出，不把重复月份变为连续全年',()=>{

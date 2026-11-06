@@ -218,14 +218,14 @@ export class MisFeesService implements OnModuleDestroy {
   const bills=rows.map((r:any)=>{if(!/^\d+\.\d{2}00$/.test(r.amount))throw new BadRequestException('源库金额不是可收整分金额，请先在MIS核实');return{id:String(r.id),feeCode:r.feeCode,period:r.period,amountCents:misMoneyToCents(r.amount)}});
   return {houseId,communityId:community.id,address:`${community.name}/${house.lane?house.lane+'弄':''}${house.buildingNo}号${house.roomNo}`,ownerId:String(rows[0].ownerId),officeCodes:community.offices,bills};
  }
- async registerCollectionPrint(id:number,dto:{paper:'A5'|'A4';pageCount:number;requestKey:string},user:AuthUser,access?:ResolvedAccess){
+ async registerCollectionPrint(id:number,dto:{paper:'A5'|'A4';pageCount:number;requestKey:string;rowsPerPage?:8|12},user:AuthUser,access?:ResolvedAccess){
   const batch=await this.collectionDetail(id,user,access);if(batch.purpose!=='print')throw new BadRequestException('仅纸质通知批次可登记打印');
   if(!['A5','A4'].includes(dto.paper)||!/^[a-f0-9-]{36}$/i.test(dto.requestKey||''))throw new BadRequestException('打印纸张或请求标识不合法');
-  const notices=(batch.snapshot as any).notices||[];const noticePageCount=notices.reduce((sum:number,n:any)=>sum+Math.max(1,Math.ceil(n.bills.length/8)),0),pageCount=dto.paper==='A4'?Math.ceil(noticePageCount/2):noticePageCount;
+  if(dto.rowsPerPage!==undefined&&![8,12].includes(dto.rowsPerPage))throw new BadRequestException('打印版式不合法');const rowsPerPage=dto.rowsPerPage??8;const notices=(batch.snapshot as any).notices||[];const noticePageCount=notices.reduce((sum:number,n:any)=>sum+Math.max(1,Math.ceil(n.bills.length/rowsPerPage)),0),pageCount=dto.paper==='A4'?Math.ceil(noticePageCount/2):noticePageCount;
   if(!pageCount||dto.pageCount!==pageCount)throw new ConflictException('打印页数与批次快照不一致，未登记打印');
   if((await this.activeCollectionHolds(notices.map((n:any)=>n.houseKey),user,access)).length)throw new ConflictException('该批次包含已冻结住户，请回清单重新预览，未登记打印');
   const repo=this.collectionRepo(MisCollectionPrint),old=await repo.findOne({where:{tenantId:user.tenantId!,requestKey:dto.requestKey}});
-  const same=(v:MisCollectionPrint)=>{if(v.batchId!==id||v.operatorId!==user.id||v.paper!==dto.paper||v.pageCount!==pageCount)throw new ConflictException('打印标识已用于另一打印请求');return v};if(old)return same(old);
+  const same=(v:MisCollectionPrint)=>{if(v.batchId!==id||v.operatorId!==user.id||v.paper!==dto.paper||v.pageCount!==pageCount||v.noticePageCount!==noticePageCount)throw new ConflictException('打印标识已用于另一打印请求');return v};if(old)return same(old);
   try{return await repo.save(repo.create({tenantId:user.tenantId!,batchId:id,operatorId:user.id,pageCount,noticePageCount,paper:dto.paper,printedAt:new Date(),requestKey:dto.requestKey,createdBy:user.id,updatedBy:user.id}));}catch(e){if((e as any)?.code!=='23505')throw e;const found=await repo.findOne({where:{tenantId:user.tenantId!,requestKey:dto.requestKey}});if(!found)throw e;return same(found)}
  }
  private collectionRepo<T extends import('typeorm').ObjectLiteral>(entity:import('typeorm').EntityTarget<T>){

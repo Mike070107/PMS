@@ -15,7 +15,7 @@ test('一个月一行：12 个账期就是 12 行，不合并、不折叠',()=>{
  assert.equal(rows(html).length,12);
  assert.match(rows(html)[0],/2026年1月/);
  assert.match(rows(html)[11],/2026年12月/);
- assert.equal((html.match(/data-notice-page=/g)||[]).length,2);
+ assert.equal((html.match(/data-notice-page=/g)||[]).length,1);
  assert.equal((html.match(/本户本次通知合计/g)||[]).length,1);
  assert.match(html,/本户本次通知合计 <b>¥1,481\.40/);
  assert.equal(JSON.stringify(bills),before);
@@ -54,11 +54,11 @@ test('按我的设计：不印旧提示、印批次号、带责任声明',()=>{
 });
 
 test('8 条展示行续页，A4 每纸两联，各户合计与落款各自保留',()=>{
- const a=notice(Array.from({length:9},(_,i)=>bill('bad-'+i))),b=notice([bill('202601')],{houseKey:'b',address:'第二户'});
+ const a=notice(Array.from({length:13},(_,i)=>bill('bad-'+i))),b=notice([bill('202601')],{houseKey:'b',address:'第二户'});
  const html=h.renderNoticeDocument([a,b],{...options,paper:'A4'});
  assert.equal((html.match(/data-notice-page=/g)||[]).length,3);
  assert.equal((html.match(/class="paper"/g)||[]).length,2);
- assert.deepEqual([...html.matchAll(/<tbody>([\s\S]*?)<\/tbody>/g)].map(m=>(m[1].match(/<tr>/g)||[]).length),[8,1,1]);
+ assert.deepEqual([...html.matchAll(/<tbody>([\s\S]*?)<\/tbody>/g)].map(m=>(m[1].match(/<tr>/g)||[]).length),[12,1,1]);
  assert.equal((html.match(/本户本次通知合计/g)||[]).length,2);
  assert.equal((html.match(/class="signature"/g)||[]).length,2);
  assert.match(html,/续页/);assert.match(html,/第二户/);
