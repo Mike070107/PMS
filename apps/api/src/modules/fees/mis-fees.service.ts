@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleDestroy, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleDestroy, ServiceUnavailableException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { collectionEffects as calculateCollectionEffects, effectDay, promiseProgress } from './mis-collection-effect';
 import { validateMisFeeRange } from './mis-fees.query';
@@ -18,6 +18,9 @@ import { naturalNumberSql } from '../../common/natural-order';
 import {buildMisLedgerQuery,MisLedgerQuery,MisLedgerAddress} from './mis-ledger.query';
 import {resolveAddressForTenant} from '../../common/address-lookup';
 import { buildMisFeeFilter, buildMisFeeQuery, buildMisResidentialQuery, MisResidentialQuery, MisFeeQuery, MisHouseFilter, misFeeStatus, misMoneyToCents } from './mis-fees.query';
+
+/** 模块级日志器：不参与依赖注入，避免改动构造函数（历史事故：注入新服务导致 API 启动失败）。 */
+const logger=new Logger('MisFeesService');
 
 // 与用户确认的映射；公寓收费台、北桥和颛桥均不参与物业费查询。
 export const MIS_PROPERTY_OFFICES:Record<string,string[]>={
@@ -173,7 +176,7 @@ export class MisFeesService implements OnModuleDestroy {
   const keys=[...new Set(houseKeys.map(key=>String(key||'')).filter(Boolean))];
   if(!keys.length||!user.tenantId||!this.batches?.manager)return out;
   // 一条 UNION ALL 覆盖打印与短信两张表；两路都只返回当前页 houseKey 的聚合结果。
-  const sql=`SELECT 'print' AS kind,n->>'houseKey' AS house_key,MAX(p.printed_at) AS notified_at,(array_agg(p.paper ORDER BY p.printed_at DESC,p.id DESC))[1] AS printed_paper,NULL::text AS sms_status FROM mis_collection_prints p JOIN mis_collection_batches b ON b.id=p.batch_id AND b.tenant_id=p.tenant_id CROSS JOIN LATERAL jsonb_array_elements(COALESCE(b.snapshot->'notices','[]'::jsonb)) n WHERE p.tenant_id=$1 AND n->>'houseKey'=ANY($2::text[]) GROUP BY n->>'houseKey' UNION ALL SELECT 'sms' AS kind,house_key,MAX(COALESCE(submitted_at,created_at)) AS notified_at,NULL::text AS printed_paper,(array_agg(status ORDER BY COALESCE(submitted_at,created_at) DESC,id DESC))[1] AS sms_status FROM mis_collection_sms WHERE tenant_id=$1 AND house_key=ANY($2::text[]) AND status IN ('submitted','delivered') GROUP BY house_key`;
+  const sql=`SELECT 'print' AS kind,n->>'houseKey' AS house_key,MAX(p.printed_at) AS notified_at,(array_agg(p.paper ORDER BY p.printed_at DESC,p.id DESC))[1] AS printed_paper,NULL::text AS sms_status FROM mis_collection_prints p JOIN mis_collection_batches b ON b.id=p.batch_id AND b.tenant_id=p.tenant_id CROSS JOIN LATERAL jsonb_array_elements(COALESCE(b.snapshot->'notices','[]'::jsonb)) n WHERE p.tenant_id=$1 AND n->>'houseKey'=ANY($2::text[]) GROUP BY n->>'houseKey' UNION ALL SELECT 'sms' AS kind,house_key,MAX(COALESCE(delivered_at,submitted_at,created_at)) AS notified_at,NULL::text AS printed_paper,(array_agg(status ORDER BY COALESCE(delivered_at,submitted_at,created_at) DESC,id DESC))[1] AS sms_status FROM mis_collection_sms WHERE tenant_id=$1 AND house_key=ANY($2::text[]) AND status IN ('submitted','delivered') GROUP BY house_key`;
   try{
    const found:any[]=await this.batches.manager.query(sql,[user.tenantId,keys]);
    const iso=(value:unknown)=>{if(!value)return null;const date=value instanceof Date?value:new Date(String(value));return Number.isFinite(date.getTime())?date.toISOString():null};
@@ -184,8 +187,11 @@ export class MisFeesService implements OnModuleDestroy {
     else{current.smsAt=iso(row.notified_at);current.smsStatus=row.sms_status==='delivered'?'delivered':row.sms_status==='submitted'?'submitted':null}
     out.set(key,current);
    }
-  }catch{
-   // 通知状态是清单增强信息：存储不可用或查询失败时降级为「未记录」，不阻断账单清单本身。
+  }catch(error){
+   // 通知状态是清单增强信息：查询失败降级为「未记录」不阻断账单清单，但必须留痕，
+   // 不能把 SQL 失败静默伪装成「全部未通知」；日志带租户、户数与错误摘要，不含户号和内容。
+   const summary=(error instanceof Error?`${error.name}: ${error.message}`:String(error)).slice(0,200);
+   logger.warn(`通知状态查询失败，清单降级为未通知 tenantId=${user.tenantId} houseKeys=${keys.length} error=${summary}`);
   }
   return out;
  }
@@ -332,7 +338,7 @@ export class MisFeesService implements OnModuleDestroy {
    return events.save(events.create({tenantId:user.tenantId!,communityId,houseKey:dto.houseKey,action:dto.action,note,recordId,requestKey:dto.requestKey,fingerprint,createdBy:user.id,updatedBy:user.id}));
   });
  }
- async collectionFollowups(q:{communityId?:number;houseKeys?:string[];q?:string;status?:'all'|'never'|'overdue'|'contacted';sort?:'amount'|'recent';page?:number;pageSize?:number},user:AuthUser,access?:ResolvedAccess){
+ async collectionFollowups(q:{communityId?:number;q?:string;status?:'all'|'never'|'overdue'|'contacted';sort?:'amount'|'recent';page?:number;pageSize?:number},user:AuthUser,access?:ResolvedAccess){
   const allowed=await this.residentialScope({communityId:q.communityId},user,access),ids=allowed.map(c=>c.id),today=effectDay(new Date());
   // 跟进待办队列：默认按待缴金额降序（价值优先），也支持按最近一次人工跟进倒序；never 始终排在 recent 的最后。
   const status=q.status??'all',sort=q.sort??'amount',keyword=String(q.q??'').trim();
@@ -344,8 +350,7 @@ export class MisFeesService implements OnModuleDestroy {
   const promises=await this.collectionRepo(MisCollectionPromise).find({where:{tenantId:user.tenantId!,communityId:In(ids),status:'active'},order:{id:'DESC'}});
   const keys=[...new Set(promises.map(p=>p.houseKey))],payments=keys.length?await this.paidCollectionBills(keys,user,access):[];
   const rows=promises.map(p=>{try{const progress=promiseProgress(p,payments);return {...p,...progress,overdue:!progress.fulfilled&&p.promisedDate<=today}}catch(e){throw new BadRequestException((e as Error).message)}});
-  const requested=q.houseKeys||[];if(requested.length>200)throw new BadRequestException('每批最多200个跟进责任对象');for(const key of requested){if(!/^(0[1-4]):[1-9]\d{0,18}:[1-9]\d{0,18}$/.test(key)||!allowed.some(c=>c.offices.includes(key.split(':')[0])))throw new ForbiddenException('跟进对象不在授权范围');}
-  const where:any={tenantId:user.tenantId!,communityId:In(ids),...(requested.length?{houseKey:In(requested)}:{})};
+  const where:any={tenantId:user.tenantId!,communityId:In(ids)};
   const holds=(await this.collectionRepo(MisCollectionHold).find({where:{...where,status:'active'},order:{id:'DESC'}})).filter(h=>h.until>=today);
   const events=await this.collectionRepo(MisCollectionEvent).find({where,order:{id:'DESC'},take:200});
   const overdueHouseholds=new Set(rows.filter(p=>p.overdue).map(p=>p.houseKey)).size;
@@ -368,9 +373,13 @@ export class MisFeesService implements OnModuleDestroy {
    const scan:any=await this.residential({communityId:q.communityId,view:'households',status:'unpaid',page:1,pageSize:5000,_aging:false} as any,user,access);
    const scannedRows:any[]=scan.rows||[],scannedKeys=[...new Set(scannedRows.map(r=>String(r.houseKey)))];
    // 「上次人工跟进」只认事件表的人工动作（电话/承诺/冻结）；撤销类记录是更正操作，不算一次人工跟进。
-   const manualEvents=scannedKeys.length?await this.collectionRepo(MisCollectionEvent).find({where:{tenantId:user.tenantId!,houseKey:In(scannedKeys),action:In(['phone','promise','hold'])},order:{createdAt:'DESC'},select:{houseKey:true,createdAt:true,action:true,note:true}}):[];
+   // 按 house_key 聚合成「最近 1 条 + 总次数」，不再把大租户的全部历史事件搬进内存；只取展示需要的 action/note。
+   const manualEvents:any[]=scannedKeys.length?await this.collectionRepo(MisCollectionEvent).manager.query(
+    `SELECT house_key,COUNT(*)::int AS contact_count,MAX(created_at) AS last_at,(array_agg(action ORDER BY created_at DESC,id DESC))[1] AS last_action,(array_agg(note ORDER BY created_at DESC,id DESC))[1] AS last_note FROM mis_collection_events WHERE tenant_id=$1 AND house_key=ANY($2::text[]) AND action=ANY($3::text[]) GROUP BY house_key`,
+    [user.tenantId,scannedKeys,['phone','promise','hold']]
+   ):[] as any[];
    let lastEvent=new Map<string,{at:Date;action:'phone'|'promise'|'hold';note:string}>(),contactCount=new Map<string,number>();
-   for(const event of manualEvents){contactCount.set(event.houseKey,(contactCount.get(event.houseKey)||0)+1);if(!lastEvent.has(event.houseKey))lastEvent.set(event.houseKey,{at:event.createdAt,action:event.action as 'phone'|'promise'|'hold',note:event.note||''});}
+   for(const event of manualEvents){const houseKey=String(event.house_key);contactCount.set(houseKey,Number(event.contact_count)||0);lastEvent.set(houseKey,{at:new Date(event.last_at),action:event.last_action as 'phone'|'promise'|'hold',note:String(event.last_note||'')});}
    const todayStart=Date.parse(today+'T00:00:00Z'),dayMs=86400000;
    const daysSince=(last:Date)=>Math.max(0,Math.round((todayStart-Date.parse(effectDay(last)+'T00:00:00Z'))/dayMs));
    const clipNote=(note:string)=>{const chars=Array.from(note);return chars.length>40?chars.slice(0,40).join('')+'…':note;};
@@ -393,7 +402,7 @@ export class MisFeesService implements OnModuleDestroy {
    largeInactive=overdueRows.slice().sort((a,b)=>b.amountCents-a.amountCents||a.houseKey.localeCompare(b.houseKey)).slice(0,100);
    stats={avgAmountCents:population?Math.round(populationCents/population):0,hitCount:candidates.length,hitAmountCents:candidates.reduce((sum,row)=>sum+row.amountCents,0),thresholdCents:rule.amountCents,inactiveDays:rule.inactiveDays,scanned:scannedRows.length,neverCount:candidates.filter(r=>r.never).length,overdueCount:overdueRows.length,contactedCount:candidates.filter(r=>r.followupStatus==='contacted').length};
   }
-  return {today,followupHouseholds:Math.max(overdueHouseholds,overdueCount),promises:requested.length?rows.filter(p=>requested.includes(p.houseKey)):rows,holds,events,rows:queue,total,totalAmountCents,page,pageSize,status,sort,largeInactive,stats,rule,timelineScope:'责任对象跟进（跨批次）'};
+  return {today,followupHouseholds:Math.max(overdueHouseholds,overdueCount),promises:rows,holds,events,rows:queue,total,totalAmountCents,page,pageSize,status,sort,largeInactive,stats,rule,timelineScope:'责任对象跟进（跨批次）'};
  }
  /** 已缴原账只读入口：复用既有住宅明细SQL，归因不读取updatedate作为收款日。 */
  async paidCollectionBills(houseKeys:string[],user:AuthUser,access?:ResolvedAccess){

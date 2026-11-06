@@ -32,3 +32,27 @@ test('第4节真实TypeORM持久化、幂等、租户隔离、冻结与打印登
  await t.test('A4两联一页，页数伪造与复用标识改纸张都拒绝',async()=>{await assert.rejects(s.registerCollectionPrint(7,{paper:'A5',pageCount:99,requestKey:'00000000-0000-4000-8000-000000000007'},user,access),/页数与批次快照不一致/);const dto={rowsPerPage:12,paper:'A4',pageCount:1,requestKey:'00000000-0000-4000-8000-000000000008'},p=await s.registerCollectionPrint(7,dto,user,access);assert.equal(p.noticePageCount,1);assert.equal(p.pageCount,1);await assert.rejects(s.registerCollectionPrint(7,{...dto,rowsPerPage:12,paper:'A5',pageCount:1},user,access),/已用于另一打印请求/)});
  await t.test('旧8行客户端仍可登记12期两页',async()=>{const p=await s.registerCollectionPrint(7,{paper:'A5',pageCount:2,requestKey:'00000000-0000-4000-8000-000000000009'},user,access);assert.equal(p.pageCount,2);assert.equal(p.noticePageCount,2)});
  }finally{await pg.close()}});
+
+test('跟进队列：人工事件按户聚合最近1条+次数，真实SQL不搬全量历史',async()=>{
+ const f=await fixture(),{s,ds,pg,user,access}=f;
+ try{
+  const events=ds.getRepository(MisCollectionEvent),day=(n:number)=>new Date(Date.now()-n*86400000);
+  await events.save([
+   {tenantId:1,communityId:1,houseKey:'01:1:1',action:'phone',note:'三周前电话',fingerprint:'f-1',requestKey:'r-1',createdBy:17,updatedBy:17,createdAt:day(30)},
+   {tenantId:1,communityId:1,houseKey:'01:1:1',action:'promise',note:'承诺还款',fingerprint:'f-2',requestKey:'r-2',createdBy:17,updatedBy:17,createdAt:day(20)},
+   {tenantId:1,communityId:1,houseKey:'01:1:1',action:'phone',note:'刚电话确认',fingerprint:'f-3',requestKey:'r-3',createdBy:17,updatedBy:17,createdAt:day(2)},
+   {tenantId:1,communityId:1,houseKey:'01:1:1',action:'cancel_promise',note:'撤销不算人工跟进',fingerprint:'f-4',requestKey:'r-4',createdBy:17,updatedBy:17,createdAt:day(1)},
+  ].map(row=>events.create(row as any)));
+  s.residential=async()=>({rows:[{houseKey:'01:1:1',address:'198弄1号1室',ownerName:'甲',amountCents:300000},{houseKey:'01:1:2',address:'198弄1号2室',ownerName:'乙',amountCents:300000}],total:2,amountCents:600000});
+  const out=await s.collectionFollowups({},user,access);
+  assert.equal(out.rows.length,2);
+  const one=out.rows.find((r:any)=>r.houseKey==='01:1:1'),two=out.rows.find((r:any)=>r.houseKey==='01:1:2');
+  assert.equal(one.contactCount,3,'撤销类事件不计入人工跟进次数');
+  assert.equal(one.lastAction,'phone');
+  assert.equal(one.lastNote,'刚电话确认');
+  assert.equal(one.days,2);
+  assert.equal(one.followupStatus,'contacted');
+  assert.equal(two.never,true);assert.equal(two.contactCount,0);assert.equal(two.lastContactAt,null);
+  assert.equal(out.stats.neverCount,1);assert.equal(out.stats.contactedCount,1);
+ }finally{await pg.close()}
+});

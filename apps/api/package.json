@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "test:mis-collections": "node -r ts-node/register/transpile-only --test src/modules/fees/mis-collection-effect.test.ts src/modules/fees/mis-collection-followup.test.ts src/modules/fees/mis-collection.persistence.test.ts src/modules/fees/mis-collection.http.test.ts src/modules/fees/mis-collection-safety.test.ts",
+    "test:mis-collections": "node -r ts-node/register/transpile-only --test src/modules/fees/mis-collection-effect.test.ts src/modules/fees/mis-collection-followup.test.ts src/modules/fees/mis-collection.persistence.test.ts src/modules/fees/mis-notification-status.persistence.test.ts src/modules/fees/mis-collection.http.test.ts src/modules/fees/mis-collection-safety.test.ts",
     "test:mis-ledger": "node -r ts-node/register --test src/modules/fees/mis-ledger.query.test.ts src/modules/fees/mis-ledger.service.test.ts src/modules/fees/mis-ledger.http.test.ts",
     "test:business-ledger": "node -r ts-node/register --test src/modules/business/business-ledger.test.ts src/modules/business/business-ledger.http.test.ts",
     "test:fee-receipts": "node -r ts-node/register --test src/modules/fees/receipt-isolation.test.ts",

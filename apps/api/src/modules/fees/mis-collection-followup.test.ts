@@ -34,13 +34,25 @@ test('跟进提醒：按价值排序的待办队列（门槛/状态/搜索/排�
  s.residential=async(q:any)=>{assert.equal(q._aging,false,'队列必须跳过账龄全量扫描');const total=rows.reduce((sum,r)=>sum+r.amountCents,0);return {rows,total:rows.length,amountCents:total}};
  s.collectionRepo=(entity:any)=>{
   if(entity===MisCollectionPromise||entity===MisCollectionHold)return {find:async()=>[]};
-  if(entity===MisCollectionEvent)return {find:async(opts:any)=>{captured=opts;const keys=(opts.where.houseKey as any)?._value??(opts.where.houseKey as any)?.value??[];const actions=(opts.where.action as any)?._value??(opts.where.action as any)?.value??[];return events.filter(e=>keys.includes(e.houseKey)&&actions.includes(e.action))}};
+  if(entity===MisCollectionEvent)return {find:async()=>[],manager:{query:async(sql:string,params:any[])=>{
+   captured={sql,params};const [tenantId,keys,actions]=params;
+   const grouped=new Map<string,any>();
+   for(const e of events.filter(e=>keys.includes(e.houseKey)&&actions.includes(e.action))){
+    const cur=grouped.get(e.houseKey);
+    if(!cur||e.createdAt>cur.last_at)grouped.set(e.houseKey,{house_key:e.houseKey,contact_count:(cur?.contact_count||0)+1,last_at:e.createdAt,last_action:e.action,last_note:e.note});
+    else cur.contact_count+=1;
+   }
+   return [...grouped.values()];
+  }}};
   if(entity===TenantConfig)return {findOne:async()=>({value:{amountCents:100000,inactiveDays:7,enabled:true}})};
   throw new Error('unexpected repository');
  };
  const user:any={id:1,tenantId:1},access:any={scopeAll:true};
  const base=await s.collectionFollowups({},user,access);
- assert.deepEqual(captured.where.action._value??captured.where.action.value,['phone','promise','hold'],'打印/短信/撤销类事件不能算人工跟进');
+ assert.equal(captured.params[0],1,'事件聚合必须带租户条件');
+ assert.deepEqual([...captured.params[1]].sort(),rows.map(r=>r.houseKey).sort(),'事件聚合只查本次扫描到的责任对象');
+ assert.deepEqual(captured.params[2],['phone','promise','hold'],'打印/短信/撤销类事件不能算人工跟进');
+ assert.match(captured.sql,/GROUP BY house_key/,'按户聚合成最近1条+次数，不搬全量历史事件');
  assert.equal(base.total,3,'金额门槛以下的户不进队列');
  assert.equal(base.totalAmountCents,1200000);
  assert.equal(base.stats.hitCount,3);
