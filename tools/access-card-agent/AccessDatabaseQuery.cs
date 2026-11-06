@@ -77,6 +77,24 @@ namespace Pms.AccessCardAgent
         }
     }
 
+    /** .88 只读查询能力的真实探测结果；canQuery 为 true 才允许在心跳里上报 accessCardQuery。 */
+    internal sealed class AccessQueryCapabilityResult
+    {
+        public bool mjSystemConfigured { get; set; }
+        public bool icCardConfigured { get; set; }
+        public bool icCardPasswordInstalled { get; set; }
+        public bool icCardSkipped { get; set; }
+        public bool mjSystemOk { get; set; }
+        public bool icCardOk { get; set; }
+        public bool canQuery { get; set; }
+        public List<string> checks { get; set; }
+        public string message { get; set; }
+        public AccessQueryCapabilityResult()
+        {
+            checks = new List<string>();
+        }
+    }
+
     /**
      * .88 两套 Access MDB 的只读查询。
      * 所有 SQL 都是参数化固定语句；表名来自现场核对过的白名单，不接受外部 SQL。
@@ -218,6 +236,87 @@ namespace Pms.AccessCardAgent
             if (result.groups.Count == 0 && result.errors.Count > 0)
                 throw new InvalidOperationException(String.Join("；", result.errors.ToArray()));
             return result.groups;
+        }
+
+        /**
+         * 只读查询能力探测：对两套 MDB 真实执行五项查询（房号/卡号含补零变体/姓名/最近通行/楼栋权限）。
+         * iCCard 密码未安装时按现场允许的暂态跳过（只影响 iCCard 查询），不阻断整个能力；
+         * 密码已安装但 iCCard 打不开或查询失败，则如实返回 canQuery=false。
+         */
+        public static AccessQueryCapabilityResult ProbeCapability(AgentConfig config, string password)
+        {
+            var result = new AccessQueryCapabilityResult();
+            if (config == null)
+            {
+                result.message = "未提供 .88 连接配置";
+                return result;
+            }
+            result.mjSystemConfigured = !String.IsNullOrWhiteSpace(config.MjSystemDatabasePath);
+            result.icCardConfigured = !String.IsNullOrWhiteSpace(config.IcCardDatabasePath);
+            result.icCardPasswordInstalled = !String.IsNullOrEmpty(password);
+            result.mjSystemOk = result.mjSystemConfigured &&
+                ProbeSystem(config.MjSystemDatabasePath, null, "MjSystem", result);
+            if (!result.icCardConfigured)
+            {
+                result.checks.Add("iCCard：未配置 MDB 路径");
+            }
+            else if (!result.icCardPasswordInstalled)
+            {
+                result.icCardSkipped = true;
+                result.checks.Add("iCCard：未安装 MDB 密码，跳过（现场允许的暂态，只影响 iCCard 查询）");
+            }
+            else
+            {
+                result.icCardOk = ProbeSystem(config.IcCardDatabasePath, password, "iCCard", result);
+            }
+            result.canQuery =
+                (result.mjSystemConfigured ? result.mjSystemOk : true) &&
+                (result.icCardConfigured ? (result.icCardPasswordInstalled ? result.icCardOk : true) : true) &&
+                (result.mjSystemOk || result.icCardOk);
+            result.message = String.Join("；", result.checks.ToArray());
+            return result;
+        }
+
+        /** 对单套 MDB 真实执行五项查询；只验证 SQL/表结构可读，不要求命中具体人员。 */
+        private static bool ProbeSystem(string path, string password, string name, AccessQueryCapabilityResult capability)
+        {
+            try
+            {
+                using (var connection = Open(path, password, name))
+                {
+                    var isMjSystem = name == "MjSystem";
+                    var byLike = isMjSystem
+                        ? ReadMjCardsByLike(connection, "%/%")
+                        : ReadIcCardsByLike(connection, "%/%");
+                    string cardNo = null;
+                    foreach (var pair in byLike)
+                    {
+                        if (!String.IsNullOrWhiteSpace(pair.Key)) { cardNo = pair.Key; break; }
+                    }
+                    foreach (var variant in CardVariants(String.IsNullOrWhiteSpace(cardNo) ? "00000000" : cardNo))
+                    {
+                        if (isMjSystem)
+                        {
+                            ReadMjCards(connection, variant, new List<AccessQueryCard>());
+                            ReadMjRecords(connection, variant, new List<AccessQueryRecord>());
+                        }
+                        else
+                        {
+                            ReadIcCards(connection, variant, new List<AccessQueryCard>());
+                            ReadIcRecords(connection, variant, new List<AccessQueryRecord>());
+                        }
+                    }
+                    if (isMjSystem) ReadMjGroups(connection);
+                    else ReadIcGroups(connection);
+                    capability.checks.Add(name + "：房号/姓名/卡号(含补零变体)/最近通行/楼栋权限查询均可执行");
+                    return true;
+                }
+            }
+            catch (Exception exception)
+            {
+                capability.checks.Add(name + "：" + exception.Message);
+                return false;
+            }
         }
 
         private static AccessQueryResult NewResult(string term, string matchedBy)

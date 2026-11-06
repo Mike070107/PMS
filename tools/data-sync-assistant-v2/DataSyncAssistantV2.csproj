@@ -74,7 +74,10 @@
     <Compile Include="..\access-card-agent\AgentStatus.cs"><Link>Adapters\AgentStatus.cs</Link></Compile>
     <Compile Include="..\access-card-agent\SecretStore.cs"><Link>Adapters\SecretStore.cs</Link></Compile>
     <Compile Include="..\access-card-agent\LegacyDatabase.cs"><Link>Adapters\LegacyDatabase.cs</Link></Compile>
+    <Compile Include="..\access-card-agent\AccessOleDb.cs"><Link>Adapters\AccessOleDb.cs</Link></Compile>
     <Compile Include="..\access-card-agent\AccessGatewayDatabase.cs"><Link>Adapters\AccessGatewayDatabase.cs</Link></Compile>
+    <Compile Include="..\access-card-agent\AccessDatabaseQuery.cs"><Link>Adapters\AccessDatabaseQuery.cs</Link></Compile>
+    <Compile Include="..\access-card-agent\AgentDatabaseCapabilities.cs"><Link>Adapters\AgentDatabaseCapabilities.cs</Link></Compile>
     <Compile Include="..\access-card-agent\AccessControllerUploader.cs"><Link>Adapters\AccessControllerUploader.cs</Link></Compile>
     <Compile Include="..\access-card-agent\ParkingDatabase.cs"><Link>Adapters\ParkingDatabase.cs</Link></Compile>
     <Compile Include="..\access-card-agent\CardReader.cs">
