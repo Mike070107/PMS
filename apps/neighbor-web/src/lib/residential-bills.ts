@@ -29,7 +29,7 @@ export function noticeSmsText(n:Notice){
  }
  const unknown=n.bills.some(b=>!valid.test(b.period));
  const scope=ranges.length?ranges.join('、')+(unknown?'及部分账期待核对的账单':''):'账期待核对的账单';
- return `${n.address}业主您好，您有${scope}共计${cents(n.amountCents)}元的物业费账单待缴纳，请及时联系物业管理处核对办理，感谢您对我们工作的支持`;
+ return `${n.address}业主您好，您有${scope}共计${cents(n.amountCents)}元的物业费账单待缴纳，请及时联系物业管理处核对办理，感谢您对我们工作的支持!`;
 }
 // Only equal monthly charges can be combined: MIS does not expose a unit price.
 export function noticeRows(bills:MisBill[]){
