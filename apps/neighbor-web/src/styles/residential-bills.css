@@ -38,16 +38,16 @@
 .rb th.rb-num,.rb td.rb-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 
 /* 1. 指标带：待缴总额大字 + 户数 / 户均 / 今日待跟进 */
-.rb-band{display:flex;align-items:stretch;gap:20px;padding:14px 20px;margin:0 0 12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh);min-width:0}
+.rb-band{display:flex;align-items:stretch;gap:20px;padding:12px 20px;margin:0 0 12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh);min-width:0}
 .rb-band-main{display:flex;flex-direction:column;justify-content:center;gap:2px;flex:none;min-width:190px;padding-right:20px;border-right:1px solid var(--line)}
 .rb-band-main small{font-size:12.5px;color:var(--ink3)}
-.rb-band-main b{font-size:34px;line-height:1.05;font-weight:750;letter-spacing:-1px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rb-band-main b{font-size:30px;line-height:1.05;font-weight:750;letter-spacing:-1px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .rb-band-main em{font-style:normal;font-size:12px;color:var(--ink3);white-space:nowrap}
 .rb-band-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center;gap:16px;flex:1;min-width:0}
 .rb-band-metrics>div{display:flex;flex-direction:column;gap:2px;min-width:0;padding-left:16px;border-left:1px solid var(--line2)}
 .rb-band-metrics>div:first-child{border-left:0;padding-left:0}
 .rb-band-metrics small{font-size:12.5px;color:var(--ink3)}
-.rb-band-metrics b{font-size:22px;line-height:1.15;font-weight:700;letter-spacing:-.4px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.rb-band-metrics b{font-size:20px;line-height:1.15;font-weight:700;letter-spacing:-.4px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .rb-band-metrics em{font-style:normal;font-size:12px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* 2. 工具条（动作）：粘在滚动容器顶部，不随表格滚动 */
@@ -75,7 +75,8 @@
 .rb .rb-table{width:100%;min-width:760px;table-layout:auto}
 .rb .rb-table thead th{position:sticky;top:0;z-index:3;background:var(--sunken);box-shadow:inset 0 -1px 0 var(--line)}
 .rb .rb-table tbody tr{height:64px}
-.rb .rb-table tbody td{height:64px;padding:10px 14px;vertical-align:middle}
+.rb .rb-table tbody td{height:62px;padding:9px 14px;vertical-align:middle}
+.rb .rb-table .rb-sub{margin-top:3px;font-size:12px;line-height:1.35}
 .rb .rb-table tbody tr:hover td{background:var(--raise)}
 .rb .rb-table .rb-check{width:46px}
 .rb .rb-table .rb-ops-th{width:118px;text-align:right}
@@ -83,12 +84,15 @@
 
 /* 4. 操作列：明细 + ⋯ 菜单（记电话 / 承诺 / 冻结收进菜单） */
 .rb-ops{display:flex;align-items:center;justify-content:flex-end;gap:6px;white-space:nowrap}
+/* 全局 :has(> .btn) 规则会给含按钮的 flex 容器加 wrap，操作列必须单行 */
+.rb .rb-ops{flex-wrap:nowrap}
+.rb .rb-ops .btn{min-height:32px;height:32px;padding:0 10px;font-size:13px}
 .rb-more{position:relative;display:inline-block}
-.rb-more>summary{list-style:none;display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink2);font-size:18px;line-height:1;cursor:pointer}
+.rb-more>summary{list-style:none;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink2);font-size:16px;line-height:1;cursor:pointer}
 .rb-more>summary::-webkit-details-marker{display:none}
 .rb-more>summary:hover{background:var(--sunken);color:var(--ink)}
 .rb-more[open]>summary{background:var(--acc-w);border-color:#bdcddd;color:var(--acc-t)}
-.rb-more-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:2000;display:flex;flex-direction:column;gap:8px;min-width:210px;padding:10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:var(--sh-l);text-align:left}
+.rb-more-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:2000;display:flex;flex-direction:column;flex-wrap:nowrap;gap:8px;min-width:210px;padding:10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:var(--sh-l);text-align:left}
 .rb-more-menu .btn{width:100%;justify-content:center}
 .rb-more-tags{display:flex;flex-direction:column;gap:4px}
 .rb-more-tags .rb-sub{margin:0;max-width:none}
@@ -107,10 +111,10 @@
 .rb-fold .t{min-width:720px}
 
 /* 跟进区标题压薄，把首屏让给指标带、工具条和清单 */
-.rb .rb-followup-head{align-items:baseline;padding:0 2px 10px}
+.rb .rb-followup-head{align-items:center;padding:0 2px 8px}
 .rb .rb-followup-head strong{font-size:14px}
 .rb .rb-followup-head small{font-size:12.5px}
-.rb .rb-followup-head .btn{min-height:34px;height:34px}
+.rb .rb-followup-head .btn{min-height:30px;height:30px;padding:0 10px;font-size:12.5px}
 
 @media(max-width:900px){
  .rb-band{flex-direction:column;gap:12px;padding:14px 16px}
