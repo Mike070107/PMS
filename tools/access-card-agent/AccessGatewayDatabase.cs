@@ -647,13 +647,7 @@ namespace Pms.AccessCardAgent
 
         private static OleDbConnection Open(string path, string password, string name)
         {
-            if (String.IsNullOrWhiteSpace(path) || !File.Exists(path))
-                throw new FileNotFoundException(name + " 数据库不存在", path);
-            var builder = new OleDbConnectionStringBuilder { Provider = "Microsoft.Jet.OLEDB.4.0", DataSource = path };
-            if (!String.IsNullOrEmpty(password)) builder["Jet OLEDB:Database Password"] = password;
-            var connection = new OleDbConnection(builder.ConnectionString);
-            connection.Open();
-            return connection;
+            return AccessOleDb.Open(path, password, name);
         }
 
         private static object Scalar(OleDbConnection connection, OleDbTransaction transaction, string sql, params object[] values)
@@ -698,14 +692,6 @@ namespace Pms.AccessCardAgent
             if (!File.Exists(path))
                 throw new FileNotFoundException(name + " 数据库不存在", path);
 
-            var builder = new OleDbConnectionStringBuilder
-            {
-                Provider = "Microsoft.Jet.OLEDB.4.0",
-                DataSource = path
-            };
-            if (!String.IsNullOrEmpty(password))
-                builder["Jet OLEDB:Database Password"] = password;
-
             var result = new AccessDatabaseProbeResult
             {
                 Name = name,
@@ -713,9 +699,8 @@ namespace Pms.AccessCardAgent
                 Length = new FileInfo(path).Length,
                 Counts = new Dictionary<string, int>()
             };
-            using (var connection = new OleDbConnection(builder.ConnectionString))
+            using (var connection = AccessOleDb.Open(path, password, name))
             {
-                connection.Open();
                 foreach (var table in tables)
                 {
                     using (var command = connection.CreateCommand())

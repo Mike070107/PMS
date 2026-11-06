@@ -46,6 +46,53 @@ namespace Pms.AccessCardAgent
         public int HouseSequence { get; set; }
     }
 
+    internal sealed class LegacySearchEntry
+    {
+        public long personId { get; set; }
+        public string personNo { get; set; }
+        public string personName { get; set; }
+        public string icCardNo { get; set; }
+        public string issuedAt { get; set; }
+        public int sequence { get; set; }
+        public string roomKey { get; set; }
+    }
+
+    internal sealed class LegacyProbeResult
+    {
+        public string serverVersion { get; set; }
+        public string database { get; set; }
+        public string loginUser { get; set; }
+        public bool canReadPerson { get; set; }
+        public bool canReadCardInfo { get; set; }
+        public bool canInsertPerson { get; set; }
+        public bool canInsertCardInfo { get; set; }
+        public long personCount { get; set; }
+        public long cardInfoCount { get; set; }
+        public string error { get; set; }
+
+        public bool CanWrite
+        {
+            get { return canInsertPerson && canInsertCardInfo; }
+        }
+    }
+
+    internal sealed class LegacySchemaTable
+    {
+        public string schema { get; set; }
+        public string table { get; set; }
+    }
+
+    internal sealed class LegacySchemaColumn
+    {
+        public string schema { get; set; }
+        public string table { get; set; }
+        public string column { get; set; }
+        public string dataType { get; set; }
+        public int? maxLength { get; set; }
+        public bool nullable { get; set; }
+        public int ordinal { get; set; }
+    }
+
     /** .80 旧库只读诊断；正式同步会复用同一事务锁后再写 Person/CardInfo。 */
     internal static class LegacyDatabase
     {
@@ -378,6 +425,188 @@ VALUES(@id,1,@uid,@icno,1,1,@personId,0,1,GETDATE(),GETDATE(),'01000000000000010
                     catch { transaction.Rollback(); throw; }
                 }
             }
+        }
+
+        /**
+         * .80 能力探测：只读查询 + SQL 权限函数，不写任何数据。
+         * 用于把 legacyDbWrite 从「按代理身份写死」改成「数据库实际权限」。
+         */
+        public static LegacyProbeResult Probe(AgentConfig config, string password)
+        {
+            var result = new LegacyProbeResult();
+            try
+            {
+                using (var connection = new SqlConnection(ConnectionString(config, password)))
+                {
+                    connection.Open();
+                    using (var command = connection.CreateCommand())
+                    {
+                        command.CommandText = "SELECT @@VERSION";
+                        result.serverVersion = Convert.ToString(command.ExecuteScalar());
+                    }
+                    using (var command = connection.CreateCommand())
+                    {
+                        command.CommandText = "SELECT DB_NAME()";
+                        result.database = Convert.ToString(command.ExecuteScalar());
+                    }
+                    using (var command = connection.CreateCommand())
+                    {
+                        command.CommandText = "SELECT SUSER_SNAME()";
+                        result.loginUser = Convert.ToString(command.ExecuteScalar());
+                    }
+                    result.canReadPerson = HasPermission(connection, "HR.Person", "SELECT");
+                    result.canReadCardInfo = HasPermission(connection, "MC.CardInfo", "SELECT");
+                    result.canInsertPerson = HasPermission(connection, "HR.Person", "INSERT");
+                    result.canInsertCardInfo = HasPermission(connection, "MC.CardInfo", "INSERT");
+                    using (var command = connection.CreateCommand())
+                    {
+                        command.CommandText = "SELECT COUNT(*) FROM HR.Person";
+                        result.personCount = Convert.ToInt64(command.ExecuteScalar());
+                    }
+                    using (var command = connection.CreateCommand())
+                    {
+                        command.CommandText = "SELECT COUNT(*) FROM MC.CardInfo";
+                        result.cardInfoCount = Convert.ToInt64(command.ExecuteScalar());
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                result.error = exception.Message;
+            }
+            return result;
+        }
+
+        public static bool CanWrite(AgentConfig config, string password)
+        {
+            try
+            {
+                var probe = Probe(config, password);
+                return String.IsNullOrEmpty(probe.error) && probe.CanWrite;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool HasPermission(SqlConnection connection, string table, string action)
+        {
+            try
+            {
+                using (var command = connection.CreateCommand())
+                {
+                    command.CommandText = "SELECT HAS_PERMS_BY_NAME(@table,'OBJECT',@action)";
+                    command.Parameters.Add("@table", SqlDbType.NVarChar, 128).Value = table;
+                    command.Parameters.Add("@action", SqlDbType.NVarChar, 128).Value = action;
+                    var value = command.ExecuteScalar();
+                    return value != null && value != DBNull.Value && Convert.ToInt32(value) == 1;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /** .80 人员/卡按姓名、房号、卡号模糊查询；只读，最多 60 条。 */
+        public static List<LegacySearchEntry> SearchCards(AgentConfig config, string password, string term)
+        {
+            term = (term ?? "").Trim();
+            if (String.IsNullOrWhiteSpace(term)) throw new InvalidOperationException("查询词不能为空");
+            var parts = term.Split('/');
+            var candidate = parts.Length == 3 ? CandidateLike(term) : "%" + EscapeLike(term) + "%";
+            var results = new List<LegacySearchEntry>();
+            using (var connection = new SqlConnection(ConnectionString(config, password)))
+            using (var command = connection.CreateCommand())
+            {
+                connection.Open();
+                command.CommandText = @"
+SELECT TOP (60) p.[ID], p.[NO], p.[Name], c.[IDNO], c.[IssueDate]
+FROM [HR].[Person] p
+LEFT JOIN [MC].[CardInfo] c ON c.[PersonID] = p.[ID]
+WHERE p.[Name] LIKE @candidate ESCAPE '\' OR p.[NO] LIKE @candidate ESCAPE '\' OR c.[IDNO] LIKE @candidate ESCAPE '\'
+ORDER BY p.[ID] DESC;";
+                command.Parameters.Add("@candidate", SqlDbType.NVarChar, 120).Value = candidate;
+                using (var reader = command.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        var name = reader.IsDBNull(2) ? "" : reader.GetString(2);
+                        int sequence;
+                        var roomKey = parts.Length == 3 && TrySequence(term, name, out sequence)
+                            ? NormalizeRoomKey(term) : null;
+                        if (parts.Length == 3 && roomKey == null) continue;
+                        results.Add(new LegacySearchEntry
+                        {
+                            personId = reader.GetInt64(0),
+                            personNo = reader.IsDBNull(1) ? "" : reader.GetString(1),
+                            personName = name,
+                            icCardNo = reader.IsDBNull(3) ? null : reader.GetString(3).Trim().ToUpperInvariant(),
+                            issuedAt = reader.IsDBNull(4) ? null : reader.GetDateTime(4).ToString("o", CultureInfo.InvariantCulture),
+                            sequence = roomKey == null ? 0 : SequenceFromName(name),
+                            roomKey = roomKey
+                        });
+                    }
+                }
+            }
+            return results;
+        }
+
+        private static int SequenceFromName(string name)
+        {
+            var match = Regex.Match(name ?? "", @"(\d+)\s*$");
+            int sequence;
+            return match.Success && Int32.TryParse(match.Groups[1].Value, NumberStyles.None,
+                CultureInfo.InvariantCulture, out sequence) ? sequence : 0;
+        }
+
+        /** .80 只读 schema 发现：先用 INFORMATION_SCHEMA 找表，再按表名取列。 */
+        public static List<LegacySchemaTable> SchemaTables(AgentConfig config, string password)
+        {
+            var output = new List<LegacySchemaTable>();
+            using (var connection = new SqlConnection(ConnectionString(config, password)))
+            using (var command = connection.CreateCommand())
+            {
+                connection.Open();
+                command.CommandText = @"SELECT TABLE_SCHEMA,TABLE_NAME FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_TYPE='BASE TABLE' ORDER BY TABLE_SCHEMA,TABLE_NAME";
+                using (var reader = command.ExecuteReader())
+                    while (reader.Read())
+                        output.Add(new LegacySchemaTable
+                        {
+                            schema = reader.GetString(0),
+                            table = reader.GetString(1)
+                        });
+            }
+            return output;
+        }
+
+        public static List<LegacySchemaColumn> SchemaColumns(AgentConfig config, string password, string table)
+        {
+            if (String.IsNullOrWhiteSpace(table)) throw new InvalidOperationException("表名不能为空");
+            var output = new List<LegacySchemaColumn>();
+            using (var connection = new SqlConnection(ConnectionString(config, password)))
+            using (var command = connection.CreateCommand())
+            {
+                connection.Open();
+                command.CommandText = @"SELECT TABLE_SCHEMA,TABLE_NAME,COLUMN_NAME,DATA_TYPE,CHARACTER_MAXIMUM_LENGTH,IS_NULLABLE,ORDINAL_POSITION
+FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME=@table ORDER BY ORDINAL_POSITION";
+                command.Parameters.Add("@table", SqlDbType.NVarChar, 128).Value = table;
+                using (var reader = command.ExecuteReader())
+                    while (reader.Read())
+                        output.Add(new LegacySchemaColumn
+                        {
+                            schema = reader.GetString(0),
+                            table = reader.GetString(1),
+                            column = reader.GetString(2),
+                            dataType = reader.GetString(3),
+                            maxLength = reader.IsDBNull(4) ? (int?)null : Convert.ToInt32(reader.GetValue(4)),
+                            nullable = String.Equals(reader.GetString(5), "YES", StringComparison.OrdinalIgnoreCase),
+                            ordinal = Convert.ToInt32(reader.GetValue(6))
+                        });
+            }
+            return output;
         }
 
         private static string ConnectionString(AgentConfig config, string password)

@@ -55,20 +55,32 @@ namespace Pms.AccessCardAgent
                 {
                     var hasReader = _config.Kind != "issuer" || CardReader.HasAcr122();
                     var parkingWrite = false;
+                    var accessRead = false;
                     var accessWrite = false;
                     var controllerUpload = false;
+                    var legacyRead = false;
+                    var legacyWrite = false;
                     if (_config.Kind == "parking_gateway")
                     {
                         parkingWrite = ParkingDatabase.CanWriteBoth(_config, LoadSecret("parking-db-password.dat"));
                     }
                     if (_config.Kind == "access_gateway")
                     {
-                        AccessGatewayDatabase.ProbeMjSystem(_config);
-                        AccessGatewayDatabase.ProbeIcCard(_config, LoadSecret("iccard-db-password.dat"));
-                        accessWrite = true;
-                        controllerUpload = AccessControllerUploader.CanUpload(_config);
+                        // MDB 密码可能尚未安装；缺密码只影响 iCCard，不能让整个心跳失败。
+                        var accessCapability = AccessDatabaseCapabilityProbe.Probe(
+                            _config, LoadOptionalSecret("iccard-db-password.dat"));
+                        accessRead = accessCapability.CanRead;
+                        accessWrite = accessCapability.CanWrite;
+                        controllerUpload = accessCapability.controllerUpload;
                     }
-                    _api.Heartbeat(BuildCapabilities(_config, hasReader, parkingWrite, accessWrite, controllerUpload));
+                    if (_config.Kind == "legacy_sync")
+                    {
+                        var legacyProbe = LegacyDatabase.Probe(_config, LoadSecret("legacy-db-password.dat"));
+                        legacyRead = String.IsNullOrEmpty(legacyProbe.error);
+                        legacyWrite = legacyProbe.CanWrite;
+                    }
+                    _api.Heartbeat(BuildCapabilities(_config, hasReader, parkingWrite, accessWrite,
+                        controllerUpload, accessRead, legacyWrite, legacyRead));
                     AgentStatus.MarkConnected();
                     SetConnectionState(true, "PMS 心跳正常");
                     if (_config.Kind == "legacy_sync")
@@ -168,6 +180,15 @@ namespace Pms.AccessCardAgent
 
         internal static Dictionary<string, bool> BuildCapabilities(AgentConfig config, bool hasReader, bool parkingWrite, bool accessWrite, bool controllerUpload)
         {
+            // 兼容旧调用：没有探测结果时沿用「按代理身份」的保守默认，供 --connect-test 等场景使用。
+            return BuildCapabilities(config, hasReader, parkingWrite, accessWrite, controllerUpload,
+                config.Kind == "access_gateway", config.Kind == "legacy_sync", config.Kind == "legacy_sync");
+        }
+
+        internal static Dictionary<string, bool> BuildCapabilities(
+            AgentConfig config, bool hasReader, bool parkingWrite, bool accessWrite,
+            bool controllerUpload, bool accessRead, bool legacyWrite, bool legacyRead)
+        {
             var cardProfilesReady = false;
             if (config.Kind == "issuer" && hasReader)
             {
@@ -182,10 +203,12 @@ namespace Pms.AccessCardAgent
             {
                 { "pcscReader", hasReader },
                 { "cardWrite", cardProfilesReady },
-                { "legacyDbRead", config.Kind == "legacy_sync" },
-                { "legacyDbWrite", config.Kind == "legacy_sync" },
-                { "accessDbRead", config.Kind == "access_gateway" },
+                { "legacyDbRead", config.Kind == "legacy_sync" && legacyRead },
+                { "legacyDbWrite", config.Kind == "legacy_sync" && legacyWrite },
+                { "legacyCardQuery", config.Kind == "legacy_sync" && legacyRead },
+                { "accessDbRead", config.Kind == "access_gateway" && accessRead },
                 { "accessDbWrite", config.Kind == "access_gateway" && accessWrite },
+                { "accessCardQuery", config.Kind == "access_gateway" && accessRead },
                 { "parkingDbRead", config.Kind == "parking_gateway" },
                 { "parkingDbWrite", config.Kind == "parking_gateway" && parkingWrite },
                 { "controllerUpload", config.Kind == "access_gateway" && controllerUpload },

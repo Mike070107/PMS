@@ -31,6 +31,7 @@ import {
   CreateAccessCardAuthorizationDto,
   CreateAccessCardControllerUploadDto,
   CreateAccessDoorOperationDto,
+  CreateAccessCardLifecycleDto,
   EnrollAccessCardAgentDto,
   LegacyCardCheckReportDto,
   LegacyHistoryReportDto,
@@ -278,6 +279,12 @@ export class AccessCardIssuanceController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.service.create(dto, user, access);
+  }
+
+  @Post('cards/lifecycle')
+  @RequirePermission('business', 'edit')
+  requestCardLifecycle(@Body() dto: CreateAccessCardLifecycleDto, @CurrentUser() user: AuthUser) {
+    return this.service.requestCardLifecycle(dto, user);
   }
 
   @Post('houses/:houseId/history/:historyId/authorizations')

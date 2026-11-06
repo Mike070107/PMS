@@ -339,6 +339,38 @@ export class AccessCardAuthorizationReportDto {
   errorMessage?: string;
 }
 
+export class CreateAccessCardLifecycleDto {
+  @IsIn(['extend', 'lost', 'unlost', 'cancel', 'replace', 'reissue'])
+  operation: 'extend' | 'lost' | 'unlost' | 'cancel' | 'replace' | 'reissue';
+
+  @IsString()
+  @Matches(/^\d{8}$/)
+  wgCardNo: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  endDate?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(24)
+  @ArrayUnique()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  targetBuildingIds?: number[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  reason?: string;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(100)
+  idempotencyKey: string;
+}
+
 export class CreateParkingQueryDto {
   @IsString()
   @MinLength(2)

@@ -32,6 +32,10 @@
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AccessOleDb.cs" />
+    <Compile Include="AccessCardLifecycle.cs" />
+    <Compile Include="AccessDatabaseQuery.cs" />
+    <Compile Include="AgentDatabaseCapabilities.cs" />
     <Compile Include="AgentApiClient.cs" />
     <Compile Include="AgentConfig.cs" />
     <Compile Include="AgentLoop.cs" />

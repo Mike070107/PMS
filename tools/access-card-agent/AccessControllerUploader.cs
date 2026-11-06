@@ -731,31 +731,12 @@ namespace Pms.AccessCardAgent
 
         private static OleDbConnection Open(string path, string password)
         {
-            if (String.IsNullOrWhiteSpace(path) || !File.Exists(path))
-                throw new FileNotFoundException("iCCard 数据库不存在", path);
-            var builder = new OleDbConnectionStringBuilder
-            {
-                Provider = "Microsoft.Jet.OLEDB.4.0",
-                DataSource = path
-            };
-            if (!String.IsNullOrEmpty(password)) builder["Jet OLEDB:Database Password"] = password;
-            var connection = new OleDbConnection(builder.ConnectionString);
-            connection.Open();
-            return connection;
+            return AccessOleDb.Open(path, password, "iCCard");
         }
 
         private static OleDbConnection OpenMjSystem(string path)
         {
-            if (String.IsNullOrWhiteSpace(path) || !File.Exists(path))
-                throw new FileNotFoundException("MjSystem 数据库不存在", path);
-            var builder = new OleDbConnectionStringBuilder
-            {
-                Provider = "Microsoft.Jet.OLEDB.4.0",
-                DataSource = path
-            };
-            var connection = new OleDbConnection(builder.ConnectionString);
-            connection.Open();
-            return connection;
+            return AccessOleDb.Open(path, null, "MjSystem");
         }
 
         private static bool TryFindWgComm(AgentConfig config, out string path)

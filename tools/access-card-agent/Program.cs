@@ -1,8 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.ServiceProcess;
+using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
 namespace Pms.AccessCardAgent
@@ -104,6 +107,14 @@ namespace Pms.AccessCardAgent
                         throw new InvalidOperationException("停车房号横线转斜杠测试失败");
                     if (ParkingDatabase.EscapeLikeForTest("A%_~[") != "A~%~_~~~[")
                         throw new InvalidOperationException("停车查询通配符转义测试失败");
+                    var cardVariants = AccessDatabaseQuery.CardVariants("5516351");
+                    if (Array.IndexOf(cardVariants, "5516351") < 0 || Array.IndexOf(cardVariants, "05516351") < 0)
+                        throw new InvalidOperationException("门禁卡号补零查询变体测试失败");
+                    var trimmedVariants = AccessDatabaseQuery.CardVariants("05516351");
+                    if (Array.IndexOf(trimmedVariants, "5516351") < 0)
+                        throw new InvalidOperationException("门禁卡号去零查询变体测试失败");
+                    if (!AccessCardLifecycle.IsPmsRecord("PMS_ITEM_12") || AccessCardLifecycle.IsPmsRecord("228/5/301/3"))
+                        throw new InvalidOperationException("PMS 发卡标记识别测试失败");
                     using (var first = SingleInstance.TryEnter("SelfTest"))
                     using (var second = SingleInstance.TryEnter("SelfTest"))
                     {
@@ -181,6 +192,19 @@ namespace Pms.AccessCardAgent
                 if (args.Length > 0 && args[0] == "--inspect-card")
                 {
                     PrintCardInspection(CardReader.Inspect(CardProfiles.Load(Path.Combine(root, CardProfiles.ProtectedFileName))));
+                    return 0;
+                }
+                if (args.Length > 1 && args[0] == "--access-driver-test")
+                {
+                    Console.WriteLine("Bitness: " + (IntPtr.Size == 4 ? "x86" : "x64"));
+                    Console.WriteLine("BaseDirectory: " + AppDomain.CurrentDomain.BaseDirectory);
+                    Console.WriteLine("CurrentDirectory: " + Environment.CurrentDirectory);
+                    using (var connection = AccessOleDb.Open(args[1], null, "test"))
+                    using (var command = connection.CreateCommand())
+                    {
+                        command.CommandText = "SELECT COUNT(*) FROM Employee";
+                        Console.WriteLine("Employee: " + command.ExecuteScalar());
+                    }
                     return 0;
                 }
                 var config = AgentConfig.Load(configPath);
@@ -270,6 +294,88 @@ namespace Pms.AccessCardAgent
                         Console.WriteLine(match.personName + "\t" + match.personNo + "\t" + match.icCardNo + "\t" + (match.issuedAt ?? "-"));
                     return 3;
                 }
+                if (args.Length > 0 && args[0] == "--access-query")
+                {
+                    if (args.Length < 2) throw new InvalidOperationException("用法：--access-query <卡号|房号|姓名>");
+                    var query = AccessDatabaseQuery.Query(config, OptionalSecret(icCardPasswordPath), args[1]);
+                    PrintJson(query);
+                    return query.errors.Count > 0 && query.cards.Count == 0 ? 3 : 0;
+                }
+                if (args.Length > 1 && args[0] == "--access-records")
+                {
+                    var records = AccessDatabaseQuery.RecentRecords(config, OptionalSecret(icCardPasswordPath), args[1]);
+                    PrintJson(records);
+                    return 0;
+                }
+                if (args.Length > 0 && args[0] == "--access-groups")
+                {
+                    PrintJson(AccessDatabaseQuery.Groups(config, OptionalSecret(icCardPasswordPath)));
+                    return 0;
+                }
+                if (args.Length > 0 && args[0] == "--access-capabilities")
+                {
+                    PrintJson(AccessDatabaseCapabilityProbe.Probe(config, OptionalSecret(icCardPasswordPath)));
+                    return 0;
+                }
+                if (args.Length > 2 && args[0] == "--access-lifecycle")
+                {
+                    var request = new AccessLifecycleRequest
+                    {
+                        operation = args[1],
+                        wgCardNo = args[2],
+                        requestKey = DateTime.Now.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture),
+                        reason = "PMS CLI"
+                    };
+                    var doorIds = new List<int>();
+                    for (var index = 3; index < args.Length; index += 1)
+                    {
+                        var value = args[index];
+                        if ((value == "--date" || value == "--end") && index + 1 < args.Length)
+                        {
+                            request.endDate = DateTime.ParseExact(args[index + 1], "yyyy-MM-dd", CultureInfo.InvariantCulture);
+                            index += 1;
+                        }
+                        else if (value == "--doors" && index + 1 < args.Length)
+                        {
+                            foreach (var part in args[index + 1].Split(','))
+                            {
+                                int door;
+                                if (Int32.TryParse(part.Trim(), out door)) doorIds.Add(door);
+                            }
+                            index += 1;
+                        }
+                        else if (value == "--allow-non-pms")
+                        {
+                            request.allowNonPms = true;
+                        }
+                    }
+                    request.restoreDoorIds = doorIds.ToArray();
+                    var lifecycle = AccessCardLifecycle.Execute(config, OptionalSecret(icCardPasswordPath), request);
+                    PrintJson(lifecycle);
+                    return lifecycle.rows.Exists(row => row.status == "failed") ? 4 : 0;
+                }
+                if (args.Length > 1 && args[0] == "--legacy-search")
+                {
+                    PrintJson(LegacyDatabase.SearchCards(config, SecretStore.Load(databasePasswordPath), args[1]));
+                    return 0;
+                }
+                if (args.Length > 0 && args[0] == "--legacy-schema")
+                {
+                    if (args.Length > 1)
+                    {
+                        PrintJson(LegacyDatabase.SchemaColumns(config, SecretStore.Load(databasePasswordPath), args[1]));
+                    }
+                    else
+                    {
+                        PrintJson(LegacyDatabase.SchemaTables(config, SecretStore.Load(databasePasswordPath)));
+                    }
+                    return 0;
+                }
+                if (args.Length > 0 && args[0] == "--legacy-capabilities")
+                {
+                    PrintJson(LegacyDatabase.Probe(config, SecretStore.Load(databasePasswordPath)));
+                    return 0;
+                }
                 if (args.Length > 0 && args[0] == "--console")
                 {
                     var token = SecretStore.Load(tokenPath);
@@ -301,6 +407,16 @@ namespace Pms.AccessCardAgent
             Console.WriteLine("文件大小：" + result.Length + " bytes");
             foreach (var pair in result.Counts)
                 Console.WriteLine(pair.Key + "：" + pair.Value);
+        }
+
+        private static string OptionalSecret(string path)
+        {
+            return File.Exists(path) ? SecretStore.Load(path) : null;
+        }
+
+        private static void PrintJson(object value)
+        {
+            Console.WriteLine(new JavaScriptSerializer().Serialize(value));
         }
 
         private static void PrintParkingProbe(ParkingDatabaseProbeResult result)

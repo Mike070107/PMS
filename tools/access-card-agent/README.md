@@ -103,3 +103,43 @@ Get-Clipboard | .\Pms.DataSyncAssistant.exe --install-parking-db-password
 0.7.0 起，管理员可从 PMS 编辑联查到的旧库住户资料。代理只更新自动识别的住户主表，使用参数化 SQL、串行化事务、旧值并发校验、严格单行更新和写后读回；备注会保留原内容并追加“操作来源：PMS系统”。
 
 `agent.config.json`、`agent.token.dat`、`legacy-db-password.dat`、`parking-db-password.dat`、卡片密钥、完整卡镜像和数据库密码均不得进入 Git 或普通日志。
+
+## 门禁查询 / 能力探测 / 生命周期（0.10+）
+
+以下命令面向排障与现场验证，输出均为 JSON（stdout）。
+
+```powershell
+# .88 两套 MDB 只读查询：卡号 / 房号 / 姓名
+.\Pms.DataSyncAssistant.exe --access-query 06234735
+.\Pms.DataSyncAssistant.exe --access-query 228/26/602
+.\Pms.DataSyncAssistant.exe --access-query 黄色全通卡
+.\Pms.DataSyncAssistant.exe --access-driver-test "C:\path\to\MJDataBase.mdb"   # 只测 OleDb 驱动/连接
+
+# 某张卡的最近 50 条通行记录（合并 MjSystem MJ_MacRecord / iCCard t_d_CardRecord）
+.\Pms.DataSyncAssistant.exe --access-records 06234735
+
+# 权限组/时间组 + 读写能力（零行 UPDATE + 回滚，不修改业务数据）
+.\Pms.DataSyncAssistant.exe --access-groups
+.\Pms.DataSyncAssistant.exe --access-capabilities
+
+# .80 人员/卡搜索与只读 schema 发现（需要 legacy-db-password.dat）
+.\Pms.DataSyncAssistant.exe --legacy-search 228/5/301
+.\Pms.DataSyncAssistant.exe --legacy-schema
+.\Pms.DataSyncAssistant.exe --legacy-schema MC.CardInfo
+.\Pms.DataSyncAssistant.exe --legacy-capabilities
+
+# .88 生命周期写入（默认关闭；副本验证后才在 .88 打开 AccessLifecycleEnabled）
+.\Pms.DataSyncAssistant.exe --access-lifecycle extend 06234735 --date 2041-12-31
+.\Pms.DataSyncAssistant.exe --access-lifecycle lost 06234735
+.\Pms.DataSyncAssistant.exe --access-lifecycle unlost 06234735 --doors 26
+.\Pms.DataSyncAssistant.exe --access-lifecycle cancel 06234735 --allow-non-pms
+```
+
+约定与边界：
+
+- **能力如实上报**：`legacyDbWrite` 现在需要 `.80` 实际 INSERT 权限；`accessDbWrite` 需要 MjSystem/iCCard 至少一套通过「零行 UPDATE + 回滚」写权限验证；新增 `accessCardQuery` / `legacyCardQuery` 只读能力。不再只按代理身份写死。
+- **生命周期默认关闭**：`agent.config.json` 的 `AccessLifecycleEnabled` 默认 `false`。iCCard 的 `AccessLostStatus` / `AccessCancelStatus` 必须现场取证后填写，留空时对应操作明确失败，不猜状态码。
+- **MjSystem 没有挂失字段**：`lost`/`unlost` 的 MjSystem 行返回 failed，并提示先现场取证；`cancel` 会删除门权限和员工记录（历史卡必须显式 `--allow-non-pms`）。
+- 写库成功后仍需重新下发控制器，设备才生效；数据库写入不等于设备回执。
+- 本地开发机验证时，把 exe 复制到 `%TEMP%` 再运行；直接在工作区 `bin\Release` 下运行时，本机安全策略会拦截 Jet/ACE 创建 `.ldb` 锁文件（OleDb 报 0x80004005）。生产 `.88` 安装目录不受此影响。
+- 本机副本写测试与只读查询见 `tools/access-db-lab/README.md`；不要用这些命令直接连生产共享路径写库。

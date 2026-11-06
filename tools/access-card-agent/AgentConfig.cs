@@ -27,6 +27,14 @@ namespace Pms.AccessCardAgent
         public string ParkingMovementPhase2Server { get; set; }
         public string ParkingMovementPhase2Database { get; set; }
         public string ParkingMovementUser { get; set; }
+        /** 门禁卡生命周期写入默认关闭；现场完成副本验证后再打开。 */
+        public bool AccessLifecycleEnabled { get; set; }
+        /** iCCard 挂失状态码，必须现场取证后配置；未配置时挂失直接拒绝。 */
+        public string AccessLostStatus { get; set; }
+        /** iCCard 注销状态码，必须现场取证后配置；未配置时注销直接拒绝。 */
+        public string AccessCancelStatus { get; set; }
+        /** iCCard 正常状态码，默认 0（现网样例）。 */
+        public string AccessNormalStatus { get; set; }
 
         public static AgentConfig Load(string path)
         {

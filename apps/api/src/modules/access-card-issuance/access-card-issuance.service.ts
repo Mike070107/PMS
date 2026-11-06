@@ -2,6 +2,7 @@ import { loadAddressTreeLite, resolveAddressForTenant } from '../../common/addre
 import {
   BadRequestException,
   ForbiddenException,
+  HttpException,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
@@ -75,6 +76,7 @@ import {
   AccessCardAuthorizationReportDto,
   ParkingOperationReportDto,
   ParkingHistoryQueryDto,
+  CreateAccessCardLifecycleDto,
 } from './dto';
 import { agentTokenMatches, issueAgentSecret } from './agent-auth';
 import { prepareFamilyRegistration, validateRegistrationGarageNumbers, supportsFamilyActivation } from './parking-family';
@@ -744,6 +746,28 @@ export class AccessCardIssuanceService {
     return this.historyAuthorizationResponse(await this.authorizationRepo.save(task));
   }
 
+  /**
+   * 延期/挂失/解挂/注销/换卡/补卡：接口先占位，明确拒绝而不是猜测外部库语义。
+   * 现场确认 .80 捷顺库/ .88 Access 库的状态码与表字段后，再逐项接入 Agent 任务与写库。
+   */
+  async requestCardLifecycle(dto: CreateAccessCardLifecycleDto, user: AuthUser) {
+    this.requireTenant(user);
+    const labels: Record<CreateAccessCardLifecycleDto['operation'], string> = {
+      extend: '延期',
+      lost: '挂失',
+      unlost: '解挂',
+      cancel: '注销',
+      replace: '换卡',
+      reissue: '补卡',
+    };
+    throw new HttpException({
+      statusCode: 501,
+      error: 'Not Implemented',
+      message: `门禁卡「${labels[dto.operation]}」暂未开放：.80 捷顺库与 .88 Access 库的写入语义（状态码、表字段、是否走原厂 SDK）尚未现场取证。已完成只读查询、能力探测与副本写测试，详见 docs/access-card-gap.md 与 tools/access-db-lab。`,
+      operation: dto.operation,
+    }, 501);
+  }
+
   async readiness(user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
     const [agents, communities] = await Promise.all([
@@ -781,6 +805,13 @@ export class AccessCardIssuanceService {
     const legacyDbWrite = agents.some((agent) =>
       agent.kind === 'legacy_sync' && effectiveAgentStatus(agent) === 'online'
       && agent.capabilities?.legacyDbWrite === true);
+    // 只读查询能力：.88 按房号/卡号/姓名/通行记录查询，.80 人员与卡搜索。
+    const accessCardQuery = agents.some((agent) =>
+      agent.kind === 'access_gateway' && effectiveAgentStatus(agent) === 'online'
+      && agent.capabilities?.accessCardQuery === true);
+    const legacyCardQuery = agents.some((agent) =>
+      agent.kind === 'legacy_sync' && effectiveAgentStatus(agent) === 'online'
+      && agent.capabilities?.legacyCardQuery === true);
     return {
       simulationEnabled,
       features: {
@@ -791,6 +822,8 @@ export class AccessCardIssuanceService {
         parkingDbWrite,
         controllerUpload,
         historicalAccessGrant,
+        accessCardQuery,
+        legacyCardQuery,
       },
       agents: orderAgentsByAvailability(agents).map((agent) => ({
         id: agent.agentKey,
