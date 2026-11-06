@@ -1,0 +1,27 @@
+import 'reflect-metadata';
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { BusinessExecutionService } from './business-execution.service';
+import { VehicleIntake } from '../../entities';
+function fixture(){
+ const txn:any={id:90,tenantId:1,createdBy:8,houseId:7,communityId:2,txnNo:'PK-TEST-REG',amountCents:30000,startDate:'2026-11-06',endDate:'2026-12-31',snapshot:{intake:{id:4},vehicle:{plateNo:'沪TEST01'},parking:{newVehicle:true,systems:[{kind:'local',database:'parking2',sourceRecordId:'',label:'二期地面'}]}}};
+ const intake:any={id:4,tenantId:1,houseId:7,transactionId:90,status:'approved',kind:'paid',plate:'沪TEST01',houseLabel:'枫桦景苑二期/228弄3号502',ownerName:'合成业主',ownerPhone:'',contactPhone:'',vehicleClass:'住户车-1',garages:['local:phase2_parking'],garageNumbers:{}};
+ const ops:any[]=[];let query:any={id:2,status:'completed',term:'沪TEST01',completedAt:new Date(),rows:[]};const s:any=Object.create(BusinessExecutionService.prototype);
+ s.config={get:()=> 'on'};s.txnRepo={createQueryBuilder:()=>({update(){return this},set(){return this},where(){return this},execute:async()=>({affected:1})}),findOneOrFail:async()=>txn,manager:{getRepository:(entity:any)=>({findOne:async()=>entity===VehicleIntake?intake:null})},update:async(_:any,v:any)=>Object.assign(txn,v)};
+ s.opRepo={findOne:async({where}:any)=>ops.find(o=>where.id?o.id===where.id:o.idempotencyKey===where.idempotencyKey)||null};
+ s.issuance={createParkingQuery:async()=>query,getParkingQuery:async()=>query,createParkingOperation:async(d:any)=>{let o=ops.find(o=>o.idempotencyKey===d.idempotencyKey);if(!o){o={...d,id:ops.length+1,status:'pending'};ops.push(o)}return o}};
+ s.log=async()=>{};s.deliyun={findVehiclesByPlate:async()=>{throw Error('不应查德立云')}};
+ return {s,txn,intake,ops,setQuery:(q:any)=>query=q};
+}
+test('新办已审核收款进入新增队列，旧库回读后下发设备，设备确认前不报生效',async()=>{
+ const h=fixture();await h.s.runOne(90);assert.equal(h.ops[0]?.kind,'add_vehicle','不能再直接转人工');assert.equal(h.ops[0].payload.amount,300);assert.equal(h.ops[0].payload.ownerRoom,'228/3/502');assert.equal(h.ops[0].payload.effective[8],'1');assert.notEqual(h.txn.externalSyncStatus,'synced');
+ h.ops[0].status='completed';h.ops[0].result={verified:true,plate:'沪TEST01',issueId:'301',endDate:'2026-12-31',effective:h.ops[0].payload.effective,state:1};await h.s.runOne(90);assert.equal(h.ops[1]?.kind,'download_vehicle');assert.notEqual(h.txn.externalSyncStatus,'synced');h.ops[1].status='completed';h.ops[1].result={verified:true,deviceVerification:'confirmed',plate:'沪TEST01',issueId:'301'};await h.s.runOne(90);assert.equal(h.txn.externalSyncStatus,'synced');assert.equal(h.ops.length,2);
+});
+
+test('审核未通过、跨户或非原收款登记不能开通',async()=>{for(const patch of [{status:'submitted'},{houseId:8},{transactionId:91},{plate:'沪OTHER1'}]){const h=fixture();Object.assign(h.intake,patch);await h.s.runOne(90);assert.equal(h.ops.length,0);assert.equal(h.txn.externalSyncStatus,'manual');}});
+test('双库查重等待中不新增，完成后继续同一笔；未知或重复结果不能放行',async()=>{const h=fixture();h.setQuery({id:3,status:'pending'});await h.s.runOne(90);assert.equal(h.ops.length,0);assert.equal(h.txn.externalSyncStatus,'queued');assert.equal(h.txn.snapshot.execution.registrationQueryId,3);h.setQuery({id:3,status:'completed',term:'沪TEST01',completedAt:new Date(),rows:[]});await h.s.runOne(90);assert.equal(h.ops.length,1);const bad=fixture();bad.setQuery({id:2,status:'completed',term:'沪TEST01',completedAt:new Date(),rows:[{database:'parking2',fields:{P_plate:'沪TEST01'}}]});await bad.s.runOne(90);assert.equal(bad.ops.length,0);assert.notEqual(bad.txn.externalSyncStatus,'synced');});
+test('新增任务失败或回读不符不下发、不重复新增、不伪装成功',async()=>{for(const bad of [{status:'failed',lastError:'fixture failed'},{status:'completed',result:{verified:true,plate:'沪OTHER1',endDate:'2026-12-31',effective:'1'}}]){const h=fixture();await h.s.runOne(90);Object.assign(h.ops[0],bad);await h.s.runOne(90);await h.s.runOne(90);assert.equal(h.ops.length,1);assert.equal(h.txn.externalSyncStatus,'manual');}});
+test('新增成功但快照写前中断，稳定幂等键复用任务不再次新增',async()=>{const h=fixture();await h.s.runOne(90);h.txn.snapshot.execution={attempts:0};await h.s.runOne(90);assert.equal(h.ops.length,1);});
+test('设备任务结束但未确认不标已生效',async()=>{const h=fixture();await h.s.runOne(90);h.ops[0].status='completed';h.ops[0].result={verified:true,plate:'沪TEST01',issueId:'301',endDate:'2026-12-31',effective:h.ops[0].payload.effective,state:1};await h.s.runOne(90);h.ops[1].status='completed';h.ops[1].result={verified:true};await h.s.runOne(90);assert.equal(h.txn.externalSyncStatus,'manual');});
+test('演练不建写任务，缺车位号及未支持云场不乱写',async()=>{const h=fixture();h.s.config.get=()=> 'dry-run';await h.s.runOne(90);assert.equal(h.ops.length,0);assert.equal(h.txn.externalSyncStatus,'dry_run');for(const garages of [['local:phase2_main_garage'],['deliyun:枫桦景苑']]){const x=fixture();x.intake.garages=garages;await x.s.runOne(90);assert.equal(x.ops.length,0);assert.equal(x.txn.externalSyncStatus,'manual');}});
+test('一期二期新办同一笔收款只分配一次金额，大车库自动包括二期入口授权',async()=>{const h=fixture();h.intake.garages=['local:phase1_parking','local:phase2_main_garage'];h.intake.garageNumbers={main:'B-12'};await h.s.runOne(90);assert.equal(h.ops.length,2);assert.equal(h.ops[0].payload.amount,300);assert.equal(h.ops[1].payload.amount,0);assert.equal(h.ops[1].payload.effective[8],'1');assert.equal(h.ops[1].payload.effective[14],'1');assert.equal(h.ops[1].payload.spaces,'B-12');});

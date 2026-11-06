@@ -3,8 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, LessThan, Repository } from 'typeorm';
-import { BusinessLog, BusinessRule, BusinessTransaction, ParkingOperation } from '../../entities';
+import { BusinessLog, BusinessRule, BusinessTransaction, ParkingOperation, VehicleIntake } from '../../entities';
 import { findParkingTarget } from './parking-targets';
+import { assertFreshParkingPlateCheck } from '../access-card-issuance/parking-query.util';
 import { BusinessServiceType } from '../../common/enums';
 import { AuthUser } from '../../common/current-user.decorator';
 import { DeliyunParkingService } from '../access-card-issuance/deliyun-parking.service';
@@ -40,6 +41,7 @@ export interface ExecutionState {
   finishedAt?: string | null;
   /** 一辆车要在多套停车系统一起续期时，每套一步 */
   steps?: ExecutionStep[];
+  registrationQueryId?: number | null;
 }
 
 const STALE_RUNNING_MS = 5 * 60_000;
@@ -165,13 +167,7 @@ export class BusinessExecutionService {
 
     const parkingSnap = txn.snapshot?.parking as { systems?: ParkingSystemRef[]; newVehicle?: boolean } | undefined;
     const systems = parkingSnap?.systems ?? [];
-    if (parkingSnap?.newVehicle) {
-      // 新办车牌：旧库新增要现场查重、德立云 addCard 尚未验证写回，暂不自动新增
-      const planned = { action: 'add_vehicle', plate, startDate: txn.startDate, endDate: targetEndDate, systems: systems.map((s) => s.label) };
-      if (mode !== 'on') return this.finish(txn, 'dry_run', { ...prev, mode, attempts, result: planned, lastError: null, nextAt: null });
-      return this.finish(txn, 'manual', { ...prev, mode, attempts, result: planned, nextAt: null,
-        lastError: `新车牌 ${plate} 需要在停车系统新增登记（${systems.map((s) => s.label).join('、') || '所选车库'}，有效期 ${txn.startDate} 至 ${targetEndDate}）；自动新增尚未接入，办好后在「车牌登记审核」点「已办好」` });
-    }
+    if (parkingSnap?.newVehicle) return this.runRegistration(txn, prev, mode, attempts, plate, targetEndDate);
     if (plate && systems.length) return this.runSystems(txn, prev, mode, attempts, plate, targetEndDate, systems);
 
     try {
@@ -307,6 +303,90 @@ export class BusinessExecutionService {
       ...prev, mode, attempts: waiting && !retrying ? attempts - 1 : attempts, steps, nextAt,
       lastError: problems.length ? problems.join('；') : null,
     });
+  }
+
+  /** 新办付费车：审核凭证 → 双库查重 → 稳定幂等新增 → 回读 → 设备确认。 */
+  private async runRegistration(txn: BusinessTransaction, prev: ExecutionState, mode: SyncMode, attempts: number,
+    plate: string, endDate: string | null) {
+    const user = { id: txn.createdBy!, tenantId: txn.tenantId } as AuthUser;
+    const steps: ExecutionStep[] = [];
+    const wait = () => this.finish(txn, 'queued', { ...prev, mode, attempts: attempts - 1, steps,
+      nextAt: new Date(Date.now() + 5000).toISOString(), lastError: null });
+    try {
+      const intakeId = Number((txn.snapshot?.intake as { id?: number })?.id);
+      const intake = await this.txnRepo.manager.getRepository(VehicleIntake).findOne({ where: { id: intakeId || 0, tenantId: txn.tenantId } });
+      if (!intake || intake.kind !== 'paid' || intake.status !== 'approved' || intake.houseId !== txn.houseId ||
+          intake.transactionId !== txn.id || intake.plate !== plate) throw new BadRequestException('新车资料未通过审核或与原收款记录不一致，禁止自动开通');
+      if (!plate || !endDate || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || !txn.startDate || !txn.createdBy) throw new BadRequestException('新车登记缺少车牌、有效期或原办理人');
+      const roomMatch = intake.houseLabel.match(/(198|228)弄\s*(\d+)号\s*(\d+)/);
+      if (!roomMatch) throw new BadRequestException('新车房号无法转换为停车库房号，请先核对房产档案');
+      const ownerRoom = roomMatch.slice(1).map(Number).join('/');
+      const selected = [...new Set(intake.garages)];
+      const defs = selected.map(key => findParkingTarget(key));
+      if (!defs.length || defs.some(d => !d)) throw new BadRequestException('新车登记未选择有效车库');
+      // 不把其它德立云场套入枫桦人防新增接口；未选择人防不访问德立云。
+      if (defs.some(d => d!.system !== 'local')) throw new BadRequestException('本次自动新办支持一期地面、二期地面及大车库；人防及其他云停车场新增需单独核验，未执行');
+      const databases = [...new Set(defs.map(d => d!.database!))];
+      const garages = selected.flatMap(k => k === 'local:phase1_parking' ? ['phase1'] : k === 'local:phase2_parking' ? ['phase2'] : ['phase2', 'main']);
+      if (garages.includes('main') && !intake.garageNumbers.main?.trim()) throw new BadRequestException('大车库新办缺少车位号，未执行');
+      const identity = intake.vehicleClass.includes('租') ? '租户车' : intake.vehicleClass.includes('产权') ? '产权车位' : intake.vehicleClass.includes('住户') || intake.vehicleClass.includes('业主') ? '住户车' : '';
+      if (!identity) throw new BadRequestException('新办车辆类别无法对应停车库授权类型，请核对');
+      const adds: Array<(Pick<ParkingOperation, 'id' | 'status' | 'result'> & { lastError?: string | null }) | null> = await Promise.all(databases.map(database => this.opRepo.findOne({ where: { tenantId: txn.tenantId, idempotencyKey: `biz:${txn.txnNo}:register:${database}` } })));
+      if (mode !== 'on') return this.finish(txn, 'dry_run', { ...prev, mode, attempts, nextAt: null, lastError: null,
+        result: { action: 'add_vehicle', plate, endDate, systems: defs.map(d => d!.label) } });
+      // 幂等任务已存在时直接读取，不要求重新查重（新增后当然会查到自己）。
+      let query: Awaited<ReturnType<AccessCardIssuanceService['getParkingQuery']>> | null = null;
+      if (adds.some(op => !op)) {
+        if (adds.some(Boolean)) throw new BadRequestException('部分车库已创建登记任务，其余未建；为避免跨库重复新增已停止，请核对原任务');
+        query = prev.registrationQueryId ? await this.issuance.getParkingQuery(prev.registrationQueryId, user) : await this.issuance.createParkingQuery({ term: plate }, user);
+        prev = { ...prev, registrationQueryId: query.id };
+        if (query.status === 'pending' || query.status === 'running') { steps.push({ key: 'registration:check', kind: 'local', label: '一期、二期车牌查重', status: 'waiting', operationId: null, note: '等待现场助手查重，尚未新增' }); return wait(); }
+        if (query.status !== 'completed') throw new BadRequestException('现场车牌查重失败，未执行新增，请核对后重试');
+        assertFreshParkingPlateCheck(query as never, plate);
+      }
+      for (let index = 0; index < databases.length; index++) {
+        const database = databases[index];
+        const label = database === 'parking1' ? '一期停车库' : '二期停车库';
+        const effective = Array(256).fill('0');
+        const channels = database === 'parking1' ? [5, 7] : garages.includes('main') ? [9, 11, 13, 15, 17, 19, 21] : [9, 11, 13];
+        channels.forEach(c => effective[c - 1] = '1');
+        const bits = effective.join('');
+        let add = adds[index];
+        if (!add) add = await this.issuance.createParkingOperation({ database, kind: 'add_vehicle',
+          idempotencyKey: `biz:${txn.txnNo}:register:${database}`,
+          payload: { plate, ownerRoom, ownerName: intake.ownerName || ownerRoom, ownerAddress: ownerRoom,
+            ownerPhone: intake.contactPhone || intake.ownerPhone, identity, amount: index === 0 ? txn.amountCents / 100 : 0,
+            startDate: txn.startDate, endDate, effective: bits, download: '0'.repeat(256), state: 1,
+            garages: [...new Set(garages.filter(g => database === 'parking1' ? g === 'phase1' : g !== 'phase1'))],
+            garageNumbers: intake.garageNumbers, spaces: database === 'parking2' ? intake.garageNumbers.main || '' : '',
+            duplicateCheckQueryId: query!.id, businessTxnNo: txn.txnNo, note: `操作来源：PMS系统；新办流水 ${txn.txnNo}` },
+        }, user);
+        const step: ExecutionStep = { key: `registration:${database}`, kind: 'local', label, status: 'waiting', operationId: add.id, note: '等待现场助手新增登记并回读' };
+        steps.push(step);
+        if (add.status === 'failed') { step.status = 'manual'; step.note = add.lastError || '新增任务失败；保留原任务，禁止重复新增'; continue; }
+        if (add.status !== 'completed') continue;
+        const result = add.result;
+        if (!result || result.verified !== true || result.plate !== plate || result.endDate !== endDate || result.effective !== bits || Number(result.state) !== 1 || !result.issueId) {
+          step.status = 'manual'; step.note = '新增后车牌、到期日、有效状态或授权回读不一致，未下发设备'; continue;
+        }
+        let download: (Pick<ParkingOperation, 'id' | 'status' | 'result'> & { lastError?: string | null }) | null = await this.opRepo.findOne({ where: { tenantId: txn.tenantId, idempotencyKey: `biz:${txn.txnNo}:register-download:${database}` } });
+        if (!download) download = await this.issuance.createParkingOperation({ database, kind: 'download_vehicle', sourceRecordId: String(result.issueId),
+          idempotencyKey: `biz:${txn.txnNo}:register-download:${database}`, payload: { plate, effective: bits, businessTxnNo: txn.txnNo } }, user);
+        step.operationId = download.id; step.note = '旧库已新增并回读，等待停车设备下发确认';
+        if (download.status === 'failed') { step.status = 'manual'; step.note = download.lastError || '设备下发失败，旧库登记保留，禁止重复新增'; }
+        if (download.status === 'completed') {
+          if (download.result?.verified === true && download.result?.deviceVerification === 'confirmed') { step.status = 'done'; step.note = `已新增至 ${endDate}，旧库回读及停车设备下发确认完成`; }
+          else { step.status = 'manual'; step.note = '设备任务结束但没有有效设备确认，不能标为已生效'; }
+        }
+      }
+      if (steps.some(s => s.status === 'manual')) return this.finish(txn, 'manual', { ...prev, mode, attempts, steps, nextAt: null, lastError: steps.filter(s => s.status === 'manual').map(s => `[${s.label}] ${s.note}`).join('；') });
+      if (steps.every(s => s.status === 'done')) return this.finish(txn, 'synced', { ...prev, mode, attempts, steps, nextAt: null, lastError: null });
+      return wait();
+    } catch (error) {
+      const failure = classifyFailure(error, attempts);
+      return this.finish(txn, failure.status, { ...prev, mode, attempts, steps, lastError: failure.message,
+        nextAt: failure.status === 'retry' ? nextRetryAt(attempts).toISOString() : null });
+    }
   }
 
   private async finish(txn: BusinessTransaction, status: ExternalSyncStatus, execution: ExecutionState) {
