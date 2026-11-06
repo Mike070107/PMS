@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleDestroy, ServiceUnavailableException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
+import { Readable } from 'node:stream';
 import { collectionEffects as calculateCollectionEffects, effectDay, promiseProgress } from './mis-collection-effect';
 import { validateMisFeeRange } from './mis-fees.query';
 import { CollectionSmsService } from '../settings/collection-sms.service';
@@ -21,6 +22,34 @@ import { buildMisFeeFilter, buildMisFeeQuery, buildMisResidentialQuery, MisResid
 
 /** 模块级日志器：不参与依赖注入，避免改动构造函数（历史事故：注入新服务导致 API 启动失败）。 */
 const logger=new Logger('MisFeesService');
+
+/** 对账 CSV：单次最多 2 万户，按 5000 户一页循环取数；口径固定为待缴责任对象。 */
+const EXPORT_ROW_CAP=20000,EXPORT_PAGE_SIZE=5000,EXPORT_STATUS_CHUNK=1000;
+const EXPORT_CSV_HEADER='小区,房号,业主,电话(脱敏),待缴金额(元),账期起,账期止,笔数,通知状态';
+/** 文本单元格：含逗号/引号/换行时按 RFC4180 转义；公式起始字符前加单引号，避免 Excel 当成公式执行。 */
+function csvText(value:unknown){
+ let text=String(value??'');
+ if(/^[=+\-@]/.test(text))text="'"+text;
+ return /[",\r\n]/.test(text)?'"'+text.replace(/"/g,'""')+'"':text;
+}
+function exportFileName(now:Date){
+ const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(now);
+ const get=(type:string)=>parts.find(part=>part.type===type)?.value||'';
+ return `待缴对账_${get('year')}${get('month')}${get('day')}_${get('hour')}${get('minute')}.csv`;
+}
+/** 通知状态取最近一次通知：打印登记与短信发送谁更晚取谁；同刻优先打印。 */
+function exportNoticeStatus(status?:{printedAt:string|null;printedPaper:'A5'|'A4'|null;smsAt:string|null;smsStatus:'submitted'|'delivered'|null}){
+ if(!status)return '未通知';
+ const printed=status.printedAt?Date.parse(status.printedAt):-1,sms=status.smsAt?Date.parse(status.smsAt):-1;
+ if(sms>printed)return '短信已发';
+ if(printed>=0)return (status.printedPaper==='A4'?'A4':'A5')+'已打印';
+ return '未通知';
+}
+function exportCsvLine(row:any,communities:any[],status?:{printedAt:string|null;printedPaper:'A5'|'A4'|null;smsAt:string|null;smsStatus:'submitted'|'delivered'|null}){
+ const community=communities.find((one:any)=>Number(one.id)===Number(row.communityId))?.name||'';
+ const amount=((Number(row.amountCents)||0)/100).toFixed(2);
+ return [csvText(community),csvText(row.address),csvText(row.ownerName),csvText(row.phoneMasked),amount,csvText(row.periodFrom),csvText(row.periodTo),String(Number(row.billCount)||0),exportNoticeStatus(status)].join(',');
+}
 
 // 与用户确认的映射；公寓收费台、北桥和颛桥均不参与物业费查询。
 export const MIS_PROPERTY_OFFICES:Record<string,string[]>={
@@ -165,6 +194,49 @@ export class MisFeesService implements OnModuleDestroy {
   }
   const rows=await this.withNotificationStatus((sets[1]||[]).map(format),user,q);
   return {...meta,total:totalHouses,amountCents:totalAmount,page:q.page||1,pageSize:q.pageSize||20,aging,rows};
+ }
+ /**
+  * 对账 CSV 导出：复用 households 的筛选参数（communityId/category/feeCode/periodFrom/periodTo/q），
+  * 内部按 5000 户一页循环取全量，超过 2 万户直接 400 提示缩小范围；口径固定为待缴责任对象。
+  * 返回流（UTF-8 BOM + RFC4180 转义），由 controller 以附件下载；不写库、不改 MIS。
+  */
+ async exportResidentialCsv(q:MisResidentialQuery,user:AuthUser,access?:ResolvedAccess){
+  if(q.houseKeys?.length)throw new BadRequestException('对账导出按筛选范围全量导出，不接受逐个住户选择');
+  if(q.status==='paid')throw new BadRequestException('对账导出口径为待缴住户，请切回待缴视图后导出');
+  const first:any=await this.residential({...q,view:'households',status:'unpaid',page:1,pageSize:EXPORT_PAGE_SIZE,_aging:false} as any,user,access);
+  const total=Number(first.total)||0;
+  if(total>EXPORT_ROW_CAP)throw new BadRequestException(`对账导出最多 ${EXPORT_ROW_CAP} 户，当前筛选共 ${total} 户，请按小区、账期或关键词缩小范围后重试；未导出任何数据`);
+  const filename=exportFileName(new Date());
+  const disposition=`attachment; filename="unpaid-reconciliation.csv"; filename*=UTF-8''${encodeURIComponent(filename)}`;
+  const stream=Readable.from(this.exportCsvChunks({...q,view:'households',status:'unpaid'} as MisResidentialQuery,user,access,first,total));
+  return {stream,filename,disposition,rowCount:total};
+ }
+ /** 逐页取数、逐行输出；不在内存里拼完整 CSV。 */
+ private async *exportCsvChunks(q:MisResidentialQuery,user:AuthUser,access:ResolvedAccess|undefined,first:any,total:number){
+  yield '\uFEFF'+EXPORT_CSV_HEADER+'\r\n';
+  let written=0;
+  for(let page=1;written<total;page++){
+   const data:any=page===1?first:await this.residential({...q,page,pageSize:EXPORT_PAGE_SIZE,_aging:false} as any,user,access);
+   const rows:any[]=data.rows||[];
+   if(!rows.length)break;
+   const communities:any[]=data.communities||first.communities||[];
+   const statuses=await this.notificationStatusChunked(rows.map((row:any)=>String(row.houseKey??'')),user);
+   for(const row of rows){
+    written++;
+    if(written>EXPORT_ROW_CAP)throw new Error(`导出期间待缴户数超过 ${EXPORT_ROW_CAP} 户，已中止；请缩小范围后重试`);
+    yield exportCsvLine(row,communities,statuses.get(String(row.houseKey??'')))+'\r\n';
+   }
+   if(rows.length<EXPORT_PAGE_SIZE)break;
+  }
+ }
+ /** 通知状态按 1000 户一批查询，避免单条 SQL 参数数组过大；失败已在 notificationStatus 内降级并留痕。 */
+ private async notificationStatusChunked(houseKeys:string[],user:AuthUser){
+  const out=new Map<string,{printedAt:string|null;printedPaper:'A5'|'A4'|null;smsAt:string|null;smsStatus:'submitted'|'delivered'|null}>();
+  for(let i=0;i<houseKeys.length;i+=EXPORT_STATUS_CHUNK){
+   const part=await this.notificationStatus(houseKeys.slice(i,i+EXPORT_STATUS_CHUNK),user);
+   for(const [key,value] of part)out.set(key,value);
+  }
+  return out;
  }
  /**
   * 清单「通知状态」：一次性按 houseKey IN 批量取最近一次打印/短信，查询次数与户数无关，禁止 N+1。

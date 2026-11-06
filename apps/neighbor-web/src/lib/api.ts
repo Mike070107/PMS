@@ -24,4 +24,7 @@ export function configureApi() {
   });
 }
 
+/** 与 configure() 同一来源的 API 根地址；供 CSV 等需要 fetch 原始响应的下载接口复用。 */
+export const apiBaseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+
 export { request, ApiError };

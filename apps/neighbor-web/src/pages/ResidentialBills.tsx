@@ -8,7 +8,8 @@ import Icon from '@/components/Icon';
 import FeeIcon from '@/components/FeeIcon';
 import ToneIcon from '@/components/ToneIcon';
 import { can } from '@/lib/perm';
-import { useSession } from '@/lib/auth';
+import { auth, useSession } from '@/lib/auth';
+import { apiBaseURL } from '@/lib/api';
 import { Category, CollectionPreview, FeeGroup, FeeSummary, MisHouse, Notice, cents, chinaDate, collectionRate, feeCategory, noticeRows, noticeSmsText, periodLabel, printNotices, type NoticeTemplate, sumCents, trendRange } from '@/lib/residential-bills';
 import '@/styles/residential-bills.css';
 type Query=Record<string,string|number|boolean|undefined>;
@@ -47,7 +48,7 @@ export default function ResidentialBills(){
  const [from,setFrom]=useState(chinaDate().slice(0,4)+'-01'),[to,setTo]=useState(chinaDate().slice(0,4)+'-12'),[mode,setMode]=useState<'week'|'month'>('month');
  const [status,setStatus]=useState<'unpaid'|'paid'>('unpaid'),[page,setPage]=useState(1),[historyPage,setHistoryPage]=useState(1),[checked,setChecked]=useState<string[]>([]),[all,setAll]=useState(false);
  const [detail,setDetail]=useState<MisHouse|null>(null),[preview,setPreview]=useState<CollectionPreview|null>(null),[record,setRecord]=useState<Batch|null>(null),[purpose,setPurpose]=useState<'print'|'sms'>('print');
- const [busy,setBusy]=useState(false),[error,setError]=useState(''),[confirmed,setConfirmed]=useState(false),[paper,setPaper]=useState<'A5'|'A4'>('A5'),[saved,setSaved]=useState<Batch|null>(null),[pendingChannel,setPendingChannel]=useState<'print'|'sms'|null>(null);
+ const [busy,setBusy]=useState(false),[error,setError]=useState(''),[confirmed,setConfirmed]=useState(false),[paper,setPaper]=useState<'A5'|'A4'>('A5'),[saved,setSaved]=useState<Batch|null>(null),[pendingChannel,setPendingChannel]=useState<'print'|'sms'|null>(null),[exporting,setExporting]=useState(false);
  const [historyView,setHistoryView]=useState<'batches'|'effect'>('batches');
  const [smsBusy,setSmsBusy]=useState(false),[smsNote,setSmsNote]=useState('');
  const printKey=useRef(''),printLock=useRef<number|null>(null);
@@ -56,7 +57,7 @@ export default function ResidentialBills(){
  const filter:Query={communityId:community?Number(community):undefined,category,feeCode:fee||undefined,periodFrom:from?from.replace('-',''):undefined,periodTo:to?to.replace('-',''):undefined,q:term.trim()||undefined};
  const context=JSON.stringify([filter,status,identity]),current=useRef({context,generation:0});if(current.current.context!==context){current.current={context,generation:current.current.generation+1}}
  useEffect(()=>()=>{current.current.generation++},[]);
- useEffect(()=>{setChecked([]);setAll(false);setPage(1);setHistoryPage(1);setPreview(null);setDetail(null);setSaved(null);setConfirmed(false);setBusy(false);setRecord(null);setError('');setPendingChannel(null)},[context]);
+ useEffect(()=>{setChecked([]);setAll(false);setPage(1);setHistoryPage(1);setPreview(null);setDetail(null);setSaved(null);setConfirmed(false);setBusy(false);setRecord(null);setError('');setPendingChannel(null);setExporting(false)},[context]);
  useEffect(()=>{setCommunity('');setRecord(null)},[identity]);
  const meta=useData<Options>('/fees/mis/options',{},true,version);
  const valid=(!from||/^\d{4}-\d{2}$/.test(from))&&(!to||/^\d{4}-\d{2}$/.test(to))&&(!from||!to||from<=to),ready=!!meta.data?.available&&valid;
@@ -78,6 +79,29 @@ export default function ResidentialBills(){
  async function confirm(){if(!preview||!confirmed||printLock.current===current.current.generation)return;const ctx=current.current.generation;printLock.current=ctx;setBusy(true);setError('');try{const b=saved||await request<Batch>({method:'POST',url:'/fees/mis/collections',data:{...payload.current,fingerprint:preview.fingerprint,idempotencyKey:requestKey.current,confirmed:true},timeout:25000});if(ctx!==current.current.generation)return;setSaved(b);if(purpose==='print')await printNotices(b.snapshot.notices,{queriedAt:b.snapshot.queriedAt,batchNo:'MIS-'+b.id,paper,template:undefined},()=>ctx===current.current.generation,async pageCount=>{if(!printKey.current)printKey.current=crypto.randomUUID();const printId=printKey.current;await request({method:'POST',url:'/fees/mis/collections/'+b.id+'/prints',data:{paper,pageCount,rowsPerPage:12,requestKey:printId}});if(printKey.current===printId)printKey.current=''});if(ctx!==current.current.generation)return;toast(purpose==='print'?'通知已生成并打开打印窗口，不代表已打印/投递':'短信预览已保存，没有发送');setRev(v=>v+1)}catch(e){if(ctx===current.current.generation)setError(message(e))}finally{if(printLock.current===ctx)printLock.current=null;if(ctx===current.current.generation)setBusy(false)}}
  async function sendSavedSms(real=false){if(!record)return;if(real&&!window.confirm(`确认向 ${record.houseCount} 户真实发送催缴短信？\n发出后无法撤回，请先核对预览里的户数与金额。`))return;setSmsBusy(true);setSmsNote('');try{const r=await request<{sent:number;failed:number;skipped:number;dryRun:boolean}>({method:'POST',url:'/fees/mis/collections/'+record.id+'/sms',data:{real},timeout:120000});const text=(r.dryRun?'演练':'发送')+'完成：成功 '+r.sent+' · 失败 '+r.failed+' · 无号码 '+r.skipped;setSmsNote(text);toast(text);setRev(v=>v+1)}catch(e){setSmsNote(message(e))}finally{setSmsBusy(false)}}
  async function viewBatch(id:number){const ctx=current.current.generation;setBusy(true);setSmsNote('');try{const r=await request<Batch>({url:'/fees/mis/collections/'+id});if(ctx===current.current.generation)setRecord(r)}catch(e){if(ctx===current.current.generation)setError(message(e))}finally{if(ctx===current.current.generation)setBusy(false)}}
+ /** 对账 CSV：导出当前筛选的全部待缴住户（后端上限 2 万户）；走原始 fetch + Blob，不经过 JSON 请求封装。 */
+ async function exportCsv(){
+  if(exporting||status!=='unpaid'||!list.data?.total)return;
+  setExporting(true);setError('');
+  try{
+   const query:Record<string,string>={};
+   for(const [key,value] of Object.entries({...filter,status:'unpaid'})){if(value!==undefined&&value!==null&&value!=='')query[key]=String(value)}
+   const headers:Record<string,string>={'x-client-source':'admin-web'};
+   const token=auth.getToken();if(token)headers.Authorization='Bearer '+token;
+   const acting=auth.getActingTenant();if(acting)headers['x-acting-tenant-id']=String(acting.id);
+   const office=auth.getActingOffice();if(office)headers['x-acting-office-id']=String(office.id);
+   const res=await fetch(apiBaseURL+'/fees/mis/residential/export?'+new URLSearchParams(query).toString(),{headers});
+   if(!res.ok){let msg='导出失败（HTTP '+res.status+'）';try{const body=await res.json() as {message?:string}|null;if(body?.message)msg=body.message}catch{}throw new Error(msg)}
+   const disposition=res.headers.get('content-disposition')||'';
+   const matched=/filename\*=UTF-8''([^;]+)/i.exec(disposition)||/filename="([^"]+)"/i.exec(disposition);
+   let filename='待缴对账.csv';
+   if(matched){try{filename=decodeURIComponent(matched[1])}catch{filename=matched[1]}}
+   const url=URL.createObjectURL(await res.blob()),link=document.createElement('a');
+   link.href=url;link.download=filename;document.body.appendChild(link);link.click();link.remove();
+   setTimeout(()=>URL.revokeObjectURL(url),4000);
+   toast('对账 CSV 已导出：'+filename);
+  }catch(e){setError(message(e))}finally{setExporting(false)}
+ }
  const s=dash.data?.summary,rate=s&&!s.adjustmentCount?collectionRate(s.receivableCents,s.paidCents):null;
  function drill(code?:string,paid=false){if(code)setFee(code);setStatus(paid?'paid':'unpaid');setTab('houses')}
  return <div className="rb" data-page="residential-bills">
@@ -113,6 +137,7 @@ export default function ResidentialBills(){
        {recentSelected>0&&<span className="rb-notify-hint" title={all?'仅按当前页核对；选择全部筛选结果时，跨页住户请逐户确认通知状态':'所选住户中最近 7 天已有打印登记或短信发送记录'}>其中 {recentSelected} 户 7 天内已通知过</span>}
        <button className="btn p" disabled={!(editable&&status==='unpaid')||!selectedCount||busy} title="生成前再次读取MIS余额；仅待缴住户可批量生成通知" onClick={()=>askPrepare('print')}><Icon name="print"/>批量A5通知</button>
        <button className="btn" disabled={!(editable&&status==='unpaid')||!selectedCount||busy} title="短信只做预览，不发送" onClick={()=>askPrepare('sms')}><Icon name="phone"/>短信预览</button>
+       <button className="btn" disabled={exporting||status!=='unpaid'||!list.data?.total} title={exporting?'正在生成对账 CSV…':status!=='unpaid'?'对账 CSV 只导出待缴视图，请切回待缴住户':list.data?.total?'导出当前筛选的全部待缴住户（最多 2 万户）；只读，不收款':'当前筛选没有待缴住户'} onClick={()=>void exportCsv()}>{exporting?'导出中…':'导出对账 CSV'}</button>
       </div>
      </div>
      {pendingChannel&&<div className="rb-notify-confirm" role="alertdialog" aria-label="重复通知提醒"><div className="rb-notify-confirm-main"><b>其中 {recentSelected} 户 7 天内已通知过</b><span>继续将重复生成{pendingChannel==='print'?' A5 通知单':'短信预览'}，可能造成重复打印或重复发送；请先核对清单中的「通知状态」。{all?'（选择全部筛选结果时仅按当前页核对，跨页请逐户确认）':''}</span></div><div className="rb-actions"><button className="btn" onClick={()=>setPendingChannel(null)}>取消</button><button className="btn p" onClick={()=>{const channel=pendingChannel;setPendingChannel(null);void prepare(channel)}}>仍然继续</button></div></div>}

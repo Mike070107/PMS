@@ -1,0 +1,35 @@
+import 'reflect-metadata';
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { MisFeesService } from './mis-fees.service';
+
+/** 对账 CSV：BOM/表头/行数/分页/转义/通知状态/文件名/超限与口径拒绝。用合成 households 结果，不连 MIS。 */
+test('对账CSV导出：UTF-8 BOM、表头与逐户行数、5000分页全量、通知状态和2万户上限',async()=>{
+ const s:any=Object.create(MisFeesService.prototype);
+ const calls:any[]=[];
+ const row=(i:number)=>({houseKey:`01:${i}:${100+i}`,officeCode:'01',communityId:10,address:'合成花园1栋100室, "加引号"',ownerName:'张,三',phoneMasked:'138****1234',amountCents:123400,billCount:2,periodFrom:'202501',periodTo:'202512'});
+ const all=Array.from({length:5001},(_,i)=>row(i));
+ s.residential=async(q:any)=>{calls.push({...q});return {rows:all.slice((q.page-1)*q.pageSize,q.page*q.pageSize),total:all.length,amountCents:all.length*123400,communities:[{id:10,name:'合成花园',offices:['01']}]}};
+ s.notificationStatus=async(keys:string[])=>{const out=new Map();if(keys.includes('01:2:102'))out.set('01:2:102',{printedAt:'2026-11-01T02:00:00.000Z',printedPaper:'A4',smsAt:null,smsStatus:null});if(keys.includes('01:3:103'))out.set('01:3:103',{printedAt:null,printedPaper:null,smsAt:'2026-11-02T02:00:00.000Z',smsStatus:'delivered'});return out};
+ const user:any={id:7,tenantId:1},access:any={scopeAll:true};
+ const file=await s.exportResidentialCsv({communityId:10,category:'property',q:'合成'},user,access);
+ assert.match(file.filename,/^待缴对账_\d{8}_\d{4}\.csv$/,'文件名格式');
+ assert.match(file.disposition,/attachment; filename="unpaid-reconciliation\.csv"; filename\*=UTF-8''/);
+ const parts:string[]=[];for await(const chunk of file.stream)parts.push(String(chunk));
+ const text=parts.join('');
+ assert.equal(text.charCodeAt(0),0xFEFF,'必须以 UTF-8 BOM 开头，Excel 不乱码');
+ const lines=text.replace(/^\uFEFF/,'').trimEnd().split('\r\n');
+ assert.equal(lines[0],'小区,房号,业主,电话(脱敏),待缴金额(元),账期起,账期止,笔数,通知状态','表头列与顺序');
+ assert.equal(lines.length,1+5001,'表头 + 全部 5001 户，不能只导当前页');
+ assert.equal(lines[1],'合成花园,"合成花园1栋100室, ""加引号""","张,三",138****1234,1234.00,202501,202512,2,未通知','逗号/引号按 RFC4180 转义');
+ assert.ok(text.includes(',A4已打印\r\n'),'打印登记 → A4已打印');
+ assert.ok(text.includes(',短信已发\r\n'),'短信 submitted/delivered → 短信已发');
+ assert.doesNotMatch(text,/1380000\d{4}/,'只导出脱敏号码');
+ assert.equal(calls.length,2,'5001 户按 5000 一页循环取数');
+ assert.equal(calls[0].view,'households');assert.equal(calls[0].status,'unpaid');assert.equal(calls[0].pageSize,5000);assert.equal(calls[0]._aging,false,'导出跳过账龄扫描');
+ assert.equal(calls[1].page,2);assert.equal(calls[0].q,'合成');assert.equal(calls[0].category,'property');
+ s.residential=async()=>({rows:[],total:20001,amountCents:0,communities:[]});
+ await assert.rejects(s.exportResidentialCsv({},user,access),/20000|2 万|两万/,'超过上限必须拒绝而不是截断');
+ await assert.rejects(s.exportResidentialCsv({status:'paid'},user,access),/待缴/,'已缴视图不是对账导出');
+ await assert.rejects(s.exportResidentialCsv({houseKeys:['01:1:1']},user,access),/全量/,'导出不接受逐个住户');
+});

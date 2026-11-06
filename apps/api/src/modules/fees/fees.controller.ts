@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
@@ -91,6 +92,14 @@ export class FeesController {
   @Get('mis/residential')
   @RequirePermission('fees','view')
   misResidential(@Query() q:MisResidentialQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.residential(q,user,access);}
+
+  /** 对账 CSV：与 households 同一套筛选参数；只读导出，不写库。 */
+  @Get('mis/residential/export')
+  @RequirePermission('fees','view')
+  async misResidentialExport(@Query() q:MisResidentialQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){
+   const file=await this.misFeesService.exportResidentialCsv(q,user,access);
+   return new StreamableFile(file.stream,{type:'text/csv; charset=utf-8',disposition:file.disposition});
+  }
 
   @Post('mis/collections/preview')
   @RequirePermission('fees','edit')
