@@ -5769,3 +5769,11 @@
 - 自上次（1d7a69c7）以来上线的相关提交：
   - d408a4b6 fix(parking): allow explicit custom zero payments without filling amount
 
+## 2026-11-06 11:02 · api · 901ea31f
+
+- 包：`pms-api-fast-20261106-110105.tar.gz`
+- 提交：901ea31f fix(parking): monthly prices with repeating full-cycle discounts
+- 自上次（d408a4b6）以来上线的相关提交：
+  - 901ea31f fix(parking): monthly prices with repeating full-cycle discounts
+  - fbb29016 test: fix MIS ledger HTTP fixture and erp shell postcss dep
+
