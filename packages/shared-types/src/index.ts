@@ -1038,6 +1038,17 @@ export interface PurchaseRequestItem {
   sourceRequestNo?: string;
   sourceWorkOrderId?: number | null;
   sourceWorkOrderNo?: string | null;
+  /** 来源工单摘要 / 所属管理处 / 报修位置：申购单导出、审批时认货都要用 */
+  sourceWorkOrderSummary?: string | null;
+  sourceOfficeName?: string | null;
+  /** 报修房号位置（fault_location 优先，退回报修地址） */
+  sourceWorkOrderLocation?: string | null;
+  sourceCommunityName?: string | null;
+  sourceWorkOrderStatus?: string | null;
+  sourceContactName?: string | null;
+  sourceContactPhone?: string | null;
+  sourceRepairType?: string | null;
+  sourceUrgent?: boolean;
   rejectReason?: string;
   /** rollback = 来源工单撤回缺料时被划掉的行 */
   rejectedAtStage?: 'manager' | 'purchaser' | 'rollback';
@@ -1064,6 +1075,10 @@ export interface PurchaseRequestView {
   workOrderId: number | null;
   /** 来源工单的工单号，服务端下发；界面上显示它而不是 workOrderId */
   workOrderNo?: string | null;
+  /** 来源工单所属管理处（导出申购单抬头用；多管理处合并时以第一张为准） */
+  sourceOfficeName?: string | null;
+  /** 来源工单摘要，审批时一眼看懂这单是修什么 */
+  workOrderSummary?: string | null;
   /** 合并表格的全部来源，不再只显示主单那一张 */
   sourceRequestNos?: string[];
   sourceWorkOrderNos?: string[];

@@ -51,8 +51,8 @@ export default function Purchase() {
   const [reason, setReason] = useState('');
   const canEdit = can('inventory', 'edit');
   const session = useSession();
-  /** 申购单抬头：当前管理处视角；只有唯一管理处时直接用它，多个视角又没选就留空手填 */
-  const areaName = session.actingOffice?.name || (session.access?.offices?.length === 1 ? session.access.offices[0].name : '');
+  /** 申购单抬头兜底：能追到来源工单时用那个工单所属管理处，纯办公室建单才用当前视角 */
+  const fallbackAreaName = session.actingOffice?.name || (session.access?.offices?.length === 1 ? session.access.offices[0].name : '');
   const [params, setParams] = useSearchParams();
   // 库存页「申请采购」带 ?new=1 过来：直接打开新建申请（里面可一键带入低库存材料）
   useEffect(() => {
@@ -89,7 +89,7 @@ export default function Purchase() {
     if (!list.length) { toast('没有可导出的申请'); return; }
     setExporting(true);
     try {
-      await downloadPurchaseRequestForms(list.map((r) => purchaseFormOf(r, areaName)), {
+      await downloadPurchaseRequestForms(list.map((r) => purchaseFormOf(r, fallbackAreaName)), {
         fileName: list.length > 1 ? `材料申购单_${current.title}_${dayjs().format('YYYYMMDD')}` : undefined,
       });
       toast(list.length > 1 ? `已导出 ${list.length} 张申购单` : `已导出 ${list[0].requestNo}`);

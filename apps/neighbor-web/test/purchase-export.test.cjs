@@ -51,6 +51,7 @@ const hooks = {
 };
 const ui = load(path.join(root, 'src/components/ui.tsx'), { '@/lib/format': format, react: hooks });
 const purchaseForm = load(path.join(root, 'src/lib/purchase-form.ts'));
+const formExport = load(path.join(root, '../admin-web/src/lib/purchaseRequestForm.ts'));
 
 const S = {
   DRAFT: 'draft', OFFICE_REVIEW: 'office_review', MANAGER_REVIEW: 'manager_review',
@@ -76,7 +77,8 @@ const request = {
   items: [
     {
       lineId: 'a', name: '阀门（口语）', materialName: '铜阀门', spec: 'DN50', qty: 2, unit: '个',
-      note: '水泵房用', sourceWorkOrderNo: 'WO20261106009', photoUrls: ['/p/valve.jpg'],
+      note: '水泵房用', sourceWorkOrderNo: 'WO20261106009', sourceWorkOrderLocation: '3栋502',
+      sourceOfficeName: '枫桦景苑管理处', photoUrls: ['/p/valve.jpg'],
     },
     { lineId: 'b', name: '已被驳回的行', qty: 1, rejectReason: '已有库存' },
   ],
@@ -95,16 +97,35 @@ test('真实 purchaseFormOf：抬头 / 申请人 / 日期 / 原因 / 明细按�
     spec: 'DN50',
     qty: 2,
     unit: '个',
-    note: '水泵房用',
+    note: '3栋502 · 水泵房用',
     sourceOrderNo: 'WO20261106009',
     photoUrl: '/p/valve.jpg',
   });
 });
 
+test('真实 purchaseFormOf：抬头跟来源工单所属管理处走，纯办公室建单才退回当前视角', () => {
+  const fromOtherOffice = {
+    ...request,
+    sourceOfficeName: '上海新家管理处',
+    items: request.items.map((item) => ({ ...item, sourceOfficeName: '上海新家管理处' })),
+  };
+  assert.equal(purchaseForm.purchaseFormOf(fromOtherOffice, '当前视角').areaName, '上海新家管理处');
+  assert.equal(
+    purchaseForm.purchaseFormOf({ ...request, sourceOfficeName: null, items: request.items.map((item) => ({ ...item, sourceOfficeName: null })) }, '当前视角').areaName,
+    '当前视角',
+  );
+});
+
+test('真实 fitImageSize：照片按原比例缩放，不拉变形', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(formExport.fitImageSize(400, 300, 150, 88))), { width: 117, height: 88 });
+  assert.deepEqual(JSON.parse(JSON.stringify(formExport.fitImageSize(100, 400, 150, 88))), { width: 22, height: 88 });
+  assert.deepEqual(JSON.parse(JSON.stringify(formExport.fitImageSize(50, 50, 150, 88))), { width: 88, height: 88 });
+});
+
 test('真实 purchaseFormOf：有申请原因时优先用它，没有工单也可为空', () => {
   assert.equal(purchaseForm.purchaseFormOf({ ...request, reason: '补库存：公区耗材' }, '').reason, '补库存：公区耗材');
   assert.equal(purchaseForm.purchaseFormOf({ ...request, workOrderNo: null }, '').reason, '');
-  assert.equal(purchaseForm.purchaseFormOf({ ...request, workOrderNo: null }, '').areaName, '');
+  assert.equal(purchaseForm.purchaseFormOf({ ...request, workOrderNo: null }, '').areaName, '枫桦景苑管理处');
 });
 
 function text(node) {

@@ -8,9 +8,23 @@ import dayjs from 'dayjs';
 import type { PurchaseRequestView } from '@pms/shared-types';
 import type { PurchaseFormData } from '@legacy/lib/purchaseRequestForm';
 
-export function purchaseFormOf(request: PurchaseRequestView, areaName: string): PurchaseFormData {
+/**
+ * 申购单抬头跟着来源工单所属管理处走（不是当前登录人切的管理处视角）：
+ * 多张申请合并时服务端仍保留每行的 sourceOfficeName，取第一张有来源工单的；
+ * 纯办公室新建、没关联工单的申请才退回当前视角。
+ */
+function areaNameOf(request: PurchaseRequestView, fallback: string): string {
+  return (
+    request.sourceOfficeName ||
+    request.items.find((item) => item.sourceOfficeName)?.sourceOfficeName ||
+    fallback ||
+    ''
+  ).trim();
+}
+
+export function purchaseFormOf(request: PurchaseRequestView, fallbackAreaName: string): PurchaseFormData {
   return {
-    areaName: (areaName || '').trim(),
+    areaName: areaNameOf(request, fallbackAreaName),
     requestNo: request.requestNo,
     // 审批人先看经办人（办公室汇总的人），没有才退回申请人
     applicantName: request.officeReviewerName || request.applicantName || '',
@@ -26,7 +40,8 @@ export function purchaseFormOf(request: PurchaseRequestView, areaName: string): 
         spec: item.spec || '',
         qty: item.qty,
         unit: item.unit || '',
-        note: item.note || '',
+        // 采购拿着这张纸找货、签字：备注先写报修房号位置，再写原有备注，最后才是工单号
+        note: [item.sourceWorkOrderLocation, item.note].filter(Boolean).join(' · '),
         sourceOrderNo: item.sourceWorkOrderNo || '',
         photoUrl: item.photoUrl || item.photoUrls?.[0] || undefined,
       })),

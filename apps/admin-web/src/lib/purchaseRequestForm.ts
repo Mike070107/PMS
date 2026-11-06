@@ -49,6 +49,35 @@ export interface PurchaseFormExportOptions {
 /** 纸面固定 10 行，明细多了就按明细行数走 */
 const MIN_ROWS = 10;
 const HEADERS = ['序号', '材料名称', '规格', '申购量', '备注', '参考图片'];
+/** 「参考图片」列加宽、放图的行加高一点，照片按原比例缩进格子里，不拉变形 */
+const PHOTO_COL_WIDTH = 26;
+const PHOTO_ROW_HEIGHT = 96;
+const PHOTO_MAX_WIDTH = 150;
+const PHOTO_MAX_HEIGHT = 88;
+
+/** 图片按原比例装进 maxWidth × maxHeight；返回真正嵌入的像素尺寸 */
+export function fitImageSize(
+  width: number,
+  height: number,
+  maxWidth: number,
+  maxHeight: number,
+): { width: number; height: number } {
+  if (!(width > 0) || !(height > 0)) return { width: maxWidth, height: maxHeight };
+  const scale = Math.min(maxWidth / width, maxHeight / height);
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
+}
+
+async function loadImageSize(dataUrl: string): Promise<{ width: number; height: number } | null> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve({ width: image.naturalWidth || image.width, height: image.naturalHeight || image.height });
+    image.onerror = () => resolve(null);
+    image.src = dataUrl;
+  });
+}
 
 async function imageDataUrl(url: string): Promise<string | null> {
   try {
@@ -123,7 +152,7 @@ async function fillSheet(
   for (let i = 0; i < rowCount; i += 1) {
     const item = data.items[i];
     const row = ws.getRow(5 + i);
-    row.height = item?.photoUrl ? 78 : 24;
+    row.height = item?.photoUrl ? PHOTO_ROW_HEIGHT : 26;
     const values: Array<string | number> = [
       i + 1,
       item?.name ?? '',
@@ -146,10 +175,18 @@ async function fillSheet(
     });
     if (item?.photoUrl) {
       const dataUrl = await imageDataUrl(item.photoUrl);
-      if (dataUrl) {
-        const imageId = wb.addImage({ base64: dataUrl, extension: dataUrl.includes('png') ? 'png' : 'jpeg' });
-        ws.addImage(imageId, { tl: { col: 5.15, row: 4 + i + 0.08 }, ext: { width: 90, height: 65 } });
+      if (!dataUrl) {
+        row.height = 26;
+        continue;
       }
+      const size = await loadImageSize(dataUrl);
+      // 拿不到原始尺寸时不硬拉成方图：按最大框嵌入，宁可留白也不变形
+      const ext = size
+        ? fitImageSize(size.width, size.height, PHOTO_MAX_WIDTH, PHOTO_MAX_HEIGHT)
+        : { width: PHOTO_MAX_WIDTH, height: PHOTO_MAX_HEIGHT };
+      if (!size) row.height = 26;
+      const imageId = wb.addImage({ base64: dataUrl, extension: dataUrl.includes('png') ? 'png' : 'jpeg' });
+      ws.addImage(imageId, { tl: { col: 5.08, row: 4 + i + 0.08 }, ext });
     }
   }
 
@@ -197,7 +234,7 @@ export async function downloadPurchaseRequestForms(
       { width: 30 },
       { width: 12 },
       { width: 28 },
-      { width: 18 },
+      { width: PHOTO_COL_WIDTH },
     ];
     await fillSheet(wb, ws, data);
   }
