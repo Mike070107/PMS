@@ -78,6 +78,8 @@ const request = {
     {
       lineId: 'a', name: '阀门（口语）', materialName: '铜阀门', spec: 'DN50', qty: 2, unit: '个',
       note: '水泵房用', sourceWorkOrderNo: 'WO20261106009', sourceWorkOrderLocation: '3栋502',
+      sourceCommunityName: '枫桦景苑二期', sourceWorkOrderId: 88,
+      sourceReportedAt: '2026-11-06T10:00:00+08:00', sourceAssigneeName: '王师傅',
       sourceOfficeName: '枫桦景苑管理处', photoUrls: ['/p/valve.jpg'],
     },
     { lineId: 'b', name: '已被驳回的行', qty: 1, rejectReason: '已有库存' },
@@ -103,8 +105,7 @@ test('真实 purchaseFormOf：抬头 / 申请人 / 日期 / 原因 / 明细按�
   });
 });
 
-test('真实 purchaseFormOf：抬头跟来源工单所属管理处走，纯办公室建单才退回当前视角', () => {
-  const fromOtherOffice = {
+test('真实 purchaseFormOf：抬头跟来源工单所属管理处走，纯办公室建单才退回当前视角', () => {  const fromOtherOffice = {
     ...request,
     sourceOfficeName: '上海新家管理处',
     items: request.items.map((item) => ({ ...item, sourceOfficeName: '上海新家管理处' })),
@@ -120,6 +121,23 @@ test('真实 fitImageSize：照片按原比例缩放，不拉变形', () => {
   assert.deepEqual(JSON.parse(JSON.stringify(formExport.fitImageSize(400, 300, 150, 88))), { width: 117, height: 88 });
   assert.deepEqual(JSON.parse(JSON.stringify(formExport.fitImageSize(100, 400, 150, 88))), { width: 22, height: 88 });
   assert.deepEqual(JSON.parse(JSON.stringify(formExport.fitImageSize(50, 50, 150, 88))), { width: 88, height: 88 });
+});
+
+test('真实来源文案：展示小区 + 报修地址，不拿工单号顶替', () => {
+  assert.equal(purchaseForm.sourceAddressText(request.items[0]), '枫桦景苑二期 3栋502');
+  assert.equal(purchaseForm.requestSourceText(request), '枫桦景苑二期 3栋502');
+  const merged = {
+    ...request,
+    items: [
+      request.items[0],
+      { ...request.items[0], lineId: 'c', sourceCommunityName: '上海新家', sourceWorkOrderLocation: '门卫室' },
+    ],
+  };
+  assert.equal(purchaseForm.requestSourceText(merged), '枫桦景苑二期 3栋502 等 2 处');
+  assert.equal(
+    purchaseForm.requestSourceText({ ...request, workOrderNo: null, items: [{ lineId: 'x', name: '生料带', qty: 1 }] }),
+    '办公室建单',
+  );
 });
 
 test('真实 purchaseFormOf：有申请原因时优先用它，没有工单也可为空', () => {
@@ -166,7 +184,7 @@ function render({ stage = 'manager', detail = null, called }) {
       useCallback: (fn) => fn,
       useEffect() {},
     },
-    'react-router-dom': { useSearchParams: () => [new URLSearchParams(''), () => {}] },
+    'react-router-dom': { useSearchParams: () => [new URLSearchParams(''), () => {}], Link: 'Link' },
     '@pms/api-client': { inventory: { listPurchaseOrders: async () => [] }, purchases: {}, request() {} },
     '@pms/shared-types': { PurchaseRequestStatus: S },
     '@legacy/lib/purchaseRequestForm': { downloadPurchaseRequestForms: async (...args) => { called.push(args); } },
@@ -203,9 +221,15 @@ test('真实 Purchase：经理审批 / 采购审批环节有导出入口，点�
   }
 });
 
-test('真实 Purchase：审批详情抽屉也能导出当前这张', async () => {
+test('真实 Purchase：审批详情抽屉也能导出当前这张，并展示报修地址 / 时间 / 维修工 / 工单链接', async () => {
   const called = [];
   const tree = render({ detail: request, called });
+  const all = text(tree);
+  assert.ok(all.includes('枫桦景苑二期 3栋502'), '明细要展示报修地址');
+  assert.ok(all.includes('2026-11-06') && all.includes('10:00'), '明细要展示报修时间');
+  assert.ok(all.includes('王师傅'), '明细要展示维修工');
+  const link = nodes(tree).find((n) => n.type === 'Link' && String(n.props?.to).includes('/work-orders'));
+  assert.equal(link?.props.to, '/work-orders?sel=88');
   const button = nodes(tree).find((n) => n.type === ui.Btn && text(n) === '导出 Excel');
   assert.ok(button, '详情抽屉缺少导出 Excel');
   await button.props.onClick();

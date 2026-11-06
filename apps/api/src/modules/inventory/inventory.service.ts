@@ -1440,7 +1440,8 @@ export class InventoryService {
         : Promise.resolve([]),
       workOrderIds.length
         ? this.dataSource.query(
-            `SELECT w.id, w.order_no, w.status, w.fault_location,
+            `SELECT w.id, w.order_no, w.status, w.fault_location, w.assignee_id,
+                    COALESCE(rr.created_at, w.created_at) AS reported_at,
                     rr.address_text, rr.contact_name, rr.contact_phone, rr.repair_type,
                     COALESCE((SELECT rtr.label FROM repair_type_rules rtr
                               WHERE rtr.tenant_id = w.tenant_id AND rtr.repair_type = rr.repair_type
@@ -1448,11 +1449,12 @@ export class InventoryService {
                               ORDER BY CASE WHEN rtr.office_id = c.office_id THEN 0 ELSE 1 END
                               LIMIT 1), rr.repair_type) AS repair_type_label, rr.urgent,
                     COALESCE(NULLIF(w.fault_symptom, ''), rr.content) AS work_order_summary,
-                    c.name AS community_name, o.name AS office_name
+                    c.name AS community_name, o.name AS office_name, u.name AS assignee_name
              FROM work_orders w
              LEFT JOIN repair_requests rr ON rr.id = w.request_id AND rr.tenant_id = w.tenant_id
              LEFT JOIN communities c ON c.id = w.community_id AND c.tenant_id = w.tenant_id
              LEFT JOIN management_offices o ON o.id = c.office_id AND o.tenant_id = w.tenant_id
+             LEFT JOIN users u ON u.id = w.assignee_id AND u.tenant_id = w.tenant_id
              WHERE w.tenant_id = $1 AND w.deleted_at IS NULL AND w.id = ANY($2::int[])`,
             [tenantId, workOrderIds],
           )
@@ -1476,10 +1478,14 @@ export class InventoryService {
       contactPhone: string | null;
       repairType: string | null;
       urgent: boolean;
+      reportedAt: Date | string | null;
+      assigneeId: number | null;
+      assigneeName: string | null;
     }>((workOrders as Array<{
       id: number; status: string | null; fault_location: string | null; address_text: string | null;
       community_name: string | null; contact_name: string | null; contact_phone: string | null;
       repair_type: string | null; repair_type_label: string | null; urgent: boolean | null;
+      reported_at: Date | string | null; assignee_id: number | null; assignee_name: string | null;
     }>).map((w) => [w.id, {
       status: w.status || null,
       location: w.fault_location || w.address_text || null,
@@ -1488,6 +1494,9 @@ export class InventoryService {
       contactPhone: w.contact_phone || null,
       repairType: w.repair_type_label || w.repair_type || null,
       urgent: !!w.urgent,
+      reportedAt: w.reported_at || null,
+      assigneeId: w.assignee_id ?? null,
+      assigneeName: w.assignee_name || null,
     }]));
     const nameOf = (id: number | null) => (id ? nameById.get(id) || null : null);
     // 明细行要能直接展示缩略图 / 规格 / 编码：有 SKU 的从材料库补，申购新材料的用维修工拍的样本照
@@ -1536,6 +1545,10 @@ export class InventoryService {
           sourceOfficeName: sourceWorkOrderId ? officeById.get(sourceWorkOrderId) ?? null : null,
           sourceWorkOrderLocation: sourceWorkOrderInfo?.location ?? null,
           sourceWorkOrderStatus: sourceWorkOrderInfo?.status ?? null,
+          /** 报修时间 / 维修工：审批时判断急不急、该找谁核实 */
+          sourceReportedAt: sourceWorkOrderInfo?.reportedAt ?? null,
+          sourceAssigneeId: sourceWorkOrderInfo?.assigneeId ?? null,
+          sourceAssigneeName: sourceWorkOrderInfo?.assigneeName ?? null,
           sourceCommunityName: sourceWorkOrderInfo?.communityName ?? null,
           sourceContactName: sourceWorkOrderInfo?.contactName ?? null,
           sourceContactPhone: sourceWorkOrderInfo?.contactPhone ?? null,

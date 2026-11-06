@@ -5,8 +5,27 @@
  * 这里只把审批列表上的 PurchaseRequestView 摊平成那张表要的字段，方便单测。
  */
 import dayjs from 'dayjs';
-import type { PurchaseRequestView } from '@pms/shared-types';
+import type { PurchaseRequestItem, PurchaseRequestView } from '@pms/shared-types';
 import type { PurchaseFormData } from '@legacy/lib/purchaseRequestForm';
+
+/** 来源工单的报修地址：小区 + 房号 / 位置；没有就空着，别拿单号凑数 */
+export function sourceAddressText(item: PurchaseRequestItem): string {
+  return [item.sourceCommunityName, item.sourceWorkOrderLocation].filter(Boolean).join(' ');
+}
+
+/** 申请列表 / 详情头部用的一句话来源：一张单可能合并了多个报修地址 */
+export function requestSourceText(request: PurchaseRequestView): string {
+  const texts = [
+    ...new Set(
+      request.items
+        .filter((item) => !item.rejectReason)
+        .map((item) => sourceAddressText(item))
+        .filter(Boolean),
+    ),
+  ];
+  if (!texts.length) return request.workOrderNo ? '工单报修（未记录地址）' : '办公室建单';
+  return texts.length === 1 ? texts[0] : `${texts[0]} 等 ${texts.length} 处`;
+}
 
 /**
  * 申购单抬头跟着来源工单所属管理处走（不是当前登录人切的管理处视角）：

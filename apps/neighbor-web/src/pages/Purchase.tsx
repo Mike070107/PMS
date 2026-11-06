@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { inventory, purchases, request } from '@pms/api-client';
 import type { PurchaseOrderView } from '@pms/api-client/src/endpoints/inventory';
 import { PurchaseRequestStatus } from '@pms/shared-types';
@@ -9,7 +9,7 @@ import RequestComposer from '@/components/purchase/RequestComposer';
 import Icon from '@/components/Icon';
 import { useSession } from '@/lib/auth';
 import { can } from '@/lib/perm';
-import { purchaseFormOf } from '@/lib/purchase-form';
+import { purchaseFormOf, requestSourceText, sourceAddressText } from '@/lib/purchase-form';
 import { Btn, Card, Empty, ErrorNote, Field, Loading, Sheet, toast } from '@/components/ui';
 import { ago, dayjs, money } from '@/lib/format';
 
@@ -172,14 +172,17 @@ export default function Purchase() {
           ) : <Empty>没有在途的采购单</Empty>
         ) : rows.length ? (
           <table className="t">
-            <thead><tr>{['office', 'manager', 'purchaser'].includes(stage) ? <th style={{ width: 34 }} /> : null}<th>申请单</th><th>材料</th><th>原因 / 来源</th><th>申请人</th><th style={{ textAlign: 'right' }}>预估金额</th><th>提交</th><th style={{ textAlign: 'right' }}>操作</th></tr></thead>
+            <thead><tr>{['office', 'manager', 'purchaser'].includes(stage) ? <th style={{ width: 34 }} /> : null}<th>申请单</th><th>材料</th><th>原因 / 报修地址</th><th>申请人</th><th style={{ textAlign: 'right' }}>预估金额</th><th>提交</th><th style={{ textAlign: 'right' }}>操作</th></tr></thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className="row" onClick={() => setDetail(r)}>
                   {['office', 'manager', 'purchaser'].includes(stage) ? <td onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={checked.includes(r.id)} onChange={() => toggle(r.id)} /></td> : null}
                   <td><b>{r.requestNo}</b></td>
                   <td className="sub" style={{ maxWidth: 280 }}>{r.items.map((i) => `${i.name}×${i.qty}${i.unit || ''}`).join('、') || '—'}</td>
-                  <td className="sub" style={{ maxWidth: 220 }}>{r.reason || (r.workOrderNo ? `工单 ${r.workOrderNo}` : '—')}</td>
+                  <td className="sub" style={{ maxWidth: 240 }}>
+                    {r.reason ? <div>{r.reason}</div> : null}
+                    <div className={r.reason ? 'muted' : ''} style={r.reason ? { fontSize: 12.5 } : undefined}>{requestSourceText(r)}</div>
+                  </td>
                   <td>{r.applicantName || '—'}</td>
                   <td style={{ textAlign: 'right' }}>{money((r.estTotalCents || 0) / 100)}</td>
                   <td className="muted">{ago(r.createdAt)}</td>
@@ -199,33 +202,52 @@ export default function Purchase() {
       <p className="muted" style={{ fontSize: 14, marginTop: 10 }}>审批环节跟随「系统设置 → 采购审批链」；金额低于阈值的环节服务端自动跳过，这里显示的就是真实结果。</p>
 
       {/* 申请详情 */}
-      <Sheet open={!!detail} onClose={() => setDetail(null)} width={760} title={detail?.requestNo || ''} subtitle={detail ? `${detail.applicantName || '—'} · ${detail.createdAt ? dayjs(detail.createdAt).format('YYYY-MM-DD HH:mm') : ''}` : ''}>
+      <Sheet open={!!detail} onClose={() => setDetail(null)} width={1020} title={detail?.requestNo || ''} subtitle={detail ? `${detail.applicantName || '—'} · ${detail.createdAt ? dayjs(detail.createdAt).format('YYYY-MM-DD HH:mm') : ''}` : ''}>
         {detail ? (
           <>
             <div className="facts">
               <div><small>状态</small><b>{STATUS_TEXT[detail.status] || detail.status}</b></div>
               <div><small>预估金额</small><b>{money((detail.estTotalCents || 0) / 100)}</b></div>
               <div><small>下一步</small><b>{detail.nextStepLabel || '—'}</b></div>
-              <div><small>来源</small><b>{detail.workOrderNo ? `工单 ${detail.workOrderNo}` : detail.sourceWorkOrderNos?.length ? `工单 ${detail.sourceWorkOrderNos.join('、')}` : '办公室建单'}</b></div>
+              <div><small>报修来源</small><b>{requestSourceText(detail)}</b></div>
             </div>
             {detail.reason ? <div className="note2" style={{ marginBottom: 12 }}><Icon name="file" />{detail.reason}</div> : null}
             {detail.rejectReason ? <div className="note2" style={{ marginBottom: 12, color: 'var(--dang)' }}><Icon name="alert" />驳回原因：{detail.rejectReason}</div> : null}
             <div className="sec-t">申请明细</div>
-            <table className="t">
-              <thead><tr><th>材料</th><th>规格</th><th style={{ textAlign: 'right' }}>数量</th><th style={{ textAlign: 'right' }}>预估单价</th><th /></tr></thead>
-              <tbody>
-                {detail.items.map((i) => (
-                  <tr key={i.lineId || i.name} style={i.rejectReason ? { opacity: 0.5 } : undefined}>
-                    <td><div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>{i.photoUrl ? <img src={i.photoUrl} alt="" className="pr-thumb" /> : null}<div>{i.name}{!i.materialId ? <span className="tag warn" style={{ marginLeft: 6 }}>未关联SKU</span> : null}{i.rejectReason ? <div className="muted" style={{ fontSize: 13 }}>已驳回：{i.rejectReason}</div> : null}{i.sourceRequestNo ? <div className="muted" style={{ fontSize: 12.5 }}>来自 {i.sourceRequestNo}{i.sourceWorkOrderNo ? ` · 工单 ${i.sourceWorkOrderNo}` : ''}</div> : null}</div></div></td>
-                    <td className="sub">{i.spec || '—'}</td>
-                    <td style={{ textAlign: 'right' }}>{i.qty} {i.unit || ''}</td>
-                    <td style={{ textAlign: 'right' }}>{i.estUnitCostCents ? money(i.estUnitCostCents / 100) : '—'}</td>
-                    <td style={{ textAlign: 'right' }}>{(detail.status === S.MANAGER_REVIEW || detail.status === S.PURCHASER_REVIEW) && i.lineId && !i.rejectReason && detail.items.length > 1
-                      ? <Btn size="sm" onClick={() => { setReject({ req: detail, lineId: i.lineId!, label: `「${i.name}」这一行` }); setReason(''); }}>驳回此行</Btn> : null}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="t" style={{ minWidth: 880 }}>
+                <thead><tr><th>材料</th><th>报修地址</th><th>报修时间</th><th>维修工</th><th>规格</th><th style={{ textAlign: 'right' }}>数量</th><th style={{ textAlign: 'right' }}>预估单价</th><th /></tr></thead>
+                <tbody>
+                  {detail.items.map((i) => (
+                    <tr key={i.lineId || i.name} style={i.rejectReason ? { opacity: 0.5 } : undefined}>
+                      <td><div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>{i.photoUrl ? <img src={i.photoUrl} alt="" className="pr-thumb" /> : null}<div>{i.name}{!i.materialId ? <span className="tag warn" style={{ marginLeft: 6 }}>未关联SKU</span> : null}{i.rejectReason ? <div className="muted" style={{ fontSize: 13 }}>已驳回：{i.rejectReason}</div> : null}</div></div></td>
+                      <td className="sub" style={{ minWidth: 150 }}>
+                        {sourceAddressText(i) || '—'}
+                        {i.sourceWorkOrderId ? (
+                          <div>
+                            <Link
+                              to={`/work-orders?sel=${i.sourceWorkOrderId}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{ color: 'var(--acc)', fontSize: 13, textDecoration: 'underline', textUnderlineOffset: 2 }}
+                            >查看工单详情 ↗</Link>
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="sub" style={{ whiteSpace: 'nowrap' }}>
+                        {i.sourceReportedAt ? <><div>{dayjs(i.sourceReportedAt).format('YYYY-MM-DD')}</div><div className="muted" style={{ fontSize: 12.5 }}>{dayjs(i.sourceReportedAt).format('HH:mm')}</div></> : '—'}
+                      </td>
+                      <td>{i.sourceAssigneeName || <span className="muted">未指派</span>}</td>
+                      <td className="sub">{i.spec || '—'}</td>
+                      <td style={{ textAlign: 'right' }}>{i.qty} {i.unit || ''}</td>
+                      <td style={{ textAlign: 'right' }}>{i.estUnitCostCents ? money(i.estUnitCostCents / 100) : '—'}</td>
+                      <td style={{ textAlign: 'right' }}>{(detail.status === S.MANAGER_REVIEW || detail.status === S.PURCHASER_REVIEW) && i.lineId && !i.rejectReason && detail.items.length > 1
+                        ? <Btn size="sm" onClick={() => { setReject({ req: detail, lineId: i.lineId!, label: `「${i.name}」这一行` }); setReason(''); }}>驳回此行</Btn> : null}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             {detail.steps?.length ? (
               <>
                 <div className="sec-t" style={{ marginTop: 16 }}>审批链</div>

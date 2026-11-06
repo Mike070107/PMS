@@ -1045,6 +1045,11 @@ export interface PurchaseRequestItem {
   sourceWorkOrderLocation?: string | null;
   sourceCommunityName?: string | null;
   sourceWorkOrderStatus?: string | null;
+  /** 报修时间（报修单创建时间优先，退回工单创建时间） */
+  sourceReportedAt?: string | null;
+  /** 负责维修工；还没派单时为 null */
+  sourceAssigneeId?: number | null;
+  sourceAssigneeName?: string | null;
   sourceContactName?: string | null;
   sourceContactPhone?: string | null;
   sourceRepairType?: string | null;
