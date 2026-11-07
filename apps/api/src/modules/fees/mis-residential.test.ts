@@ -67,3 +67,46 @@ test('住宅query builder全部视图明确拒绝paid/unpaid之外状态，不�
 test('趋势隔离旧库非法日期并返回数据质量计数',()=>{const r=report({view:'trend',paidFrom:'2026-11-01',paidTo:'2026-11-04'});assert.match(r.sql,/CASE WHEN ISDATE\(w\.ZJ_SKRQ\)=1 THEN CONVERT\(datetime,w\.ZJ_SKRQ\) ELSE NULL END/);assert.match(r.sql,/CASE WHEN ISDATE\(w\.ZJ_TKRQ\)=1 THEN CONVERT\(datetime,w\.ZJ_TKRQ\) ELSE NULL END/);assert.match(r.sql,/AS invalidDateCount/)});
 
 test('旧MIS日期参数使用无歧义112样式，不用不兼容的23输入样式',()=>{const r=report({view:'trend',paidFrom:'2026-11-01',paidTo:'2026-11-04'});assert.match(r.sql,/CONVERT\(datetime,REPLACE\(@paidFrom,'-',''\),112\)/);assert.doesNotMatch(r.sql,/CONVERT\(datetime,@paid(?:From|To),23\)/)});
+
+// topHouses（底部 Top10 按户口径）服务层：真实 residential() 走 stub read，内层 _aging:false 扫描由 stub residential 提供。
+function topHousesFixture(access:any){
+ const scanRows=[
+  {houseKey:'01:1:2',address:'合成花园1号102室',ownerName:'张三',amountCents:500000,phone:'13800000002',phoneMasked:'138****0002',periodFrom:'202501',periodTo:'202503'},
+  {houseKey:'01:1:1',address:'合成花园1号101室',ownerName:'张三',amountCents:300000,phone:'13800000001',phoneMasked:'138****0001',periodFrom:'202401',periodTo:'202402'},
+ ];
+ const s:any=new MisFeesService({find:async()=>[{id:10,name:'合成花园'}]} as any,{} as any);
+ s.scope=async()=>[{id:10,name:'合成花园',offices:['01']}];
+ s.read=async()=>({recordsets:[[{total:'2',amount:'8000.00',receivableAmount:'8000.00',paidAmount:'0',unpaidAmount:'8000.00',unpaidHouses:2}],[]]});
+ const real=s.residential.bind(s);
+ s.residential=async(q:any,u:any,a:any)=>{
+  if(q._aging===false)return {rows:scanRows,total:scanRows.length,amountCents:800000,communities:[{id:10,name:'合成花园'}]};
+  return real(q,u,a);
+ };
+ return {s,user:{id:7,tenantId:1},access};
+}
+test('Top10按户口径：同名业主分两行不合并，金额降序且字段齐全',async()=>{
+ const {s,user,access}=topHousesFixture({scopeAll:false,communityIds:[10],pages:{fees:{view:true,edit:false}}});
+ const r:any=await s.residential({view:'households',status:'unpaid'},user,access);
+ const top:any[]=r.aging.topHouses;
+ assert.ok(Array.isArray(top),'aging.topHouses 必须是数组');
+ assert.ok(top.length<=10,'Top10 最多 10 行');
+ assert.equal(top.length,2);
+ assert.deepEqual(top.map(row=>row.amountCents),[500000,300000],'按待缴金额降序');
+ assert.deepEqual(top.map(row=>row.houseKey),['01:1:2','01:1:1']);
+ assert.deepEqual(top.map(row=>row.ownerName),['张三','张三'],'同名业主按 houseKey 分成两行，不能按姓名合并');
+ assert.notEqual(top[0].houseKey,top[1].houseKey);
+ for(const row of top)for(const key of ['houseKey','address','ownerName','amountCents','phone','phoneMasked'])assert.ok(key in row,key+' 字段必须存在');
+ assert.equal(top[0].address,'合成花园1号102室');
+});
+test('Top10按户口径二次收窄：只读账号 phone 全为 null 且 phoneMasked 非空；有收费编辑权限才带完整号码',async()=>{
+ const viewOnly=topHousesFixture({scopeAll:false,communityIds:[10],pages:{fees:{view:true,edit:false}}});
+ const viewed:any=await viewOnly.s.residential({view:'households',status:'unpaid'},viewOnly.user,viewOnly.access);
+ for(const row of viewed.aging.topHouses){
+  assert.equal(row.phone,null,'只读账号 Top10 行不能带完整手机号');
+  assert.ok(row.phoneMasked&&row.phoneMasked.length>0,'脱敏号码必须非空');
+ }
+ assert.deepEqual(viewed.aging.topHouses.map((row:any)=>row.phoneMasked),['138****0002','138****0001']);
+ const editable=topHousesFixture({scopeAll:false,communityIds:[10],pages:{fees:{view:true,edit:true}}});
+ const edited:any=await editable.s.residential({view:'households',status:'unpaid'},editable.user,editable.access);
+ assert.deepEqual(edited.aging.topHouses.map((row:any)=>row.phone),['13800000002','13800000001'],'有收费编辑权限才返回完整手机号');
+});
