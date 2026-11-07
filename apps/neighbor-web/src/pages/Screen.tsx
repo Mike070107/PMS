@@ -10,9 +10,9 @@ type Query = Record<string, string | number | boolean | undefined>;
 type Summary = { receivableCents: number; paidCents: number; unpaidCents: number; unpaidHouses: number; adjustmentCount?: number };
 type Dashboard = { summary: Summary; queriedAt?: string };
 type Trend = { rows: { day: string; netCents: number; chargedCents: number; refundedCents: number }[] };
-type AgingBuckets = Record<'0-30' | '31-60' | '61-90' | '90+', { count: number; amountCents: number }>;
-type Aging = { buckets: AgingBuckets; total: number; amountCents: number; truncated: boolean; scanned: number; topHouses?: { houseKey: string; address: string; ownerName: string; amountCents: number }[] };
-type Houses = { aging?: Aging };
+type UnpaidHouse = { houseKey: string; address: string; ownerName: string; amountCents: number };
+type Houses = { rows?: UnpaidHouse[]; total?: number };
+type RecentPayment = { paidAt: string; address: string; ownerName: string; amountCents: number; channel?: string | null; billCount: number; recordedAt?: string | null; communityName?: string };
 type Communities = { rows: { id: number; name: string; unpaidCents: number; unpaidHouses: number }[] };
 type Batch = { id: number; createdAt: string; purpose: 'print' | 'sms'; houseCount: number; amountCents: string };
 type Batches = { rows: Batch[]; total: number };
@@ -21,8 +21,17 @@ type SmsStats = Record<string, unknown>;
 type Options = { available?: boolean; message?: string; communities: { id: number; name: string }[] };
 
 const REFRESH_MS = 60_000;
-const AGING_KEYS = ['0-30', '31-60', '61-90', '90+'] as const;
-const AGING_LABELS: Record<(typeof AGING_KEYS)[number], string> = { '0-30': '≤30 天', '31-60': '31-60 天', '61-90': '61-90 天', '90+': '90+ 天' };
+const AMOUNT_BUCKETS = [
+  { key: 'le500', label: '≤¥500', max: 50_000 },
+  { key: '500to2000', label: '¥500–2000', max: 200_000 },
+  { key: '2000to5000', label: '¥2000–5000', max: 500_000 },
+  { key: 'gt5000', label: '>¥5000', max: Number.POSITIVE_INFINITY },
+] as const;
+type AmountBucketKey = (typeof AMOUNT_BUCKETS)[number]['key'];
+type AmountBucket = { key: AmountBucketKey; label: string; count: number; amountCents: number };
+function amountBucketOf(amountCents: number) {
+  return AMOUNT_BUCKETS.find((bucket) => amountCents <= bucket.max) || AMOUNT_BUCKETS[AMOUNT_BUCKETS.length - 1];
+}
 
 function message(e: unknown) {
   const text = e instanceof Error ? e.message : '';
@@ -57,6 +66,36 @@ function useLive<T>(url: string, query: Query, signal: string) {
       .catch((e) => { if (active) set((prev) => ({ ...prev, error: message(e), loading: false })); });
     return () => { active = false; };
   }, [url, q, signal]);
+  return state;
+}
+
+/** 待缴户明细：按金额倒序取前若干页，用于前端按户待缴总额分档（不新增接口）。 */
+function useUnpaidHouseholds(baseQuery: Query, signal: string) {
+  const q = JSON.stringify(baseQuery);
+  const [state, set] = useState<{ rows: UnpaidHouse[]; total: number; truncated: boolean; error: string; loadedAt: number; loading: boolean }>({
+    rows: [], total: 0, truncated: false, error: '', loadedAt: 0, loading: false,
+  });
+  useEffect(() => {
+    let active = true;
+    set((prev) => ({ ...prev, error: '', loading: true }));
+    (async () => {
+      const PAGE_SIZE = 500, MAX_PAGES = 4;
+      const rows: UnpaidHouse[] = [];
+      let total = 0;
+      try {
+        for (let page = 1; page <= MAX_PAGES; page += 1) {
+          const data = await request<Houses>({ url: '/fees/mis/residential', query: { ...JSON.parse(q), page, pageSize: PAGE_SIZE }, timeout: 30_000 });
+          rows.push(...(data.rows || []));
+          total = Number(data.total ?? rows.length);
+          if (rows.length >= total) break;
+        }
+        if (active) set({ rows, total, truncated: rows.length < total, error: '', loadedAt: Date.now(), loading: false });
+      } catch (e) {
+        if (active) set({ rows: [], total: 0, truncated: false, error: message(e), loadedAt: 0, loading: false });
+      }
+    })();
+    return () => { active = false; };
+  }, [q, signal]);
   return state;
 }
 
@@ -103,23 +142,21 @@ function TrendChart({ buckets }: { buckets: TrendBucket[] }) {
   );
 }
 
-function AgingBars({ aging }: { aging: Aging }) {
-  const total = aging.amountCents || AGING_KEYS.reduce((sum, key) => sum + (aging.buckets[key]?.amountCents || 0), 0);
-  const max = Math.max(1, ...AGING_KEYS.map((key) => aging.buckets[key]?.amountCents || 0));
+function AmountBars({ buckets, totalAmount, totalCount, truncated, loadedCount }: { buckets: AmountBucket[]; totalAmount: number; totalCount: number; truncated: boolean; loadedCount: number }) {
+  const max = Math.max(1, ...buckets.map((bucket) => bucket.amountCents));
   return (
     <div className="scr-aging">
-      {AGING_KEYS.map((key) => {
-        const bucket = aging.buckets[key] || { count: 0, amountCents: 0 };
-        const share = total ? Math.round((bucket.amountCents / total) * 1000) / 10 : 0;
+      {buckets.map((bucket) => {
+        const share = totalAmount ? Math.round((bucket.amountCents / totalAmount) * 1000) / 10 : 0;
         return (
-          <div className="scr-aging-row" key={key}>
-            <div className="scr-aging-head"><span>{AGING_LABELS[key]}</span><b>¥{cents(bucket.amountCents)}</b><em>{share}%</em></div>
+          <div className="scr-aging-row" key={bucket.key}>
+            <div className="scr-aging-head"><span>{bucket.label}</span><b>¥{cents(bucket.amountCents)}</b><em>{share}%</em></div>
             <div className="scr-aging-track"><i className="scr-aging-bar" style={{ width: `${Math.max(bucket.amountCents ? 2 : 0, (bucket.amountCents / max) * 100)}%` }} /></div>
             <small>{bucket.count} 户</small>
           </div>
         );
       })}
-      <p className="scr-footnote">账龄按最早未缴账期起算 · 合计 ¥{cents(total)}{aging.truncated ? ` · 仅扫描前 ${aging.scanned} 户，统计不完整` : ''}</p>
+      <p className="scr-footnote">按户待缴总额分档 · 合计 ¥{cents(totalAmount)} · {totalCount} 户{truncated ? ` · 仅统计前 ${loadedCount} 户（共 ${totalCount} 户）` : ''}</p>
     </div>
   );
 }
@@ -160,7 +197,8 @@ export default function Screen() {
   const options = useLive<Options>('/fees/mis/options', {}, signal);
   const dash = useLive<Dashboard>('/fees/mis/residential', { view: 'dashboard', category: 'all', communityId, periodFrom: `${year}01`, periodTo: `${year}12` }, signal);
   const trend = useLive<Trend>('/fees/mis/residential', { view: 'trend', category: 'all', communityId, paidFrom: yearFrom, paidTo: yearTo }, signal);
-  const houses = useLive<Houses>('/fees/mis/residential', { view: 'households', status: 'unpaid', category: 'all', communityId, periodFrom: `${year}01`, periodTo: `${year}12`, page: 1, pageSize: 1 }, signal);
+  const ledger = useUnpaidHouseholds({ view: 'households', status: 'unpaid', category: 'all', communityId, periodFrom: `${year}01`, periodTo: `${year}12`, sort: 'amount', dir: 'desc' }, signal);
+  const recent = useLive<RecentPayment[]>('/fees/mis/recent-payments', { limit: 10, communityId }, signal);
   const batches = useLive<Batches>('/fees/mis/collections', { communityId, page: 1, pageSize: 100 }, signal);
   const effect = useLive<Effect>('/fees/mis/collections/effect', { communityId, windowDays: 30, page: 1, pageSize: 1 }, signal);
   const sms = useLive<SmsStats>('/fees/mis/collections/sms-stats', { communityId, from: yearFrom, to: yearTo }, signal);
@@ -204,8 +242,8 @@ export default function Screen() {
   const summary = dash.data?.summary;
   const paidRate = summary && summary.receivableCents ? Math.round((summary.paidCents / summary.receivableCents) * 1000) / 10 : null;
   const unpaidShare = summary && summary.receivableCents ? Math.round((summary.unpaidCents / summary.receivableCents) * 1000) / 10 : null;
-  const loadedAt = Math.max(dash.loadedAt, trend.loadedAt, houses.loadedAt, batches.loadedAt, effect.loadedAt, sms.loadedAt);
-  const loading = [dash, trend, houses, batches, effect, sms].some((item) => item.loading);
+  const loadedAt = Math.max(dash.loadedAt, trend.loadedAt, ledger.loadedAt, batches.loadedAt, effect.loadedAt, sms.loadedAt, recent.loadedAt);
+  const loading = [dash, trend, ledger, batches, effect, sms, recent].some((item) => item.loading);
 
   const monthly: TrendBucket[] = yearMonths.map((month) => {
     const rows = (trend.data?.rows || []).filter((row) => row.day.slice(0, 7) === month);
@@ -219,11 +257,36 @@ export default function Screen() {
 
   const smsTotal = num(sms.data?.total ?? sms.data?.sent ?? sms.data?.count);
   const smsDelivered = num(sms.data?.delivered ?? sms.data?.deliveryCount ?? sms.data?.success);
-  const smsRate = typeof sms.data?.deliveryRate === 'number' ? sms.data.deliveryRate : smsTotal ? Math.round((smsDelivered / smsTotal) * 1000) / 10 : null;
+  const smsRate = typeof sms.data?.deliveredRate === 'number' ? sms.data.deliveredRate : smsTotal ? Math.round((smsDelivered / smsTotal) * 1000) / 10 : null;
   const communities = options.data?.communities || [];
 
-  // 底部实时播报：只用已有请求的数据拼消息，任何一段没数据就跳过；一条都没有时整条不渲染。
+  // 待缴金额分档（按户待缴总额，不是账龄；前端聚合，不新增接口）
+  const amountBuckets: AmountBucket[] = AMOUNT_BUCKETS.map((bucket) => ({ key: bucket.key, label: bucket.label, count: 0, amountCents: 0 }));
+  for (const row of ledger.rows) {
+    if (!(row.amountCents > 0)) continue;
+    const hit = amountBuckets.find((bucket) => bucket.key === amountBucketOf(row.amountCents).key);
+    if (!hit) continue;
+    hit.count += 1;
+    hit.amountCents += row.amountCents;
+  }
+  const unpaidAmountTotal = amountBuckets.reduce((sum, bucket) => sum + bucket.amountCents, 0);
+  const unpaidHouseCount = amountBuckets.reduce((sum, bucket) => sum + bucket.count, 0);
+
+  // 底部实时播报：近期缴费（MIS 只有日期精度，只显示 paidAt 的月-日）→ 今日实收 → 通知批次数 → 短信送达率 → 欠费小区。
+  // 不把 recordedAt 当收款时间；需要时刻时只能写「登记 HH:mm」，本次不展示。
   const tickerMessages: string[] = [];
+  if (year === currentYear) {
+    for (const row of (recent.data || []).slice(0, 10)) {
+      if (!row.paidAt) continue;
+      tickerMessages.push([row.paidAt.slice(5), row.ownerName || '业主未登记', row.address, row.channel || '', '¥' + cents(row.amountCents)].filter(Boolean).join(' '));
+    }
+  }
+  if (year === currentYear && trend.data) {
+    const todayRow = trend.data.rows.find((row) => row.day === today);
+    tickerMessages.push('今日实收 ¥' + cents(todayRow?.netCents || 0));
+  }
+  if (batches.data && batchTotal > 0) tickerMessages.push('本轮已通知 ' + batchTotal + ' 批 / ' + batchHouses + ' 户次');
+  if (smsRate !== null) tickerMessages.push('短信送达率 ' + smsRate + '%' + (smsTotal ? '（共 ' + smsTotal + ' 条）' : ''));
   const communityRows = communityData.data?.rows || [];
   if (communityRows.length) {
     const totalUnpaid = communityRows.reduce((sum, row) => sum + row.unpaidCents, 0);
@@ -234,14 +297,6 @@ export default function Screen() {
         tickerMessages.push(row.name + '待缴 ¥' + cents(row.unpaidCents) + '，占全部 ' + share + '%');
       });
   }
-  (houses.data?.aging?.topHouses || []).slice(0, 3).filter((row) => row.amountCents > 0)
-    .forEach((row) => tickerMessages.push(row.address + ' ' + (row.ownerName || '业主未记录') + ' ¥' + cents(row.amountCents)));
-  if (year === currentYear && trend.data) {
-    const todayRow = trend.data.rows.find((row) => row.day === today);
-    tickerMessages.push('今日实收 ¥' + cents(todayRow?.netCents || 0));
-  }
-  if (batches.data && batchTotal > 0) tickerMessages.push('本轮已通知 ' + batchTotal + ' 批 / ' + batchHouses + ' 户次');
-  if (smsRate !== null) tickerMessages.push('短信送达率 ' + smsRate + '%' + (smsTotal ? '（共 ' + smsTotal + ' 条）' : ''));
 
   useEffect(() => { setTickerIndex(0); }, [signal]);
   useEffect(() => {
@@ -322,10 +377,12 @@ export default function Screen() {
 
         <article className="scr-panel scr-aging-panel">
           <div className="scr-panel-head">
-            <h2>欠费账龄分布</h2>
-            <span className="scr-legend">未缴本金 · 4 档</span>
+            <h2>待缴金额分布</h2>
+            <span className="scr-legend">按户待缴总额分档</span>
           </div>
-          {houses.error ? <Empty text="账龄读取失败" detail={houses.error} /> : houses.data?.aging ? <AgingBars aging={houses.data.aging} /> : <Empty text="正在读取账龄…" />}
+          {ledger.error ? <Empty text="待缴金额读取失败" detail={ledger.error} /> : ledger.loadedAt ? (
+            <AmountBars buckets={amountBuckets} totalAmount={unpaidAmountTotal} totalCount={unpaidHouseCount} truncated={ledger.truncated} loadedCount={ledger.rows.length} />
+          ) : <Empty text="正在读取待缴金额…" />}
         </article>
       </section>
 
