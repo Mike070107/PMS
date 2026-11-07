@@ -59,7 +59,7 @@ export default function Logs() {
   const session = useSession();
   const canView = can('logs', 'view');
   const scopeKey = JSON.stringify([session.user?.id,session.user?.tenantId,session.actingTenant?.id,session.actingOffice?.id]);
-  const [tab, setTab] = useState<'logs' | 'intro'>('logs');
+  const [tab, setTab] = useState<'logs' | 'intro' | 'usage'>('logs');
   const [ov, setOv] = useState<Overview | null>(null);
   const [cat, setCat] = useState('');
   const [onlyFail, setOnlyFail] = useState(false);
@@ -111,6 +111,7 @@ export default function Logs() {
       <div className="chips" style={{ marginBottom: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }} role="tablist" aria-label="日志视图">
         <button role="tab" aria-selected={tab === 'logs'} className={`chip ${tab === 'logs' ? 'on' : ''}`} onClick={() => setTab('logs')}><Icon name="log" size={14} />系统日志</button>
         <button role="tab" aria-selected={tab === 'intro'} className={`chip ${tab === 'intro' ? 'on' : ''}`} onClick={() => setTab('intro')}><Icon name="globe" size={14} />汇报页访问</button>
+        <button role="tab" aria-selected={tab === 'usage'} className={`chip ${tab === 'usage' ? 'on' : ''}`} onClick={() => setTab('usage')}><Icon name="chart" size={14} />使用统计</button>
       </div>
 
       {tab === 'logs' ? (<>
@@ -173,8 +174,10 @@ export default function Logs() {
           <button className="btn sm" disabled={page >= pages} onClick={() => setPage(page + 1)}>下一页</button>
         </div>
       ) : null}
-      </>) : (
+      </>) : tab === 'intro' ? (
         <IntroViewsPanel retry={retryIntro} />
+      ) : (
+        <UsagePanel scopeKey={scopeKey} />
       )}
     </>
   );
@@ -258,6 +261,263 @@ function IntroViewsPanel({ retry }: { retry: number }) {
         </div>
       ) : null}
       <p className="muted" style={{ fontSize: 13, marginTop: 14 }}>统计口径：每次打开 /intro/ 页面记一次（同一 IP 2 秒内去重）；IP 由服务端从请求头获取，仅用于内部访问统计。</p>
+    </>
+  );
+}
+
+/** 使用统计：page-usage + login-history；接口未就绪时显示「待接口」，不造假数据。 */
+type UsageDay = { date: string; count: number };
+type UsagePageRow = { name: string; views: number; users: number; share: number };
+type UsageUserRow = { name: string; views: number; pages: number; topPage: string };
+type UsageData = { totalViews: number; uniqueUsers: number; days: UsageDay[]; topPages: UsagePageRow[]; topUsers: UsageUserRow[] };
+type LoginRow = { id: string; time: string; user: string; method: string; status: 'success' | 'failed' | 'unknown'; reason: string; ip: string };
+type LoginData = { rows: LoginRow[]; total: number };
+type LoginFilter = 'all' | 'success' | 'failed';
+
+function numberValue(value: unknown) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+function textValue(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value;
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  }
+  return '';
+}
+function normalizeUsage(raw: any): UsageData {
+  const totalViews = numberValue(raw?.totalViews ?? raw?.views ?? raw?.total);
+  const uniqueUsers = numberValue(raw?.uniqueUsers ?? raw?.users ?? raw?.userCount);
+  const days = Array.isArray(raw?.days) ? raw.days.map((row: any) => ({ date: textValue(row?.date, row?.day, row?.bucket).slice(0, 10), count: numberValue(row?.count ?? row?.views ?? row?.visits) })) : [];
+  const topPages = Array.isArray(raw?.topPages) ? raw.topPages.map((row: any) => {
+    const views = numberValue(row?.views ?? row?.count ?? row?.visits);
+    const shareRaw = Number(row?.share ?? row?.ratio);
+    const share = Number.isFinite(shareRaw) && shareRaw > 0 ? (shareRaw <= 1 ? shareRaw * 100 : shareRaw) : (totalViews ? (views / totalViews) * 100 : 0);
+    return { name: textValue(row?.name, row?.pageName, row?.path, row?.pageKey) || '未命名页面', views, users: numberValue(row?.uniqueUsers ?? row?.users ?? row?.userCount), share: Math.round(share * 10) / 10 };
+  }) : [];
+  const topUsers = Array.isArray(raw?.topUsers) ? raw.topUsers.map((row: any) => ({
+    name: textValue(row?.name, row?.userName, row?.user, row?.loginAccount) || (row?.userId ? '用户 #' + row.userId : '未知用户'),
+    views: numberValue(row?.views ?? row?.count ?? row?.visits),
+    pages: numberValue(row?.pages ?? row?.pageCount ?? row?.uniquePages),
+    topPage: textValue(row?.topPage, row?.topPageName, row?.page, row?.mostVisitedPage) || '—',
+  })) : [];
+  return { totalViews, uniqueUsers, days, topPages, topUsers };
+}
+function normalizeLogin(raw: any): LoginData {
+  const list = Array.isArray(raw) ? raw : Array.isArray(raw?.rows) ? raw.rows : Array.isArray(raw?.list) ? raw.list : [];
+  const rows = list.map((row: any, index: number) => {
+    const statusRaw = String(row?.status ?? row?.result ?? '').toLowerCase();
+    const success = row?.success === true || ['success', 'succeeded', 'ok', '1', 'true'].includes(statusRaw);
+    const failed = row?.success === false || ['failed', 'failure', 'fail', 'error', '0', 'false'].includes(statusRaw);
+    return {
+      id: textValue(row?.id) || String(index),
+      time: textValue(row?.time, row?.createdAt, row?.at, row?.loginAt),
+      user: textValue(row?.userName, row?.name, row?.user, row?.account, row?.loginAccount, row?.attemptedAccount) || '未知用户',
+      method: textValue(row?.method, row?.loginMethod, row?.provider, row?.type),
+      status: success ? 'success' as const : failed ? 'failed' as const : 'unknown' as const,
+      reason: textValue(row?.reason, row?.failureReason, row?.message),
+      ip: textValue(row?.ip, row?.ipAddress, row?.clientIp) || '—',
+    };
+  });
+  return { rows, total: numberValue(Array.isArray(raw) ? rows.length : raw?.total ?? rows.length) };
+}
+const LOGIN_METHOD: Record<string, string> = { password: '密码', wechat: '微信', qr: '扫码', oauth: '第三方', sso: '单点登录', token: '令牌' };
+
+function UsagePanel({ scopeKey }: { scopeKey: string }) {
+  const [windowKey, setWindowKey] = useState<'today' | '7d' | '30d' | 'custom'>('7d');
+  const [from, setFrom] = useState(dayjs().subtract(6, 'day').format('YYYY-MM-DD'));
+  const [to, setTo] = useState(dayjs().format('YYYY-MM-DD'));
+  const [trendDays, setTrendDays] = useState<7 | 30>(7);
+  const [usage, setUsage] = useState<UsageData | null>(null);
+  const [usageMissing, setUsageMissing] = useState(false);
+  const [login, setLogin] = useState<LoginData | null>(null);
+  const [loginMissing, setLoginMissing] = useState(false);
+  const [loginFilter, setLoginFilter] = useState<LoginFilter>('all');
+  const [loginPage, setLoginPage] = useState(1);
+  const [retry, setRetry] = useState(0);
+
+  const chooseWindow = (key: 'today' | '7d' | '30d' | 'custom') => {
+    setWindowKey(key);
+    setLoginPage(1);
+    if (key === 'custom') return;
+    const days = key === 'today' ? 1 : key === '7d' ? 7 : 30;
+    setFrom(dayjs().subtract(days - 1, 'day').format('YYYY-MM-DD'));
+    setTo(dayjs().format('YYYY-MM-DD'));
+  };
+
+  useEffect(() => {
+    if (!from || !to || from > to) return;
+    let alive = true;
+    setUsage(null);
+    setUsageMissing(false);
+    request<unknown>({ url: '/telemetry/page-usage', query: { from, to } })
+      .then((raw) => { if (alive) setUsage(normalizeUsage(raw)); })
+      .catch(() => { if (alive) setUsageMissing(true); });
+    return () => { alive = false; };
+  }, [from, to, scopeKey, retry]);
+
+  useEffect(() => {
+    if (!from || !to || from > to) return;
+    let alive = true;
+    setLogin(null);
+    setLoginMissing(false);
+    request<unknown>({ url: '/telemetry/login-history', query: { from, to, limit: 20, page: loginPage, status: loginFilter === 'all' ? undefined : loginFilter } })
+      .then((raw) => { if (alive) setLogin(normalizeLogin(raw)); })
+      .catch(() => { if (alive) setLoginMissing(true); });
+    return () => { alive = false; };
+  }, [from, to, loginPage, loginFilter, scopeKey, retry]);
+
+  const invalidRange = !!from && !!to && from > to;
+  const perUser = usage && usage.uniqueUsers ? Math.round((usage.totalViews / usage.uniqueUsers) * 10) / 10 : null;
+  const trend = (usage?.days || []).slice(-trendDays);
+  const trendMax = Math.max(1, ...trend.map((d) => d.count));
+  const visibleLogin = (login?.rows || []).filter((row) => loginFilter === 'all' || row.status === loginFilter);
+  const loginPages = login ? Math.max(1, Math.ceil(login.total / 20)) : 1;
+
+  return (
+    <>
+      <div className="wo-bar" style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
+        <div className="chips" role="tablist" aria-label="使用统计时间窗">
+          {([['today', '今日'], ['7d', '近7天'], ['30d', '近30天'], ['custom', '自定义']] as const).map(([key, label]) => (
+            <button key={key} role="tab" aria-selected={windowKey === key} className={`chip ${windowKey === key ? 'on' : ''}`} onClick={() => chooseWindow(key)}>{label}</button>
+          ))}
+        </div>
+        <input className="in" type="date" style={{ width: 150 }} value={from} max={to} aria-label="使用统计开始日期" onChange={(e) => { setWindowKey('custom'); setFrom(e.target.value); setLoginPage(1); }} />
+        <span className="muted">至</span>
+        <input className="in" type="date" style={{ width: 150 }} value={to} min={from} aria-label="使用统计结束日期" onChange={(e) => { setWindowKey('custom'); setTo(e.target.value); setLoginPage(1); }} />
+        <button className="btn sm" style={{ marginLeft: 'auto' }} onClick={() => setRetry((value) => value + 1)}>刷新统计</button>
+      </div>
+
+      {invalidRange ? <div className="card" role="alert" style={{ padding: 24 }}>开始日期不能晚于结束日期。</div> : (
+        <>
+          {usageMissing ? (
+            <div className="card usage-missing" role="status">
+              <span className="usage-tag">待接口</span>
+              <b>使用统计接口未就绪</b>
+              <small>GET /telemetry/page-usage 暂不可用；接口上线后这里会显示总访问、独立用户、访问趋势与页面/用户榜单。</small>
+              <button className="btn sm" onClick={() => setRetry((value) => value + 1)}>重试</button>
+            </div>
+          ) : usage === null ? <Loading /> : (
+            <>
+              <div className="usage-cards">
+                <div className="stat"><div className="ic blue"><Icon name="chart" /></div><div className="v">{usage.totalViews.toLocaleString()}</div><div className="k">总访问次数</div></div>
+                <div className="stat"><div className="ic green"><Icon name="users" /></div><div className="v">{usage.uniqueUsers.toLocaleString()}</div><div className="k">独立用户</div></div>
+                <div className="stat"><div className="ic amber"><Icon name="today" /></div><div className="v">{perUser === null ? '—' : perUser}</div><div className="k">人均访问页数</div></div>
+              </div>
+
+              <div className="card intro-chart" style={{ marginBottom: 16 }}>
+                <div className="intro-chart-head">
+                  <b>访问趋势 · 按北京时间自然日</b>
+                  <div className="chips">
+                    {([[7, '近7天'], [30, '近30天']] as const).map(([days, label]) => (
+                      <button key={days} className={`chip ${trendDays === days ? 'on' : ''}`} onClick={() => setTrendDays(days)}>{label}</button>
+                    ))}
+                  </div>
+                </div>
+                {trend.length === 0 ? <div className="muted" style={{ padding: '24px 0' }}>所选时间窗内没有访问记录。</div> : (
+                  <div className="intro-bars">
+                    {trend.map((d) => (
+                      <div className="intro-bar" key={d.date || String(d.count)} title={`${d.date || '未标注日期'} · ${d.count} 次`}>
+                        <b>{d.count}</b>
+                        <span style={{ height: `${Math.max(3, (d.count / trendMax) * 100)}%` }} className={d.count ? '' : 'empty'} />
+                        <small>{(d.date || '').slice(5) || '—'}</small>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="usage-grid">
+                <div className="card" style={{ overflow: 'hidden' }}>
+                  <div className="intro-list-head"><b>页面 Top20</b><span className="muted">按访问次数 · 占比按总访问</span></div>
+                  <div className="intro-table-wrap">
+                    <table className="t usage-table">
+                      <thead><tr><th>页面</th><th className="usage-num">访问次数</th><th className="usage-num">独立用户</th><th>占比</th></tr></thead>
+                      <tbody>
+                        {usage.topPages.map((row, index) => (
+                          <tr key={row.name + index}>
+                            <td>{row.name}</td>
+                            <td className="usage-num">{row.views.toLocaleString()}</td>
+                            <td className="usage-num">{row.users.toLocaleString()}</td>
+                            <td><div className="usage-share"><i style={{ width: `${Math.min(100, Math.max(0, row.share))}%` }} /><span>{row.share}%</span></div></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {usage.topPages.length === 0 ? <div className="muted" style={{ padding: 32, textAlign: 'center' }}>所选时间窗内没有页面访问。</div> : null}
+                  </div>
+                </div>
+
+                <div className="card" style={{ overflow: 'hidden' }}>
+                  <div className="intro-list-head"><b>用户 Top20</b><span className="muted">按访问次数</span></div>
+                  <div className="intro-table-wrap">
+                    <table className="t usage-table">
+                      <thead><tr><th>姓名</th><th className="usage-num">访问次数</th><th className="usage-num">页面数</th><th>最常访问页</th></tr></thead>
+                      <tbody>
+                        {usage.topUsers.map((row, index) => (
+                          <tr key={row.name + index}>
+                            <td>{row.name}</td>
+                            <td className="usage-num">{row.views.toLocaleString()}</td>
+                            <td className="usage-num">{row.pages.toLocaleString()}</td>
+                            <td>{row.topPage}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {usage.topUsers.length === 0 ? <div className="muted" style={{ padding: 32, textAlign: 'center' }}>所选时间窗内没有用户访问。</div> : null}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="card" style={{ overflow: 'hidden', marginTop: 16 }}>
+            <div className="intro-list-head">
+              <b>登录记录</b>
+              <div className="chips">
+                {([['all', '全部'], ['success', '仅成功'], ['failed', '仅失败']] as const).map(([key, label]) => (
+                  <button key={key} className={`chip ${loginFilter === key ? 'on' : ''}`} onClick={() => { setLoginFilter(key); setLoginPage(1); }}>{label}</button>
+                ))}
+              </div>
+            </div>
+            {loginMissing ? (
+              <div className="usage-missing usage-missing-inline" role="status">
+                <span className="usage-tag">待接口</span>
+                <b>登录记录接口未就绪</b>
+                <small>GET /telemetry/login-history 暂不可用；接口上线后这里显示登录时间、用户或尝试账号、方式、结果与 IP，并支持分页。</small>
+                <button className="btn sm" onClick={() => setRetry((value) => value + 1)}>重试</button>
+              </div>
+            ) : login === null ? <div style={{ padding: 32 }}><Loading /></div> : (
+              <>
+                <div className="intro-table-wrap">
+                  <table className="t usage-table">
+                    <thead><tr><th>时间</th><th>用户 / 尝试账号</th><th>方式</th><th>结果</th><th>IP</th></tr></thead>
+                    <tbody>
+                      {visibleLogin.map((row) => (
+                        <tr key={row.id}>
+                          <td style={{ whiteSpace: 'nowrap' }}>{row.time ? dayjs(row.time).format('YYYY-MM-DD HH:mm:ss') : '—'}</td>
+                          <td>{row.user}</td>
+                          <td>{LOGIN_METHOD[row.method] || row.method || '—'}</td>
+                          <td>{row.status === 'success' ? <span className="tag ok">成功</span> : row.status === 'failed' ? <span className="tag dang" title={row.reason || undefined}>失败{row.reason ? ' · ' + row.reason : ''}</span> : <span className="tag">未知</span>}</td>
+                          <td className="intro-ip">{row.ip}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {visibleLogin.length === 0 ? <div className="muted" style={{ padding: 32, textAlign: 'center' }}>所选筛选范围内没有登录记录。</div> : null}
+                </div>
+                {login.total > 20 ? (
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center', padding: 14, borderTop: '1px solid var(--line2)' }}>
+                    <button className="btn sm" disabled={loginPage <= 1} onClick={() => setLoginPage((value) => value - 1)}>上一页</button>
+                    <span className="muted">第 {loginPage} / {loginPages} 页 · 共 {login.total} 条</span>
+                    <button className="btn sm" disabled={loginPage >= loginPages} onClick={() => setLoginPage((value) => value + 1)}>下一页</button>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
+        </>
+      )}
     </>
   );
 }

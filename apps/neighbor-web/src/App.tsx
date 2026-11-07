@@ -11,7 +11,8 @@ function lazy<T extends ComponentType<any>>(load: () => Promise<{ default: T }>)
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { auth as authApi } from '@pms/api-client';
 import { auth, useSession, type SessionIdentity } from '@/lib/auth';
-import { canViewPath, firstAllowedPath } from '@/lib/page-access';
+import { apiBaseURL } from '@/lib/api';
+import { canViewPath, firstAllowedPath, pageForPath } from '@/lib/page-access';
 import { can } from '@/lib/perm';
 import Shell from '@/components/Shell';
 import Login from '@/pages/Login';
@@ -50,9 +51,81 @@ const FamilyCars = lazy(() => import('@/pages/FamilyCars'));
 const PlateForm = lazy(() => import('@/pages/PlateForm'));
 const ScreenPage = lazy(() => import('@/pages/Screen'));
 
+/** 页面访问埋点：30 秒或满 20 条批量发一次；页面隐藏/卸载时 flush，fetch keepalive 失败再走 sendBeacon。 */
+type TelemetryView = { path: string; pageKey?: string };
+const TELEMETRY_BATCH = 20;
+const TELEMETRY_FLUSH_MS = 30_000;
+const TELEMETRY_SKIP = ['/login', '/intro', '/screen', '/m/plate'];
+const telemetryQueue: TelemetryView[] = [];
+
+function telemetryAllowed(pathname: string) {
+  if (!pathname || !pathname.startsWith('/')) return false;
+  return !TELEMETRY_SKIP.some((prefix) => pathname === prefix || pathname.startsWith(prefix + '/'));
+}
+function telemetryPageKey(pathname: string) {
+  const page = pageForPath(pathname);
+  return page?.keys?.[0] || pathname.split('/').filter(Boolean)[0] || 'root';
+}
+function telemetryHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'content-type': 'application/json', 'x-client-source': 'admin-web' };
+  const token = auth.getToken();
+  if (token) headers.Authorization = 'Bearer ' + token;
+  const tenant = auth.getActingTenant();
+  if (tenant) headers['x-acting-tenant-id'] = String(tenant.id);
+  const office = auth.getActingOffice();
+  if (office) headers['x-acting-office-id'] = String(office.id);
+  return headers;
+}
+function flushTelemetry(beacon = false) {
+  if (!telemetryQueue.length) return;
+  const views = telemetryQueue.splice(0, telemetryQueue.length);
+  if (!auth.getToken()) return; // 未登录或 token 失效：静默丢弃，不弹错
+  const base = (apiBaseURL || '').replace(/\/$/, '');
+  const body = JSON.stringify({ views });
+  try {
+    void fetch(base + '/telemetry/page-views', { method: 'POST', headers: telemetryHeaders(), body, keepalive: true })
+      .then((res) => {
+        // 批量接口还没上线时，回退现有单条接口，保持静默、失败丢弃
+        if (res.status === 404 || res.status === 405) {
+          for (const view of views) {
+            void fetch(base + '/telemetry/page-view', { method: 'POST', headers: telemetryHeaders(), body: JSON.stringify({ path: view.path }), keepalive: true }).catch(() => undefined);
+          }
+        }
+      })
+      .catch(() => {
+        if (beacon && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+          try { navigator.sendBeacon(base + '/telemetry/page-views', new Blob([body], { type: 'application/json' })); } catch { /* 静默 */ }
+        }
+      });
+  } catch { /* 静默丢弃 */ }
+}
+function usePageViewTelemetry(pathname: string) {
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') flushTelemetry(false); }, TELEMETRY_FLUSH_MS);
+    const onVisibility = () => { if (document.visibilityState === 'hidden') flushTelemetry(true); };
+    const onPageHide = () => flushTelemetry(true);
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', onPageHide);
+      flushTelemetry(true);
+    };
+  }, []);
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (!telemetryAllowed(pathname) || !auth.getToken()) return;
+    telemetryQueue.push({ path: pathname, pageKey: telemetryPageKey(pathname) });
+    if (telemetryQueue.length >= TELEMETRY_BATCH) flushTelemetry(false);
+  }, [pathname]);
+}
+
 /** 未登录访问深层链接：带上原始路径，登录后回跳，而不是一律落到 /today。 */
 function LoginRedirect() {
   const loc = useLocation();
+  usePageViewTelemetry(loc.pathname);
   const next = loc.pathname + loc.search;
   return <Navigate to={'/login?next=' + encodeURIComponent(next)} replace />;
 }
