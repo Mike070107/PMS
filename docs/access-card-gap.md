@@ -361,3 +361,67 @@ mjsystem completed（删除 1 条权限 + 员工记录，回读 0）
 3. 生命周期 API 从「501 占位」升级为真实任务队列 + Agent 执行（等语义确认；当前 Agent CLI 已具备副本验证过的执行代码）。
 4. 批量导入/导出接口（等 CSV/列/脱敏口径）。
 5. beta Web 页功能补齐（不在本任务写作用域，需另派 owner；本文档 §4 是它的验收清单）。
+
+## 8. 门禁主板远程控制（2026-11-07，新后台后端）
+
+### 8.1 接口
+
+| 方法/路径 | 权限 | 说明 |
+|---|---|---|
+| `POST /api/v1/access-card-issuance/door/open` | `business:edit` | 入队开门/常开任务，返回 `taskId` |
+| `GET /api/v1/access-card-issuance/door/task/:id` | `business:view` | 任务状态与控制器回执 |
+| `GET /api/v1/access-card-issuance/door/controllers?communityId=` | `business:view` | 控制器/门板在线状态（按小区过滤） |
+
+`POST /door/open` body：
+
+```json
+{
+  "communityId": 228,
+  "controllerId": 11,
+  "doorNo": 11,
+  "operation": "remote_open",
+  "minutes": 5,
+  "reason": "业主忘带卡，现场确认",
+  "idempotencyKey": "door-open-20261107-0001"
+}
+```
+
+- `controllerId` 当前就是 PMS 楼栋 ID（现场路由是「一栋楼 → 唯一实体门/控制器」）；`doorNo` 只做一致性校验，必须等于楼栋逻辑门号；将来支持一楼多门时再扩展。
+- `remote_open` 不需要 `minutes`；`temporary_open` 必填 `minutes`，范围 **1–60**。
+- MjSystem 暂不支持常开：返回 400「当前控制器不支持常开：MjSystem 仅开放立即远程开门」，不入队、不重试。
+- 同一 `idempotencyKey` 返回原任务，不重复入队/审计。
+
+任务状态映射：`pending`（已入队）、`sent`（网关已领取/发送中）、`succeeded`（控制器回执确认）、`failed`（明确失败）；同时返回 `rawStatus`、`controllerResults`、`receipt`（controller/door/protocol/acknowledgement）、`error`。
+
+### 8.2 复用现有任务通道（没有另起一套）
+
+- 复用表：`access_card_authorizations`（`operation` 直接用已有的 `remote_open` / `temporary_open` / `restore_normal`，`targetBuildings` 存楼栋，`durationSeconds` 存秒）。
+- 复用领取/回报：`.88` 的 `access_gateway` 助手通过 `POST /access-card-agent/history-authorizations/claim` 领取，`POST /history-authorizations/report` 回报；`AgentLoop.HandleHistoryAuthorization` 已支持这四个门禁操作。
+- 复用执行：`AccessControllerUploader.ExecuteDoorOperation`（iCCard `9D10` / `8F10`，MjSystem 原生 SDK `1A`）。
+- 复用自动恢复：`temporary_open` 成功后服务端自动创建 `restore_normal` 任务（现有逻辑），按 `durationSeconds` 到点恢复。
+- 权限沿用 `access-cards` 的 `business:view/edit`，不新增页面 key、不改权限迁移。
+
+### 8.3 控制器在线状态（复用回执，不新建表）
+
+没有单独硬件在线表；`GET /door/controllers` 聚合：
+
+1. `access_gateway` 心跳 + `remoteDoorControl` 能力 + 助手版本 ≥ 2.5.46 → `agentOnline`；
+2. 该楼栋最近一次 `controller_detect` / `remote_open` / `temporary_open` 的 `access_card_authorizations.controllerResults`（agent 上报的 controller/SN/时间）；
+3. 推导 `status`：`online`（最近完成）、`offline`（最近失败或网关离线）、`pending`（执行中）、`unknown`（无回执）。
+
+返回每栋：`controllerId`、`buildingNo`、`doorNo`、`doorName`、`controllerName`、`accessSystem`、`supportRemoteOpen`、`supportTemporaryOpen`（MjSystem=false）、`lastCheckedAt`、`lastError`。
+
+### 8.4 审计
+
+复用 `business_logs`（`transactionId = 门禁任务 ID`，`action = access_door_<operation>`）：
+- 入队时记录：操作人、小区、控制器、楼栋、门号、操作、分钟数、原因、请求时间、`status=pending`；
+- 控制器回报完成时回写：`status/result`、`controllerResults`、controller/door/acknowledgement、错误、时间。
+- 看审计可用现成业务日志页面；不存卡号/密码等敏感信息。
+
+### 8.5 本期边界（未做/待现场）
+
+- 仅本地/测试验证命令构造与任务流转；**生产发送需 Lead 确认且现场有人守门**。
+- 不支持一楼多门/指定物理控制器 SN；`controllerId=楼栋 ID` 是当前模型。
+- 未做前端入口（`/access-cards`、`/devices`），Web owner 按本文接口契约接入。
+- 临时常开恢复依赖 `.88` 网关在线；离线时任务保留、重连后执行（现有行为）。
+- MjSystem 只开放 `remote_open`；检测/常开仍拒绝，等现场协议验收。

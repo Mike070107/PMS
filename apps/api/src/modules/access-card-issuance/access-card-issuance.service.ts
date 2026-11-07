@@ -22,6 +22,7 @@ import {
   AccessCardLegacyCardCheck,
   AccessCardLegacySnapshot,
   Building,
+  BusinessLog,
   Community,
   House,
   ParkingQuery,
@@ -77,6 +78,7 @@ import {
   ParkingOperationReportDto,
   ParkingHistoryQueryDto,
   CreateAccessCardLifecycleDto,
+  OpenAccessDoorDto,
 } from './dto';
 import { agentTokenMatches, issueAgentSecret } from './agent-auth';
 import { prepareFamilyRegistration, validateRegistrationGarageNumbers, supportsFamilyActivation } from './parking-family';
@@ -704,6 +706,154 @@ export class AccessCardIssuanceService {
     });
     if (!referenceHouse) throw new BadRequestException('所选楼栋没有可用于门禁任务的房产记录');
     return this.createDoorOperation(referenceHouse.id, dto, user, access);
+  }
+
+  /**
+   * 门禁主板远程控制：复用既有 AccessCardAuthorization 任务通道（access_gateway 领取、
+   * history-authorizations/report 回报），不新建任务表/任务队列。
+   *
+   * controllerId 当前即 PMS 楼栋 ID：现场路由是「一栋楼 → 唯一实体门/控制器」，
+   * doorNo 只做一致性校验；以后支持一楼多门时再扩展。
+   */
+  async openDoor(dto: OpenAccessDoorDto, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const building = await this.buildingRepo.findOne({ where: { id: dto.controllerId, tenantId } });
+    if (!building) throw new NotFoundException('门禁控制器不存在');
+    if (building.communityId !== dto.communityId) throw new BadRequestException('控制器不属于所选小区');
+    const community = await this.communityRepo.findOne({ where: { id: building.communityId, tenantId } });
+    if (!community || projectPhaseOf(community.name) !== 'phase2') {
+      throw new BadRequestException('所选控制器不属于枫桦景苑二期联网门禁区域');
+    }
+    const scope = scopeCommunityIds(access);
+    if (scope && !scope.includes(community.id)) throw new ForbiddenException('该控制器不在你的管理范围内');
+    const accessSystem = accessSystemOf('phase2', building.buildingNo);
+    if (!accessSystem) throw new BadRequestException('所选楼栋的门禁路由尚未配置');
+    const logicalDoorNo = this.logicalDoorNo(building.buildingNo);
+    if (dto.doorNo != null && logicalDoorNo != null && dto.doorNo !== logicalDoorNo) {
+      throw new BadRequestException(`该楼栋只支持一个实体门，门号应为 ${logicalDoorNo}`);
+    }
+
+    let durationSeconds: number | null = null;
+    if (dto.operation === 'temporary_open') {
+      if (!dto.minutes || dto.minutes < 1 || dto.minutes > 60) {
+        throw new BadRequestException('临时常开时长必须在 1–60 分钟之间');
+      }
+      // MjSystem 临时常开协议未现场验收：明确拒绝，不进入任务重试。
+      if (accessSystem === 'mjsystem') {
+        throw new BadRequestException('当前控制器不支持常开：MjSystem 仅开放立即远程开门');
+      }
+      durationSeconds = dto.minutes * 60;
+    } else if (dto.minutes != null) {
+      throw new BadRequestException('远程开门不需要 minutes');
+    }
+
+    const idempotencyKey = dto.idempotencyKey.trim();
+    const existing = await this.authorizationRepo.findOne({ where: { tenantId, idempotencyKey } });
+    if (existing) {
+      const existingTarget = existing.targetBuildings?.[0];
+      if (existingTarget && existingTarget.id !== building.id) {
+        throw new BadRequestException('该幂等键已用于其他控制器/门禁任务，请刷新后重试');
+      }
+      return this.doorTaskResponse(existing, building);
+    }
+
+    const task = await this.createStandaloneDoorOperation({
+      buildingId: building.id,
+      operation: dto.operation,
+      durationSeconds: durationSeconds ?? undefined,
+      idempotencyKey,
+    }, user, access);
+    if (!task) throw new ServiceUnavailableException('门禁任务创建失败，请稍后重试');
+    await this.writeDoorAudit(tenantId, task.id, building, dto, durationSeconds, user.id);
+    return this.doorTaskResponse(task, building);
+  }
+
+  async getDoorTask(id: number, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const task = await this.authorizationRepo.findOne({ where: { id, tenantId } });
+    if (!task || !this.isDoorOperation(task.operation)) throw new NotFoundException('门禁控制任务不存在');
+    const target = task.targetBuildings?.[0];
+    const building = target
+      ? await this.buildingRepo.findOne({ where: { id: target.id, tenantId } })
+      : null;
+    if (building) {
+      const scope = scopeCommunityIds(access);
+      if (scope && !scope.includes(building.communityId)) throw new ForbiddenException('该任务不在你的管理范围内');
+    }
+    return this.doorTaskResponse(task, building ?? undefined);
+  }
+
+  /**
+   * 控制器/门板在线状态。
+   * 没有单独的硬件在线表：复用 access_card_authorizations 中 agent 最近一次
+   * controller_detect / remote_open / temporary_open 的逐楼回执（含 controller/SN/时间），
+   * 叠加 access_gateway 心跳能力，推导 online/offline/pending/unknown。
+   */
+  async listDoorControllers(user: AuthUser, access?: ResolvedAccess, communityId?: number) {
+    const tenantId = this.requireTenant(user);
+    const scope = scopeCommunityIds(access);
+    const communities = (await this.communityRepo.find({ where: { tenantId, enabled: true } }))
+      .filter((community) => projectPhaseOf(community.name) === 'phase2')
+      .filter((community) => !scope || scope.includes(community.id))
+      .filter((community) => communityId == null || community.id === communityId);
+    if (!communities.length) {
+      return { agentOnline: false, gatewayVersion: null as string | null, checkedAt: new Date().toISOString(), controllers: [] };
+    }
+    const communityIds = communities.map((community) => community.id);
+    const [buildings, agents, tasks] = await Promise.all([
+      this.buildingRepo.find({ where: { tenantId, communityId: In(communityIds) } }),
+      this.agentRepo.find({ where: { tenantId, kind: 'access_gateway', enabled: true } }),
+      this.authorizationRepo.find({
+        where: { tenantId, operation: In(['controller_detect', 'remote_open', 'temporary_open']) },
+        order: { createdAt: 'DESC' },
+        take: 300,
+      }),
+    ]);
+    const gateway = orderAgentsByAvailability(agents).find((agent) =>
+      effectiveAgentStatus(agent) === 'online'
+      && agent.capabilities?.remoteDoorControl === true
+      && supportsRemoteDoorControl(agent.version));
+    const controllers = buildings
+      .filter((building) => accessSystemOf('phase2', building.buildingNo) !== null)
+      .map((building) => {
+        const system = accessSystemOf('phase2', building.buildingNo)!;
+        const lastTask = tasks.find((task) =>
+          (task.targetBuildings ?? []).some((target) =>
+            target.id === building.id
+            || normalizeBuildingNo(target.buildingNo) === normalizeBuildingNo(building.buildingNo)));
+        const receipt = lastTask?.controllerResults?.[lastTask.controllerResults.length - 1]
+          ?? lastTask?.controllerResults?.[0];
+        let controllerStatus: 'online' | 'offline' | 'pending' | 'unknown' = 'unknown';
+        if (!gateway) controllerStatus = 'offline';
+        else if (lastTask?.status === 'completed') controllerStatus = 'online';
+        else if (lastTask?.status === 'failed') controllerStatus = 'offline';
+        else if (lastTask && ['pending', 'running'].includes(lastTask.status)) controllerStatus = 'pending';
+        return {
+          communityId: building.communityId,
+          communityName: communities.find((community) => community.id === building.communityId)?.name ?? null,
+          controllerId: building.id,
+          buildingNo: building.buildingNo,
+          doorNo: this.logicalDoorNo(building.buildingNo),
+          doorName: typeof receipt?.door === 'string' ? receipt.door : `${building.buildingNo}号楼门`,
+          controllerName: typeof receipt?.controller === 'string' ? receipt.controller : null,
+          accessSystem: system,
+          routeReady: true,
+          agentOnline: Boolean(gateway),
+          status: controllerStatus,
+          supportRemoteOpen: true,
+          supportTemporaryOpen: system === 'iccard',
+          lastOperation: lastTask?.operation ?? null,
+          lastCheckedAt: lastTask ? (lastTask.completedAt ?? lastTask.requestedAt) : null,
+          lastError: lastTask?.status === 'failed' ? lastTask.lastError : null,
+        };
+      })
+      .sort((left, right) => left.buildingNo.localeCompare(right.buildingNo, 'zh-CN', { numeric: true }));
+    return {
+      agentOnline: Boolean(gateway),
+      gatewayVersion: gateway?.version ?? null,
+      checkedAt: new Date().toISOString(),
+      controllers,
+    };
   }
 
   async getHistoryAuthorization(id: number, user: AuthUser) {
@@ -1965,6 +2115,123 @@ export class AccessCardIssuanceService {
     };
   }
 
+  private isDoorOperation(operation: AccessCardAuthorization['operation']): boolean {
+    return ['controller_detect', 'remote_open', 'temporary_open', 'restore_normal'].includes(operation);
+  }
+
+  private doorTaskStatus(status: AccessCardAuthorization['status']): 'pending' | 'sent' | 'succeeded' | 'failed' {
+    if (status === 'pending') return 'pending';
+    if (status === 'running') return 'sent';
+    if (status === 'completed') return 'succeeded';
+    return 'failed';
+  }
+
+  private logicalDoorNo(buildingNo: string): number | null {
+    const match = /(\d{1,3})/.exec(buildingNo?.trim() ?? '');
+    return match ? Number(match[1]) : null;
+  }
+
+  /**
+   * 门禁任务对外统一回执。pending=已入队；sent=网关已领取/发送中；
+   * succeeded=控制器回执确认；failed=明确失败（不是重试中）。
+   */
+  private doorTaskResponse(task: {
+    id: number;
+    operation: AccessCardAuthorization['operation'];
+    status: AccessCardAuthorization['status'];
+    targetBuildings: AccessCardAuthorization['targetBuildings'];
+    durationSeconds: number | null;
+    controllerResults: Array<Record<string, unknown>>;
+    lastError?: string | null;
+    error?: string | null;
+    requestedAt: Date;
+    completedAt: Date | null;
+    attempt: number;
+  }, building?: Building) {
+    const target = task.targetBuildings?.[0];
+    const receipt = task.controllerResults?.[task.controllerResults.length - 1]
+      ?? task.controllerResults?.[0] ?? null;
+    return {
+      taskId: task.id,
+      operation: task.operation,
+      status: this.doorTaskStatus(task.status),
+      rawStatus: task.status,
+      communityId: building?.communityId ?? null,
+      controllerId: target?.id ?? building?.id ?? null,
+      doorNo: this.logicalDoorNo(target?.buildingNo ?? building?.buildingNo ?? ''),
+      buildingNo: target?.buildingNo ?? building?.buildingNo ?? null,
+      accessSystem: target?.accessSystem ?? null,
+      minutes: task.durationSeconds ? Math.round(task.durationSeconds / 60) : null,
+      controller: typeof receipt?.controller === 'string' ? receipt.controller : null,
+      door: typeof receipt?.door === 'string' ? receipt.door : null,
+      protocol: typeof receipt?.protocol === 'string' ? receipt.protocol : null,
+      acknowledgement: typeof receipt?.acknowledgement === 'string' ? receipt.acknowledgement : null,
+      receipt,
+      controllerResults: task.controllerResults ?? [],
+      error: task.lastError ?? task.error ?? null,
+      attempt: task.attempt,
+      requestedAt: task.requestedAt,
+      completedAt: task.completedAt,
+    };
+  }
+
+  /** 审计：复用 business_logs，transactionId 存门禁任务 ID；报告完成时回写结果。 */
+  private async writeDoorAudit(
+    tenantId: number,
+    taskId: number,
+    building: Building,
+    dto: OpenAccessDoorDto,
+    durationSeconds: number | null,
+    userId: number,
+  ): Promise<void> {
+    const repo = this.authorizationRepo.manager.getRepository(BusinessLog);
+    await repo.save(repo.create({
+      tenantId,
+      transactionId: taskId,
+      action: `access_door_${dto.operation}`,
+      detail: {
+        taskId,
+        communityId: building.communityId,
+        controllerId: building.id,
+        buildingNo: building.buildingNo,
+        doorNo: this.logicalDoorNo(building.buildingNo),
+        operation: dto.operation,
+        minutes: durationSeconds ? Math.round(durationSeconds / 60) : null,
+        reason: dto.reason?.trim() || null,
+        requestedBy: userId,
+        requestedAt: new Date().toISOString(),
+        status: 'pending',
+        result: null,
+      },
+      createdBy: userId,
+      updatedBy: userId,
+    }));
+  }
+
+  private async updateDoorAudit(manager: EntityManager, task: AccessCardAuthorization): Promise<void> {
+    if (!this.isDoorOperation(task.operation)) return;
+    const repo = manager.getRepository(BusinessLog);
+    const entry = await repo.findOne({
+      where: { tenantId: task.tenantId, transactionId: task.id, action: `access_door_${task.operation}` },
+    });
+    if (!entry) return;
+    const receipt = task.controllerResults?.[task.controllerResults.length - 1] ?? null;
+    entry.detail = {
+      ...entry.detail,
+      status: task.status,
+      result: task.status === 'completed' ? 'succeeded' : task.status === 'failed' ? 'failed' : 'sent',
+      attempt: task.attempt,
+      controllerResults: task.controllerResults,
+      controller: typeof receipt?.controller === 'string' ? receipt.controller : null,
+      door: typeof receipt?.door === 'string' ? receipt.door : null,
+      acknowledgement: typeof receipt?.acknowledgement === 'string' ? receipt.acknowledgement : null,
+      error: task.lastError ?? null,
+      updatedAt: new Date().toISOString(),
+    };
+    entry.updatedBy = task.createdBy ?? null;
+    await repo.save(entry);
+  }
+
   private authorizationResultSucceeded(operation: AccessCardAuthorization['operation'], row: Record<string, unknown>) {
     const expected = operation === 'access_database_only' ? 'access_db_written'
       : operation === 'controller_revoke' ? 'controller_removed'
@@ -2724,6 +2991,7 @@ export class AccessCardIssuanceService {
       task.leaseExpiresAt = null;
       task.updatedBy = null;
       await repo.save(task);
+      if (isDoorOperation) await this.updateDoorAudit(manager, task);
     });
     return { ok: true };
   }

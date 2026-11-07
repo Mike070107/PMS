@@ -339,6 +339,45 @@ export class AccessCardAuthorizationReportDto {
   errorMessage?: string;
 }
 
+export class OpenAccessDoorDto {
+  @Type(() => Number)
+  @IsInt()
+  communityId: number;
+
+  /** 当前门禁路由下每栋楼只对应一个实体门/控制器，controllerId 即 PMS 楼栋 ID。 */
+  @Type(() => Number)
+  @IsInt()
+  controllerId: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(255)
+  doorNo?: number;
+
+  @IsIn(['remote_open', 'temporary_open'])
+  operation: 'remote_open' | 'temporary_open';
+
+  /** temporary_open 必填：1–60 分钟。 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(60)
+  minutes?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  reason?: string;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(100)
+  idempotencyKey: string;
+}
+
 export class CreateAccessCardLifecycleDto {
   @IsIn(['extend', 'lost', 'unlost', 'cancel', 'replace', 'reissue'])
   operation: 'extend' | 'lost' | 'unlost' | 'cancel' | 'replace' | 'reissue';

@@ -1,5 +1,6 @@
 import { CreateParkingFeeDetailDto } from './dto';
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -31,6 +32,7 @@ import {
   CreateAccessCardAuthorizationDto,
   CreateAccessCardControllerUploadDto,
   CreateAccessDoorOperationDto,
+  OpenAccessDoorDto,
   CreateAccessCardLifecycleDto,
   EnrollAccessCardAgentDto,
   LegacyCardCheckReportDto,
@@ -333,6 +335,40 @@ export class AccessCardIssuanceController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.service.addHistoryCardToAccessDatabase(houseId, historyId, dto, user, access);
+  }
+
+  @Post('door/open')
+  @RequirePermission('business', 'edit')
+  openDoor(
+    @Body() dto: OpenAccessDoorDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.openDoor(dto, user, access);
+  }
+
+  @Get('door/task/:id')
+  @RequirePermission('business', 'view')
+  doorTask(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.getDoorTask(id, user, access);
+  }
+
+  @Get('door/controllers')
+  @RequirePermission('business', 'view')
+  doorControllers(
+    @Query('communityId') communityId: string | undefined,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    if (communityId != null && communityId !== '' && !/^\d+$/.test(communityId)) {
+      throw new BadRequestException('communityId 不合法');
+    }
+    return this.service.listDoorControllers(user, access,
+      communityId == null || communityId === '' ? undefined : Number(communityId));
   }
 
   @Post('houses/:houseId/door-operations')
