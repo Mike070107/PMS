@@ -274,19 +274,19 @@ export default function Screen() {
 
   // 底部实时播报：近期缴费（MIS 只有日期精度，只显示 paidAt 的月-日）→ 今日实收 → 通知批次数 → 短信送达率 → 欠费小区。
   // 不把 recordedAt 当收款时间；需要时刻时只能写「登记 HH:mm」，本次不展示。
-  const tickerMessages: string[] = [];
+  const tickerMessages: { text: string; paid?: boolean }[] = [];
   if (year === currentYear) {
     for (const row of (recent.data || []).slice(0, 10)) {
       if (!row.paidAt) continue;
-      tickerMessages.push([row.paidAt.slice(5), row.ownerName || '业主未登记', row.address, row.channel || '', '¥' + cents(row.amountCents)].filter(Boolean).join(' '));
+      tickerMessages.push({ paid: true, text: [row.paidAt.slice(5), row.ownerName || '业主未登记', row.address, row.channel || '', '¥' + cents(row.amountCents)].filter(Boolean).join(' ') });
     }
   }
   if (year === currentYear && trend.data) {
     const todayRow = trend.data.rows.find((row) => row.day === today);
-    tickerMessages.push('今日实收 ¥' + cents(todayRow?.netCents || 0));
+    tickerMessages.push({ text: '今日实收 ¥' + cents(todayRow?.netCents || 0), paid: true });
   }
-  if (batches.data && batchTotal > 0) tickerMessages.push('本轮已通知 ' + batchTotal + ' 批 / ' + batchHouses + ' 户次');
-  if (smsRate !== null) tickerMessages.push('短信送达率 ' + smsRate + '%' + (smsTotal ? '（共 ' + smsTotal + ' 条）' : ''));
+  if (batches.data && batchTotal > 0) tickerMessages.push({ text: '本轮已通知 ' + batchTotal + ' 批 / ' + batchHouses + ' 户次' });
+  if (smsRate !== null) tickerMessages.push({ text: '短信送达率 ' + smsRate + '%' + (smsTotal ? '（共 ' + smsTotal + ' 条）' : '') });
   const communityRows = communityData.data?.rows || [];
   if (communityRows.length) {
     const totalUnpaid = communityRows.reduce((sum, row) => sum + row.unpaidCents, 0);
@@ -294,7 +294,7 @@ export default function Screen() {
       .filter((row) => row.unpaidCents > 0)
       .forEach((row) => {
         const share = totalUnpaid ? Math.round((row.unpaidCents / totalUnpaid) * 1000) / 10 : 0;
-        tickerMessages.push(row.name + '待缴 ¥' + cents(row.unpaidCents) + '，占全部 ' + share + '%');
+        tickerMessages.push({ text: row.name + '待缴 ¥' + cents(row.unpaidCents) + '，占全部 ' + share + '%' });
       });
   }
 
@@ -427,11 +427,11 @@ export default function Screen() {
         <footer className="scr-ticker" aria-label="实时播报">
           <span className="scr-ticker-label">实时播报</span>
           {reduceMotion ? (
-            <div className="scr-ticker-static"><span key={tickerIndex}>{tickerMessages[tickerIndex % tickerMessages.length]}</span></div>
+            <div className="scr-ticker-static"><span key={tickerIndex}>{tickerMessages[tickerIndex % tickerMessages.length]?.text}{tickerMessages[tickerIndex % tickerMessages.length]?.paid ? <em className="scr-ticker-paid">已到账</em> : null}</span></div>
           ) : (
             <div className="scr-ticker-viewport">
               <div className="scr-ticker-track">
-                {[...tickerMessages, ...tickerMessages].map((text, index) => <span key={index}>{text}</span>)}
+                {[...tickerMessages, ...tickerMessages].map((item, index) => <span key={index}>{item.text}{item.paid ? <em className="scr-ticker-paid">已到账</em> : null}</span>)}
               </div>
             </div>
           )}
