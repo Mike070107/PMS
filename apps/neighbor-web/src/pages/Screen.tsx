@@ -101,6 +101,43 @@ function useLive<T>(url: string, query: Query, signal: string) {
   return state;
 }
 
+/** 北京时间自然日回退：用于近期缴费向前找最近有收款的一天。 */
+function shiftChinaDate(date: string, delta: number) {
+  const [year, month, day] = date.split('-').map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, day + delta));
+  return shifted.toISOString().slice(0, 10);
+}
+
+type RecentPaymentsState = { rows: RecentPayment[]; date: string | null; error: string; loadedAt: number; loading: boolean };
+/** 近期缴费：先取今天；为空则向前最多回退 7 天，取最近有收款的一天（最多 10 笔）。 */
+function useRecentPayments(baseQuery: Query, signal: string) {
+  const q = JSON.stringify(baseQuery);
+  const [state, set] = useState<RecentPaymentsState>({ rows: [], date: null, error: '', loadedAt: 0, loading: false });
+  useEffect(() => {
+    let active = true;
+    set((prev) => ({ ...prev, error: '', loading: true }));
+    (async () => {
+      const today = chinaDate();
+      for (let offset = 0; offset <= 6; offset += 1) {
+        const date = shiftChinaDate(today, -offset);
+        try {
+          const data = await request<unknown>({ url: '/fees/mis/recent-payments', query: { ...JSON.parse(q), date, page: 1, pageSize: 10 }, timeout: 30_000 });
+          if (!active) return;
+          const rows: RecentPayment[] = Array.isArray(data) ? data as RecentPayment[] : Array.isArray((data as any)?.rows) ? (data as any).rows : Array.isArray((data as any)?.list) ? (data as any).list : [];
+          if (rows.length) { set({ rows, date, error: '', loadedAt: Date.now(), loading: false }); return; }
+        } catch (e) {
+          if (!active) return;
+          set({ rows: [], date: null, error: message(e), loadedAt: 0, loading: false });
+          return;
+        }
+      }
+      if (active) set({ rows: [], date: null, error: '', loadedAt: Date.now(), loading: false });
+    })();
+    return () => { active = false; };
+  }, [q, signal]);
+  return state;
+}
+
 function Empty({ text, todo, detail }: { text: string; todo?: boolean; detail?: string }) {
   return (
     <div className="scr-empty">
@@ -200,7 +237,7 @@ export default function Screen() {
   const dash = useLive<Dashboard>('/fees/mis/residential', { view: 'dashboard', category: 'all', communityId, periodFrom: `${year}01`, periodTo: `${year}12` }, signal);
   const trend = useLive<Trend>('/fees/mis/residential', { view: 'trend', category: 'all', communityId, paidFrom: yearFrom, paidTo: yearTo }, signal);
   const brackets = useLive<AmountBracketsResponse>('/fees/mis/residential', { view: 'amount-brackets', communityId, periodFrom: `${year}01`, periodTo: `${year}12` }, signal);
-  const recent = useLive<RecentPayment[]>('/fees/mis/recent-payments', { limit: 10, communityId }, signal);
+  const recent = useRecentPayments({ limit: 10, communityId }, signal);
   const batches = useLive<Batches>('/fees/mis/collections', { communityId, page: 1, pageSize: 100 }, signal);
   const effect = useLive<Effect>('/fees/mis/collections/effect', { communityId, windowDays: 30, page: 1, pageSize: 1 }, signal);
   const sms = useLive<SmsStats>('/fees/mis/collections/sms-stats', { communityId, from: yearFrom, to: yearTo }, signal);
@@ -273,7 +310,7 @@ export default function Screen() {
   // 不把 recordedAt 当收款时间；需要时刻时只能写「登记 HH:mm」，本次不展示。
   const tickerMessages: { text: string; paid?: boolean }[] = [];
   if (year === currentYear) {
-    const recentRows: any[] = Array.isArray(recent.data) ? recent.data : Array.isArray((recent.data as any)?.rows) ? (recent.data as any).rows : [];
+    const recentRows = recent.rows;
     for (const row of recentRows.slice(0, 10)) {
       if (!row.paidAt) continue;
       tickerMessages.push({ paid: true, text: [row.paidAt.slice(5), row.ownerName || '业主未登记', row.address, row.channel || '', '¥' + cents(row.amountCents)].filter(Boolean).join(' ') });
@@ -281,7 +318,9 @@ export default function Screen() {
   }
   if (year === currentYear && trend.data) {
     const todayRow = trend.data.rows.find((row) => row.day === today);
-    tickerMessages.push({ text: '今日实收 ¥' + cents(todayRow?.netCents || 0), paid: true });
+    const todayNet = Number(todayRow?.netCents) || 0;
+    // 汇总项不挂「已收款」；今日 0 元直接跳过，避免出现「今日实收 ¥0.00 已收款」。
+    if (todayNet > 0) tickerMessages.push({ text: '今日实收 ¥' + cents(todayNet) });
   }
   if (batches.data && batchTotal > 0) tickerMessages.push({ text: '本轮已通知 ' + batchTotal + ' 批 / ' + batchHouses + ' 户次' });
   if (smsRate !== null) tickerMessages.push({ text: '短信送达率 ' + smsRate + '%' + (smsTotal ? '（共 ' + smsTotal + ' 条）' : '') });

@@ -5,9 +5,10 @@ import { AuthModule } from '../auth/auth.module';
 import { TasksService } from './tasks.service';
 import { ObservabilityModule } from '../observability/observability.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { FeesModule } from '../fees/fees.module';
 
 @Module({
-  imports: [ScheduleModule.forRoot(), RepairsModule, AuthModule, ObservabilityModule, NotificationsModule],
+  imports: [ScheduleModule.forRoot(), RepairsModule, AuthModule, ObservabilityModule, NotificationsModule, FeesModule],
   providers: [TasksService],
 })
 export class TasksModule {}

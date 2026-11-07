@@ -39,6 +39,7 @@ import {
 import { buildReportWorkbook } from '../../common/report-excel';
 import { FeesService } from './fees.service';
 import { MisFeesService } from './mis-fees.service';
+import { MisMirrorService } from './mis-mirror.service';
 import { MisCollectionSmsService } from './mis-collection-sms.service';
 import {MisLedgerQueryDto} from './mis-ledger.dto';
 import { MisFeesQueryDto, MisHouseSearchDto, MisResidentialQueryDto, MisCollectionPreviewDto, MisCollectionSmsStatsQueryDto, MisRecentPaymentsQueryDto, MisTodayQueryDto } from './mis-fees.dto';
@@ -52,7 +53,7 @@ import { MisFeesQueryDto, MisHouseSearchDto, MisResidentialQueryDto, MisCollecti
 @Controller('fees')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class FeesController {
-  constructor(private readonly feesService: FeesService,private readonly misFeesService:MisFeesService,private readonly misCollectionSmsService:MisCollectionSmsService) {}
+  constructor(private readonly feesService: FeesService,private readonly misFeesService:MisFeesService,private readonly misCollectionSmsService:MisCollectionSmsService,private readonly misMirrorService:MisMirrorService) {}
 
   @Post('mis/collections/:id/prints')
   @RequirePermission('fees','edit')
@@ -76,7 +77,7 @@ export class FeesController {
 
   @Get('mis/options')
   @RequirePermission('fees','view')
-  misOptions(@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.metadata(user,access);}
+  misOptions(@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misRead(user,()=>this.misFeesService.metadata(user,access),()=>this.misMirrorService.metadata(user,access));}
 
   @Get('mis/ledger')
   @RequirePermission('fees','view')
@@ -92,15 +93,31 @@ export class FeesController {
 
   @Get('mis/today')
  @RequirePermission('fees','view')
- misToday(@Query() query:MisTodayQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.today(query,user,access);}
+ misToday(@Query() query:MisTodayQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misRead(user,()=>this.misFeesService.today(query,user,access),()=>this.misMirrorService.today(query,user,access));}
 
  @Get('mis/recent-payments')
   @RequirePermission('fees','view')
-  misRecentPayments(@Query() query:MisRecentPaymentsQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.recentPayments(query,user,access);}
+  misRecentPayments(@Query() query:MisRecentPaymentsQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misRead(user,()=>this.misFeesService.recentPayments(query,user,access),()=>this.misMirrorService.recentPayments(query,user,access));}
+
+  @Get('mis/mirror/status')
+  @RequirePermission(['settings','fees'],'view')
+  misMirrorStatus(@CurrentUser() user:AuthUser){return this.misMirrorService.status(Number(user.tenantId||0));}
+
+  @Patch('mis/mirror/mode')
+  @RequirePermission('settings','edit')
+  misMirrorMode(@Body() body:{mode?:'mis'|'mirror'},@CurrentUser() user:AuthUser){return this.misMirrorService.setMode(Number(user.tenantId||0),body.mode==='mirror'?'mirror':'mis');}
+
+  @Post('mis/mirror/reload')
+  @RequirePermission('settings','edit')
+  misMirrorReload(@CurrentUser() user:AuthUser){return this.misMirrorService.reloadAll(Number(user.tenantId||0));}
+
+  @Get('mis/mirror/reconcile')
+  @RequirePermission(['settings','fees'],'view')
+  misMirrorReconcile(@CurrentUser() user:AuthUser){return this.misMirrorService.reconcile(Number(user.tenantId||0));}
 
   @Get('mis/residential')
   @RequirePermission('fees','view')
-  misResidential(@Query() q:MisResidentialQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.residential(q,user,access);}
+  misResidential(@Query() q:MisResidentialQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misRead(user,()=>this.misFeesService.residential(q,user,access),()=>this.misMirrorService.residential(q,user,access));}
 
   /** 对账 CSV：与 households 同一套筛选参数；只读导出，不写库。 */
   @Get('mis/residential/export')
@@ -440,5 +457,22 @@ export class FeesController {
   @RequirePermission('fees', 'edit')
   importFees(@Body() dto: ImportFeesDto, @CurrentUser() user: AuthUser) {
     return this.feesService.importFees(dto, user);
+  }
+
+  /** 数据源选择：显式 mirror 时绝不查询 MIS；mis 直连失败且镜像可用时自动降级并标注。 */
+  private async misRead(user: AuthUser, direct: () => Promise<any>, mirror: () => Promise<any>) {
+    const tenantId = Number(user.tenantId || 0);
+    const mode = tenantId ? await this.misMirrorService.mode(tenantId) : 'mis';
+    if (mode === 'mirror') return mirror();
+    try {
+      return await direct();
+    } catch (error) {
+      const status = Number((error as any)?.getStatus?.() || (error as any)?.status || 0);
+      if (status >= 500) {
+        const fallback = await mirror().catch(() => null);
+        if (fallback) return { ...fallback, degraded: true };
+      }
+      throw error;
+    }
   }
 }

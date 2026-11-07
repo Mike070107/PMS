@@ -14,14 +14,16 @@ import ToneIcon from '@/components/ToneIcon';
 import CollectionSmsSection from '@/components/settings/CollectionSmsSection';
 import CollectionFollowupSection from '@/components/settings/CollectionFollowupSection';
 import NoticeTemplateSection from '@/components/settings/NoticeTemplateSection';
+import MisMirrorSection from '@/components/settings/MisMirrorSection';
 
-type Group = 'fee' | 'order' | 'chain' | 'notice' | 'sms' | 'ai' | 'owner' | 'followup' | 'notice-template';
+type Group = 'fee' | 'order' | 'chain' | 'notice' | 'sms' | 'ai' | 'owner' | 'followup' | 'notice-template' | 'mirror';
 const GROUPS: Array<{ title: string; items: Array<[Group, string]> }> = [
   { title: '收费', items: [['fee', '收费标准'], ['followup', '催收规则']] },
   { title: '工单', items: [['order', '自动验收与催办'], ['ai', 'AI 填单助手']] },
   { title: '物资', items: [['chain', '采购审批链']] },
   { title: '通知', items: [['notice', '微信通知'], ['sms', '催缴短信'], ['notice-template', '通知单模板']] },
   { title: '业主', items: [['owner', '手机号快速识别']] },
+  { title: '数据', items: [['mirror', 'MIS 镜像']] },
 ];
 const ALL = GROUPS.flatMap((g) => g.items.map(([k]) => k));
 
@@ -61,6 +63,7 @@ export default function Settings() {
       </>
     );
     if (group === 'sms') return <CollectionSmsSection canEdit={canEdit} />;
+    if (group === 'mirror') return <MisMirrorSection canEdit={canEdit} />;
     if (group === 'followup') return <CollectionFollowupSection canEdit={canEdit} />;
     if (group === 'notice-template') return <NoticeTemplateSection canEdit={canEdit} />;
     if (group === 'ai') return <><AiConfigSection settings={settings!} save={save} canEdit={canEdit} /><AiSamplesSection canEdit={canEdit} /><AiRulesSection canEdit={canEdit} /><AiUsageSection /></>;

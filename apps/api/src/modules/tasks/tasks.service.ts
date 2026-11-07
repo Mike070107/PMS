@@ -5,6 +5,7 @@ import { QrLoginService } from '../auth/qr-login.service';
 import { AccessService } from '../access/access.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ObservabilityService } from '../observability/observability.service';
+import { MisMirrorService } from '../fees/mis-mirror.service';
 
 /** 系统定时任务（自动验收按租户配置；后续：SLA 提醒、账单生成、库存预警） */
 @Injectable()
@@ -17,7 +18,31 @@ export class TasksService {
     private readonly observability: ObservabilityService,
     private readonly notifications: NotificationsService,
     private readonly access: AccessService,
+    private readonly misMirror: MisMirrorService,
   ) {}
+
+  /** 每 5 分钟：增量同步 MIS 镜像；没有初始化的公司跳过（必须管理员手工全量重灌）。 */
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async syncMisMirror() {
+    try {
+      const result = await this.misMirror.syncAll();
+      if (result.rows) this.logger.log(`MIS mirror synced ${result.rows} bill rows`);
+    } catch (err) {
+      this.logger.error('syncMisMirror failed', err as Error);
+    }
+  }
+
+  /** 每天：镜像 vs MIS 总量对账；差异写 system_logs。 */
+  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  async reconcileMisMirror() {
+    try {
+      const results = await this.misMirror.reconcileAll();
+      const bad = results.filter((item) => !item.ok).length;
+      if (bad) this.logger.warn(`MIS mirror reconciliation mismatch: ${bad}`);
+    } catch (err) {
+      this.logger.error('reconcileMisMirror failed', err as Error);
+    }
+  }
 
   /** 每 5 分钟：聚合网站和小程序异常；同一 fingerprint 6 小时内只提醒一次，恢复后重新计时。 */
   @Cron(CronExpression.EVERY_5_MINUTES)

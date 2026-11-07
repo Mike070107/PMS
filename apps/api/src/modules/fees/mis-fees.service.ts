@@ -115,12 +115,15 @@ export class MisFeesService implements OnModuleDestroy {
   return this.poolPromise;
  }
  /** 仅接受内部生成的SELECT；无SQL参数入口，不提供任何源库写操作。 */
- private async read(text:string,params:Record<string,string|number>={}){
+ private async read(text:string,params:Record<string,string|number>={},timeoutMs=15000){
   if(!/^\s*(SELECT|WITH)\b/i.test(text)||/\b(INSERT|UPDATE|DELETE|MERGE|EXEC|ALTER|DROP|TRUNCATE)\b/i.test(text))throw new Error('MIS只读查询校验失败');
   const sql=require('mssql'),pool=await this.pool(),req=pool.request();
+  req.requestTimeout=Math.max(1000,Math.min(timeoutMs,15000));
   for(const [key,value] of Object.entries(params))req.input(key,typeof value==='number'?sql.Int:sql.NVarChar(4000),value);
   try{return await req.query(text);}catch{throw new ServiceUnavailableException('一通MIS查询未完成，请稍后重试；未使用旧数据替代');}
  }
+ /** 镜像同步专用：强制短超时，避免定时任务卡住 MIS；仍走同一只读校验。 */
+ async mirrorRead(text:string,params:Record<string,string|number>={},timeoutMs=5000){return this.read(text,params,timeoutMs);}
  async ledger(q:MisLedgerQuery,user:AuthUser,access?:ResolvedAccess){
   let communities=await this.scope(user,access);if(q.communityId){if(!communities.some(c=>c.id===q.communityId))throw new ForbiddenException('该小区不在MIS流水查询范围');communities=communities.filter(c=>c.id===q.communityId)}if(!communities.length)throw new ForbiddenException('当前范围没有已映射的MIS小区');
   const count=(v:unknown)=>{const n=Number(v??0);if(!Number.isSafeInteger(n)||n<0)throw new ServiceUnavailableException('MIS流水计数无法确认，请缩小范围重试');return n};
@@ -188,7 +191,7 @@ export class MisFeesService implements OnModuleDestroy {
   const rows=(result.recordsets[1]||[]).map((r:any)=>{const amountCents=misMoneyToCents(r.amount);return {...r,communityId:communities.find(c=>c.offices.includes(r.officeCode))!.id,communityName:communities.find(c=>c.offices.includes(r.officeCode))!.name,amount:undefined,amountCents,status:misFeeStatus({...r,amountCents})};});
   return {rows,total:Number(summary.total||0),page:built.page,pageSize:built.pageSize,readOnly:true,queriedAt:new Date().toISOString(),sourceLabel:'一通MIS',summary:{receivableCents:misMoneyToCents(summary.receivableAmount),unpaidCents:misMoneyToCents(summary.unpaidAmount),paidCents:misMoneyToCents(summary.paidAmount),refundedCount:Number(summary.refundedCount||0),latestUpdatedAt:summary.latestUpdatedAt||null}};
  }
- private async residentialScope(q:MisResidentialQuery,user:AuthUser,access?:ResolvedAccess){
+ async residentialScope(q:MisResidentialQuery,user:AuthUser,access?:ResolvedAccess){
   let communities=await this.scope(user,access);
   if(q.houseId)throw new BadRequestException('住宅总览请使用范围与住户查询，不接受内部房号ID');
   if(q.communityId){if(!communities.some(c=>c.id===q.communityId))throw new ForbiddenException('该小区不在MIS查询授权范围');communities=communities.filter(c=>c.id===q.communityId);}
