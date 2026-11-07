@@ -1,5 +1,5 @@
 export interface MisBill { id:string; feeCode:string; feeName:string; period:string; amountCents:number; updatedAt?:string }
-export interface MisHouse { houseKey:string; address:string; ownerName:string; communityId:number; communityName?:string; amountCents:number; billCount:number; periodFrom:string; periodTo:string; phoneMasked:string; contactEligible:boolean }
+export interface MisHouse { houseKey:string; address:string; ownerName:string; communityId:number; communityName?:string; amountCents:number; billCount:number; periodFrom:string; periodTo:string; phone?:string;phoneMasked:string; contactEligible:boolean }
 export interface Notice extends Omit<MisHouse,'billCount'|'periodFrom'|'periodTo'> { bills:MisBill[] }
 export interface CollectionPreview { excludedHolds?:{houseKey:string;reason:string;until:string}[]; notices:Notice[]; totalCents:number; billCount:number; fingerprint:string; queriedAt:string; sourceLabel:string; skipped:string[]; contactEligibleCount:number; contactWarning:string; smsAvailable:false; smsReason:string }
 export interface FeeSummary {receivableCents:number;paidCents:number;unpaidCents:number;unpaidHouses:number;adjustmentCount?:number}
