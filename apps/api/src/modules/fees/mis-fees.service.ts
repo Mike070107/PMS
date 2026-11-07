@@ -478,7 +478,7 @@ export class MisFeesService implements OnModuleDestroy {
     const amountCents=Number(row.amountCents)||0;if(amountCents<rule.amountCents)continue;
     const houseKey=String(row.houseKey),last=lastEvent.get(houseKey)||null,days=last?daysSince(last.at):null;
     const followupStatus=!last?'never':days!<rule.inactiveDays?'contacted':'overdue';
-    candidates.push({houseKey,address:String(row.address||''),ownerName:String(row.ownerName||''),amountCents,lastContactAt:last?last.at.toISOString():null,days,never:!last,lastAction:last?.action??null,lastNote:last?clipNote(last.note):'',contactCount:contactCount.get(houseKey)||0,followupStatus});
+    candidates.push({houseKey,address:String(row.address||''),ownerName:String(row.ownerName||''),amountCents,lastContactAt:last?last.at.toISOString():null,days,never:!last,lastAction:last?.action??null,lastNote:last?clipNote(last.note):'',contactCount:contactCount.get(houseKey)||0,phone:(row as any).phone??null,phoneMasked:String((row as any).phoneMasked||''),followupStatus});
    }
    const population=Number(scan.total)||scannedRows.length;
    const populationCents=Number.isFinite(Number(scan.amountCents))?Number(scan.amountCents):scannedRows.reduce((sum,row)=>sum+(Number(row.amountCents)||0),0);

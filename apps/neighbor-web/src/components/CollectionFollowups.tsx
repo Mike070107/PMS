@@ -10,7 +10,7 @@ type Event={id:number;houseKey:string;action:string;note:string;createdAt:string
 type LargeInactive={houseKey:string;address:string;amountCents:number;lastContactAt:string|null;days:number|null;never:boolean};
 type FollowupStatus='all'|'never'|'overdue'|'contacted';
 type Sort='amount'|'recent';
-type QueueRow={houseKey:string;address:string;ownerName:string;amountCents:number;lastContactAt:string|null;days:number|null;never:boolean;lastAction:'phone'|'promise'|'hold'|null;lastNote:string;contactCount:number;followupStatus:'never'|'overdue'|'contacted'};
+type QueueRow={houseKey:string;phone?:string|null;phoneMasked?:string;address:string;ownerName:string;amountCents:number;lastContactAt:string|null;days:number|null;never:boolean;lastAction:'phone'|'promise'|'hold'|null;lastNote:string;contactCount:number;followupStatus:'never'|'overdue'|'contacted'};
 type Stats={avgAmountCents:number;hitCount:number;hitAmountCents:number;thresholdCents:number;inactiveDays:number;scanned?:number;neverCount?:number;overdueCount?:number;contactedCount?:number};
 type Rule={amountCents:number;inactiveDays:number;enabled:boolean};
 type Data={followupHouseholds:number;promises:PromiseRow[];holds:Hold[];events:Event[];rows?:QueueRow[];total?:number;totalAmountCents?:number;page?:number;pageSize?:number;largeInactive?:LargeInactive[];stats?:Stats;rule?:Rule};
@@ -103,6 +103,7 @@ export default function CollectionFollowups({communityId,version,editable,onChan
        <th>房号 / 业主</th>
        <th className="rb-num" aria-sort={sort==='amount'?'descending':'none'}><button type="button" className={'rb-sortbtn'+(sort==='amount'?' on':'')} onClick={()=>setSort('amount')}>待缴金额<span aria-hidden="true">{sort==='amount'?' ↓':''}</span></button></th>
        <th aria-sort={sort==='recent'?'descending':'none'}><button type="button" className={'rb-sortbtn'+(sort==='recent'?' on':'')} onClick={()=>setSort('recent')}>上次跟进<span aria-hidden="true">{sort==='recent'?' ↓':''}</span></button></th>
+       <th>电话</th>
        <th className="rb-num">次数</th>
        <th>最近结果</th>
        <th className="rb-ops-th">操作</th>
@@ -110,7 +111,7 @@ export default function CollectionFollowups({communityId,version,editable,onChan
       <tbody>{rows.map(row=><tr key={row.houseKey}>
        <td className="rb-followup-house"><b>{row.address}</b><small className="rb-sub">{row.ownerName||'业主未记录'}</small></td>
        <td className="rb-num"><strong className="rb-due">¥{cents(row.amountCents)}</strong></td>
-       <td><span className={'rb-followup-state '+row.followupStatus}>{dayText(row)}</span>{!!row.lastContactAt&&<small className="rb-sub">{dateText(row.lastContactAt)}</small>}</td>
+       <td><span className={'rb-followup-state '+row.followupStatus}>{dayText(row)}</span>{!!row.lastContactAt&&<small className="rb-sub">{dateText(row.lastContactAt)}</small>}</td><td>{row.phone||row.phoneMasked||"—"}</td>
        <td className="rb-num">{row.contactCount}</td>
        <td>{row.lastAction?<><span className="rb-followup-action">{actionNames[row.lastAction]}</span><small className="rb-sub">{row.lastNote||'无备注'}</small></>:<small className="rb-sub">—</small>}</td>
        <td className="rb-ops-cell"><div className="rb-ops"><button className="btn sm" onClick={()=>open(row.houseKey)}>{editable?'跟进':'查看'}</button></div></td>
