@@ -25,6 +25,8 @@ export interface NavItem {
   icon: IconName;
   to?: string;
   legacy?: string;
+  /** 独立全屏页：点击后在新标签打开此地址，不在 Shell 内跳转（避免侧边栏闪一下） */
+  newTab?: string;
   /** 直接跳生产原版（蓝色旧后台，路径从根开始），不走 /beta-legacy 的改版皮肤 */
   prod?: string;
   group: string;
@@ -53,6 +55,7 @@ export const NAV: NavItem[] = [
   { key: 'sku', name: '材料SKU', rail: 'SKU', icon: 'layers', to: '/materials', group: '库存与盘点' },
   { key: 'devices', name: '系统与设备', rail: '系统设备', icon: 'cpu', to: '/devices', group: '系统' },
   { key: 'reports', name: '收费报表', rail: '报表', icon: 'chart', to: '/reports', group: '分析' },
+  { key: 'screen', permissionKey: 'fees', name: '收费大屏', rail: '大屏', icon: 'chart', to: '/screen', newTab: '/screen', group: '分析' },
   { key: 'standards', name: '收费标准', rail: '收费标准', icon: 'wallet', to: '/standards', group: '收费' },
   { key: 'houses', name: '房产', rail: '房产', icon: 'home', to: '/houses', group: '档案' },
   { key: 'owners', name: '业主', rail: '业主', icon: 'users', to: '/owners', group: '档案' },
@@ -73,7 +76,7 @@ export const GROUPS: Array<{ title: string; keys: string[]; icon: IconName; tone
   { title: '门禁管理', keys: ['access-cards'], icon: 'key', tone: 'blue' },
   { title: '报修养护', keys: ['work-orders', 'maint', 'notes'], icon: 'wrench', tone: 'orange' },
   { title: '库存与盘点', keys: ['purchase', 'stock', 'count', 'sku'], icon: 'box', tone: 'green' },
-  { title: '分析', keys: ['reports'], icon: 'chart', tone: 'violet' },
+  { title: '分析', keys: ['reports', 'screen'], icon: 'chart', tone: 'violet' },
   { title: '档案', keys: ['houses', 'owners', 'people', 'offices'], icon: 'home', tone: 'brown' },
   { title: '系统', keys: ['devices', 'settings', 'qr', 'intranet', 'logs'], icon: 'cpu', tone: 'slate' },
 ];
@@ -207,9 +210,11 @@ export default function Shell() {
                   <a
                     key={item.key}
                     className={on ? 'on' : ''}
-                    href={item.prod||(item.legacy?legacyUrl(item.legacy):`${import.meta.env.BASE_URL.replace(/\/$/,'')}${item.to||'/'}`)}
+                    href={item.prod||(item.legacy?legacyUrl(item.legacy):`${import.meta.env.BASE_URL.replace(/\/$/,'')}${item.newTab||item.to||'/'}`)}
+                    target={item.newTab?'_blank':undefined}
+                    rel={item.newTab?'noopener':undefined}
                     aria-current={on?'page':undefined}
-                    onClick={(e)=>{if(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;e.preventDefault();goto(item)}}
+                    onClick={(e)=>{if(item.newTab)return;if(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;e.preventDefault();goto(item)}}
                     title={item.name}
                   >
                     <Icon name={item.icon} size={22} />

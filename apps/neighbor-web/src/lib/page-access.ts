@@ -26,6 +26,8 @@ export const PAGE_ACCESS = [
   { paths: ['/qr'], keys: ['qr'] },
   { paths: ['/logs'], keys: ['logs'] },
   { paths: ['/settings', '/intranet'], keys: ['settings'] },
+  // 收费大屏是独立全屏页，复用 fees 查看权限，不新增页面 key。
+  { paths: ['/screen'], keys: ['fees'] },
 ] as const;
 
 export function pageForPath(pathname: string) {
