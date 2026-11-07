@@ -1,5 +1,18 @@
+import { createHash } from 'node:crypto';
+
 export const LOGIN_METHODS = ['password', 'wechat'] as const;
 export type LoginMethod = (typeof LOGIN_METHODS)[number];
+
+/** 登录账号归一化：去首尾空白并转小写，用于密码防爆破计数；展示仍用脱敏账号。 */
+export function normalizeLoginAccount(account?: string | null): string {
+  return String(account ?? '').trim().toLowerCase();
+}
+
+/** 归一化账号的不可逆哈希：login_attempts 用它做防爆破计数，不落明文账号。 */
+export function loginAccountKey(account?: string | null): string {
+  const normalized = normalizeLoginAccount(account);
+  return normalized ? createHash('sha256').update(normalized).digest('hex') : '';
+}
 
 export const LOGIN_FAILURE_REASONS = [
   'invalid_credentials',
