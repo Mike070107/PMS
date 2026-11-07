@@ -282,6 +282,28 @@ svg.ico{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;st
 .role-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:11px}
 .role-tags span{font-size:9.5px;color:#8fb3c2;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,.04);border:1px solid rgba(148,163,184,.12)}
 
+/* 老板视角：管住 + 看清 */
+.hold-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin-bottom:16px;border-radius:12px;overflow:hidden;background:rgba(125,211,252,.1)}
+.hold-strip div{display:flex;align-items:baseline;gap:7px;padding:11px 15px;background:#07131c;min-width:0}
+.hold-strip b{font-family:var(--mono);font-size:15px;color:#8df8e8;font-weight:500;flex:none}
+.hold-strip span{font-size:10px;color:#8fb3c2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.boss-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.boss-card{position:relative;overflow:hidden;border-radius:14px;padding:18px 17px 16px;background:linear-gradient(160deg,rgba(13,28,40,.82),rgba(7,18,27,.72));border:1px solid var(--line);transition:transform .25s,border-color .25s}
+.boss-card:hover{transform:translateY(-3px);border-color:rgba(45,212,191,.34)}
+.boss-top{display:flex;align-items:center;gap:9px;margin-bottom:10px}
+.boss-ico{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.22);color:#7ff3e4;flex:none}
+.boss-ico svg{width:17px;height:17px}
+.boss-top h3{font-size:16px;line-height:1.15;font-weight:800}
+.boss-top h3 small{display:block;font-family:var(--mono);font-size:7px;letter-spacing:.12em;color:var(--dim);font-weight:400;margin-top:2px}
+.boss-top .status{margin-left:auto;font-size:7.5px;padding:2px 6px;border-radius:99px;border:1px solid;white-space:nowrap;line-height:1.4}
+.status.base{color:#6ee7b7;border-color:rgba(52,211,153,.28);background:rgba(52,211,153,.06)}
+.status.plan{color:#93c5fd;border-color:rgba(96,165,250,.28);background:rgba(96,165,250,.06)}
+.boss-q{font-size:12px;line-height:1.5;color:#d3e5ee;font-weight:600;margin-bottom:9px;min-height:36px}
+.boss-metrics{display:flex;flex-wrap:wrap;gap:4px}
+.boss-metrics span{font-size:8px;color:#8fb3c2;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,.035);border:1px solid rgba(148,163,184,.12)}
+.boss-now{font-size:8px;color:#6d8798;line-height:1.55;margin-top:9px;padding-top:8px;border-top:1px solid rgba(148,163,184,.1)}
+.boss-now b{color:#9fb4c2;font-weight:500}
+
 /* pipeline */
 .pipeline{position:relative;display:grid;grid-template-columns:repeat(6,1fr);gap:10px;padding:20px 18px 16px;border-radius:14px;border:1px solid rgba(45,212,191,.16);background:linear-gradient(180deg,rgba(10,24,34,.72),rgba(7,17,25,.5));margin-bottom:16px}
 .pipeline::before{content:"";position:absolute;left:7%;right:7%;top:41px;height:1px;background:linear-gradient(90deg,rgba(45,212,191,.08),rgba(45,212,191,.55),rgba(56,189,248,.45),rgba(45,212,191,.08))}
@@ -491,6 +513,11 @@ svg.ico{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;st
   .wrap{width:calc(100% - 48px)}
   .hero-grid{gap:34px}
   .role-grid,.mod-grid,.next-grid{grid-template-columns:repeat(2,1fr)}
+  .boss-grid{grid-template-columns:repeat(2,1fr)}
+  .hold-strip{grid-template-columns:repeat(2,1fr)}
+  .boss-card{padding:13px 14px 12px}
+  .boss-q{min-height:0;margin-bottom:7px}
+  .boss-now{margin-top:7px;padding-top:6px}
   .big-stats{grid-template-columns:repeat(2,1fr)}
   .ends{grid-template-columns:repeat(2,1fr)}
   .f2{left:-16px}
@@ -509,6 +536,8 @@ svg.ico{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;st
   .f1,.f2,.f3,.scroll-cue{display:none}
   .pipeline{grid-template-columns:repeat(3,1fr);gap:18px 10px;padding:18px}
   .pipeline::before,.pipeline::after{display:none}
+  .boss-grid{grid-template-columns:repeat(2,1fr)}
+  .hold-strip{grid-template-columns:repeat(2,1fr)}
   .two-col,.three-col{grid-template-columns:1fr}
   .fact-row{grid-template-columns:repeat(2,1fr)}
   .timeline{grid-template-columns:repeat(2,1fr);gap:22px}
@@ -541,6 +570,7 @@ svg.ico{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;st
   .stat:nth-child(3){padding-left:0;border-left:0}
   .stat:nth-child(4){padding-left:18px}
   .role-grid,.mod-grid,.next-grid,.big-stats,.ends{grid-template-columns:1fr}
+  .boss-grid{grid-template-columns:1fr}
   .mini-kpis{grid-template-columns:repeat(2,1fr)}
   .effect-stats{grid-template-columns:repeat(2,1fr)}
   .help-strip{grid-template-columns:repeat(2,1fr)}
@@ -787,38 +817,44 @@ svg.ico{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;st
     <div class="wrap">
       <div class="s-head anim">
         <div class="sec-kicker"><span class="idx">01</span><span class="cn">系统定位</span><span class="line"></span>SYSTEM</div>
-        <h2>一套系统，管住物业的<br class="mb"><em>「人、房、钱、事」</em></h2>
-        <p>不是又一个只能记账的收费软件，而是把物业每天真正要做的事，放进同一条线上流程：收费有台账、现场有工单、库存有账本、管理有看板。</p>
+        <h2>管住「人、房、钱、事」<br>看清<em>「利、险、评、数」</em></h2>
+        <p>项目经理用系统干活，老板用系统看经营、看风险、看续约、看多项目。</p>
       </div>
-      <div class="statement anim d1">
+      <div class="hold-strip anim d1">
+        <div><b>人</b><span>员工 · 外包 · 权限</span></div>
+        <div><b>房</b><span>房产 · 车位 · 设备</span></div>
+        <div><b>钱</b><span>收费 · 账单 · 收缴</span></div>
+        <div><b>事</b><span>报修 · 工单 · 巡检</span></div>
+      </div>
+      <div class="boss-grid">
+        <article class="boss-card anim d2">
+          <div class="boss-top"><span class="boss-ico"><svg class="ico" aria-hidden="true"><use href="#i-trend"/></svg></span><h3>利<small>PROFIT</small></h3><span class="status part">部分覆盖</span></div>
+          <p class="boss-q">每个项目到底赚不赚钱？</p>
+          <div class="boss-metrics"><span>项目毛利</span><span>人工成本率</span><span>能耗 / 材料</span></div>
+          <p class="boss-now">当前：收费、库存、报表已有；<b>项目盈亏待补</b></p>
+        </article>
+        <article class="boss-card anim d3">
+          <div class="boss-top"><span class="boss-ico"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></span><h3>险<small>RISK</small></h3><span class="status part">部分覆盖</span></div>
+          <p class="boss-q">会不会出安全、合同、合规问题？</p>
+          <div class="boss-metrics"><span>消防 / 电梯</span><span>合同到期</span><span>操作审计</span></div>
+          <p class="boss-now">当前：门禁、设备、日志已有；<b>风险预警待补</b></p>
+        </article>
+        <article class="boss-card anim d4">
+          <div class="boss-top"><span class="boss-ico"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg></span><h3>评<small>REVIEW</small></h3><span class="status base">已有基础</span></div>
+          <p class="boss-q">业主满不满意，明年还续不续？</p>
+          <div class="boss-metrics"><span>满意度</span><span>投诉率</span><span>工单及时</span></div>
+          <p class="boss-now">当前：完工验收评分已有；<b>投诉 / 满意度待补</b></p>
+        </article>
+        <article class="boss-card anim d5">
+          <div class="boss-top"><span class="boss-ico"><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg></span><h3>数<small>DATA</small></h3><span class="status plan">规划中</span></div>
+          <p class="boss-q">哪个项目、哪个人在拖后腿？</p>
+          <div class="boss-metrics"><span>多项目对比</span><span>异常预警</span><span>老板驾驶舱</span></div>
+          <p class="boss-now">当前：收费 / 工单报表已有；<b>集团驾驶舱待建</b></p>
+        </article>
+      </div>
+      <div class="statement anim d5">
         <svg class="ico" aria-hidden="true"><use href="#i-spark"/></svg>
-        <p>系统上线后，收费从「月底翻台账、挨个打电话」变成 <b>「系统列欠费、批量发通知、回款有归因」</b>；现场从「微信群派活、纸单签字」变成 <b>「扫码报修、手机接单、全程留痕」</b>。</p>
-      </div>
-      <div class="role-grid">
-        <article class="role-card anim d2">
-          <div class="role-icon"><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg></div>
-          <h3>物业经理<small>MANAGER</small></h3>
-          <p>收费率、欠费、工单、库存、设备状态集中呈现，异常自动提醒，经营情况一屏掌握。</p>
-          <div class="role-tags"><span>经营看板</span><span>异常提醒</span><span>小区对比</span></div>
-        </article>
-        <article class="role-card anim d3">
-          <div class="role-icon"><svg class="ico" aria-hidden="true"><use href="#i-wallet"/></svg></div>
-          <h3>收费员<small>CASHIER</small></h3>
-          <p>欠费清单、催缴通知、短信、收据、日结，一个收费台办完，不用再翻几套台账。</p>
-          <div class="role-tags"><span>一户一档</span><span>批量催缴</span><span>当场出票</span></div>
-        </article>
-        <article class="role-card anim d4">
-          <div class="role-icon"><svg class="ico" aria-hidden="true"><use href="#i-wrench"/></svg></div>
-          <h3>维修 / 仓管<small>FIELD TEAM</small></h3>
-          <p>手机接单、完工拍照、领料盘点、采购审批，现场完成，回到工位不用再补单。</p>
-          <div class="role-tags"><span>移动工单</span><span>扫码领料</span><span>电子签字</span></div>
-        </article>
-        <article class="role-card anim d5">
-          <div class="role-icon"><svg class="ico" aria-hidden="true"><use href="#i-home"/></svg></div>
-          <h3>业主<small>OWNER</small></h3>
-          <p>扫码报修、进度可见、验收评价、消息及时触达，少打一个电话、少跑一趟物业。</p>
-          <div class="role-tags"><span>扫码报修</span><span>进度跟踪</span><span>验收评分</span></div>
-        </article>
+        <p>从 <b>「管住事」</b> 到 <b>「看懂经营」</b>：不是多一套报表，而是把日常业务变成老板能看懂的数据。</p>
       </div>
     </div>
   </section>

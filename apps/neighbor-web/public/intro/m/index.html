@@ -77,6 +77,22 @@ h2 em{font-style:normal;background:linear-gradient(100deg,#d7fff9,#5eead4 50%,#3
 .role h3{font-size:12.5px;font-weight:700;line-height:1.35}
 .role h3 small{display:block;font-family:var(--mono);font-size:6.5px;letter-spacing:.1em;color:var(--dim);font-weight:400;margin-top:1px}
 .role p{font-size:9.5px;line-height:1.55;color:var(--muted);margin-top:5px}
+.hold-row{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:10px}
+.hold-row span{text-align:center;padding:5px 2px;border:1px solid var(--line);border-radius:7px;background:rgba(12,25,36,.7);font-size:6.5px;color:var(--dim);white-space:nowrap}
+.hold-row b{display:block;font-family:var(--mono);font-size:11px;color:#8df8e8;margin-bottom:1px}
+.boss2{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:9px}
+.bcard{padding:9px 10px;min-height:94px}
+.bhead{display:flex;align-items:center;gap:6px}
+.bhead .bico{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.22);color:#7ff3e4;flex:none}
+.bhead .bico .ico{width:13px;height:13px}
+.bhead b{font-size:12px;line-height:1}
+.bhead small{display:block;font-family:var(--mono);font-size:5.5px;letter-spacing:.08em;color:var(--dim);margin-top:2px}
+.bhead .status{margin-left:auto;font-size:5.8px;padding:1px 4px;line-height:1.4}
+.bq{font-size:8.8px;line-height:1.4;color:#cfe4ee;font-weight:600;margin-top:5px}
+.bmeta{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px}
+.bmeta span{font-size:6.2px;color:#8fb3c2;padding:1px 4px;border-radius:3px;background:rgba(255,255,255,.035);border:1px solid rgba(148,163,184,.1)}
+.bnow{font-size:6.2px;line-height:1.4;color:#6d8798;margin-top:4px}
+.status.plan{color:#93c5fd;border-color:rgba(96,165,250,.28);background:rgba(96,165,250,.06)}
 .statement{display:flex;align-items:center;gap:8px;margin-top:12px;padding:9px 11px;border-radius:9px;border:1px solid rgba(45,212,191,.18);background:rgba(45,212,191,.055);font-size:9.5px;color:#a9c8d4;line-height:1.55}
 .statement .ico{width:14px;height:14px;color:var(--teal)}
 
@@ -189,6 +205,10 @@ h2 em{font-style:normal;background:linear-gradient(100deg,#d7fff9,#5eead4 50%,#3
   .next{padding:7px 10px}
   .closing{margin-top:10px;padding-top:9px}
 }
+@media (max-height:600px){
+  .m-slide{padding-top:58px;padding-bottom:48px}
+  .bcard{min-height:88px;padding:8px 9px}
+}
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
   *,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important}
@@ -255,15 +275,21 @@ h2 em{font-style:normal;background:linear-gradient(100deg,#d7fff9,#5eead4 50%,#3
   <section class="m-slide" id="m2" data-name="系统定位">
     <div class="m-wrap">
       <div class="eyebrow anim"><b>01</b><i></i><b>系统定位</b></div>
-      <h2 class="anim d1">一套系统，管住<em>人、房、钱、事</em></h2>
-      <p class="lead anim d2">收费有台账，现场有工单，库存有账本，管理有看板。</p>
-      <div class="grid2" style="margin-top:13px">
-        <div class="glass role anim d1"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg></div><h3>物业经理<small>MANAGER</small></h3><p>收费率、欠费、工单、库存一屏掌握。</p></div>
-        <div class="glass role anim d2"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-wallet"/></svg></div><h3>收费员<small>CASHIER</small></h3><p>欠费清单、通知、短信、收据一站办理。</p></div>
-        <div class="glass role anim d3"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-wrench"/></svg></div><h3>维修 / 仓管<small>FIELD TEAM</small></h3><p>手机接单、领料盘点、现场完成。</p></div>
-        <div class="glass role anim d4"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-home"/></svg></div><h3>业主<small>OWNER</small></h3><p>扫码报修、进度可见、验收评价。</p></div>
+      <h2 class="anim d1">管住人房钱事<br><em>看清利险评数</em></h2>
+      <p class="lead anim d2">项目经理用系统干活，老板用系统看经营、看风险、看续约、看多项目。</p>
+      <div class="hold-row anim d2">
+        <span><b>人</b>员工 · 外包</span>
+        <span><b>房</b>房产 · 车位</span>
+        <span><b>钱</b>收费 · 账单</span>
+        <span><b>事</b>报修 · 工单</span>
       </div>
-      <div class="statement anim d5"><svg class="ico" aria-hidden="true"><use href="#i-spark"/></svg><span>从「人找账」到「系统盯账」，从「事后补录」到「过程留痕」。</span></div>
+      <div class="boss2">
+        <div class="glass bcard anim d2"><div class="bhead"><span class="bico"><svg class="ico" aria-hidden="true"><use href="#i-trend"/></svg></span><span><b>利</b><small>PROFIT</small></span><span class="status part">部分</span></div><p class="bq">项目赚不赚钱？</p><div class="bmeta"><span>毛利</span><span>人工</span><span>能耗</span></div><p class="bnow">收费/报表已有，项目盈亏待补</p></div>
+        <div class="glass bcard anim d2"><div class="bhead"><span class="bico"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></span><span><b>险</b><small>RISK</small></span><span class="status part">部分</span></div><p class="bq">会不会出事？</p><div class="bmeta"><span>消防</span><span>合同</span><span>审计</span></div><p class="bnow">日志/设备已有，风险预警待补</p></div>
+        <div class="glass bcard anim d3"><div class="bhead"><span class="bico"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg></span><span><b>评</b><small>REVIEW</small></span><span class="status ok">有基础</span></div><p class="bq">业主续不续？</p><div class="bmeta"><span>满意度</span><span>投诉</span><span>时效</span></div><p class="bnow">验收评分已有，投诉/满意度待补</p></div>
+        <div class="glass bcard anim d3"><div class="bhead"><span class="bico"><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg></span><span><b>数</b><small>DATA</small></span><span class="status plan">规划中</span></div><p class="bq">谁在拖后腿？</p><div class="bmeta"><span>多项目</span><span>预警</span><span>驾驶舱</span></div><p class="bnow">报表已有，集团驾驶舱待建</p></div>
+      </div>
+      <div class="statement anim d4"><svg class="ico" aria-hidden="true"><use href="#i-spark"/></svg><span>从「管住事」到「看懂经营」：让日常业务变成老板能看懂的数据。</span></div>
     </div>
   </section>
 
