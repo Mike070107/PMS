@@ -6358,3 +6358,11 @@
 - 自上次（6d74c0a9）以来上线的相关提交：
   - f7257607 feat(logs): 使用统计页签（访问趋势/页面Top/用户Top/登录记录）+ 路由使用埋点
 
+## 2026-11-07 17:21 · api · 74b745e4
+
+- 包：`pms-api-fast-20261107-172049.tar.gz`
+- 提交：74b745e4 chore(api): 新增 test:telemetry 脚本
+- 自上次（9a64223e）以来上线的相关提交：
+  - 74b745e4 chore(api): 新增 test:telemetry 脚本
+  - afb17a0d feat(telemetry): 页面访问埋点与使用统计；登录成功/失败记录（含未授权场景）
+
