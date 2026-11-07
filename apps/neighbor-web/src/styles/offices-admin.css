@@ -1,0 +1,157 @@
+/* 管理处：卡片 + 新建/编辑/划入/删除弹窗（只被 Offices 页面引入） */
+.offices-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.offices-card {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.offices-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.offices-name {
+  display: block;
+  font-size: 16px;
+}
+
+.offices-sub {
+  font-size: 12.5px;
+}
+
+.offices-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 6px;
+}
+
+.offices-unassigned {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--warn-w, #fbf1dd);
+  color: var(--warn);
+  border-color: #ecd9b0;
+  margin-bottom: 14px;
+}
+
+.offices-unassigned-text {
+  flex: 1;
+  min-width: 240px;
+}
+
+.offices-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(18, 26, 40, 0.45);
+}
+
+.offices-dialog {
+  width: min(540px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid var(--line);
+  box-shadow: 0 24px 64px -18px rgba(18, 26, 40, 0.45);
+  padding: 18px 20px;
+}
+
+.offices-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.offices-dialog-head b {
+  font-size: 16px;
+}
+
+.offices-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 12px;
+  font-size: 13px;
+  color: var(--ink2);
+}
+
+.offices-checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  background: var(--sunken, #f8fafc);
+}
+
+.offices-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  color: var(--ink2);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.offices-check input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--acc);
+  flex: none;
+}
+
+.offices-enabled {
+  margin: 4px 0 10px;
+}
+
+.offices-delete p {
+  margin: 6px 0 12px;
+}
+
+.offices-dialog-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.btn.offices-danger {
+  color: var(--dang);
+  border-color: rgba(190, 90, 78, 0.45);
+}
+
+@media (max-width: 640px) {
+  .offices-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .offices-checks {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .offices-dialog {
+    padding: 14px;
+  }
+}

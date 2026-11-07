@@ -10,8 +10,9 @@ type Query = Record<string, string | number | boolean | undefined>;
 type Summary = { receivableCents: number; paidCents: number; unpaidCents: number; unpaidHouses: number; adjustmentCount?: number };
 type Dashboard = { summary: Summary; queriedAt?: string };
 type Trend = { rows: { day: string; netCents: number; chargedCents: number; refundedCents: number }[] };
-type UnpaidHouse = { houseKey: string; address: string; ownerName: string; amountCents: number };
-type Houses = { rows?: UnpaidHouse[]; total?: number };
+type AmountBracketKey = 'le500' | '500to2000' | '2000to5000' | 'gt5000';
+type AmountBucket = { key: AmountBracketKey; label: string; count: number; amountCents: number };
+type AmountBracketsResponse = { buckets?: Array<{ key?: string; count?: number; amountCents?: number }>; total?: { count?: number; amountCents?: number } };
 type RecentPayment = { paidAt: string; address: string; ownerName: string; amountCents: number; channel?: string | null; billCount: number; recordedAt?: string | null; communityName?: string };
 type Communities = { rows: { id: number; name: string; unpaidCents: number; unpaidHouses: number }[] };
 type Batch = { id: number; createdAt: string; purpose: 'print' | 'sms'; houseCount: number; amountCents: string };
@@ -22,15 +23,25 @@ type Options = { available?: boolean; message?: string; communities: { id: numbe
 
 const REFRESH_MS = 90_000;
 const AMOUNT_BUCKETS = [
-  { key: 'le500', label: '≤¥500', max: 50_000 },
-  { key: '500to2000', label: '¥500–2000', max: 200_000 },
-  { key: '2000to5000', label: '¥2000–5000', max: 500_000 },
-  { key: 'gt5000', label: '>¥5000', max: Number.POSITIVE_INFINITY },
+  { key: 'le500', label: '≤¥500' },
+  { key: '500to2000', label: '¥500–2000' },
+  { key: '2000to5000', label: '¥2000–5000' },
+  { key: 'gt5000', label: '>¥5000' },
 ] as const;
-type AmountBucketKey = (typeof AMOUNT_BUCKETS)[number]['key'];
-type AmountBucket = { key: AmountBucketKey; label: string; count: number; amountCents: number };
-function amountBucketOf(amountCents: number) {
-  return AMOUNT_BUCKETS.find((bucket) => amountCents <= bucket.max) || AMOUNT_BUCKETS[AMOUNT_BUCKETS.length - 1];
+/** 新接口一次返回四档；缺档补 0，total 直接用接口合计。 */
+function normalizeBrackets(raw: AmountBracketsResponse) {
+  const byKey = new Map((raw.buckets || []).map((bucket) => [String(bucket.key), bucket]));
+  const buckets: AmountBucket[] = AMOUNT_BUCKETS.map(({ key, label }) => {
+    const hit = byKey.get(key);
+    return { key, label, count: Number(hit?.count) || 0, amountCents: Number(hit?.amountCents) || 0 };
+  });
+  return {
+    buckets,
+    total: {
+      count: Number(raw.total?.count) || buckets.reduce((sum, bucket) => sum + bucket.count, 0),
+      amountCents: Number(raw.total?.amountCents) || buckets.reduce((sum, bucket) => sum + bucket.amountCents, 0),
+    },
+  };
 }
 
 function message(e: unknown) {
@@ -66,36 +77,6 @@ function useLive<T>(url: string, query: Query, signal: string) {
       .catch((e) => { if (active) set((prev) => ({ ...prev, error: message(e), loading: false })); });
     return () => { active = false; };
   }, [url, q, signal]);
-  return state;
-}
-
-/** 待缴户明细：按金额倒序取前若干页，用于前端按户待缴总额分档（不新增接口）。 */
-function useUnpaidHouseholds(baseQuery: Query, signal: string) {
-  const q = JSON.stringify(baseQuery);
-  const [state, set] = useState<{ rows: UnpaidHouse[]; total: number; truncated: boolean; error: string; loadedAt: number; loading: boolean }>({
-    rows: [], total: 0, truncated: false, error: '', loadedAt: 0, loading: false,
-  });
-  useEffect(() => {
-    let active = true;
-    set((prev) => ({ ...prev, error: '', loading: true }));
-    (async () => {
-      const PAGE_SIZE = 500, MAX_PAGES = 4;
-      const rows: UnpaidHouse[] = [];
-      let total = 0;
-      try {
-        for (let page = 1; page <= MAX_PAGES; page += 1) {
-          const data = await request<Houses>({ url: '/fees/mis/residential', query: { ...JSON.parse(q), page, pageSize: PAGE_SIZE }, timeout: 30_000 });
-          rows.push(...(data.rows || []));
-          total = Number(data.total ?? rows.length);
-          if (rows.length >= total) break;
-        }
-        if (active) set({ rows, total, truncated: rows.length < total, error: '', loadedAt: Date.now(), loading: false });
-      } catch (e) {
-        if (active) set({ rows: [], total: 0, truncated: false, error: message(e), loadedAt: 0, loading: false });
-      }
-    })();
-    return () => { active = false; };
-  }, [q, signal]);
   return state;
 }
 
@@ -142,7 +123,7 @@ function TrendChart({ buckets }: { buckets: TrendBucket[] }) {
   );
 }
 
-function AmountBars({ buckets, totalAmount, totalCount, truncated, loadedCount }: { buckets: AmountBucket[]; totalAmount: number; totalCount: number; truncated: boolean; loadedCount: number }) {
+function AmountBars({ buckets, totalAmount, totalCount }: { buckets: AmountBucket[]; totalAmount: number; totalCount: number }) {
   const max = Math.max(1, ...buckets.map((bucket) => bucket.amountCents));
   return (
     <div className="scr-aging">
@@ -156,7 +137,7 @@ function AmountBars({ buckets, totalAmount, totalCount, truncated, loadedCount }
           </div>
         );
       })}
-      <p className="scr-footnote">按户待缴总额分档 · 合计 ¥{cents(totalAmount)} · {totalCount} 户{truncated ? ` · 仅统计前 ${loadedCount} 户（共 ${totalCount} 户）` : ''}</p>
+      <p className="scr-footnote">按户待缴总额分档 · 合计 ¥{cents(totalAmount)} · {totalCount} 户</p>
     </div>
   );
 }
@@ -197,7 +178,7 @@ export default function Screen() {
   const options = useLive<Options>('/fees/mis/options', {}, signal);
   const dash = useLive<Dashboard>('/fees/mis/residential', { view: 'dashboard', category: 'all', communityId, periodFrom: `${year}01`, periodTo: `${year}12` }, signal);
   const trend = useLive<Trend>('/fees/mis/residential', { view: 'trend', category: 'all', communityId, paidFrom: yearFrom, paidTo: yearTo }, signal);
-  const ledger = useUnpaidHouseholds({ view: 'households', status: 'unpaid', category: 'all', communityId, periodFrom: `${year}01`, periodTo: `${year}12`, sort: 'amount', dir: 'desc' }, signal);
+  const brackets = useLive<AmountBracketsResponse>('/fees/mis/residential', { view: 'amount-brackets', communityId, periodFrom: `${year}01`, periodTo: `${year}12` }, signal);
   const recent = useLive<RecentPayment[]>('/fees/mis/recent-payments', { limit: 10, communityId }, signal);
   const batches = useLive<Batches>('/fees/mis/collections', { communityId, page: 1, pageSize: 100 }, signal);
   const effect = useLive<Effect>('/fees/mis/collections/effect', { communityId, windowDays: 30, page: 1, pageSize: 1 }, signal);
@@ -242,8 +223,8 @@ export default function Screen() {
   const summary = dash.data?.summary;
   const paidRate = summary && summary.receivableCents ? Math.round((summary.paidCents / summary.receivableCents) * 1000) / 10 : null;
   const unpaidShare = summary && summary.receivableCents ? Math.round((summary.unpaidCents / summary.receivableCents) * 1000) / 10 : null;
-  const loadedAt = Math.max(dash.loadedAt, trend.loadedAt, ledger.loadedAt, batches.loadedAt, effect.loadedAt, sms.loadedAt, recent.loadedAt);
-  const loading = [dash, trend, ledger, batches, effect, sms, recent].some((item) => item.loading);
+  const loadedAt = Math.max(dash.loadedAt, trend.loadedAt, brackets.loadedAt, batches.loadedAt, effect.loadedAt, sms.loadedAt, recent.loadedAt);
+  const loading = [dash, trend, brackets, batches, effect, sms, recent].some((item) => item.loading);
 
   const monthly: TrendBucket[] = yearMonths.map((month) => {
     const rows = (trend.data?.rows || []).filter((row) => row.day.slice(0, 7) === month);
@@ -260,17 +241,7 @@ export default function Screen() {
   const smsRate = typeof sms.data?.deliveredRate === 'number' ? sms.data.deliveredRate : smsTotal ? Math.round((smsDelivered / smsTotal) * 1000) / 10 : null;
   const communities = options.data?.communities || [];
 
-  // 待缴金额分档（按户待缴总额，不是账龄；前端聚合，不新增接口）
-  const amountBuckets: AmountBucket[] = AMOUNT_BUCKETS.map((bucket) => ({ key: bucket.key, label: bucket.label, count: 0, amountCents: 0 }));
-  for (const row of ledger.rows) {
-    if (!(row.amountCents > 0)) continue;
-    const hit = amountBuckets.find((bucket) => bucket.key === amountBucketOf(row.amountCents).key);
-    if (!hit) continue;
-    hit.count += 1;
-    hit.amountCents += row.amountCents;
-  }
-  const unpaidAmountTotal = amountBuckets.reduce((sum, bucket) => sum + bucket.amountCents, 0);
-  const unpaidHouseCount = amountBuckets.reduce((sum, bucket) => sum + bucket.count, 0);
+  const bracketView = brackets.data ? normalizeBrackets(brackets.data) : null;
 
   // 底部实时播报：近期缴费（MIS 只有日期精度，只显示 paidAt 的月-日）→ 今日实收 → 通知批次数 → 短信送达率 → 欠费小区。
   // 不把 recordedAt 当收款时间；需要时刻时只能写「登记 HH:mm」，本次不展示。
@@ -381,8 +352,8 @@ export default function Screen() {
             <h2>待缴金额分布</h2>
             <span className="scr-legend">按户待缴总额分档</span>
           </div>
-          {ledger.error ? <Empty text="待缴金额读取失败" detail={ledger.error} /> : ledger.loadedAt ? (
-            <AmountBars buckets={amountBuckets} totalAmount={unpaidAmountTotal} totalCount={unpaidHouseCount} truncated={ledger.truncated} loadedCount={ledger.rows.length} />
+          {brackets.error ? <Empty text="待缴金额读取失败" detail={brackets.error} /> : bracketView ? (
+            <AmountBars buckets={bracketView.buckets} totalAmount={bracketView.total.amountCents} totalCount={bracketView.total.count} />
           ) : <Empty text="正在读取待缴金额…" />}
         </article>
       </section>
