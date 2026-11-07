@@ -29,6 +29,8 @@ export interface OidcLoginRequest {
   requiredAppSlug?: string;
   requiredAppName?: string;
   requiredAppHostname?: string;
+  /** 网关登录成功后要回跳的原始页面（已由 start 的 safeReturnTo 校验） */
+  gatewayReturnTo?: string;
 }
 
 /**

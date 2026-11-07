@@ -86,6 +86,8 @@ export class QrLoginService {
       purpose: WebLoginTicketPurpose;
       oidcRequest?: OidcLoginRequest;
       requiredApp?: ExternalAccessApp;
+      /** 内网应用网关：已校验过的安全回跳地址，随 ticket 保存，status 时取回。 */
+      returnTo?: string;
       profileUserId?: number;
     },
   ) {
@@ -108,6 +110,7 @@ export class QrLoginService {
           requiredAppSlug: options.requiredApp.slug,
           requiredAppName: options.requiredApp.name,
           requiredAppHostname: options.requiredApp.publicHostname,
+          ...(options.returnTo ? { gatewayReturnTo: options.returnTo } : {}),
         }
       : options?.oidcRequest
       ? await this.bindOidcRequestToApplication(options.oidcRequest)
@@ -265,7 +268,7 @@ export class QrLoginService {
     if (!claimed.affected) return { status: 'expired' as const };
     const required = this.requiredApplication(row);
     await this.authService.requireExternalAccessUser(row.userId, required);
-    return { status: 'confirmed' as const, userId: row.userId, appId: required.appId };
+    return { status: 'confirmed' as const, userId: row.userId, appId: required.appId, returnTo: row.oidcRequest?.gatewayReturnTo ?? null };
   }
 
   /**
