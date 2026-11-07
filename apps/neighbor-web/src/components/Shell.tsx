@@ -141,6 +141,7 @@ export default function Shell() {
     if (!item.to || !canViewPath(item.to,session.access)) return;
     setMobileOpen(false);
     setCmdk(false);
+    if (item.newTab) { window.open(item.newTab, '_blank', 'noopener'); return; }
     if (item.prod) { window.location.href = item.prod; return; }
     if (item.legacy) { window.location.href = legacyUrl(item.legacy); return; }
     if (item.to) nav(item.to);
