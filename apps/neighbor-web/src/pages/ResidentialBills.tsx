@@ -119,7 +119,7 @@ export default function ResidentialBills(){
   setPage(1);setChecked([]);setAll(false);
  }
  return <div className="rb" data-page="residential-bills">
-  <header className="ph"><div><div className="h1row"><ToneIcon kind="bills"/><h1>账单与待缴</h1></div><p>住宅收费总览与缴费提醒 · 收款、退款在MIS登记</p></div><div className="act"><button className="btn" onClick={()=>setRev(v=>v+1)}><Icon name="refresh"/>刷新MIS</button><button className="btn g" onClick={()=>window.open('/screen','_blank')}>投屏大屏</button></div></header>
+  <header className="ph"><div><div className="h1row"><ToneIcon kind="bills"/><h1>账单与待缴</h1></div><p>住宅收费总览与缴费提醒 · 收款、退款在MIS登记</p></div><div className="act"><button className="btn" onClick={()=>setRev(v=>v+1)}><Icon name="refresh"/>刷新MIS</button><button className="btn g" onClick={()=>{window.location.assign('/screen')}}>投屏大屏</button></div></header>
   <div className="rb-source"><span className="tag acc">一通MIS · 只读账务</span><span>{community?meta.data?.communities.find(c=>String(c.id)===community)?.name:meta.data?.communities.map(c=>c.name).join(' / ')||'确认授权范围中'}</span><span>读取时间：{dash.data?.queriedAt||list.data?.queriedAt?new Date((dash.data?.queriedAt||list.data?.queriedAt)!).toLocaleString('zh-CN'):'—'}</span></div>
   <State value={meta}>{meta.data&&!meta.data.available&&<ErrorNote>{meta.data.message}</ErrorNote>}</State>
   {meta.data?.available&&<>
