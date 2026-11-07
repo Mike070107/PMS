@@ -6447,3 +6447,10 @@
   - 1b95c87a feat(parking): 车位卡片改纯色分层+悬浮动效，去掉照片背景与状态圆点，空车位减淡
   - c6f2f376 feat(parking): 添加车库背景图（程序化生成，可替换为实拍照片）
 
+## 2026-11-07 23:07 · api · 7cc3dbc5
+
+- 包：`pms-api-fast-20261107-230620.tar.gz`
+- 提交：7cc3dbc5 feat(today): 今日收款清单接口支持 date 过滤与分页（{total,rows}）
+- 自上次（f70a0fab）以来上线的相关提交：
+  - 7cc3dbc5 feat(today): 今日收款清单接口支持 date 过滤与分页（{total,rows}）
+
