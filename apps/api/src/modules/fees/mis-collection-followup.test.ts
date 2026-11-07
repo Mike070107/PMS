@@ -79,3 +79,30 @@ test('跟进提醒：按价值排序的待办队列（门槛/状态/搜索/排�
  await assert.rejects(s.collectionFollowups({pageSize:0},user,access),/分页/);
 });
 
+test('跟进队列二次收窄：只读账号的队列行 phone 为 null 且保留 phoneMasked，有收费编辑权限才带完整手机号',async()=>{
+ const scanRows=[{houseKey:'01:1:1',address:'合成花园1号101室',ownerName:'合成甲',amountCents:500000,phone:'13800000001',phoneMasked:'138****0001'}];
+ const build=()=>{
+  const s:any=Object.create(MisFeesService.prototype);
+  s.residentialScope=async()=>[{id:1,offices:['01']}];
+  s.residential=async(q:any)=>{assert.equal(q._aging,false,'队列扫描必须跳过账龄全量扫描');return {rows:scanRows,total:1,amountCents:500000}};
+  s.paidCollectionBills=async()=>[];
+  s.collectionRepo=(entity:any)=>{
+   if(entity===MisCollectionPromise||entity===MisCollectionHold)return {find:async()=>[]};
+   if(entity===MisCollectionEvent)return {find:async()=>[],manager:{query:async()=>[]}};
+   if(entity===TenantConfig)return {findOne:async()=>({value:{amountCents:100000,inactiveDays:7,enabled:true}})};
+   throw new Error('unexpected repository');
+  };
+  return s;
+ };
+ const user:any={id:7,tenantId:1};
+ const viewOnly:any={scopeAll:false,communityIds:[10],pages:{fees:{view:true,edit:false}}};
+ const viewed=await build().collectionFollowups({},user,viewOnly);
+ assert.equal(viewed.total,1);
+ assert.equal(viewed.rows[0].phone,null,'只读账号不能在队列层拿到完整手机号');
+ assert.equal(viewed.rows[0].phoneMasked,'138****0001','脱敏号码必须保留');
+ assert.ok(viewed.rows[0].phoneMasked,'队列行必须有脱敏值');
+ const canEdit:any={scopeAll:false,communityIds:[10],pages:{fees:{view:true,edit:true}}};
+ const editable=await build().collectionFollowups({},user,canEdit);
+ assert.equal(editable.rows[0].phone,'13800000001','有收费编辑权限时才返回完整手机号');
+});
+

@@ -36,12 +36,13 @@
 .rb .rb-followup-head-tools .btn{min-height:34px;height:34px;padding:0 12px;font-size:13px}
 .rb-followup-card{padding:0;overflow:hidden;min-width:0}
 .rb-followup-scroll{overflow-x:auto;min-width:0}
-.rb .rb-followup-table{width:100%;min-width:760px}
+.rb .rb-followup-table{width:100%;min-width:840px}
 .rb .rb-followup-table th.rb-num,.rb .rb-followup-table td.rb-num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .rb .rb-followup-table tbody tr{height:auto}
 .rb .rb-followup-table tbody td{height:auto;padding:10px 14px;vertical-align:middle}
 .rb-followup-house b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px}
-.rb-followup-table td:nth-child(5){max-width:340px}
+/* 队列 7 列：1房号/业主 2待缴金额 3上次跟进 4电话 5次数 6最近结果 7操作；限宽只加在「最近结果」列 */
+.rb-followup-table td:nth-child(6){max-width:340px}
 .rb-followup-state{display:inline-block;font-size:12px;line-height:1.6;padding:1px 8px;border-radius:999px;background:var(--mute-w);color:var(--ink2);white-space:nowrap}
 .rb-followup-state.never{background:var(--dang-w);color:var(--dang)}
 .rb-followup-state.overdue{background:var(--warn-w);color:var(--warn)}
