@@ -57,6 +57,12 @@ function LoginRedirect() {
   return <Navigate to={'/login?next=' + encodeURIComponent(next)} replace />;
 }
 
+/** 静态介绍页：index.html 在 public/intro 下，用整页跳转而不是 SPA 路由。 */
+function StaticPage({ to }: { to: string }) {
+  useEffect(() => { window.location.replace(to); }, [to]);
+  return null;
+}
+
 export default function App() {
   const session = useSession();
   const loc = useLocation();
@@ -94,6 +100,10 @@ export default function App() {
       <>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/intro" element={<StaticPage to="/intro/index.html" />} />
+          <Route path="/intro/" element={<StaticPage to="/intro/index.html" />} />
+          <Route path="/intro/m" element={<StaticPage to="/intro/m/index.html" />} />
+          <Route path="/intro/m/" element={<StaticPage to="/intro/m/index.html" />} />
           <Route path="*" element={<LoginRedirect />} />
         </Routes>
         <Toaster />
@@ -111,7 +121,8 @@ export default function App() {
   if (!landing) return <main className="empty" role="status" style={{ padding: 60 }}><p>当前账号未获授任何后台页面权限，请联系管理员。</p><button className="btn" onClick={() => setAccessRetry(n => n + 1)}>重新核对权限</button><button className="btn" onClick={() => auth.clear()}>退出登录</button></main>;
   // 大屏 /screen 不进 Shell 侧边栏，权限沿用 fees:view，不新增页面 key。
   const screenMode = loc.pathname === '/screen' || loc.pathname.startsWith('/screen/');
-  if (!screenMode && !canViewPath(loc.pathname, session.access)) return <Navigate to={landing} replace />;
+  const staticPage = loc.pathname === '/intro' || loc.pathname === '/intro/' || loc.pathname.startsWith('/intro/');
+  if (!screenMode && !staticPage && !canViewPath(loc.pathname, session.access)) return <Navigate to={landing} replace />;
   const screenAllowed = screenMode && can('fees', 'view');
 
   return (
@@ -155,7 +166,11 @@ export default function App() {
             <Route path="/settings" element={<Settings />} />
             <Route path="/plates" element={<Plates />} />
             <Route path="/family-cars" element={<FamilyCars />} />
-            <Route path="*" element={<Navigate to={landing} replace />} />
+            <Route path="/intro" element={<StaticPage to="/intro/index.html" />} />
+          <Route path="/intro/" element={<StaticPage to="/intro/index.html" />} />
+          <Route path="/intro/m" element={<StaticPage to="/intro/m/index.html" />} />
+          <Route path="/intro/m/" element={<StaticPage to="/intro/m/index.html" />} />
+          <Route path="*" element={<Navigate to={landing} replace />} />
           </Route>
         </Routes>
       </Suspense>
