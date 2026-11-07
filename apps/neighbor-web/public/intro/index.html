@@ -614,7 +614,6 @@ svg.ico{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;st
       <a href="#s2">系统定位</a>
       <a href="#s3">收缴能力</a>
       <a href="#s7">功能全景</a>
-      <a href="#s8">落地成效</a>
       <a href="#s9">下一步</a>
     </nav>
     <span class="nav-badge">内部汇报 · 2026.11</span>
@@ -632,13 +631,12 @@ svg.ico{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;st
   <a href="#s5" aria-label="催缴触达"><i></i><b>催缴触达</b></a>
   <a href="#s6" aria-label="收款对账"><i></i><b>收款对账</b></a>
   <a href="#s7" aria-label="功能全景"><i></i><b>功能全景</b></a>
-  <a href="#s8" aria-label="落地成效"><i></i><b>落地成效</b></a>
   <a href="#s9" aria-label="下一步"><i></i><b>下一步</b></a>
 </nav>
 
 <div class="deck-foot" aria-hidden="true">
   <div class="wrap">
-    <span><b id="sNo">01</b><em>/ 09</em><span id="sName">封面</span></span>
+    <span><b id="sNo">01</b><em>/ <span id="sTotal">08</span></em><span id="sName">封面</span></span>
     <span class="hint"><i></i>慢滚动 · 逐屏浏览</span>
   </div>
 </div>
@@ -1057,7 +1055,7 @@ svg.ico{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;st
     </div>
   </section>
 
-  <!-- 07 TRACTION -->
+  <!-- 07 TRACTION（暂时隐藏：用户要求 2026-11-07；恢复时去掉本注释并把 s9 编号改回 08）
   <section class="slide" id="s8" data-no="07" data-name="落地成效" aria-label="落地成效">
     <div class="wrap">
       <div class="s-head anim">
@@ -1084,12 +1082,13 @@ svg.ico{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;st
       </div>
     </div>
   </section>
+  -->
 
   <!-- 08 NEXT -->
-  <section class="slide" id="s9" data-no="08" data-name="下一步" aria-label="下一步">
+  <section class="slide" id="s9" data-no="07" data-name="下一步" aria-label="下一步">
     <div class="wrap">
       <div class="s-head anim">
-        <div class="sec-kicker"><span class="idx">08</span><span class="cn">下一步</span><span class="line"></span>NEXT</div>
+        <div class="sec-kicker"><span class="idx">07</span><span class="cn">下一步</span><span class="line"></span>NEXT</div>
         <h2>把收缴做深，<em>把服务做宽</em></h2>
         <p>当前功能已稳定运行；下一步按「先增收、再提效、后体验」的顺序补齐，不追求一次做全。</p>
       </div>
@@ -1139,6 +1138,8 @@ svg.ico{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;st
   var navLinks = $$('.nav-links a');
   var sNo = $('#sNo');
   var sName = $('#sName');
+  var sTotal = $('#sTotal');
+  if (sTotal) sTotal.textContent = pad(slides.length);
   var bar = $('.progress i');
   var nav = $('.nav');
   var current = 0;
