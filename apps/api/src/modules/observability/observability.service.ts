@@ -14,6 +14,8 @@ import { safeFeedbackAttachments } from './feedback-attachment';
 import {
   ClientErrorDto,
   FeedbackStatusDto,
+  IntroViewDto,
+  IntroViewQueryDto,
   PageViewDto,
   SystemLogQueryDto,
   UserFeedbackDto,
@@ -48,6 +50,9 @@ interface RequestCapture {
 
 @Injectable()
 export class ObservabilityService {
+  /** 公开汇报页按 IP 做轻量去抖，防止刷新/脚本连点把打开次数刷爆 */
+  private readonly introViewLastAt = new Map<string, number>();
+
   constructor(
     @InjectRepository(SystemLog) private readonly logRepo: Repository<SystemLog>,
     @InjectRepository(RequestMetric) private readonly metricRepo: Repository<RequestMetric>,
@@ -198,6 +203,104 @@ export class ObservabilityService {
       detail: null,
     });
     return { ok: true };
+  }
+
+  /**
+   * 公开汇报页（/intro/）访问记录。页面不登录，所以租户留空，按全站口径统计。
+   * 2 秒内同一 IP 只记一次；不记录任何查询参数原文，只保存入口标记。
+   */
+  async recordIntroView(dto: IntroViewDto, req: Request) {
+    const ip = introClientIp(req) || 'unknown';
+    const now = Date.now();
+    if (now - (this.introViewLastAt.get(ip) || 0) < 2000) return { ok: true, deduped: true };
+    this.introViewLastAt.set(ip, now);
+    if (this.introViewLastAt.size > 2000) {
+      for (const [key, at] of this.introViewLastAt) {
+        if (now - at > 10 * 60 * 1000) this.introViewLastAt.delete(key);
+      }
+    }
+    await this.saveLog({
+      tenantId: null,
+      category: 'usage',
+      level: 'info',
+      source: 'intro-page',
+      action: 'intro_page_view',
+      success: true,
+      ipAddress: ip,
+      userAgent: req.headers['user-agent'],
+      requestMethod: 'POST',
+      requestPath: dto.path || '/intro/',
+      message: dto.title || 'PMS 系统介绍页',
+      detail: {
+        referrer: dto.referrer?.slice(0, 500) || null,
+        entry: dto.entry?.slice(0, 60) || null,
+      },
+    });
+    return { ok: true };
+  }
+
+  /** 日志页「汇报页访问」页签：总打开、今日打开、独立 IP、最近打开、趋势和明细 */
+  async introViewOverview(query: IntroViewQueryDto) {
+    const todayStart = new Date(shanghaiDay(new Date()) + 'T00:00:00+08:00');
+    const days: Array<{ date: string; count: number }> = [];
+    for (let i = query.days - 1; i >= 0; i--) {
+      days.push({ date: shanghaiDay(new Date(Date.now() - i * 24 * 3600 * 1000)), count: 0 });
+    }
+    const daysStart = new Date(days[0].date + 'T00:00:00+08:00');
+    const [summary] = await this.dataSource.query(
+      `SELECT COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE created_at >= $1)::int AS today,
+              COUNT(DISTINCT ip_address)::int AS "uniqueIps",
+              MAX(created_at) AS "lastViewedAt"
+         FROM system_logs
+        WHERE category = 'usage' AND action = 'intro_page_view'`,
+      [todayStart],
+    );
+    const dailyRows: Array<{ date: string; count: number }> = await this.dataSource.query(
+      `SELECT to_char(created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD') AS date,
+              COUNT(*)::int AS count
+         FROM system_logs
+        WHERE category = 'usage' AND action = 'intro_page_view' AND created_at >= $1
+        GROUP BY 1 ORDER BY 1`,
+      [daysStart],
+    );
+    const dailyMap = new Map(dailyRows.map((row) => [row.date, Number(row.count)]));
+    for (const day of days) day.count = dailyMap.get(day.date) || 0;
+
+    const qb = this.logRepo.createQueryBuilder('log')
+      .where('log.category = :category', { category: 'usage' })
+      .andWhere('log.action = :action', { action: 'intro_page_view' });
+    const total = Number(summary?.total || 0);
+    const rows = total === 0 ? [] : await qb.clone()
+      .orderBy('log.createdAt', 'DESC')
+      .skip((query.page - 1) * query.pageSize)
+      .take(query.pageSize)
+      .getMany();
+
+    return {
+      summary: {
+        total,
+        today: Number(summary?.today || 0),
+        uniqueIps: Number(summary?.uniqueIps || 0),
+        lastViewedAt: summary?.lastViewedAt || null,
+      },
+      daily: days,
+      list: rows.map((row) => {
+        const detail = (row.detail || {}) as Record<string, unknown>;
+        return {
+          id: row.id,
+          viewedAt: row.createdAt,
+          ip: row.ipAddress,
+          path: row.requestPath,
+          userAgent: row.userAgent,
+          referrer: typeof detail.referrer === 'string' ? detail.referrer : null,
+          entry: typeof detail.entry === 'string' ? detail.entry : null,
+        };
+      }),
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+    };
   }
 
   async recordClientError(user: AuthUser, dto: ClientErrorDto, req: Request) {
@@ -613,6 +716,25 @@ export function sourceFromRequest(req: Request): string {
 export function clientIp(req: Request): string | null {
   const forwarded = req.headers['x-forwarded-for'];
   return clipNullable((Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0]?.trim() || req.ip, 64);
+}
+
+/**
+ * 公开页取真实来源 IP：优先 Cloudflare / nginx 注入的头，
+ * X-Forwarded-For 取最后一跳（nginx 追加的 $remote_addr），避免客户端自带 XFF 伪装。
+ */
+export function introClientIp(req: Request): string | null {
+  const real = req.headers['x-real-ip'];
+  if (real) return clipNullable(Array.isArray(real) ? real[0] : real, 64);
+  const cf = req.headers['cf-connecting-ip'];
+  if (cf) return clipNullable(Array.isArray(cf) ? cf[0] : cf, 64);
+  const forwarded = req.headers['x-forwarded-for'];
+  const raw = Array.isArray(forwarded) ? forwarded.join(',') : forwarded;
+  const last = raw?.split(',').map((v) => v.trim()).filter(Boolean).pop();
+  return clipNullable(last || req.ip, 64);
+}
+
+function shanghaiDay(date: Date) {
+  return new Date(date.getTime() + 8 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
 function requireTenant(user: AuthUser) {

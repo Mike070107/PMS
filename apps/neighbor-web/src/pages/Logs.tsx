@@ -22,6 +22,23 @@ interface LogRow {
   requestMethod?: string | null; requestPath?: string | null; statusCode?: number | null; durationMs?: number | null; message: string; createdAt: string;
 }
 interface LogList { list: LogRow[]; total: number; page: number; pageSize: number }
+interface IntroViewRow {
+  id: number;
+  viewedAt: string;
+  ip: string | null;
+  path: string | null;
+  userAgent: string | null;
+  referrer: string | null;
+  entry: string | null;
+}
+interface IntroViews {
+  summary: { total: number; today: number; uniqueIps: number; lastViewedAt: string | null };
+  daily: Array<{ date: string; count: number }>;
+  list: IntroViewRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
 
 const CATS: Array<{ k: string; n: string; icon: IconName; tone: string }> = [
   { k: '', n: '全部', icon: 'log', tone: 'blue' },
@@ -42,6 +59,7 @@ export default function Logs() {
   const session = useSession();
   const canView = can('logs', 'view');
   const scopeKey = JSON.stringify([session.user?.id,session.user?.tenantId,session.actingTenant?.id,session.actingOffice?.id]);
+  const [tab, setTab] = useState<'logs' | 'intro'>('logs');
   const [ov, setOv] = useState<Overview | null>(null);
   const [cat, setCat] = useState('');
   const [onlyFail, setOnlyFail] = useState(false);
@@ -53,6 +71,7 @@ export default function Logs() {
   const [overviewError, setOverviewError] = useState(false);
   const [retryLogs, setRetryLogs] = useState(0);
   const [retryOverview, setRetryOverview] = useState(0);
+  const [retryIntro, setRetryIntro] = useState(0);
 
   useEffect(() => {
     if(!canView) return;
@@ -82,10 +101,19 @@ export default function Logs() {
   return (
     <>
       <div className="ph" style={{ marginBottom: 14 }}>
-        <div><div className="h1row"><ToneIcon kind="logs" /><h1 style={{ fontSize: 22 }}>日志</h1></div><p>系统运行状况与操作记录</p></div>
-        <div className="act"><button className="btn" onClick={() => {setRetryLogs(v=>v+1);setRetryOverview(v=>v+1);}}>刷新</button></div>
+        <div><div className="h1row"><ToneIcon kind="logs" /><h1 style={{ fontSize: 22 }}>日志</h1></div><p>系统运行状况、操作记录与汇报页访问</p></div>
+        <div className="act">
+          <a className="btn sm" href="/intro/" target="_blank" rel="noopener" style={{marginRight:10}}><Icon name="link" size={15} />打开汇报页</a>
+          <button className="btn" onClick={() => {setRetryLogs(v=>v+1);setRetryOverview(v=>v+1);setRetryIntro(v=>v+1);}}>刷新</button>
+        </div>
       </div>
 
+      <div className="chips" style={{ marginBottom: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }} role="tablist" aria-label="日志视图">
+        <button role="tab" aria-selected={tab === 'logs'} className={`chip ${tab === 'logs' ? 'on' : ''}`} onClick={() => setTab('logs')}><Icon name="log" size={14} />系统日志</button>
+        <button role="tab" aria-selected={tab === 'intro'} className={`chip ${tab === 'intro' ? 'on' : ''}`} onClick={() => setTab('intro')}><Icon name="globe" size={14} />汇报页访问</button>
+      </div>
+
+      {tab === 'logs' ? (<>
       {overviewError ? <div className="card" role="alert" style={{padding:16,marginBottom:16}}>运行概览加载失败，统计未获取。<button className="btn sm" onClick={()=>setRetryOverview(v=>v+1)}>重试概览</button></div> : null}
       {ov && rt ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 12, marginBottom: 16 }}>
@@ -145,6 +173,91 @@ export default function Logs() {
           <button className="btn sm" disabled={page >= pages} onClick={() => setPage(page + 1)}>下一页</button>
         </div>
       ) : null}
+      </>) : (
+        <IntroViewsPanel retry={retryIntro} />
+      )}
+    </>
+  );
+}
+
+/** 汇报页访问：公开页 /intro/ 的打开次数、时间、来源 IP；只读展示，不改历史数据 */
+function IntroViewsPanel({ retry }: { retry: number }) {
+  const [data, setData] = useState<IntroViews | null>(null);
+  const [page, setPage] = useState(1);
+  const [error, setError] = useState(false);
+  const [localRetry, setLocalRetry] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    setData(null);
+    setError(false);
+    request<IntroViews>({ url: '/observability/intro-views', query: { page, pageSize: 20, days: 7 } })
+      .then((r) => { if (alive) setData(r); })
+      .catch(() => { if (alive) setError(true); });
+    return () => { alive = false; };
+  }, [page, retry, localRetry]);
+  const pages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
+  const max = Math.max(1, ...(data?.daily || []).map((d) => d.count));
+  const last = data?.summary.lastViewedAt ? dayjs(data.summary.lastViewedAt).format('MM-DD HH:mm') : '—';
+  const device = (ua: string | null) => {
+    if (!ua) return '—';
+    const phone = /Mobile|Android|iPhone|MicroMessenger/i.test(ua);
+    const browser = /MicroMessenger/i.test(ua) ? '微信' : /Edg\//i.test(ua) ? 'Edge' : /Chrome\//i.test(ua) ? 'Chrome' : /Safari\//i.test(ua) ? 'Safari' : /Firefox\//i.test(ua) ? 'Firefox' : '浏览器';
+    return `${phone ? '手机' : '电脑'} · ${browser}`;
+  };
+  if (error) return <div className="card" role="alert" style={{ padding: 24 }}>汇报页访问统计加载失败。<button className="btn" style={{marginLeft:12}} onClick={() => setLocalRetry(v => v + 1)}>重试</button></div>;
+  if (!data) return <Loading />;
+  return (
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 12, marginBottom: 16 }}>
+        <div className="stat"><div className="ic blue"><Icon name="chart" /></div><div className="v" style={{ fontSize: 26 }}>{data.summary.total.toLocaleString()}</div><div className="k">累计打开次数</div></div>
+        <div className="stat"><div className="ic green"><Icon name="today" /></div><div className="v" style={{ fontSize: 26 }}>{data.summary.today.toLocaleString()}</div><div className="k">今日打开</div></div>
+        <div className="stat"><div className="ic blue"><Icon name="globe" /></div><div className="v" style={{ fontSize: 26 }}>{data.summary.uniqueIps.toLocaleString()}</div><div className="k">独立来源 IP</div></div>
+        <div className="stat"><div className="ic amber"><Icon name="clock" /></div><div className="v" style={{ fontSize: 20 }}>{last}</div><div className="k">最近打开时间</div></div>
+      </div>
+
+      <div className="card intro-chart">
+        <div className="intro-chart-head"><b>最近 7 天打开趋势</b><span className="muted">按北京时间自然日 · 同 IP 2 秒内只记一次</span></div>
+        <div className="intro-bars">
+          {data.daily.map((d) => (
+            <div className="intro-bar" key={d.date} title={`${d.date} · ${d.count} 次`}>
+              <span style={{ height: `${Math.max(3, (d.count / max) * 100)}%` }} className={d.count ? '' : 'empty'} />
+              <small>{d.date.slice(5)}</small>
+              <b>{d.count}</b>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="card" style={{ overflow: 'hidden', marginTop: 16 }}>
+        <div className="intro-list-head"><b>打开明细</b><span className="muted">共 {data.total} 条 · 保留最近 180 天</span></div>
+        {data.list.length === 0 ? <div style={{ padding: 48, textAlign: 'center' }} className="muted">还没有打开记录。把 /intro/ 链接发给同事后，这里会显示打开时间与来源 IP。</div> : (
+          <div className="intro-table-wrap">
+            <table className="t intro-table">
+              <thead><tr><th>打开时间</th><th>来源 IP</th><th>入口</th><th>来源页面</th><th>设备</th></tr></thead>
+              <tbody>
+                {data.list.map((row) => (
+                  <tr key={row.id}>
+                    <td style={{ whiteSpace: 'nowrap' }}>{dayjs(row.viewedAt).format('YYYY-MM-DD HH:mm:ss')}</td>
+                    <td className="intro-ip">{row.ip || '—'}</td>
+                    <td>{row.entry || '直接打开'}</td>
+                    <td className="intro-referrer" title={row.referrer || undefined}>{row.referrer || '—'}</td>
+                    <td>{device(row.userAgent)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {data.total > data.pageSize ? (
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center', marginTop: 14 }}>
+          <button className="btn sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>上一页</button>
+          <span className="muted">第 {page} / {pages} 页 · 共 {data.total} 条</span>
+          <button className="btn sm" disabled={page >= pages} onClick={() => setPage(page + 1)}>下一页</button>
+        </div>
+      ) : null}
+      <p className="muted" style={{ fontSize: 13, marginTop: 14 }}>统计口径：每次打开 /intro/ 页面记一次（同一 IP 2 秒内去重）；IP 由服务端从请求头获取，仅用于内部访问统计。</p>
     </>
   );
 }

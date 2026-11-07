@@ -1,3 +1,123 @@
+.intro-chart {
+  padding: 18px 20px 14px;
+}
+
+.intro-chart-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.intro-chart-head b {
+  font-size: 15px;
+}
+
+.intro-chart-head span {
+  font-size: 12.5px;
+}
+
+.intro-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  height: 156px;
+  padding: 6px 6px 0;
+  border-bottom: 1px solid var(--line2);
+}
+
+.intro-bar {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.intro-bar > span {
+  width: 100%;
+  max-width: 46px;
+  min-height: 3px;
+  border-radius: 4px 4px 0 0;
+  background: linear-gradient(180deg, #3a648f, #2d4e73);
+}
+
+.intro-bar > span.empty {
+  background: var(--line2);
+}
+
+.intro-bar small {
+  font-size: 11px;
+  color: var(--ink3);
+  white-space: nowrap;
+}
+
+.intro-bar b {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink2);
+}
+
+.intro-list-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line2);
+}
+
+.intro-list-head b {
+  font-size: 15px;
+}
+
+.intro-list-head span {
+  font-size: 12.5px;
+}
+
+.intro-table-wrap {
+  overflow: auto;
+}
+
+.intro-table {
+  min-width: 760px;
+}
+
+.intro-ip {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-size: 13px;
+}
+
+.intro-referrer {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .intro-bars {
+    gap: 7px;
+    height: 126px;
+  }
+
+  .intro-chart {
+    padding: 15px 14px 12px;
+  }
+
+  .intro-table {
+    min-width: 680px;
+  }
+}
+
 @media (max-width: 640px) {
   .logs-list .lrow {
     display: grid;

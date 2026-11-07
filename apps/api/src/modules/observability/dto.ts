@@ -120,6 +120,52 @@ export class PageViewDto {
   title?: string;
 }
 
+/** 公开汇报页上报：只接收页面标识，IP/UA/时间由服务端记录 */
+export class IntroViewDto {
+  @IsString()
+  @MaxLength(200)
+  path: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  referrer?: string;
+
+  /** 入口标记，如 ?from=wechat，仅用于区分传播渠道 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  entry?: string;
+}
+
+export class IntroViewQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page = 1;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(10)
+  @Max(100)
+  pageSize = 30;
+
+  /** 趋势天数；报表默认看最近 7 天 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(180)
+  days = 7;
+}
+
 export class ClientErrorDto {
   @IsIn(CLIENT_SOURCES)
   source: (typeof CLIENT_SOURCES)[number];

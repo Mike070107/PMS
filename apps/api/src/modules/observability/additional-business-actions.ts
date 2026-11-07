@@ -152,6 +152,7 @@ const TEMPLATES: ReadonlyArray<readonly [string, string, string, string, string]
   ["POST", "/notifications/service-account/sync-followers", "post_notifications_service_account_sync_followers", "同步服务号关注者", "消息通知"],
   ["POST", "/notifications/service-account/test", "post_notifications_service_account_test", "请求发送服务号测试消息", "消息通知"],
   ["POST", "/observability/page-view", "post_observability_page_view", "上报页面访问记录", "系统监测"],
+  ["POST", "/observability/intro-view", "post_observability_intro_view", "上报汇报页访问", "系统监测"],
   ["POST", "/observability/client-errors", "post_observability_client_errors", "上报客户端异常", "系统监测"],
   ["POST", "/observability/feedback", "post_observability_feedback", "提交页面使用反馈", "用户反馈"],
   ["PATCH", "/observability/feedback/:id/status", "patch_observability_feedback_id_status", "修改使用反馈处理状态", "用户反馈"],
