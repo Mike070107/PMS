@@ -6535,3 +6535,12 @@
   - 950cd4a4 fix(gateway): ticket 元数据保存 gatewayReturnTo（补齐 returnTo 回跳依赖文件）
   - 09745661 fix(gateway): 扫码授权后回跳原始深层链接（returnTo 存 ticket 元数据，防开放重定向）
 
+## 2026-11-08 00:32 · web · 83aad620
+
+- 包：`pms-web-20261108-003137.tar.gz`
+- 提交：83aad620 feat(permission): 权限矩阵新增「内网应用」分组，按角色勾选具体应用（与 intranet 页权限解耦）
+- 自上次（9ef9192e）以来上线的相关提交：
+  - 83aad620 feat(permission): 权限矩阵新增「内网应用」分组，按角色勾选具体应用（与 intranet 页权限解耦）
+  - 67821520 test(permission): 导航→权限注册表一致性并入 page-access 回归；docs: MIS 镜像与收款差异设计稿
+  - a89e1b0c test(nav): 导航项与权限注册表一致性回归（防止菜单加了权限漏配）
+
