@@ -50,7 +50,9 @@ export class MisCollectionSmsStatsQueryDto {
 }
 /** 大屏「近期已缴」：limit 默认 10、上限 50；communityId 受当前数据范围约束。 */
 export class MisRecentPaymentsQueryDto {
- @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(50) limit?:number;
+ @IsOptional() @Matches(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/,{message:'日期不合法'}) date?:string;
+ @IsOptional() @Type(()=>Number) @IsInt() @Min(1) page?:number;
+ @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(50) pageSize?:number;
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) communityId?:number;
 }
 /** 今日工作页 MIS 实收：date 缺省取北京时间今天。 */
