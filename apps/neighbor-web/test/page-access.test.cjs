@@ -143,3 +143,29 @@ test('账单与待缴：独立页面权限，fees 不再放行 /bills，菜单�
  const denied=load('components/Shell.tsx',{pages:{fees:{view:true}}},'/bills').default();
  assert.equal(nodes(denied).filter(n=>n.type==='a'&&n.props&&n.props.title==='账单与待缴').length,0,'只有 fees 时菜单不出现账单与待缴');
 });
+test('导航→页面权限→权限注册表一致性（bills/intranet 漏注册回归）',()=>{
+ const nav=load('components/Shell.tsx',{}).NAV;
+ const map=load('lib/page-access.ts',{});
+ const shared=loadAdminRegistry();
+ // 独立全屏页不参与站内权限映射；后续 legacy/prod 跳转项也在白名单里显式声明。
+ const EXEMPT=new Set(['/screen']);
+ for(const item of nav){
+  if(!item.to||EXEMPT.has(item.to))continue;
+  const page=map.pageForPath(item.to);
+  assert.ok(page,`菜单「${item.name||item.key}」(${item.to}) 缺少 page-access 映射`);
+  for(const key of page.keys||[]){
+   if(String(key).startsWith('app:')){
+    assert.ok(shared.STAFF_APP_PAGE_KEYS.includes(key),`菜单「${item.name||item.key}」(${item.to}) 映射的权限 key「${key}」不在 STAFF_APP_PAGES`);
+   }else{
+    assert.ok(shared.ADMIN_PAGE_KEYS.includes(key),`菜单「${item.name||item.key}」(${item.to}) 映射的权限 key「${key}」不在 ADMIN_PAGES`);
+   }
+  }
+  if(item.permissionKey)assert.ok(shared.ADMIN_PAGE_KEYS.includes(item.permissionKey),`菜单「${item.name||item.key}」(${item.to}) 的 permissionKey「${item.permissionKey}」不在 ADMIN_PAGES`);
+ }
+});
+function loadAdminRegistry(){
+ const file=path.resolve(__dirname,'../../../packages/shared-types/src/pages.ts');
+ const module={exports:{}};
+ vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{module,exports:module.exports});
+ return module.exports;
+}
