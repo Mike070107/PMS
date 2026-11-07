@@ -6492,3 +6492,10 @@
 - 自上次（94cedd61）以来上线的相关提交：
   - 4d6376b1 fix(screen,payments): 大屏兼容收款清单新结构（total/rows）避免白屏；收款清单汇总加 totalBills/totalHouses
 
+## 2026-11-07 23:39 · api · 64fd2bd2
+
+- 包：`pms-api-fast-20261107-233835.tar.gz`
+- 提交：64fd2bd2 perf(fees): MIS 查询 30s 缓存与金额分档聚合接口；账龄扫描仅 households；告警冷却 6 小时
+- 自上次（4d6376b1）以来上线的相关提交：
+  - 64fd2bd2 perf(fees): MIS 查询 30s 缓存与金额分档聚合接口；账龄扫描仅 households；告警冷却 6 小时
+
