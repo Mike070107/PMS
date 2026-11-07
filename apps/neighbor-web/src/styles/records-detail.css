@@ -1,0 +1,101 @@
+/* 办理记录：行展开业务明细（只被 Records 页面引入） */
+.rec-table .rec-row {
+  cursor: pointer;
+}
+
+.rec-table .rec-row.open td {
+  background: var(--sunken, #f6f8fb);
+}
+
+.rec-row:hover td {
+  background: #f7f9fc;
+}
+
+.rec-detail-btn {
+  white-space: nowrap;
+}
+
+.rec-detail-row td.rec-detail-cell {
+  padding: 0 !important;
+  background: var(--sunken, #f6f8fb);
+  border-bottom: 1px solid var(--line2);
+}
+
+.rec-detail {
+  padding: 14px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rec-detail-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.rec-detail-head b {
+  font-size: 14px;
+}
+
+.rec-detail-head span {
+  font-size: 12.5px;
+}
+
+.rec-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 22px;
+}
+
+.rec-detail-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.rec-detail-item > span {
+  flex: none;
+  color: var(--ink3);
+  min-width: 78px;
+}
+
+.rec-detail-item > b {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.rec-detail-extra {
+  border-top: 1px dashed var(--line2);
+  padding-top: 10px;
+}
+
+.rec-detail-sub {
+  font-size: 12.5px;
+  color: var(--ink3);
+  margin-bottom: 8px;
+}
+
+@media (max-width: 700px) {
+  .rec-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .rec-detail-item {
+    align-items: flex-start;
+  }
+
+  .rec-detail-item > span {
+    min-width: 84px;
+  }
+
+  .rec-detail {
+    padding: 12px 12px 14px;
+  }
+}
