@@ -101,7 +101,7 @@ export default function Logs() {
   return (
     <>
       <div className="ph" style={{ marginBottom: 14 }}>
-        <div><div className="h1row"><ToneIcon kind="logs" /><h1 style={{ fontSize: 22 }}>日志</h1></div><p>系统运行状况、操作记录与汇报页访问</p></div>
+        <div><div className="h1row"><ToneIcon kind="logs" /><h1 style={{ fontSize: 22 }}>日志</h1></div><p>系统运行状况与操作记录 · 汇报页访问</p></div>
         <div className="act">
           <a className="btn sm" href="/intro/" target="_blank" rel="noopener" style={{marginRight:10}}><Icon name="link" size={15} />打开汇报页</a>
           <button className="btn" onClick={() => {setRetryLogs(v=>v+1);setRetryOverview(v=>v+1);setRetryIntro(v=>v+1);}}>刷新</button>
