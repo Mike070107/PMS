@@ -6231,3 +6231,12 @@
   - 68140f64 feat(permission): 账单与待缴成为可授权页面(bills)并带迁移；权限界面按菜单分组排序
   - 61a9a81f feat(login): 暂时隐藏账号密码入口，管理员可经 /login?login=password 兜底
 
+## 2026-11-07 11:16 · api · 8ae14331
+
+- 包：`pms-api-fast-20261107-111602.tar.gz`
+- 提交：8ae14331 feat(bills): 两表表头排序（清单按房号/金额，跟进按房号/金额/跟进/次数）；催收效果日期行对齐；Top10 另有房产标注
+- 自上次（68140f64）以来上线的相关提交：
+  - 8ae14331 feat(bills): 两表表头排序（清单按房号/金额，跟进按房号/金额/跟进/次数）；催收效果日期行对齐；Top10 另有房产标注
+  - e6603361 feat(intro): publish system intro subpage and visit stats
+  - b7964b7c feat(bills): H5 卡片式适配；待跟进Top10 标注同一业主另有房产；MIS业主同步对比报告
+
