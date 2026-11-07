@@ -6553,3 +6553,10 @@
   - 1d493cdf feat(auth): 登录失败账号归一化哈希工具（配合密码锁定）
   - 437f4f44 feat(auth): 密码登录失败锁定（5次/15分钟）与管理员微信告警
 
+## 2026-11-08 01:01 · web · a875e39f
+
+- 包：`pms-web-20261108-010037.tar.gz`
+- 提交：a875e39f feat(login): 密码失败锁定提示与倒计时（429 retryAfterSeconds）
+- 自上次（83aad620）以来上线的相关提交：
+  - a875e39f feat(login): 密码失败锁定提示与倒计时（429 retryAfterSeconds）
+
