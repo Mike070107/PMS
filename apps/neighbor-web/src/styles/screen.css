@@ -122,3 +122,6 @@
 .screen .scr-ticker-paid{font-style:normal;color:#3ddc97;font-weight:600;margin-left:calc(var(--u)*8)}
 /* 无缝循环：间距放在每一项的右侧，-50% 位移才能与前半段严格对齐 */
 .screen .scr-ticker-track>span{margin-right:calc(var(--u)*44)}
+
+/* MIS 离线/镜像同步时间：最后更新旁的小字，不告警 */
+.screen .scr-asof{color:var(--scr-dim);font-size:calc(var(--u)*13);white-space:nowrap;opacity:.92}

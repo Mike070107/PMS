@@ -21,7 +21,7 @@ type Effect = { summary: { notifiedCents: number; recoveredCents: number; recove
 type SmsStats = Record<string, unknown>;
 type Options = { available?: boolean; message?: string; communities: { id: number; name: string }[] };
 
-const REFRESH_MS = 90_000;
+const REFRESH_MS = 300_000;
 const AMOUNT_BUCKETS = [
   { key: 'le500', label: '≤¥500' },
   { key: '500to2000', label: '¥500–2000' },
@@ -42,6 +42,27 @@ function normalizeBrackets(raw: AmountBracketsResponse) {
       amountCents: Number(raw.total?.amountCents) || buckets.reduce((sum, bucket) => sum + bucket.amountCents, 0),
     },
   };
+}
+
+/** 解析 MIS 离线/镜像状态；字段未就绪时按在线处理。只用于右上角小字，不弹告警。 */
+function offlineStatus(raw: unknown) {
+  const meta = (raw && typeof raw === 'object') ? raw as Record<string, any> : {};
+  const mirror = (meta.mirror && typeof meta.mirror === 'object' ? meta.mirror : meta.sync && typeof meta.sync === 'object' ? meta.sync : {}) as Record<string, any>;
+  const offline = meta.offline === true || meta.misOffline === true || meta.misOnline === false
+    || meta.isOffline === true || meta.stale === true || mirror.offline === true
+    || /镜像/.test(String(meta.sourceLabel || ''));
+  if (!offline) return { offline: false, asOf: null as string | null };
+  const rawAsOf = meta.dataAsOf ?? meta.dataAsOfAt ?? meta.asOf ?? meta.mirrorAsOf ?? meta.syncedAt
+    ?? meta.lastSyncedAt ?? meta.mirrorSyncedAt ?? mirror.syncedAt ?? meta.queriedAt ?? null;
+  let clock: string | null = null;
+  if (rawAsOf) {
+    const text = String(rawAsOf);
+    const direct = /(\d{2}):(\d{2})/.exec(text);
+    const date = new Date(text);
+    if (!Number.isNaN(date.getTime())) clock = date.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Shanghai' });
+    else if (direct) clock = direct[1] + ':' + direct[2];
+  }
+  return { offline: true, asOf: clock };
 }
 
 function message(e: unknown) {
@@ -220,6 +241,11 @@ export default function Screen() {
     } catch { /* 浏览器不允许时保持窗口模式 */ }
   };
 
+  const sync = offlineStatus(dash.data ?? options.data);
+  const offlineMode = sync.offline;
+  const quietEmpty = (text: string, detail?: string) => offlineMode
+    ? <Empty text="MIS 同步中，稍后自动刷新" />
+    : <Empty text={text} detail={detail} />;
   const summary = dash.data?.summary;
   const paidRate = summary && summary.receivableCents ? Math.round((summary.paidCents / summary.receivableCents) * 1000) / 10 : null;
   const unpaidShare = summary && summary.receivableCents ? Math.round((summary.unpaidCents / summary.receivableCents) * 1000) / 10 : null;
@@ -302,6 +328,7 @@ export default function Screen() {
             </select>
           </label>
           <span className="scr-updated">最后更新 {loadedAt ? new Date(loadedAt).toLocaleString('zh-CN', { hour12: false }) : '读取中…'}</span>
+          {offlineMode && sync.asOf ? <span className="scr-asof">数据截至 {sync.asOf}（MIS 同步）</span> : null}
           {loading && <span className="scr-live"><i />刷新中</span>}
           <button type="button" className="scr-btn" onClick={() => setTick((value) => value + 1)}>刷新</button>
           <button type="button" className="scr-btn" onClick={() => void toggleFullscreen()}>{fullscreen ? '退出全屏' : '全屏'}</button>
@@ -311,7 +338,7 @@ export default function Screen() {
 
       <section className="scr-kpis" aria-label="本期收费指标">
         {dash.error && !summary ? (
-          <div className="scr-panel scr-kpi err"><Empty text="MIS 指标读取失败" detail={dash.error} /></div>
+          offlineMode ? <div className="scr-panel scr-kpi"><Empty text="MIS 同步中，稍后自动刷新" /></div> : <div className="scr-panel scr-kpi err"><Empty text="MIS 指标读取失败" detail={dash.error} /></div>
         ) : (
           <>
             <article className="scr-panel scr-kpi">
@@ -344,7 +371,7 @@ export default function Screen() {
             <h2>{year} 年按月收缴趋势</h2>
             <span className="scr-legend">实收净额 · 按月{community ? ' · ' + (communities.find((c) => String(c.id) === community)?.name || '所选小区') : ' · 全部授权小区'}</span>
           </div>
-          {trend.error ? <Empty text="趋势读取失败" detail={trend.error} /> : trend.data ? <TrendChart buckets={monthly} /> : <Empty text="正在读取趋势…" />}
+          {trend.error ? quietEmpty("趋势读取失败", trend.error) : trend.data ? <TrendChart buckets={monthly} /> : <Empty text="正在读取趋势…" />}
         </article>
 
         <article className="scr-panel scr-aging-panel">
@@ -352,7 +379,7 @@ export default function Screen() {
             <h2>待缴金额分布</h2>
             <span className="scr-legend">按户待缴总额分档</span>
           </div>
-          {brackets.error ? <Empty text="待缴金额读取失败" detail={brackets.error} /> : bracketView ? (
+          {brackets.error ? quietEmpty("待缴金额读取失败", brackets.error) : bracketView ? (
             <AmountBars buckets={bracketView.buckets} totalAmount={bracketView.total.amountCents} totalCount={bracketView.total.count} />
           ) : <Empty text="正在读取待缴金额…" />}
         </article>
@@ -361,7 +388,7 @@ export default function Screen() {
       <section className="scr-bottom" aria-label="催缴成效">
         <article className="scr-panel scr-mini">
           <div className="scr-panel-head"><h2>本轮催缴批次与户数</h2><span className="scr-legend">最近 100 批</span></div>
-          {batches.error ? <Empty text="催缴批次读取失败" detail={batches.error} /> : (
+          {batches.error ? quietEmpty("催缴批次读取失败", batches.error) : (
             <div className="scr-mini-body">
               <div><b>{batchTotal}</b><small>批次</small></div>
               <div><b>{batchHouses}</b><small>通知户次</small></div>
@@ -373,7 +400,7 @@ export default function Screen() {
         <article className="scr-panel scr-mini">
           <div className="scr-panel-head"><h2>T+30 回款与回款率</h2><span className="scr-legend">通知批次归因</span></div>
           {effect.error || !effect.data ? (
-            effect.loading ? <Empty text="正在核对 T+30 回款…" /> : <Empty text="T+30 回款暂不可用" todo detail={effect.error || undefined} />
+            effect.loading ? <Empty text="正在核对 T+30 回款…" /> : offlineMode ? <Empty text="MIS 同步中，稍后自动刷新" /> : <Empty text="T+30 回款暂不可用" todo detail={effect.error || undefined} />
           ) : (
             <div className="scr-mini-body">
               <div><b>¥{cents(effect.data.summary.recoveredCents)}</b><small>归因回款</small></div>
@@ -385,7 +412,7 @@ export default function Screen() {
 
         <article className="scr-panel scr-mini">
           <div className="scr-panel-head"><h2>短信送达率</h2><span className="scr-legend">催缴短信</span></div>
-          {sms.error ? <Empty text="短信送达率暂不可用" todo detail={sms.error} /> : sms.data ? (
+          {sms.error ? quietEmpty("短信送达率暂不可用", sms.error) : sms.data ? (
             <div className="scr-mini-body">
               <div><b>{smsRate === null ? '—' : smsRate + '%'}</b><small>送达率</small></div>
               <div><b>{smsDelivered || '—'}</b><small>已送达</small></div>
