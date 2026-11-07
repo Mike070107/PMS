@@ -6223,3 +6223,11 @@
   - 2823d1b2 test(bills): 覆盖待跟进 Top10 按户口径与电话权限二次收窄
   - ff3eb75e fix(bills): 跟进队列表格列宽与最小宽度适配 7 列；补队列层电话收窄单测
 
+## 2026-11-07 10:28 · web · 6a878f0c
+
+- 包：`pms-web-20261107-102737.tar.gz`
+- 提交：6a878f0c deploy: api → 68140f64
+- 自上次（ff3eb75e）以来上线的相关提交：
+  - 68140f64 feat(permission): 账单与待缴成为可授权页面(bills)并带迁移；权限界面按菜单分组排序
+  - 61a9a81f feat(login): 暂时隐藏账号密码入口，管理员可经 /login?login=password 兜底
+
