@@ -6476,3 +6476,12 @@
   - 94cedd61 feat(access): 远程门禁区块可折叠，新增重新检查在线状态按钮
   - ce44ae5e feat(access,reports): 远程门禁新增重新检查在线状态；分析收费报表更名维修收费报表
 
+## 2026-11-07 23:27 · api · 4d6376b1
+
+- 包：`pms-api-fast-20261107-232546.tar.gz`
+- 提交：4d6376b1 fix(screen,payments): 大屏兼容收款清单新结构（total/rows）避免白屏；收款清单汇总加 totalBills/totalHouses
+- 自上次（7cc3dbc5）以来上线的相关提交：
+  - 4d6376b1 fix(screen,payments): 大屏兼容收款清单新结构（total/rows）避免白屏；收款清单汇总加 totalBills/totalHouses
+  - ce44ae5e feat(access,reports): 远程门禁新增重新检查在线状态；分析收费报表更名维修收费报表
+  - e4911a36 feat(records): 办理记录返回结构化明细（车牌/续期前后/操作人/收款方式/业务扩展）
+
