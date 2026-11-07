@@ -6276,3 +6276,12 @@
 - 自上次（5638d94d）以来上线的相关提交：
   - 77f68249 feat(screen): 数据范围选择（小区/年度）并自动跟随管理处；趋势按年度按月展示
 
+## 2026-11-07 11:58 · web · 3f97d561
+
+- 包：`pms-web-20261107-115718.tar.gz`
+- 提交：3f97d561 feat(nav): 分析组新增「收费大屏」，权限沿用 fees
+- 自上次（77f68249）以来上线的相关提交：
+  - 3f97d561 feat(nav): 分析组新增「收费大屏」，权限沿用 fees
+  - 6a5a75bc feat(intro): add mobile lite deck and narrow-screen redirect
+  - 0fbbb581 feat(screen): 底部实时播报条；账单页新增「投屏大屏」入口
+
