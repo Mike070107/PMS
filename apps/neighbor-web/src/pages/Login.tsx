@@ -16,7 +16,10 @@ type Mode = 'qr' | 'pwd';
  */
 export default function Login() {
   const nav = useNavigate();
-  const [mode, setMode] = useState<Mode>('qr');
+  // 账号密码登录暂时关闭：默认只显示微信登录。
+  // 管理员需要兜底时访问 /login?login=password 才会出现「账号密码」页签（接口本身仍开放）。
+  const pwdFallback = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('login') === 'password';
+  const [mode, setMode] = useState<Mode>(pwdFallback ? 'pwd' : 'qr');
 
   const finishLogin = useCallback(async (accessToken: string, user: AdminLoginResp['user']) => {
     auth.setLogin({ accessToken, tokenType: 'Bearer', user });
@@ -41,6 +44,7 @@ export default function Login() {
           </div>
         </div>
 
+        {pwdFallback && (
         <div className="seg" style={{ display: 'flex', width: '100%', marginBottom: 20 }}>
           <button className={mode === 'qr' ? 'on' : ''} style={{ flex: 1, height: 38, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={() => setMode('qr')}>
             <Icon name="wechat" size={18} />微信登录
@@ -48,7 +52,7 @@ export default function Login() {
           <button className={mode === 'pwd' ? 'on' : ''} style={{ flex: 1, height: 38, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }} onClick={() => setMode('pwd')}>
             <Icon name="shield" size={18} />账号密码
           </button>
-        </div>
+        </div>)}
 
         {mode === 'qr' ? <QrPanel onSuccess={finishLogin} /> : <PwdPanel onSuccess={finishLogin} />}
 
