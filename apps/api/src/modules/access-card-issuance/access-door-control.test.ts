@@ -269,7 +269,132 @@ test('门禁接口沿用 access-cards 的 business edit/view 权限，不新增�
   const edit = Reflect.getMetadata(PERMISSION_KEY, handlers.openDoor!);
   const viewTask = Reflect.getMetadata(PERMISSION_KEY, handlers.doorTask!);
   const viewControllers = Reflect.getMetadata(PERMISSION_KEY, handlers.doorControllers!);
+  const checkOnline = Reflect.getMetadata(PERMISSION_KEY, handlers.checkDoorOnline!);
   assert.deepEqual(edit, { items: [{ pageKey: 'business', action: 'edit' }] });
   assert.deepEqual(viewTask, { items: [{ pageKey: 'business', action: 'view' }] });
   assert.deepEqual(viewControllers, { items: [{ pageKey: 'business', action: 'view' }] });
+  assert.deepEqual(checkOnline, { items: [{ pageKey: 'business', action: 'edit' }] });
+});
+
+function makeCheckService() {
+  const context = makeService();
+  const checkAudits: Array<Record<string, unknown>> = [];
+  let nextId = 700;
+  context.state.createStandaloneDoorOperation = async (dto: Record<string, unknown>) => {
+    context.created.push(dto);
+    nextId += 1;
+    return {
+      id: nextId,
+      houseId: 1,
+      historyRowId: 0,
+      roomKey: '228/11/1',
+      cardSequence: null,
+      operation: dto.operation,
+      icCardNo: null,
+      wgCardNo: '__door_operation__',
+      targetBuildings: [{
+        id: dto.buildingId,
+        buildingNo: dto.buildingId === 11 ? '11' : '26',
+        accessSystem: 'iccard',
+      }],
+      controllerResults: [],
+      status: 'pending',
+      attempt: 0,
+      error: null,
+      requestedAt: new Date(),
+      completedAt: null,
+      durationSeconds: null,
+    };
+  };
+  context.state.writeDoorCheckAudit = async (...args: unknown[]) => { checkAudits.push({ args }); };
+  return { ...context, checkAudits };
+}
+
+test('check-online 对每块 iCCard 控制器入队探测，MjSystem 明确跳过', async () => {
+  const { service, state, created, checkAudits } = makeCheckService();
+  state.authorizationRepo.find = async () => [];
+  const result = await service.checkDoorOnline({ communityId: 228 }, user, scopeAll);
+  assert.deepEqual((result as any).taskIds, [701]);
+  assert.equal((result as any).queued, 1);
+  assert.equal((result as any).reused, 0);
+  assert.equal(created.length, 1);
+  assert.equal(created[0]!.operation, 'controller_detect');
+  assert.equal(created[0]!.buildingId, 11);
+  assert.deepEqual((result as any).skipped, [{
+    controllerId: 26,
+    buildingNo: '26',
+    reason: 'MjSystem 检测协议未验收，仅支持立即远程开门',
+  }]);
+  assert.equal(checkAudits.length, 1);
+});
+
+test('check-online agent 离线直接 503，不入队', async () => {
+  const { service, state, created } = makeCheckService();
+  state.agentRepo.find = async () => [];
+  await assert.rejects(
+    service.checkDoorOnline({ communityId: 228 }, user, scopeAll),
+    /2\.5\.46/,
+  );
+  assert.equal(created.length, 0);
+});
+
+test('check-online 助手版本低于 2.5.46 直接 503，不入队', async () => {
+  const { service, state, created } = makeCheckService();
+  state.agentRepo.find = async () => [{
+    agentKey: 'gateway', kind: 'access_gateway', enabled: true, status: 'online',
+    lastSeenAt: new Date(), version: '2.5.45', capabilities: { remoteDoorControl: true },
+  }];
+  await assert.rejects(
+    service.checkDoorOnline({ communityId: 228 }, user, scopeAll),
+    /2\.5\.46/,
+  );
+  assert.equal(created.length, 0);
+});
+
+test('check-online 10 秒内同一控制器复用原任务', async () => {
+  const { service, state, created } = makeCheckService();
+  const now = new Date();
+  state.authorizationRepo.find = async () => [{
+    id: 777,
+    operation: 'controller_detect',
+    status: 'completed',
+    createdAt: now,
+    requestedAt: now,
+    targetBuildings: [{ id: 11, buildingNo: '11', accessSystem: 'iccard' }],
+    controllerResults: [],
+    lastError: null,
+  }];
+  const result = await service.checkDoorOnline({ communityId: 228 }, user, scopeAll);
+  assert.deepEqual((result as any).taskIds, [777]);
+  assert.equal((result as any).queued, 0);
+  assert.equal((result as any).reused, 1);
+  assert.equal(created.length, 0);
+});
+
+test('check-online 超过 10 秒重新入队，支持指定控制器', async () => {
+  const { service, state, created } = makeCheckService();
+  state.authorizationRepo.find = async () => [{
+    id: 778,
+    operation: 'controller_detect',
+    status: 'completed',
+    createdAt: new Date(Date.now() - 11_000),
+    requestedAt: new Date(Date.now() - 11_000),
+    targetBuildings: [{ id: 11, buildingNo: '11', accessSystem: 'iccard' }],
+    controllerResults: [],
+    lastError: null,
+  }];
+  const result = await service.checkDoorOnline({ communityId: 228, controllerIds: [11] }, user, scopeAll);
+  assert.deepEqual((result as any).taskIds, [701]);
+  assert.equal((result as any).queued, 1);
+  assert.equal(created.length, 1);
+  assert.equal((result as any).skipped.length, 0);
+});
+
+test('check-online 指定不存在的控制器返回 404', async () => {
+  const { service, state } = makeCheckService();
+  state.authorizationRepo.find = async () => [];
+  await assert.rejects(
+    service.checkDoorOnline({ communityId: 228, controllerIds: [999] }, user, scopeAll),
+    /不存在或不属于该小区/,
+  );
 });

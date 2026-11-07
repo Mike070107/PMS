@@ -378,6 +378,21 @@ export class OpenAccessDoorDto {
   idempotencyKey: string;
 }
 
+export class CheckDoorOnlineDto {
+  @Type(() => Number)
+  @IsInt()
+  communityId: number;
+
+  /** 不传则检查该小区全部可探测控制器；当前 controllerId 即 PMS 楼栋 ID。 */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  controllerIds?: number[];
+}
+
 export class CreateAccessCardLifecycleDto {
   @IsIn(['extend', 'lost', 'unlost', 'cancel', 'replace', 'reissue'])
   operation: 'extend' | 'lost' | 'unlost' | 'cancel' | 'replace' | 'reissue';

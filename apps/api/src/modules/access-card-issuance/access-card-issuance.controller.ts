@@ -33,6 +33,7 @@ import {
   CreateAccessCardControllerUploadDto,
   CreateAccessDoorOperationDto,
   OpenAccessDoorDto,
+  CheckDoorOnlineDto,
   CreateAccessCardLifecycleDto,
   EnrollAccessCardAgentDto,
   LegacyCardCheckReportDto,
@@ -369,6 +370,16 @@ export class AccessCardIssuanceController {
     }
     return this.service.listDoorControllers(user, access,
       communityId == null || communityId === '' ? undefined : Number(communityId));
+  }
+
+  @Post('door/check-online')
+  @RequirePermission('business', 'edit')
+  checkDoorOnline(
+    @Body() dto: CheckDoorOnlineDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.checkDoorOnline(dto, user, access);
   }
 
   @Post('houses/:houseId/door-operations')

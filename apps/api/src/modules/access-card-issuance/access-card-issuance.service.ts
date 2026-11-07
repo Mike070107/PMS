@@ -79,6 +79,7 @@ import {
   ParkingHistoryQueryDto,
   CreateAccessCardLifecycleDto,
   OpenAccessDoorDto,
+  CheckDoorOnlineDto,
 } from './dto';
 import { agentTokenMatches, issueAgentSecret } from './agent-auth';
 import { prepareFamilyRegistration, validateRegistrationGarageNumbers, supportsFamilyActivation } from './parking-family';
@@ -854,6 +855,101 @@ export class AccessCardIssuanceService {
       checkedAt: new Date().toISOString(),
       controllers,
     };
+  }
+
+  /**
+   * 重新检查在线状态：复用 controller_detect 任务通道，逐控制器入队探测任务。
+   * - 每块控制器一条任务（现有 ExecuteDoorOperation 只支持单目标）；
+   * - agent 离线或版本 < 2.5.46 直接 503，不入队；
+   * - 同一控制器 10 秒内复用原任务，不重复下发；
+   * - MjSystem 检测协议未验收，跳过并明确返回原因，不伪造在线。
+   */
+  async checkDoorOnline(dto: CheckDoorOnlineDto, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const community = await this.communityRepo.findOne({
+      where: { id: dto.communityId, tenantId, enabled: true },
+    });
+    if (!community || projectPhaseOf(community.name) !== 'phase2') {
+      throw new BadRequestException('所选小区不属于枫桦景苑二期联网门禁区域');
+    }
+    const scope = scopeCommunityIds(access);
+    if (scope && !scope.includes(community.id)) throw new ForbiddenException('该小区不在你的管理范围内');
+
+    const buildings = await this.buildingRepo.find({ where: { tenantId, communityId: community.id } });
+    const byId = new Map(buildings.map((building) => [building.id, building]));
+    const requestedIds = Array.from(new Set(dto.controllerIds ?? []));
+    let selected: Building[];
+    if (requestedIds.length) {
+      selected = requestedIds.map((id) => {
+        const building = byId.get(id);
+        if (!building) throw new NotFoundException(`控制器 ${id} 不存在或不属于该小区`);
+        if (!accessSystemOf('phase2', building.buildingNo)) {
+          throw new BadRequestException(`${building.buildingNo}号楼的门禁路由尚未配置`);
+        }
+        return building;
+      });
+    } else {
+      selected = buildings.filter((building) => accessSystemOf('phase2', building.buildingNo) !== null);
+    }
+
+    const agents = await this.agentRepo.find({ where: { tenantId, kind: 'access_gateway', enabled: true } });
+    const gateway = orderAgentsByAvailability(agents).find((agent) =>
+      effectiveAgentStatus(agent) === 'online'
+      && agent.capabilities?.remoteDoorControl === true
+      && supportsRemoteDoorControl(agent.version));
+    if (!gateway) {
+      throw new ServiceUnavailableException('门禁在线检查需要 .88 电脑升级 PMS 数据同步助手 2.5.46 或更新版本，且网关在线');
+    }
+
+    // 10 秒防抖：同一控制器的 pending/running 任务，或 10 秒内已完成/失败的任务，直接复用。
+    const recentTasks = await this.authorizationRepo.find({
+      where: { tenantId, operation: In(['controller_detect']) },
+      order: { createdAt: 'DESC' },
+      take: 200,
+    });
+    const cutoff = Date.now() - 10_000;
+    const reusable = new Map<number, AccessCardAuthorization>();
+    for (const task of recentTasks) {
+      const active = task.status === 'pending' || task.status === 'running';
+      const createdAt = task.createdAt?.getTime() ?? task.requestedAt?.getTime() ?? 0;
+      if (!active && createdAt < cutoff) continue;
+      for (const target of task.targetBuildings ?? []) {
+        if (!reusable.has(target.id)) reusable.set(target.id, task);
+      }
+    }
+
+    const taskIds: number[] = [];
+    const skipped: Array<{ controllerId: number; buildingNo: string; reason: string }> = [];
+    let queued = 0;
+    let reused = 0;
+    for (const building of selected) {
+      const system = accessSystemOf('phase2', building.buildingNo);
+      if (system !== 'iccard') {
+        skipped.push({
+          controllerId: building.id,
+          buildingNo: building.buildingNo,
+          reason: 'MjSystem 检测协议未验收，仅支持立即远程开门',
+        });
+        continue;
+      }
+      const existing = reusable.get(building.id);
+      if (existing) {
+        taskIds.push(existing.id);
+        reused += 1;
+        continue;
+      }
+      const task = await this.createStandaloneDoorOperation({
+        buildingId: building.id,
+        operation: 'controller_detect',
+        idempotencyKey: `door-check-${community.id}-${building.id}-${Date.now()}-${taskIds.length}`,
+      }, user, access);
+      if (!task) throw new ServiceUnavailableException('门禁探测任务创建失败，请稍后重试');
+      taskIds.push(task.id);
+      queued += 1;
+    }
+
+    await this.writeDoorCheckAudit(tenantId, community.id, dto, taskIds, queued, reused, skipped, user.id);
+    return { taskIds, queued, reused, skipped };
   }
 
   async getHistoryAuthorization(id: number, user: AuthUser) {
@@ -2202,6 +2298,37 @@ export class AccessCardIssuanceService {
         requestedAt: new Date().toISOString(),
         status: 'pending',
         result: null,
+      },
+      createdBy: userId,
+      updatedBy: userId,
+    }));
+  }
+
+  private async writeDoorCheckAudit(
+    tenantId: number,
+    communityId: number,
+    dto: CheckDoorOnlineDto,
+    taskIds: number[],
+    queued: number,
+    reused: number,
+    skipped: Array<{ controllerId: number; buildingNo: string; reason: string }>,
+    userId: number,
+  ): Promise<void> {
+    const repo = this.authorizationRepo.manager.getRepository(BusinessLog);
+    await repo.save(repo.create({
+      tenantId,
+      transactionId: taskIds[0] ?? null,
+      action: 'access_door_check_online',
+      detail: {
+        communityId,
+        controllerIds: dto.controllerIds ?? null,
+        taskIds,
+        queued,
+        reused,
+        skipped,
+        triggeredBy: userId,
+        triggeredAt: new Date().toISOString(),
+        status: 'pending',
       },
       createdBy: userId,
       updatedBy: userId,

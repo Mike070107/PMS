@@ -15,7 +15,7 @@ export const PAGE_META: Record<string, { name: string; pageKey?: string }> = {
   '/fees': { name: '物业费', pageKey: 'fees' },
   '/parking/main': { name: '大车库车位' },
   '/parking/civil': { name: '人防车位' },
-  '/reports': { name: '收费报表', pageKey: 'reports' },
+  '/reports': { name: '维修收费报表', pageKey: 'reports' },
   '/materials': { name: '材料SKU', pageKey: 'materials' },
   '/stocktakes': { name: '盘点', pageKey: 'stocktakes' },
   '/staff': { name: '员工与权限', pageKey: 'users' },

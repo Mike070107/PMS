@@ -371,6 +371,7 @@ mjsystem completed（删除 1 条权限 + 员工记录，回读 0）
 | `POST /api/v1/access-card-issuance/door/open` | `business:edit` | 入队开门/常开任务，返回 `taskId` |
 | `GET /api/v1/access-card-issuance/door/task/:id` | `business:view` | 任务状态与控制器回执 |
 | `GET /api/v1/access-card-issuance/door/controllers?communityId=` | `business:view` | 控制器/门板在线状态（按小区过滤） |
+| `POST /api/v1/access-card-issuance/door/check-online` | `business:edit` | 触发 `controller_detect` 主动在线检查；每块 iCCard 控制器一条任务，MjSystem 跳过；agent 离线/版本 <2.5.46 直接 503；10 秒防抖；写审计 |
 
 `POST /door/open` body：
 
@@ -410,6 +411,8 @@ mjsystem completed（删除 1 条权限 + 员工记录，回读 0）
 3. 推导 `status`：`online`（最近完成）、`offline`（最近失败或网关离线）、`pending`（执行中）、`unknown`（无回执）。
 
 返回每栋：`controllerId`、`buildingNo`、`doorNo`、`doorName`、`controllerName`、`accessSystem`、`supportRemoteOpen`、`supportTemporaryOpen`（MjSystem=false）、`lastCheckedAt`、`lastError`。
+
+**主动重新检查**：`POST /door/check-online` body `{communityId, controllerIds?}`。不传 controllerIds 时检查该小区全部可探测控制器；每块 iCCard 控制器创建一条 `controller_detect` 任务（现有 `ExecuteDoorOperation` 单目标限制），MjSystem 明确跳过并返回原因；agent 离线或版本 <2.5.46 返回 503 且不排队；同一控制器 10 秒内复用原任务（pending/running 无论多久都复用）；审计写 `business_logs.action='access_door_check_online'`。任务完成/失败后，`GET /door/controllers` 的 `status/lastCheckedAt/lastError` 自动反映，不需要额外落库。
 
 ### 8.4 审计
 
