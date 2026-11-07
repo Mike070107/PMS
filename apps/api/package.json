@@ -32,7 +32,8 @@
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/data-source.ts",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/data-source.ts",
     "test:ui-preferences": "node -r ts-node/register --test src/modules/auth/ui-preferences.test.ts",
-    "test:parking-renewal": "node -r ts-node/register --test src/modules/business/parking-category-scope.test.ts src/modules/business/parking-category-scope.http.test.ts src/modules/business/parking-renewal.test.ts src/modules/business/parking-pricing.test.ts src/modules/business/business-execution.util.test.ts src/modules/business/paid-registration.test.ts"
+    "test:parking-renewal": "node -r ts-node/register --test src/modules/business/parking-category-scope.test.ts src/modules/business/parking-category-scope.http.test.ts src/modules/business/parking-renewal.test.ts src/modules/business/parking-pricing.test.ts src/modules/business/business-execution.util.test.ts src/modules/business/paid-registration.test.ts",
+    "test:telemetry": "node -r ts-node/register --test src/modules/telemetry/telemetry.persistence.test.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",
