@@ -264,7 +264,7 @@ export default function Reports() {
   return (
     <div className="erp-reports">
       <div className="ph" style={{ marginBottom: 10 }}>
-        <div><h1 style={{ fontSize: 22 }}>维修收费报表</h1><p>收费 / 工单 / 库存 / 材料使用 / 人员 · 只读 · 数字由服务端聚合</p></div>
+        <div><h1 style={{ fontSize: 22 }}>收费报表</h1><p>收费 / 工单 / 库存 / 材料使用 / 人员 · 只读 · 数字由服务端聚合</p></div>
       </div>
 
       <div className="chips" role="tablist" aria-label="分析看板分区" style={{ marginBottom: 12 }}>
