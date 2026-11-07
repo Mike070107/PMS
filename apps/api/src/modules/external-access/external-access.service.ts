@@ -60,22 +60,25 @@ export class ExternalAccessService {
   }
 
   /**
-   * 当前用户可见的内网应用入口。
+   * 当前用户可访问的已上线内网应用入口。
    * Web 与小程序的图标入口共用这一份结果，避免再维护第二套授权名单。
+   * 只认角色/模板的 externalAppIds，与 intranet 管理页权限无关。
    */
   async listMyApps(user: AuthUser) {
     const tenantId = this.requireTenant(user);
     const ids = await this.accessService.externalAppIdsOfUser(tenantId, user.id);
     if (!ids.length) return [];
     const apps = await this.appRepo.find({
-      where: { tenantId, id: In(ids), enabled: true },
+      where: { tenantId, id: In(ids), enabled: true, publishStatus: 'online' },
       order: { name: 'ASC' },
     });
     return apps.map((app) => ({
       id: app.id,
       name: app.name,
-      publicHostname: app.publicHostname,
+      slug: app.slug,
       entryPath: app.entryPath,
+      publicHostname: app.publicHostname,
+      originUrl: app.originUrl,
       url: `https://${app.publicHostname}${app.entryPath || '/'}`,
       publishStatus: app.publishStatus,
     }));

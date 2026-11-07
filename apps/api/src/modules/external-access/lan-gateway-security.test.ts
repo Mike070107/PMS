@@ -138,6 +138,7 @@ test('内网应用图标入口只返回当前用户已授权且已启用的应�
   const apps = await service.listMyApps({ id: 7, tenantId: 1 } as any);
   assert.equal(where.tenantId, 1);
   assert.equal(where.enabled, true);
+  assert.equal(where.publishStatus, 'online');
   assert.equal(apps[0].url, 'https://caiwu.prsznh.cn/tplus/view/login.html');
 });
 
