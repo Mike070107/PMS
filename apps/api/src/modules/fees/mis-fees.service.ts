@@ -195,8 +195,9 @@ export class MisFeesService implements OnModuleDestroy {
     const key=gap>3?'90+':gap>2?'61-90':gap>1?'31-60':'0-30';
     buckets[key].count+=1;buckets[key].amountCents+=amount;
    }
+   const topHouses=(scan.rows as any[]).slice().sort((a,b)=>(Number(b.amountCents)||0)-(Number(a.amountCents)||0)||String(a.houseKey).localeCompare(String(b.houseKey))).slice(0,10).map(r=>({houseKey:String(r.houseKey),address:String(r.address||''),ownerName:String(r.ownerName||''),amountCents:Number(r.amountCents)||0,phone:canSeePhone?((r as any).phone??null):null,phoneMasked:String((r as any).phoneMasked||'')}));
    const topOwners=[...owners.entries()].map(([name,v])=>({name,...v})).sort((a,b)=>b.amountCents-a.amountCents).slice(0,10);
-   aging={buckets,owners:topOwners,ownerCount:owners.size,total:totalHouses,amountCents:totalAmount,truncated:scan.rows.length<Number(scan.total||0),scanned:scan.rows.length,scanCap};
+   aging={buckets,topHouses,owners:topOwners,ownerCount:owners.size,total:totalHouses,amountCents:totalAmount,truncated:scan.rows.length<Number(scan.total||0),scanned:scan.rows.length,scanCap};
   }
   const rows=await this.withNotificationStatus((sets[1]||[]).map(format),user,q);
   return {...meta,total:totalHouses,amountCents:totalAmount,page:q.page||1,pageSize:q.pageSize||20,aging,rows};
