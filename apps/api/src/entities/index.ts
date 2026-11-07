@@ -85,6 +85,8 @@ import { PlatformLog } from './platform-log.entity';
 import { StocktakeTask } from './stocktake-task.entity';
 import { StocktakeItem } from './stocktake-item.entity';
 import { SystemLog } from './system-log.entity';
+import { PageView } from './page-view.entity';
+import { LoginAttempt } from './login-attempt.entity';
 import { RequestMetric } from './request-metric.entity';
 import { UserFeedback } from './user-feedback.entity';
 import { RepairExperienceNote } from './repair-experience-note.entity';
@@ -108,6 +110,8 @@ export const entities = [
   StocktakeTask,
   StocktakeItem,
   SystemLog,
+  PageView,
+  LoginAttempt,
   RequestMetric,
   UserFeedback,
   RepairExperienceNote,
@@ -205,6 +209,8 @@ export {
   StocktakeTask,
   StocktakeItem,
   SystemLog,
+  PageView,
+  LoginAttempt,
   RequestMetric,
   UserFeedback,
   RepairExperienceNote,

@@ -27,6 +27,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
 import { UploadModule } from './modules/upload/upload.module';
 import { StocktakeModule } from './modules/stocktake/stocktake.module';
 import { ObservabilityModule } from './modules/observability/observability.module';
+import { TelemetryModule } from './modules/telemetry/telemetry.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { RepairExperiencesModule } from './modules/repair-experiences/repair-experiences.module';
 import { AccessCardIssuanceModule } from './modules/access-card-issuance/access-card-issuance.module';
@@ -56,6 +57,7 @@ import { MetersModule } from './modules/meters/meters.module';
     UploadModule,
     StocktakeModule,
     ObservabilityModule,
+    TelemetryModule,
     FeedbackModule,
     RepairExperiencesModule,
     AccessCardIssuanceModule,

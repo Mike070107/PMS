@@ -40,13 +40,13 @@ export class ObservabilityInterceptor implements NestInterceptor {
       };
       void this.observability.captureRequest(capture);
 
-      const loginAction = loginActionOf(req.originalUrl || req.url, result);
-      if (loginAction) {
+      const login = loginAttemptOf(req.originalUrl || req.url, result, statusCode, capture.errorMessage);
+      if (login) {
         void this.observability.recordLogin({
-          tenantId, source, action: loginAction, success: statusCode < 400,
+          tenantId, source, action: login.action, success: login.success,
           actorUserId, account: String((req.body as any)?.account || '') || null,
           ipAddress: capture.ipAddress, userAgent: capture.userAgent,
-          statusCode, durationMs: capture.durationMs, message: capture.errorMessage,
+          statusCode, durationMs: capture.durationMs, message: login.message,
         });
       } else if (shouldAuditOperation(req, actorUserId)) {
         void this.observability.recordOperation(capture);
@@ -62,11 +62,19 @@ export class ObservabilityInterceptor implements NestInterceptor {
   }
 }
 
-function loginActionOf(url: string, result?: any) {
+export function loginAttemptOf(url: string, result: any, statusCode: number, errorMessage?: string | null): { action: string; success: boolean; message: string | null } | null {
   const path = String(url || '').split('?')[0];
-  if (path.endsWith('/auth/qr-login/status')) return result?.status === 'confirmed' ? 'web_qr_login' : null;
-  if (path.endsWith('/auth/oidc/status')) return result?.status === 'confirmed' ? 'external_access_login' : null;
-  return Object.entries(LOGIN_ACTIONS).find(([suffix]) => path.endsWith(suffix.replace('/api/v1', '')) || path.endsWith(suffix))?.[1] || null;
+  if (path.endsWith('/auth/qr-login/status')) {
+    if (result?.status === 'confirmed') return { action: 'web_qr_login', success: true, message: null };
+    if (result?.status === 'expired') return { action: 'web_qr_login', success: false, message: '微信登录票据无效或已过期' };
+    if (result?.status === 'cancelled') return { action: 'web_qr_login', success: false, message: '微信登录已取消' };
+    if (statusCode >= 400) return { action: 'web_qr_login', success: false, message: errorMessage || '微信登录票据无效' };
+    return null; // pending/scanned 轮询不记失败，避免撞库告警被正常轮询刷屏
+  }
+  if (path.endsWith('/auth/oidc/status')) return result?.status === 'confirmed' ? { action: 'external_access_login', success: true, message: null } : null;
+  const action = Object.entries(LOGIN_ACTIONS).find(([suffix]) => path.endsWith(suffix.replace('/api/v1', '')) || path.endsWith(suffix))?.[1];
+  if (!action) return null;
+  return { action, success: statusCode < 400, message: statusCode < 400 ? null : (errorMessage || '登录失败') };
 }
 
 function shouldAuditOperation(req: Request, actorUserId: number | null) {

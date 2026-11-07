@@ -1,12 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, LessThan, MoreThan, Repository } from 'typeorm';
 import * as os from 'node:os';
 import type { Request } from 'express';
 import { AuthUser } from '../../common/current-user.decorator';
-import { Community, RequestMetric, SystemLog, User } from '../../entities';
+import { Community, LoginAttempt, RequestMetric, SystemLog, User } from '../../entities';
 import { AccessService } from '../access/access.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { LOGIN_REASON_TEXT, loginFailureReasonOf, loginMethodOfAction, maskAccount } from '../telemetry/login-attempt.util';
 import { businessActionCodesByArea, listBusinessActions, resolveBusinessAction } from './business-action';
 import { buildApiErrorAlert } from './alert-presentation';
 import { auditClassPredicate, presentOperation, safeLogPath, redactSensitiveLog } from './log-presentation';
@@ -61,6 +62,7 @@ export class ObservabilityService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly access: AccessService,
     private readonly notifications: NotificationsService,
+    @Optional() @InjectRepository(LoginAttempt) private readonly loginAttemptRepo?: Repository<LoginAttempt>,
   ) {}
 
   /** 指标和审计是旁路：任何写入失败都不能影响业务请求。 */
@@ -157,14 +159,23 @@ export class ObservabilityService {
   }) {
     let tenantId = input.tenantId;
     let actorUserId = input.actorUserId;
+    let actorName: string | null = null;
     if ((!tenantId || !actorUserId) && input.account) {
       const user = await this.userRepo.findOne({
         where: { loginAccount: input.account },
-        select: ['id', 'tenantId'],
+        select: ['id', 'tenantId', 'name'],
       }).catch(() => null);
       tenantId = tenantId ?? user?.tenantId ?? null;
       actorUserId = actorUserId ?? user?.id ?? null;
+      actorName = user?.name ?? null;
     }
+    if (actorUserId && !actorName) {
+      const where: Record<string, unknown> = { id: actorUserId };
+      if (tenantId) where.tenantId = tenantId;
+      const user = await this.userRepo.findOne({ where, select: ['name'] }).catch(() => null);
+      actorName = user?.name ?? null;
+    }
+    const accountMasked = input.account ? maskAccount(input.account) : null;
     await this.saveLog({
       tenantId,
       category: 'login',
@@ -180,8 +191,24 @@ export class ObservabilityService {
       statusCode: input.statusCode,
       durationMs: input.durationMs,
       message: input.success ? '登录成功' : input.message || '登录失败',
-      detail: input.account ? { account: clip(input.account, 60) } : null,
+      detail: accountMasked ? { account: accountMasked } : null,
     }).catch(() => undefined);
+    // 登录尝试是旁路：失败也不能影响登录响应；不落明文账号、不落密码。
+    const failedReason = input.success ? null : loginFailureReasonOf(input.action, input.message);
+    if (this.loginAttemptRepo) {
+      void this.loginAttemptRepo.save(this.loginAttemptRepo.create({
+        tenantId: tenantId ?? null,
+        userId: actorUserId ?? null,
+        userName: actorName,
+        accountMasked,
+        ip: clipNullable(input.ipAddress, 64),
+        userAgent: clipNullable(input.userAgent, 200),
+        method: loginMethodOfAction(input.action),
+        status: input.success ? 'success' : 'failed',
+        reason: failedReason,
+        message: failedReason ? LOGIN_REASON_TEXT[failedReason] : '登录成功',
+      })).catch(() => undefined);
+    }
   }
 
   async recordPageView(user: AuthUser, dto: PageViewDto, req: Request) {
