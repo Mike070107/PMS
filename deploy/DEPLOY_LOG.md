@@ -6380,3 +6380,12 @@
 - 自上次（74b745e4）以来上线的相关提交：
   - c50150ea feat(today): MIS 当日实收/退款/分项/渠道统计接口
 
+## 2026-11-07 21:25 · web · e572edf8
+
+- 包：`pms-web-20261107-212515.tar.gz`
+- 提交：e572edf8 feat(today): 今日实收/退款/笔数/分项/最近收款改接 MIS，PMS 收款并列不混算
+- 自上次（632d4c26）以来上线的相关提交：
+  - e572edf8 feat(today): 今日实收/退款/笔数/分项/最近收款改接 MIS，PMS 收款并列不混算
+  - 3a14b20b feat(intro): reframe positioning as manage four, see four
+  - 85dcf307 feat(intro): use real notice layout and invoice sample
+
