@@ -17,6 +17,7 @@ type Batch = { id: number; createdAt: string; purpose: 'print' | 'sms'; houseCou
 type Batches = { rows: Batch[]; total: number };
 type Effect = { summary: { notifiedCents: number; recoveredCents: number; recoveryRate: number; clearedHouseholds: number }; invalidPaidDateCount?: number };
 type SmsStats = Record<string, unknown>;
+type Options = { available?: boolean; message?: string; communities: { id: number; name: string }[] };
 
 const REFRESH_MS = 60_000;
 const AGING_KEYS = ['0-30', '31-60', '61-90', '90+'] as const;
@@ -30,31 +31,31 @@ function num(value: unknown) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
 }
-/** 大屏横轴/金额缩写：≥1 万元用「万」，避免 6 个月标签挤在一起。 */
+/** 大屏横轴/金额缩写：≥1 万元用「万」，避免多月标签挤在一起。 */
 function compact(centsValue: number) {
   if (!Number.isFinite(centsValue)) return '¥0';
   if (Math.abs(centsValue) >= 1_000_000) return '¥' + (centsValue / 1_000_000).toFixed(1) + '万';
   return '¥' + cents(centsValue);
 }
+/** 月份标签：YY-MM，例如 26-06，跨年时不混淆。 */
 function monthLabel(month: string) {
-  return Number(month.slice(5)) + ' 月';
+  return `${month.slice(2, 4)}-${month.slice(5, 7)}`;
 }
 
-/** 每 60 秒取一次；页面隐藏（切换标签页/最小化）时暂停，回来立即补一次。 */
-function useLive<T>(url: string, query: Query, tick: number, enabled = true) {
+/** 每次 signal 变化取一次；60 秒的 signal 由页面定时器推进，页面隐藏时暂停。 */
+function useLive<T>(url: string, query: Query, signal: string) {
   const q = JSON.stringify(query);
   const [state, set] = useState<{ data: T | null; error: string; loading: boolean; loadedAt: number }>({
     data: null, error: '', loading: false, loadedAt: 0,
   });
   useEffect(() => {
-    if (!enabled) return;
     let active = true;
     set((prev) => ({ ...prev, loading: true }));
     request<T>({ url, query: JSON.parse(q), timeout: 30_000 })
       .then((data) => { if (active) set({ data, error: '', loading: false, loadedAt: Date.now() }); })
       .catch((e) => { if (active) set((prev) => ({ ...prev, error: message(e), loading: false })); });
     return () => { active = false; };
-  }, [url, q, tick, enabled]);
+  }, [url, q, signal]);
   return state;
 }
 
@@ -78,7 +79,7 @@ function TrendChart({ buckets }: { buckets: TrendBucket[] }) {
   const area = points.length ? `M ${points[0].x.toFixed(1)} ${H} L ${points.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L ')} L ${points[points.length - 1].x.toFixed(1)} ${H} Z` : '';
   return (
     <div className="scr-chart">
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="近 6 个月收缴趋势（按月实收净额）">
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="按月收缴趋势（实收净额）">
         <defs>
           <linearGradient id="scrTrendFill" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#4c9dff" stopOpacity="0.42" />
@@ -127,19 +128,39 @@ export default function Screen() {
   const session = useSession();
   const [tick, setTick] = useState(0);
   const [fullscreen, setFullscreen] = useState(false);
+  const [community, setCommunity] = useState('');
+  const currentYear = chinaDate().slice(0, 4);
+  const [year, setYear] = useState(currentYear);
 
-  const year = chinaDate().slice(0, 4);
+  // 跟随顶栏管理处：actingOffice / 登录代次变化时，重置范围；activeOffice 与范围在同一次更新里提交，避免先按旧小区请求一次。
+  const officeKey = JSON.stringify([session.user?.id, session.actingTenant?.id, session.actingOffice?.id, session.generation]);
+  const [activeOffice, setActiveOffice] = useState(officeKey);
+  useEffect(() => {
+    if (activeOffice === officeKey) return;
+    setActiveOffice(officeKey);
+    setCommunity('');
+    setYear(currentYear);
+  }, [officeKey, activeOffice, currentYear]);
+
+  // 范围（小区/年度）、自动刷新、管理处任一变化都推进 signal，全部请求一起重拉。
+  const signal = `${tick}|${activeOffice}|${community}|${year}`;
+
   const today = chinaDate();
-  const nowUtc = new Date(today + 'T00:00:00Z');
-  const months = Array.from({ length: 6 }, (_, i) => new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth() - 5 + i, 1)).toISOString().slice(0, 7));
-  const trendFrom = months[0] + '-01';
+  const communityId = community ? Number(community) : undefined;
+  const yearMonths = year === currentYear
+    ? Array.from({ length: Number(today.slice(5, 7)) }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`)
+    : Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
+  const yearFrom = `${year}-01-01`;
+  const yearTo = year === currentYear ? today : `${year}-12-31`;
+  const yearOptions = Array.from({ length: 4 }, (_, i) => String(Number(currentYear) - i));
 
-  const dash = useLive<Dashboard>('/fees/mis/residential', { view: 'dashboard', category: 'all', periodFrom: year + '01', periodTo: year + '12' }, tick);
-  const trend = useLive<Trend>('/fees/mis/residential', { view: 'trend', category: 'all', paidFrom: trendFrom, paidTo: today }, tick);
-  const houses = useLive<Houses>('/fees/mis/residential', { view: 'households', status: 'unpaid', category: 'all', periodFrom: year + '01', periodTo: year + '12', page: 1, pageSize: 1 }, tick);
-  const batches = useLive<Batches>('/fees/mis/collections', { page: 1, pageSize: 100 }, tick);
-  const effect = useLive<Effect>('/fees/mis/collections/effect', { windowDays: 30, page: 1, pageSize: 1 }, tick);
-  const sms = useLive<SmsStats>('/fees/mis/collections/sms-stats', {}, tick);
+  const options = useLive<Options>('/fees/mis/options', {}, signal);
+  const dash = useLive<Dashboard>('/fees/mis/residential', { view: 'dashboard', category: 'all', communityId, periodFrom: `${year}01`, periodTo: `${year}12` }, signal);
+  const trend = useLive<Trend>('/fees/mis/residential', { view: 'trend', category: 'all', communityId, paidFrom: yearFrom, paidTo: yearTo }, signal);
+  const houses = useLive<Houses>('/fees/mis/residential', { view: 'households', status: 'unpaid', category: 'all', communityId, periodFrom: `${year}01`, periodTo: `${year}12`, page: 1, pageSize: 1 }, signal);
+  const batches = useLive<Batches>('/fees/mis/collections', { communityId, page: 1, pageSize: 100 }, signal);
+  const effect = useLive<Effect>('/fees/mis/collections/effect', { communityId, windowDays: 30, page: 1, pageSize: 1 }, signal);
+  const sms = useLive<SmsStats>('/fees/mis/collections/sms-stats', { communityId, from: yearFrom, to: yearTo }, signal);
 
   useEffect(() => {
     const update = () => setFullscreen(!!document.fullscreenElement);
@@ -174,7 +195,7 @@ export default function Screen() {
   const loadedAt = Math.max(dash.loadedAt, trend.loadedAt, houses.loadedAt, batches.loadedAt, effect.loadedAt, sms.loadedAt);
   const loading = [dash, trend, houses, batches, effect, sms].some((item) => item.loading);
 
-  const monthly: TrendBucket[] = months.map((month) => {
+  const monthly: TrendBucket[] = yearMonths.map((month) => {
     const rows = (trend.data?.rows || []).filter((row) => row.day.slice(0, 7) === month);
     return { month, amountCents: rows.reduce((sum, row) => sum + row.netCents, 0), count: rows.length };
   });
@@ -187,6 +208,7 @@ export default function Screen() {
   const smsTotal = num(sms.data?.total ?? sms.data?.sent ?? sms.data?.count);
   const smsDelivered = num(sms.data?.delivered ?? sms.data?.deliveryCount ?? sms.data?.success);
   const smsRate = typeof sms.data?.deliveryRate === 'number' ? sms.data.deliveryRate : smsTotal ? Math.round((smsDelivered / smsTotal) * 1000) / 10 : null;
+  const communities = options.data?.communities || [];
 
   return (
     <div className="screen" data-page="screen">
@@ -199,6 +221,19 @@ export default function Screen() {
           </div>
         </div>
         <div className="scr-meta">
+          <label className="scr-scope" title={options.error || '按当前管理处授权范围筛选'}>
+            <span>小区</span>
+            <select value={community} onChange={(e) => setCommunity(e.target.value)} aria-label="数据范围小区">
+              <option value="">全部授权小区</option>
+              {communities.map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+            </select>
+          </label>
+          <label className="scr-scope" title="切换年度后重新读取该年度数据">
+            <span>年度</span>
+            <select value={year} onChange={(e) => setYear(e.target.value)} aria-label="数据范围年度">
+              {yearOptions.map((y) => <option key={y} value={y}>{y} 年</option>)}
+            </select>
+          </label>
           <span className="scr-updated">最后更新 {loadedAt ? new Date(loadedAt).toLocaleString('zh-CN', { hour12: false }) : '读取中…'}</span>
           {loading && <span className="scr-live"><i />刷新中</span>}
           <button type="button" className="scr-btn" onClick={() => setTick((value) => value + 1)}>刷新</button>
@@ -215,7 +250,7 @@ export default function Screen() {
             <article className="scr-panel scr-kpi">
               <span className="scr-kpi-label">本期应收</span>
               <b className="scr-kpi-value due">¥{cents(summary?.receivableCents || 0)}</b>
-              <span className="scr-kpi-sub">所选年度非退款账单</span>
+              <span className="scr-kpi-sub">{year} 年非退款账单</span>
             </article>
             <article className="scr-panel scr-kpi">
               <span className="scr-kpi-label">本期已缴</span>
@@ -239,8 +274,8 @@ export default function Screen() {
       <section className="scr-mid">
         <article className="scr-panel scr-trend">
           <div className="scr-panel-head">
-            <h2>近 6 个月收缴趋势</h2>
-            <span className="scr-legend">实收净额 · 按月 · {months[0].replace('-', '/')} – {months[5].replace('-', '/')}</span>
+            <h2>{year} 年按月收缴趋势</h2>
+            <span className="scr-legend">实收净额 · 按月{community ? ' · ' + (communities.find((c) => String(c.id) === community)?.name || '所选小区') : ' · 全部授权小区'}</span>
           </div>
           {trend.error ? <Empty text="趋势读取失败" detail={trend.error} /> : trend.data ? <TrendChart buckets={monthly} /> : <Empty text="正在读取趋势…" />}
         </article>

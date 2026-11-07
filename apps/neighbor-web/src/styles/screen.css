@@ -28,6 +28,10 @@
 .screen .scr-brand p{margin-top:calc(var(--u)*4);color:var(--scr-dim);font-size:calc(var(--u)*13);letter-spacing:calc(var(--u)*.5);white-space:nowrap}
 .screen .scr-meta{display:flex;align-items:center;justify-content:flex-end;gap:calc(var(--u)*10);flex-wrap:wrap;flex:none}
 .screen .scr-updated{color:var(--scr-dim);font-size:calc(var(--u)*14);white-space:nowrap}
+.screen .scr-scope{display:inline-flex;align-items:center;gap:calc(var(--u)*6);height:calc(var(--u)*38);padding:0 calc(var(--u)*10);border:1px solid rgba(120,168,255,.28);border-radius:calc(var(--u)*9);background:rgba(22,44,78,.65);color:var(--scr-dim);font-size:calc(var(--u)*13);white-space:nowrap;transition:border-color .12s}
+.screen .scr-scope:hover,.screen .scr-scope:focus-within{border-color:rgba(120,168,255,.55)}
+.screen .scr-scope select{height:100%;max-width:calc(var(--u)*176);border:0;background:transparent;color:#dbe9ff;font:inherit;font-size:calc(var(--u)*13);cursor:pointer;outline:none;text-overflow:ellipsis}
+.screen .scr-scope select option{background:#0b1a2e;color:#dbe9ff}
 .screen .scr-live{display:inline-flex;align-items:center;gap:calc(var(--u)*6);color:var(--scr-blue);font-size:calc(var(--u)*13);white-space:nowrap}
 .screen .scr-live i{width:calc(var(--u)*8);height:calc(var(--u)*8);border-radius:50%;background:var(--scr-blue);animation:scr-pulse 1.1s ease-in-out infinite}
 @keyframes scr-pulse{0%,100%{opacity:.3}50%{opacity:1}}
