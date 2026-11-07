@@ -48,6 +48,13 @@ const Plates = lazy(() => import('@/pages/Plates'));
 const FamilyCars = lazy(() => import('@/pages/FamilyCars'));
 const PlateForm = lazy(() => import('@/pages/PlateForm'));
 
+/** 未登录访问深层链接：带上原始路径，登录后回跳，而不是一律落到 /today。 */
+function LoginRedirect() {
+  const loc = useLocation();
+  const next = loc.pathname + loc.search;
+  return <Navigate to={'/login?next=' + encodeURIComponent(next)} replace />;
+}
+
 export default function App() {
   const session = useSession();
   const loc = useLocation();
@@ -85,7 +92,7 @@ export default function App() {
       <>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="*" element={<LoginRedirect />} />
         </Routes>
         <Toaster />
       </>

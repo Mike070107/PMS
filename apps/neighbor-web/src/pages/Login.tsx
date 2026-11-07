@@ -30,7 +30,9 @@ export default function Login() {
     } catch { auth.setAccess(null, identity); }
     if (!auth.isCurrent(identity)) return;
     toast('登录成功');
-    nav('/today', { replace: true });
+    const nextParam = new URLSearchParams(window.location.search).get('next');
+  const safeNext = nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//') ? nextParam : '/today';
+  nav(safeNext, { replace: true });
   }, [nav]);
 
   return (
