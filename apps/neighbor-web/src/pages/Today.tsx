@@ -16,8 +16,9 @@ interface Txn {
 type LedgerSummary = { paidCents: number; refundedCents: number; paidCount: number; byService: Array<{ serviceType: string; paidCents: number; paidCount: number }> };
 type MisFeeRow = { name: string; amountCents: number; count: number; houseCount: number | null };
 type MisToday = { paidCents: number; paidCount: number; refundedCents: number; paidHouses: number; byFee: MisFeeRow[] };
-type RecentPayment = { paidAt: string; address: string; ownerName: string; amountCents: number; channel: string | null; billCount: number };
-type MisState = { key: string; today: MisToday | null; todayMissing: boolean; recent: RecentPayment[] | null; recentMissing: boolean };
+type RecentPayment = { paidAt: string; address: string; ownerName: string; amountCents: number; channel: string | null; billCount: number; recordedAt: string | null };
+type MisState = { key: string; today: MisToday | null; todayMissing: boolean };
+type RecentState = { key: string; page: number; rows: RecentPayment[]; total: number; houseCount: number | null; seenHouses: string[]; missing: boolean; loading: boolean; paged: boolean };
 
 const CHANNEL_LABEL: Record<string, string> = { wechat: '微信', alipay: '支付宝', cash: '现金', bank: '银行', pos: '刷卡', transfer: '转账', other: '其他' };
 const channelLabel = (raw: string | null) => (!raw ? '渠道未记录' : CHANNEL_LABEL[raw.toLowerCase()] || raw);
@@ -41,17 +42,25 @@ function normalizeMisToday(raw: unknown): MisToday | null {
     byFee,
   };
 }
-function normalizeRecent(raw: unknown): RecentPayment[] | null {
-  const list = Array.isArray(raw) ? raw : Array.isArray((raw as any)?.rows) ? (raw as any).rows : null;
-  if (!list) return null;
-  return list.map((row: any) => ({
+function normalizeRecent(raw: unknown): { rows: RecentPayment[]; total: number; houseCount: number | null; paged: boolean } | null {
+  const mapRow = (row: any): RecentPayment => ({
     paidAt: String(row?.paidAt || row?.paidDate || ''),
     address: String(row?.address || ''),
     ownerName: String(row?.ownerName || ''),
     amountCents: Number(row?.amountCents) || 0,
     channel: row?.channel ? String(row.channel) : null,
     billCount: Number(row?.billCount) || 1,
-  }));
+    recordedAt: row?.recordedAt ? String(row.recordedAt) : null,
+  });
+  if (Array.isArray(raw)) return { rows: raw.map(mapRow), total: raw.length, houseCount: null, paged: false };
+  const list = Array.isArray((raw as any)?.rows) ? (raw as any).rows : Array.isArray((raw as any)?.list) ? (raw as any).list : null;
+  if (!list) return null;
+  return {
+    rows: list.map(mapRow),
+    total: Number((raw as any)?.total) || list.length,
+    houseCount: Number.isFinite(Number((raw as any)?.houseCount)) && Number((raw as any).houseCount) >= 0 ? Number((raw as any).houseCount) : null,
+    paged: true,
+  };
 }
 
 /**
@@ -79,6 +88,8 @@ export default function Today() {
   const visibleOrders = ordersScope.current === scope ? orders : null;
   const orderFailure = ordersErr?.scope === scope ? ordersErr.message : '';
   const [mis, setMis] = useState<MisState | null>(null);
+  const [recentPage, setRecentPage] = useState(1);
+  const [recent, setRecent] = useState<RecentState | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -105,25 +116,58 @@ export default function Today() {
   useEffect(() => {
     let alive = true;
     setMis(null);
-    Promise.allSettled([
-      request<unknown>({ url: '/fees/mis/today', query: { communityId: undefined } }),
-      request<unknown>({ url: '/fees/mis/recent-payments', query: { limit: 20 } }),
-    ]).then(([todayResult, recentResult]) => {
-      if (!alive) return;
-      const today = todayResult.status === 'fulfilled' ? normalizeMisToday(todayResult.value) : null;
-      const recent = recentResult.status === 'fulfilled' ? normalizeRecent(recentResult.value) : null;
-      setMis({ key: misKey, today, todayMissing: today === null, recent, recentMissing: recent === null });
-    });
+    request<unknown>({ url: '/fees/mis/today', query: { communityId: undefined } })
+      .then((raw) => { if (!alive) return; const today = normalizeMisToday(raw); setMis({ key: misKey, today, todayMissing: today === null }); })
+      .catch(() => { if (alive) setMis({ key: misKey, today: null, todayMissing: true }); });
     return () => { alive = false; };
   }, [misKey]);
+
+  // 今日收款清单：按 date 分页取，每页 10 条；换页时保留上一页内容，避免卡片高度跳动。
+  useEffect(() => {
+    let alive = true;
+    const targetPage = recent && recent.key === misKey ? recentPage : 1;
+    setRecent((prev) => (prev && prev.key === misKey
+      ? { ...prev, loading: true, missing: false }
+      : { key: misKey, page: targetPage, rows: [], total: 0, houseCount: null, seenHouses: [], missing: false, loading: true, paged: true }));
+    request<unknown>({ url: '/fees/mis/recent-payments', query: { date, page: targetPage, pageSize: 10 } })
+      .then((raw) => {
+        if (!alive) return;
+        const parsed = normalizeRecent(raw);
+        if (!parsed) throw Error('bad contract');
+        setRecent((prev) => {
+          const seen = new Set(prev && prev.key === misKey ? prev.seenHouses : []);
+          for (const row of parsed.rows) if (row.address) seen.add(row.address);
+          return { key: misKey, page: targetPage, rows: parsed.rows, total: parsed.total, houseCount: parsed.houseCount, seenHouses: [...seen], missing: false, loading: false, paged: parsed.paged };
+        });
+      })
+      .catch(() => {
+        if (!alive) return;
+        setRecent((prev) => (prev && prev.key === misKey && prev.rows.length
+          ? { ...prev, loading: false }
+          : { key: misKey, page: targetPage, rows: [], total: 0, houseCount: null, seenHouses: [], missing: true, loading: false, paged: false }));
+      });
+    return () => { alive = false; };
+  }, [misKey, recentPage]);
 
   const data = ledger?.key === key ? ledger.data : null;
   const error = failure?.key === key ? failure.message : '';
   const misReady = mis?.key === misKey ? mis : null;
   const today = misReady?.today ?? null;
   const todayMissing = misReady?.todayMissing ?? false;
-  const recent = misReady?.recent ?? null;
-  const recentMissing = misReady?.recentMissing ?? false;
+  const recentReady = recent?.key === misKey ? recent : null;
+  const recentRows = recentReady?.rows ?? [];
+  const recentTotal = recentReady?.total ?? recentRows.length;
+  const recentPaged = recentReady?.paged ?? false;
+  const recentDisplayRows = recentPaged ? recentRows : recentRows.slice(0, 10);
+  const recentMissing = recentReady?.missing ?? false;
+  const recentLoading = recentReady?.loading ?? false;
+  const recentPageNo = recentReady?.page ?? 1;
+  const recentPages = Math.max(1, Math.ceil(recentTotal / 10));
+  const recentHouseCount = recentReady?.houseCount ?? (recentReady?.seenHouses.length || new Set(recentDisplayRows.map((row) => row.address).filter(Boolean)).size);
+  const recentClock = (row: RecentPayment) => {
+    const matched = row.recordedAt ? /T(\d{2}:\d{2})/.exec(row.recordedAt) : null;
+    return matched?.[1] ?? (row.recordedAt ? dayjs(row.recordedAt).format('HH:mm') : '');
+  };
   const pmsPaidCents = data?.summary.paidCents ?? 0;
   const pmsFallback = misReady === null && data !== null;
   const sumService = (types: string[]) => data?.summary.byService.filter((row) => types.includes(row.serviceType)).reduce((sum, row) => sum + row.paidCents, 0) ?? 0;
@@ -136,9 +180,6 @@ export default function Today() {
   ].filter((row) => row.amountCents !== 0 || row.count !== 0) : [];
   const feeRows = today?.byFee ?? (pmsFallback ? legacyFeeRows : []);
   const feeMax = Math.max(1, ...feeRows.map((row) => row.amountCents));
-  const recentRows = recent ?? [];
-  const recentBillTotal = recentRows.reduce((sum, row) => sum + (row.billCount || 1), 0);
-  const recentHouseTotal = new Set(recentRows.map((row) => row.address).filter(Boolean)).size;
 
   const repairStat = useMemo(() => {
     const list = visibleOrders ?? [];
@@ -247,26 +288,52 @@ export default function Today() {
           </div>
 
           <div className="card" style={{ overflow: 'hidden', marginTop: 16 }}>
-            <div className="side-h" style={{ padding: '16px 18px 2px' }}><Icon name="receipt" size={19} style={{ color: 'var(--acc-t)' }} />最近收款</div>
-            <div className="rowList">
-              {misReady === null ? <div className="empty" style={{ padding: 28 }}>最近收款读取中…</div>
-                : recentMissing ? (
-                  <div className="erp-todo-block" style={{ margin: 16 }}><span className="erp-todo">待接口</span><span>MIS 最近收款接口未就绪，未显示 0。</span><button className="btn sm" onClick={() => setRetryMis(n => n + 1)}>重试</button></div>
-                ) : recentRows.length === 0 ? <div className="empty" style={{ padding: 28 }}>最近20笔中无收款项，请查看办理记录</div>
-                  : recentRows.map((row, index) => (
-                    <div key={row.paidAt + row.address + index} className="lrow">
-                      <div className="li ic green"><Icon name="cash" /></div>
-                      <div className="lt"><b>{row.address || '房号未记录'}</b><small>{row.paidAt ? row.paidAt.slice(5) : '日期未记录'} · {row.ownerName || '业主未记录'} · {channelLabel(row.channel)} · {row.billCount} 笔</small></div>
-                      <b className="money">{money(row.amountCents / 100)}</b>
-                    </div>
-                  ))}
+            <div className="side-h today-recent-head" style={{ padding: '16px 18px 2px' }}>
+              <span><Icon name="receipt" size={19} style={{ color: 'var(--acc-t)' }} />今日收款清单</span>
+              {recentLoading && recentRows.length > 0 ? <small className="muted">刷新中…</small> : null}
             </div>
-            {misReady !== null && !recentMissing && recentRows.length > 0 ? <div className="note2" style={{ margin: '0 16px 12px', color: 'var(--ink2)' }}>共 {recentBillTotal} 笔 · {recentHouseTotal} 户（每行按同房号同日聚合，户数按房号去重）</div> : null}
+            <div style={{ padding: '4px 18px 0' }}>
+              {recentReady === null ? <div className="empty" style={{ padding: 28 }}>今日收款读取中…</div>
+                : recentMissing ? (
+                  <div className="erp-todo-block" style={{ margin: '12px 0' }}><span className="erp-todo">待接口</span><span>MIS 最近收款接口未就绪，未显示 0。</span><button className="btn sm" onClick={() => setRetryMis(n => n + 1)}>重试</button></div>
+                ) : recentDisplayRows.length === 0 ? <div className="empty" style={{ padding: 28 }}>最近20笔中无收款项，请查看办理记录</div>
+                  : (
+                    <>
+                      <div className="today-recent-cols" aria-hidden="true"><span>时间</span><span>房号</span><span>业主</span><span>渠道</span><span>金额</span></div>
+                      <div className="today-recent-list" style={{ minHeight: recentPaged ? 520 : undefined }}>
+                        {recentDisplayRows.map((row, index) => {
+                          const clock = recentClock(row);
+                          return (
+                            <div key={row.paidAt + row.address + index} className="today-recent-row">
+                              <span className="today-recent-time"><b>{row.paidAt ? row.paidAt.slice(5) : '日期未记录'}</b><small>{clock ? '登记 ' + clock : '登记 —'}</small></span>
+                              <span className="today-recent-addr" title={row.address || undefined}>{row.address || '房号未记录'}</span>
+                              <span className="today-recent-owner" title={row.ownerName || undefined}>{row.ownerName || '—'}</span>
+                              <span className="today-recent-channel">{channelLabel(row.channel)}</span>
+                              <b className="today-recent-amount">{money(row.amountCents / 100)}</b>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+            </div>
+            {recentReady !== null && !recentMissing && recentDisplayRows.length > 0 ? (
+              <div className="today-recent-foot">
+                <span className="muted">共 {recentTotal} 笔 · {recentHouseCount} 户（按同房号同日聚合）</span>
+                {recentPaged && recentPages > 1 ? (
+                  <span className="today-recent-pager">
+                    <button className="btn sm" disabled={recentPageNo <= 1 || recentLoading} onClick={() => setRecentPage(Math.max(1, recentPageNo - 1))}>上一页</button>
+                    <span className="muted">第 {recentPageNo} / {recentPages} 页</span>
+                    <button className="btn sm" disabled={recentPageNo >= recentPages || recentLoading} onClick={() => setRecentPage(recentPageNo + 1)}>下一页</button>
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
 
-      <div className="note2" style={{ marginTop: 18 }}><Icon name="alert" />口径：今日实收 / 退款 / 收款笔数取 MIS 当日收款（北京时间，收款时间只有日期精度）；PMS 当日收款单独标注、不混算。源 MIS 历史缴费另见收费流水。收款事实与外部写入核验分开，结果未知先查原单，不要重复收款。</div>
+      <div className="note2" style={{ marginTop: 18 }}><Icon name="alert" />口径：今日实收 / 退款 / 收款笔数取 MIS 当日收款（北京时间，MIS 仅有日期精度）；PMS 当日收款单独标注、不混算。源 MIS 历史缴费另见收费流水。收款事实与外部写入核验分开，结果未知先查原单，不要重复收款。</div>
     </>
   );
 }

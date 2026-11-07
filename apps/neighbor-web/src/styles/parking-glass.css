@@ -94,3 +94,34 @@
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   }
 }
+
+/* 真实车牌样式：蓝牌 / 新能源绿牌 */
+.sp-glass-wrap .sp-plate-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  min-width: 0;
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+  box-shadow: 0 2px 6px rgba(20, 40, 80, 0.2);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  line-height: 1.2;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.sp-glass-wrap .sp-plate-tag.blue {
+  background: linear-gradient(160deg, #1a4fbf, #15419f);
+}
+
+.sp-glass-wrap .sp-plate-tag.nev {
+  background: linear-gradient(160deg, #3aa36a, #2b8a55);
+  color: #fff;
+}

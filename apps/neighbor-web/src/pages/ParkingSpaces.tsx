@@ -9,7 +9,52 @@ import '@/styles/parking-glass.css';
 
 interface SpaceRow {
   id: number; garage: 'main' | 'civil'; spaceNo: string; houseNo: string | null; areaSqm: string | null;
+  /** 后端若已返回拼好的地址/房号，优先使用，不自己发明 */
+  address?: string | null; roomLabel?: string | null; buildingNo?: string | null;
   plate: string | null; ownerName: string | null; ownerTel: string | null; note: string | null; source: string | null; endDate: string | null;
+}
+
+
+const PLATE_NEV_RE = /^[\u4e00-\u9fa5][A-Z][DF]/;
+const compactPlate = (raw: string) => raw.replace(/[·\s.．]/g, '').toUpperCase();
+/** 新能源牌：8 位车牌或第 3 位为 D/F；拿不准按蓝牌。 */
+function isNewEnergyPlate(raw: string) {
+  const plate = compactPlate(raw);
+  return plate.length >= 8 || PLATE_NEV_RE.test(plate);
+}
+type RoomParts = { lane?: string; building: string; room: string };
+/** 解析房号：228弄26号203室 / 228-21-801 / 51/1101 / 228/6/301。 */
+function parseRoomText(raw?: string | null): RoomParts | null {
+  if (!raw) return null;
+  const text = String(raw).trim();
+  if (!text) return null;
+  let m = text.match(/(\d{1,4})\s*弄\s*(\d{1,4})\s*号?\s*(\d{2,5})\s*室?/);
+  if (m) return { lane: m[1], building: m[2], room: m[3] };
+  m = text.match(/(\d{1,4})\s*栋\s*(\d{1,4})\s*室?/);
+  if (m) return { building: m[1], room: m[2] };
+  m = text.match(/^(\d{1,4})\s*[-/]\s*(\d{1,4})\s*[-/]\s*(\d{2,5})$/);
+  if (m) return { lane: m[1], building: m[2], room: m[3] };
+  m = text.match(/^(\d{1,4})\s*[-/]\s*(\d{2,5})$/);
+  if (m) return { building: m[1], room: m[2] };
+  return null;
+}
+/** 统一显示 管理处号/楼栋号/室号；拿不到管理处号或解析不出时保留原值。 */
+function formatRoomNo(row: SpaceRow, fallbackLane?: string) {
+  const candidates = [row.roomLabel, row.address, row.houseNo];
+  let lane = fallbackLane;
+  let buildingRoom: { building: string; room: string } | null = null;
+  for (const candidate of candidates) {
+    const parts = parseRoomText(candidate);
+    if (!parts) continue;
+    if (parts.lane) {
+      lane = parts.lane;
+      buildingRoom = { building: parts.building, room: parts.room };
+      break;
+    }
+    if (!buildingRoom) buildingRoom = { building: parts.building, room: parts.room };
+  }
+  if (buildingRoom && lane) return lane + '/' + buildingRoom.building + '/' + buildingRoom.room;
+  return row.houseNo ? String(row.houseNo).trim() : '—';
 }
 
 const META = {
@@ -55,6 +100,7 @@ export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) 
 
   const bound = (rows ?? []).filter((r) => r.plate && r.plate.trim()).length;
   const total = rows?.length ?? 0;
+  const roomLane = (rows ?? []).map((row) => parseRoomText(row.roomLabel || row.address || row.houseNo)).find((parts) => parts?.lane)?.lane;
 
   return (
     <>
@@ -94,17 +140,16 @@ export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) 
           <div className="card t-scroll">
             <table className="t" style={{ minWidth: 720 }}>
               <thead>
-                <tr><th style={{ width: 90 }} className="nw">车位号</th><th className="nw">车牌</th><th>房号</th><th className="nw">业主</th><th className="nw">电话</th><th className="nw" style={{ width: 80 }}>面积</th><th className="nw" style={{ width: 110 }}>有效期</th><th className="nw" style={{ width: 120 }}>备注</th><th className="nw" style={{ width: 70 }}>操作</th></tr>
+                <tr><th style={{ width: 90 }} className="nw">车位号</th><th className="nw">车牌</th><th>房号</th><th className="nw">业主</th><th className="nw">电话</th><th className="nw" style={{ width: 110 }}>有效期</th><th className="nw" style={{ width: 120 }}>备注</th><th className="nw" style={{ width: 70 }}>操作</th></tr>
               </thead>
               <tbody>
                 {shown.map((r) => (
                   <tr key={r.id}>
                     <td className="nw"><b>{r.spaceNo}</b></td>
                     <td className="nw">{r.plate || <span className="muted">空车位</span>}</td>
-                    <td className="sub">{r.houseNo || '—'}</td>
+                    <td className="sub">{formatRoomNo(r, roomLane)}</td>
                     <td className="nw">{r.ownerName || '—'}</td>
                     <td className="nw">{r.ownerTel || '—'}</td>
-                    <td className="nw">{r.areaSqm ? `${Number(r.areaSqm)} ㎡` : '—'}</td>
                     <td className="nw">{r.endDate ? dayjs(r.endDate).format('YYYY-MM-DD') : '—'}</td>
                     <td className="nw">{r.note ? <span className={`tag ${r.note.includes('租赁') ? 'warn' : (r.note.includes('来源') ? 'mute' : 'ok')}`}>{r.note}</span> : '—'}</td>
                     <td className="nw"><button className="btn sm" onClick={() => setEdit(r)}>编辑</button></td>
@@ -129,15 +174,16 @@ export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) 
                   {r.note ? <span className={`tag ${r.note.includes('租赁') ? 'warn' : (r.note.includes('来源') ? 'mute' : 'ok')}`}>{r.note}</span> : null}
                 </div>
                 <div className="sp-plate" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ flex: 1, minWidth: 0 }}>{hasPlate ? r.plate : <span className="sp-empty">空车位</span>}</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>{hasPlate ? (
+                    <span className={`sp-plate-tag ${isNewEnergyPlate(r.plate!) ? 'nev' : 'blue'}`} title={r.plate || undefined}>{compactPlate(r.plate!)}</span>
+                  ) : <span className="sp-empty">空车位</span>}</span>
                   <button className="btn sm" onClick={() => setEdit(r)}>编辑</button>
                 </div>
                 <dl className="sp-kv">
                   <dt>有效期</dt><dd>{r.endDate ? dayjs(r.endDate).format('YYYY-MM-DD') : '—'}</dd>
-                  <dt>房号</dt><dd>{r.houseNo || '—'}</dd>
+                  <dt>房号</dt><dd title={r.houseNo || undefined}>{formatRoomNo(r, roomLane)}</dd>
                   {r.ownerName ? <><dt>业主</dt><dd>{r.ownerName}</dd></> : null}
                   {r.ownerTel ? <><dt>电话</dt><dd>{r.ownerTel}</dd></> : null}
-                  {r.areaSqm ? <><dt>面积</dt><dd>{Number(r.areaSqm)} ㎡</dd></> : null}
                 </dl>
               </div>
             );
