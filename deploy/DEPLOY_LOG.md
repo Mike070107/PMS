@@ -6258,3 +6258,14 @@
 - 自上次（8ae14331）以来上线的相关提交：
   - 1bc9613c feat(reports): 趋势支持按月聚合；新增催缴短信送达统计接口（大屏用）
 
+## 2026-11-07 11:37 · web · 5638d94d
+
+- 包：`pms-web-20261107-113646.tar.gz`
+- 提交：5638d94d feat(screen): 全屏收费与催缴大屏 MVP（KPI/月度趋势/账龄分布/催缴成效）
+- 自上次（b092fbb3）以来上线的相关提交：
+  - 5638d94d feat(screen): 全屏收费与催缴大屏 MVP（KPI/月度趋势/账龄分布/催缴成效）
+  - 29af5a50 fix(intro): remove remaining internal-report wording
+  - 554cea00 fix(intro): remove internal-report badge
+  - 9361f0ba fix(intro): temporarily hide traction slide
+  - d4049918 fix(intro): remove aging claims; show unpaid list and period range
+
