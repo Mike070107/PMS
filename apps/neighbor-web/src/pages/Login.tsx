@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { auth as authApi } from '@pms/api-client';
 import type { AdminLoginResp } from '@pms/api-client/src/endpoints/auth';
 import { auth } from '@/lib/auth';
+import { apiBaseURL } from '@/lib/api';
 import { wechatLaunchHref } from '@/lib/wechatLaunch';
 import Icon from '@/components/Icon';
 import { toast } from '@/components/ui';
@@ -66,18 +67,73 @@ export default function Login() {
   );
 }
 
+/** 账号密码登录：直接 fetch 以读取 429 的 retryAfterSeconds（ApiError 不带响应体）。 */
+async function postAdminLogin(account: string, password: string) {
+  const base = (apiBaseURL || '').replace(/\/$/, '');
+  const res = await fetch(base + '/auth/admin-login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ account, password }),
+  });
+  const body = await res.json().catch(() => null) as any;
+  const text = (value: unknown) => Array.isArray(value) ? value.join('；') : typeof value === 'string' ? value : '';
+  if (res.status === 429) {
+    return { kind: 'locked' as const, retryAfterSeconds: Number(body?.retryAfterSeconds) || 0, message: text(body?.message) };
+  }
+  if (!res.ok) {
+    const remaining = Number(body?.remainingAttempts ?? body?.attemptsRemaining ?? body?.remainingTries);
+    return { kind: 'error' as const, message: text(body?.message) || ('登录失败（' + res.status + '）'), remainingAttempts: Number.isFinite(remaining) && remaining >= 0 ? remaining : null };
+  }
+  let data = body;
+  if (body && typeof body.code === 'number') {
+    if (body.code !== 0) throw new Error(text(body.message) || '登录失败');
+    data = body.data;
+  }
+  if (!data?.accessToken || !data?.user) throw new Error('登录返回数据异常');
+  return { kind: 'ok' as const, accessToken: data.accessToken, user: data.user as AdminLoginResp['user'] };
+}
+
 function PwdPanel({ onSuccess }: { onSuccess: (t: string, u: AdminLoginResp['user']) => Promise<void> }) {
   const [account, setAccount] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [lockUntil, setLockUntil] = useState(0);
+  const [attemptsLeft, setAttemptsLeft] = useState<number | null>(null);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!lockUntil) return undefined;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [lockUntil]);
+  useEffect(() => {
+    if (!lockUntil || now < lockUntil) return;
+    setLockUntil(0);
+    setNow(Date.now());
+    setErr('');
+  }, [now, lockUntil]);
+  const lockLeft = lockUntil ? Math.max(0, Math.ceil((lockUntil - now) / 1000)) : 0;
+  const lockClock = lockUntil ? new Date(lockUntil).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '';
 
   const submit = async () => {
+    if (lockLeft > 0) return;
     if (!account.trim() || !password) { setErr('请输入账号和密码'); return; }
-    setBusy(true); setErr('');
+    setBusy(true); setErr(''); setAttemptsLeft(null);
     try {
-      const r = await authApi.adminLogin({ account: account.trim(), password });
-      await onSuccess(r.accessToken, r.user);
+      const r = await postAdminLogin(account.trim(), password);
+      if (r.kind === 'ok') {
+        setLockUntil(0);
+        await onSuccess(r.accessToken, r.user);
+      } else if (r.kind === 'locked') {
+        const seconds = r.retryAfterSeconds > 0 ? r.retryAfterSeconds : 900;
+        setNow(Date.now());
+        setLockUntil(Date.now() + seconds * 1000);
+        setAttemptsLeft(null);
+      } else {
+        setErr(r.message);
+        setAttemptsLeft(r.remainingAttempts);
+      }
     } catch (e) { setErr(e instanceof Error ? e.message : '登录失败'); }
     finally { setBusy(false); }
   };
@@ -94,8 +150,12 @@ function PwdPanel({ onSuccess }: { onSuccess: (t: string, u: AdminLoginResp['use
         <input className="in" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') void submit(); }} placeholder="密码" />
       </div>
-      {err ? <div className="note2" style={{ background: 'var(--dang-w)', color: 'var(--dang)', borderColor: '#eccac6', marginBottom: 14 }}><Icon name="alert" />{err}</div> : null}
-      <button className="btn p lg" style={{ width: '100%', justifyContent: 'center' }} disabled={busy} onClick={() => void submit()}>
+      {lockLeft > 0 ? (
+        <div className="note2 login-lock" role="alert">
+          <Icon name="alert" />密码错误次数过多，请在 {lockClock} 后重试（剩余 {Math.floor(lockLeft / 60)}:{String(lockLeft % 60).padStart(2, '0')}）
+        </div>
+      ) : err ? <div className="note2" style={{ background: 'var(--dang-w)', color: 'var(--dang)', borderColor: '#eccac6', marginBottom: 14 }}><Icon name="alert" />{err}{attemptsLeft != null ? `（还可尝试 ${attemptsLeft} 次）` : ''}</div> : null}
+      <button className="btn p lg" style={{ width: '100%', justifyContent: 'center' }} disabled={busy || lockLeft > 0} onClick={() => void submit()}>
         {busy ? '登录中…' : '登录'}
       </button>
     </>

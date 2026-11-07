@@ -551,3 +551,6 @@ textarea.in{height:auto;padding:9px 12px;min-height:72px;resize:vertical}
 .fl{display:grid;gap:6px;font-size:13px;color:var(--ink2)}
 
 .tag.property{background:#eee9ff;color:#6e55c5}
+
+/* 登录密码错误锁定提示：黄色提醒，和普通错误区分 */
+.login-lock{background:var(--warn-w);color:var(--warn);border-color:#ecd9b0;margin-bottom:14px;line-height:1.6}
