@@ -325,10 +325,30 @@ function DoorControlPanel({ communities, canEdit }: { communities: AddressCommun
   const [task, setTask] = useState<DoorTask | null>(null);
   const [taskError, setTaskError] = useState('');
   const idemKey = useRef('');
+  const checkSeq = useRef(0);
+  const [collapsed, setCollapsed] = useState(false);
+  const [checking, setChecking] = useState(false);
 
   useEffect(() => {
     setCommunityId((prev) => (prev != null && communities.some((c) => c.id === prev) ? prev : communities[0]?.id ?? null));
   }, [communities]);
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('accessDoor.collapsed') === '1') setCollapsed(true);
+    } catch { /* 隐私模式不可用时保持默认展开 */ }
+  }, []);
+
+  // 小区切换/卸载时中止正在进行的在线检查轮询
+  useEffect(() => () => { checkSeq.current += 1; }, [communityId]);
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try { localStorage.setItem('accessDoor.collapsed', next ? '1' : '0'); } catch { /* 忽略 */ }
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (communityId == null) { setData({ agentOnline: false, gatewayVersion: null, checkedAt: new Date().toISOString(), controllers: [] }); return undefined; }
@@ -407,30 +427,75 @@ function DoorControlPanel({ communities, canEdit }: { communities: AddressCommun
   };
 
   const controllers = data?.controllers ?? [];
+  const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
+  /** 下发在线检查后每 2s 拉一次控制器列表，最多 15 次。 */
+  const checkOnline = async () => {
+    if (checking || communityId == null || !data?.agentOnline) return;
+    const run = ++checkSeq.current;
+    setChecking(true);
+    try {
+      const res = await request<{ controllerCount?: number; count?: number; controllers?: unknown[] }>({
+        method: 'POST', url: '/access-card-issuance/door/check-online', data: { communityId },
+      });
+      const count = Number(res?.controllerCount ?? res?.count ?? (Array.isArray(res?.controllers) ? res.controllers.length : controllers.length)) || controllers.length;
+      toast('已下发检查，' + count + ' 个控制器');
+    } catch (e) {
+      if (checkSeq.current === run) {
+        setChecking(false);
+        toast(e instanceof Error ? e.message : '下发检查失败，请稍后重试');
+      }
+      return;
+    }
+    let latest = controllers;
+    for (let attempt = 0; attempt < 15; attempt += 1) {
+      await sleep(2000);
+      if (checkSeq.current !== run) return;
+      try {
+        const next = await request<DoorControllers>({ url: '/access-card-issuance/door/controllers', query: { communityId } });
+        if (checkSeq.current !== run) return;
+        latest = next.controllers;
+        setData(next);
+        setError('');
+      } catch { /* 单次失败继续下一轮 */ }
+    }
+    if (checkSeq.current !== run) return;
+    setChecking(false);
+    toast('已更新 ' + latest.length + ' 个控制器状态');
+  };
   const taskMeta = task ? DOOR_TASK[task.status] : null;
 
   return (
     <div className="card door-panel">
       <div className="panelHd door-head">
-        <div>
+        <div className="door-title">
+          <button type="button" className={`door-collapse${collapsed ? ' is-collapsed' : ''}`} aria-expanded={!collapsed} aria-label={collapsed ? '展开远程门禁' : '折叠远程门禁'} title={collapsed ? '展开' : '折叠'} onClick={toggleCollapsed}>
+            <span className="door-chevron" aria-hidden="true">{collapsed ? '▸' : '▾'}</span>
+          </button>
           <b><Icon name="lock" size={17} /> 远程门禁</b>
-          <span className="muted" style={{ marginLeft: 8 }}>现场开门前置控制 · 立即开门 / 常开</span>
+          {!collapsed ? <span className="muted door-sub">现场开门前置控制 · 立即开门 / 常开</span> : null}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <select className="in" style={{ width: 180 }} value={communityId ?? ''} onChange={(e) => setCommunityId(e.target.value ? Number(e.target.value) : null)} aria-label="远程门禁小区">
-            {communities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+        <div className="door-head-actions">
           {data ? (
             <span className={`tag ${data.agentOnline ? 'ok' : 'dang'}`} title={gatewayHint || undefined}>
               <Icon name={data.agentOnline ? 'check' : 'alert'} />助手{data.agentOnline ? '在线' : '离线'}
             </span>
           ) : null}
-          {data?.gatewayVersion ? <span className="tag mute">网关 {data.gatewayVersion}</span> : null}
-          {data?.checkedAt ? <span className="muted" style={{ fontSize: 12.5 }}>检测 {fmtDoorTime(data.checkedAt)}</span> : null}
-          <button className="btn sm" onClick={() => setReload((v) => v + 1)}><Icon name="refresh" size={15} />刷新</button>
+          {!collapsed && data?.gatewayVersion ? <span className="tag mute">网关 {data.gatewayVersion}</span> : null}
+          {!collapsed && data?.checkedAt ? <span className="muted" style={{ fontSize: 12.5 }}>检测 {fmtDoorTime(data.checkedAt)}</span> : null}
+          {!collapsed ? (
+            <select className="in" style={{ width: 180 }} value={communityId ?? ''} onChange={(e) => setCommunityId(e.target.value ? Number(e.target.value) : null)} aria-label="远程门禁小区">
+              {communities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          ) : null}
+          <button className="btn sm door-check" disabled={checking || !data?.agentOnline} title={!data?.agentOnline ? '门禁助手离线，无法检查' : '重新检查控制器在线状态'} onClick={() => void checkOnline()}>
+            {checking ? <><Icon name="refresh" size={15} />检查中…</> : '重新检查在线状态'}
+          </button>
+          {!collapsed ? <button className="btn sm" onClick={() => setReload((v) => v + 1)}><Icon name="refresh" size={15} />刷新</button> : null}
         </div>
       </div>
 
+      {!collapsed ? (
+      <div className="door-body">
       {!canEdit ? <div className="note2" style={{ marginTop: 8 }}><Icon name="alert" />当前账号只有「业务查看」权限，远程开门按钮不可用。</div> : null}
       {error ? <div className="note2" style={{ background: 'var(--dang-w)', color: 'var(--dang)', marginTop: 10 }}><Icon name="alert" />{error}<button className="btn sm" style={{ marginLeft: 10 }} onClick={() => setReload((v) => v + 1)}>重试</button></div> : null}
       {data && !gatewayReady ? (
@@ -478,6 +543,8 @@ function DoorControlPanel({ communities, canEdit }: { communities: AddressCommun
             </tbody>
           </table>
         </div>
+      ) : null}
+      </div>
       ) : null}
 
       {dialog ? (

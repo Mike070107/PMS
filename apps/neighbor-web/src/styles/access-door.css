@@ -202,3 +202,49 @@
     flex-wrap: wrap;
   }
 }
+
+/* 折叠标题 + 重新检查在线状态 */
+.door-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.door-collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  color: var(--ink2);
+  cursor: pointer;
+  flex: none;
+}
+
+.door-collapse:hover {
+  background: var(--sunken, #f6f8fb);
+}
+
+.door-chevron {
+  font-size: 14px;
+  line-height: 1;
+  color: var(--ink2);
+}
+
+.door-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.door-check {
+  white-space: nowrap;
+}
+
+
