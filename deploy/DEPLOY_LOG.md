@@ -6560,3 +6560,10 @@
 - 自上次（83aad620）以来上线的相关提交：
   - a875e39f feat(login): 密码失败锁定提示与倒计时（429 retryAfterSeconds）
 
+## 2026-11-08 01:21 · api · bf6b1b94
+
+- 包：`pms-api-fast-20261108-012110.tar.gz`
+- 提交：bf6b1b94 revert(reports): 报表名称改回「收费报表」
+- 自上次（20e0e185）以来上线的相关提交：
+  - bf6b1b94 revert(reports): 报表名称改回「收费报表」
+
