@@ -6389,3 +6389,10 @@
   - 3a14b20b feat(intro): reframe positioning as manage four, see four
   - 85dcf307 feat(intro): use real notice layout and invoice sample
 
+## 2026-11-07 21:33 · web · 50aa61f9
+
+- 包：`pms-web-20261107-213141.tar.gz`
+- 提交：50aa61f9 feat(parking): 大车库与人防车位卡片改为悬浮液体玻璃效果
+- 自上次（e572edf8）以来上线的相关提交：
+  - 50aa61f9 feat(parking): 大车库与人防车位卡片改为悬浮液体玻璃效果
+
