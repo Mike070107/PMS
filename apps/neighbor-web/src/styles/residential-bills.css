@@ -203,3 +203,174 @@
 .rb-fold-section .rb-section-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 10px}
 .rb-fold-section .rb-section-head b{font-size:15px}
 .rb-fold-section .rb-section-head small{font-size:12.5px;color:var(--ink3)}
+
+/* ═══ H5 适配（≤768px）：指标带 2 列 / 工具条堆叠 / 待缴清单与跟进队列卡片化 / 全屏弹窗 ═══ */
+/* 工具条吸顶：sticky 在 .content 里会停在 padding-top（桌面 26 / ≤900 18）上，
+   抵消后贴住内容区顶端；不在 .content 里时保持 top:0，不影响其它嵌入场景。 */
+.rb{--rb-sticky-offset:26px}
+.content .rb .rb-toolbar{top:calc(-1 * var(--rb-sticky-offset))}
+
+@media(max-width:768px){
+ /* 触控基线：所有可点元素 ≥44px，禁止双击缩放延迟 */
+ .rb button,.rb .btn,.rb .chip,.rb .tag,.rb .pill,.rb summary,.rb input,.rb select,.rb textarea,.rb-tabs button{touch-action:manipulation}
+ .rb .btn{min-height:44px}
+ .rb .in{min-height:44px}
+
+ /* 页签：横向可滑、不换行 */
+ .rb .rb-tabs{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;gap:22px;margin-bottom:16px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+ .rb .rb-tabs::-webkit-scrollbar{display:none}
+ .rb .rb-tabs button{flex:none;min-height:44px}
+
+ /* 1) 指标带：总额整行 + 2 列小指标 */
+ .rb .rb-band{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px;padding:12px}
+ .rb .rb-band-main{grid-column:1/-1;flex-direction:row;align-items:baseline;flex-wrap:wrap;gap:6px 10px;min-width:0;padding:0 0 8px;margin:0;border-right:0;border-bottom:1px solid var(--line)}
+ .rb .rb-band-main b{font-size:26px}
+ .rb .rb-band-main em{margin-left:auto}
+ .rb .rb-band-metrics{grid-column:1/-1;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px}
+ .rb .rb-band-metrics>div{padding:0;border-left:0}
+ .rb .rb-band-metrics>div:nth-child(3){grid-column:1/-1;padding-top:8px;border-top:1px solid var(--line2)}
+ .rb .rb-band-metrics b{font-size:18px}
+
+ /* 2) 工具条：纵向堆叠（搜索整行 / chips 一行 / 按钮一行横滑） */
+ .rb .rb-toolbar{position:sticky;flex-direction:column;align-items:stretch;gap:8px;padding:10px;margin-bottom:10px;border-radius:var(--r)}
+ .rb .rb-toolbar-filters{flex-direction:column;align-items:stretch;gap:8px;width:100%}
+ .rb .rb-toolbar .rb-search{width:100%;max-width:none;min-width:0;height:44px;flex:none}
+ .rb .rb-toolbar .chips{width:100%;flex-wrap:nowrap;gap:8px;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+ .rb .rb-toolbar .chips::-webkit-scrollbar{display:none}
+ .rb .rb-toolbar .chip{flex:1 0 auto;height:44px;justify-content:center;font-size:14px}
+ .rb .rb-toolbar-actions{width:100%;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;gap:8px;padding-bottom:2px;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
+ .rb .rb-toolbar-actions .btn{flex:none;min-height:44px;height:44px;padding:0 14px;font-size:14px}
+ .rb .rb-toolbar-selected,.rb .rb-notify-hint{flex:none;align-self:center}
+ .rb .rb-notify-confirm{flex-direction:column;align-items:stretch;gap:10px}
+ .rb .rb-notify-confirm .rb-actions{width:100%;gap:8px}
+ .rb .rb-notify-confirm .rb-actions .btn,.rb .rb-notify-confirm>.btn{flex:1;min-height:44px;height:44px}
+
+ /* 3) 待缴清单：表格 → 卡片列表，禁止横向滚动 */
+ .rb .rb-table-card{background:none;border:0;box-shadow:none;overflow:visible}
+ .rb .rb-table-head{padding:0 2px 10px;border-bottom:0}
+ .rb .rb-table-head>div:first-child{gap:6px}
+ .rb .rb-select-tools{width:100%}
+ .rb .rb-select-tools .btn{min-height:44px;height:44px}
+ .rb .rb-table-scroll{overflow:visible;max-height:none}
+ .rb .rb-table{display:block;width:100%;min-width:0}
+ .rb .rb-table thead{display:none}
+ .rb .rb-table tbody{display:flex;flex-direction:column;gap:12px}
+ .rb .rb-table tbody tr{display:grid;grid-template-columns:26px minmax(0,1fr) auto;grid-template-areas:"check house amount" "period period period" "phone phone phone" "notify notify notify" "ops ops ops";gap:6px 10px;height:auto;padding:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh)}
+ .rb .rb-table tbody tr:hover td{background:transparent}
+ .rb .rb-table tbody td{display:block;height:auto;padding:0;border:0;min-width:0;font-size:14px}
+ .rb .rb-table tbody td:nth-child(1){grid-area:check;align-self:start;padding-top:5px}
+ .rb .rb-table tbody td:nth-child(1) input{width:24px;height:24px}
+ .rb .rb-table tbody td:nth-child(2){grid-area:house}
+ .rb .rb-table tbody td:nth-child(2) b{font-size:16px;line-height:1.4}
+ .rb .rb-table tbody td:nth-child(2) .rb-sub{margin-top:2px;font-size:12px;line-height:1.35}
+ .rb .rb-table tbody td:nth-child(3){grid-area:amount;display:flex;flex-direction:column;align-items:flex-end;gap:2px;text-align:right}
+ .rb .rb-table tbody td:nth-child(3)::before{content:attr(data-label);font-size:11.5px;font-weight:400;color:var(--ink3);white-space:nowrap}
+ .rb .rb-table tbody td:nth-child(3) strong{font-size:22px;font-weight:750;letter-spacing:-.6px;line-height:1.1}
+ .rb .rb-table tbody td:nth-child(4){grid-area:period;font-size:12.5px;color:var(--ink2);line-height:1.5}
+ .rb .rb-table tbody td:nth-child(4)::before{content:attr(data-label) " · ";font-size:11.5px;color:var(--ink3)}
+ .rb .rb-table tbody td:nth-child(4) .rb-sub{display:block;margin:0;font-size:11.5px;color:var(--ink3)}
+ .rb .rb-table tbody td:nth-child(5){grid-area:phone;font-size:13px;color:var(--ink2);line-height:1.5}
+ .rb .rb-table tbody td:nth-child(5)::before{content:attr(data-label) " · ";font-size:11.5px;color:var(--ink3)}
+ .rb .rb-table tbody td:nth-child(5) .rb-sub{display:block;margin:1px 0 0;font-size:11.5px;color:var(--ink3)}
+ .rb .rb-table tbody td:nth-child(6){grid-area:notify;display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0}
+ .rb .rb-table tbody td:nth-child(6)::before{content:attr(data-label);font-size:11.5px;color:var(--ink3);flex:none}
+ .rb .rb-table tbody td:nth-child(7){grid-area:ops;display:flex;justify-content:flex-end;padding-top:8px;border-top:1px solid var(--line2)}
+ .rb .rb-table .rb-ops{width:100%;justify-content:flex-end;gap:8px}
+ .rb .rb-table .rb-ops .btn{min-height:44px;height:44px;padding:0 18px;font-size:14px}
+ .rb .rb-more>summary{width:44px;height:44px;font-size:18px}
+ .rb .rb-more-menu .btn{min-height:44px}
+ .rb .rb-table .rb-notify-cell{min-width:0}
+ /* 700px 断点把通知标签压成圆点，卡片里恢复文字 */
+ .rb .rb-notify-tag{font-size:11.5px;gap:4px;padding:1px 8px;background:var(--mute-w)}
+ .rb .rb-notify-tag i{width:6px;height:6px}
+ .rb .rb-notify-tag.print{background:var(--acc-w)}
+ .rb .rb-notify-tag.sms{background:var(--ok-w)}
+ .rb .rb-notify-tag.none{background:var(--mute-w)}
+ .rb .rb-notify-cell{min-width:0}
+
+ /* 4) 跟进提醒队列：表格 → 卡片，禁止横向滚动 */
+ .rb .rb-followup{margin-top:16px}
+ .rb .rb-followup-head{flex-direction:column;align-items:stretch;gap:10px;padding:12px;border-radius:var(--r)}
+ .rb .rb-followup-head-main{flex-wrap:wrap;gap:6px 10px}
+ .rb .rb-followup-head-tools{flex-direction:column;align-items:stretch;gap:8px;width:100%}
+ .rb .rb-followup-head-tools .rb-search{width:100%;max-width:none;min-width:0;height:44px;flex:none}
+ .rb .rb-followup-chips{width:100%;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;gap:8px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+ .rb .rb-followup-chips::-webkit-scrollbar{display:none}
+ .rb .rb-followup-chips .chip{flex:1 0 auto;height:44px;justify-content:center;font-size:14px}
+ .rb .rb-followup-head-tools .btn{height:44px;min-height:44px;font-size:14px}
+ .rb .rb-followup-card{background:none;border:0;box-shadow:none;overflow:visible}
+ .rb .rb-followup-scroll{overflow:visible}
+ .rb .rb-followup-table{display:block;width:100%;min-width:0}
+ .rb .rb-followup-table thead{display:none}
+ .rb .rb-followup-table tbody{display:flex;flex-direction:column;gap:12px}
+ .rb .rb-followup-table tbody tr{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"house amount" "state count" "phone phone" "result result" "ops ops";gap:6px 10px;height:auto;padding:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh)}
+ .rb .rb-followup-table tbody td{display:block;height:auto;padding:0;border:0;min-width:0;font-size:13px}
+ .rb .rb-followup-table tbody td:nth-child(1){grid-area:house}
+ .rb .rb-followup-house b{display:block;max-width:none;overflow:visible;text-overflow:clip;white-space:normal;font-size:16px;line-height:1.4}
+ .rb .rb-followup-table tbody td:nth-child(2){grid-area:amount;display:flex;flex-direction:column;align-items:flex-end;gap:2px;text-align:right}
+ .rb .rb-followup-table tbody td:nth-child(2)::before{content:attr(data-label);font-size:11.5px;color:var(--ink3)}
+ .rb .rb-followup-table tbody td:nth-child(2) strong{font-size:22px;font-weight:750;letter-spacing:-.6px;line-height:1.1}
+ .rb .rb-followup-table tbody td:nth-child(3){grid-area:state;display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px}
+ .rb .rb-followup-table tbody td:nth-child(3)::before{content:attr(data-label) " · ";font-size:11.5px;color:var(--ink3)}
+ .rb .rb-followup-table tbody td:nth-child(3) .rb-sub{display:inline;margin:0;font-size:11.5px;color:var(--ink3)}
+ .rb .rb-followup-table tbody td:nth-child(4){grid-area:phone;font-size:12.5px;color:var(--ink2)}
+ .rb .rb-followup-table tbody td:nth-child(4)::before{content:attr(data-label) " · ";font-size:11.5px;color:var(--ink3)}
+ .rb .rb-followup-table tbody td:nth-child(5){grid-area:count;text-align:right;font-size:12.5px;color:var(--ink2)}
+ .rb .rb-followup-table tbody td:nth-child(5)::before{content:attr(data-label) " · ";font-size:11.5px;color:var(--ink3)}
+ .rb .rb-followup-table tbody td:nth-child(6){grid-area:result;max-width:none;display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px}
+ .rb .rb-followup-table tbody td:nth-child(6)::before{content:attr(data-label) " · ";font-size:11.5px;color:var(--ink3)}
+ .rb .rb-followup-table tbody td:nth-child(6) .rb-sub{display:block;max-width:none;overflow:visible;white-space:normal;font-size:11.5px;color:var(--ink3)}
+ .rb .rb-followup-table tbody td:nth-child(7){grid-area:ops;display:flex;justify-content:flex-end;padding-top:8px;border-top:1px solid var(--line2)}
+ .rb .rb-followup-table tbody td:nth-child(7) .rb-ops .btn{min-height:44px;height:44px;padding:0 18px;font-size:14px}
+ .rb .rb-followup-foot{flex-direction:column;align-items:stretch;gap:8px;padding:10px 2px}
+ .rb .rb-followup-foot .btn{min-height:44px;height:44px}
+
+ /* 5) 底部折叠区：表格 → 两列卡片（名称 + 金额），其余信息第二行小字 */
+ .rb .rb-fold>summary{min-height:44px;padding:12px 14px}
+ .rb .rb-fold-body{padding:0 14px 12px}
+ .rb .rb-fold .t{display:block;min-width:0;width:100%}
+ .rb .rb-fold .t thead{display:none}
+ .rb .rb-fold .t tbody{display:flex;flex-direction:column;gap:8px}
+ .rb .rb-fold .t tbody tr{display:flex;flex-wrap:wrap;align-items:baseline;gap:3px 12px;height:auto;padding:10px 12px;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+ .rb .rb-fold .t tbody td{display:block;height:auto;padding:0;border:0;min-width:0;font-size:12px;color:var(--ink3);white-space:nowrap}
+ .rb .rb-fold .t tbody td:first-child{order:1;flex:1 1 auto;font-size:14px;font-weight:600;color:var(--ink)}
+ .rb .rb-fold .t tbody td:last-child{order:2;flex:none;margin-left:auto;text-align:right;font-size:15px;color:var(--ink)}
+ .rb .rb-fold .t tbody td:not(:first-child):not(:last-child){order:3}
+ .rb .rb-fold .t tbody td:not(:first-child):not(:last-child)::before{content:attr(data-label);margin-right:4px;color:var(--ink4)}
+ .rb .rb-fold .t tbody td:last-child::before{content:attr(data-label);display:block;font-size:10.5px;font-weight:400;color:var(--ink4)}
+ .rb .rb-fold .t tbody td:last-child strong{font-size:15px}
+
+ /* 6) Sheet / 弹窗：全屏 + 底部按钮固定 */
+ .rb .sheet{left:0;right:0;top:0;bottom:0;width:100vw!important;max-width:100vw!important;height:100%}
+ .rb .sheet .sh-h{padding:12px 14px 10px;position:sticky;top:0;z-index:2;background:var(--surface)}
+ .rb .sheet .sh-h h2{font-size:20px;margin:4px 0 2px}
+ .rb .sheet .sh-h .x{min-height:44px}
+ .rb .sheet .sh-b{padding:14px 14px calc(22px + env(safe-area-inset-bottom))}
+ .rb .sheet .rb-confirm{position:sticky;bottom:0;z-index:3;margin:0 -14px;padding:12px 14px calc(12px + env(safe-area-inset-bottom));background:var(--surface);border-top:1px solid var(--line);box-shadow:0 -8px 18px rgba(23,32,51,.10)}
+ .rb .sheet .rb-confirm>label{font-size:13px;align-items:flex-start}
+ .rb .sheet .rb-confirm input[type=checkbox]{flex:none;width:22px;height:22px}
+ .rb .sheet .rb-sheet-save{position:sticky;bottom:0;z-index:3;width:100%;margin-top:10px;min-height:44px;box-shadow:0 -8px 18px rgba(23,32,51,.12)}
+ .rb .sheet .btn{min-height:44px}
+ .rb .sheet .chips{flex-wrap:wrap}
+ .rb .sheet .chips .chip{height:44px}
+ .rb .sheet .rb-actions .btn{flex:1 1 auto;min-height:44px}
+ .rb .sheet .rb-notice-preview .t{min-width:0}
+
+ /* 7) 分页与提示 */
+ .rb .rb-paging{flex-wrap:wrap;gap:8px;padding:12px 2px}
+ .rb .rb-paging .btn{min-height:44px;height:44px}
+}
+
+/* 弹窗内账单表：手机全屏后 3 列直接铺满，不再横向滚动 */
+@media(max-width:768px){
+ .rb .sheet .rb-scroll{overflow:visible}
+ .rb .sheet .t{min-width:0;width:100%}
+ .rb .sheet .t th,.rb .sheet .t td{padding:8px}
+ .rb .sheet .t th{font-size:12px}
+ .rb .sheet .t td{font-size:13px}
+ .rb .sheet .t td:nth-child(2){white-space:nowrap}
+ .rb .sheet .rb-notice-preview .t{min-width:0}
+}
+
+/* ≤900 时 .content 内边距变为 18px，同步抵消量 */
+@media(max-width:900px){.rb{--rb-sticky-offset:18px}}

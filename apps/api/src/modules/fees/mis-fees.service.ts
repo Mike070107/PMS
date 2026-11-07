@@ -195,7 +195,10 @@ export class MisFeesService implements OnModuleDestroy {
     const key=gap>3?'90+':gap>2?'61-90':gap>1?'31-60':'0-30';
     buckets[key].count+=1;buckets[key].amountCents+=amount;
    }
-   const topHouses=(scan.rows as any[]).slice().sort((a,b)=>(Number(b.amountCents)||0)-(Number(a.amountCents)||0)||String(a.houseKey).localeCompare(String(b.houseKey))).slice(0,10).map(r=>({houseKey:String(r.houseKey),address:String(r.address||''),ownerName:String(r.ownerName||''),amountCents:Number(r.amountCents)||0,phone:canSeePhone?((r as any).phone??null):null,phoneMasked:String((r as any).phoneMasked||'')}));
+   const ownerHouseCounts=new Map<string,number>();
+   for(const r of scan.rows as any[]){const n=String(r.ownerName||'').trim();if(!n)continue;ownerHouseCounts.set(n,(ownerHouseCounts.get(n)||0)+1)}
+   const topHouses=(scan.rows as any[]).slice().sort((a,b)=>(Number(b.amountCents)||0)-(Number(a.amountCents)||0)||String(a.houseKey).localeCompare(String(b.houseKey))).slice(0,10).map(r=>({houseKey:String(r.houseKey),address:String(r.address||''),ownerName:String(r.ownerName||''),amountCents:Number(r.amountCents)||0,phone:canSeePhone?((r as any).phone??null):null,phoneMasked:String((r as any).phoneMasked||''),ownerHouseCount:ownerHouseCounts.get(String(r.ownerName||'').trim())||1,ownerFirst:false}));
+   {const seen=new Set<string>();for(const h of topHouses){const k=h.ownerName.trim();if(seen.has(k))h.ownerFirst=false;else{seen.add(k);h.ownerFirst=true}}}
    const topOwners=[...owners.entries()].map(([name,v])=>({name,...v})).sort((a,b)=>b.amountCents-a.amountCents).slice(0,10);
    aging={buckets,topHouses,owners:topOwners,ownerCount:owners.size,total:totalHouses,amountCents:totalAmount,truncated:scan.rows.length<Number(scan.total||0),scanned:scan.rows.length,scanCap};
   }
