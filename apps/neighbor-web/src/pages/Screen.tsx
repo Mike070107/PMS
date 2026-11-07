@@ -276,7 +276,8 @@ export default function Screen() {
   // 不把 recordedAt 当收款时间；需要时刻时只能写「登记 HH:mm」，本次不展示。
   const tickerMessages: { text: string; paid?: boolean }[] = [];
   if (year === currentYear) {
-    for (const row of (recent.data || []).slice(0, 10)) {
+    const recentRows: any[] = Array.isArray(recent.data) ? recent.data : Array.isArray((recent.data as any)?.rows) ? (recent.data as any).rows : [];
+    for (const row of recentRows.slice(0, 10)) {
       if (!row.paidAt) continue;
       tickerMessages.push({ paid: true, text: [row.paidAt.slice(5), row.ownerName || '业主未登记', row.address, row.channel || '', '¥' + cents(row.amountCents)].filter(Boolean).join(' ') });
     }

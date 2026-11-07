@@ -208,7 +208,7 @@ export class MisFeesService implements OnModuleDestroy {
   const date=q.date??new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(`${date}T00:00:00+08:00`))||new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(`${date}T00:00:00+08:00`))!==date)throw new BadRequestException('日期不合法');
   const communities=await this.collectionCommunities(q.communityId,user,access);
-  if(!communities.length)return {total:0,page,pageSize,rows:[]};
+  if(!communities.length)return {total:0,totalBills:0,totalHouses:0,page,pageSize,rows:[]};
   const offices=[...new Set(communities.flatMap(c=>c.offices))];
   const filter=buildMisFeeFilter({status:'paid'} as MisFeeQuery,offices);
   filter.params.date=date;filter.params.firstRow=(page-1)*pageSize+1;filter.params.lastRow=page*pageSize;
@@ -217,7 +217,7 @@ export class MisFeesService implements OnModuleDestroy {
   const scope=`${filter.from} AND w.ZJ_SKRQ>=CONVERT(datetime,@date,120) AND w.ZJ_SKRQ<DATEADD(day,1,CONVERT(datetime,@date,120)) AND w.ZJ_JE>0`;
   // MIS 只有日期精度：paidAt 是收款日；recordedAt 是 MIS 记录更新时间（分钟级），不是真实收款时刻。
   // 同日多行按登记时间倒序，再按 ZJ_ID 倒序；分页基于房号+收款日聚合后的行。
-  const sql=`SELECT COUNT(*) AS total FROM (SELECT 1 AS x ${scope} GROUP BY ${houseAndDate}) g;
+  const sql=`SELECT COUNT(*) AS total,COALESCE(SUM(g.billCount),0) AS totalBills FROM (SELECT COUNT(*) AS billCount ${scope} GROUP BY ${houseAndDate}) g;
    WITH grouped AS (
      SELECT l.管理处 AS officeCode,${filter.address} AS address,z.姓名 AS ownerName,${paidDate} AS paidDate,
             CONVERT(varchar(50),SUM(w.ZJ_JE),2) AS amount,COUNT_BIG(*) AS billCount,
@@ -226,7 +226,7 @@ export class MisFeesService implements OnModuleDestroy {
        ${scope} GROUP BY ${houseAndDate}
    ) SELECT * FROM grouped WHERE rowNo BETWEEN @firstRow AND @lastRow ORDER BY rowNo;`;
   const result=await this.read(sql,filter.params),sets=(result.recordsets||[]) as any[][];
-  const total=Number(sets[0]?.[0]?.total||0);
+  const total=Number(sets[0]?.[0]?.total||0),totalBills=Number(sets[0]?.[0]?.totalBills||0);
   const rows=(sets[1]||[]).map((r:any)=>{
    const community=communities.find(c=>c.offices.includes(String(r.officeCode)));
    if(!community)throw new ServiceUnavailableException('MIS返回范围无法确认，未显示数据');
@@ -246,7 +246,7 @@ export class MisFeesService implements OnModuleDestroy {
     communityName:community.name,
    };
   });
-  return {total,page,pageSize,rows};
+  return {total,totalBills,totalHouses:total,page,pageSize,rows};
  }
  async residential(q:MisResidentialQuery,user:AuthUser,access?:ResolvedAccess){
   const communities=await this.residentialScope(q,user,access),built=buildMisResidentialQuery(q,communities.flatMap(c=>c.offices));

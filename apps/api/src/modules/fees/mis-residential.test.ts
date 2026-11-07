@@ -155,24 +155,27 @@ test('今日收款清单：date 过滤、分页 total/pageSize、page 越界空 
  s.collectionCommunities=async()=>[{id:10,name:'合成小区',offices:['01']}];
  let sql='',params:any=null;
  const row={officeCode:'01',address:'剑川路198弄1号101室',ownerName:'甲',paidDate:'2026-11-07',amount:'123.45',billCount:3,channel:'微信',recordedAt:'2026-11-07 11:39:00'};
- s.read=async(q:any,p:any)=>{sql=q;params=p;return {recordsets:[[{total:'2'}],[row]]}};
+ const row2={officeCode:'01',address:'剑川路198弄2号101室',ownerName:'乙',paidDate:'2026-11-07',amount:'10.00',billCount:2,channel:'现金',recordedAt:'2026-11-07 10:00:00'};
+ s.read=async(q:any,p:any)=>{sql=q;params=p;return {recordsets:[[{total:'2',totalBills:'5'}],[row,row2]]}};
  const out:any=await s.recentPayments({date:'2026-11-07'},{id:1,tenantId:1},{scopeAll:true});
- assert.deepEqual({total:out.total,page:out.page,pageSize:out.pageSize}, {total:2,page:1,pageSize:10});
+ assert.deepEqual({total:out.total,totalBills:out.totalBills,totalHouses:out.totalHouses,page:out.page,pageSize:out.pageSize}, {total:2,totalBills:5,totalHouses:2,page:1,pageSize:10});
+ assert.equal(out.rows.reduce((n:number,r:any)=>n+r.billCount,0),out.totalBills,'totalBills=各行 billCount 之和');
+ assert.equal(out.totalHouses,out.total,'totalHouses=聚合行数');
  assert.deepEqual(out.rows[0],{paidAt:'2026-11-07',paidDate:'2026-11-07',paidAtPrecision:'date',address:'剑川路198弄1号101室',ownerName:'甲',amountCents:12345,channel:'微信',billCount:3,recordedAt:'2026-11-07T11:39:00+08:00',recordedAtPrecision:'minute',communityId:10,communityName:'合成小区'});
- assert.match(sql,/w\.ZJ_SKRQ>=CONVERT\(datetime,@date,120\)/);assert.match(sql,/BETWEEN @firstRow AND @lastRow/);assert.match(sql,/ORDER BY MAX\(w\.updatedate\) DESC,MAX\(w\.ZJ_ID\) DESC/);
+ assert.match(sql,/SUM\(g\.billCount\).*AS totalBills/);assert.match(sql,/w\.ZJ_SKRQ>=CONVERT\(datetime,@date,120\)/);assert.match(sql,/BETWEEN @firstRow AND @lastRow/);assert.match(sql,/ORDER BY MAX\(w\.updatedate\) DESC,MAX\(w\.ZJ_ID\) DESC/);
  assert.deepEqual([params.date,params.firstRow,params.lastRow],['2026-11-07',1,10]);
- // 第3页越界：MIS total 仍为2，rows 为空
- s.read=async()=>({recordsets:[[{total:'2'}],[]]});
+ // 第3页越界：MIS total/totalBills 仍正确，rows 为空
+ s.read=async()=>({recordsets:[[{total:'2',totalBills:'5'}],[]]});
  const beyond:any=await s.recentPayments({date:'2026-11-07',page:3,pageSize:10},{id:1,tenantId:1},{scopeAll:true});
- assert.deepEqual({total:beyond.total,page:beyond.page,pageSize:beyond.pageSize,rows:beyond.rows},{total:2,page:3,pageSize:10,rows:[]});
+ assert.deepEqual({total:beyond.total,totalBills:beyond.totalBills,totalHouses:beyond.totalHouses,page:beyond.page,pageSize:beyond.pageSize,rows:beyond.rows},{total:2,totalBills:5,totalHouses:2,page:3,pageSize:10,rows:[]});
  await assert.rejects(s.recentPayments({date:'2026-02-30'},{id:1,tenantId:1},{scopeAll:true}),/日期/);
  await assert.rejects(s.recentPayments({page:0},{id:1,tenantId:1},{scopeAll:true}),/page/);
  await assert.rejects(s.recentPayments({pageSize:51},{id:1,tenantId:1},{scopeAll:true}),/pageSize/);
  // 空数据/无授权范围
- s.read=async()=>({recordsets:[[{total:'0'}],[]]});
- assert.deepEqual(await s.recentPayments({date:'2026-11-07'},{id:1,tenantId:1},{scopeAll:true}),{total:0,page:1,pageSize:10,rows:[]});
+ s.read=async()=>({recordsets:[[{total:'0',totalBills:'0'}],[]]});
+ assert.deepEqual(await s.recentPayments({date:'2026-11-07'},{id:1,tenantId:1},{scopeAll:true}),{total:0,totalBills:0,totalHouses:0,page:1,pageSize:10,rows:[]});
  s.collectionCommunities=async()=>[];
- assert.deepEqual(await s.recentPayments({},{id:1,tenantId:1},{scopeAll:true}),{total:0,page:1,pageSize:10,rows:[]});
+ assert.deepEqual(await s.recentPayments({},{id:1,tenantId:1},{scopeAll:true}),{total:0,totalBills:0,totalHouses:0,page:1,pageSize:10,rows:[]});
 });
 test('今日实收：空日期/空数据返回0，包含 byFee/byChannel 聚合与退款；非法日期拒绝',async()=>{
  const s:any=Object.create(MisFeesService.prototype);
