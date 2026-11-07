@@ -11,8 +11,9 @@ type Summary = { receivableCents: number; paidCents: number; unpaidCents: number
 type Dashboard = { summary: Summary; queriedAt?: string };
 type Trend = { rows: { day: string; netCents: number; chargedCents: number; refundedCents: number }[] };
 type AgingBuckets = Record<'0-30' | '31-60' | '61-90' | '90+', { count: number; amountCents: number }>;
-type Aging = { buckets: AgingBuckets; total: number; amountCents: number; truncated: boolean; scanned: number };
+type Aging = { buckets: AgingBuckets; total: number; amountCents: number; truncated: boolean; scanned: number; topHouses?: { houseKey: string; address: string; ownerName: string; amountCents: number }[] };
 type Houses = { aging?: Aging };
+type Communities = { rows: { id: number; name: string; unpaidCents: number; unpaidHouses: number }[] };
 type Batch = { id: number; createdAt: string; purpose: 'print' | 'sms'; houseCount: number; amountCents: string };
 type Batches = { rows: Batch[]; total: number };
 type Effect = { summary: { notifiedCents: number; recoveredCents: number; recoveryRate: number; clearedHouseholds: number }; invalidPaidDateCount?: number };
@@ -129,6 +130,8 @@ export default function Screen() {
   const [tick, setTick] = useState(0);
   const [fullscreen, setFullscreen] = useState(false);
   const [community, setCommunity] = useState('');
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const [tickerIndex, setTickerIndex] = useState(0);
   const currentYear = chinaDate().slice(0, 4);
   const [year, setYear] = useState(currentYear);
 
@@ -161,6 +164,7 @@ export default function Screen() {
   const batches = useLive<Batches>('/fees/mis/collections', { communityId, page: 1, pageSize: 100 }, signal);
   const effect = useLive<Effect>('/fees/mis/collections/effect', { communityId, windowDays: 30, page: 1, pageSize: 1 }, signal);
   const sms = useLive<SmsStats>('/fees/mis/collections/sms-stats', { communityId, from: yearFrom, to: yearTo }, signal);
+  const communityData = useLive<Communities>('/fees/mis/residential', { view: 'communities', category: 'all', communityId, periodFrom: `${year}01`, periodTo: `${year}12` }, signal);
 
   useEffect(() => {
     const update = () => setFullscreen(!!document.fullscreenElement);
@@ -180,6 +184,14 @@ export default function Screen() {
     if (document.visibilityState === 'visible') start();
     document.addEventListener('visibilitychange', onVisibility);
     return () => { stop(); document.removeEventListener('visibilitychange', onVisibility); };
+  }, []);
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const sync = () => setReduceMotion(media.matches);
+    sync();
+    media.addEventListener('change', sync);
+    return () => media.removeEventListener('change', sync);
   }, []);
 
   const toggleFullscreen = async () => {
@@ -210,8 +222,36 @@ export default function Screen() {
   const smsRate = typeof sms.data?.deliveryRate === 'number' ? sms.data.deliveryRate : smsTotal ? Math.round((smsDelivered / smsTotal) * 1000) / 10 : null;
   const communities = options.data?.communities || [];
 
+  // 底部实时播报：只用已有请求的数据拼消息，任何一段没数据就跳过；一条都没有时整条不渲染。
+  const tickerMessages: string[] = [];
+  const communityRows = communityData.data?.rows || [];
+  if (communityRows.length) {
+    const totalUnpaid = communityRows.reduce((sum, row) => sum + row.unpaidCents, 0);
+    [...communityRows].sort((a, b) => b.unpaidCents - a.unpaidCents).slice(0, 3)
+      .filter((row) => row.unpaidCents > 0)
+      .forEach((row) => {
+        const share = totalUnpaid ? Math.round((row.unpaidCents / totalUnpaid) * 1000) / 10 : 0;
+        tickerMessages.push(row.name + '待缴 ¥' + cents(row.unpaidCents) + '，占全部 ' + share + '%');
+      });
+  }
+  (houses.data?.aging?.topHouses || []).slice(0, 3).filter((row) => row.amountCents > 0)
+    .forEach((row) => tickerMessages.push(row.address + ' ' + (row.ownerName || '业主未记录') + ' ¥' + cents(row.amountCents)));
+  if (year === currentYear && trend.data) {
+    const todayRow = trend.data.rows.find((row) => row.day === today);
+    tickerMessages.push('今日实收 ¥' + cents(todayRow?.netCents || 0));
+  }
+  if (batches.data && batchTotal > 0) tickerMessages.push('本轮已通知 ' + batchTotal + ' 批 / ' + batchHouses + ' 户次');
+  if (smsRate !== null) tickerMessages.push('短信送达率 ' + smsRate + '%' + (smsTotal ? '（共 ' + smsTotal + ' 条）' : ''));
+
+  useEffect(() => { setTickerIndex(0); }, [signal]);
+  useEffect(() => {
+    if (!reduceMotion || tickerMessages.length < 2) return;
+    const timer = window.setInterval(() => setTickerIndex((value) => (value + 1) % tickerMessages.length), 5500);
+    return () => window.clearInterval(timer);
+  }, [reduceMotion, tickerMessages.length]);
+
   return (
-    <div className="screen" data-page="screen">
+    <div className={"screen" + (tickerMessages.length ? " has-ticker" : "")} data-page="screen">
       <header className="scr-head">
         <div className="scr-brand">
           <span className="scr-mark" aria-hidden="true" />
@@ -325,6 +365,21 @@ export default function Screen() {
           ) : <Empty text="正在读取短信送达…" />}
         </article>
       </section>
+
+      {tickerMessages.length > 0 && (
+        <footer className="scr-ticker" aria-label="实时播报">
+          <span className="scr-ticker-label">实时播报</span>
+          {reduceMotion ? (
+            <div className="scr-ticker-static"><span key={tickerIndex}>{tickerMessages[tickerIndex % tickerMessages.length]}</span></div>
+          ) : (
+            <div className="scr-ticker-viewport">
+              <div className="scr-ticker-track">
+                {[...tickerMessages, ...tickerMessages].map((text, index) => <span key={index}>{text}</span>)}
+              </div>
+            </div>
+          )}
+        </footer>
+      )}
     </div>
   );
 }
