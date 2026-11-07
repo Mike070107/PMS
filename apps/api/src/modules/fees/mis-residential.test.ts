@@ -169,9 +169,11 @@ test('今日实收：空日期/空数据返回0，包含 byFee/byChannel 聚合�
  const s:any=Object.create(MisFeesService.prototype);
  s.collectionCommunities=async()=>[{id:1,name:'合成小区',offices:['01']}];
  let sql='',params:any={};
- s.read=async(q:any,p:any)=>{sql=q;params=p;return {recordsets:[[{paidCount:'3',paidAmount:'123.45',paidHouses:'2'}],[{refundCount:'1',refundAmount:'10.00'}],[{feeName:'物业费',billCount:'2',paidAmount:'100.00'},{feeName:'停车',billCount:'1',paidAmount:'23.45'}],[{channel:'微信',billCount:'2',paidAmount:'100.00'},{channel:'现金',billCount:'1',paidAmount:'23.45'}]]}};
+ s.read=async(q:any,p:any)=>{sql=q;params=p;return {recordsets:[[{paidCount:'3',paidAmount:'123.45',paidHouses:'2'}],[{refundCount:'1',refundAmount:'10.00'}],[{feeName:'物业费',billCount:'2',houseCount:'1',paidAmount:'100.00'},{feeName:'停车',billCount:'1',houseCount:'1',paidAmount:'23.45'}],[{channel:'微信',billCount:'2',houseCount:'2',paidAmount:'100.00'},{channel:'现金',billCount:'1',houseCount:'1',paidAmount:'23.45'}]]}};
  const out:any=await s.today({date:'2026-11-07'},{id:1,tenantId:1},{scopeAll:true});
- assert.deepEqual(out,{paidCents:12345,paidCount:3,refundedCents:1000,paidHouses:2,byFee:[{feeName:'物业费',paidCents:10000,billCount:2},{feeName:'停车',paidCents:2345,billCount:1}],byChannel:[{channel:'微信',paidCents:10000,billCount:2},{channel:'现金',paidCents:2345,billCount:1}]});
+ assert.deepEqual(out,{paidCents:12345,paidCount:3,refundedCents:1000,paidHouses:2,byFee:[{feeName:'物业费',paidCents:10000,billCount:2,houseCount:1},{feeName:'停车',paidCents:2345,billCount:1,houseCount:1}],byChannel:[{channel:'微信',paidCents:10000,billCount:2,houseCount:2},{channel:'现金',paidCents:2345,billCount:1,houseCount:1}]});
+ assert.equal(out.byFee[0].billCount,2);assert.equal(out.byFee[0].houseCount,1,'同户同日多张账单按房号去重只算1户');
+ assert.equal((sql.match(/AS houseCount/g)||[]).length,2,'byFee/byChannel 都要按管理处+S_ID去重户数');
  assert.match(sql,/w\.ZJ_SKRQ>=CONVERT\(datetime,@date,120\)/);assert.match(sql,/ZJ_TKRQ IS NULL AND w\.ZJ_JE>0/);assert.equal(params.date,'2026-11-07');
  s.read=async()=>({recordsets:[[],[],[],[]]});
  assert.deepEqual(await s.today({date:'2026-11-07'},{id:1,tenantId:1},{scopeAll:true}),{paidCents:0,paidCount:0,refundedCents:0,paidHouses:0,byFee:[],byChannel:[]});

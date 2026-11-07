@@ -184,16 +184,16 @@ export class MisFeesService implements OnModuleDestroy {
   const channelExpr=`COALESCE(NULLIF(LTRIM(RTRIM(w.收款方式)),N''),N'未记录')`;
   const sql=`SELECT COUNT(*) AS paidCount,COALESCE(SUM(w.ZJ_JE),0) AS paidAmount,COUNT(DISTINCT CONVERT(varchar(10),l.管理处)+':'+CONVERT(varchar(30),s.S_ID)) AS paidHouses ${filter.from} AND ${paidWhere};
    SELECT COUNT(*) AS refundCount,COALESCE(SUM(-w.ZJ_JE),0) AS refundAmount ${filter.from} AND ${refundWhere};
-   SELECT ${feeCategory} AS feeName,COUNT(*) AS billCount,COALESCE(SUM(w.ZJ_JE),0) AS paidAmount ${filter.from} AND ${paidWhere} GROUP BY ${feeCategory} ORDER BY paidAmount DESC,feeName;
-   SELECT ${channelExpr} AS channel,COUNT(*) AS billCount,COALESCE(SUM(w.ZJ_JE),0) AS paidAmount ${filter.from} AND ${paidWhere} GROUP BY ${channelExpr} ORDER BY paidAmount DESC,channel;`;
+   SELECT ${feeCategory} AS feeName,COUNT(*) AS billCount,COUNT(DISTINCT CONVERT(varchar(10),l.管理处)+':'+CONVERT(varchar(30),s.S_ID)) AS houseCount,COALESCE(SUM(w.ZJ_JE),0) AS paidAmount ${filter.from} AND ${paidWhere} GROUP BY ${feeCategory} ORDER BY paidAmount DESC,feeName;
+   SELECT ${channelExpr} AS channel,COUNT(*) AS billCount,COUNT(DISTINCT CONVERT(varchar(10),l.管理处)+':'+CONVERT(varchar(30),s.S_ID)) AS houseCount,COALESCE(SUM(w.ZJ_JE),0) AS paidAmount ${filter.from} AND ${paidWhere} GROUP BY ${channelExpr} ORDER BY paidAmount DESC,channel;`;
   const result=await this.read(sql,filter.params),sets=(result.recordsets||[]) as any[][],summary=sets[0]?.[0]||{},refund=sets[1]?.[0]||{};
   return {
    paidCents:misMoneyToCents(summary.paidAmount),
    paidCount:Number(summary.paidCount||0),
    refundedCents:misMoneyToCents(refund.refundAmount),
    paidHouses:Number(summary.paidHouses||0),
-   byFee:(sets[2]||[]).map((r:any)=>({feeName:String(r.feeName||'其他'),paidCents:misMoneyToCents(r.paidAmount),billCount:Number(r.billCount||0)})),
-   byChannel:(sets[3]||[]).map((r:any)=>({channel:String(r.channel||'未记录'),paidCents:misMoneyToCents(r.paidAmount),billCount:Number(r.billCount||0)})),
+   byFee:(sets[2]||[]).map((r:any)=>({feeName:String(r.feeName||'其他'),paidCents:misMoneyToCents(r.paidAmount),billCount:Number(r.billCount||0),houseCount:Number(r.houseCount||0)})),
+   byChannel:(sets[3]||[]).map((r:any)=>({channel:String(r.channel||'未记录'),paidCents:misMoneyToCents(r.paidAmount),billCount:Number(r.billCount||0),houseCount:Number(r.houseCount||0)})),
   };
  }
  /**
