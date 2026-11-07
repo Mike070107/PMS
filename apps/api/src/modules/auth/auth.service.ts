@@ -2,16 +2,20 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { ModuleRef } from '@nestjs/core';
 import { InjectRepository } from '@nestjs/typeorm';
 import bcrypt from 'bcryptjs';
-import { In, IsNull, Repository } from 'typeorm';
+import { createHash } from 'node:crypto';
+import { In, IsNull, MoreThan, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import {
   AuditStatus,
@@ -25,7 +29,9 @@ import {
   Building,
   Community,
   House,
+  LoginAttempt,
   Role,
+  SystemLog,
   Tenant,
   User,
   UserAudit,
@@ -49,6 +55,18 @@ import { UpdateUiPreferencesDto, normalizeUiPreferences } from './ui-preferences
 import { SettingsService } from '../settings/settings.service';
 import { WechatService, type WxSession } from './wechat.service';
 import { formatBuildingText, formatRoomText } from '../../common/address-line.util';
+import { LOGIN_REASON_TEXT, LoginFailureReason, loginAccountKey, maskAccount } from '../telemetry/login-attempt.util';
+import { NotificationsService } from '../notifications/notifications.service';
+
+/** 密码登录审计/告警可用的请求上下文。 */
+export interface PasswordLoginContext {
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  source?: string;
+}
+
+const PASSWORD_LOCKOUT_WINDOW_MS = 15 * 60_000;
+const PASSWORD_LOCKOUT_MAX_FAILURES = 5;
 
 /** 可登录员工端小程序的角色（定义收口到 enums，与报修放行共用一份） */
 const STAFF_ROLES: UserRole[] = STAFF_APP_ROLES;
@@ -118,6 +136,7 @@ export class AuthService {
     return this.selfProfile(id);
   }
   private readonly logger = new Logger(AuthService.name);
+  private passwordLockoutNotified: Set<string> | undefined = new Set();
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
@@ -145,6 +164,9 @@ export class AuthService {
     private readonly settings: SettingsService,
     private readonly accessService: AccessService,
     private readonly rbacSeed: RbacSeedService,
+    @Optional() @InjectRepository(LoginAttempt) private readonly loginAttemptRepo?: Repository<LoginAttempt>,
+    @Optional() @InjectRepository(SystemLog) private readonly systemLogRepo?: Repository<SystemLog>,
+    @Optional() private readonly moduleRef?: ModuleRef,
   ) {}
 
   /** 小程序登录：code 换 openid → 找/建用户 → 发双 token */
@@ -246,7 +268,7 @@ export class AuthService {
    * - 已绑定过本微信：只传 code 即可静默登录
    * - 首次绑定：code + phoneCode（微信手机号）或 code + account/password
   */
-  async staffLogin(dto: StaffLoginDto) {
+  async staffLogin(dto: StaffLoginDto, context: PasswordLoginContext = {}) {
     const byPhone = !!dto.phoneCode;
     const byAccount = !!dto.account && !!dto.password;
     let accountTarget: User | null = null;
@@ -257,6 +279,7 @@ export class AuthService {
       accountTarget = await this.authenticateStaffAccount(
         dto.account as string,
         dto.password as string,
+        context,
       );
       if (this.isMiniappReviewAccount(dto.account)) {
         this.logger.log(`小程序审核账号「${dto.account}」使用账号密码直接登录（不绑定微信）`);
@@ -369,22 +392,40 @@ export class AuthService {
     return this.issueStaffTokens(target);
   }
 
-  private async authenticateStaffAccount(account: string, password: string): Promise<User> {
+  private async authenticateStaffAccount(account: string, password: string, context: PasswordLoginContext = {}): Promise<User> {
+    const rawAccount = String(account ?? '').trim();
+    const accountKey = loginAccountKey(rawAccount);
     const target = await this.userRepo.findOne({ where: { loginAccount: account } });
-    if (!target?.passwordHash) {
-      throw new UnauthorizedException('账号或密码错误');
+    const tenantId = target?.tenantId ?? null;
+    await this.assertPasswordLoginAllowed(tenantId, accountKey);
+    try {
+      if (!target?.passwordHash) {
+        throw new UnauthorizedException('账号或密码错误');
+      }
+      const matched = await bcrypt.compare(password, target.passwordHash);
+      if (!matched) {
+        throw new UnauthorizedException('账号或密码错误');
+      }
+      if (!STAFF_ROLES.includes(target.role)) {
+        throw new ForbiddenException('该账号不能登录员工端');
+      }
+      if (target.status !== UserStatus.ACTIVE) {
+        throw new ForbiddenException('该员工账号已停用，请联系物业管理员');
+      }
+      await this.recordPasswordAttempt({
+        tenantId, userId: target.id, userName: target.name, account: rawAccount, accountKey,
+        success: true, reason: null, context: { ...context, source: context.source || 'miniapp-staff' },
+      });
+      return target;
+    } catch (error) {
+      await this.handlePasswordLoginFailure({
+        tenantId, user: target, account: rawAccount, accountKey,
+        context: { ...context, source: context.source || 'miniapp-staff' },
+        source: context.source || 'miniapp-staff',
+        error,
+      });
+      throw error;
     }
-    const matched = await bcrypt.compare(password, target.passwordHash);
-    if (!matched) {
-      throw new UnauthorizedException('账号或密码错误');
-    }
-    if (!STAFF_ROLES.includes(target.role)) {
-      throw new ForbiddenException('该账号不能登录员工端');
-    }
-    if (target.status !== UserStatus.ACTIVE) {
-      throw new ForbiddenException('该员工账号已停用，请联系物业管理员');
-    }
-    return target;
   }
 
   /**
@@ -618,25 +659,228 @@ export class AuthService {
         .join(" "),
     };
   }
-  async adminLogin(dto: AdminLoginDto) {
+  async adminLogin(dto: AdminLoginDto, context: PasswordLoginContext = {}) {
+    const account = String(dto.account ?? '').trim();
+    const accountKey = loginAccountKey(account);
     const user = await this.userRepo.findOne({
       where: { loginAccount: dto.account },
     });
-    if (!user || !user.passwordHash) {
-      throw new UnauthorizedException('invalid account or password');
-    }
-    if (user.status !== UserStatus.ACTIVE) {
-      throw new ForbiddenException('account is disabled');
-    }
-    await this.assertWebAdminAccess(user);
+    const tenantId = user?.tenantId ?? null;
+    await this.assertPasswordLoginAllowed(tenantId, accountKey);
+    try {
+      if (!user || !user.passwordHash) {
+        throw new UnauthorizedException('invalid account or password');
+      }
+      if (user.status !== UserStatus.ACTIVE) {
+        throw new ForbiddenException('account is disabled');
+      }
+      await this.assertWebAdminAccess(user);
 
-    const matched = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!matched) {
-      throw new UnauthorizedException('invalid account or password');
-    }
-    await this.assertTenantActive(user);
+      const matched = await bcrypt.compare(dto.password, user.passwordHash);
+      if (!matched) {
+        throw new UnauthorizedException('invalid account or password');
+      }
+      await this.assertTenantActive(user);
 
-    return this.issueTokens(user);
+      const tokens = await this.issueTokens(user);
+      await this.recordPasswordAttempt({ tenantId, userId: user.id, userName: user.name, account, accountKey, success: true, reason: null, context });
+      return tokens;
+    } catch (error) {
+      await this.handlePasswordLoginFailure({
+        tenantId, user, account, accountKey, context,
+        source: context.source || 'admin-web',
+        error,
+      });
+      throw error;
+    }
+  }
+
+  private tenantLoginWhere(tenantId: number | null) {
+    return tenantId === null ? IsNull() : tenantId;
+  }
+
+  /** 15 分钟窗口内同一租户+归一化账号的密码错误次数；成功登录后的失败重新起算。 */
+  private async passwordLockState(tenantId: number | null, accountKey: string) {
+    if (!this.loginAttemptRepo || !accountKey) return null;
+    const since = new Date(Date.now() - PASSWORD_LOCKOUT_WINDOW_MS);
+    const tenantWhere = this.tenantLoginWhere(tenantId);
+    const latestSuccess = await this.loginAttemptRepo.findOne({
+      where: { tenantId: tenantWhere, accountKey, method: 'password', status: 'success', createdAt: MoreThan(since) } as any,
+      order: { createdAt: 'DESC' },
+    }).catch(() => null);
+    const boundary = latestSuccess ? new Date(Math.max(since.getTime(), latestSuccess.createdAt.getTime())) : since;
+    const where = {
+      tenantId: tenantWhere,
+      accountKey,
+      method: 'password' as const,
+      status: 'failed' as const,
+      reason: 'invalid_credentials' as const,
+      createdAt: MoreThan(boundary),
+    } as any;
+    const [lastFailure, failCount] = await Promise.all([
+      this.loginAttemptRepo.findOne({ where, order: { createdAt: 'DESC' } }),
+      this.loginAttemptRepo.count({ where }),
+    ]);
+    if (failCount < PASSWORD_LOCKOUT_MAX_FAILURES || !lastFailure) return null;
+    const lockUntil = new Date(lastFailure.createdAt.getTime() + PASSWORD_LOCKOUT_WINDOW_MS);
+    if (lockUntil.getTime() <= Date.now()) return null;
+    return {
+      failCount,
+      lockUntil,
+      retryAfterSeconds: Math.max(1, Math.ceil((lockUntil.getTime() - Date.now()) / 1000)),
+    };
+  }
+
+  /** 锁定期间直接 429，不查密码、不做 bcrypt，避免继续消耗和计时侧信道。 */
+  private async assertPasswordLoginAllowed(tenantId: number | null, accountKey: string) {
+    const state = await this.passwordLockState(tenantId, accountKey);
+    if (!state) return;
+    throw new HttpException({
+      statusCode: 429,
+      error: 'Too Many Requests',
+      message: '密码错误次数过多，请 15 分钟后再试',
+      retryAfterSeconds: state.retryAfterSeconds,
+    }, 429);
+  }
+
+  private passwordFailureReasonOf(error: unknown): LoginFailureReason {
+    const message = String((error as any)?.message ?? '');
+    if (/disabled|停用|禁用/i.test(message)) return 'account_disabled';
+    if (/不能登录网页后台|页面权限|permission|后台|员工端/i.test(message)) return 'no_permission';
+    if (/公司.*(停用|到期)|tenant.*(disabled|expired)|服务已到期/i.test(message)) return 'tenant_inactive';
+    return 'invalid_credentials';
+  }
+
+  private async recordPasswordAttempt(input: {
+    tenantId: number | null;
+    userId?: number | null;
+    userName?: string | null;
+    account: string;
+    accountKey: string;
+    success: boolean;
+    reason: LoginFailureReason | null;
+    context: PasswordLoginContext;
+  }) {
+    if (!this.loginAttemptRepo) return;
+    try {
+      await this.loginAttemptRepo.save(this.loginAttemptRepo.create({
+        tenantId: input.tenantId,
+        userId: input.userId ?? null,
+        userName: input.userName ?? null,
+        accountMasked: maskAccount(input.account),
+        accountKey: input.accountKey,
+        ip: input.context.ipAddress?.slice(0, 64) ?? null,
+        userAgent: input.context.userAgent?.slice(0, 200) ?? null,
+        method: 'password',
+        status: input.success ? 'success' : 'failed',
+        reason: input.reason,
+        message: input.reason ? LOGIN_REASON_TEXT[input.reason] : '登录成功',
+      }));
+    } catch (error) {
+      // 审计是旁路，不阻断登录；但记日志便于发现 DB 异常
+      this.logger.warn(`记录密码登录尝试失败：${(error as Error).message}`);
+    }
+  }
+
+  private async handlePasswordLoginFailure(input: {
+    tenantId: number | null;
+    user: User | null;
+    account: string;
+    accountKey: string;
+    context: PasswordLoginContext;
+    source: string;
+    error: unknown;
+  }) {
+    const reason = this.passwordFailureReasonOf(input.error);
+    await this.recordPasswordAttempt({
+      tenantId: input.tenantId, userId: input.user?.id ?? null, userName: input.user?.name ?? null,
+      account: input.account, accountKey: input.accountKey, success: false, reason, context: input.context,
+    });
+    if (reason !== 'invalid_credentials') return;
+    const state = await this.passwordLockState(input.tenantId, input.accountKey);
+    if (state) await this.notifyPasswordLockout(input.tenantId, input.account, input.accountKey, input.context, state);
+  }
+
+  private async notifyPasswordLockout(
+    tenantId: number | null,
+    account: string,
+    accountKey: string,
+    context: PasswordLoginContext,
+    state: { failCount: number; lockUntil: Date; retryAfterSeconds: number },
+  ) {
+    const accountMasked = maskAccount(account) || '（未知账号）';
+    const accountLabel = String(account || '').trim() || accountMasked;
+    const fingerprint = `password-lockout:${tenantId ?? 'none'}:${createHash('sha256').update(accountKey).digest('hex').slice(0, 24)}:${Math.floor(state.lockUntil.getTime() / 1000)}`;
+    const notified = this.passwordLockoutNotified ?? (this.passwordLockoutNotified = new Set());
+    if (notified.has(fingerprint)) return;
+    const now = new Date();
+    const timeText = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(now);
+    const ua = String(context.userAgent || '');
+    const device = `${/Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : '未知浏览器'}/${/Windows/i.test(ua) ? 'Windows' : /Mac OS X|Macintosh/i.test(ua) ? 'macOS' : /Android/i.test(ua) ? 'Android' : /iPhone|iPad|iOS/i.test(ua) ? 'iOS' : '未知系统'}`;
+    const content = `账号 ${accountLabel} 在 ${timeText} 连续 ${state.failCount} 次密码错误，已锁定 15 分钟；IP ${context.ipAddress || '未知'}，设备：${device}`;
+    this.passwordLockoutNotified!.add(fingerprint);
+    try {
+      if (this.systemLogRepo) {
+        const existing = await this.systemLogRepo.findOne({ where: { fingerprint } }).catch(() => null);
+        if (existing) return;
+        await this.systemLogRepo.save(this.systemLogRepo.create({
+          tenantId,
+          category: 'alert',
+          level: 'warning',
+          source: context.source || 'admin-web',
+          action: 'password_lockout',
+          success: false,
+          actorUserId: null,
+          ipAddress: context.ipAddress?.slice(0, 64) ?? null,
+          userAgent: context.userAgent?.slice(0, 500) ?? null,
+          requestMethod: 'POST',
+          requestPath: '/auth/admin-login',
+          statusCode: 429,
+          durationMs: null,
+          message: content,
+          detail: {
+            account: accountMasked,
+            lockUntil: state.lockUntil.toISOString(),
+            retryAfterSeconds: state.retryAfterSeconds,
+          },
+          fingerprint,
+        }));
+      }
+    } catch (error) {
+      this.logger.warn(`记录密码锁定审计失败：${(error as Error).message}`);
+    }
+    if (!tenantId || !this.moduleRef) return;
+    try {
+      const receiverIds = await this.accessService.userIdsWithPermission(tenantId, 'logs', 'view');
+      if (!receiverIds.length) return;
+      const notifier = this.moduleRef.get(NotificationsService, { strict: false });
+      for (const receiverId of receiverIds) {
+        await notifier.notifyUser({
+          tenantId,
+          receiverId,
+          eventKey: 'password_lockout',
+          title: '密码登录异常：账号已临时锁定',
+          payload: { account: accountMasked, content, lockUntil: state.lockUntil.toISOString(), ipAddress: context.ipAddress, userAgent: context.userAgent },
+          page: '/pages/messages/messages',
+          template: 'orderOverdue',
+          templateFields: {
+            orderNo: `SEC-${now.getTime()}`,
+            type: '安全告警',
+            status: '账号锁定',
+            statusShort: '已锁定',
+            content,
+            assignee: '系统管理员',
+            address: 'PMS 登录',
+            reporter: '系统监控',
+            time: timeText,
+            reportedAt: timeText,
+            dueAt: timeText,
+          },
+        });
+      }
+    } catch (error) {
+      this.logger.warn(`密码锁定通知发送失败：${(error as Error).message}`);
+    }
   }
 
   /**

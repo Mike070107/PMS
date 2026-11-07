@@ -117,8 +117,12 @@ export class AuthController {
   }
 
   @Post('admin-login')
-  adminLogin(@Body() dto: AdminLoginDto) {
-    return this.authService.adminLogin(dto);
+  adminLogin(@Body() dto: AdminLoginDto, @Req() req: Request) {
+    return this.authService.adminLogin(dto, {
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] || null,
+      source: 'admin-web',
+    });
   }
 
   @Post('wx-login')
@@ -127,8 +131,12 @@ export class AuthController {
   }
 
   @Post('staff-login')
-  staffLogin(@Body() dto: StaffLoginDto) {
-    return this.authService.staffLogin(dto);
+  staffLogin(@Body() dto: StaffLoginDto, @Req() req: Request) {
+    return this.authService.staffLogin(dto, {
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] || null,
+      source: 'miniapp-staff',
+    });
   }
 
   @Post('refresh')

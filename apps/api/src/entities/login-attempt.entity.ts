@@ -7,6 +7,7 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 
 @Entity('login_attempts')
 @Index('idx_login_attempts_tenant_created', ['tenantId', 'createdAt'])
 @Index('idx_login_attempts_tenant_status_created', ['tenantId', 'status', 'createdAt'])
+@Index('idx_login_attempts_lockout', ['tenantId', 'accountKey', 'method', 'createdAt'])
 export class LoginAttempt {
   @PrimaryGeneratedColumn()
   id: number;
@@ -23,6 +24,10 @@ export class LoginAttempt {
   /** 脱敏后的尝试账号，不落明文全量账号 */
   @Column({ name: 'account_masked', type: 'varchar', length: 80, nullable: true })
   accountMasked: string | null;
+
+  /** 归一化（trim+lower）账号的 SHA-256，仅用于密码防爆破计数与锁定；不落明文账号。 */
+  @Column({ name: 'account_key', type: 'varchar', length: 120, nullable: true })
+  accountKey: string | null;
 
   @Column({ type: 'varchar', length: 64, nullable: true })
   ip: string | null;

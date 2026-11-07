@@ -34,7 +34,8 @@
     "test:ui-preferences": "node -r ts-node/register --test src/modules/auth/ui-preferences.test.ts",
     "test:parking-renewal": "node -r ts-node/register --test src/modules/business/parking-category-scope.test.ts src/modules/business/parking-category-scope.http.test.ts src/modules/business/parking-renewal.test.ts src/modules/business/parking-pricing.test.ts src/modules/business/business-execution.util.test.ts src/modules/business/paid-registration.test.ts",
     "test:telemetry": "node -r ts-node/register --test src/modules/telemetry/telemetry.persistence.test.ts",
-    "test:observability-alert": "node -r ts-node/register --test src/modules/observability/observability-alert-cooldown.test.ts"
+    "test:observability-alert": "node -r ts-node/register --test src/modules/observability/observability-alert-cooldown.test.ts",
+    "test:password-lockout": "node -r ts-node/register --test src/modules/auth/password-lockout.test.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",
