@@ -43,6 +43,8 @@ test('all actual menu routes have explicit canonical page permissions',()=>{
  const nav=load('components/Shell.tsx',{pages:{}}).NAV;
  const map=load('lib/page-access.ts',{pages:{}});
  for(const item of nav){assert.ok(map.pageForPath(item.to),'unmapped '+item.key);assert.equal(map.canViewPath(item.to,{pages:{}}),false,item.key)}
+ assert.equal(map.canViewPath('/intranet',{pages:{settings:{view:true}}}),false,'settings 不再放行内网应用');
+ assert.equal(map.canViewPath('/intranet',{pages:{intranet:{view:true}}}),true,'intranet 独立权限放行内网应用');
  assert.equal(map.canViewPath('/unknown',{isTenantAdmin:true}),false);
  assert.equal(map.canViewPath('/houses-other',{pages:{properties:{view:true}}}),false);
 });

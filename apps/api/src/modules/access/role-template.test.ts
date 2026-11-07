@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { PGlite } from '@electric-sql/pglite';
 import { AccessService } from './access.service';
 import { RolesService } from '../roles/roles.service';
 import { RoleDataScope, DEFAULT_ROLE_TEMPLATES, PAGE_GROUPS, ADMIN_PAGE_KEYS, pageGroupOf } from '../../common/pages';
 import { UserRole } from '../../common/enums';
+import { AddIntranetPermission1794300000000 } from '../../migrations/1794300000000-AddIntranetPermission';
 
 /**
  * 权限模板：角色 `template_id` 有值时，权限从 role_template_permissions 读。
@@ -82,8 +84,15 @@ test('启动时把历史合并权限复制为新的独立页面权限', async ()
   assert.match(tplBillsSql || '', /src\.page_key = 'fees'/);
   assert.match(roleBillsSql || '', /src\.can_view, src\.can_edit, false/);
   assert.match(tplBillsSql || '', /src\.can_view, src\.can_edit, false/);
-  assert.equal(roleSql.length, 9, '目前角色权限共有九组拆分回填（含 fees → bills）');
-  assert.equal(templateSql.length, 9, '目前模板权限共有九组拆分回填（含 fees → bills）');
+  // 内网应用从系统设置独立出来：老角色/模板 settings 补 intranet，view 跟随 settings，edit=false
+  const roleIntranetSql = roleSql.find((sql) => sql.includes("'intranet'"));
+  const tplIntranetSql = templateSql.find((sql) => sql.includes("'intranet'"));
+  assert.match(roleIntranetSql || '', /src\.page_key = 'settings'/);
+  assert.match(tplIntranetSql || '', /src\.page_key = 'settings'/);
+  assert.match(roleIntranetSql || '', /src\.can_view, false, false/);
+  assert.match(tplIntranetSql || '', /src\.can_view, false, false/);
+  assert.equal(roleSql.length, 10, '目前角色权限共有十组拆分回填（含 fees → bills、settings → intranet）');
+  assert.equal(templateSql.length, 10, '目前模板权限共有十组拆分回填（含 fees → bills、settings → intranet）');
 });
 
 test('跟随模板的角色读模板那份权限，自定义角色读自己的', async () => {
@@ -361,7 +370,7 @@ test('回填工作范围只处理还没有工作范围的员工（幂等），�
   ]);
 });
 
-test('启动时给只勾了 fees 的公司 enabled_pages 幂等补 bills', async () => {
+test('启动时给已有 settings 的公司 enabled_pages 幂等补 intranet', async () => {
   const svc = Object.create(AccessService.prototype) as any;
   const tenantSql: string[] = [];
   svc.rolePermRepo = { async query() { return [[], 0]; } };
@@ -377,11 +386,43 @@ test('启动时给只勾了 fees 的公司 enabled_pages 幂等补 bills', async
 
   await svc.onModuleInit();
 
-  assert.equal(tenantSql.length, 1, '只跑一条 enabled_pages 补齐 SQL');
-  assert.match(tenantSql[0], /UPDATE tenants/);
-  assert.match(tenantSql[0], /enabled_pages \? 'fees'/);
-  assert.match(tenantSql[0], /NOT enabled_pages \? 'bills'/, '已含 bills 的公司不重复追加');
-  assert.match(tenantSql[0], /enabled_pages \|\| '\["bills"\]'::jsonb/, 'jsonb 数组追加，幂等只加行');
+  assert.equal(tenantSql.length, 2, 'bills 与 intranet 各一条 enabled_pages 补齐 SQL');
+  const billsSql = tenantSql.find((sql) => sql.includes("'bills'"));
+  const intranetSql = tenantSql.find((sql) => sql.includes("'intranet'"));
+  assert.match(billsSql || '', /enabled_pages \? 'fees'/);
+  assert.match(intranetSql || '', /enabled_pages \? 'settings'/);
+  assert.match(intranetSql || '', /NOT enabled_pages \? 'intranet'/, '已含 intranet 的公司不重复追加');
+  assert.match(intranetSql || '', /enabled_pages \|\| '\["intranet"\]'::jsonb/, 'jsonb 数组追加，幂等只加行');
+});
+test('intranet 标准迁移可重复 up 且 down 移除，历史 settings 角色/模板/公司被补齐', async () => {
+  const pg = new PGlite();
+  try {
+    await pg.exec(`
+      CREATE TABLE tenants(id int PRIMARY KEY, enabled_pages jsonb, updated_at timestamptz);
+      CREATE TABLE role_permissions(id serial PRIMARY KEY, tenant_id int, role_id int, page_key varchar(60), can_view boolean, can_edit boolean, can_delete boolean, created_at timestamptz, updated_at timestamptz);
+      CREATE TABLE role_template_permissions(id serial PRIMARY KEY, tenant_id int, template_id int, page_key varchar(60), can_view boolean, can_edit boolean, can_delete boolean, created_at timestamptz, updated_at timestamptz);
+      INSERT INTO tenants VALUES(1,'["settings","fees"]'::jsonb,now()),(2,'["logs"]'::jsonb,now()),(3,'["settings","intranet"]'::jsonb,now());
+      INSERT INTO role_permissions(tenant_id,role_id,page_key,can_view,can_edit,can_delete) VALUES(1,1,'settings',true,true,false),(1,2,'settings',false,false,false),(2,3,'settings',true,false,false);
+      INSERT INTO role_template_permissions(tenant_id,template_id,page_key,can_view,can_edit,can_delete) VALUES(1,9,'settings',true,true,false);
+    `);
+    const runner: any = { query: (sql: string, params?: any[]) => pg.query(sql, params) };
+    const migration = new AddIntranetPermission1794300000000();
+    await migration.up(runner);
+    await migration.up(runner);
+    const roleRows: any = await pg.query("SELECT role_id,can_view,can_edit,can_delete FROM role_permissions WHERE page_key='intranet' ORDER BY role_id");
+    assert.deepEqual(roleRows.rows.map((r: any) => [r.role_id, r.can_view, r.can_edit, r.can_delete]), [[1, true, false, false], [2, false, false, false], [3, true, false, false]]);
+    const tplRows: any = await pg.query("SELECT can_view,can_edit FROM role_template_permissions WHERE page_key='intranet'");
+    assert.deepEqual(tplRows.rows, [{ can_view: true, can_edit: false }]);
+    const tenants: any = await pg.query("SELECT id,enabled_pages FROM tenants ORDER BY id");
+    assert.deepEqual(tenants.rows.map((r: any) => [r.id, r.enabled_pages]), [[1, ['settings', 'fees', 'intranet']], [2, ['logs']], [3, ['settings', 'intranet']]]);
+    await migration.down(runner);
+    const roleAfter: any = await pg.query("SELECT COUNT(*)::int AS n FROM role_permissions WHERE page_key='intranet'");
+    assert.equal(roleAfter.rows[0].n, 0);
+    const tplAfter: any = await pg.query("SELECT COUNT(*)::int AS n FROM role_template_permissions WHERE page_key='intranet'");
+    assert.equal(tplAfter.rows[0].n, 0);
+    const afterDown: any = await pg.query("SELECT enabled_pages FROM tenants WHERE enabled_pages ? 'intranet'");
+    assert.equal(afterDown.rows.length, 0);
+  } finally { await pg.close(); }
 });
 
 /**

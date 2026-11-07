@@ -133,6 +133,7 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   { key: 'offices', label: '管理处', group: '档案' },
   { key: 'qr', label: '楼栋报修码', group: '系统' },
   { key: 'settings', label: '系统设置', group: '系统' },
+  { key: 'intranet', label: '内网应用', group: '系统' },
   {
     key: 'logs',
     label: '日志管理',
@@ -168,7 +169,7 @@ export const PAGE_GROUPS: PageGroupDef[] = [
   { title: '库存与盘点', pageKeys: ['inventory', 'stocktakes', 'materials'] },
   { title: '分析', pageKeys: ['reports'] },
   { title: '档案', pageKeys: ['properties', 'owners', 'users', 'roles', 'offices'] },
-  { title: '系统', pageKeys: ['qr', 'settings', 'logs'] },
+  { title: '系统', pageKeys: ['qr', 'settings', 'intranet', 'logs'] },
 ];
 
 /** 页面属于哪个分组（只对后台页面有意义）；登记漏了返回 undefined，由回归测试兜住。 */

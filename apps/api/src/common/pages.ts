@@ -31,6 +31,7 @@ export const ADMIN_PAGE_KEYS = [
   'offices', // 管理处
   'qr', // 楼栋报修码
   'settings', // 系统设置
+  'intranet', // 内网应用（独立页面权限，不再借 settings）
   'logs', // 日志管理、使用分析与异常监控
 ] as const;
 
@@ -56,7 +57,7 @@ export const PAGE_GROUPS: PageGroupDef[] = [
   { title: '库存与盘点', pageKeys: ['inventory', 'stocktakes', 'materials'] },
   { title: '分析', pageKeys: ['reports'] },
   { title: '档案', pageKeys: ['properties', 'owners', 'users', 'roles', 'offices'] },
-  { title: '系统', pageKeys: ['qr', 'settings', 'logs'] },
+  { title: '系统', pageKeys: ['qr', 'settings', 'intranet', 'logs'] },
 ];
 
 /** 页面属于哪个分组；登记漏了返回 undefined，由回归测试兜住。 */

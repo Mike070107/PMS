@@ -155,6 +155,8 @@ export class AccessService implements OnModuleInit {
         // 2026-11-07：「账单与待缴」从物业费页面独立成可授权页面。老角色/模板只有 fees，
         // 不补 bills 的话上线当天这一整页会从菜单消失（见下方 tenants.enabled_pages 同步补齐）。
         { source: 'fees', target: 'bills', copyEdit: true },
+        // 2026-11-08：「内网应用」从系统设置里拆出独立页面。view 跟随 settings.view，edit=false。
+        { source: 'settings', target: 'intranet', copyEdit: false },
       ];
       for (const split of splits) {
         const role = await this.rolePermRepo.query(
@@ -194,6 +196,21 @@ export class AccessService implements OnModuleInit {
       if (count) this.logger.log(`补齐 tenants.enabled_pages 的 bills：${count} 家`);
     } catch (e) {
       this.logger.warn(`补齐公司可用页面 bills 失败：${(e as Error).message}`);
+    }
+    try {
+      // 「内网应用」独立 key：只给已有 settings 的公司追加；已含 intranet 的公司不动，幂等。
+      const changed: unknown = await this.tenantRepo.query(`
+        UPDATE tenants
+           SET enabled_pages = enabled_pages || '["intranet"]'::jsonb,
+               updated_at = now()
+         WHERE enabled_pages IS NOT NULL
+           AND enabled_pages ? 'settings'
+           AND NOT enabled_pages ? 'intranet'
+      `);
+      const count = Array.isArray(changed) && typeof changed[1] === 'number' ? changed[1] : 0;
+      if (count) this.logger.log(`补齐 tenants.enabled_pages 的 intranet：${count} 家`);
+    } catch (e) {
+      this.logger.warn(`补齐公司可用页面 intranet 失败：${(e as Error).message}`);
     }
     try {
       await this.backfillAssignments();
