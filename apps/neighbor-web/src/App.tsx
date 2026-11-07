@@ -139,6 +139,8 @@ function StaticPage({ to }: { to: string }) {
 export default function App() {
   const session = useSession();
   const loc = useLocation();
+  // 已登录后的页面访问埋点（此前只在未登录重定向里调用，导致登录用户完全没被记录）
+  usePageViewTelemetry(loc.pathname);
   const [verifiedIdentity, setVerifiedIdentity] = useState<SessionIdentity | null>(null);
   const [accessFailed, setAccessFailed] = useState(false);
   const [accessRetry, setAccessRetry] = useState(0);
