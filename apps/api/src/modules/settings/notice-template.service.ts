@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TenantConfig } from '../../entities/tenant-config.entity';
@@ -25,6 +25,8 @@ export const DEFAULT_NOTICE_TEMPLATE = {
   liability: '本单为欠费提醒，不作为收款凭证；缴费以收据或电子收据为准。',
   showBatchNo: true,
   showPhone: true,
+  /** 缴费二维码图片地址（POST /upload 返回的代理地址，最长 500 字符）；空 = 通知单只打印文字说明 */
+  qrImageUrl: '',
 };
 
 export type NoticeTemplate = typeof DEFAULT_NOTICE_TEMPLATE;
@@ -50,6 +52,10 @@ export class NoticeTemplateService {
     const row = await this.repo.findOne({ where: { tenantId, key: KEY } });
     const next = { ...DEFAULT_NOTICE_TEMPLATE, ...((row?.value as Partial<NoticeTemplate>) || {}), ...patch };
     if (Array.isArray(next.notes)) next.notes = next.notes.map((n) => String(n).trim()).filter(Boolean).slice(0, 6);
+    // 二维码只存图片地址；空串表示通知单上只打印文字说明。
+    if (typeof next.qrImageUrl !== 'string') next.qrImageUrl = '';
+    next.qrImageUrl = next.qrImageUrl.trim();
+    if (next.qrImageUrl.length > 500) throw new BadRequestException('缴费二维码地址不能超过 500 字符');
     if (row) {
       await this.repo.update({ id: row.id }, { value: next, updatedBy: user.id });
     } else {
