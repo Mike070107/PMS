@@ -6602,3 +6602,11 @@
 - 自上次（251e584e）以来上线的相关提交：
   - addd528d feat(mirror): MIS 镜像表与 5 分钟增量同步、数据源开关与降级读；修复大屏播报已收款标签与近期收款回退
 
+## 2026-11-08 01:56 · api · d785ab51
+
+- 包：`pms-api-fast-20261108-015619.tar.gz`
+- 提交：d785ab51 chore(api): 新增 test:mis-mirror 脚本
+- 自上次（8ffb3282）以来上线的相关提交：
+  - d785ab51 chore(api): 新增 test:mis-mirror 脚本
+  - addd528d feat(mirror): MIS 镜像表与 5 分钟增量同步、数据源开关与降级读；修复大屏播报已收款标签与近期收款回退
+
