@@ -208,10 +208,21 @@ test('MIS短时缓存：同租户同参数30秒内第二次调用不再查MIS；
  await brackets.s.residential({view:'amount-brackets'},{id:1,tenantId:1},{scopeAll:true});
  assert.equal(brackets.reads(),1,'amount-brackets 第二次命中缓存');
  const sql=report({view:'amount-brackets'},['01']).sql;
- assert.match(sql,/GROUP BY l\.管理处,s\.S_ID/);assert.match(sql,/CASE WHEN h\.amount<=50000/);
+ assert.ok(sql.includes('GROUP BY l.管理处,s.S_ID,z.ZH_ID'));assert.ok(sql.includes('h.amount*100<=50000'));
  // 权限范围不同不能复用缓存
  const other=make(()=>({recordsets:[[{bucketKey:'le500',houseCount:'0',amount:'0'}]]}));
  await other.s.residential({view:'amount-brackets'},{id:1,tenantId:1},{scopeAll:true});
  await other.s.residential({view:'amount-brackets'},{id:1,tenantId:1},{scopeAll:false,communityIds:[10]});
  assert.equal(other.reads(),2,'不同数据范围必须分别查MIS');
+});
+
+
+test('待缴金额分档必须先按户聚合，再按户级金额（分）分档，禁止用单条 ZJ_JE 分档', () => {
+ const sql=report({view:'amount-brackets'},['01']).sql;
+ assert.ok(sql.includes('SELECT SUM(w.ZJ_JE) AS amount'), '先按户聚合待缴金额');
+ assert.ok(sql.includes('GROUP BY l.管理处,s.S_ID,z.ZH_ID'), '按管理处+房号+业主聚合到户');
+ assert.ok(sql.includes('h.amount*100<=50000'), '户级金额由元转分后比较 ≤500 元');
+ assert.ok(sql.includes('h.amount*100<=200000'), '户级金额比较 ≤2000 元');
+ assert.ok(sql.includes('h.amount*100<=500000'), '户级金额比较 ≤5000 元');
+ assert.ok(!/SUM\(w\.ZJ_JE\)[^)]*<=50000/.test(sql.replace(/\s+/g,' ')), '未直接用单条账单金额分档');
 });

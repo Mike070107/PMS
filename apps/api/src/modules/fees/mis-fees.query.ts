@@ -96,9 +96,11 @@ export function buildMisResidentialQuery(q:MisResidentialQuery,offices:string[])
   from+=` AND (${predicates.join(' OR ')})`;
  }
  if(view==='amount-brackets'){
-  // 按「户」聚合待缴总额后分四档；与 households 待缴口径一致（ZJ_SKRQ 空、未退款、正数）。
-  const bucket=`CASE WHEN h.amount<=50000 THEN 'le500' WHEN h.amount<=200000 THEN '500to2000' WHEN h.amount<=500000 THEN '2000to5000' ELSE 'gt5000' END`;
-  return {sql:`SELECT ${bucket} AS bucketKey,COUNT(*) AS houseCount,CONVERT(varchar(50),SUM(h.amount),2) AS amount FROM (SELECT SUM(w.ZJ_JE) AS amount ${from} AND w.ZJ_SKRQ IS NULL AND w.ZJ_TKRQ IS NULL AND w.ZJ_JE>0 GROUP BY l.管理处,s.S_ID) h GROUP BY ${bucket} ORDER BY bucketKey;`,params};
+  // 必须先把同一户的待缴账单 SUM 成户级金额，再按户级金额分档。
+  // WYZJ.ZJ_JE 单位是元，档位阈值是分，所以比较前先 *100；否则会出现
+  // “1397 户都 ≤500 元、合计却几百万”的 count/amount 口径矛盾。
+  const bucket=`CASE WHEN h.amount*100<=50000 THEN 'le500' WHEN h.amount*100<=200000 THEN '500to2000' WHEN h.amount*100<=500000 THEN '2000to5000' ELSE 'gt5000' END`;
+  return {sql:`SELECT ${bucket} AS bucketKey,COUNT(*) AS houseCount,CONVERT(varchar(50),SUM(h.amount),2) AS amount FROM (SELECT SUM(w.ZJ_JE) AS amount ${from} AND w.ZJ_SKRQ IS NULL AND w.ZJ_TKRQ IS NULL AND w.ZJ_JE>0 GROUP BY l.管理处,s.S_ID,z.ZH_ID) h GROUP BY ${bucket} ORDER BY bucketKey;`,params};
  }
  if(view==='detail'){
   if(!q.houseKeys?.length)throw new BadRequestException('请先选择住户');
