@@ -14,7 +14,7 @@ interface Txn {
   amountCents: number; paymentMethod: string | null; createdAt: string;
 }
 type LedgerSummary = { paidCents: number; refundedCents: number; paidCount: number; byService: Array<{ serviceType: string; paidCents: number; paidCount: number }> };
-type MisFeeRow = { name: string; amountCents: number; count: number };
+type MisFeeRow = { name: string; amountCents: number; count: number; houseCount: number | null };
 type MisToday = { paidCents: number; paidCount: number; refundedCents: number; paidHouses: number; byFee: MisFeeRow[] };
 type RecentPayment = { paidAt: string; address: string; ownerName: string; amountCents: number; channel: string | null; billCount: number };
 type MisState = { key: string; today: MisToday | null; todayMissing: boolean; recent: RecentPayment[] | null; recentMissing: boolean };
@@ -30,7 +30,8 @@ function normalizeMisToday(raw: unknown): MisToday | null {
   const byFee = Array.isArray(data.byFee) ? data.byFee.map((row: any) => ({
     name: String(row?.feeName || row?.name || row?.category || '其他'),
     amountCents: Math.max(0, Number(row?.paidCents ?? row?.amountCents ?? 0) || 0),
-    count: Number(row?.paidCount ?? row?.billCount ?? row?.count ?? 0) || 0,
+    count: Number(row?.billCount ?? row?.count ?? row?.paidCount ?? 0) || 0,
+    houseCount: Number.isFinite(Number(row?.houseCount)) && Number(row?.houseCount) >= 0 ? Number(row.houseCount) : null,
   })) : [];
   return {
     paidCents,
@@ -128,14 +129,16 @@ export default function Today() {
   const sumService = (types: string[]) => data?.summary.byService.filter((row) => types.includes(row.serviceType)).reduce((sum, row) => sum + row.paidCents, 0) ?? 0;
   const countService = (types: string[]) => data?.summary.byService.filter((row) => types.includes(row.serviceType)).reduce((sum, row) => sum + row.paidCount, 0) ?? 0;
   const legacyFeeRows: MisFeeRow[] = data ? [
-    { name: '物业费', amountCents: sumService(['mis_property']), count: countService(['mis_property']) },
-    { name: '泊位费', amountCents: sumService(['mis_berth']), count: countService(['mis_berth']) },
-    { name: '停车月租', amountCents: sumService(['parking_monthly']), count: countService(['parking_monthly']) },
-    { name: '门禁卡', amountCents: sumService(['access_card']), count: countService(['access_card']) },
+    { name: '物业费', amountCents: sumService(['mis_property']), count: countService(['mis_property']), houseCount: null },
+    { name: '泊位费', amountCents: sumService(['mis_berth']), count: countService(['mis_berth']), houseCount: null },
+    { name: '停车月租', amountCents: sumService(['parking_monthly']), count: countService(['parking_monthly']), houseCount: null },
+    { name: '门禁卡', amountCents: sumService(['access_card']), count: countService(['access_card']), houseCount: null },
   ].filter((row) => row.amountCents !== 0 || row.count !== 0) : [];
   const feeRows = today?.byFee ?? (pmsFallback ? legacyFeeRows : []);
   const feeMax = Math.max(1, ...feeRows.map((row) => row.amountCents));
   const recentRows = recent ?? [];
+  const recentBillTotal = recentRows.reduce((sum, row) => sum + (row.billCount || 1), 0);
+  const recentHouseTotal = new Set(recentRows.map((row) => row.address).filter(Boolean)).size;
 
   const repairStat = useMemo(() => {
     const list = visibleOrders ?? [];
@@ -216,7 +219,7 @@ export default function Today() {
                   <div key={row.name + index} className="erp-income-row">
                     <div style={{ width: 96, fontSize: 16, color: 'var(--ink2)' }}>{row.name}</div>
                     <div style={{ flex: 1, height: 10, borderRadius: 6, background: 'var(--line2)', overflow: 'hidden' }}><div style={{ height: '100%', borderRadius: 6, width: `${Math.round(row.amountCents / feeMax * 100)}%`, background: colors[index % colors.length] }} /></div>
-                    <div style={{ width: 110, textAlign: 'right', fontWeight: 700, fontSize: 16 }}>{money(row.amountCents / 100)}<small className="erp-kpi-sub" style={{ textAlign: 'right' }}>{row.count} 笔</small></div>
+                    <div style={{ width: 110, textAlign: 'right', fontWeight: 700, fontSize: 16 }}>{money(row.amountCents / 100)}<small className="erp-kpi-sub" style={{ textAlign: 'right' }}>{row.count} 笔{row.houseCount != null ? ` · ${row.houseCount} 户` : ""}</small></div>
                   </div>
                 );
               })}
@@ -253,11 +256,12 @@ export default function Today() {
                   : recentRows.map((row, index) => (
                     <div key={row.paidAt + row.address + index} className="lrow">
                       <div className="li ic green"><Icon name="cash" /></div>
-                      <div className="lt"><b>{row.address || '房号未记录'}</b><small>{row.paidAt ? row.paidAt.slice(5) : '日期未记录'} · {row.ownerName || '业主未记录'} · {channelLabel(row.channel)}{row.billCount > 1 ? ` · ${row.billCount} 笔` : ''}</small></div>
+                      <div className="lt"><b>{row.address || '房号未记录'}</b><small>{row.paidAt ? row.paidAt.slice(5) : '日期未记录'} · {row.ownerName || '业主未记录'} · {channelLabel(row.channel)} · {row.billCount} 笔</small></div>
                       <b className="money">{money(row.amountCents / 100)}</b>
                     </div>
                   ))}
             </div>
+            {misReady !== null && !recentMissing && recentRows.length > 0 ? <div className="note2" style={{ margin: '0 16px 12px', color: 'var(--ink2)' }}>共 {recentBillTotal} 笔 · {recentHouseTotal} 户（每行按同房号同日聚合，户数按房号去重）</div> : null}
           </div>
         </div>
       </div>

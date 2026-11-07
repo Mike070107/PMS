@@ -9,17 +9,67 @@
   background: linear-gradient(160deg, #eef5fc 0%, #e3edf7 48%, #f7fafc 100%);
 }
 
-/* 只保留一层固定背景 + 极淡青色光晕；不要橙色/紫色 */
-.sp-glass-bg {
+/* 照片层：把真实照片放到 public/parking/garage.jpg 即自动生效；404 时保留程序化车库背景 */
+.sp-glass-photo {
   position: absolute;
-  inset: -12%;
+  inset: 0;
   z-index: 0;
   pointer-events: none;
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  opacity: 0;
+  transition: opacity 240ms ease;
+}
+
+.sp-glass-wrap[data-photo='1'] .sp-glass-photo {
+  opacity: 1;
+}
+
+/* 照片上的淡白蒙版，保证卡片文字可读 */
+.sp-glass-shade {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.55);
+  opacity: 0;
+  transition: opacity 240ms ease;
+}
+
+.sp-glass-wrap[data-photo='1'] .sp-glass-shade {
+  opacity: 1;
+}
+
+.sp-glass-wrap[data-photo='1'] .sp-glass-bg {
+  opacity: 0;
+}
+
+/* 程序化近似车库地面：深灰沥青 + 斜向/透视停车线 + 两处冷白灯光 + 四角暗角 */
+.sp-glass-bg {
+  position: absolute;
+  inset: -6%;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
   background:
-    radial-gradient(58% 62% at 18% 16%, rgba(150, 200, 228, 0.2) 0%, rgba(150, 200, 228, 0) 62%),
-    radial-gradient(46% 54% at 82% 24%, rgba(178, 214, 233, 0.16) 0%, rgba(178, 214, 233, 0) 58%),
-    radial-gradient(52% 58% at 62% 90%, rgba(190, 220, 238, 0.14) 0%, rgba(190, 220, 238, 0) 60%);
-  filter: blur(12px);
+    radial-gradient(32% 42% at 20% 14%, rgba(222, 236, 250, 0.65) 0%, rgba(222, 236, 250, 0) 72%),
+    radial-gradient(30% 40% at 80% 18%, rgba(200, 222, 242, 0.5) 0%, rgba(200, 222, 242, 0) 72%),
+    radial-gradient(70% 32% at 50% 78%, rgba(140, 168, 198, 0.14) 0%, rgba(140, 168, 198, 0) 72%),
+    linear-gradient(180deg, rgba(12, 18, 26, 0.5) 0%, rgba(12, 18, 26, 0) 24%, rgba(12, 18, 26, 0.3) 100%),
+    radial-gradient(130% 120% at 50% 42%, rgba(10, 18, 28, 0) 42%, rgba(10, 18, 28, 0.62) 100%),
+    linear-gradient(165deg, #4d5663 0%, #333c48 44%, #232b36 100%);
+  transition: opacity 240ms ease;
+}
+
+/* 车库地面斜向停车线：单方向重复白线 + 远端一条横向停止线，避免菱形网格感 */
+.sp-glass-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(104deg, transparent 0 132px, rgba(236, 244, 252, 0.24) 132px 137px),
+    linear-gradient(180deg, transparent 0 62%, rgba(236, 244, 252, 0.1) 62.4%, transparent 63%);
 }
 
 .sp-glass-wrap .sp-grid {
@@ -38,7 +88,7 @@
   /* 卡内顶部一层极淡的线性渐变（白 18% → 透明）+ 半透明白玻璃底 */
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0) 42%),
-    rgba(255, 255, 255, 0.42);
+    rgba(255, 255, 255, 0.5);
   -webkit-backdrop-filter: blur(22px) saturate(115%);
   backdrop-filter: blur(22px) saturate(115%);
   box-shadow:
@@ -66,7 +116,7 @@
   border-color: rgba(180, 200, 220, 0.55);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0) 44%),
-    rgba(255, 255, 255, 0.3);
+    rgba(255, 255, 255, 0.4);
 }
 
 .sp-glass-wrap .sp-card.is-free .sp-no {
@@ -143,4 +193,19 @@
     gap: 12px;
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   }
+}
+
+/* 玻璃卡片里的车辆图标瓦片：避免白底白图标 */
+.sp-glass-wrap .sp-card .ic-tile {
+  background: rgba(255, 255, 255, 0.5);
+  color: #40566e;
+}
+
+/* 深色车库底图上的文字对比 */
+.sp-glass-wrap .sp-card .sp-kv dt {
+  color: var(--ink2);
+}
+
+.sp-glass-wrap .sp-card .sp-kv dd {
+  color: var(--ink);
 }

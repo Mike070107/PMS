@@ -29,6 +29,7 @@ export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) 
   const [only, setOnly] = useState<'all' | 'bound' | 'free'>('all');
   const [view, setView] = useState<'card' | 'table'>('card');
   const [edit, setEdit] = useState<SpaceRow | null>(null);
+  const [garagePhoto, setGaragePhoto] = useState(false);
 
   const load = useCallback(async () => {
     setRows(null); setErr('');
@@ -41,6 +42,16 @@ export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) 
   }, [garage]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    if (typeof Image === 'undefined') return undefined;
+    let alive = true;
+    const img = new Image();
+    img.onload = () => { if (alive) setGaragePhoto(true); };
+    img.onerror = () => { if (alive) setGaragePhoto(false); };
+    img.src = '/parking/garage.jpg';
+    return () => { alive = false; img.onload = null; img.onerror = null; };
+  }, []);
 
   const shown = useMemo(() => {
     const kw = q.trim().toUpperCase();
@@ -114,7 +125,9 @@ export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) 
             </table>
           </div>
         ) : (
-        <div className="sp-glass-wrap">
+        <div className="sp-glass-wrap" data-photo={garagePhoto ? '1' : undefined}>
+          <div className="sp-glass-photo" aria-hidden="true" style={{ backgroundImage: "url('/parking/garage.jpg')" }} />
+          <div className="sp-glass-shade" aria-hidden="true" />
           <div className="sp-glass-bg" aria-hidden="true" />
           <div className="sp-grid">
           {shown.map((r) => {
