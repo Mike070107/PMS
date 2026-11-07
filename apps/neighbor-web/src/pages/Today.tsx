@@ -30,7 +30,7 @@ function normalizeMisToday(raw: unknown): MisToday | null {
   const byFee = Array.isArray(data.byFee) ? data.byFee.map((row: any) => ({
     name: String(row?.feeName || row?.name || row?.category || '其他'),
     amountCents: Math.max(0, Number(row?.paidCents ?? row?.amountCents ?? 0) || 0),
-    count: Number(row?.paidCount ?? row?.count ?? 0) || 0,
+    count: Number(row?.paidCount ?? row?.billCount ?? row?.count ?? 0) || 0,
   })) : [];
   return {
     paidCents,
