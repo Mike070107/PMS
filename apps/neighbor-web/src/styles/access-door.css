@@ -1,0 +1,204 @@
+/* 门禁管理 · 远程门禁区块（只被 AccessCards 页面引入） */
+.door-panel {
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+
+.door-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.door-head b {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.door-table {
+  margin-top: 10px;
+}
+
+.door-table .tag {
+  white-space: nowrap;
+}
+
+.door-row-err {
+  display: block;
+  max-width: 240px;
+  margin-top: 3px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+  color: var(--dang);
+  font-size: 11.5px;
+}
+
+.door-table td {
+  vertical-align: middle;
+}
+
+.door-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.door-actions .btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.door-disabled {
+  background: var(--warn-w);
+  color: var(--warn);
+}
+
+.door-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(18, 26, 40, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.door-dialog {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid var(--line);
+  box-shadow: 0 24px 64px -18px rgba(18, 26, 40, 0.45);
+  padding: 18px 20px;
+}
+
+.door-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.door-dialog-head b {
+  font-size: 16px;
+}
+
+.door-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--sunken, #f6f8fb);
+  border: 1px solid var(--line2);
+  margin-bottom: 12px;
+}
+
+.door-summary > div {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.door-summary span {
+  color: var(--ink3);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.door-summary b {
+  font-size: 13.5px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.door-form {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--ink2);
+}
+
+.door-form textarea,
+.door-form input {
+  margin-top: 6px;
+}
+
+.door-form textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.door-quick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.door-warn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--dang-w);
+  border: 1px solid rgba(190, 90, 78, 0.45);
+  color: var(--dang);
+  margin-bottom: 12px;
+}
+
+.door-warn b {
+  font-size: 15px;
+}
+
+.door-dialog-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.door-task-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--sunken, #f6f8fb);
+  border: 1px solid var(--line2);
+  margin-bottom: 12px;
+}
+
+.door-receipt {
+  margin: 10px 0 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #0f1725;
+  color: #cfe3ff;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 700px) {
+  .door-summary {
+    grid-template-columns: 1fr;
+  }
+  .door-actions {
+    flex-wrap: wrap;
+  }
+}
