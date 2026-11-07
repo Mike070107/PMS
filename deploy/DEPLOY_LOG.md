@@ -6527,3 +6527,11 @@
 - 自上次（0ab4d963）以来上线的相关提交：
   - 9ef9192e feat(screen): 自动刷新改 5 分钟；MIS 离线时显示数据截至时间且不告警
 
+## 2026-11-08 00:27 · api · 950cd4a4
+
+- 包：`pms-api-fast-20261108-002710.tar.gz`
+- 提交：950cd4a4 fix(gateway): ticket 元数据保存 gatewayReturnTo（补齐 returnTo 回跳依赖文件）
+- 自上次（23e8d11f）以来上线的相关提交：
+  - 950cd4a4 fix(gateway): ticket 元数据保存 gatewayReturnTo（补齐 returnTo 回跳依赖文件）
+  - 09745661 fix(gateway): 扫码授权后回跳原始深层链接（returnTo 存 ticket 元数据，防开放重定向）
+
