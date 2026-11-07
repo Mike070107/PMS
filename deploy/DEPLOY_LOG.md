@@ -6520,3 +6520,10 @@
 - 自上次（bb3b5c8a）以来上线的相关提交：
   - 23e8d11f feat(permission): 新增 intranet 页 key 并回填 settings 角色的权限；/intranet 独立授权
 
+## 2026-11-08 00:08 · web · 9ef9192e
+
+- 包：`pms-web-20261108-000814.tar.gz`
+- 提交：9ef9192e feat(screen): 自动刷新改 5 分钟；MIS 离线时显示数据截至时间且不告警
+- 自上次（0ab4d963）以来上线的相关提交：
+  - 9ef9192e feat(screen): 自动刷新改 5 分钟；MIS 离线时显示数据截至时间且不告警
+
