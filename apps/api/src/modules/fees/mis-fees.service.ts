@@ -175,7 +175,8 @@ export class MisFeesService implements OnModuleDestroy {
   }
   if(!q.view||q.view==='dashboard')return {...meta,summary:{...amounts(sets[0]?.[0]||{}),total:Number(sets[0]?.[0]?.total||0),unpaidHouses:Number(sets[0]?.[0]?.unpaidHouses||0),adjustmentCount:Number(sets[0]?.[0]?.adjustmentCount||0)},byFee:(sets[1]||[]).map((r:any)=>({...amounts(r),feeCode:r.feeCode,feeName:r.feeName||'未命名费项',category:r.category,unpaidHouses:Number(r.unpaidHouses||0)}))};
   if(q.view==='trend')return {...meta,invalidDateCount:Number(sets[1]?.[0]?.invalidDateCount||0),rows:(sets[0]||[]).map((r:any)=>({day:r.day,netCents:misMoneyToCents(r.netAmount),chargedCents:misMoneyToCents(r.chargedAmount),refundedCents:misMoneyToCents(r.refundedAmount)}))};
-  const format=(r:any)=>{const {phone,amount,...safe}=r;const p=String(phone||'').trim();return {...safe,amountCents:misMoneyToCents(amount),billCount:r.billCount===undefined?undefined:Number(r.billCount),phone:/^1[3-9]\d{9}$/.test(p)?p:undefined,phoneMasked:/^1[3-9]\d{9}$/.test(p)?`${p.slice(0,3)}****${p.slice(-4)}`:p?'号码待核实':'未留手机号',contactEligible:/^1[3-9]\d{9}$/.test(p),communityId:communities.find(c=>c.offices.includes(r.officeCode))?.id};};
+  const canSeePhone=this.canEditFees(access);
+  const format=(r:any)=>{const {phone,amount,...safe}=r;const p=String(phone||'').trim();return {...safe,amountCents:misMoneyToCents(amount),billCount:r.billCount===undefined?undefined:Number(r.billCount),phone:canSeePhone&&/^1[3-9]\d{9}$/.test(p)?p:undefined,phoneMasked:/^1[3-9]\d{9}$/.test(p)?`${p.slice(0,3)}****${p.slice(-4)}`:p?'号码待核实':'未留手机号',contactEligible:/^1[3-9]\d{9}$/.test(p),communityId:communities.find(c=>c.offices.includes(r.officeCode))?.id};};
   if(q.view==='detail'){if((sets[0]||[]).length>10000)throw new BadRequestException('账单明细超过一万条，请缩小账期或分批');return {...meta,rows:(sets[0]||[]).map(format)};}
   const totalHouses=Number(sets[0]?.[0]?.total||0),totalAmount=misMoneyToCents(sets[0]?.[0]?.amount);
   let aging:any=undefined;
@@ -390,6 +391,12 @@ export class MisFeesService implements OnModuleDestroy {
   const same=(v:MisCollectionPrint)=>{if(v.batchId!==id||v.operatorId!==user.id||v.paper!==dto.paper||v.pageCount!==pageCount||v.noticePageCount!==noticePageCount)throw new ConflictException('打印标识已用于另一打印请求');return v};if(old)return same(old);
   try{return await repo.save(repo.create({tenantId:user.tenantId!,batchId:id,operatorId:user.id,pageCount,noticePageCount,paper:dto.paper,printedAt:new Date(),requestKey:dto.requestKey,createdBy:user.id,updatedBy:user.id}));}catch(e){if((e as any)?.code!=='23505')throw e;const found=await repo.findOne({where:{tenantId:user.tenantId!,requestKey:dto.requestKey}});if(!found)throw e;return same(found)}
  }
+  /** 只有能编辑收费的人才能看到完整手机号；其他人一律拿脱敏值。 */
+  private canEditFees(access?: import('../access/access.service').ResolvedAccess){
+   if(!access)return false;
+   if(access.isPlatformAdmin||access.isTenantAdmin)return true;
+   return !!access.pages?.['fees']?.edit;
+  }
  private collectionRepo<T extends import('typeorm').ObjectLiteral>(entity:import('typeorm').EntityTarget<T>){
   if(!this.batches?.manager)throw new ServiceUnavailableException('催缴跟进存储尚未就绪');return this.batches.manager.getRepository(entity);
  }
@@ -478,7 +485,7 @@ export class MisFeesService implements OnModuleDestroy {
     const amountCents=Number(row.amountCents)||0;if(amountCents<rule.amountCents)continue;
     const houseKey=String(row.houseKey),last=lastEvent.get(houseKey)||null,days=last?daysSince(last.at):null;
     const followupStatus=!last?'never':days!<rule.inactiveDays?'contacted':'overdue';
-    candidates.push({houseKey,address:String(row.address||''),ownerName:String(row.ownerName||''),amountCents,lastContactAt:last?last.at.toISOString():null,days,never:!last,lastAction:last?.action??null,lastNote:last?clipNote(last.note):'',contactCount:contactCount.get(houseKey)||0,phone:(row as any).phone??null,phoneMasked:String((row as any).phoneMasked||''),followupStatus});
+    candidates.push({houseKey,address:String(row.address||''),ownerName:String(row.ownerName||''),amountCents,lastContactAt:last?last.at.toISOString():null,days,never:!last,lastAction:last?.action??null,lastNote:last?clipNote(last.note):'',contactCount:contactCount.get(houseKey)||0,phone:(this.canEditFees(access)?((row as any).phone??null):null),phoneMasked:String((row as any).phoneMasked||''),followupStatus});
    }
    const population=Number(scan.total)||scannedRows.length;
    const populationCents=Number.isFinite(Number(scan.amountCents))?Number(scan.amountCents):scannedRows.reduce((sum,row)=>sum+(Number(row.amountCents)||0),0);

@@ -7,6 +7,7 @@ import {Broadcaster} from 'typeorm/subscriber/Broadcaster';
 import {MisFeesService} from './mis-fees.service';
 import {MisCollectionPromise, MisCollectionHold, MisCollectionEvent, MisCollectionPrint} from '../../entities/mis-collection-followup.entity';
 import {MisCollectionFollowups1794000000000} from '../../migrations/1794000000000-MisCollectionFollowups';
+import {TenantConfig} from '../../entities/tenant-config.entity';
 import {effectDay} from './mis-collection-effect';
 /** Real TypeORM persistence against isolated PostgreSQL WASM; no AppModule, .env or business network. */
 async function fixture(){
@@ -55,4 +56,24 @@ test('跟进队列：人工事件按户聚合最近1条+次数，真实SQL不搬
   assert.equal(two.never,true);assert.equal(two.contactCount,0);assert.equal(two.lastContactAt,null);
   assert.equal(out.stats.neverCount,1);assert.equal(out.stats.contactedCount,1);
  }finally{await pg.close()}
+});
+
+test('批次快照保存当前租户通知模板；租户未配模板时快照字段为 null（旧快照由打印端回退默认）',async()=>{
+ const template={orgSuffix:'物业服务中心',signatureSuffix:'物业管理处',phone:'0571-88886666',serviceHours:'8:30–17:30 · 周一至周日',address:'合成路1号',bankHolder:'合成物业',bankName:'合成银行',bankAccount:'6222 0000 1111 2222',payMethods:'现金 / 微信 / 支付宝 / 刷卡',onlineTitle:'线上缴费已开通',onlineText:'微信扫码进入缴费页，选房号、勾账期即可付款。',notes:['扫码后请先核对房号与账期'],liability:'本单为欠费提醒，不作为收款凭证',showBatchNo:true,showPhone:true,qrImageUrl:'https://pay.example.com/qr.png'};
+ const dto:any={filter:{},selection:'keys',houseKeys:['01:1:1'],purpose:'print',fingerprint:'a'.repeat(64),idempotencyKey:'00000000-0000-4000-8000-000000000011',confirmed:true};
+ const user:any={id:7,tenantId:1},access:any={scopeAll:true};
+ const build=(storedTemplate:any)=>{
+  const s:any=Object.create(MisFeesService.prototype);
+  s.residentialScope=async()=>[{id:1,name:'合成小区',offices:['01']}];
+  s.previewCollection=async()=>({notices:[{houseKey:'01:1:1',communityId:1,bills:[{id:'1',amountCents:1000}],amountCents:1000}],totalCents:1000,billCount:1,fingerprint:'a'.repeat(64),queriedAt:'2026-11-07T00:00:00Z',sourceLabel:'fixture',skipped:[]});
+  s.collectionRepo=(entity:any)=>{if(entity===TenantConfig)return {findOne:async()=>storedTemplate===undefined?null:{value:storedTemplate}};throw new Error('unexpected repository')};
+  s.batches={findOne:async()=>null,create:(v:any)=>v,save:async(v:any)=>({...v,id:9})};
+  return s;
+ };
+ const withTemplate:any=await build(template).createCollection(dto,user,access);
+ assert.deepEqual(withTemplate.snapshot.noticeTemplate,template,'新批次快照必须原样保存当前租户模板');
+ assert.equal(withTemplate.snapshot.notices.length,1,'模板随快照保存不改变原有通知快照');
+ assert.equal(withTemplate.snapshot.fingerprint,'a'.repeat(64));
+ const noTemplate:any=await build(undefined).createCollection(dto,user,access);
+ assert.equal(noTemplate.snapshot.noticeTemplate,null,'租户没配模板时快照写 null；旧快照本身就是没有该字段，打印端按 DEFAULT 回退');
 });

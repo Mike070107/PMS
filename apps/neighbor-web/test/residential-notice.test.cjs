@@ -74,3 +74,35 @@ test('A5/A4 纸张零外边距、内部 9mm 留白',()=>{
   assert.doesNotMatch(html,/display:\s*none/);
  }
 });
+
+// ── 二维码渲染：有图/转义/无图回退/单页 ──
+const qrUrl='https://pay.example.com/qr.png?ref="><script>alert(1)</script>';
+test('有二维码：渲染 img.qr 且 URL 经 HTML 转义，注入串不得落成标签，也不再渲染线上缴费 callout',()=>{
+ const html=h.renderNoticeDocument([notice([bill('202601')])],{...options,template:{qrImageUrl:qrUrl}});
+ assert.ok(html.includes('<img class="qr" src="'+h.escapeHtml(qrUrl)+'"'),'必须输出转义后的 img.qr 地址');
+ assert.ok(!html.includes(qrUrl),'危险 URL 不能原样输出');
+ assert.ok(!html.includes('<script>'),'注入串不能成为可执行标签');
+ assert.match(html,/&quot;&gt;&lt;script&gt;alert\(1\)&lt;\/script&gt;/, '引号/尖括号必须转义');
+ assert.doesNotMatch(html,/线上缴费已开通/,'有图时不再渲染重复的线上缴费 callout');
+ assert.doesNotMatch(html,/微信扫码进入缴费页/,'callout 正文同样不渲染');
+});
+test('无二维码（含旧快照无 noticeTemplate）：无 img，保留文字占位，并回退 DEFAULT 模板渲染线上缴费说明',()=>{
+ // 旧批次快照没有 noticeTemplate 字段 → 打印端传 template undefined，renderNoticeDocument 合并 DEFAULT_NOTICE_TEMPLATE。
+ const legacySnapshot={queriedAt:'2000-01-01',batchNo:'OLD-BATCH',notices:[]};
+ const html=h.renderNoticeDocument([notice([bill('202601')])],{...options,template:legacySnapshot.noticeTemplate});
+ assert.equal(h.DEFAULT_NOTICE_TEMPLATE.qrImageUrl,'','默认模板二维码为空');
+ assert.doesNotMatch(html,/<img class="qr"/,'无图时不能输出 img');
+ assert.match(html,/小程序缴费码/,'无图时保留文字占位');
+ assert.match(html,/线上缴费已开通/,'回退 DEFAULT 模板后渲染线上缴费 callout');
+ assert.match(html,/微信扫码进入缴费页/,'回退 DEFAULT 模板的说明文字');
+});
+test('12 期 + 二维码仍然只有 1 页：data-notice-page 1 个、无「续页」',()=>{
+ const bills=Array.from({length:12},(_,i)=>bill('2026'+String(i+1).padStart(2,'0')));
+ const html=h.renderNoticeDocument([notice(bills)],{...options,template:{qrImageUrl:'https://pay.example.com/qr.png'}});
+ assert.equal(rows(html).length,12);
+ assert.equal((html.match(/data-notice-page=/g)||[]).length,1,'12 期加二维码不能溢到第 2 页');
+ assert.equal((html.match(/class="paper"/g)||[]).length,1);
+ assert.doesNotMatch(html,/续页/);
+ assert.match(html,/<img class="qr"/);
+ assert.equal((html.match(/本户本次通知合计/g)||[]).length,1);
+});
