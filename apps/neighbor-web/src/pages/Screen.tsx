@@ -20,7 +20,7 @@ type Effect = { summary: { notifiedCents: number; recoveredCents: number; recove
 type SmsStats = Record<string, unknown>;
 type Options = { available?: boolean; message?: string; communities: { id: number; name: string }[] };
 
-const REFRESH_MS = 60_000;
+const REFRESH_MS = 90_000;
 const AMOUNT_BUCKETS = [
   { key: 'le500', label: '≤¥500', max: 50_000 },
   { key: '500to2000', label: '¥500–2000', max: 200_000 },
@@ -427,11 +427,11 @@ export default function Screen() {
         <footer className="scr-ticker" aria-label="实时播报">
           <span className="scr-ticker-label">实时播报</span>
           {reduceMotion ? (
-            <div className="scr-ticker-static"><span key={tickerIndex}>{tickerMessages[tickerIndex % tickerMessages.length]?.text}{tickerMessages[tickerIndex % tickerMessages.length]?.paid ? <em className="scr-ticker-paid">已到账</em> : null}</span></div>
+            <div className="scr-ticker-static"><span key={tickerIndex}>{tickerMessages[tickerIndex % tickerMessages.length]?.text}{tickerMessages[tickerIndex % tickerMessages.length]?.paid ? <em className="scr-ticker-paid">已收款</em> : null}</span></div>
           ) : (
             <div className="scr-ticker-viewport">
               <div className="scr-ticker-track">
-                {[...tickerMessages, ...tickerMessages].map((item, index) => <span key={index}>{item.text}{item.paid ? <em className="scr-ticker-paid">已到账</em> : null}</span>)}
+                {[...tickerMessages, ...tickerMessages].map((item, index) => <span key={index}>{item.text}{item.paid ? <em className="scr-ticker-paid">已收款</em> : null}</span>)}
               </div>
             </div>
           )}
