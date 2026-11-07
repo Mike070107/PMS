@@ -77,7 +77,14 @@ export interface WorkOrderAggRow {
   active: number;
   overdue: number;
   avgHours: number | null;
+  /** 已完成（已确认）收费；保留旧字段名兼容现有页面/导出。 */
   feeCents: number;
+  /** 已完成（已确认）收费，语义别名。 */
+  confirmedFeeCents: number;
+  /** 待验收（待确认）收费。 */
+  pendingFeeCents: number;
+  /** 区间内非作废、非取消工单的登记收费合计。 */
+  totalFeeCents: number;
   materialCostCents: number;
   avgRating: number | null;
   ratingCount: number;
@@ -202,6 +209,7 @@ export class ReportsService {
     scope: number[] | null,
     query: { communityId?: number; assigneeId?: number },
     groupBy: WorkOrderGroupBy | null,
+    assigneeIds?: number[],
   ): Promise<WorkOrderAggRow[]> {
     const p = new SqlParams();
     const where: string[] = [
@@ -214,6 +222,7 @@ export class ReportsService {
     if (query.communityId) where.push(`wo.community_id = ${p.add(query.communityId)}`);
     else if (scope) where.push(`wo.community_id = ANY(${p.add(scope)})`);
     if (query.assigneeId) where.push(`wo.assignee_id = ${p.add(query.assigneeId)}`);
+    if (assigneeIds) where.push(`wo.assignee_id = ANY(${p.add(assigneeIds)})`);
 
     const keyExpr = this.workOrderKeyExpr(groupBy);
     const sql = `
@@ -255,8 +264,10 @@ export class ReportsService {
           FILTER (WHERE completed_at IS NOT NULL AND status = 'completed') AS avg_hours,
         -- 收费同理：已完成才算收入，待验收的单独给一个「待确认」指标
         COALESCE(SUM(fee_cents) FILTER (WHERE status = 'completed'), 0)::bigint AS fee_cents,
+        COALESCE(SUM(fee_cents) FILTER (WHERE status = 'completed'), 0)::bigint AS confirmed_fee_cents,
         COALESCE(SUM(fee_cents) FILTER (WHERE status = 'done_pending_review'), 0)::bigint
           AS pending_fee_cents,
+        COALESCE(SUM(fee_cents) FILTER (WHERE status <> 'cancelled'), 0)::bigint AS total_fee_cents,
         COALESCE(SUM(material_cost_cents), 0)::bigint AS material_cost_cents,
         AVG(rating) AS avg_rating,
         COUNT(rating)::int AS rating_count
@@ -275,7 +286,9 @@ export class ReportsService {
       overdue: num(r.overdue),
       avgHours: numOrNull(r.avg_hours),
       feeCents: num(r.fee_cents),
+      confirmedFeeCents: num(r.confirmed_fee_cents),
       pendingFeeCents: num(r.pending_fee_cents),
+      totalFeeCents: num(r.total_fee_cents),
       materialCostCents: num(r.material_cost_cents),
       avgRating: numOrNull(r.avg_rating),
       ratingCount: num(r.rating_count),
@@ -309,6 +322,9 @@ export class ReportsService {
       overdue: 0,
       avgHours: null,
       feeCents: 0,
+      confirmedFeeCents: 0,
+      pendingFeeCents: 0,
+      totalFeeCents: 0,
       materialCostCents: 0,
       avgRating: null,
       ratingCount: 0,
@@ -396,13 +412,22 @@ export class ReportsService {
     const tenantId = this.resolveTenantId(user, query.tenantId);
     const range = this.resolveRange(query);
     const scope = this.scopeIds(access);
+    const jobTypes = query.jobTypes ?? 'technician';
+    const empty = () => ({ range: this.rangeView(range), jobTypes, summary: this.emptyAgg(), staffCount: 0, completedInRange: 0, activeNow: 0, rows: [] });
     const scopedOut = (scope && !scope.length) || (query.communityId && scope && !scope.includes(query.communityId));
 
-    if (scopedOut) return { range: this.rangeView(range), summary: this.emptyAgg(), staffCount: 0, completedInRange: 0, activeNow: 0, rows: [] };
+    if (scopedOut) return empty();
 
-    const agg = scopedOut
-      ? []
-      : await this.aggregateWorkOrders(tenantId, range, scope, query, 'assignee');
+    // 维修工不是用户表字段：以「启用角色名含维修工」为准，多角色只算一次；工种只做展示。
+    const technicianIds = jobTypes === 'technician'
+      ? await this.staffIdsInScope(tenantId, await this.technicianUserIds(tenantId), query.communityId ? [query.communityId] : scope)
+      : [];
+    const assigneeIds = jobTypes === 'technician'
+      ? (query.assigneeId ? technicianIds.filter((id) => id === query.assigneeId) : technicianIds)
+      : undefined;
+    if (jobTypes === 'technician' && !assigneeIds?.length) return empty();
+
+    const agg = await this.aggregateWorkOrders(tenantId, range, scope, query, 'assignee', assigneeIds);
     const aggByUser = new Map(agg.filter((r) => r.key).map((r) => [Number(r.key), r]));
 
     // 区间内完工数（按完工时刻算，和「处理工单数」按创建时刻不是一个口径，页面上分开标）
@@ -418,6 +443,7 @@ export class ReportsService {
     ];
     if (query.communityId) completedWhere.push(`wo.community_id = ${p.add(query.communityId)}`);
     else if (scope) completedWhere.push(`wo.community_id = ANY(${p.add(scope)})`);
+    if (assigneeIds) completedWhere.push(`wo.assignee_id = ANY(${p.add(assigneeIds)})`);
     const completedRows: Array<{ assignee_id: number; n: number }> = scopedOut
       ? []
       : await this.dataSource.query(
@@ -438,6 +464,7 @@ export class ReportsService {
     ];
     if (query.communityId) activeWhere.push(`wo.community_id = ${p2.add(query.communityId)}`);
     else if (scope) activeWhere.push(`wo.community_id = ANY(${p2.add(scope)})`);
+    if (assigneeIds) activeWhere.push(`wo.assignee_id = ANY(${p2.add(assigneeIds)})`);
     const activeRows: Array<{ assignee_id: number; n: number }> = scopedOut
       ? []
       : await this.dataSource.query(
@@ -447,13 +474,13 @@ export class ReportsService {
         );
     const activeByUser = new Map(activeRows.map((r) => [Number(r.assignee_id), num(r.n)]));
 
-    const technicianIds = await this.accessService.userIdsWithPermission(tenantId, 'app:pool', 'edit');
-    const userIds = await this.staffIdsInScope(tenantId, [
-      ...new Set([...technicianIds, ...aggByUser.keys(), ...completedByUser.keys(), ...activeByUser.keys()]),
-    ], query.communityId ? [query.communityId] : scope);
-    if (!userIds.length) {
-      return { range: this.rangeView(range), summary: this.emptyAgg(), rows: [] };
-    }
+    const poolTechnicianIds = await this.accessService.userIdsWithPermission(tenantId, 'app:pool', 'edit');
+    const userIds = jobTypes === 'technician'
+      ? technicianIds
+      : await this.staffIdsInScope(tenantId, [
+          ...new Set([...poolTechnicianIds, ...aggByUser.keys(), ...completedByUser.keys(), ...activeByUser.keys()]),
+        ], query.communityId ? [query.communityId] : scope);
+    if (!userIds.length) return empty();
     const [users, profiles] = await Promise.all([
       this.dataSource.getRepository(User).find({
         where: { tenantId, id: In(userIds) },
@@ -477,7 +504,7 @@ export class ReportsService {
           onDuty: profile?.onDuty ?? true,
           skills: profile?.skills ?? [],
           skillLabels: (profile?.skills ?? []).map(skillLabel),
-          canTakeOrders: technicianIds.includes(u.id),
+          canTakeOrders: poolTechnicianIds.includes(u.id),
           total: a.total,
           completed: a.completed,
           pendingReview: a.pendingReview,
@@ -486,6 +513,9 @@ export class ReportsService {
           overdue: a.overdue,
           avgHours: a.avgHours,
           feeCents: a.feeCents,
+          confirmedFeeCents: a.confirmedFeeCents,
+          pendingFeeCents: a.pendingFeeCents,
+          totalFeeCents: a.totalFeeCents,
           materialCostCents: a.materialCostCents,
           avgRating: a.avgRating,
           ratingCount: a.ratingCount,
@@ -497,15 +527,32 @@ export class ReportsService {
 
     const summary = scopedOut
       ? this.emptyAgg()
-      : (await this.aggregateWorkOrders(tenantId, range, scope, { ...query, assigneeId: undefined }, null))[0];
+      : (await this.aggregateWorkOrders(tenantId, range, scope, { ...query, assigneeId: undefined }, null, assigneeIds))[0];
     return {
       range: this.rangeView(range),
+      jobTypes,
       summary: summary ? this.stripKey(summary as WorkOrderAggRow) : this.emptyAgg(),
       staffCount: rows.length,
       completedInRange: rows.reduce((s, row) => s + row.completedInRange, 0),
       activeNow: rows.reduce((s, row) => s + row.activeNow, 0),
       rows,
     };
+  }
+
+  /** 维修工识别：启用角色名含「维修工」的 active 用户；多角色去重。 */
+  private async technicianUserIds(tenantId: number): Promise<number[]> {
+    const rows: Array<{ user_id: number }> = await this.dataSource.query(
+      `SELECT DISTINCT ur.user_id
+         FROM user_roles ur
+         JOIN roles r ON r.id = ur.role_id AND r.tenant_id = ur.tenant_id
+         JOIN users u ON u.id = ur.user_id AND u.tenant_id = ur.tenant_id
+        WHERE ur.tenant_id = $1
+          AND u.status = 'active'
+          AND r.enabled = true
+          AND r.name LIKE '%维修工%'`,
+      [tenantId],
+    );
+    return rows.map((row) => num(row.user_id)).filter((id) => id > 0);
   }
 
   /**

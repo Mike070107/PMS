@@ -38,7 +38,20 @@ export class WorkOrderReportDto extends ReportRangeDto {
   assigneeId?: number;
 }
 
-export class StaffReportDto extends ReportRangeDto {}
+export const STAFF_JOB_TYPES = ['technician', 'all'] as const;
+export type StaffJobType = (typeof STAFF_JOB_TYPES)[number];
+
+export class StaffReportDto extends ReportRangeDto {
+  /** technician=只统计启用角色名含「维修工」的人（默认）；all=管理员对照全部现有人员。 */
+  @IsOptional()
+  @IsIn(STAFF_JOB_TYPES)
+  jobTypes?: StaffJobType;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  assigneeId?: number;
+}
 
 export class StockReportDto {
   @IsOptional()
