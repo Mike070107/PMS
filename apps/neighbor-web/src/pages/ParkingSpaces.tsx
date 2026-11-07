@@ -5,6 +5,7 @@ import { dayjs } from '@/lib/format';
 import Icon from '@/components/Icon';
 import ToneIcon from '@/components/ToneIcon';
 import { Loading, Sheet, toast } from '@/components/ui';
+import '@/styles/parking-glass.css';
 
 interface SpaceRow {
   id: number; garage: 'main' | 'civil'; spaceNo: string; houseNo: string | null; areaSqm: string | null;
@@ -113,11 +114,14 @@ export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) 
             </table>
           </div>
         ) : (
-        <div className="sp-grid">
+        <div className="sp-glass-wrap">
+          <div className="sp-glass-bg" aria-hidden="true" />
+          <div className="sp-grid">
           {shown.map((r) => {
             const hasPlate = !!(r.plate && r.plate.trim());
+            const abnormal = !!r.note && /异常|停用|故障|损坏/.test(r.note);
             return (
-              <div key={r.id} className={`sp-card ${hasPlate ? '' : 'is-free'}`}>
+              <div key={r.id} className={`sp-card ${hasPlate ? '' : 'is-free'}${abnormal ? ' is-abnormal' : ''}`} data-state={hasPlate ? 'bound' : 'free'}>
                 <div className="sp-top">
                   <span className="ic-tile t-slate" style={{ width: 34, height: 34 }}>
                     <Icon name="car" size={18} />
@@ -139,6 +143,7 @@ export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) 
               </div>
             );
           })}
+          </div>
         </div>
         )
       )}
