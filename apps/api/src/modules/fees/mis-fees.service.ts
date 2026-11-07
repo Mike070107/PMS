@@ -25,6 +25,10 @@ const logger=new Logger('MisFeesService');
 
 /** 对账 CSV：单次最多 2 万户，按 5000 户一页循环取数；口径固定为待缴责任对象。 */
 const EXPORT_ROW_CAP=20000,EXPORT_PAGE_SIZE=5000,EXPORT_STATUS_CHUNK=1000;
+/** MIS 短时缓存：30 秒，足够挡住大屏/多标签/翻页重复查询，又不影响“刷新后尽快看到新数据”。 */
+const MIS_CACHE_TTL_MS=30_000,MIS_CACHE_MAX_ENTRIES=400;
+/** 大屏待缴金额分档固定四档，与前端现有分档文案一致；SQL 直接按户聚合，避免前端翻多页。 */
+const AMOUNT_BRACKETS=[{key:'le500',label:'≤¥500'},{key:'500to2000',label:'¥500–2000'},{key:'2000to5000',label:'¥2000–5000'},{key:'gt5000',label:'>¥5000'}] as const;
 /**
  * 重复催收抑制口径（task-10）：近 30 天次数 = 打印登记数 + 短信条数，直接相加，不按户去重，
  * 同一批既有打印又有短信算 2 次；阈值 2、窗口 30 天先写死为常量，后续从设置页配置化（不加表/字段）。
@@ -63,7 +67,33 @@ export const MIS_PROPERTY_OFFICES:Record<string,string[]>={
 @Injectable()
 export class MisFeesService implements OnModuleDestroy {
  private poolPromise:Promise<any>|null=null;
+ private responseCache:Map<string,{expiresAt:number;value:any}>|undefined=new Map();
  constructor(@InjectRepository(Community) private readonly communities:Repository<Community>,@InjectRepository(House) private readonly houses:Repository<House>,@InjectRepository(MisCollectionBatch) private readonly batches?:Repository<MisCollectionBatch>, private readonly smsSettings?:CollectionSmsService){}
+ /** 缓存键包含租户、数据范围与完整参数签名，避免不同权限/筛选串数据。 */
+ private cacheKey(kind:string,q:unknown,user:AuthUser,access?:ResolvedAccess){
+  const normalize=(value:any):any=>{
+   if(Array.isArray(value))return value.map(normalize);
+   if(value&&typeof value==='object'){const out:Record<string,unknown>={};for(const key of Object.keys(value).sort())if(value[key]!==undefined)out[key]=normalize(value[key]);return out;}
+   return value;
+  };
+  const scope=scopeCommunityIds(access);
+  return JSON.stringify([kind,user.tenantId,scope===null?'all':scope.slice().sort((a,b)=>a-b),user.actingOfficeId??null,this.canEditFees(access)?'edit':'view',normalize(q)]);
+ }
+ private cacheGet(key:string){
+  const cache=this.responseCache??(this.responseCache=new Map());
+  const hit=cache.get(key);
+  if(!hit)return undefined;
+  if(hit.expiresAt<=Date.now()){cache.delete(key);return undefined;}
+  return hit.value;
+ }
+ private cacheSet(key:string,value:any,ttl=MIS_CACHE_TTL_MS){
+  const cache=this.responseCache??(this.responseCache=new Map());
+  if(cache.size>=MIS_CACHE_MAX_ENTRIES){
+   for(const [k,v] of cache)if(v.expiresAt<=Date.now())cache.delete(k);
+   if(cache.size>=MIS_CACHE_MAX_ENTRIES)cache.clear();
+  }
+  cache.set(key,{expiresAt:Date.now()+ttl,value});
+ }
  private configured(){return !!(process.env.MIS_FEES_TENANT_ID&&process.env.MIS_FEES_USER&&process.env.MIS_FEES_PASSWORD);}
  private async scope(user:AuthUser,access?:ResolvedAccess){
   if(!user.tenantId)throw new ForbiddenException('请选择公司后查询');
@@ -107,6 +137,13 @@ export class MisFeesService implements OnModuleDestroy {
   return{...meta,rows};
  }
  async metadata(user:AuthUser,access?:ResolvedAccess){
+  const key=this.cacheKey('options',{},user,access),hit=this.cacheGet(key);
+  if(hit!==undefined)return hit;
+  const value=await this.metadataUncached(user,access);
+  this.cacheSet(key,value,60_000);
+  return value;
+ }
+ private async metadataUncached(user:AuthUser,access?:ResolvedAccess){
   const communities=await this.scope(user,access);
   const smsReadiness=this.smsSettings?await this.smsSettings.readiness(user.tenantId!):{configured:false,enabled:false,canSend:false,reason:'短信配置状态尚未取得，请刷新或联系管理员'};
   if(!this.configured()||!communities.length)return {available:false,readOnly:true,communities,feeItems:[],message:!this.configured()?'一通MIS查询连接尚未配置':'当前公司或管理处没有已映射的物业费数据'};
@@ -172,6 +209,14 @@ export class MisFeesService implements OnModuleDestroy {
   */
  async today(q:{date?:string},user:AuthUser,access?:ResolvedAccess){
   const date=q.date??new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  const key=this.cacheKey('today',{date},user,access),hit=this.cacheGet(key);
+  if(hit!==undefined)return hit;
+  const value=await this.todayUncached({date},user,access);
+  this.cacheSet(key,value);
+  return value;
+ }
+ private async todayUncached(q:{date?:string},user:AuthUser,access?:ResolvedAccess){
+  const date=q.date??new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(`${date}T00:00:00+08:00`))||new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(`${date}T00:00:00+08:00`))!==date)throw new BadRequestException('日期不合法');
   const communities=await this.collectionCommunities(undefined,user,access);
   if(!communities.length)return {paidCents:0,paidCount:0,refundedCents:0,paidHouses:0,byFee:[],byChannel:[]};
@@ -202,6 +247,14 @@ export class MisFeesService implements OnModuleDestroy {
   * 另给 recordedAt（updatedate，真实到分钟，仅作 MIS 记录更新时间，非收款时间）。
   */
  async recentPayments(q:{date?:string;page?:number;pageSize?:number;communityId?:number},user:AuthUser,access?:ResolvedAccess){
+  const date=q.date??new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  const key=this.cacheKey('recent-payments',{...q,date},user,access),hit=this.cacheGet(key);
+  if(hit!==undefined)return hit;
+  const value=await this.recentPaymentsUncached({...q,date},user,access);
+  this.cacheSet(key,value);
+  return value;
+ }
+ private async recentPaymentsUncached(q:{date?:string;page?:number;pageSize?:number;communityId?:number},user:AuthUser,access?:ResolvedAccess){
   const page=q.page??1,pageSize=q.pageSize??10;
   if(!Number.isInteger(page)||page<1)throw new BadRequestException('page 须为正整数');
   if(!Number.isInteger(pageSize)||pageSize<1||pageSize>50)throw new BadRequestException('pageSize 须为1-50的整数');
@@ -249,6 +302,14 @@ export class MisFeesService implements OnModuleDestroy {
   return {total,totalBills,totalHouses:total,page,pageSize,rows};
  }
  async residential(q:MisResidentialQuery,user:AuthUser,access?:ResolvedAccess){
+  const cacheable=(q.view==='dashboard'||q.view==='households'||q.view==='amount-brackets')&&(q as any)._aging!==false&&!q.houseKeys?.length;
+  const key=cacheable?this.cacheKey('residential',q,user,access):'';
+  if(cacheable){const hit=this.cacheGet(key);if(hit!==undefined)return hit;}
+  const value=await this.residentialCompute(q,user,access);
+  if(cacheable)this.cacheSet(key,value);
+  return value;
+ }
+ private async residentialCompute(q:MisResidentialQuery,user:AuthUser,access?:ResolvedAccess){
   const communities=await this.residentialScope(q,user,access),built=buildMisResidentialQuery(q,communities.flatMap(c=>c.offices));
   const result=await this.read(built.sql,built.params),sets=result.recordsets||[];
   const meta={sourceLabel:'一通MIS',readOnly:true,queriedAt:new Date().toISOString(),communities,smsAvailable:false,smsReason:'尚未接入审核通过的住宅缴费短信通道；仅可预览，不会发送'};
@@ -263,14 +324,24 @@ export class MisFeesService implements OnModuleDestroy {
    rows.sort((a,b)=>b.unpaidCents-a.unpaidCents);
    return {...meta,rows};
   }
-  if(!q.view||q.view==='dashboard')return {...meta,summary:{...amounts(sets[0]?.[0]||{}),total:Number(sets[0]?.[0]?.total||0),unpaidHouses:Number(sets[0]?.[0]?.unpaidHouses||0),adjustmentCount:Number(sets[0]?.[0]?.adjustmentCount||0)},byFee:(sets[1]||[]).map((r:any)=>({...amounts(r),feeCode:r.feeCode,feeName:r.feeName||'未命名费项',category:r.category,unpaidHouses:Number(r.unpaidHouses||0)}))};
+  if(q.view==='amount-brackets'){
+  const byKey=new Map<string,any>((sets[0]||[]).map((r:any)=>[String(r.bucketKey),r]));
+  const buckets=AMOUNT_BRACKETS.map((bucket)=>{const row=byKey.get(bucket.key);return {...bucket,count:Number(row?.houseCount||0),amountCents:misMoneyToCents(row?.amount)};});
+  return {...meta,buckets,total:{count:buckets.reduce((n,b)=>n+b.count,0),amountCents:buckets.reduce((n,b)=>n+b.amountCents,0)}};
+ }
+ if(!q.view||q.view==='dashboard')return {...meta,summary:{...amounts(sets[0]?.[0]||{}),total:Number(sets[0]?.[0]?.total||0),unpaidHouses:Number(sets[0]?.[0]?.unpaidHouses||0),adjustmentCount:Number(sets[0]?.[0]?.adjustmentCount||0)},byFee:(sets[1]||[]).map((r:any)=>({...amounts(r),feeCode:r.feeCode,feeName:r.feeName||'未命名费项',category:r.category,unpaidHouses:Number(r.unpaidHouses||0)}))};
   if(q.view==='trend'){const bucket=q.bucket==='month'?'month':'day';return {...meta,bucket,invalidDateCount:Number(sets[1]?.[0]?.invalidDateCount||0),rows:(sets[0]||[]).map((r:any)=>bucket==='month'?{month:String(r.month),netCents:misMoneyToCents(r.netAmount),chargedCents:misMoneyToCents(r.chargedAmount),refundedCents:misMoneyToCents(r.refundedAmount)}:{day:String(r.day),netCents:misMoneyToCents(r.netAmount),chargedCents:misMoneyToCents(r.chargedAmount),refundedCents:misMoneyToCents(r.refundedAmount)})};}
   const canSeePhone=this.canEditFees(access);
   const format=(r:any)=>{const {phone,amount,...safe}=r;const p=String(phone||'').trim();return {...safe,amountCents:misMoneyToCents(amount),billCount:r.billCount===undefined?undefined:Number(r.billCount),phone:canSeePhone&&/^1[3-9]\d{9}$/.test(p)?p:undefined,phoneMasked:/^1[3-9]\d{9}$/.test(p)?`${p.slice(0,3)}****${p.slice(-4)}`:p?'号码待核实':'未留手机号',contactEligible:/^1[3-9]\d{9}$/.test(p),communityId:communities.find(c=>c.offices.includes(r.officeCode))?.id};};
   if(q.view==='detail'){if((sets[0]||[]).length>10000)throw new BadRequestException('账单明细超过一万条，请缩小账期或分批');return {...meta,rows:(sets[0]||[]).map(format)};}
   const totalHouses=Number(sets[0]?.[0]?.total||0),totalAmount=misMoneyToCents(sets[0]?.[0]?.amount);
   let aging:any=undefined;
-  if((q as any)._aging!==false&&!q.houseKeys?.length){
+  // aging 只对住户清单有用；dashboard 不再做 2 万户全量扫描。同一筛选（与页码无关）30 秒内复用扫描结果。
+  if(q.view==='households'&&(q as any)._aging!==false&&!q.houseKeys?.length){
+   const agingQuery={...q} as any;delete agingQuery.page;delete agingQuery.pageSize;delete agingQuery._aging;
+   const agingKey=this.cacheKey('aging',agingQuery,user,access),cachedAging=this.cacheGet(agingKey);
+   if(cachedAging!==undefined)aging=cachedAging;
+   else{
    const scanCap=20000;const scan:any=await this.residential({...q,view:'households',page:1,pageSize:Math.min(Math.max(totalHouses,1),scanCap),_aging:false} as any,user,access);
    const buckets:Record<string,{count:number;amountCents:number}>={'0-30':{count:0,amountCents:0},'31-60':{count:0,amountCents:0},'61-90':{count:0,amountCents:0},'90+':{count:0,amountCents:0}};
    const now=new Date(),monthsNow=now.getFullYear()*12+now.getMonth();
@@ -291,8 +362,12 @@ export class MisFeesService implements OnModuleDestroy {
    {const seen=new Set<string>();for(const h of topHouses){const k=h.ownerName.trim();if(seen.has(k))h.ownerFirst=false;else{seen.add(k);h.ownerFirst=true}}}
    const topOwners=[...owners.entries()].map(([name,v])=>({name,...v})).sort((a,b)=>b.amountCents-a.amountCents).slice(0,10);
    aging={buckets,topHouses,owners:topOwners,ownerCount:owners.size,total:totalHouses,amountCents:totalAmount,truncated:scan.rows.length<Number(scan.total||0),scanned:scan.rows.length,scanCap};
+   this.cacheSet(agingKey,aging);
+   }
   }
-  const rows=await this.withNotificationStatus((sets[1]||[]).map(format),user,q);
+  const formatted=(sets[1]||[]).map(format);
+  // 内部 aging/导出扫描只要金额与房号，不需要逐户通知状态；避免 2 万户再打一轮打印/短信查询。
+  const rows=(q as any)._aging===false?formatted:await this.withNotificationStatus(formatted,user,q);
   return {...meta,total:totalHouses,amountCents:totalAmount,page:q.page||1,pageSize:q.pageSize||20,aging,rows};
  }
  /**

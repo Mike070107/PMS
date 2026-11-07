@@ -60,7 +60,7 @@ export function buildMisFeeQuery(q:MisFeeQuery,offices:string[],house?:MisHouseF
 }
 
 export interface MisResidentialQuery extends MisFeeQuery {
- view?: 'dashboard'|'households'|'trend'|'detail'|'communities';
+ view?: 'dashboard'|'households'|'trend'|'detail'|'communities'|'amount-brackets';
  category?: 'all'|'property'|'berth'|'other';
  houseKeys?: string[];
  /** 住户清单排序：address=房屋地址（默认），amount=待缴金额合计；仅 households 视图生效 */
@@ -75,7 +75,7 @@ const categorySql = `CASE WHEN f.XM LIKE N'%泊位%' OR f.XM LIKE N'%车位%' OR
 export function buildMisResidentialQuery(q:MisResidentialQuery,offices:string[]){
  if(q.status!==undefined&&!['paid','unpaid'].includes(q.status))throw new BadRequestException('住宅账单状态仅支持paid或unpaid');
  const view=q.view||'dashboard';
- if(!['dashboard','households','trend','detail','communities'].includes(view))throw new BadRequestException('报表视图不合法');
+ if(!['dashboard','households','trend','detail','communities','amount-brackets'].includes(view))throw new BadRequestException('报表视图不合法');
  if(q.category&&!['all','property','berth','other'].includes(q.category))throw new BadRequestException('收费分类不合法');
  if(q.sort!==undefined&&!['address','amount'].includes(q.sort))throw new BadRequestException('排序字段仅支持 address 或 amount');
  if(q.dir!==undefined&&!['asc','desc'].includes(q.dir))throw new BadRequestException('排序方向仅支持 asc 或 desc');
@@ -94,6 +94,11 @@ export function buildMisResidentialQuery(q:MisResidentialQuery,offices:string[])
   const keys=[...new Set(q.houseKeys)];
   const predicates=keys.map((key,i)=>{const m=/^(0[1-4]):([1-9]\d{0,18}):([1-9]\d{0,18})$/.exec(key);if(!m||!offices.includes(m[1]))throw new BadRequestException('所选住户不在查询范围');params[`keyOffice${i}`]=m[1];params[`room${i}`]=m[2];params[`owner${i}`]=m[3];return `(l.管理处=@keyOffice${i} AND s.S_ID=@room${i} AND z.ZH_ID=@owner${i})`;});
   from+=` AND (${predicates.join(' OR ')})`;
+ }
+ if(view==='amount-brackets'){
+  // 按「户」聚合待缴总额后分四档；与 households 待缴口径一致（ZJ_SKRQ 空、未退款、正数）。
+  const bucket=`CASE WHEN h.amount<=50000 THEN 'le500' WHEN h.amount<=200000 THEN '500to2000' WHEN h.amount<=500000 THEN '2000to5000' ELSE 'gt5000' END`;
+  return {sql:`SELECT ${bucket} AS bucketKey,COUNT(*) AS houseCount,CONVERT(varchar(50),SUM(h.amount),2) AS amount FROM (SELECT SUM(w.ZJ_JE) AS amount ${from} AND w.ZJ_SKRQ IS NULL AND w.ZJ_TKRQ IS NULL AND w.ZJ_JE>0 GROUP BY l.管理处,s.S_ID) h GROUP BY ${bucket} ORDER BY bucketKey;`,params};
  }
  if(view==='detail'){
   if(!q.houseKeys?.length)throw new BadRequestException('请先选择住户');

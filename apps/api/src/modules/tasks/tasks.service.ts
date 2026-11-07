@@ -19,7 +19,7 @@ export class TasksService {
     private readonly access: AccessService,
   ) {}
 
-  /** 每 5 分钟：聚合网站和小程序异常；同一问题一小时内只提醒一次。 */
+  /** 每 5 分钟：聚合网站和小程序异常；同一 fingerprint 6 小时内只提醒一次，恢复后重新计时。 */
   @Cron(CronExpression.EVERY_5_MINUTES)
   async detectSystemAlerts() {
     try {

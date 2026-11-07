@@ -666,10 +666,34 @@ export class ObservabilityService {
     }
 
     const emitted: DetectedAlert[] = [];
-    const cooldown = new Date(Date.now() - 60 * 60 * 1000);
+    const cooldown = new Date(Date.now() - 6 * 60 * 60 * 1000);
+    const activeFingerprints = new Set(candidates.map((item) => item.fingerprint));
+    // 找出 6 小时内发出过、但本轮已不再达到阈值的告警：写一条恢复标记后，下一次再触发可立即提醒。
+    const recentAlerts = await this.logRepo.createQueryBuilder('log')
+      .select('log.tenant_id', 'tenantId').addSelect('log.fingerprint', 'fingerprint').addSelect('MAX(log.created_at)', 'lastAt')
+      .where("log.category = 'alert' AND log.action = 'system_alert' AND log.fingerprint IS NOT NULL AND log.created_at >= :since", { since: cooldown })
+      .groupBy('log.tenant_id').addGroupBy('log.fingerprint')
+      .getRawMany();
+    for (const row of recentAlerts) {
+      if (activeFingerprints.has(row.fingerprint)) continue;
+      const lastAlertAt = new Date(row.lastAt);
+      const recovered = await this.logRepo.findOne({ where: { fingerprint: row.fingerprint, action: 'system_alert_recovered', createdAt: MoreThan(lastAlertAt) } });
+      if (!recovered) {
+        await this.saveLog({
+          tenantId: Number(row.tenantId), category: 'alert', level: 'info', source: 'observability',
+          action: 'system_alert_recovered', success: true, actorUserId: null, requestMethod: null,
+          requestPath: null, statusCode: null, durationMs: null, message: '告警已恢复',
+          detail: { title: '告警已恢复' }, fingerprint: row.fingerprint,
+        }).catch(() => undefined);
+      }
+    }
     for (const item of candidates) {
-      const duplicate = await this.logRepo.findOne({ where: { fingerprint: item.fingerprint, createdAt: MoreThan(cooldown) } });
-      if (duplicate) continue;
+      const lastAlert = await this.logRepo.findOne({ where: { fingerprint: item.fingerprint, action: 'system_alert' }, order: { createdAt: 'DESC' } });
+      if (lastAlert && lastAlert.createdAt > cooldown) {
+        const lastRecovery = await this.logRepo.findOne({ where: { fingerprint: item.fingerprint, action: 'system_alert_recovered' }, order: { createdAt: 'DESC' } });
+        // 只有恢复标记晚于上一次告警时才重置冷却；仍在持续中的告警 6 小时内不重复建单/发微信。
+        if (!lastRecovery || lastRecovery.createdAt <= lastAlert.createdAt) continue;
+      }
       const saved = await this.saveLog({
         tenantId: item.tenantId, category: 'alert', level: 'error', source: item.source,
         action: 'system_alert', success: false, actorUserId: null, requestMethod: null,

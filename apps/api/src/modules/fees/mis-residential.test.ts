@@ -173,9 +173,9 @@ test('今日收款清单：date 过滤、分页 total/pageSize、page 越界空 
  await assert.rejects(s.recentPayments({pageSize:51},{id:1,tenantId:1},{scopeAll:true}),/pageSize/);
  // 空数据/无授权范围
  s.read=async()=>({recordsets:[[{total:'0',totalBills:'0'}],[]]});
- assert.deepEqual(await s.recentPayments({date:'2026-11-07'},{id:1,tenantId:1},{scopeAll:true}),{total:0,totalBills:0,totalHouses:0,page:1,pageSize:10,rows:[]});
+ assert.deepEqual(await s.recentPayments({date:'2026-11-08'},{id:1,tenantId:1},{scopeAll:true}),{total:0,totalBills:0,totalHouses:0,page:1,pageSize:10,rows:[]});
  s.collectionCommunities=async()=>[];
- assert.deepEqual(await s.recentPayments({},{id:1,tenantId:1},{scopeAll:true}),{total:0,totalBills:0,totalHouses:0,page:1,pageSize:10,rows:[]});
+ assert.deepEqual(await s.recentPayments({date:'2026-11-10'},{id:1,tenantId:1},{scopeAll:true}),{total:0,totalBills:0,totalHouses:0,page:1,pageSize:10,rows:[]});
 });
 test('今日实收：空日期/空数据返回0，包含 byFee/byChannel 聚合与退款；非法日期拒绝',async()=>{
  const s:any=Object.create(MisFeesService.prototype);
@@ -188,6 +188,30 @@ test('今日实收：空日期/空数据返回0，包含 byFee/byChannel 聚合�
  assert.equal((sql.match(/AS houseCount/g)||[]).length,2,'byFee/byChannel 都要按管理处+S_ID去重户数');
  assert.match(sql,/w\.ZJ_SKRQ>=CONVERT\(datetime,@date,120\)/);assert.match(sql,/ZJ_TKRQ IS NULL AND w\.ZJ_JE>0/);assert.equal(params.date,'2026-11-07');
  s.read=async()=>({recordsets:[[],[],[],[]]});
- assert.deepEqual(await s.today({date:'2026-11-07'},{id:1,tenantId:1},{scopeAll:true}),{paidCents:0,paidCount:0,refundedCents:0,paidHouses:0,byFee:[],byChannel:[]});
+ assert.deepEqual(await s.today({date:'2026-11-08'},{id:1,tenantId:1},{scopeAll:true}),{paidCents:0,paidCount:0,refundedCents:0,paidHouses:0,byFee:[],byChannel:[]});
  await assert.rejects(s.today({date:'2026-02-30'},{id:1,tenantId:1},{scopeAll:true}),/日期/);
+});
+test('MIS短时缓存：同租户同参数30秒内第二次调用不再查MIS；amount-brackets一次SQL返回四档',async()=>{
+ const make=(readImpl:any)=>{const s:any=Object.create(MisFeesService.prototype);s.collectionCommunities=async()=>[{id:10,name:'合成小区',offices:['01']}];s.residentialScope=async()=>[{id:10,name:'合成小区',offices:['01']}];let reads=0;s.read=async(q:any,p:any)=>{reads++;return readImpl()};return{s,reads:()=>reads}};
+ const today=make(()=>({recordsets:[[{paidCount:'1',paidAmount:'1.00',paidHouses:'1'}],[{refundCount:'0',refundAmount:'0'}],[{feeName:'物业费',billCount:'1',houseCount:'1',paidAmount:'1.00'}],[{channel:'微信',billCount:'1',houseCount:'1',paidAmount:'1.00'}]]}));
+ await today.s.today({date:'2026-11-07'},{id:1,tenantId:1},{scopeAll:true});
+ await today.s.today({date:'2026-11-07'},{id:1,tenantId:1},{scopeAll:true});
+ assert.equal(today.reads(),1,'today 第二次命中缓存');
+ const recent=make(()=>({recordsets:[[{total:'1',totalBills:'2'}],[{officeCode:'01',address:'A',ownerName:'甲',paidDate:'2026-11-07',amount:'1.00',billCount:2,channel:'微信',recordedAt:'2026-11-07 10:00:00'}]]}));
+ await recent.s.recentPayments({date:'2026-11-07',page:1,pageSize:10},{id:1,tenantId:1},{scopeAll:true});
+ await recent.s.recentPayments({date:'2026-11-07',page:1,pageSize:10},{id:1,tenantId:1},{scopeAll:true});
+ assert.equal(recent.reads(),1,'recent-payments 第二次命中缓存');
+ const brackets=make(()=>({recordsets:[[{bucketKey:'le500',houseCount:'2',amount:'300.00'},{bucketKey:'gt5000',houseCount:'1',amount:'6000.00'}]]}));
+ const first:any=await brackets.s.residential({view:'amount-brackets'},{id:1,tenantId:1},{scopeAll:true});
+ assert.deepEqual(first.buckets.map((b:any)=>[b.key,b.count,b.amountCents]),[['le500',2,30000],['500to2000',0,0],['2000to5000',0,0],['gt5000',1,600000]]);
+ assert.deepEqual(first.total,{count:3,amountCents:630000});
+ await brackets.s.residential({view:'amount-brackets'},{id:1,tenantId:1},{scopeAll:true});
+ assert.equal(brackets.reads(),1,'amount-brackets 第二次命中缓存');
+ const sql=report({view:'amount-brackets'},['01']).sql;
+ assert.match(sql,/GROUP BY l\.管理处,s\.S_ID/);assert.match(sql,/CASE WHEN h\.amount<=50000/);
+ // 权限范围不同不能复用缓存
+ const other=make(()=>({recordsets:[[{bucketKey:'le500',houseCount:'0',amount:'0'}]]}));
+ await other.s.residential({view:'amount-brackets'},{id:1,tenantId:1},{scopeAll:true});
+ await other.s.residential({view:'amount-brackets'},{id:1,tenantId:1},{scopeAll:false,communityIds:[10]});
+ assert.equal(other.reads(),2,'不同数据范围必须分别查MIS');
 });
