@@ -29,7 +29,6 @@ export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) 
   const [only, setOnly] = useState<'all' | 'bound' | 'free'>('all');
   const [view, setView] = useState<'card' | 'table'>('card');
   const [edit, setEdit] = useState<SpaceRow | null>(null);
-  const [garagePhoto, setGaragePhoto] = useState(false);
 
   const load = useCallback(async () => {
     setRows(null); setErr('');
@@ -42,16 +41,6 @@ export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) 
   }, [garage]);
 
   useEffect(() => { void load(); }, [load]);
-
-  useEffect(() => {
-    if (typeof Image === 'undefined') return undefined;
-    let alive = true;
-    const img = new Image();
-    img.onload = () => { if (alive) setGaragePhoto(true); };
-    img.onerror = () => { if (alive) setGaragePhoto(false); };
-    img.src = '/parking/garage.jpg';
-    return () => { alive = false; img.onload = null; img.onerror = null; };
-  }, []);
 
   const shown = useMemo(() => {
     const kw = q.trim().toUpperCase();
@@ -125,10 +114,7 @@ export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) 
             </table>
           </div>
         ) : (
-        <div className="sp-glass-wrap" data-photo={garagePhoto ? '1' : undefined}>
-          <div className="sp-glass-photo" aria-hidden="true" style={{ backgroundImage: "url('/parking/garage.jpg')" }} />
-          <div className="sp-glass-shade" aria-hidden="true" />
-          <div className="sp-glass-bg" aria-hidden="true" />
+        <div className="sp-glass-wrap">
           <div className="sp-grid">
           {shown.map((r) => {
             const hasPlate = !!(r.plate && r.plate.trim());
@@ -141,7 +127,6 @@ export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) 
                   </span>
                   <div className="sp-no">{r.spaceNo}<small>号位</small></div>
                   {r.note ? <span className={`tag ${r.note.includes('租赁') ? 'warn' : (r.note.includes('来源') ? 'mute' : 'ok')}`}>{r.note}</span> : null}
-                  <span className="sp-state" data-tone={abnormal ? 'danger' : hasPlate ? 'bound' : 'free'} title={abnormal ? '异常/停用' : hasPlate ? '已绑车牌' : '空车位'} aria-label={abnormal ? '异常/停用' : hasPlate ? '已绑车牌' : '空车位'} />
                 </div>
                 <div className="sp-plate" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ flex: 1, minWidth: 0 }}>{hasPlate ? r.plate : <span className="sp-empty">空车位</span>}</span>
