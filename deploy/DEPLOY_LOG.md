@@ -6506,3 +6506,10 @@
 - 自上次（2983b546）以来上线的相关提交：
   - bb3b5c8a feat(offices,screen): 管理处页支持新建/编辑/划分/删除小区；大屏金额分档改走聚合接口
 
+## 2026-11-07 23:58 · api · 23e8d11f
+
+- 包：`pms-api-fast-20261107-235738.tar.gz`
+- 提交：23e8d11f feat(permission): 新增 intranet 页 key 并回填 settings 角色的权限；/intranet 独立授权
+- 自上次（64fd2bd2）以来上线的相关提交：
+  - 23e8d11f feat(permission): 新增 intranet 页 key 并回填 settings 角色的权限；/intranet 独立授权
+
