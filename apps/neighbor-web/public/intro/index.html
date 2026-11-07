@@ -8,6 +8,17 @@
 <meta name="robots" content="noindex,nofollow" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b1a25'/%3E%3Cpath d='M8 24V12l8-5 8 5v12' fill='none' stroke='%232dd4bf' stroke-width='2'/%3E%3C/svg%3E" />
 <meta name="description" content="邻修 PMS 物业管理数字化平台：以物业费收缴为核心，覆盖报修、停车、门禁、抄表、库存与档案的一体化系统。" />
+<script>
+/* 窄屏默认进入移动精简版；分享时可加 ?full=1 强制看完整版 */
+(function () {
+  try {
+    if (!/^\/intro\/(index\.html)?$/.test(location.pathname)) return;
+    if (!window.matchMedia('(max-width: 640px)').matches) return;
+    if (/[?&]full=1(?:&|$)/.test(location.search)) return;
+    location.replace('/intro/m/' + location.search + location.hash);
+  } catch (e) { /* 跳转失败保留完整版 */ }
+})();
+</script>
 <script>document.documentElement.classList.add('js');</script>
 <style>
 :root{

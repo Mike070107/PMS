@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>邻修 PMS · 物业数字化平台</title>
+<meta name="theme-color" content="#050b12" />
+<meta name="robots" content="noindex,nofollow" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b1a25'/%3E%3Cpath d='M8 24V12l8-5 8 5v12' fill='none' stroke='%232dd4bf' stroke-width='2'/%3E%3C/svg%3E" />
+<style>
+:root{
+  --bg:#050b12;--panel:rgba(12,25,36,.84);--line:rgba(125,211,252,.16);
+  --text:#e9f2f8;--muted:#9db2c2;--dim:#6d8798;
+  --teal:#2dd4bf;--cyan:#22d3ee;--gold:#f2c14e;--red:#f87171;--green:#34d399;
+  --font:"MiSans","HarmonyOS Sans SC","PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;
+  --mono:"Bahnschrift","DIN Alternate","Consolas",monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-snap-type:y mandatory;overflow-x:hidden}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:15px;line-height:1.6;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0;z-index:-3;pointer-events:none;background-image:linear-gradient(rgba(45,212,191,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(45,212,191,.05) 1px,transparent 1px);background-size:48px 48px;mask-image:radial-gradient(ellipse 100% 75% at 50% 0%,#000 30%,transparent 100%);-webkit-mask-image:radial-gradient(ellipse 100% 75% at 50% 0%,#000 30%,transparent 100%)}
+body::after{content:"";position:fixed;inset:0;z-index:-2;pointer-events:none;background:radial-gradient(500px 360px at 85% -5%,rgba(34,211,238,.18),transparent 65%),radial-gradient(420px 380px at -10% 70%,rgba(45,212,191,.13),transparent 65%)}
+.ico{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.mono{font-family:var(--mono);letter-spacing:.05em}
+::selection{background:rgba(45,212,191,.3)}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit}
+
+/* 顶栏 */
+.m-nav{position:fixed;top:0;left:0;right:0;height:54px;z-index:40;display:flex;align-items:center;justify-content:space-between;padding:0 18px;background:rgba(5,11,18,.72);border-bottom:1px solid rgba(125,211,252,.08);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.brand{display:flex;align-items:center;gap:9px}
+.brand-mark{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:linear-gradient(145deg,rgba(45,212,191,.2),rgba(56,189,248,.06));border:1px solid rgba(45,212,191,.42);color:#7ff3e4}
+.brand-mark .ico{width:17px;height:17px}
+.brand b{font-size:14px;letter-spacing:.01em;line-height:1.15}
+.brand b span{color:var(--teal)}
+.brand small{display:block;font-family:var(--mono);font-size:7.5px;letter-spacing:.16em;color:var(--dim);margin-top:1px}
+.full-link{font-size:10.5px;color:#8fb3c2;border:1px solid rgba(148,163,184,.2);background:rgba(255,255,255,.03);padding:5px 9px;border-radius:99px;white-space:nowrap}
+
+/* 页 */
+.m-slide{position:relative;min-height:100svh;padding:68px 18px 64px;display:flex;flex-direction:column;justify-content:center;scroll-snap-align:start;scroll-snap-stop:always}
+.m-wrap{width:100%;max-width:520px;margin:0 auto}
+.eyebrow{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:8.5px;letter-spacing:.16em;color:var(--teal);text-transform:uppercase}
+.eyebrow i{width:18px;height:1px;background:linear-gradient(90deg,transparent,var(--teal))}
+.eyebrow b{font-weight:500;color:#7e95a8;letter-spacing:.1em}
+h2{font-size:clamp(23px,6.3vw,28px);line-height:1.25;font-weight:800;letter-spacing:-.015em;margin:10px 0 8px}
+h2 em{font-style:normal;background:linear-gradient(100deg,#d7fff9,#5eead4 50%,#38bdf8);-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{font-size:12.5px;line-height:1.7;color:var(--muted);max-width:95%}
+.anim{opacity:0;transform:translateY(16px);transition:opacity .75s cubic-bezier(.16,.84,.3,1),transform .75s cubic-bezier(.16,.84,.3,1)}
+.m-slide.active .anim{opacity:1;transform:none}
+.m-slide.active .d1{transition-delay:.08s}.m-slide.active .d2{transition-delay:.16s}.m-slide.active .d3{transition-delay:.24s}.m-slide.active .d4{transition-delay:.32s}.m-slide.active .d5{transition-delay:.4s}
+
+/* 封面 */
+.cover{justify-content:center;padding-top:78px}
+.cover .eyebrow{color:#8df8e8}
+.cover h1{font-size:clamp(27px,7.4vw,32px);line-height:1.2;font-weight:800;letter-spacing:-.02em;margin:14px 0 12px}
+.cover h1 em{font-style:normal;display:block;margin-top:3px;background:linear-gradient(100deg,#eafffb 5%,#5eead4 45%,#38bdf8 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.cover .lead{font-size:13px;line-height:1.75}
+.cover-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:20px}
+.cstat{padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(160deg,rgba(13,28,40,.8),rgba(7,18,27,.7))}
+.cstat b{display:flex;align-items:baseline;gap:1px;font-family:var(--mono);font-size:21px;line-height:1.1;color:#f2ffff;font-weight:600}
+.cstat b i{font-style:normal;font-size:.52em;color:var(--teal);margin-left:1px}
+.cstat span{display:block;font-size:9.5px;color:var(--dim);margin-top:4px}
+.cover-actions{display:flex;align-items:center;gap:10px;margin-top:18px}
+.start{display:inline-flex;align-items:center;gap:7px;height:42px;padding:0 17px;border-radius:11px;background:linear-gradient(120deg,#2dd4bf,#22d3ee 55%,#38bdf8);color:#04201d;font-size:13px;font-weight:800;box-shadow:0 9px 26px rgba(34,211,238,.25)}
+.start .ico{width:15px;height:15px}
+.cover-meta{font-family:var(--mono);font-size:8px;letter-spacing:.08em;color:#5d7688;line-height:1.7;margin-top:10px}
+
+/* 通用卡片 */
+.glass{border:1px solid var(--line);border-radius:13px;background:linear-gradient(160deg,rgba(13,28,40,.82),rgba(7,18,27,.72))}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+
+/* 02 角色 */
+.role{padding:12px 11px;min-height:96px}
+.role .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.22);color:#7ff3e4;margin-bottom:8px}
+.role .ic .ico{width:16px;height:16px}
+.role h3{font-size:12.5px;font-weight:700;line-height:1.35}
+.role h3 small{display:block;font-family:var(--mono);font-size:6.5px;letter-spacing:.1em;color:var(--dim);font-weight:400;margin-top:1px}
+.role p{font-size:9.5px;line-height:1.55;color:var(--muted);margin-top:5px}
+.statement{display:flex;align-items:center;gap:8px;margin-top:12px;padding:9px 11px;border-radius:9px;border:1px solid rgba(45,212,191,.18);background:rgba(45,212,191,.055);font-size:9.5px;color:#a9c8d4;line-height:1.55}
+.statement .ico{width:14px;height:14px;color:var(--teal)}
+
+/* 03 闭环 */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:14px}
+.step{padding:11px 6px;text-align:center;border-radius:11px;border:1px solid var(--line);background:rgba(12,25,36,.7)}
+.step .ic{width:31px;height:31px;margin:0 auto 6px;border-radius:9px;display:grid;place-items:center;background:rgba(45,212,191,.09);border:1px solid rgba(45,212,191,.22);color:#7ff3e4}
+.step .ic .ico{width:15px;height:15px}
+.step b{display:block;font-size:10.5px;line-height:1.3}
+.step span{display:block;font-size:8px;color:var(--dim);margin-top:2px;line-height:1.4}
+.facts{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px}
+.fact{padding:9px 8px;border-radius:10px;border:1px solid var(--line);background:rgba(7,19,28,.8)}
+.fact b{display:flex;align-items:baseline;gap:1px;font-family:var(--mono);font-size:17px;color:#8df8e8;line-height:1.1}
+.fact b i{font-style:normal;font-size:.55em;color:var(--teal);margin-left:1px}
+.fact span{display:block;font-size:8px;color:var(--dim);margin-top:3px;line-height:1.4}
+.note{display:flex;gap:6px;margin-top:10px;padding:8px 10px;border-radius:8px;border:1px solid rgba(148,163,184,.12);background:rgba(255,255,255,.018);font-size:8.5px;line-height:1.6;color:#78909f}
+.note .ico{width:11px;height:11px;margin-top:1px;flex:none}
+
+/* 04 待缴 */
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:13px}
+.kpi{padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:rgba(12,25,36,.72)}
+.kpi small{display:block;font-size:8.5px;color:#748b9c}
+.kpi b{display:block;font-family:var(--mono);font-size:16px;color:#e9fffc;line-height:1.2;margin-top:1px}
+.kpi.due b{color:#ffd9a8}.kpi.rate b{color:#8df8e8}
+.unpaid{margin-top:9px;border-radius:11px;border:1px solid var(--line);background:rgba(4,10,15,.5);padding:8px 9px}
+.uhead,.urow{display:grid;grid-template-columns:1.5fr .8fr 1fr .7fr;gap:5px;align-items:center;font-size:9px;padding:6px 0;border-bottom:1px solid rgba(148,163,184,.08)}
+.uhead{font-size:7.5px;color:#5d7688;padding-top:0}
+.urow:last-child{border-bottom:0}
+.urow b{font-family:var(--mono);font-weight:500;color:#e2f4fb;font-size:9.5px}
+.urow .room{color:#cfe4ee;font-weight:600;font-size:9px}
+.tag{justify-self:start;font-size:7px;padding:1px 5px;border-radius:4px;border:1px solid;white-space:nowrap;line-height:1.5}
+.tag.g{color:#6ee7b7;border-color:rgba(52,211,153,.3);background:rgba(52,211,153,.07)}
+.tag.y{color:#fcd34d;border-color:rgba(251,191,36,.3);background:rgba(251,191,36,.07)}
+.tag.r{color:#fca5a5;border-color:rgba(248,113,113,.3);background:rgba(248,113,113,.07)}
+
+/* 05 催缴 */
+.act-list{display:flex;flex-direction:column;gap:8px;margin-top:13px}
+.act-card{display:flex;gap:10px;align-items:flex-start;padding:11px 12px}
+.act-card .ic{width:31px;height:31px;border-radius:9px;display:grid;place-items:center;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.22);color:#7ff3e4;flex:none}
+.act-card .ic .ico{width:16px;height:16px}
+.act-card h3{font-size:12px;font-weight:700;line-height:1.3}
+.act-card p{font-size:9.5px;color:var(--muted);line-height:1.55;margin-top:2px}
+.act-card .num{margin-left:auto;text-align:right;flex:none}
+.act-card .num b{display:block;font-family:var(--mono);font-size:14px;color:#8df8e8;line-height:1.2}
+.act-card .num span{font-size:7.5px;color:var(--dim)}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}
+.chips span{font-size:8.5px;color:#9fb4c2;border:1px solid rgba(148,163,184,.16);background:rgba(255,255,255,.025);padding:3px 7px;border-radius:5px}
+
+/* 06 收对 */
+.pay-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.pay-chips span{font-size:9px;color:#9fb4c2;border:1px solid rgba(148,163,184,.16);background:rgba(255,255,255,.03);padding:3px 8px;border-radius:5px}
+.pay-chips span:first-child{color:#8df8e8;border-color:rgba(45,212,191,.3);background:rgba(45,212,191,.07)}
+.mini-facts{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px}
+.mini-facts div{padding:8px;border-radius:9px;border:1px solid var(--line);background:rgba(7,19,28,.8);text-align:center}
+.mini-facts b{display:block;font-family:var(--mono);font-size:13px;color:#e9fffc}
+.mini-facts span{display:block;font-size:7.5px;color:var(--dim);margin-top:2px}
+
+/* 07 模块 */
+.mods{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:13px}
+.mod{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:10px;border:1px solid var(--line);background:rgba(12,25,36,.7)}
+.mod .ic{width:27px;height:27px;border-radius:8px;display:grid;place-items:center;background:rgba(45,212,191,.1);border:1px solid rgba(45,212,191,.22);color:#7ff3e4;flex:none}
+.mod .ic .ico{width:14px;height:14px}
+.mod b{display:block;font-size:10.5px;line-height:1.3}
+.mod small{display:block;font-size:7.5px;color:var(--dim);margin-top:1px}
+.status{margin-left:auto;font-size:6.5px;padding:1px 5px;border-radius:99px;border:1px solid;white-space:nowrap}
+.status.ok{color:#6ee7b7;border-color:rgba(52,211,153,.28);background:rgba(52,211,153,.06)}
+.status.part{color:#fcd34d;border-color:rgba(251,191,36,.28);background:rgba(251,191,36,.06)}
+.ends{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}
+.ends span{font-size:8.5px;color:#8fb3c2;border:1px solid rgba(148,163,184,.14);background:rgba(255,255,255,.025);padding:3px 7px;border-radius:5px}
+.ends b{color:#8df8e8;font-family:var(--mono)}
+
+/* 08 下一步 */
+.next-list{display:flex;flex-direction:column;gap:7px;margin-top:13px}
+.next{display:flex;align-items:center;gap:9px;padding:9px 11px}
+.next .ic{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);color:#8ad8ff;flex:none}
+.next .ic .ico{width:14px;height:14px}
+.next b{display:block;font-size:11px;font-weight:700}
+.next small{display:block;font-size:8.5px;color:var(--dim);margin-top:1px}
+.next .tag{margin-left:auto;font-size:6.5px;padding:2px 6px;border-color:rgba(148,163,184,.22);color:#9fb4c2;background:rgba(255,255,255,.03);border-radius:99px}
+.closing{margin-top:14px;padding-top:12px;border-top:1px solid rgba(125,211,252,.1)}
+.closing b{display:block;font-size:15px;line-height:1.45}
+.closing b em{font-style:normal;background:linear-gradient(100deg,#d7fff9,#5eead4 50%,#38bdf8);-webkit-background-clip:text;background-clip:text;color:transparent}
+.closing p{font-size:10px;color:var(--muted);margin-top:4px}
+.foot{margin-top:10px;font-size:7.5px;line-height:1.65;color:#5f7889}
+.foot b{color:#8fb3c2;font-weight:500}
+
+/* 底部进度 */
+.m-bar{position:fixed;left:0;right:0;bottom:0;z-index:40;height:48px;display:flex;align-items:center;justify-content:center;gap:12px;padding-bottom:env(safe-area-inset-bottom);background:linear-gradient(180deg,rgba(5,11,18,0),rgba(5,11,18,.92) 45%)}
+.m-dots{display:flex;align-items:center;gap:6px}
+.m-dots button{width:6px;height:6px;border-radius:50%;background:rgba(148,163,184,.35);padding:0;border:0;transition:.3s}
+.m-dots button.on{width:16px;border-radius:99px;background:var(--teal);box-shadow:0 0 8px var(--teal)}
+.m-count{font-family:var(--mono);font-size:9px;color:#5d7688;letter-spacing:.05em}
+.m-count b{color:#8df8e8;font-weight:500}
+
+@media (max-height:700px){
+  .m-slide{padding-top:62px;padding-bottom:56px}
+  .cover{padding-top:64px}
+  h2{font-size:22px;margin:8px 0 6px}
+  .lead{font-size:11.5px}
+  .role{min-height:86px;padding:10px}
+  .role p{font-size:9px}
+  .steps{gap:6px;margin-top:10px}
+  .step{padding:8px 5px}
+  .cover-stats{margin-top:14px}
+  .cstat{padding:9px 10px}
+  .cstat b{font-size:19px}
+  .act-list{gap:6px;margin-top:10px}
+  .act-card{padding:9px 10px}
+  .next-list{gap:6px;margin-top:10px}
+  .next{padding:7px 10px}
+  .closing{margin-top:10px;padding-top:9px}
+}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important}
+  .anim{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-logo" viewBox="0 0 24 24"><path d="M4 20V8.5L12 3l8 5.5V20"/><path d="M8 20v-7h8v7"/><path d="M4 20h16"/></symbol>
+<symbol id="i-building" viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1"/></symbol>
+<symbol id="i-wallet" viewBox="0 0 24 24"><path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5"/><path d="M16 12h.01"/></symbol>
+<symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></symbol>
+<symbol id="i-receipt" viewBox="0 0 24 24"><path d="M5 3h14v18l-3-2-3 2-3-2-3 2z"/><path d="M8 7h8M8 11h8"/></symbol>
+<symbol id="i-printer" viewBox="0 0 24 24"><path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></symbol>
+<symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></symbol>
+<symbol id="i-message" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+<symbol id="i-trend" viewBox="0 0 24 24"><path d="M23 6l-9.5 9.5-5-5L1 18"/><path d="M17 6h6v6"/></symbol>
+<symbol id="i-car" viewBox="0 0 24 24"><path d="M5 17H3v-5l2-5h14l2 5v5h-2"/><path d="M7 17a2 2 0 1 0 0 .01M17 17a2 2 0 1 0 0 .01"/><path d="M5 12h14"/></symbol>
+<symbol id="i-key" viewBox="0 0 24 24"><path d="M21 2l-2 2"/><path d="M15.5 7.5L21 2"/><path d="M18.5 4.5L21 7"/><path d="M13.4 9.6a5.5 5.5 0 1 1-7.8 7.8 5.5 5.5 0 0 1 7.8-7.8z"/><path d="M13.4 9.6L17 6"/></symbol>
+<symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-2.4z"/></symbol>
+<symbol id="i-box" viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></symbol>
+<symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 9v12h14V9"/><path d="M9 21v-6h6v6"/></symbol>
+<symbol id="i-cpu" viewBox="0 0 24 24"><path d="M9 9h6v6H9z"/><path d="M4 9H2M4 15H2M22 9h-2M22 15h-2M9 4V2M15 4V2M9 22v-2M15 22v-2"/><path d="M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></symbol>
+<symbol id="i-users" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+<symbol id="i-phone" viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.5 2.1L8 9.6a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.5c.8.3 1.7.5 2.6.6a2 2 0 0 1 1.7 2z"/></symbol>
+<symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></symbol>
+<symbol id="i-down" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M6 13l6 6 6-6"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></symbol>
+<symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4z"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></symbol>
+<symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 2l10 5-10 5L2 7z"/><path d="M2 12l10 5 10-5M2 17l10 5 10-5"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+</defs></svg>
+
+<header class="m-nav">
+  <a class="brand" href="#m1" aria-label="返回封面">
+    <span class="brand-mark"><svg class="ico" aria-hidden="true"><use href="#i-logo"/></svg></span>
+    <span><b>邻修 <span>PMS</span></b><small>PROPERTY MANAGEMENT</small></span>
+  </a>
+  <a class="full-link" href="/intro/?full=1">完整版</a>
+</header>
+
+<main>
+  <!-- 01 封面 -->
+  <section class="m-slide cover active" id="m1" data-name="封面">
+    <div class="m-wrap">
+      <div class="eyebrow"><i></i><b>PMS 物业数字化平台</b></div>
+      <h1>让每一笔物业费<em>收得清 · 催得动 · 对得上</em></h1>
+      <p class="lead">以物业费收缴为核心，把房产台账、账单催缴、收款对账，与报修、停车、门禁、抄表、库存连成一条线上流程。</p>
+      <div class="cover-stats">
+        <div class="cstat"><b><span data-count="16">16</span></b><span>覆盖小区</span></div>
+        <div class="cstat"><b><span data-count="10169">10,169</span></b><span>套房产台账</span></div>
+        <div class="cstat"><b><span data-count="43.7" data-decimals="1">43.7</span><i>万</i></b><span>历史账单入库</span></div>
+        <div class="cstat"><b><span data-count="31">31</span></b><span>项后台功能</span></div>
+      </div>
+      <div class="cover-actions"><a class="start" href="#m2">开始浏览 <svg class="ico" aria-hidden="true"><use href="#i-down"/></svg></a></div>
+      <div class="cover-meta">8 大模块 · 36 个小程序页面 · 3 个 Windows 助手</div>
+    </div>
+  </section>
+
+  <!-- 02 定位 -->
+  <section class="m-slide" id="m2" data-name="系统定位">
+    <div class="m-wrap">
+      <div class="eyebrow anim"><b>01</b><i></i><b>系统定位</b></div>
+      <h2 class="anim d1">一套系统，管住<em>人、房、钱、事</em></h2>
+      <p class="lead anim d2">收费有台账，现场有工单，库存有账本，管理有看板。</p>
+      <div class="grid2" style="margin-top:13px">
+        <div class="glass role anim d1"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg></div><h3>物业经理<small>MANAGER</small></h3><p>收费率、欠费、工单、库存一屏掌握。</p></div>
+        <div class="glass role anim d2"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-wallet"/></svg></div><h3>收费员<small>CASHIER</small></h3><p>欠费清单、通知、短信、收据一站办理。</p></div>
+        <div class="glass role anim d3"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-wrench"/></svg></div><h3>维修 / 仓管<small>FIELD TEAM</small></h3><p>手机接单、领料盘点、现场完成。</p></div>
+        <div class="glass role anim d4"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-home"/></svg></div><h3>业主<small>OWNER</small></h3><p>扫码报修、进度可见、验收评价。</p></div>
+      </div>
+      <div class="statement anim d5"><svg class="ico" aria-hidden="true"><use href="#i-spark"/></svg><span>从「人找账」到「系统盯账」，从「事后补录」到「过程留痕」。</span></div>
+    </div>
+  </section>
+
+  <!-- 03 闭环 -->
+  <section class="m-slide" id="m3" data-name="收缴闭环">
+    <div class="m-wrap">
+      <div class="eyebrow anim"><b>02</b><i></i><b>核心能力</b></div>
+      <h2 class="anim d1">物业费收缴，<em>一条闭环</em></h2>
+      <p class="lead anim d2">应收以原物业系统为底账，PMS 负责核对、催缴、通知与统计。</p>
+      <div class="steps">
+        <div class="step anim d1"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-home"/></svg></div><b>一户一档</b><span>房产 / 业主 / 面积</span></div>
+        <div class="step anim d1"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-layers"/></svg></div><b>标准出账</b><span>模板 / 批量 / 调整</span></div>
+        <div class="step anim d2"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-receipt"/></svg></div><b>待缴清单</b><span>金额 / 账期 / 明细</span></div>
+        <div class="step anim d2"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-bell"/></svg></div><b>催缴触达</b><span>通知单 / 短信 / 电话</span></div>
+        <div class="step anim d3"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-wallet"/></svg></div><b>收款开票</b><span>多渠道 / 收据 / 红冲</span></div>
+        <div class="step anim d3"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg></div><b>对账报表</b><span>日结 / 趋势 / 导出</span></div>
+      </div>
+      <div class="facts">
+        <div class="fact anim d3"><b><span data-count="43.7" data-decimals="1">43.7</span><i>万条</i></b><span>历史账单入库</span></div>
+        <div class="fact anim d4"><b><span data-count="1.4" data-decimals="1">1.4</span><i>万笔</i></b><span>历史欠费可追</span></div>
+        <div class="fact anim d4"><b><span data-count="8">8</span><i>行/页</i></b><span>A5 通知单</span></div>
+      </div>
+      <div class="note anim d5"><svg class="ico" aria-hidden="true"><use href="#i-alert"/></svg><span>物业费应收 / 实收以 MIS 为准，PMS 负责核对、催缴、通知与统计。</span></div>
+    </div>
+  </section>
+
+  <!-- 04 待缴 -->
+  <section class="m-slide" id="m4" data-name="待缴清单">
+    <div class="m-wrap">
+      <div class="eyebrow anim"><b>03</b><i></i><b>看清</b></div>
+      <h2 class="anim d1">谁欠、欠多少，<em>一屏看清</em></h2>
+      <p class="lead anim d2">应收、已缴、待缴、收缴率四张卡；待缴按户列出金额、账期、电话和通知状态。</p>
+      <div class="kpis">
+        <div class="kpi anim d1"><small>本期应收</small><b>¥1,286.4万</b></div>
+        <div class="kpi anim d1"><small>本期已缴</small><b>¥1,104.7万</b></div>
+        <div class="kpi due anim d2"><small>本期待缴</small><b>¥181.7万</b></div>
+        <div class="kpi rate anim d2"><small>收缴率</small><b>85.9%</b></div>
+      </div>
+      <div class="unpaid anim d3" aria-hidden="true">
+        <div class="uhead"><span>房号 / 业主</span><span>待缴</span><span>账期</span><span>通知</span></div>
+        <div class="urow"><span class="room">24号302 · 王**</span><b>¥5,144</b><span>07–10月</span><span class="tag g">已打印</span></div>
+        <div class="urow"><span class="room">18号1101 · 李**</span><b>¥3,216</b><span>06–08月</span><span class="tag y">已发短信</span></div>
+        <div class="urow"><span class="room">6号502 · 陈**</span><b>¥2,572</b><span>05–07月</span><span class="tag r">未通知</span></div>
+      </div>
+      <div class="note anim d4"><svg class="ico" aria-hidden="true"><use href="#i-alert"/></svg><span>待缴 ≠ 逾期：MIS 未提供合同到期日，待缴只表示有未收账单。</span></div>
+    </div>
+  </section>
+
+  <!-- 05 催缴 -->
+  <section class="m-slide" id="m5" data-name="催缴触达">
+    <div class="m-wrap">
+      <div class="eyebrow anim"><b>04</b><i></i><b>催动</b></div>
+      <h2 class="anim d1">批量触达，<em>效果可量化</em></h2>
+      <p class="lead anim d2">通知单、短信、电话跟进、承诺还款、争议冻结，统一挂在催缴批次上。</p>
+      <div class="act-list">
+        <div class="glass act-card anim d1"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-printer"/></svg></div><div><h3>A5 催缴通知单</h3><p>8 行/页、超出续页；A4 两联一纸，金额大写，二维码可配。</p></div><div class="num"><b>128</b><span>份已生成</span></div></div>
+        <div class="glass act-card anim d2"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-message"/></svg></div><div><h3>短信催缴</h3><p>模板、时段、冷却可配；回执回写，30 天重复抑制。</p></div><div class="num"><b>96.4%</b><span>送达率</span></div></div>
+        <div class="glass act-card anim d3"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-trend"/></svg></div><div><h3>T+30 效果归因</h3><p>回款金额、回款率、缴清户数、平均回款天数。</p></div><div class="num"><b>61.8%</b><span>回款率</span></div></div>
+      </div>
+      <div class="chips anim d4"><span>批次快照</span><span>电话跟进</span><span>承诺还款</span><span>争议冻结</span><span>打印登记</span></div>
+    </div>
+  </section>
+
+  <!-- 06 收对 -->
+  <section class="m-slide" id="m6" data-name="收款对账">
+    <div class="m-wrap">
+      <div class="eyebrow anim"><b>05</b><i></i><b>收对</b></div>
+      <h2 class="anim d1">钱、票、账，<em>对得上</em></h2>
+      <p class="lead anim d2">多渠道收款、当场出票、红冲退款、日结与报表，全部留痕。</p>
+      <div class="act-list">
+        <div class="glass act-card anim d1"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-wallet"/></svg></div><div><h3>多渠道收款</h3><p>微信、支付宝、现金、刷卡，收款方式可动态新增。</p></div></div>
+        <div class="glass act-card anim d2"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-receipt"/></svg></div><div><h3>收据与红冲</h3><p>多项目合并收据、补打、红冲双向单号、独立退费。</p></div></div>
+        <div class="glass act-card anim d3"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg></div><div><h3>收费报表</h3><p>按实收时间统计，按方式、费项、小区、收费员拆分。</p></div></div>
+      </div>
+      <div class="mini-facts anim d4"><div><b>6 类</b><span>收款方式</span></div><div><b>双向</b><span>红冲单号</span></div><div><b>Excel</b><span>报表导出</span></div></div>
+    </div>
+  </section>
+
+  <!-- 07 模块 -->
+  <section class="m-slide" id="m7" data-name="功能全景">
+    <div class="m-wrap">
+      <div class="eyebrow anim"><b>06</b><i></i><b>功能全景</b></div>
+      <h2 class="anim d1">已完成 <em>8 大模块</em></h2>
+      <p class="lead anim d2">后台 Web + 业主小程序 + 员工小程序 + Windows 助手。</p>
+      <div class="mods">
+        <div class="glass mod anim d1"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-wallet"/></svg></div><div><b>收费办理</b><small>收费 / 催缴 / 标准</small></div><span class="status ok">已上线</span></div>
+        <div class="glass mod anim d1"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-car"/></svg></div><div><b>车辆管理</b><small>4 个停车区</small></div><span class="status ok">已上线</span></div>
+        <div class="glass mod anim d2"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-key"/></svg></div><div><b>门禁一卡通</b><small>发卡 / 授权</small></div><span class="status part">部分</span></div>
+        <div class="glass mod anim d2"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-wrench"/></svg></div><div><b>报修养护</b><small>报修 / 养护单</small></div><span class="status ok">已上线</span></div>
+        <div class="glass mod anim d3"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-box"/></svg></div><div><b>库存盘点</b><small>领料 / 采购</small></div><span class="status ok">已上线</span></div>
+        <div class="glass mod anim d3"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg></div><div><b>分析看板</b><small>报表 / KPI</small></div><span class="status ok">已上线</span></div>
+        <div class="glass mod anim d4"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-home"/></svg></div><div><b>档案中心</b><small>房产 / 业主</small></div><span class="status ok">已上线</span></div>
+        <div class="glass mod anim d4"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-cpu"/></svg></div><div><b>系统与设备</b><small>权限 / 助手</small></div><span class="status ok">已上线</span></div>
+      </div>
+      <div class="ends anim d5"><span><b>31</b> 项后台功能</span><span><b>36</b> 个小程序页面</span><span><b>3</b> 个 Windows 助手</span></div>
+    </div>
+  </section>
+
+  <!-- 08 下一步 -->
+  <section class="m-slide" id="m8" data-name="下一步">
+    <div class="m-wrap">
+      <div class="eyebrow anim"><b>07</b><i></i><b>下一步</b></div>
+      <h2 class="anim d1">把收缴做深，<em>把服务做宽</em></h2>
+      <p class="lead anim d2">现有功能稳定运行，按「先增收、再提效、后体验」补齐。</p>
+      <div class="next-list">
+        <div class="glass next anim d1"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-wallet"/></svg></div><div><b>业主线上缴费</b><small>小程序查账、微信支付、实时销账</small></div><span class="tag">规划中</span></div>
+        <div class="glass next anim d2"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-file"/></svg></div><div><b>电子发票与滞纳金</b><small>发票抬头、滞纳金规则</small></div><span class="tag">规划中</span></div>
+        <div class="glass next anim d3"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-key"/></svg></div><div><b>门禁卡全生命周期</b><small>延期、挂失、换卡、补卡</small></div><span class="tag">待补齐</span></div>
+        <div class="glass next anim d4"><div class="ic"><svg class="ico" aria-hidden="true"><use href="#i-car"/></svg></div><div><b>停车与服务扩展</b><small>人防车库、公告、访客</small></div><span class="tag">规划中</span></div>
+      </div>
+      <div class="closing anim d5"><b>先把「收得清」做扎实，<br><em>再把「服务好」做上去。</em></b><p>让每一户的账都清楚，让每一笔钱都对得上。</p></div>
+      <p class="foot">数据说明 · 截至 2026-11-07 · 静态演示页。16 个小区 / 10,169 套为生产核对数据；43.7 万条为 2004–2023 年历史账单迁移量；界面金额为功能示意。</p>
+    </div>
+  </section>
+</main>
+
+<div class="m-bar" aria-hidden="true">
+  <div class="m-dots" role="tablist" aria-label="页面导航">
+    <button class="on" type="button" data-i="0" aria-label="封面"></button>
+    <button type="button" data-i="1" aria-label="系统定位"></button>
+    <button type="button" data-i="2" aria-label="收缴闭环"></button>
+    <button type="button" data-i="3" aria-label="待缴清单"></button>
+    <button type="button" data-i="4" aria-label="催缴触达"></button>
+    <button type="button" data-i="5" aria-label="收款对账"></button>
+    <button type="button" data-i="6" aria-label="功能全景"></button>
+    <button type="button" data-i="7" aria-label="下一步"></button>
+  </div>
+  <span class="m-count"><b id="mNo">01</b> / 08</span>
+</div>
+
+<script>
+(function () {
+  var $ = function (s, el) { return (el || document).querySelector(s); };
+  var $$ = function (s, el) { return Array.prototype.slice.call((el || document).querySelectorAll(s)); };
+  var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var slides = $$('.m-slide');
+  var dots = $$('.m-dots button');
+  var no = $('#mNo');
+  var current = -1;
+
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function number(el) {
+    var target = parseFloat(el.getAttribute('data-count'));
+    var dec = parseInt(el.getAttribute('data-decimals') || '0', 10);
+    if (isNaN(target)) return;
+    if (reduced) { el.textContent = dec ? target.toFixed(dec) : Math.round(target).toLocaleString('en-US'); return; }
+    var start = null, duration = 1300;
+    function tick(ts) {
+      if (start === null) start = ts;
+      var p = Math.min(1, (ts - start) / duration);
+      var eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = dec ? (target * eased).toFixed(dec) : Math.round(target * eased).toLocaleString('en-US');
+      if (p < 1) window.requestAnimationFrame(tick);
+    }
+    window.requestAnimationFrame(tick);
+  }
+  function activate(i) {
+    if (i === current) return;
+    current = i;
+    slides.forEach(function (s, k) { s.classList.toggle('active', k === i); });
+    dots.forEach(function (d, k) { d.classList.toggle('on', k === i); });
+    if (no) no.textContent = pad(i + 1);
+    $$('[data-count]', slides[i]).forEach(number);
+  }
+  function indexOfScroll() {
+    var mid = window.scrollY + window.innerHeight / 2;
+    var best = 0, dist = Infinity;
+    slides.forEach(function (s, i) {
+      var c = s.offsetTop + s.offsetHeight / 2;
+      var d = Math.abs(c - mid);
+      if (d < dist) { dist = d; best = i; }
+    });
+    return best;
+  }
+  var ticking = false;
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    window.requestAnimationFrame(function () {
+      var i = indexOfScroll();
+      if (i !== current) activate(i);
+      ticking = false;
+    });
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll);
+  dots.forEach(function (d) {
+    d.addEventListener('click', function () {
+      var i = Number(d.getAttribute('data-i'));
+      slides[i].scrollIntoView({ behavior: reduced ? 'auto' : 'smooth' });
+    });
+  });
+  activate(0);
+
+  try {
+    var entry = '';
+    try { entry = new URLSearchParams(location.search).get('from') || ''; } catch (e) { entry = ''; }
+    fetch('/api/v1/observability/intro-view', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path: location.pathname,
+        title: document.title,
+        referrer: document.referrer || '',
+        entry: (entry || 'mobile').slice(0, 60)
+      }),
+      keepalive: true,
+      credentials: 'omit'
+    }).catch(function () {});
+  } catch (e) { /* 统计失败不阻断页面 */ }
+})();
+</script>
+</body>
+</html>
