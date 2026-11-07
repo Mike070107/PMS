@@ -10,7 +10,9 @@ export const PAGE_ACCESS = [
   { paths: ['/apartment', '/apartment-cashier'], keys: ['apartment-cashier'] },
   { paths: ['/meters'], keys: ['meters'] },
   // 新版收费报表调用 /fees/reports/summary，沿用费用模块权限，不是旧版统计报表。
-  { paths: ['/fees', '/bills', '/reports'], keys: ['fees'] },
+  { paths: ['/fees', '/reports'], keys: ['fees'] },
+  // 「账单与待缴」已从物业费里独立成可授权页面：只看 fees 不再自动能进 /bills。
+  { paths: ['/bills'], keys: ['bills'] },
   { paths: ['/work-orders'], keys: ['work-orders'] },
   { paths: ['/maint'], keys: ['maintenance-orders', 'maintenance-inspect'] },
   { paths: ['/experience'], keys: ['experience-notes'] },

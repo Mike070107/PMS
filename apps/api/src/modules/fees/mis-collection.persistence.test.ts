@@ -38,12 +38,13 @@ test('跟进队列：人工事件按户聚合最近1条+次数，真实SQL不搬
  const f=await fixture(),{s,ds,pg,user,access}=f;
  try{
   const events=ds.getRepository(MisCollectionEvent),day=(n:number)=>new Date(Date.now()-n*86400000);
-  await events.save([
+  const pendingRows:any[]=[
    {tenantId:1,communityId:1,houseKey:'01:1:1',action:'phone',note:'三周前电话',fingerprint:'f-1',requestKey:'r-1',createdBy:17,updatedBy:17,createdAt:day(30)},
    {tenantId:1,communityId:1,houseKey:'01:1:1',action:'promise',note:'承诺还款',fingerprint:'f-2',requestKey:'r-2',createdBy:17,updatedBy:17,createdAt:day(20)},
    {tenantId:1,communityId:1,houseKey:'01:1:1',action:'phone',note:'刚电话确认',fingerprint:'f-3',requestKey:'r-3',createdBy:17,updatedBy:17,createdAt:day(2)},
    {tenantId:1,communityId:1,houseKey:'01:1:1',action:'cancel_promise',note:'撤销不算人工跟进',fingerprint:'f-4',requestKey:'r-4',createdBy:17,updatedBy:17,createdAt:day(1)},
-  ].map(row=>events.create(row as any)));
+  ];
+  await events.save(pendingRows as any);
   s.residential=async()=>({rows:[{houseKey:'01:1:1',address:'198弄1号1室',ownerName:'甲',amountCents:300000},{houseKey:'01:1:2',address:'198弄1号2室',ownerName:'乙',amountCents:300000}],total:2,amountCents:600000});
   const out=await s.collectionFollowups({},user,access);
   assert.equal(out.rows.length,2);

@@ -152,6 +152,9 @@ export class AccessService implements OnModuleInit {
         { source: 'work-orders', target: 'experience-notes', copyEdit: true },
         { source: 'app:dispatch', target: 'app:order-rollback', copyEdit: false, viewFrom: 'edit' },
         { source: 'app:dispatch', target: 'app:order-void', copyEdit: false, viewFrom: 'edit' },
+        // 2026-11-07：「账单与待缴」从物业费页面独立成可授权页面。老角色/模板只有 fees，
+        // 不补 bills 的话上线当天这一整页会从菜单消失（见下方 tenants.enabled_pages 同步补齐）。
+        { source: 'fees', target: 'bills', copyEdit: true },
       ];
       for (const split of splits) {
         const role = await this.rolePermRepo.query(
@@ -174,6 +177,23 @@ export class AccessService implements OnModuleInit {
     } catch (e) {
       // 补不上不该拦住服务启动：大不了管理员去角色页手动勾一下
       this.logger.warn(`补齐拆分权限失败：${(e as Error).message}`);
+    }
+    try {
+      // 存量公司的 tenants.enabled_pages 里只有 fees；新页面 bills 不补进去会被
+      // resolveBaseAccess 的 allowedKeys 直接裁掉（角色勾了也不生效），菜单整项消失。
+      // enabled_pages 是 jsonb 数组：? 判断键、|| 追加；已含 bills 的公司不动，幂等。
+      const changed: unknown = await this.tenantRepo.query(`
+        UPDATE tenants
+           SET enabled_pages = enabled_pages || '["bills"]'::jsonb,
+               updated_at = now()
+         WHERE enabled_pages IS NOT NULL
+           AND enabled_pages ? 'fees'
+           AND NOT enabled_pages ? 'bills'
+      `);
+      const count = Array.isArray(changed) && typeof changed[1] === 'number' ? changed[1] : 0;
+      if (count) this.logger.log(`补齐 tenants.enabled_pages 的 bills：${count} 家`);
+    } catch (e) {
+      this.logger.warn(`补齐公司可用页面 bills 失败：${(e as Error).message}`);
     }
     try {
       await this.backfillAssignments();

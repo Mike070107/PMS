@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AccessService } from './access.service';
 import { RolesService } from '../roles/roles.service';
-import { RoleDataScope } from '../../common/pages';
+import { RoleDataScope, DEFAULT_ROLE_TEMPLATES, PAGE_GROUPS, ADMIN_PAGE_KEYS, pageGroupOf } from '../../common/pages';
 import { UserRole } from '../../common/enums';
 
 /**
@@ -40,6 +40,7 @@ test('启动时把历史合并权限复制为新的独立页面权限', async ()
       return [[], 0];
     },
   };
+  svc.tenantRepo = { async query() { return [[], 0]; } };
   svc.logger = { log() {}, warn(message: string) { throw new Error(message); } };
   svc.backfillAssignments = async () => {};
 
@@ -74,8 +75,15 @@ test('启动时把历史合并权限复制为新的独立页面权限', async ()
     assert.match(roleSplit || '', /src\.can_edit, false, false/, `${target} 的可见性要取派单的「操作」档`);
     assert.match(tplSplit || '', /src\.can_edit, false, false/);
   }
-  assert.equal(roleSql.length, 8, '目前角色权限共有八组拆分回填');
-  assert.equal(templateSql.length, 8, '目前模板权限共有八组拆分回填');
+  // 账单与待缴从物业费独立出来：老角色/模板的 fees 权限要幂等补一份 bills，view/edit 跟随
+  const roleBillsSql = roleSql.find((sql) => sql.includes("'bills'"));
+  const tplBillsSql = templateSql.find((sql) => sql.includes("'bills'"));
+  assert.match(roleBillsSql || '', /src\.page_key = 'fees'/);
+  assert.match(tplBillsSql || '', /src\.page_key = 'fees'/);
+  assert.match(roleBillsSql || '', /src\.can_view, src\.can_edit, false/);
+  assert.match(tplBillsSql || '', /src\.can_view, src\.can_edit, false/);
+  assert.equal(roleSql.length, 9, '目前角色权限共有九组拆分回填（含 fees → bills）');
+  assert.equal(templateSql.length, 9, '目前模板权限共有九组拆分回填（含 fees → bills）');
 });
 
 test('跟随模板的角色读模板那份权限，自定义角色读自己的', async () => {
@@ -351,4 +359,59 @@ test('回填工作范围只处理还没有工作范围的员工（幂等），�
     { tenantId: 1, userId: 3, officeId: 1, skills: ['electric'] },
     { tenantId: 1, userId: 4, officeId: null, skills: ['water'] },
   ]);
+});
+
+test('启动时给只勾了 fees 的公司 enabled_pages 幂等补 bills', async () => {
+  const svc = Object.create(AccessService.prototype) as any;
+  const tenantSql: string[] = [];
+  svc.rolePermRepo = { async query() { return [[], 0]; } };
+  svc.tplPermRepo = { async query() { return [[], 0]; } };
+  svc.tenantRepo = {
+    async query(sql: string) {
+      tenantSql.push(sql);
+      return [[], 3];
+    },
+  };
+  svc.logger = { log() {}, warn(message: string) { throw new Error(message); } };
+  svc.backfillAssignments = async () => {};
+
+  await svc.onModuleInit();
+
+  assert.equal(tenantSql.length, 1, '只跑一条 enabled_pages 补齐 SQL');
+  assert.match(tenantSql[0], /UPDATE tenants/);
+  assert.match(tenantSql[0], /enabled_pages \? 'fees'/);
+  assert.match(tenantSql[0], /NOT enabled_pages \? 'bills'/, '已含 bills 的公司不重复追加');
+  assert.match(tenantSql[0], /enabled_pages \|\| '\["bills"\]'::jsonb/, 'jsonb 数组追加，幂等只加行');
+});
+
+/**
+ * 2026-11 权限体系回归：ADMIN_PAGE_KEYS 与分组定义必须一一对应。
+ * 之前 bills 只加到页面注册表、没进权限矩阵/分组，用户发现「账单与待缴」根本没法授权。
+ * 以后新加页面漏进 PAGE_GROUPS 会在这里直接失败。
+ */
+test('页面注册表：每个后台页面在 PAGE_GROUPS 里有且仅有一个归属', () => {
+  const grouped = PAGE_GROUPS.flatMap((group) => group.pageKeys);
+  assert.equal(new Set(grouped).size, grouped.length, '同一页面不能出现在两个分组');
+  assert.deepEqual([...grouped].sort(), [...ADMIN_PAGE_KEYS].sort(), 'ADMIN_PAGE_KEYS 与分组定义必须一一对应');
+  for (const key of ADMIN_PAGE_KEYS) assert.ok(pageGroupOf(key), `${key} 未分组，权限界面会看不到它`);
+  assert.deepEqual(
+    PAGE_GROUPS.map((group) => group.title),
+    ['总览', '收费办理', '车辆管理', '门禁管理', '报修养护', '库存与盘点', '分析', '档案', '系统'],
+    '分组标题与顺序必须和首页菜单 Shell.tsx 一致',
+  );
+});
+
+test('页面注册表：api 与 shared-types 两份同源同序，防止只改一边', () => {
+  // api 不依赖 @pms/shared-types（见 common/enums.ts 注释），两份注册表靠这条测试锁同步。
+  const shared = require('../../../../../packages/shared-types/src/pages');
+  assert.deepEqual([...ADMIN_PAGE_KEYS], shared.ADMIN_PAGE_KEYS, '两份 ADMIN_PAGE_KEYS 必须同序同步');
+  assert.deepEqual(PAGE_GROUPS, shared.PAGE_GROUPS, '两份 PAGE_GROUPS 必须一致');
+});
+
+test('内置角色模板只引用已注册的后台页面', () => {
+  for (const template of DEFAULT_ROLE_TEMPLATES) {
+    for (const key of Object.keys(template.adminPages ?? {})) {
+      assert.ok((ADMIN_PAGE_KEYS as readonly string[]).includes(key), `${template.name} 引用了未注册页面 ${key}`);
+    }
+  }
 });

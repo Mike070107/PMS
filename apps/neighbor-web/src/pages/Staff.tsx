@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { request } from '@pms/api-client';
-import { ADMIN_PAGES, REPAIR_TYPE_OPTIONS, STAFF_APP_PAGES } from '@pms/shared-types';
+import { ADMIN_PAGES, PAGE_GROUPS, REPAIR_TYPE_OPTIONS, STAFF_APP_PAGES } from '@pms/shared-types';
 import Icon from '@/components/Icon';
 import { Btn, Field, Loading, Sheet, toast } from '@/components/ui';
 import ToneIcon from '@/components/ToneIcon';
@@ -32,15 +32,16 @@ const SKILL_SHORT: Record<string, string> = {
 const skillLabel = (s: string) => SKILL_SHORT[s] || s;
 const maskPhone = (p?: string | null) => (p && p.length >= 7 ? `${p.slice(0, 3)}****${p.slice(-4)}` : p || '—');
 
-/** 后台菜单分组 → 同一件事在小程序里的入口：一起勾，避免「后台能办、小程序被拒」 */
+/** 后台菜单分组 → 同一件事在小程序里的入口：一起勾，避免「后台能办、小程序被拒」。
+ *  分组标题与组内顺序来自 @pms/shared-types 的 PAGE_GROUPS（与首页菜单、权限界面共用一份）。 */
 const APP_BY_GROUP: Record<string, string[]> = {
-  报修工单: ['app:dispatch', 'app:pool', 'app:my-orders', 'app:order-rollback', 'app:order-void', 'app:maintenance-sign', 'app:maintenance-inspect', 'app:repair-create', 'app:my-repairs', 'app:experience-notes'],
+  收费办理: ['app:apartment-cashier', 'app:meters', 'app:approve-business-manager'],
+  车辆管理: ['app:family-car-approve'],
   // 旧的 app:approve-manager 已拆成采购/收费两格，不再出现在勾选列表（仍保留在目录里给旧数据看标签）
-  材料与库存: ['app:materials', 'app:inventory', 'app:stocktakes', 'app:approve-purchase-manager', 'app:approve-business-manager', 'app:approve-purchaser'],
-  收费业务: ['app:apartment-cashier', 'app:family-car-approve'],
+  报修养护: ['app:dispatch', 'app:pool', 'app:my-orders', 'app:order-rollback', 'app:order-void', 'app:maintenance-sign', 'app:maintenance-inspect', 'app:repair-create', 'app:my-repairs', 'app:experience-notes'],
+  库存与盘点: ['app:materials', 'app:inventory', 'app:stocktakes', 'app:approve-purchase-manager', 'app:approve-purchaser'],
   系统: ['app:messages'],
 };
-const GROUPS = [...new Set(ADMIN_PAGES.map((p) => p.group))];
 
 type Tab = 'staff' | 'roles' | 'templates';
 
@@ -575,6 +576,7 @@ function PermMatrix({ value, onChange, readOnly }: { value: Perm[]; onChange: (p
   };
   const mapped = new Set(Object.values(APP_BY_GROUP).flat());
   const extraApp = STAFF_APP_PAGES.filter((p) => !mapped.has(p.key) && !p.legacy);
+  const pageByKey = new Map(ADMIN_PAGES.map((p) => [p.key, p] as const));
   const box = (k: string, f: 'canView' | 'canEdit' | 'canDelete', show = true) => (show
     ? <input type="checkbox" checked={get(k)[f]} disabled={readOnly} onChange={(e) => set(k, { [f]: e.target.checked })} />
     : <span className="muted">—</span>);
@@ -597,22 +599,30 @@ function PermMatrix({ value, onChange, readOnly }: { value: Perm[]; onChange: (p
       <table className="pm-mx">
         <thead><tr><th>页面 / 入口</th><th className="c">查看</th><th className="c">办理</th><th className="c">归档</th></tr></thead>
         <tbody>
-          {GROUPS.map((g) => (
-            <GroupRows key={g} title={g}>
-              {ADMIN_PAGES.filter((p) => p.group === g).map((p) => {
-                const acts = p.actions ?? [{ field: 'canEdit' as const }, { field: 'canDelete' as const }];
-                return (
-                  <tr key={p.key}>
-                    <td><Icon name="globe" size={14} /> 网页 · {p.label}</td>
-                    <td className="c">{box(p.key, 'canView')}</td>
-                    <td className="c">{box(p.key, 'canEdit', acts.some((a) => a.field === 'canEdit'))}</td>
-                    <td className="c">{box(p.key, 'canDelete', acts.some((a) => a.field === 'canDelete'))}</td>
-                  </tr>
-                );
-              })}
-              {(APP_BY_GROUP[g] || []).map(appRow)}
-            </GroupRows>
-          ))}
+          {/* 分组标题/顺序与首页菜单共用 PAGE_GROUPS，找页面时和导航一致 */}
+          {PAGE_GROUPS.map((group) => {
+            const pages = group.pageKeys
+              .map((key) => pageByKey.get(key))
+              .filter((p): p is (typeof ADMIN_PAGES)[number] => !!p);
+            const appKeys = APP_BY_GROUP[group.title] || [];
+            if (!pages.length && !appKeys.length) return null;
+            return (
+              <GroupRows key={group.title} title={group.title}>
+                {pages.map((p) => {
+                  const acts = p.actions ?? [{ field: 'canEdit' as const }, { field: 'canDelete' as const }];
+                  return (
+                    <tr key={p.key}>
+                      <td><Icon name="globe" size={14} /> 网页 · {p.label}</td>
+                      <td className="c">{box(p.key, 'canView')}</td>
+                      <td className="c">{box(p.key, 'canEdit', acts.some((a) => a.field === 'canEdit'))}</td>
+                      <td className="c">{box(p.key, 'canDelete', acts.some((a) => a.field === 'canDelete'))}</td>
+                    </tr>
+                  );
+                })}
+                {appKeys.map(appRow)}
+              </GroupRows>
+            );
+          })}
           {extraApp.length ? <GroupRows title="小程序其他入口">{extraApp.map((p) => appRow(p.key))}</GroupRows> : null}
         </tbody>
       </table>

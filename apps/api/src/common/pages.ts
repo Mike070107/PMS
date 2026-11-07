@@ -15,11 +15,12 @@ export const ADMIN_PAGE_KEYS = [
   'maintenance-inspect', // 养护单查验（物业经理签字），单独一格：填单的人不该能自己查验自己
   'experience-notes', // 维修经验总结（按管理处 + 报修类型共享）
   'business', // 前台收费
+  'fees', // 物业费（账单 / 收费标准 / 欠费）
+  'bills', // 账单与待缴（查询 / 跟进提醒 / 催缴通知）；独立页面权限，不再借用 fees
+  'meters', // 抄表管理（仪表档案 / 抄表记录 / 水电费记账）
   'apartment-cashier', // 公寓收费台（收费 / 明细 / 报表 / 对账）
   'family-cars', // 亲情车管理（清册 / 登记 / 办公室审核）
   'family-cars-approve', // 亲情车经理审核，单独一格：登记的人不该能自己批准自己
-  'fees', // 物业费（账单 / 收费标准 / 欠费）
-  'meters', // 抄表管理（仪表档案 / 抄表记录 / 水电费记账）
   'materials', // 材料 SKU 库
   'inventory', // 库存与采购
   'stocktakes', // 库存盘点（发起、报告、复核）
@@ -34,6 +35,33 @@ export const ADMIN_PAGE_KEYS = [
 ] as const;
 
 export type AdminPageKey = (typeof ADMIN_PAGE_KEYS)[number];
+
+/**
+ * 页面分组的单一事实来源（与 packages/shared-types/src/pages.ts 的 PAGE_GROUPS 同源同序）：
+ * 分组标题/顺序 = 首页菜单（neighbor-web Shell.tsx 的 GROUPS），权限界面按这里分组展示。
+ * 新加后台页面必须登记进某个 pageKeys —— modules/access/role-template.test.ts 的
+ * pages-registry 回归会拦住漏配，避免再出现「新页面不在权限矩阵里、没法授权」。
+ */
+export interface PageGroupDef {
+  title: string;
+  pageKeys: string[];
+}
+
+export const PAGE_GROUPS: PageGroupDef[] = [
+  { title: '总览', pageKeys: ['dashboard'] },
+  { title: '收费办理', pageKeys: ['business', 'meters', 'apartment-cashier', 'bills', 'fees'] },
+  { title: '车辆管理', pageKeys: ['family-cars', 'family-cars-approve'] },
+  { title: '门禁管理', pageKeys: [] },
+  { title: '报修养护', pageKeys: ['work-orders', 'maintenance-orders', 'maintenance-inspect', 'experience-notes'] },
+  { title: '库存与盘点', pageKeys: ['inventory', 'stocktakes', 'materials'] },
+  { title: '分析', pageKeys: ['reports'] },
+  { title: '档案', pageKeys: ['properties', 'owners', 'users', 'roles', 'offices'] },
+  { title: '系统', pageKeys: ['qr', 'settings', 'logs'] },
+];
+
+/** 页面属于哪个分组；登记漏了返回 undefined，由回归测试兜住。 */
+export const pageGroupOf = (pageKey: string) =>
+  PAGE_GROUPS.find((group) => group.pageKeys.includes(pageKey))?.title;
 
 /**
  * 员工端小程序的入口 key。哪个角色能看到哪几格、能不能动手，**只由角色矩阵决定** ——
@@ -160,6 +188,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'maintenance-inspect': 'v',
       business: 'e',
       fees: 'e',
+      bills: 'e',
       meters: 'e',
       materials: 'e',
       inventory: 'e',

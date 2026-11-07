@@ -34,11 +34,11 @@ export const DEFAULT_ADMIN_PAGE_ACTIONS: NonNullable<AdminPageDef['actions']> = 
 /** 企业端页面（参与角色权限矩阵与租户可用页面勾选） */
 export const ADMIN_PAGES: AdminPageDef[] = [
   { key: 'dashboard', label: '工作台', group: '总览' },
-  { key: 'reports', label: '报表查询', group: '总览' },
+  { key: 'reports', label: '报表查询', group: '分析' },
   {
     key: 'work-orders',
     label: '工单管理',
-    group: '报修工单',
+    group: '报修养护',
     hint: '办公室办理、派单、撤回与作废；永久删除仅系统管理员可用',
     actions: [
       {
@@ -51,7 +51,7 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   {
     key: 'maintenance-orders',
     label: '养护单',
-    group: '报修工单',
+    group: '报修养护',
     hint: '按工单开《房屋修理养护任务单》、打印',
     actions: [
       { field: 'canEdit', label: '编辑（含开单）' },
@@ -65,7 +65,7 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   {
     key: 'maintenance-inspect',
     label: '养护单查验（签字）',
-    group: '报修工单',
+    group: '报修养护',
     // 勾中即可查验，不再分档：这一格表达的就是「他是那个签字的人」（物业经理）。
     // 和「养护单」分开是有意的 —— 填单的人自己查验自己，三方签字就白签了。
     hint: '勾中 = 可以查验并手写签名（物业经理）',
@@ -74,57 +74,64 @@ export const ADMIN_PAGES: AdminPageDef[] = [
   {
     key: 'experience-notes',
     label: '维修经验总结',
-    group: '报修工单',
+    group: '报修养护',
     hint: '按管理处和报修类别共享图文经验；角色权限仅在本角色数据范围内生效',
     actions: [
       { field: 'canEdit', label: '编辑笔记', hint: '新建、修改标题、正文、步骤、注意事项和图片' },
     ],
   },
-  { key: 'business', label: '前台收费', group: '收费业务' },
-  { key: 'fees', label: '物业费', group: '收费业务' },
+  { key: 'business', label: '前台收费', group: '收费办理' },
+  { key: 'fees', label: '物业费', group: '收费办理' },
+  {
+    key: 'bills',
+    label: '账单与待缴',
+    group: '收费办理',
+    hint: '账单查询、跟进提醒与催缴通知（打印 / 短信）；独立页面权限，不再借用「物业费」',
+    actions: [{ field: 'canEdit', label: '催缴 / 生成通知' }],
+  },
   {
     key: 'meters',
     label: '抄表管理',
-    group: '收费业务',
+    group: '收费办理',
     hint: '仪表档案、拍照抄表、识别结果复核、水电费应收与收款记账',
     actions: [
       { field: 'canEdit', label: '建档 / 抄表 / 收款', hint: '新增和修改仪表、补录与修正读数、登记收款' },
       { field: 'canDelete', label: '作废记录', hint: '作废抄表记录和未收款账单；已收款账单不能直接删' },
     ],
   },
-  { key: 'apartment-cashier', label: '公寓收费台', group: '收费业务', actions: [{ field: 'canEdit', label: '收费与红冲' }] },
+  { key: 'apartment-cashier', label: '公寓收费台', group: '收费办理', actions: [{ field: 'canEdit', label: '收费与红冲' }] },
   {
     key: 'family-cars',
     label: '亲情车管理',
-    group: '收费业务',
+    group: '车辆管理',
     hint: '亲情车清册、登记、资料上传、办公室审核、到期停用',
     actions: [{ field: 'canEdit', label: '登记与办公室审核', hint: '登记亲情车、上传资料、办公室审核、续登、提前停用' }],
   },
   {
     key: 'family-cars-approve',
     label: '亲情车经理审核',
-    group: '收费业务',
+    group: '车辆管理',
     // 和「亲情车管理」分开：登记的人不该能自己批准自己（同养护单查验）
     hint: '勾中 = 物业经理审核亲情车，通过后自动开通车库',
     actions: [{ field: 'canEdit', label: '审核通过 / 退回' }],
   },
-  { key: 'materials', label: '材料 SKU 库', group: '材料与库存' },
-  { key: 'inventory', label: '库存与采购', group: '材料与库存' },
+  { key: 'materials', label: '材料 SKU 库', group: '库存与盘点' },
+  { key: 'inventory', label: '库存与采购', group: '库存与盘点' },
   {
     key: 'stocktakes',
     label: '库存盘点',
-    group: '材料与库存',
+    group: '库存与盘点',
     hint: '发起盘点、查看报告并复核库存差异',
     actions: [
       { field: 'canEdit', label: '盘点与复核', hint: '发起盘点、录入实盘数量、提交和复核差异' },
     ],
   },
-  { key: 'properties', label: '房产与业主', group: '基础档案' },
-  { key: 'owners', label: '业主审核', group: '基础档案' },
-  { key: 'users', label: '用户管理', group: '基础档案' },
-  { key: 'roles', label: '业务角色', group: '基础档案' },
-  { key: 'offices', label: '管理处', group: '基础档案' },
-  { key: 'qr', label: '楼栋报修码', group: '基础档案' },
+  { key: 'properties', label: '房产与业主', group: '档案' },
+  { key: 'owners', label: '业主审核', group: '档案' },
+  { key: 'users', label: '用户管理', group: '档案' },
+  { key: 'roles', label: '业务角色', group: '档案' },
+  { key: 'offices', label: '管理处', group: '档案' },
+  { key: 'qr', label: '楼栋报修码', group: '系统' },
   { key: 'settings', label: '系统设置', group: '系统' },
   {
     key: 'logs',
@@ -136,6 +143,37 @@ export const ADMIN_PAGES: AdminPageDef[] = [
 ];
 
 export const ADMIN_PAGE_KEYS = ADMIN_PAGES.map((p) => p.key);
+
+/**
+ * 页面分组的**单一事实来源**：分组标题与顺序和首页菜单（components/Shell.tsx 的 GROUPS）一致，
+ * 权限模板 / 角色编辑界面直接按这里分组展示，不再各自维护一份。
+ *
+ * 新加后台页面必须登记进某个 pageKeys，否则 `pages-registry` 回归测试会失败 ——
+ * 这是为了防止再出现「新页面没进权限矩阵、根本没法授权」。
+ * pageKeys 的组内顺序 = 首页菜单里的组内顺序。
+ */
+export interface PageGroupDef {
+  /** 分组标题，与 Shell.tsx 菜单分组一致 */
+  title: string;
+  /** 组内页面 key，顺序即展示顺序；空数组 = 该分组只有小程序入口，没有后台页面 */
+  pageKeys: string[];
+}
+
+export const PAGE_GROUPS: PageGroupDef[] = [
+  { title: '总览', pageKeys: ['dashboard'] },
+  { title: '收费办理', pageKeys: ['business', 'meters', 'apartment-cashier', 'bills', 'fees'] },
+  { title: '车辆管理', pageKeys: ['family-cars', 'family-cars-approve'] },
+  { title: '门禁管理', pageKeys: [] },
+  { title: '报修养护', pageKeys: ['work-orders', 'maintenance-orders', 'maintenance-inspect', 'experience-notes'] },
+  { title: '库存与盘点', pageKeys: ['inventory', 'stocktakes', 'materials'] },
+  { title: '分析', pageKeys: ['reports'] },
+  { title: '档案', pageKeys: ['properties', 'owners', 'users', 'roles', 'offices'] },
+  { title: '系统', pageKeys: ['qr', 'settings', 'logs'] },
+];
+
+/** 页面属于哪个分组（只对后台页面有意义）；登记漏了返回 undefined，由回归测试兜住。 */
+export const pageGroupOf = (pageKey: string) =>
+  PAGE_GROUPS.find((group) => group.pageKeys.includes(pageKey))?.title;
 
 /**
  * 员工端小程序的入口。哪个角色看到哪几格，**只由这里的勾选决定**，端上不写死。
@@ -407,6 +445,7 @@ export const DEFAULT_ROLE_TEMPLATES: {
       'maintenance-inspect': 'v',
       business: 'e',
       fees: 'e',
+      bills: 'e',
       meters: 'e',
       materials: 'e',
       inventory: 'e',

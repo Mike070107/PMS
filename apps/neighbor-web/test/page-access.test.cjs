@@ -15,7 +15,10 @@ function load(file,access,pathname='/houses',options={}){
   if(id==='@/lib/page-access')return load('lib/page-access.ts',access,pathname);
   if(id==='@/components/UiPreferencesProvider')return{useUiPreferences:()=>({preferences:{sidebarCollapsed:false},update(){}})};
   if(id==='@/components/Shell')return{default:'Shell'};
-  if(id==='@pms/shared-types')return{ADMIN_PAGES:[],STAFF_APP_PAGES:[],REPAIR_TYPE_OPTIONS:[]};
+  if(id==='@pms/shared-types')return{ADMIN_PAGES:[],STAFF_APP_PAGES:[],REPAIR_TYPE_OPTIONS:[],PAGE_GROUPS:[
+   {title:'总览',pageKeys:[]},{title:'收费办理',pageKeys:[]},{title:'车辆管理',pageKeys:[]},{title:'门禁管理',pageKeys:[]},
+   {title:'报修养护',pageKeys:[]},{title:'库存与盘点',pageKeys:[]},{title:'分析',pageKeys:[]},{title:'档案',pageKeys:[]},{title:'系统',pageKeys:[]},
+  ]};
   if(id==='@pms/api-client'&&options.api)return options.api;
   if(id==='@pms/api-client')return{auth:{me:()=>new Promise(()=>{})},notifications:{unreadCount:()=>Promise.resolve({count:0})},address:{tree:()=>Promise.resolve([])},request:o=>{options.requests?.push(o.url);return Promise.resolve([])}};
   if(id==='@/lib/legacy')return{legacyUrl:x=>x};
@@ -107,3 +110,34 @@ test('Shell does not start badge API after identity changes during dynamic impor
  const tabs=nodes(ui).filter(n=>n.type==='button').map(text);
  assert.match(text(ui),/车牌登记审核/);assert.equal(nodes(ui).some(n=>typeof n.type==='function'&&n.type.name==='IntakeList'),true);assert.equal(tabs.includes('亲情车'),false);
  });
+
+// ── 权限体系回归：页面注册表/分组单一事实来源 + bills 独立授权 ──
+function loadSharedPages(){
+ const source=fs.readFileSync(path.resolve(__dirname,'../../../packages/shared-types/src/pages.ts'),'utf8');
+ const module={exports:{}};
+ new Function('module','exports',ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText)(module,module.exports);
+ return module.exports;
+}
+test('页面分组是权限界面与首页菜单的单一事实来源',()=>{
+ const shared=loadSharedPages();
+ const grouped=shared.PAGE_GROUPS.flatMap(g=>g.pageKeys);
+ assert.deepEqual([...grouped].sort(),[...shared.ADMIN_PAGE_KEYS].sort(),'每个后台页面都必须有且仅有一个分组');
+ assert.equal(new Set(grouped).size,grouped.length,'同一页面不能重复分组');
+ const shell=load('components/Shell.tsx',{});
+ assert.deepEqual([...shell.GROUPS.map(g=>g.title)],shared.PAGE_GROUPS.map(g=>g.title),'Shell 分组标题/顺序必须与 PAGE_GROUPS 一致');
+ assert.deepEqual(shared.PAGE_GROUPS.map(g=>g.title),['总览','收费办理','车辆管理','门禁管理','报修养护','库存与盘点','分析','档案','系统']);
+});
+test('账单与待缴：独立页面权限，fees 不再放行 /bills，菜单按 bills 过滤',()=>{
+ const map=load('lib/page-access.ts',{});
+ assert.equal(map.canViewPath('/bills',{pages:{bills:{view:true}}}),true);
+ assert.equal(map.canViewPath('/bills',{pages:{fees:{view:true}}}),false,'只有 fees 不能再打开账单与待缴');
+ assert.equal(map.canViewPath('/fees',{pages:{fees:{view:true}}}),true,'物业费页仍按 fees');
+ assert.equal(map.canViewPath('/reports',{pages:{fees:{view:true}}}),true,'收费报表仍按 fees');
+ const nav=load('components/Shell.tsx',{pages:{}}).NAV;
+ const bills=nav.find(n=>n.key==='bills');
+ assert.equal(bills.permissionKey,'bills','菜单项必须绑定 bills 页面权限');
+ const allowed=load('components/Shell.tsx',{pages:{bills:{view:true}}},'/bills').default();
+ assert.equal(nodes(allowed).filter(n=>n.type==='a'&&n.props&&n.props.title==='账单与待缴').length,1,'有 bills 权限时菜单出现账单与待缴');
+ const denied=load('components/Shell.tsx',{pages:{fees:{view:true}}},'/bills').default();
+ assert.equal(nodes(denied).filter(n=>n.type==='a'&&n.props&&n.props.title==='账单与待缴').length,0,'只有 fees 时菜单不出现账单与待缴');
+});

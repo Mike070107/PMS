@@ -43,7 +43,7 @@ export const NAV: NavItem[] = [
   { key: 'garage-civil', name: '人防车位', rail: '人防', icon: 'shield', to: '/parking/civil', group: '车辆管理' },
   { key: 'records', name: '办理记录', rail: '办理记录', icon: 'receipt', to: '/records', group: '收费' },
   { key: 'pending', name: '待处理', rail: '待处理', icon: 'alert', to: '/pending', group: '收费' },
-  { key: 'bills', name: '账单与待缴', rail: '账单', icon: 'scale', to: '/bills', group: '收费' },
+  { key: 'bills', permissionKey: 'bills', name: '账单与待缴', rail: '账单', icon: 'scale', to: '/bills', group: '收费' },
   { key: 'work-orders', name: '工单调度', rail: '工单', icon: 'kanban', to: '/work-orders', group: '报修' },
   { key: 'maint', name: '养护单', rail: '养护单', icon: 'file', to: '/maint', group: '报修' },
   { key: 'notes', name: '维修经验', rail: '经验', icon: 'book', to: '/experience', group: '报修' },
@@ -53,7 +53,7 @@ export const NAV: NavItem[] = [
   { key: 'sku', name: '材料SKU', rail: 'SKU', icon: 'layers', to: '/materials', group: '库存与盘点' },
   { key: 'devices', name: '系统与设备', rail: '系统设备', icon: 'cpu', to: '/devices', group: '系统' },
   { key: 'reports', name: '收费报表', rail: '报表', icon: 'chart', to: '/reports', group: '分析' },
-  { key: 'standards', name: '收费标准', rail: '收费标准', icon: 'wallet', to: '/standards', group: '收费' },
+  { key: 'standards', name: '收费标准', rail: '收费标准', icon: 'wallet', to: '/standards', group: '收费' },
   { key: 'houses', name: '房产', rail: '房产', icon: 'home', to: '/houses', group: '档案' },
   { key: 'owners', name: '业主', rail: '业主', icon: 'users', to: '/owners', group: '档案' },
   { key: 'people', name: '员工与权限', rail: '员工', icon: 'shield', to: '/staff', group: '档案' },
@@ -64,8 +64,9 @@ export const NAV: NavItem[] = [
   { key: 'logs', permissionKey: 'logs', name: '日志', rail: '日志', icon: 'log', to: '/logs', group: '系统' },
 ];
 
-/** 分类分组：每组一个标题 + 图标文字一行的菜单项 */
-const GROUPS: Array<{ title: string; keys: string[]; icon: IconName; tone: string }> = [
+/** 分类分组：每组一个标题 + 图标文字一行的菜单项。
+ *  分组标题/顺序与权限界面共用 @pms/shared-types 的 PAGE_GROUPS，一致性由 page-access 回归测试锁住。 */
+export const GROUPS: Array<{ title: string; keys: string[]; icon: IconName; tone: string }> = [
   { title: '总览', keys: ['today'], icon: 'today', tone: 'green' },
   { title: '收费办理', keys: ['cashier', 'meters', 'apartment', 'bills', 'records', 'pending', 'standards'], icon: 'wallet', tone: 'blue' },
   { title: '车辆管理', keys: ['vehicles', 'plates', 'family-cars', 'garage-main', 'garage-civil'], icon: 'car', tone: 'slate' },
