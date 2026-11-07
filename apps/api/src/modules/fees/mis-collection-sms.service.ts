@@ -3,11 +3,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import { MisCollectionBatch } from '../../entities/mis-collection-batch.entity';
+import { MisCollectionSms } from '../../entities/mis-collection-sms.entity';
 import { ResolvedAccess } from '../access/access.service';
 import { CollectionSmsLogService, type SmsLogRow } from '../settings/collection-sms-log.service';
 import { CollectionSmsService } from '../settings/collection-sms.service';
 import { renderSmsContent, sendAliyunSms, smsSegments } from '../settings/collection-sms.sender';
 import { MisFeesService } from './mis-fees.service';
+import { validateMisFeeRange } from './mis-fees.query';
 
 interface SnapshotNotice {
   houseKey: string;
@@ -40,6 +42,45 @@ export class MisCollectionSmsService {
     const first = fmt(list[0]);
     const last = fmt(list[list.length - 1]);
     return first === last ? first : `${first}-${last}`;
+  }
+
+  /**
+   * 短信送达统计：单条聚合查询（无 N+1），按 submitted_at、空则 created_at 落时间窗；
+   * houseKey 形如「管理处:S_ID:ZH_ID」，用当前授权小区的管理处前缀过滤 communityId。
+   */
+  async statsRange(q: { from: string; to: string; communityId?: number }, user: AuthUser, access?: ResolvedAccess) {
+    if (!user.tenantId) throw new BadRequestException('请先选择公司');
+    validateMisFeeRange({ paidFrom: q.from, paidTo: q.to });
+    const empty = { total: 0, submitted: 0, delivered: 0, failed: 0, queued: 0, deliveredRate: null as number | null, segments: 0 };
+    const communities = await this.mis.collectionCommunities(q.communityId, user, access);
+    if (!communities.length) return empty;
+    const offices = [...new Set(communities.flatMap((c) => c.offices))];
+    if (!offices.length) return empty;
+    const start = new Date(`${q.from}T00:00:00+08:00`);
+    const end = new Date(new Date(`${q.to}T00:00:00+08:00`).getTime() + 86400000);
+    const qb = this.batchRepo.manager
+      .getRepository(MisCollectionSms)
+      .createQueryBuilder('s')
+      .select('COUNT(*)', 'total')
+      .addSelect("COUNT(*) FILTER (WHERE s.status='submitted')", 'submitted')
+      .addSelect("COUNT(*) FILTER (WHERE s.status='delivered')", 'delivered')
+      .addSelect("COUNT(*) FILTER (WHERE s.status='failed')", 'failed')
+      .addSelect("COUNT(*) FILTER (WHERE s.status='queued')", 'queued')
+      .addSelect('COALESCE(SUM(s.segment_count),0)', 'segments')
+      .where('s.tenant_id=:tenantId', { tenantId: user.tenantId })
+      .andWhere('COALESCE(s.submitted_at,s.created_at)>=:from', { from: start })
+      .andWhere('COALESCE(s.submitted_at,s.created_at)<:to', { to: end });
+    const officeSql = offices.map((office, i) => {
+      qb.setParameter(`office${i}`, `${office}:%`);
+      return `s.house_key LIKE :office${i}`;
+    });
+    qb.andWhere(`(${officeSql.join(' OR ')})`);
+    const raw: any = (await qb.getRawOne()) || {};
+    const num = (value: unknown) => { const n = Number(value ?? 0); return Number.isSafeInteger(n) && n >= 0 ? n : 0; };
+    const total = num(raw.total), submitted = num(raw.submitted), delivered = num(raw.delivered), failed = num(raw.failed), queued = num(raw.queued), segments = num(raw.segments);
+    if (!total) return empty;
+    const attempted = submitted + delivered + failed;
+    return { total, submitted, delivered, failed, queued, segments, deliveredRate: attempted ? Math.round((delivered / attempted) * 10000) / 100 : null };
   }
 
   async sendBatch(id: number, user: AuthUser, access?: ResolvedAccess, body?: { real?: boolean }) {

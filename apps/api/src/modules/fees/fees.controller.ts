@@ -40,7 +40,7 @@ import { FeesService } from './fees.service';
 import { MisFeesService } from './mis-fees.service';
 import { MisCollectionSmsService } from './mis-collection-sms.service';
 import {MisLedgerQueryDto} from './mis-ledger.dto';
-import { MisFeesQueryDto, MisHouseSearchDto, MisResidentialQueryDto, MisCollectionPreviewDto } from './mis-fees.dto';
+import { MisFeesQueryDto, MisHouseSearchDto, MisResidentialQueryDto, MisCollectionPreviewDto, MisCollectionSmsStatsQueryDto } from './mis-fees.dto';
 
 /**
  * 物业费（纯管理端页面），走页面权限矩阵。
@@ -108,6 +108,10 @@ export class FeesController {
   @Post('mis/collections')
   @RequirePermission('fees','edit')
   misCollectionCreate(@Body() body:MisCollectionPreviewDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.createCollection(body,user,access);}
+
+  @Get('mis/collections/sms-stats')
+  @RequirePermission('fees','view')
+  misCollectionSmsStats(@Query() query:MisCollectionSmsStatsQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misCollectionSmsService.statsRange(query,user,access);}
 
   @Get('mis/collections')
   @RequirePermission('fees','view')

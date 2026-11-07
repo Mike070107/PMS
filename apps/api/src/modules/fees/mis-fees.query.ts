@@ -67,6 +67,8 @@ export interface MisResidentialQuery extends MisFeeQuery {
  sort?: 'address'|'amount';
  /** 排序方向：asc（默认）/ desc */
  dir?: 'asc'|'desc';
+ /** 趋势聚合粒度：day（默认，保持现有调用）/ month（自然月）；仅 trend 视图生效 */
+ bucket?: 'day'|'month';
 }
 const categorySql = `CASE WHEN f.XM LIKE N'%泊位%' OR f.XM LIKE N'%车位%' OR f.XM LIKE N'%停车%' THEN 'berth' WHEN f.XM LIKE N'%物业%' OR (f.XM LIKE N'%管理费%' AND f.XM NOT LIKE N'%停车%') THEN 'property' ELSE 'other' END`;
 /** No DDL/DML; same source joins/filter as existing MIS bill reader; SQL Server 2008 compatible. */
@@ -77,6 +79,7 @@ export function buildMisResidentialQuery(q:MisResidentialQuery,offices:string[])
  if(q.category&&!['all','property','berth','other'].includes(q.category))throw new BadRequestException('收费分类不合法');
  if(q.sort!==undefined&&!['address','amount'].includes(q.sort))throw new BadRequestException('排序字段仅支持 address 或 amount');
  if(q.dir!==undefined&&!['asc','desc'].includes(q.dir))throw new BadRequestException('排序方向仅支持 asc 或 desc');
+ if(q.bucket!==undefined&&!['day','month'].includes(q.bucket))throw new BadRequestException('趋势粒度仅支持 day 或 month');
  validateMisFeeRange(q);
  if(view==='trend'&&(!q.paidFrom||!q.paidTo))throw new BadRequestException('趋势需指定收款日期范围');
  if(view==='trend'&&(Date.parse(q.paidTo!)-Date.parse(q.paidFrom!))/86400000>366)throw new BadRequestException('收款日期范围不能超过一年');
@@ -98,10 +101,14 @@ export function buildMisResidentialQuery(q:MisResidentialQuery,offices:string[])
  }
  if(view==='trend'){
   params.paidFrom=q.paidFrom!;params.paidTo=q.paidTo!;
+  const bucket=q.bucket==='month'?'month':'day';
   const dateFilter=(column:string)=>`${column}>=CONVERT(datetime,REPLACE(@paidFrom,'-',''),112) AND ${column}<DATEADD(day,1,CONVERT(datetime,REPLACE(@paidTo,'-',''),112))`;
   const safePaid="CASE WHEN ISDATE(w.ZJ_SKRQ)=1 THEN CONVERT(datetime,w.ZJ_SKRQ) ELSE NULL END";
   const safeRefund="CASE WHEN ISDATE(w.ZJ_TKRQ)=1 THEN CONVERT(datetime,w.ZJ_TKRQ) ELSE NULL END";
-  return {sql:`WITH flows AS (SELECT CONVERT(varchar(10),${safePaid},23) AS day,w.ZJ_JE AS amount,0 AS refund ${from} AND w.ZJ_JE>=0 AND ${dateFilter(safePaid)} UNION ALL SELECT CONVERT(varchar(10),${safeRefund},23) AS day,-w.ZJ_JE AS amount,1 AS refund ${from} AND w.ZJ_JE>=0 AND w.ZJ_SKRQ IS NOT NULL AND ${dateFilter(safeRefund)}) SELECT day,CONVERT(varchar(50),SUM(amount),2) AS netAmount,CONVERT(varchar(50),SUM(CASE WHEN refund=0 THEN amount ELSE 0 END),2) AS chargedAmount,CONVERT(varchar(50),SUM(CASE WHEN refund=1 THEN -amount ELSE 0 END),2) AS refundedAmount FROM flows GROUP BY day ORDER BY day; SELECT COUNT_BIG(*) AS invalidDateCount ${from} AND ((w.ZJ_SKRQ IS NOT NULL AND ISDATE(w.ZJ_SKRQ)=0) OR (w.ZJ_TKRQ IS NOT NULL AND ISDATE(w.ZJ_TKRQ)=0));`,params};
+  // 自然月：120 样式取前 7 位即 YYYY-MM；日粒度保持原 23 样式 YYYY-MM-DD，现有调用不变。
+  const bucketKey=(column:string)=>bucket==='month'?`CONVERT(varchar(7),${column},120)`:`CONVERT(varchar(10),${column},23)`;
+  const key=bucket==='month'?'month':'day';
+  return {sql:`WITH flows AS (SELECT ${bucketKey(safePaid)} AS ${key},w.ZJ_JE AS amount,0 AS refund ${from} AND w.ZJ_JE>=0 AND ${dateFilter(safePaid)} UNION ALL SELECT ${bucketKey(safeRefund)} AS ${key},-w.ZJ_JE AS amount,1 AS refund ${from} AND w.ZJ_JE>=0 AND w.ZJ_SKRQ IS NOT NULL AND ${dateFilter(safeRefund)}) SELECT ${key},CONVERT(varchar(50),SUM(amount),2) AS netAmount,CONVERT(varchar(50),SUM(CASE WHEN refund=0 THEN amount ELSE 0 END),2) AS chargedAmount,CONVERT(varchar(50),SUM(CASE WHEN refund=1 THEN -amount ELSE 0 END),2) AS refundedAmount FROM flows GROUP BY ${key} ORDER BY ${key}; SELECT COUNT_BIG(*) AS invalidDateCount ${from} AND ((w.ZJ_SKRQ IS NOT NULL AND ISDATE(w.ZJ_SKRQ)=0) OR (w.ZJ_TKRQ IS NOT NULL AND ISDATE(w.ZJ_TKRQ)=0));`,params};
  }
  const receivable=`CASE WHEN w.ZJ_TKRQ IS NULL AND w.ZJ_JE>=0 THEN w.ZJ_JE ELSE 0 END`;
  const paid=`CASE WHEN w.ZJ_TKRQ IS NULL AND w.ZJ_JE>=0 AND w.ZJ_SKRQ IS NOT NULL THEN w.ZJ_JE ELSE 0 END`;

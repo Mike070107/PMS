@@ -3,3 +3,18 @@ import {MisCollectionSmsService} from './mis-collection-sms.service';
 import * as effects from './mis-collection-effect';
 test('承诺回款拒绝重复源账，不以非法日期兑现承诺',()=>{const calculate=(effects as any).promiseProgress;assert.equal(typeof calculate,'function');const p={houseKey:'01:1:1',promisedCents:'100',createdAt:'2026-11-01T00:00:00Z',snapshot:{bills:[{id:'1',amountCents:100}]}};assert.equal(calculate(p,[{id:'1',houseKey:p.houseKey,paidAt:'2026-02-31',amountCents:100}]).fulfilled,false);assert.equal(calculate(p,[{id:'1',houseKey:p.houseKey,paidAt:'2026-11-02',amountCents:100}]).fulfilled,true);assert.throws(()=>calculate(p,Array(2).fill({id:'1',houseKey:p.houseKey,paidAt:'2026-11-02',amountCents:60})),/重复/)});
 for(const reason of ['scope','hold'])test('既有短信发送先检查'+reason+'，不得越过新冻结或数据范围',async()=>{let settingsRead=false;const batch:any={id:1,tenantId:1,purpose:'sms',snapshot:{notices:[{houseKey:'01:1:1'}]}},mis:any={collectionDetail:async()=>{if(reason==='scope')throw Error('fixture范围拒绝');return batch},activeCollectionHolds:async()=>[{houseKey:'01:1:1'}]},settings:any={readiness:async()=>{settingsRead=true;throw Error('unexpected-settings-access')}};const s=new MisCollectionSmsService({findOne:async()=>batch} as any,mis,settings,{} as any);await assert.rejects(s.sendBatch(1,{id:1,tenantId:1} as any,{} as any),reason==='scope'?/范围拒绝/:/冻结/);assert.equal(settingsRead,false)});
+test('短信送达统计：空数据返回0且 deliveredRate=null；有数据单次聚合按状态计数/分段，并校验日期范围',async()=>{
+ let raw:any=null,queries=0,whereSql='';
+ const qb:any={select(){return qb},addSelect(){return qb},where(sql:string,p:any){whereSql+=' '+sql;return qb},andWhere(sql:string,p:any){whereSql+=' '+sql;return qb},setParameter(){return qb},getRawOne:async()=>{queries++;return raw}};
+ const s:any=Object.create(MisCollectionSmsService.prototype);
+ s.mis={collectionCommunities:async()=>[{id:10,name:'合成小区',offices:['01']}]};
+ s.batchRepo={manager:{getRepository:()=>({createQueryBuilder:()=>qb})}};
+ const user:any={id:1,tenantId:1},access:any={scopeAll:true};
+ assert.deepEqual(await s.statsRange({from:'2026-11-01',to:'2026-11-07'},user,access),{total:0,submitted:0,delivered:0,failed:0,queued:0,deliveredRate:null,segments:0});
+ assert.match(whereSql,/COALESCE\(s\.submitted_at,s\.created_at\)/,'时间必须 submitted_at 兜底 created_at');
+ assert.match(whereSql,/house_key LIKE/,'communityId 用授权管理处前缀过滤');
+ raw={total:'4',submitted:'1',delivered:'2',failed:'1',queued:'0',segments:'5'};
+ assert.deepEqual(await s.statsRange({from:'2026-11-01',to:'2026-11-07',communityId:10},user,access),{total:4,submitted:1,delivered:2,failed:1,queued:0,segments:5,deliveredRate:50});
+ assert.equal(queries,2,'一次聚合查询，无 N+1');
+ await assert.rejects(s.statsRange({from:'2026-11-08',to:'2026-11-01'},user,access),/开始日期不能晚于结束日期/);
+});

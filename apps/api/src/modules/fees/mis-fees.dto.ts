@@ -27,6 +27,8 @@ export class MisResidentialQueryDto extends MisFeesQueryDto {
  /** 住户清单排序（仅 households 视图）：address 房屋地址（默认）/ amount 待缴金额 */
  @IsOptional() @IsIn(['address','amount']) sort?:'address'|'amount';
  @IsOptional() @IsIn(['asc','desc']) dir?:'asc'|'desc';
+ /** 趋势聚合粒度：day（默认）/ month 自然月；仅 view=trend 生效 */
+ @IsOptional() @IsIn(['day','month']) bucket?:'day'|'month';
 }
 /** 跟进提醒待办队列：status 是「人工跟进进度」而非账单状态，不能复用 MisResidentialQueryDto。 */
 export class MisCollectionFollowupQueryDto {
@@ -39,6 +41,12 @@ export class MisCollectionFollowupQueryDto {
  @IsOptional() @IsIn(['asc','desc']) dir?:'asc'|'desc';
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(1000000) page?:number;
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(100) pageSize?:number;
+}
+/** 住宅催缴短信送达统计（按 mis_collection_sms 聚合，时间取 submitted_at 兜底 created_at）。 */
+export class MisCollectionSmsStatsQueryDto {
+ @IsDefined() @Matches(/^\d{4}-\d{2}-\d{2}$/,{message:'开始日期不合法'}) from:string;
+ @IsDefined() @Matches(/^\d{4}-\d{2}-\d{2}$/,{message:'结束日期不合法'}) to:string;
+ @IsOptional() @Type(()=>Number) @IsInt() @Min(1) communityId?:number;
 }
 export class MisCollectionPreviewDto {
  @IsDefined() @ValidateNested() @Type(()=>MisResidentialQueryDto) filter:MisResidentialQueryDto;

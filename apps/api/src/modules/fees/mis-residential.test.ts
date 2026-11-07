@@ -135,3 +135,18 @@ test('Top10按户口径二次收窄：只读账号 phone 全为 null 且 phoneMa
  const edited:any=await editable.s.residential({view:'households',status:'unpaid'},editable.user,editable.access);
  assert.deepEqual(edited.aging.topHouses.map((row:any)=>row.phone),['13800000002','13800000001'],'有收费编辑权限才返回完整手机号');
 });
+test('趋势 bucket=month 按自然月聚合输出 YYYY-MM，默认仍按日；非法粒度拒绝',async()=>{
+ const month=report({view:'trend',paidFrom:'2026-01-01',paidTo:'2026-12-31',bucket:'month'});
+ assert.match(month.sql,/CONVERT\(varchar\(7\),/,'月粒度 SQL 取 YYYY-MM');
+ assert.match(month.sql,/AS month/);assert.match(month.sql,/GROUP BY month ORDER BY month/);
+ const day=report({view:'trend',paidFrom:'2026-01-01',paidTo:'2026-12-31'});
+ assert.match(day.sql,/CONVERT\(varchar\(10\),/,'默认日粒度不变');assert.match(day.sql,/AS day/);
+ assert.throws(()=>report({view:'trend',paidFrom:'2026-01-01',paidTo:'2026-12-31',bucket:'week'}),/趋势粒度/);
+ const s:any=Object.create(MisFeesService.prototype);
+ s.residentialScope=async()=>[{id:10,name:'合成小区',offices:['01']}];
+ let reads=0;
+ s.read=async()=>{reads++;return {recordsets:[[{month:'2026-01',netAmount:'12.34',chargedAmount:'20.00',refundedAmount:'7.66'},{month:'2026-02',netAmount:'1.00',chargedAmount:'1.00',refundedAmount:'0.00'}],[{invalidDateCount:2}]]}};
+ const out:any=await s.residential({view:'trend',paidFrom:'2026-01-01',paidTo:'2026-12-31',bucket:'month',_aging:false},{id:1,tenantId:1},{scopeAll:true});
+ assert.equal(reads,1,'月趋势只读一次MIS');assert.equal(out.bucket,'month');assert.equal(out.invalidDateCount,2);
+ assert.deepEqual(out.rows,[{month:'2026-01',netCents:1234,chargedCents:2000,refundedCents:766},{month:'2026-02',netCents:100,chargedCents:100,refundedCents:0}]);
+});

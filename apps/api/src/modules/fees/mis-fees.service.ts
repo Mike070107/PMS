@@ -158,6 +158,14 @@ export class MisFeesService implements OnModuleDestroy {
   if(!communities.length)throw new ForbiddenException('当前范围没有可查询的一通MIS物业数据');
   return communities;
  }
+ /** 只读短信统计复用住宅授权范围：不查 MIS、不依赖 MIS 连接，空范围由调用方返回 0。 */
+ async collectionCommunities(communityId:number|undefined,user:AuthUser,access?:ResolvedAccess){
+  if(!user.tenantId)throw new ForbiddenException('请选择公司后查询');
+  if(!access)throw new ForbiddenException('缺少数据范围授权');
+  let communities=await this.scope(user,access);
+  if(communityId!==undefined){if(!communities.some(c=>c.id===communityId))throw new ForbiddenException('该小区不在MIS查询授权范围');communities=communities.filter(c=>c.id===communityId);}
+  return communities;
+ }
  async residential(q:MisResidentialQuery,user:AuthUser,access?:ResolvedAccess){
   const communities=await this.residentialScope(q,user,access),built=buildMisResidentialQuery(q,communities.flatMap(c=>c.offices));
   const result=await this.read(built.sql,built.params),sets=result.recordsets||[];
@@ -174,7 +182,7 @@ export class MisFeesService implements OnModuleDestroy {
    return {...meta,rows};
   }
   if(!q.view||q.view==='dashboard')return {...meta,summary:{...amounts(sets[0]?.[0]||{}),total:Number(sets[0]?.[0]?.total||0),unpaidHouses:Number(sets[0]?.[0]?.unpaidHouses||0),adjustmentCount:Number(sets[0]?.[0]?.adjustmentCount||0)},byFee:(sets[1]||[]).map((r:any)=>({...amounts(r),feeCode:r.feeCode,feeName:r.feeName||'未命名费项',category:r.category,unpaidHouses:Number(r.unpaidHouses||0)}))};
-  if(q.view==='trend')return {...meta,invalidDateCount:Number(sets[1]?.[0]?.invalidDateCount||0),rows:(sets[0]||[]).map((r:any)=>({day:r.day,netCents:misMoneyToCents(r.netAmount),chargedCents:misMoneyToCents(r.chargedAmount),refundedCents:misMoneyToCents(r.refundedAmount)}))};
+  if(q.view==='trend'){const bucket=q.bucket==='month'?'month':'day';return {...meta,bucket,invalidDateCount:Number(sets[1]?.[0]?.invalidDateCount||0),rows:(sets[0]||[]).map((r:any)=>bucket==='month'?{month:String(r.month),netCents:misMoneyToCents(r.netAmount),chargedCents:misMoneyToCents(r.chargedAmount),refundedCents:misMoneyToCents(r.refundedAmount)}:{day:String(r.day),netCents:misMoneyToCents(r.netAmount),chargedCents:misMoneyToCents(r.chargedAmount),refundedCents:misMoneyToCents(r.refundedAmount)})};}
   const canSeePhone=this.canEditFees(access);
   const format=(r:any)=>{const {phone,amount,...safe}=r;const p=String(phone||'').trim();return {...safe,amountCents:misMoneyToCents(amount),billCount:r.billCount===undefined?undefined:Number(r.billCount),phone:canSeePhone&&/^1[3-9]\d{9}$/.test(p)?p:undefined,phoneMasked:/^1[3-9]\d{9}$/.test(p)?`${p.slice(0,3)}****${p.slice(-4)}`:p?'号码待核实':'未留手机号',contactEligible:/^1[3-9]\d{9}$/.test(p),communityId:communities.find(c=>c.offices.includes(r.officeCode))?.id};};
   if(q.view==='detail'){if((sets[0]||[]).length>10000)throw new BadRequestException('账单明细超过一万条，请缩小账期或分批');return {...meta,rows:(sets[0]||[]).map(format)};}
