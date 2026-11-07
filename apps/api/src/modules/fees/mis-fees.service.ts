@@ -166,6 +166,42 @@ export class MisFeesService implements OnModuleDestroy {
   if(communityId!==undefined){if(!communities.some(c=>c.id===communityId))throw new ForbiddenException('该小区不在MIS查询授权范围');communities=communities.filter(c=>c.id===communityId);}
   return communities;
  }
+ /**
+  * 大屏「近期已缴」：MIS WYZJ 的 paid 记录按房号+收款日聚合（同户同日多笔账单合并为一次播报），
+  * ZJ_SKRQ 在源库是 smalldatetime 但实际只存日期（全库时分秒均为 0），故 paidAt 返回日期，
+  * 另给 recordedAt（updatedate，真实到分钟，仅作 MIS 记录更新时间，非收款时间）。
+  */
+ async recentPayments(q:{limit?:number;communityId?:number},user:AuthUser,access?:ResolvedAccess){
+  const limit=q.limit??10;
+  if(!Number.isInteger(limit)||limit<1||limit>50)throw new BadRequestException('limit 须为1-50的整数');
+  const communities=await this.collectionCommunities(q.communityId,user,access);
+  if(!communities.length)return [];
+  const offices=[...new Set(communities.flatMap(c=>c.offices))];
+  const filter=buildMisFeeFilter({status:'paid'} as MisFeeQuery,offices);
+  filter.params.limit=limit;
+  const paidDate=`CONVERT(varchar(10),w.ZJ_SKRQ,23)`;
+  const sql=`SELECT TOP (@limit) l.管理处 AS officeCode,${filter.address} AS address,z.姓名 AS ownerName,${paidDate} AS paidDate,CONVERT(varchar(50),SUM(w.ZJ_JE),2) AS amount,COUNT_BIG(*) AS billCount,MAX(w.收款方式) AS channel,CONVERT(varchar(19),MAX(w.updatedate),120) AS recordedAt ${filter.from} AND w.ZJ_JE>0 GROUP BY l.管理处,${filter.address},z.姓名,${paidDate} ORDER BY paidDate DESC,MAX(w.updatedate) DESC,MAX(w.ZJ_ID) DESC;`;
+  const result=await this.read(sql,filter.params);
+  return (result.recordset||[]).map((r:any)=>{
+   const community=communities.find(c=>c.offices.includes(String(r.officeCode)));
+   if(!community)throw new ServiceUnavailableException('MIS返回范围无法确认，未显示数据');
+   const paidDateText=String(r.paidDate??'');
+   return {
+    paidAt:paidDateText,
+    paidDate:paidDateText,
+    paidAtPrecision:'date',
+    address:String(r.address??''),
+    ownerName:String(r.ownerName??''),
+    amountCents:misMoneyToCents(r.amount),
+    channel:r.channel?String(r.channel).trim()||null:null,
+    billCount:Number(r.billCount)||0,
+    recordedAt:r.recordedAt?`${String(r.recordedAt).replace(' ','T')}+08:00`:null,
+    recordedAtPrecision:'minute',
+    communityId:community.id,
+    communityName:community.name,
+   };
+  });
+ }
  async residential(q:MisResidentialQuery,user:AuthUser,access?:ResolvedAccess){
   const communities=await this.residentialScope(q,user,access),built=buildMisResidentialQuery(q,communities.flatMap(c=>c.offices));
   const result=await this.read(built.sql,built.params),sets=result.recordsets||[];

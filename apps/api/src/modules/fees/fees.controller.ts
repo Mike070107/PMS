@@ -36,11 +36,12 @@ import {
   UpdateBillDto,
   UpdateStandardDto,
 } from './dto';
+import { buildReportWorkbook } from '../../common/report-excel';
 import { FeesService } from './fees.service';
 import { MisFeesService } from './mis-fees.service';
 import { MisCollectionSmsService } from './mis-collection-sms.service';
 import {MisLedgerQueryDto} from './mis-ledger.dto';
-import { MisFeesQueryDto, MisHouseSearchDto, MisResidentialQueryDto, MisCollectionPreviewDto, MisCollectionSmsStatsQueryDto } from './mis-fees.dto';
+import { MisFeesQueryDto, MisHouseSearchDto, MisResidentialQueryDto, MisCollectionPreviewDto, MisCollectionSmsStatsQueryDto, MisRecentPaymentsQueryDto } from './mis-fees.dto';
 
 /**
  * 物业费（纯管理端页面），走页面权限矩阵。
@@ -88,6 +89,10 @@ export class FeesController {
   @Get('mis/houses')
   @RequirePermission('fees','view')
   misHouses(@Query() query:MisHouseSearchDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.searchHouses(query.communityId,query.q,user,access);}
+
+  @Get('mis/recent-payments')
+  @RequirePermission('fees','view')
+  misRecentPayments(@Query() query:MisRecentPaymentsQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.recentPayments(query,user,access);}
 
   @Get('mis/residential')
   @RequirePermission('fees','view')
@@ -152,6 +157,32 @@ export class FeesController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.feesService.feeReport(query, user, access);
+  }
+
+  /** 收费报表 Excel 导出：与 reports/summary 完全同一套筛选与口径。 */
+  @Get('reports/summary/export')
+  @RequirePermission(['fees', 'apartment-cashier'], 'view')
+  async feeReportExport(
+    @Query() query: FeeReportQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    const data = await this.feesService.feeReport(query, user, access);
+    const previous: Record<string, number> = {};
+    for (const [key, value] of Object.entries(data.previous)) previous['上期' + key] = value as number;
+    const buffer = await buildReportWorkbook([
+      { name: '汇总', meta: { from: data.range.from, to: data.range.to, granularity: data.range.granularity, ...data.totals, ...previous }, rows: [] },
+      { name: '收款趋势', rows: data.trend as unknown as Record<string, unknown>[] },
+      { name: '按费项', rows: data.byFee as unknown as Record<string, unknown>[] },
+      { name: '按收款方式', rows: data.byMethod as unknown as Record<string, unknown>[] },
+      { name: '按小区', rows: data.byCommunity as unknown as Record<string, unknown>[] },
+      { name: '按收费员', rows: data.byCashier as unknown as Record<string, unknown>[] },
+    ]);
+    const filename = '收费报表_' + data.range.from + '_' + data.range.to + '.xlsx';
+    return new StreamableFile(buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    });
   }
 
   /** 财务对账：按日 × 收款方式，和收费报表同一套取数口径 */

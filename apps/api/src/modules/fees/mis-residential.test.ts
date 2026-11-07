@@ -150,3 +150,18 @@ test('趋势 bucket=month 按自然月聚合输出 YYYY-MM，默认仍按日；�
  assert.equal(reads,1,'月趋势只读一次MIS');assert.equal(out.bucket,'month');assert.equal(out.invalidDateCount,2);
  assert.deepEqual(out.rows,[{month:'2026-01',netCents:1234,chargedCents:2000,refundedCents:766},{month:'2026-02',netCents:100,chargedCents:100,refundedCents:0}]);
 });
+test('近期已缴按房号+收款日聚合、明确日期精度并限制 limit；空数据返回 []',async()=>{
+ const s:any=Object.create(MisFeesService.prototype);
+ s.collectionCommunities=async()=>[{id:10,name:'合成小区',offices:['01']}];
+ let sql='',params:any=null;
+ s.read=async(q:any,p:any)=>{sql=q;params=p;return {recordset:[{officeCode:'01',address:'剑川路198弄1号101室',ownerName:'甲',paidDate:'2026-11-07',amount:'123.45',billCount:3,channel:'微信',recordedAt:'2026-11-07 11:39:00'}]}};
+ const out:any=await s.recentPayments({limit:10},{id:1,tenantId:1},{scopeAll:true});
+ assert.match(sql,/TOP \(@limit\)/);assert.match(sql,/GROUP BY l\.管理处/);assert.match(sql,/ORDER BY paidDate DESC/);
+ assert.equal(params.limit,10);
+ assert.deepEqual(out[0],{paidAt:'2026-11-07',paidDate:'2026-11-07',paidAtPrecision:'date',address:'剑川路198弄1号101室',ownerName:'甲',amountCents:12345,channel:'微信',billCount:3,recordedAt:'2026-11-07T11:39:00+08:00',recordedAtPrecision:'minute',communityId:10,communityName:'合成小区'});
+ await assert.rejects(s.recentPayments({limit:0},{id:1,tenantId:1},{scopeAll:true}),/limit/);
+ await assert.rejects(s.recentPayments({limit:51},{id:1,tenantId:1},{scopeAll:true}),/limit/);
+ s.read=async()=>({recordset:[]});
+ assert.deepEqual(await s.recentPayments({},{id:1,tenantId:1},{scopeAll:true}),[]);
+ assert.deepEqual(await s.recentPayments({communityId:10},{id:1,tenantId:1},{scopeAll:true}),[]);
+});

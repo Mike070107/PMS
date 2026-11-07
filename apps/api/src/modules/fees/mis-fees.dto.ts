@@ -48,6 +48,11 @@ export class MisCollectionSmsStatsQueryDto {
  @IsDefined() @Matches(/^\d{4}-\d{2}-\d{2}$/,{message:'结束日期不合法'}) to:string;
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) communityId?:number;
 }
+/** 大屏「近期已缴」：limit 默认 10、上限 50；communityId 受当前数据范围约束。 */
+export class MisRecentPaymentsQueryDto {
+ @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(50) limit?:number;
+ @IsOptional() @Type(()=>Number) @IsInt() @Min(1) communityId?:number;
+}
 export class MisCollectionPreviewDto {
  @IsDefined() @ValidateNested() @Type(()=>MisResidentialQueryDto) filter:MisResidentialQueryDto;
  @IsIn(['keys','all']) selection:'keys'|'all';
