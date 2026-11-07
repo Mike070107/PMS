@@ -12,6 +12,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { auth as authApi } from '@pms/api-client';
 import { auth, useSession, type SessionIdentity } from '@/lib/auth';
 import { canViewPath, firstAllowedPath } from '@/lib/page-access';
+import { can } from '@/lib/perm';
 import Shell from '@/components/Shell';
 import Login from '@/pages/Login';
 import { Loading, Toaster } from '@/components/ui';
@@ -47,6 +48,7 @@ const Settings = lazy(() => import('@/pages/Settings'));
 const Plates = lazy(() => import('@/pages/Plates'));
 const FamilyCars = lazy(() => import('@/pages/FamilyCars'));
 const PlateForm = lazy(() => import('@/pages/PlateForm'));
+const ScreenPage = lazy(() => import('@/pages/Screen'));
 
 /** 未登录访问深层链接：带上原始路径，登录后回跳，而不是一律落到 /today。 */
 function LoginRedirect() {
@@ -107,13 +109,17 @@ export default function App() {
   }
   const landing = firstAllowedPath(session.access);
   if (!landing) return <main className="empty" role="status" style={{ padding: 60 }}><p>当前账号未获授任何后台页面权限，请联系管理员。</p><button className="btn" onClick={() => setAccessRetry(n => n + 1)}>重新核对权限</button><button className="btn" onClick={() => auth.clear()}>退出登录</button></main>;
-  if (!canViewPath(loc.pathname, session.access)) return <Navigate to={landing} replace />;
+  // 大屏 /screen 不进 Shell 侧边栏，权限沿用 fees:view，不新增页面 key。
+  const screenMode = loc.pathname === '/screen' || loc.pathname.startsWith('/screen/');
+  if (!screenMode && !canViewPath(loc.pathname, session.access)) return <Navigate to={landing} replace />;
+  const screenAllowed = screenMode && can('fees', 'view');
 
   return (
     <>
       <Suspense fallback={<div style={{ padding: 60 }}><Loading /></div>}>
         <Routes>
           <Route path="/login" element={<Navigate to={landing} replace />} />
+          <Route path="/screen" element={screenAllowed ? <ScreenPage /> : <Navigate to={landing} replace />} />
           <Route element={<Shell />}>
             <Route path="/" element={<Navigate to={landing} replace />} />
             <Route path="/today" element={<Today />} />
