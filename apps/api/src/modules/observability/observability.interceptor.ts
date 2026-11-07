@@ -42,11 +42,16 @@ export class ObservabilityInterceptor implements NestInterceptor {
 
       const login = loginAttemptOf(req.originalUrl || req.url, result, statusCode, capture.errorMessage);
       if (login) {
+        const body = (req.body || {}) as any;
+        // 带账号+密码的登录由 AuthService 同步写 login_attempts；否则防爆破计数会因 fire-and-forget 重复/延迟。
+        const passwordLogin = !!(body.account && body.password)
+          && /\/auth\/(admin-login|staff-login)$/.test(String(req.originalUrl || req.url).split('?')[0]);
         void this.observability.recordLogin({
           tenantId, source, action: login.action, success: login.success,
           actorUserId, account: String((req.body as any)?.account || '') || null,
           ipAddress: capture.ipAddress, userAgent: capture.userAgent,
           statusCode, durationMs: capture.durationMs, message: login.message,
+          skipAttempt: passwordLogin,
         });
       } else if (shouldAuditOperation(req, actorUserId)) {
         void this.observability.recordOperation(capture);

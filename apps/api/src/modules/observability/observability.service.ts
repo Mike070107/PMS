@@ -7,7 +7,7 @@ import { AuthUser } from '../../common/current-user.decorator';
 import { Community, LoginAttempt, RequestMetric, SystemLog, User } from '../../entities';
 import { AccessService } from '../access/access.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { LOGIN_REASON_TEXT, loginFailureReasonOf, loginMethodOfAction, maskAccount } from '../telemetry/login-attempt.util';
+import { LOGIN_REASON_TEXT, loginAccountKey, loginFailureReasonOf, loginMethodOfAction, maskAccount } from '../telemetry/login-attempt.util';
 import { businessActionCodesByArea, listBusinessActions, resolveBusinessAction } from './business-action';
 import { buildApiErrorAlert } from './alert-presentation';
 import { auditClassPredicate, presentOperation, safeLogPath, redactSensitiveLog } from './log-presentation';
@@ -156,6 +156,8 @@ export class ObservabilityService {
     statusCode: number;
     durationMs: number;
     message?: string | null;
+    /** 密码登录由 AuthService 同步落 login_attempts（防爆破计数需要即时可见），拦截器不再重复写。 */
+    skipAttempt?: boolean;
   }) {
     let tenantId = input.tenantId;
     let actorUserId = input.actorUserId;
@@ -195,12 +197,13 @@ export class ObservabilityService {
     }).catch(() => undefined);
     // 登录尝试是旁路：失败也不能影响登录响应；不落明文账号、不落密码。
     const failedReason = input.success ? null : loginFailureReasonOf(input.action, input.message);
-    if (this.loginAttemptRepo) {
+    if (this.loginAttemptRepo && !input.skipAttempt) {
       void this.loginAttemptRepo.save(this.loginAttemptRepo.create({
         tenantId: tenantId ?? null,
         userId: actorUserId ?? null,
         userName: actorName,
         accountMasked,
+        accountKey: input.account ? loginAccountKey(input.account) : null,
         ip: clipNullable(input.ipAddress, 64),
         userAgent: clipNullable(input.userAgent, 200),
         method: loginMethodOfAction(input.action),
