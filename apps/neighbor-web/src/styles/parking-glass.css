@@ -1,25 +1,25 @@
-/* 大车库 / 人防车位：悬浮液体玻璃卡片（仅这两个页面加载，作用域限定在 .sp-glass-wrap 内） */
+/* 大车库 / 人防车位：通透液体玻璃卡片（参照图：冷调冰蓝 → 浅灰白，单层背景，无虚框）
+   仅这两个页面加载（由 ParkingSpaces 引入），作用域限定在 .sp-glass-wrap 内。 */
 .sp-glass-wrap {
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  border-radius: 24px;
+  border-radius: 26px;
   padding: 18px;
-  background: linear-gradient(160deg, #eef4fb 0%, #e7eef8 46%, #f2f5f9 100%);
+  background: linear-gradient(160deg, #eef5fc 0%, #e3edf7 48%, #f7fafc 100%);
 }
 
-/* 单张固定背景光斑：卡片自身的 backdrop-filter 直接糊这一层，避免每张卡再叠独立模糊层 */
+/* 只保留一层固定背景 + 极淡青色光晕；不要橙色/紫色 */
 .sp-glass-bg {
   position: absolute;
   inset: -12%;
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(42% 55% at 12% 18%, rgba(88, 146, 216, 0.38) 0%, rgba(88, 146, 216, 0) 62%),
-    radial-gradient(38% 48% at 88% 12%, rgba(72, 206, 190, 0.32) 0%, rgba(72, 206, 190, 0) 60%),
-    radial-gradient(46% 60% at 74% 92%, rgba(255, 178, 96, 0.24) 0%, rgba(255, 178, 96, 0) 62%),
-    radial-gradient(36% 44% at 26% 88%, rgba(124, 107, 214, 0.22) 0%, rgba(124, 107, 214, 0) 60%);
-  filter: blur(10px) saturate(115%);
+    radial-gradient(58% 62% at 18% 16%, rgba(150, 200, 228, 0.2) 0%, rgba(150, 200, 228, 0) 62%),
+    radial-gradient(46% 54% at 82% 24%, rgba(178, 214, 233, 0.16) 0%, rgba(178, 214, 233, 0) 58%),
+    radial-gradient(52% 58% at 62% 90%, rgba(190, 220, 238, 0.14) 0%, rgba(190, 220, 238, 0) 60%);
+  filter: blur(12px);
 }
 
 .sp-glass-wrap .sp-grid {
@@ -31,95 +31,97 @@
 
 .sp-glass-wrap .sp-card {
   position: relative;
-  border: 1px solid rgba(255, 255, 255, 0.62);
-  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-style: solid;
+  border-radius: 22px;
   padding: 14px;
-  /* 半透明玻璃底 + 一层极淡斜向反光 */
+  /* 卡内顶部一层极淡的线性渐变（白 18% → 透明）+ 半透明白玻璃底 */
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.64) 0%, rgba(255, 255, 255, 0.16) 34%, rgba(255, 255, 255, 0) 58%),
-    rgba(255, 255, 255, 0.34);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  backdrop-filter: blur(18px) saturate(140%);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0) 42%),
+    rgba(255, 255, 255, 0.42);
+  -webkit-backdrop-filter: blur(22px) saturate(115%);
+  backdrop-filter: blur(22px) saturate(115%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.6),
-    0 1px 2px rgba(23, 32, 51, 0.06),
-    0 12px 28px -14px rgba(23, 32, 51, 0.28);
-  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background-color 180ms ease;
-  /* 上百张卡时跳过视口外渲染，减少合成开销 */
+    inset 0 0 0 1px rgba(255, 255, 255, 0.45),
+    0 2px 8px rgba(60, 90, 130, 0.06),
+    0 18px 40px rgba(60, 90, 130, 0.1);
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  /* 上百张卡时跳过视口外渲染 */
   content-visibility: auto;
   contain-intrinsic-size: 230px;
 }
 
-/* 玻璃反光：只加一层很淡的渐变，不做独立 blur 层 */
-.sp-glass-wrap .sp-card::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: linear-gradient(120deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 34%, rgba(255, 255, 255, 0) 70%, rgba(255, 255, 255, 0.14) 100%);
-  opacity: 0.7;
-  transition: opacity 180ms ease;
-}
-
-.sp-glass-wrap .sp-card > * {
-  position: relative;
-  z-index: 1;
-}
-
 .sp-glass-wrap .sp-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(255, 255, 255, 0.88);
+  border-color: rgba(255, 255, 255, 0.92);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.78),
-    0 3px 8px rgba(23, 32, 51, 0.08),
-    0 22px 48px -18px rgba(23, 32, 51, 0.38);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.55),
+    0 4px 10px rgba(60, 90, 130, 0.08),
+    0 24px 52px rgba(60, 90, 130, 0.14);
 }
 
-.sp-glass-wrap .sp-card:hover::after {
-  opacity: 1;
-}
-
-/* 状态色不被玻璃吃掉：空车位虚线灰调；已绑冷色微边；异常保留红调 */
+/* 空车位：不用虚线，靠边框灰蓝 + 文字灰 + 更透的底 */
 .sp-glass-wrap .sp-card.is-free {
+  border-style: solid;
+  border-color: rgba(180, 200, 220, 0.55);
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.52) 0%, rgba(238, 242, 247, 0.3) 40%, rgba(255, 255, 255, 0) 62%),
-    rgba(243, 246, 250, 0.3);
-  border-style: dashed;
-  border-color: rgba(140, 155, 180, 0.5);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0) 44%),
+    rgba(255, 255, 255, 0.3);
 }
 
-.sp-glass-wrap .sp-card[data-state='bound'] {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.6),
-    inset 0 0 0 1px rgba(58, 100, 143, 0.18),
-    0 1px 2px rgba(23, 32, 51, 0.06),
-    0 12px 28px -14px rgba(23, 32, 51, 0.3);
+.sp-glass-wrap .sp-card.is-free .sp-no {
+  color: var(--ink3);
 }
 
+.sp-glass-wrap .sp-card.is-free .sp-kv dt,
+.sp-glass-wrap .sp-card.is-free .sp-kv dd {
+  color: var(--ink3);
+}
+
+/* 已绑车牌：冷色边框 */
+.sp-glass-wrap .sp-card[data-state='bound']:not(.is-abnormal) {
+  border-color: rgba(90, 150, 220, 0.35);
+}
+
+/* 异常/停用：红调边框 */
 .sp-glass-wrap .sp-card.is-abnormal {
-  border-color: rgba(190, 90, 78, 0.55);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.6),
-    0 0 0 1px rgba(190, 90, 78, 0.25),
-    0 12px 28px -14px rgba(23, 32, 51, 0.3);
+  border-color: rgba(200, 90, 80, 0.35);
 }
 
-.sp-glass-wrap .sp-card .tag,
-.sp-glass-wrap .sp-card .btn {
-  position: relative;
-  z-index: 2;
+/* 状态小圆点：文字之外的第二层区分，颜色与状态一致 */
+.sp-state {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-left: auto;
+  flex: none;
+  background: #a8bccd;
+  box-shadow: 0 0 0 3px rgba(168, 188, 205, 0.18);
 }
 
-/* 不支持 backdrop-filter 的浏览器：回退半透明纯色，保证可读 */
+.sp-state[data-tone='bound'] {
+  background: #5a96dc;
+  box-shadow: 0 0 0 3px rgba(90, 150, 220, 0.16);
+}
+
+.sp-state[data-tone='free'] {
+  background: #a8bccd;
+  box-shadow: 0 0 0 3px rgba(168, 188, 205, 0.18);
+}
+
+.sp-state[data-tone='danger'] {
+  background: #c85a50;
+  box-shadow: 0 0 0 3px rgba(200, 90, 80, 0.16);
+}
+
+/* 不支持 backdrop-filter：回退高不透明纯色 */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .sp-glass-wrap .sp-card {
-    background: rgba(255, 255, 255, 0.94);
-    border-color: rgba(228, 232, 239, 1);
-    box-shadow: 0 1px 2px rgba(23, 32, 51, 0.08), 0 8px 18px -12px rgba(23, 32, 51, 0.26);
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 1px 2px rgba(60, 90, 130, 0.08), 0 8px 18px rgba(60, 90, 130, 0.08);
   }
   .sp-glass-wrap .sp-card.is-free {
-    background: rgba(248, 250, 252, 0.96);
+    background: rgba(250, 252, 254, 0.92);
   }
 }
 
@@ -135,7 +137,7 @@
 @media (max-width: 700px) {
   .sp-glass-wrap {
     padding: 12px;
-    border-radius: 20px;
+    border-radius: 22px;
   }
   .sp-glass-wrap .sp-grid {
     gap: 12px;

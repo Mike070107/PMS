@@ -128,6 +128,7 @@ export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) 
                   </span>
                   <div className="sp-no">{r.spaceNo}<small>号位</small></div>
                   {r.note ? <span className={`tag ${r.note.includes('租赁') ? 'warn' : (r.note.includes('来源') ? 'mute' : 'ok')}`}>{r.note}</span> : null}
+                  <span className="sp-state" data-tone={abnormal ? 'danger' : hasPlate ? 'bound' : 'free'} title={abnormal ? '异常/停用' : hasPlate ? '已绑车牌' : '空车位'} aria-label={abnormal ? '异常/停用' : hasPlate ? '已绑车牌' : '空车位'} />
                 </div>
                 <div className="sp-plate" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ flex: 1, minWidth: 0 }}>{hasPlate ? r.plate : <span className="sp-empty">空车位</span>}</span>
