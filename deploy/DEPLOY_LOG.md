@@ -6366,3 +6366,10 @@
   - 74b745e4 chore(api): 新增 test:telemetry 脚本
   - afb17a0d feat(telemetry): 页面访问埋点与使用统计；登录成功/失败记录（含未授权场景）
 
+## 2026-11-07 17:25 · web · 632d4c26
+
+- 包：`pms-web-20261107-172447.tar.gz`
+- 提交：632d4c26 fix(telemetry): 已登录页面访问未埋点（hook 只在未登录重定向里调用）
+- 自上次（f7257607）以来上线的相关提交：
+  - 632d4c26 fix(telemetry): 已登录页面访问未埋点（hook 只在未登录重定向里调用）
+
