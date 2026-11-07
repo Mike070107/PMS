@@ -63,6 +63,10 @@ export interface MisResidentialQuery extends MisFeeQuery {
  view?: 'dashboard'|'households'|'trend'|'detail'|'communities';
  category?: 'all'|'property'|'berth'|'other';
  houseKeys?: string[];
+ /** 住户清单排序：address=房屋地址（默认），amount=待缴金额合计；仅 households 视图生效 */
+ sort?: 'address'|'amount';
+ /** 排序方向：asc（默认）/ desc */
+ dir?: 'asc'|'desc';
 }
 const categorySql = `CASE WHEN f.XM LIKE N'%泊位%' OR f.XM LIKE N'%车位%' OR f.XM LIKE N'%停车%' THEN 'berth' WHEN f.XM LIKE N'%物业%' OR (f.XM LIKE N'%管理费%' AND f.XM NOT LIKE N'%停车%') THEN 'property' ELSE 'other' END`;
 /** No DDL/DML; same source joins/filter as existing MIS bill reader; SQL Server 2008 compatible. */
@@ -71,6 +75,8 @@ export function buildMisResidentialQuery(q:MisResidentialQuery,offices:string[])
  const view=q.view||'dashboard';
  if(!['dashboard','households','trend','detail','communities'].includes(view))throw new BadRequestException('报表视图不合法');
  if(q.category&&!['all','property','berth','other'].includes(q.category))throw new BadRequestException('收费分类不合法');
+ if(q.sort!==undefined&&!['address','amount'].includes(q.sort))throw new BadRequestException('排序字段仅支持 address 或 amount');
+ if(q.dir!==undefined&&!['asc','desc'].includes(q.dir))throw new BadRequestException('排序方向仅支持 asc 或 desc');
  validateMisFeeRange(q);
  if(view==='trend'&&(!q.paidFrom||!q.paidTo))throw new BadRequestException('趋势需指定收款日期范围');
  if(view==='trend'&&(Date.parse(q.paidTo!)-Date.parse(q.paidFrom!))/86400000>366)throw new BadRequestException('收款日期范围不能超过一年');
@@ -106,7 +112,13 @@ export function buildMisResidentialQuery(q:MisResidentialQuery,offices:string[])
  else from+=' AND w.ZJ_SKRQ IS NULL AND w.ZJ_TKRQ IS NULL AND w.ZJ_JE>0';
  const group=`l.管理处,s.S_ID,z.ZH_ID,${address},z.姓名,z.移动电话,l.地址2,l.地址3,s.室`;
  const natural=(col:string)=>`CASE WHEN ${col}<>N'' AND ${col} NOT LIKE '%[^0-9]%' AND LEN(${col})<10 THEN CONVERT(bigint,${col}) ELSE 2147483647 END`;
- const base=`SELECT ${houseKey} AS houseKey,l.管理处 AS officeCode,${address} AS address,z.姓名 AS ownerName,z.移动电话 AS phone,COUNT_BIG(*) AS billCount,CONVERT(varchar(50),SUM(w.ZJ_JE),2) AS amount,MIN(w.ZJ_CNY) AS periodFrom,MAX(w.ZJ_CNY) AS periodTo,ROW_NUMBER() OVER(ORDER BY l.管理处,${natural('l.地址2')},l.地址2,${natural('l.地址3')},l.地址3,${natural('s.室')},s.室,z.ZH_ID) AS rowNo ${from} GROUP BY ${group}`;
+ // 排序只作用于 households 视图；_aging:false（导出/内部全量扫描）强制回默认地址升序，导出顺序不受影响。
+ const internal=(q as any)._aging===false,sortKey=internal?'address':(q.sort??'address'),dir=internal?'ASC':((q.dir??'asc')==='desc'?'DESC':'ASC');
+ // 地址自然序；最后用 z.ZH_ID（houseKey 的一部分）兜底，保证同一排序值翻页不重复。
+ const addressOrder=(direction:string)=>`l.管理处 ${direction},${natural('l.地址2')} ${direction},l.地址2 ${direction},${natural('l.地址3')} ${direction},l.地址3 ${direction},${natural('s.室')} ${direction},s.室 ${direction},z.ZH_ID ${direction}`;
+ // 金额排序同额时固定用地址升序兜底（与方向无关），仍有 z.ZH_ID 唯一键在末尾。
+ const order=sortKey==='amount'?`SUM(w.ZJ_JE) ${dir},${addressOrder('ASC')}`:`${addressOrder(dir)}`;
+ const base=`SELECT ${houseKey} AS houseKey,l.管理处 AS officeCode,${address} AS address,z.姓名 AS ownerName,z.移动电话 AS phone,COUNT_BIG(*) AS billCount,CONVERT(varchar(50),SUM(w.ZJ_JE),2) AS amount,MIN(w.ZJ_CNY) AS periodFrom,MAX(w.ZJ_CNY) AS periodTo,ROW_NUMBER() OVER(ORDER BY ${order}) AS rowNo ${from} GROUP BY ${group}`;
  const page=q.page??1,pageSize=q.pageSize??20;params.firstRow=(page-1)*pageSize+1;params.lastRow=page*pageSize;
  return {sql:`SELECT COUNT_BIG(*) AS total,CONVERT(varchar(50),SUM(g.amount),2) AS amount FROM (SELECT SUM(w.ZJ_JE) AS amount ${from} GROUP BY l.管理处,s.S_ID,z.ZH_ID) g; WITH ranked AS (${base}) SELECT * FROM ranked WHERE rowNo BETWEEN @firstRow AND @lastRow ORDER BY rowNo;`,params};
 }

@@ -64,6 +64,31 @@ test('住宅query builder全部视图明确拒绝paid/unpaid之外状态，不�
  for(const status of ['paid','unpaid'])assert.match(report({view:'households',status}).sql,/WYZJ/);
 });
 
+test('住户清单排序：address/amount 与方向进入 SQL、非法值 400、其他视图与内部扫描不受影响',async()=>{
+ const amountDesc=report({view:'households',status:'unpaid',sort:'amount',dir:'desc'});
+ assert.match(amountDesc.sql,/ROW_NUMBER\(\) OVER\(ORDER BY SUM\(w\.ZJ_JE\) DESC,/,'金额降序必须进 ROW_NUMBER');
+ assert.match(amountDesc.sql,/z\.ZH_ID ASC\)/,'金额同额用地址唯一键兜底，保证翻页稳定');
+ const amountAsc=report({view:'households',status:'unpaid',sort:'amount',dir:'asc'});
+ assert.match(amountAsc.sql,/SUM\(w\.ZJ_JE\) ASC,/);
+ const addressDesc=report({view:'households',status:'unpaid',sort:'address',dir:'desc'});
+ assert.match(addressDesc.sql,/ORDER BY l\.管理处 DESC,/,'地址降序');
+ assert.match(addressDesc.sql,/z\.ZH_ID DESC\)/,'地址排序末尾仍以 houseKey 组成键兜底');
+ assert.match(report({view:'households',status:'unpaid'}).sql,/ORDER BY l\.管理处 ASC,/,'默认地址升序');
+ // 非法 sort/dir 在服务层就是 BadRequest（HTTP 400），DTO 同样拦
+ assert.throws(()=>report({view:'households',sort:'bogus' as any}),/排序/);
+ assert.throws(()=>report({view:'households',dir:'up' as any}),/排序/);
+ const {ValidationPipe}=require('@nestjs/common');const {MisResidentialQueryDto}=require('./mis-fees.dto');
+ const pipe=new ValidationPipe({transform:true,whitelist:true});
+ await assert.rejects(pipe.transform({sort:'bogus'},{type:'query',metatype:MisResidentialQueryDto}),/Bad Request/);
+ await assert.rejects(pipe.transform({dir:'up'},{type:'query',metatype:MisResidentialQueryDto}),/Bad Request/);
+ // 只影响 households：dashboard 带 sort/dir 与不带时 SQL 完全一致
+ assert.equal(report({view:'dashboard',sort:'amount',dir:'desc'} as any).sql,report({view:'dashboard'}).sql,'其他视图排序不能变');
+ // _aging:false（导出/内部全量扫描）强制回默认地址升序，不受 sort 参数影响
+ const internal=report({view:'households',status:'unpaid',sort:'amount',dir:'desc',_aging:false} as any);
+ assert.match(internal.sql,/ORDER BY l\.管理处 ASC,/,'内部扫描保持默认地址序');
+ assert.doesNotMatch(internal.sql,/SUM\(w\.ZJ_JE\) DESC/,'内部扫描不得继承金额排序');
+});
+
 test('趋势隔离旧库非法日期并返回数据质量计数',()=>{const r=report({view:'trend',paidFrom:'2026-11-01',paidTo:'2026-11-04'});assert.match(r.sql,/CASE WHEN ISDATE\(w\.ZJ_SKRQ\)=1 THEN CONVERT\(datetime,w\.ZJ_SKRQ\) ELSE NULL END/);assert.match(r.sql,/CASE WHEN ISDATE\(w\.ZJ_TKRQ\)=1 THEN CONVERT\(datetime,w\.ZJ_TKRQ\) ELSE NULL END/);assert.match(r.sql,/AS invalidDateCount/)});
 
 test('旧MIS日期参数使用无歧义112样式，不用不兼容的23输入样式',()=>{const r=report({view:'trend',paidFrom:'2026-11-01',paidTo:'2026-11-04'});assert.match(r.sql,/CONVERT\(datetime,REPLACE\(@paidFrom,'-',''\),112\)/);assert.doesNotMatch(r.sql,/CONVERT\(datetime,@paid(?:From|To),23\)/)});

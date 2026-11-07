@@ -24,13 +24,19 @@ export class MisResidentialQueryDto extends MisFeesQueryDto {
  @IsOptional() @IsIn(['dashboard','households','trend','detail','communities']) view?:'dashboard'|'households'|'trend'|'detail'|'communities';
  @IsOptional() @IsIn(['all','property','berth','other']) category?:'all'|'property'|'berth'|'other';
  @IsOptional() @Transform(({value})=>typeof value==='string'?value.split(','):value) @IsArray() @ArrayMaxSize(200) @ArrayUnique() @Matches(/^(0[1-4]):[1-9]\d{0,18}:[1-9]\d{0,18}$/,{each:true}) houseKeys?:string[];
+ /** 住户清单排序（仅 households 视图）：address 房屋地址（默认）/ amount 待缴金额 */
+ @IsOptional() @IsIn(['address','amount']) sort?:'address'|'amount';
+ @IsOptional() @IsIn(['asc','desc']) dir?:'asc'|'desc';
 }
 /** 跟进提醒待办队列：status 是「人工跟进进度」而非账单状态，不能复用 MisResidentialQueryDto。 */
 export class MisCollectionFollowupQueryDto {
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) communityId?:number;
  @IsOptional() @IsString() @MaxLength(60) q?:string;
  @IsOptional() @IsIn(['all','never','overdue','contacted']) status?:'all'|'never'|'overdue'|'contacted';
- @IsOptional() @IsIn(['amount','recent']) sort?:'amount'|'recent';
+ /** 跟进队列排序：amount 金额（默认）/ recent 最近跟进 / address 房号自然序 / count 人工跟进次数 / days 距上次跟进天数 */
+ @IsOptional() @IsIn(['amount','recent','address','count','days']) sort?:'amount'|'recent'|'address'|'count'|'days';
+ /** 排序方向：asc / desc；缺省由列决定（房号升序，其余降序） */
+ @IsOptional() @IsIn(['asc','desc']) dir?:'asc'|'desc';
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(1000000) page?:number;
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(100) pageSize?:number;
 }

@@ -439,12 +439,14 @@ export class MisFeesService implements OnModuleDestroy {
    return events.save(events.create({tenantId:user.tenantId!,communityId,houseKey:dto.houseKey,action:dto.action,note,recordId,requestKey:dto.requestKey,fingerprint,createdBy:user.id,updatedBy:user.id}));
   });
  }
- async collectionFollowups(q:{communityId?:number;q?:string;status?:'all'|'never'|'overdue'|'contacted';sort?:'amount'|'recent';page?:number;pageSize?:number},user:AuthUser,access?:ResolvedAccess){
+ async collectionFollowups(q:{communityId?:number;q?:string;status?:'all'|'never'|'overdue'|'contacted';sort?:'amount'|'recent'|'address'|'count'|'days';dir?:'asc'|'desc';page?:number;pageSize?:number},user:AuthUser,access?:ResolvedAccess){
   const allowed=await this.residentialScope({communityId:q.communityId},user,access),ids=allowed.map(c=>c.id),today=effectDay(new Date());
-  // 跟进待办队列：默认按待缴金额降序（价值优先），也支持按最近一次人工跟进倒序；never 始终排在 recent 的最后。
-  const status=q.status??'all',sort=q.sort??'amount',keyword=String(q.q??'').trim();
+  // 跟进待办队列：默认按待缴金额降序（价值优先）；另有最近跟进 / 房号自然序 / 人工跟进次数 / 距今天数。
+  // dir 缺省按列选默认方向：房号升序，其余降序；从未跟进在 days 排序里永远排最前。
+  const status=q.status??'all',sort=q.sort??'amount',dir=q.dir??(sort==='address'?'asc':'desc'),keyword=String(q.q??'').trim();
   if(!['all','never','overdue','contacted'].includes(status))throw new BadRequestException('跟进筛选不合法');
-  if(!['amount','recent'].includes(sort))throw new BadRequestException('跟进排序不合法');
+  if(!['amount','recent','address','count','days'].includes(sort))throw new BadRequestException('跟进排序不合法');
+  if(!['asc','desc'].includes(dir))throw new BadRequestException('排序方向不合法');
   if(keyword.length>60)throw new BadRequestException('搜索关键词过长');
   if((q.page!==undefined&&(!Number.isSafeInteger(q.page)||q.page<1))||(q.pageSize!==undefined&&(!Number.isSafeInteger(q.pageSize)||q.pageSize<1||q.pageSize>100)))throw new BadRequestException('分页参数不合法');
   const page=q.page??1,pageSize=q.pageSize??20;
@@ -497,13 +499,32 @@ export class MisFeesService implements OnModuleDestroy {
    // 搜索与状态都只筛展示集合，不影响 今日待跟进 计数和空态里的整体命中口径。
    const matched=candidates.filter(r=>!needle||r.address.toLowerCase().includes(needle)||r.ownerName.toLowerCase().includes(needle)||r.houseKey.includes(needle));
    const visible=status==='all'?matched:matched.filter(r=>status==='never'?r.never:status==='overdue'?r.followupStatus!=='contacted':r.followupStatus==='contacted');
-   visible.sort((a,b)=>{if(sort==='recent'){const am=a.lastContactAt?Date.parse(a.lastContactAt):-1,bm=b.lastContactAt?Date.parse(b.lastContactAt):-1;return bm-am||b.amountCents-a.amountCents||a.houseKey.localeCompare(b.houseKey);}return b.amountCents-a.amountCents||a.houseKey.localeCompare(b.houseKey);});
+   // 房号自然序：管理处 → S_ID（数字）→ ZH_ID（数字）；作为 address 排序，也作为其余排序的统一兜底键。
+   const addressParts=(row:any)=>String(row.houseKey??'').split(':');
+   const compareAddress=(a:any,b:any)=>{const A=addressParts(a),B=addressParts(b);return String(A[0]??'').localeCompare(String(B[0]??''))||(Number(A[1])||0)-(Number(B[1])||0)||(Number(A[2])||0)-(Number(B[2])||0);};
+   const direction=dir==='asc'?1:-1;
+   visible.sort((a,b)=>{
+    let cmp=0;
+    if(sort==='address')cmp=compareAddress(a,b)*direction;
+    else if(sort==='count')cmp=((Number(a.contactCount)||0)-(Number(b.contactCount)||0))*direction;
+    else if(sort==='days'){
+     // 从未跟进（days=null）无论升降序都排最前；其余按距今天数比较。
+     if(a.never!==b.never)return a.never?-1:1;
+     if(!a.never)cmp=((Number(a.days)||0)-(Number(b.days)||0))*direction;
+    }
+    else if(sort==='recent'){const am=a.lastContactAt?Date.parse(a.lastContactAt):-1,bm=b.lastContactAt?Date.parse(b.lastContactAt):-1;cmp=(am-bm)*direction;}
+    else cmp=(a.amountCents-b.amountCents)*direction;
+    if(cmp)return cmp;
+    // 同值兜底：次数/最近/天数用金额降序，最后统一 houseKey（地址自然序）保证翻页稳定。
+    if(sort!=='amount'&&sort!=='address'){const amountCmp=b.amountCents-a.amountCents;if(amountCmp)return amountCmp;}
+    return compareAddress(a,b);
+   });
    total=visible.length;totalAmountCents=visible.reduce((sum,row)=>sum+row.amountCents,0);overdueCount=overdueRows.length;
    queue=visible.slice((page-1)*pageSize,page*pageSize);
    largeInactive=overdueRows.slice().sort((a,b)=>b.amountCents-a.amountCents||a.houseKey.localeCompare(b.houseKey)).slice(0,100);
    stats={avgAmountCents:population?Math.round(populationCents/population):0,hitCount:candidates.length,hitAmountCents:candidates.reduce((sum,row)=>sum+row.amountCents,0),thresholdCents:rule.amountCents,inactiveDays:rule.inactiveDays,scanned:scannedRows.length,neverCount:candidates.filter(r=>r.never).length,overdueCount:overdueRows.length,contactedCount:candidates.filter(r=>r.followupStatus==='contacted').length};
   }
-  return {today,followupHouseholds:Math.max(overdueHouseholds,overdueCount),promises:rows,holds,events,rows:queue,total,totalAmountCents,page,pageSize,status,sort,largeInactive,stats,rule,timelineScope:'责任对象跟进（跨批次）'};
+  return {today,followupHouseholds:Math.max(overdueHouseholds,overdueCount),promises:rows,holds,events,rows:queue,total,totalAmountCents,page,pageSize,status,sort,dir,largeInactive,stats,rule,timelineScope:'责任对象跟进（跨批次）'};
  }
  /** 已缴原账只读入口：复用既有住宅明细SQL，归因不读取updatedate作为收款日。 */
  async paidCollectionBills(houseKeys:string[],user:AuthUser,access?:ResolvedAccess){

@@ -9,7 +9,8 @@ type Hold={id:number;houseKey:string;reason:string;until:string};
 type Event={id:number;houseKey:string;action:string;note:string;createdAt:string;createdBy:number};
 type LargeInactive={houseKey:string;address:string;amountCents:number;lastContactAt:string|null;days:number|null;never:boolean};
 type FollowupStatus='all'|'never'|'overdue'|'contacted';
-type Sort='amount'|'recent';
+type Sort='amount'|'recent'|'address'|'count'|'days';
+type SortDir='asc'|'desc';
 type QueueRow={houseKey:string;phone?:string|null;phoneMasked?:string;address:string;ownerName:string;amountCents:number;lastContactAt:string|null;days:number|null;never:boolean;lastAction:'phone'|'promise'|'hold'|null;lastNote:string;contactCount:number;followupStatus:'never'|'overdue'|'contacted'};
 type Stats={avgAmountCents:number;hitCount:number;hitAmountCents:number;thresholdCents:number;inactiveDays:number;scanned?:number;neverCount?:number;overdueCount?:number;contactedCount?:number};
 type Rule={amountCents:number;inactiveDays:number;enabled:boolean};
@@ -17,6 +18,7 @@ type Data={followupHouseholds:number;promises:PromiseRow[];holds:Hold[];events:E
 const Context=createContext<{data:Data|null;editable:boolean;open:(key:string)=>void}>({data:null,editable:false,open:()=>{}});
 const reasons:Record<string,string>={dispute:'费用争议',request:'住户申请',complaint:'投诉处理中'};
 const actionNames:Record<string,string>={phone:'电话',promise:'承诺付款',hold:'冻结'};
+const SORT_LABELS:Record<Sort,string>={amount:'待缴金额',recent:'最近跟进',address:'房号',count:'跟进次数',days:'距上次跟进'};
 const statusOptions:Array<[FollowupStatus,string]>=[['all','全部'],['never','从未跟进'],['overdue','超期未跟进'],['contacted','已跟进']];
 const PAGE_SIZE=20,defaultRule:Rule={amountCents:180000,inactiveDays:7,enabled:true},emptyStats:Stats={avgAmountCents:0,hitCount:0,hitAmountCents:0,thresholdCents:0,inactiveDays:0};
 function friendly(e:unknown){return e instanceof Error&&/[\u4e00-\u9fff]/.test(e.message)?e.message:'跟进查询未完成，可重试'}
@@ -39,7 +41,7 @@ export function FollowupTodayMetric(){
 }
 export default function CollectionFollowups({communityId,version,editable,onChanged,children}:{communityId?:number;version:string;editable:boolean;onChanged:()=>void;children:React.ReactNode}){
  const [query,setQuery]=useState(''),[keyword,setKeyword]=useState('');
- const [status,setStatus]=useState<FollowupStatus>('all'),[sort,setSort]=useState<Sort>('amount');
+ const [status,setStatus]=useState<FollowupStatus>('all'),[sort,setSort]=useState<Sort>('amount'),[sortDir,setSortDir]=useState<SortDir>('desc');
  const [rows,setRows]=useState<QueueRow[]>([]),[meta,setMeta]=useState<{total:number;amountCents:number;stats:Stats;rule:Rule}|null>(null);
  const [data,setData]=useState<Data|null>(null),[loading,setLoading]=useState(false),[loadingMore,setLoadingMore]=useState(false),[failure,setFailure]=useState('');
  const [page,setPage]=useState(1),[rev,setRev]=useState(0),[selected,setSelected]=useState('');
@@ -47,11 +49,11 @@ export default function CollectionFollowups({communityId,version,editable,onChan
  const [ruleOpen,setRuleOpen]=useState(false),[ruleAmt,setRuleAmt]=useState(''),[ruleDays,setRuleDays]=useState('');
  const runRef=useRef(0),locked=useRef(false),requestKey=useRef('');
  useEffect(()=>{const timer=setTimeout(()=>setKeyword(query.trim()),300);return()=>clearTimeout(timer)},[query]);
- const key=JSON.stringify([communityId,version,rev,keyword,status,sort]);
+ const key=JSON.stringify([communityId,version,rev,keyword,status,sort,sortDir]);
  useEffect(()=>{
   const token=++runRef.current;let active=true;
   setLoading(true);setFailure('');setData(null);setRows([]);setPage(1);setSelected('');setSaving(false);locked.current=false;
-  request<Data>({url:'/fees/mis/collections/followups',query:{communityId,status,sort,page:1,pageSize:PAGE_SIZE,q:keyword||undefined},timeout:30000}).then(r=>{
+  request<Data>({url:'/fees/mis/collections/followups',query:{communityId,status,sort,dir:sortDir,page:1,pageSize:PAGE_SIZE,q:keyword||undefined},timeout:30000}).then(r=>{
    if(!active||token!==runRef.current)return;
    setData(r);setRows(r.rows||[]);
    setMeta({total:r.total??(r.rows||[]).length,amountCents:r.totalAmountCents??(r.rows||[]).reduce((sum,row)=>sum+row.amountCents,0),stats:r.stats??emptyStats,rule:r.rule??defaultRule});
@@ -61,13 +63,19 @@ export default function CollectionFollowups({communityId,version,editable,onChan
  async function loadMore(){
   if(loading||loadingMore||!meta||rows.length>=meta.total)return;
   const token=runRef.current;setLoadingMore(true);setFailure('');
-  try{const r=await request<Data>({url:'/fees/mis/collections/followups',query:{communityId,status,sort,page:page+1,pageSize:PAGE_SIZE,q:keyword||undefined},timeout:30000});if(token!==runRef.current)return;
+  try{const r=await request<Data>({url:'/fees/mis/collections/followups',query:{communityId,status,sort,dir:sortDir,page:page+1,pageSize:PAGE_SIZE,q:keyword||undefined},timeout:30000});if(token!==runRef.current)return;
    setRows(v=>[...v,...(r.rows||[])]);setPage(p=>p+1);
    setMeta(m=>m?{...m,total:r.total??m.total,amountCents:r.totalAmountCents??m.amountCents,stats:r.stats??m.stats,rule:r.rule??m.rule}:m);
   }catch(e){if(token===runRef.current)setFailure(friendly(e))}finally{if(token===runRef.current)setLoadingMore(false)}
  }
  function open(houseKey:string){setSelected(houseKey);setAction('phone');setNote('');setAmount('');setDate(chinaDate());setRecordId(undefined);setSaveError('');requestKey.current=crypto.randomUUID()}
  function change(){requestKey.current=crypto.randomUUID()}
+ /** 表头排序：同列切换升降序；换列用该列默认方向（房号升序，金额/次数/天数/最近跟进降序）；换排序回第 1 页。 */
+ function toggleSort(next:Sort){
+  if(sort===next)setSortDir(d=>d==='asc'?'desc':'asc');
+  else{setSort(next);setSortDir(next==='address'?'asc':'desc')}
+  setPage(1);
+ }
  async function save(){if(!editable||locked.current||!selected)return;const token=runRef.current;let promisedCents:number|undefined;
   if(action==='promise'){if(!/^(?:\d+)(?:\.\d{1,2})?$/.test(amount.trim())){setSaveError('请输入明确的承诺金额，最多两位小数');return}promisedCents=Math.round(Number(amount)*100);if(!Number.isSafeInteger(promisedCents)||promisedCents<=0){setSaveError('承诺金额必须大于0');return}}
   if(!note.trim()){setSaveError('请填写跟进说明');return}locked.current=true;setSaving(true);setSaveError('');
@@ -100,11 +108,11 @@ export default function CollectionFollowups({communityId,version,editable,onChan
     <div className="rb-followup-scroll">
      <table className="t rb-table rb-followup-table">
       <thead><tr>
-       <th>房号 / 业主</th>
-       <th className="rb-num" aria-sort={sort==='amount'?'descending':'none'}><button type="button" className={'rb-sortbtn'+(sort==='amount'?' on':'')} onClick={()=>setSort('amount')}>待缴金额<span aria-hidden="true">{sort==='amount'?' ↓':''}</span></button></th>
-       <th aria-sort={sort==='recent'?'descending':'none'}><button type="button" className={'rb-sortbtn'+(sort==='recent'?' on':'')} onClick={()=>setSort('recent')}>上次跟进<span aria-hidden="true">{sort==='recent'?' ↓':''}</span></button></th>
+       <th aria-sort={sort==='address'?(sortDir==='asc'?'ascending':'descending'):'none'}><button type="button" className={'rb-sortbtn'+(sort==='address'?' on':'')} onClick={()=>toggleSort('address')}>房号 / 业主<span aria-hidden="true">{sort==='address'?(sortDir==='asc'?' ↑':' ↓'):''}</span></button></th>
+       <th className="rb-num" aria-sort={sort==='amount'?(sortDir==='asc'?'ascending':'descending'):'none'}><button type="button" className={'rb-sortbtn'+(sort==='amount'?' on':'')} onClick={()=>toggleSort('amount')}>待缴金额<span aria-hidden="true">{sort==='amount'?(sortDir==='asc'?' ↑':' ↓'):''}</span></button></th>
+       <th aria-sort={sort==='days'?(sortDir==='asc'?'ascending':'descending'):'none'}><button type="button" className={'rb-sortbtn'+(sort==='days'?' on':'')} onClick={()=>toggleSort('days')}>上次跟进<span aria-hidden="true">{sort==='days'?(sortDir==='asc'?' ↑':' ↓'):''}</span></button></th>
        <th>电话</th>
-       <th className="rb-num">次数</th>
+       <th className="rb-num" aria-sort={sort==='count'?(sortDir==='asc'?'ascending':'descending'):'none'}><button type="button" className={'rb-sortbtn'+(sort==='count'?' on':'')} onClick={()=>toggleSort('count')}>次数<span aria-hidden="true">{sort==='count'?(sortDir==='asc'?' ↑':' ↓'):''}</span></button></th>
        <th>最近结果</th>
        <th className="rb-ops-th">操作</th>
       </tr></thead>
@@ -119,7 +127,7 @@ export default function CollectionFollowups({communityId,version,editable,onChan
      </table>
     </div>
     <div className="rb-followup-foot">
-     <span>已显示 {rows.length} / {meta.total} 户 · 按{sort==='amount'?'金额':'最近跟进'}排序</span>
+     <span>已显示 {rows.length} / {meta.total} 户 · 按{SORT_LABELS[sort]}{sortDir==='asc'?'升序':'降序'}排序</span>
      {rows.length<meta.total&&<button className="btn sm" disabled={loadingMore} onClick={()=>void loadMore()}>{loadingMore?'加载中…':'加载更多'}</button>}
     </div>
    </div>:!loading&&meta?<p className="rb-note">{emptyText(meta)}</p>:null}

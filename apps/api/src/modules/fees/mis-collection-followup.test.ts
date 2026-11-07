@@ -79,6 +79,50 @@ test('跟进提醒：按价值排序的待办队列（门槛/状态/搜索/排�
  await assert.rejects(s.collectionFollowups({pageSize:0},user,access),/分页/);
 });
 
+test('跟进队列表头排序：address/count/days 与方向生效、同值有稳定兜底、非法 sort/dir 拒绝',async()=>{
+ const day=(n:number)=>new Date(Date.now()-n*86400000);
+ const rows=[
+  {houseKey:'01:1:1',address:'合成1号101',ownerName:'甲',amountCents:500000},
+  {houseKey:'01:1:2',address:'合成1号102',ownerName:'乙',amountCents:400000},
+  {houseKey:'01:1:3',address:'合成1号103',ownerName:'丙',amountCents:300000},
+  {houseKey:'01:1:5',address:'合成1号105',ownerName:'戊',amountCents:600000},
+ ];
+ const events=[
+  {houseKey:'01:1:2',createdAt:day(2),action:'phone',note:'最近一次'},
+  {houseKey:'01:1:2',createdAt:day(3),action:'phone',note:'上一次'},
+  {houseKey:'01:1:3',createdAt:day(30),action:'hold',note:'冻结记录'},
+ ];
+ const s:any=Object.create(MisFeesService.prototype);
+ s.residentialScope=async()=>[{id:1,offices:['01']}];
+ s.residential=async()=>({rows,total:rows.length,amountCents:rows.reduce((n,r)=>n+r.amountCents,0)});
+ s.paidCollectionBills=async()=>[];
+ s.collectionRepo=(entity:any)=>{
+  if(entity===MisCollectionPromise||entity===MisCollectionHold)return {find:async()=>[]};
+  if(entity===MisCollectionEvent)return {find:async()=>[],manager:{query:async()=>{
+   const grouped=new Map<string,any>();
+   for(const e of events){const cur=grouped.get(e.houseKey);if(!cur||e.createdAt>cur.last_at)grouped.set(e.houseKey,{house_key:e.houseKey,contact_count:(cur?.contact_count||0)+1,last_at:e.createdAt,last_action:e.action,last_note:e.note});else cur.contact_count+=1}
+   return [...grouped.values()];
+  }}};
+  if(entity===TenantConfig)return {findOne:async()=>({value:{amountCents:100000,inactiveDays:7,enabled:true}})};
+  throw new Error('unexpected repository');
+ };
+ const user:any={id:1,tenantId:1},access:any={scopeAll:true};
+ const order=async(sort:string,dir?:string)=>(await s.collectionFollowups({sort,dir},user,access)).rows.map((r:any)=>r.houseKey);
+ assert.deepEqual(await order('amount','desc'),['01:1:5','01:1:1','01:1:2','01:1:3'],'默认金额降序');
+ assert.deepEqual(await order('amount','asc'),['01:1:3','01:1:2','01:1:1','01:1:5']);
+ assert.deepEqual(await order('address','asc'),['01:1:1','01:1:2','01:1:3','01:1:5'],'房号自然序升序');
+ assert.deepEqual(await order('address','desc'),['01:1:5','01:1:3','01:1:2','01:1:1']);
+ assert.deepEqual(await order('count','desc'),['01:1:2','01:1:3','01:1:5','01:1:1'],'次数降序；同为 0 次的 1/5 按金额降序兜底');
+ assert.deepEqual(await order('count','asc'),['01:1:5','01:1:1','01:1:3','01:1:2'],'次数升序；同值仍按金额降序兜底');
+ assert.deepEqual(await order('days','asc'),['01:1:5','01:1:1','01:1:2','01:1:3'],'从未跟进排最前，再按天数升序');
+ assert.deepEqual(await order('days','desc'),['01:1:5','01:1:1','01:1:3','01:1:2'],'从未跟进仍排最前，其余按天数降序');
+ const noDir=await s.collectionFollowups({sort:'address'},user,access);
+ assert.equal(noDir.dir,'asc','地址排序缺省升序');
+ const amountNoDir=await s.collectionFollowups({},user,access);
+ assert.deepEqual([amountNoDir.sort,amountNoDir.dir],['amount','desc'],'默认金额降序');
+ await assert.rejects(s.collectionFollowups({sort:'bogus' as any},user,access),/排序/);
+ await assert.rejects(s.collectionFollowups({dir:'up' as any},user,access),/排序/);
+});
 test('跟进队列二次收窄：只读账号的队列行 phone 为 null 且保留 phoneMasked，有收费编辑权限才带完整手机号',async()=>{
  const scanRows=[{houseKey:'01:1:1',address:'合成花园1号101室',ownerName:'合成甲',amountCents:500000,phone:'13800000001',phoneMasked:'138****0001'}];
  const build=()=>{
