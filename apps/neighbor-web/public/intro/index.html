@@ -304,20 +304,48 @@ svg.ico{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;st
 .note svg{width:13px;height:13px;margin-top:2px;color:#8ba2b4;flex:none}
 .note b{color:#9fb4c2;font-weight:500}
 
-/* notice paper */
-.paper{width:100%;max-width:206px;margin:0 auto;aspect-ratio:148/210;border-radius:3px;background:linear-gradient(160deg,#faf7ee,#efe9da);color:#3c3a34;padding:11px 11px 9px;position:relative;box-shadow:0 18px 40px -10px rgba(0,0,0,.65);font-family:"Songti SC","SimSun",serif;transform:rotate(-1.2deg)}
-.paper::before{content:"";position:absolute;inset:5px;border:1px solid rgba(60,58,52,.16);pointer-events:none}
-.paper-head{text-align:center;font-size:8px;letter-spacing:.12em;font-weight:700;padding-bottom:4px;border-bottom:1px solid rgba(60,58,52,.3);margin-bottom:4px}
-.paper-sub{display:flex;justify-content:space-between;font-size:5px;color:#7a7568;margin-bottom:3px}
-.paper-line{display:grid;grid-template-columns:1.3fr .8fr .7fr;gap:3px;font-size:5px;padding:2.5px 0;border-bottom:1px dashed rgba(60,58,52,.16);color:#565248}
-.paper-total{display:flex;justify-content:space-between;align-items:center;font-size:6px;margin-top:4px;font-weight:700}
-.paper-total b{font-size:7px}
-.paper-upper{font-size:4.8px;color:#7a7568;margin-top:1px}
-.paper-qr{position:absolute;right:9px;bottom:18px;width:34px;height:34px;border:2px solid #fff;outline:1px solid rgba(60,58,52,.2);background:repeating-conic-gradient(#26241f 0 25%,#fff 0 50%) 0 0/4.5px 4.5px;filter:contrast(1.05)}
-.paper-foot{position:absolute;left:11px;bottom:6px;font-size:4.2px;color:#8a8477;line-height:1.5;max-width:140px}
-.paper-list{display:flex;flex-direction:column;gap:6px;margin-top:12px}
-.paper-list span{display:flex;align-items:center;gap:6px;font-size:9.5px;color:#9fb4c2}
-.paper-list span::before{content:"";width:4px;height:4px;border-radius:50%;background:var(--teal)}
+/* notice paper（按系统实际打印样式还原） */
+.notice-sheet{width:100%;max-width:224px;margin:0 auto;aspect-ratio:148/210;border-radius:2px;background:#fff;color:#172033;padding:8px 9px 7px;position:relative;box-shadow:0 18px 40px -10px rgba(0,0,0,.65);font-family:"Microsoft YaHei","PingFang SC",sans-serif;font-size:4.7px;line-height:1.45;transform:rotate(-1deg);display:flex;flex-direction:column;overflow:hidden}
+.notice-hd{display:flex;justify-content:space-between;align-items:flex-start;gap:4px}
+.notice-hd .org b{display:block;font-size:6.8px;letter-spacing:.02em;line-height:1.3}
+.notice-hd .org small{display:block;font-size:3.7px;color:#9099ad;margin-top:1px}
+.notice-doc{text-align:right;font-size:3.8px;color:#55607a;line-height:1.55;flex:none}
+.notice-doc span{display:inline-block;font-size:4.6px;color:#2d4e73;border:1px solid #cfdcec;background:#eef3f9;border-radius:2px;padding:1px 2.5px;letter-spacing:.06em}
+.notice-doc small{display:block;margin-top:1px}
+.notice-rule{height:1.2px;background:#2d4e73;margin-top:2.5px}
+.notice-title{display:flex;align-items:flex-end;justify-content:space-between;gap:4px;margin-top:2px}
+.notice-title h4{font-size:6.6px;letter-spacing:.05em;white-space:nowrap;margin:0}
+.notice-title div{font-size:3.7px;color:#55607a;text-align:right;line-height:1.5;white-space:nowrap}
+.notice-title b{color:#172033}
+.notice-facts{display:grid;grid-template-columns:1.45fr .8fr 1.05fr .8fr;border:1px solid #e4e8ef;border-radius:2px;margin-top:2.5px}
+.notice-facts div{padding:1.5px 2.5px;border-right:1px solid #eef1f6;min-width:0}
+.notice-facts div:last-child{border-right:0}
+.notice-facts span{display:block;font-size:3.4px;color:#9099ad}
+.notice-facts b{display:block;font-size:4.9px;margin-top:.4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.notice-lead{font-size:4.2px;color:#55607a;margin:1.5px 0 0}
+.notice-table{width:100%;border-collapse:collapse;margin-top:2.5px}
+.notice-table th,.notice-table td{padding:1px 2.5px;border-bottom:1px solid #eef1f6;text-align:left;font-size:4.6px;white-space:nowrap}
+.notice-table th{font-size:3.5px;color:#55607a;background:#f4f7fb;border-top:1px solid #172033;border-bottom:1px solid #e4e8ef}
+.notice-table .money{text-align:right;font-variant-numeric:tabular-nums}
+.notice-total{display:flex;align-items:baseline;justify-content:space-between;margin-top:2px;padding:1.5px 2.5px;background:#eef3f9;border-top:1px solid #2d4e73;font-size:4.8px}
+.notice-total b{font-size:7px;color:#2d4e73}
+.notice-upper{margin-top:1px;font-size:3.4px;color:#9099ad}
+.notice-upper b{color:#172033;font-size:4.2px;letter-spacing:.02em}
+.notice-pay{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5px;margin-top:2px}
+.notice-pay div{border:1px solid #e4e8ef;border-radius:2px;padding:1.2px 2px;min-width:0}
+.notice-pay b{display:block;font-size:4.2px;color:#3a648f;margin-bottom:.5px}
+.notice-pay small{display:block;font-size:3.3px;color:#55607a;line-height:1.45}
+.notice-qr{display:block;width:19px;height:19px;margin:1.5px auto 0;border:2px solid #fff;outline:1px solid #cfdcec;background:repeating-conic-gradient(#26241f 0 25%,#fff 0 50%) 0 0/3.5px 3.5px}
+.notice-callout{margin-top:1.5px;border-left:1.5px solid #2d4e73;background:#eef3f9;padding:1.2px 2px;border-radius:0 2px 2px 0}
+.notice-callout b{font-size:4px;color:#2d4e73;letter-spacing:.05em}
+.notice-callout p{margin:.3px 0 0;font-size:3.3px;color:#55607a;line-height:1.4}
+.notice-notes{margin-top:1px;font-size:3.2px;color:#9099ad;line-height:1.4}
+.notice-notes p{margin:.2px 0}
+.notice-footer{margin-top:auto;padding-top:1.5px;border-top:1px solid #e4e8ef;display:flex;justify-content:space-between;gap:4px;font-size:3.2px;color:#9099ad;line-height:1.4}
+.notice-footer .sign{text-align:right;flex:none}
+.notice-caption{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+.notice-caption span{display:flex;align-items:center;gap:6px;font-size:9.5px;color:#9fb4c2}
+.notice-caption span::before{content:"";width:4px;height:4px;border-radius:50%;background:var(--teal)}
 .paper-wrap{display:flex;flex-direction:column;align-items:center}
 
 /* phone */
@@ -350,14 +378,31 @@ svg.ico{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;st
 .batch .bar2 i{display:block;height:100%;background:linear-gradient(90deg,#2dd4bf,#38bdf8)}
 .panel-note{margin-top:12px;padding-top:9px;border-top:1px solid rgba(148,163,184,.1);font-size:8.5px;color:#6d8798;line-height:1.5}
 
-/* receipt + report */
+/* invoice + methods */
 .receipt-wrap{display:flex;flex-direction:column;align-items:center;gap:10px}
-.receipt{position:relative;background:linear-gradient(160deg,#fbf8f0,#f0ead9);border-radius:3px;color:#3c3a34;padding:12px 12px;font-family:"Songti SC","SimSun",serif;box-shadow:0 16px 36px -10px rgba(0,0,0,.6);transform:rotate(1deg);width:200px;max-width:100%}
-.receipt h4{text-align:center;font-size:9px;letter-spacing:.24em;font-weight:700;padding-bottom:4px;border-bottom:1px solid rgba(60,58,52,.28)}
-.receipt .no{display:flex;justify-content:space-between;font-size:5px;color:#7a7568;margin:4px 0}
-.receipt-line{display:flex;justify-content:space-between;font-size:5.5px;padding:3px 0;border-bottom:1px dashed rgba(60,58,52,.18);color:#565248;gap:6px}
-.receipt-line b{font-weight:700}
-.receipt-stamp{position:absolute;right:11px;bottom:12px;width:34px;height:34px;border:1.5px solid rgba(190,60,50,.6);border-radius:50%;color:rgba(190,60,50,.7);font-size:5.5px;display:grid;place-items:center;transform:rotate(-14deg);letter-spacing:.1em}
+.invoice{position:relative;width:100%;max-width:266px;aspect-ratio:210/140;background:#fff;color:#172033;padding:7px 9px;border:1px solid #d9dfe6;border-radius:2px;box-shadow:0 16px 36px -10px rgba(0,0,0,.6);font-family:"Microsoft YaHei","PingFang SC",sans-serif;font-size:3.8px;line-height:1.4;transform:rotate(.5deg);overflow:hidden;display:flex;flex-direction:column}
+.invoice::before{content:"";position:absolute;inset:3px;border:1px solid rgba(45,78,115,.22);pointer-events:none}
+.inv-head{display:flex;align-items:flex-start;justify-content:space-between;gap:5px;padding-bottom:2px;border-bottom:1.2px solid #2d4e73;position:relative}
+.inv-head b{font-size:7px;letter-spacing:.08em;color:#172033}
+.inv-head span{font-size:3.2px;color:#9099ad;border:1px solid #e4e8ef;padding:.5px 2px;border-radius:2px;white-space:nowrap}
+.inv-meta{display:flex;flex-wrap:wrap;gap:1px 7px;margin-top:2px;font-size:3.2px;color:#55607a}
+.inv-meta b{font-family:var(--mono);font-weight:500;color:#172033}
+.inv-parties{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:2px}
+.inv-parties div{border:1px solid #e4e8ef;border-radius:2px;padding:1.5px 2px;min-width:0}
+.inv-parties span{display:block;font-size:3px;color:#9099ad}
+.inv-parties b{display:block;font-size:3.9px;margin-top:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.inv-parties small{display:block;font-size:2.9px;color:#55607a;margin-top:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.inv-table{width:100%;border-collapse:collapse;margin-top:2px}
+.inv-table th,.inv-table td{border:1px solid #e4e8ef;padding:1px 2px;font-size:3.2px;text-align:left;white-space:nowrap}
+.inv-table th{background:#f4f7fb;color:#55607a;font-weight:500}
+.inv-table .num{text-align:right;font-variant-numeric:tabular-nums}
+.inv-total{display:flex;align-items:baseline;gap:4px;margin-top:2px;padding:1.5px 2px;background:#eef3f9;border:1px solid #cfdcec;font-size:3.5px}
+.inv-total b{font-size:5px;color:#2d4e73}
+.inv-total em{font-style:normal;margin-left:auto;font-family:var(--mono);font-size:4.4px;color:#172033}
+.inv-seller{display:flex;justify-content:space-between;gap:6px;margin-top:2px;font-size:3px;color:#55607a;white-space:nowrap;overflow:hidden}
+.inv-foot{display:flex;justify-content:space-between;gap:6px;margin-top:auto;padding-top:2px;border-top:1px solid #e4e8ef;font-size:3px;color:#55607a;white-space:nowrap;overflow:hidden}
+.inv-stamp{position:absolute;right:14px;bottom:15px;width:38px;height:38px;border:1.4px solid rgba(190,60,50,.55);border-radius:50%;color:rgba(190,60,50,.68);display:grid;place-items:center;text-align:center;font-size:3.2px;line-height:1.3;transform:rotate(-14deg);letter-spacing:.08em;background:rgba(255,255,255,.1)}
+.inv-note{font-size:7.5px;color:#6d8798;text-align:center;margin-top:7px}
 .methods{display:flex;flex-wrap:wrap;gap:5px;justify-content:center}
 .methods span{font-size:8px;color:#9fb4c2;padding:2px 7px;border-radius:4px;border:1px solid rgba(148,163,184,.16);background:rgba(255,255,255,.03)}
 .methods span:first-child{color:#8df8e8;border-color:rgba(45,212,191,.3);background:rgba(45,212,191,.07)}
@@ -511,7 +556,8 @@ svg.ico{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;st
   .fact-row{grid-template-columns:1fr}
   .outcome{padding:16px}
   .mod-card p{min-height:0}
-  .paper{max-width:190px}
+  .notice-sheet{max-width:220px}
+  .invoice{max-width:250px}
 }
 @media (max-height:820px) and (min-width:961px){
   .slide{padding:84px 0 40px}
@@ -540,8 +586,8 @@ svg.ico{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;st
   .effect-stats .eff{padding:6px 8px}
   .pdesc{margin-bottom:9px}
   .phone{width:200px}
-  .receipt{width:186px}
-  .paper{max-width:188px}
+  .invoice{max-width:242px}
+  .notice-sheet{max-width:198px}
   .chip-row{margin-top:11px}
 }
 @media (max-height:740px) and (min-width:961px){
@@ -554,7 +600,7 @@ svg.ico{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;st
   .help-item{padding:12px 16px}
   .three-col .panel{padding:15px 15px 13px}
   .pdesc{font-size:10.5px;line-height:1.55;margin-bottom:7px}
-  .paper{max-width:168px}
+  .notice-sheet{max-width:178px}
   .phone{width:186px}
   .panel-note{margin-top:6px;padding-top:5px}
   .chip-row{margin-top:9px}
@@ -563,7 +609,7 @@ svg.ico{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;st
   .eff{padding:5px 7px}
   .eff b{font-size:12px}
   .sms-body{font-size:8px}
-  .receipt{width:170px}
+  .invoice{max-width:228px}
 }
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
@@ -874,20 +920,48 @@ svg.ico{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;st
           <div class="panel-head"><h3><svg class="ico" aria-hidden="true"><use href="#i-printer"/></svg>催缴通知单</h3><span class="chip gold">A5 / A4</span></div>
           <p class="pdesc">按户批量生成，8 行一页、超出续页；A4 两联一纸，金额大写，二维码图片可配置。</p>
           <div class="paper-wrap">
-            <div class="paper" aria-hidden="true">
-              <div class="paper-head">物 业 费 缴 费 通 知 单</div>
-              <div class="paper-sub"><span>编号 C-1024</span><span>2026-11-07</span></div>
-              <div class="paper-line"><span>2026-07 物业费</span><span>1,286.00</span><span>未缴</span></div>
-              <div class="paper-line"><span>2026-08 物业费</span><span>1,286.00</span><span>未缴</span></div>
-              <div class="paper-line"><span>2026-09 物业费</span><span>1,286.00</span><span>未缴</span></div>
-              <div class="paper-line"><span>2026-10 物业费</span><span>1,286.00</span><span>未缴</span></div>
-              <div class="paper-line"><span>合计 4 期</span><span>5,144.00</span><span>—</span></div>
-              <div class="paper-total"><span>人民币（大写）</span><b>伍仟壹佰肆拾肆元整</b></div>
-              <div class="paper-upper">扫码查看缴费指引 · 二维码图片可配置</div>
-              <div class="paper-qr"></div>
-              <div class="paper-foot">本单为欠费提醒，不作为收款凭证；缴费以收据或电子收据为准。</div>
+            <div class="notice-sheet" aria-hidden="true">
+              <div class="notice-hd">
+                <div class="org"><b>枫桦景苑物业服务中心</b><small>请核对房号、账期与金额，如有疑问请联系服务中心</small></div>
+                <div class="notice-doc"><span>缴费通知单</span><small>编号 C-1024</small><small>开单 2026-11-07</small></div>
+              </div>
+              <div class="notice-rule"></div>
+              <div class="notice-title">
+                <h4>物业服务费用缴费通知单</h4>
+                <div>所属账期 <b>2026-07 — 2026-10</b><br>共 1 页 · 第 1 页</div>
+              </div>
+              <div class="notice-facts">
+                <div><span>房号</span><b>枫桦景苑 24号302</b></div>
+                <div><span>业主</span><b>王**</b></div>
+                <div><span>联系电话</span><b>138****1234</b></div>
+                <div><span>待缴笔数</span><b>4 笔</b></div>
+              </div>
+              <p class="notice-lead">您目前有以下物业费账单未缴纳，请及时缴纳，感谢您对我们工作的支持。</p>
+              <table class="notice-table">
+                <thead><tr><th style="width:32%">所属账期</th><th>收费项目</th><th class="money" style="width:27%">待缴金额（元）</th></tr></thead>
+                <tbody>
+                  <tr><td>2026年07月</td><td>物业管理费</td><td class="money">1,286.00</td></tr>
+                  <tr><td>2026年08月</td><td>物业管理费</td><td class="money">1,286.00</td></tr>
+                  <tr><td>2026年09月</td><td>物业管理费</td><td class="money">1,286.00</td></tr>
+                  <tr><td>2026年10月</td><td>物业管理费</td><td class="money">1,286.00</td></tr>
+                </tbody>
+              </table>
+              <div class="notice-total"><span>本户本次通知合计</span><b>¥5,144.00</b></div>
+              <div class="notice-upper">人民币大写：<b>伍仟壹佰肆拾肆元整</b></div>
+              <div class="notice-pay">
+                <div><b>扫码缴费</b><small>小程序缴费码<br>扫码 → 选房号 → 勾账期</small><span class="notice-qr"></span></div>
+                <div><b>银行转账</b><small>以服务中心公布为准<br>备注：房号 + 账期</small></div>
+                <div><b>服务中心</b><small>8:30–17:30 · 周一至周日<br>现金 / 微信 / 支付宝 / 刷卡</small></div>
+              </div>
+              <div class="notice-callout"><b>线上缴费已开通</b><p>微信扫码进入缴费页，选房号、勾账期即可付款，实时销账，电子收据当场生成。</p></div>
+              <div class="notice-notes">
+                <p>· 扫码后请先核对房号与账期，系统按所选账期逐期销账。</p>
+                <p>· 转账或前台缴费，款项到账后 1 个工作日内自动销账。</p>
+                <p>· 需发票或纸质收据请到服务中心登记抬头与税号。</p>
+              </div>
+              <div class="notice-footer"><div>本单为欠费提醒，不作为收款凭证；缴费以收据或电子收据为准。</div><div class="sign">枫桦景苑物业管理处<br>打印日期：2026-11-07</div></div>
             </div>
-            <div class="paper-list"><span>8 行/页，超出自动续页</span><span>两联一纸，直接打印投递</span></div>
+            <div class="notice-caption"><span>A5 一联一纸 · 8 行/页</span><span>A4 两联一纸 · 金额大写</span></div>
           </div>
         </article>
         <article class="panel anim d2">
@@ -946,20 +1020,28 @@ svg.ico{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;st
       <div class="three-col">
         <article class="panel anim d1">
           <div class="panel-head"><h3><svg class="ico" aria-hidden="true"><use href="#i-wallet"/></svg>收款开票</h3><span class="chip gray">多渠道</span></div>
-          <p class="pdesc">多项目合并一张收据，热敏小票可补打；红冲双向单号、独立退费，历史原单保留。</p>
+          <p class="pdesc">多项目合并一张收据，热敏小票可补打；发票票样示意；红冲双向单号、独立退费，历史原单保留。</p>
           <div class="receipt-wrap">
-            <div class="receipt" aria-hidden="true">
-              <h4>收 据</h4>
-              <div class="no"><span>NO. SJ202611070012</span><span>2026-11-07</span></div>
-              <div class="receipt-line"><span>2026-10 物业费</span><b>¥1,286.00</b></div>
-              <div class="receipt-line"><span>2026-09 物业费</span><b>¥1,286.00</b></div>
-              <div class="receipt-line"><span>合计（大写）</span><b>贰仟伍佰柒拾贰元整</b></div>
-              <div class="receipt-line"><span>收款方式</span><b>微信</b></div>
-              <div class="receipt-stamp">收讫</div>
+            <div class="invoice" aria-hidden="true">
+              <div class="inv-head"><b>电子发票（普通发票）</b><span>票样示意</span></div>
+              <div class="inv-meta"><span>发票号码：<b>25312000000012345678</b></span><span>开票日期：<b>2026年11月07日</b></span></div>
+              <div class="inv-parties">
+                <div><span>购买方</span><b>王**</b><small>纳税人识别号：—</small></div>
+                <div><span>销售方</span><b>上海邻修物业服务有限公司</b><small>纳税人识别号：91310112MA1******</small></div>
+              </div>
+              <table class="inv-table">
+                <thead><tr><th>项目名称</th><th>规格型号</th><th class="num">金额</th><th class="num">税率</th><th class="num">税额</th></tr></thead>
+                <tbody><tr><td>*物业管理服务*物业费</td><td>2026.07-10</td><td class="num">4,852.83</td><td class="num">6%</td><td class="num">291.17</td></tr></tbody>
+              </table>
+              <div class="inv-total"><span>价税合计（大写）</span><b>伍仟壹佰肆拾肆元整</b><em>¥5,144.00</em></div>
+              <div class="inv-seller"><span>开票人：收费员</span><span>收款人：上海邻修物业服务有限公司</span></div>
+              <div class="inv-foot"><span>备注：物业服务费 2026.07-2026.10</span><span>收款人：收费员　复核人：财务　开票人：系统</span></div>
+              <div class="inv-stamp">发票专用章</div>
             </div>
             <div class="methods" aria-hidden="true"><span>微信</span><span>支付宝</span><span>现金</span><span>刷卡</span><span>银行转账</span></div>
+            <div class="inv-note">发票票样示意 · 以税局实际票面为准</div>
           </div>
-          <p class="panel-note">红冲原单保留 · 退款可独立登记</p>
+          <p class="panel-note">发票票样示意 · 红冲原单保留 · 退款可独立登记</p>
         </article>
         <article class="panel anim d2">
           <div class="panel-head"><h3><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg>收费报表</h3><span class="chip">按实收</span></div>
