@@ -19,6 +19,7 @@ import { isSafetyStockWarning, resolveStockValue, resolveUnitCost } from '../inv
 import {
   MaterialUsageGroupBy,
   MaterialUsageReportDto,
+  ReportExportDto,
   ReportOptionsDto,
   ReportRangeDto,
   StaffReportDto,
@@ -26,6 +27,7 @@ import {
   WorkOrderGroupBy,
   WorkOrderReportDto,
 } from './dto';
+import { buildReportWorkbook, type ReportSheet } from '../../common/report-excel';
 
 /**
  * 报表查询。全部按 SQL 聚合出结果，不把整表拉到内存再算：
@@ -159,6 +161,39 @@ export class ReportsService {
       summary: summaryRows[0] ? this.stripKey(summaryRows[0]) : this.emptyAgg(),
       rows,
     };
+  }
+
+  /** 导出当前筛选范围：与页面查询走同一套 service，口径一致；前端只负责下载。 */
+  async exportReport(query: ReportExportDto, user: AuthUser, access?: ResolvedAccess) {
+    const range = { from: query.from, to: query.to, communityId: query.communityId };
+    const pack = async (sheets: ReportSheet[], filename: string) => ({ filename, buffer: await buildReportWorkbook(sheets) });
+    if (query.report === 'work-orders') {
+      const data = await this.workOrders({ ...range, groupBy: (query.groupBy as WorkOrderGroupBy) || 'day', assigneeId: query.assigneeId }, user, access);
+      return pack([
+        { name: '汇总', meta: { ...data.range, groupBy: data.groupBy, ...data.summary }, rows: [] },
+        { name: '分组明细', rows: data.rows as unknown as Record<string, unknown>[] },
+      ], '工单统计_' + data.range.from + '_' + data.range.to + '.xlsx');
+    }
+    if (query.report === 'staff') {
+      const data = await this.staff(range, user, access);
+      return pack([
+        { name: '汇总', meta: { ...data.range, staffCount: data.staffCount, completedInRange: data.completedInRange, activeNow: data.activeNow, ...data.summary }, rows: [] },
+        { name: '人员明细', rows: data.rows as unknown as Record<string, unknown>[] },
+      ], '人员统计_' + data.range.from + '_' + data.range.to + '.xlsx');
+    }
+    if (query.report === 'stock') {
+      const data = await this.stock({ warehouseId: query.warehouseId, category: query.category, q: query.q, onlyLow: query.onlyLow }, user, access);
+      return pack([
+        { name: '汇总', meta: { ...data.summary }, rows: [] },
+        { name: '按仓库', rows: data.byWarehouse as unknown as Record<string, unknown>[] },
+        { name: '库存明细', rows: data.rows as unknown as Record<string, unknown>[] },
+      ], '库存清单_' + (query.from || 'all') + '_' + (query.to || 'all') + '.xlsx');
+    }
+    const data = await this.materialUsage({ ...range, groupBy: (query.groupBy as MaterialUsageGroupBy) || 'detail', assigneeId: query.assigneeId, materialId: query.materialId, warehouseId: query.warehouseId }, user, access);
+    return pack([
+      { name: '汇总', meta: { ...data.range, groupBy: data.groupBy, ...data.summary, truncated: data.truncated }, rows: [] },
+      { name: '明细', rows: data.rows as unknown as Record<string, unknown>[] },
+    ], '材料领用_' + data.range.from + '_' + data.range.to + '.xlsx');
   }
 
   private async aggregateWorkOrders(

@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, StreamableFile, UseGuards } from '@nestjs/common';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { RequirePermission } from '../../common/require-permission.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -7,6 +7,7 @@ import { CurrentAccess } from '../access/current-access.decorator';
 import { PermissionsGuard } from '../access/permissions.guard';
 import {
   MaterialUsageReportDto,
+  ReportExportDto,
   ReportOptionsDto,
   StaffReportDto,
   StockReportDto,
@@ -28,6 +29,21 @@ export class ReportsController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.reportsService.options(query, user, access);
+  }
+
+  /** 导出当前筛选范围（xlsx，exceljs）。前端只负责带筛选参数和下载。 */
+  @Get('export')
+  @RequirePermission('reports', 'view')
+  async exportReport(
+    @Query() query: ReportExportDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    const { filename, buffer } = await this.reportsService.exportReport(query, user, access);
+    return new StreamableFile(buffer, {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition: `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    });
   }
 
   @Get('work-orders')

@@ -97,3 +97,61 @@ export class ReportOptionsDto {
   @IsInt()
   tenantId?: number;
 }
+
+/** 报表导出：与查询同一套筛选参数，导出当前范围；type 决定用哪份报表。 */
+export const REPORT_EXPORT_TYPES = ['work-orders', 'staff', 'stock', 'material-usage'] as const;
+export type ReportExportType = (typeof REPORT_EXPORT_TYPES)[number];
+
+export class ReportExportDto {
+  @IsIn(REPORT_EXPORT_TYPES)
+  report: ReportExportType;
+
+  @IsOptional()
+  @Matches(DATE_RE, { message: 'from 必须是 YYYY-MM-DD' })
+  from?: string;
+
+  @IsOptional()
+  @Matches(DATE_RE, { message: 'to 必须是 YYYY-MM-DD' })
+  to?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  communityId?: number;
+
+  /** 工单按 day/assignee/community/repairType/status 分组；材料领用另有一组维度，服务端按报表类型校验 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  groupBy?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  assigneeId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  warehouseId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  materialId?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  category?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  q?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  onlyLow?: string;
+}
