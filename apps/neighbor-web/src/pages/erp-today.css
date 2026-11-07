@@ -8,3 +8,11 @@
         @media(max-width:760px){.erp-today-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.erp-kpi{padding:14px}.erp-kpi .v{font-size:22px}.erp-today-workspace{grid-template-columns:minmax(0,1fr)}.erp-income-row{grid-template-columns:76px minmax(0,1fr)}.erp-income-row>div:last-child{grid-column:2}.erp-today-workspace .lrow{padding:14px;gap:10px}}
 
 }
+
+/* MIS 今日口径：PMS 收款并列小字 / 待接口空态 */
+.erp-kpi-sub{display:block;margin-top:6px;font-size:12.5px;color:var(--ink2);line-height:1.4}
+.erp-kpi-pms{color:var(--acc-t);font-weight:600}
+.erp-today-kpis .v .erp-todo{font-size:14px;font-weight:600}
+.erp-todo{display:inline-flex;align-items:center;padding:2px 10px;border-radius:999px;background:var(--warn-w);color:var(--warn);border:1px solid #f0b46a;font-size:12px;font-weight:600;white-space:nowrap}
+.erp-todo-block{display:flex;align-items:center;gap:10px;padding:16px;border:1px dashed var(--line);border-radius:10px;background:var(--sunken);color:var(--ink2);font-size:14px;flex-wrap:wrap}
+.erp-todo-block .btn{margin-left:auto}
