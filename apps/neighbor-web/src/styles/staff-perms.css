@@ -1,0 +1,62 @@
+/* 员工与权限：内网应用子项（只被 Staff 页面引入） */
+.pm-mx .pm-parent-row td {
+  font-weight: 600;
+}
+
+.pm-mx .pm-app-row td {
+  padding-top: 6px;
+  padding-bottom: 6px;
+  font-size: 13px;
+  color: var(--ink2);
+  background: var(--sunken, #f8fafc);
+}
+
+.pm-mx .pm-app-row td:first-child {
+  padding-left: 14px;
+}
+
+.pm-mx .pm-app-row.is-off td {
+  opacity: 0.62;
+}
+
+.pm-app-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.pm-app-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  background: var(--line2);
+  color: var(--ink2);
+}
+
+.pm-app-status.ok {
+  background: var(--ok-w, #e7f6ee);
+  color: var(--ok);
+}
+
+.pm-app-status.warn {
+  background: var(--warn-w, #fbf1dd);
+  color: var(--warn);
+}
+
+.pm-app-status.dang {
+  background: var(--dang-w, #fdecea);
+  color: var(--dang);
+}
+
+.pm-mx .pm-app-error td {
+  color: var(--ink2);
+  background: var(--warn-w, #fbf1dd);
+}
+
+

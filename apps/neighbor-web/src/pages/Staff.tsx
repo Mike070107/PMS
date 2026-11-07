@@ -6,6 +6,7 @@ import { Btn, Field, Loading, Sheet, toast } from '@/components/ui';
 import ToneIcon from '@/components/ToneIcon';
 import { can } from '@/lib/perm';
 import { useSession } from '@/lib/auth';
+import '@/styles/staff-perms.css';
 
 /* ───────── 类型 ───────── */
 interface Assignment { officeId: number | null; skills: string[] }
@@ -23,6 +24,22 @@ interface RoleRow {
 }
 interface TemplateRow { id: number; name: string; remark: string | null; permissions: Perm[]; externalAppIds: number[] }
 interface Office { id: number; name: string; enabled: boolean }
+interface ExternalApp { id: number; name: string; enabled: boolean; publishStatus?: string | null; agentStatus?: string | null }
+const EXT_STATUS: Record<string, { text: string; tone: string }> = {
+  online: { text: '在线', tone: 'ok' },
+  draft: { text: '未发布', tone: 'warn' },
+  waiting_agent: { text: '等待发布', tone: 'warn' },
+  publishing: { text: '发布中', tone: 'warn' },
+  error: { text: '异常', tone: 'dang' },
+  disabled: { text: '已下线', tone: 'mute' },
+};
+function extStatus(app: ExternalApp) {
+  if (!app.enabled) return { text: '已下线', tone: 'mute' };
+  if (app.publishStatus && EXT_STATUS[app.publishStatus]) return EXT_STATUS[app.publishStatus];
+  if (app.agentStatus === 'offline' || app.agentStatus === 'degraded' || app.agentStatus === 'disabled') return { text: '客户端离线', tone: 'warn' };
+  return { text: '在线', tone: 'ok' };
+}
+const extUsable = (app: ExternalApp) => app.enabled && (!app.publishStatus || app.publishStatus === 'online');
 
 /* ───────── 字典 ───────── */
 const SKILL_SHORT: Record<string, string> = {
@@ -61,6 +78,10 @@ export default function Staff() {
   const [roles, setRoles] = useState<RoleRow[]>([]);
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [offices, setOffices] = useState<Office[]>([]);
+  const [externalApps, setExternalApps] = useState<ExternalApp[]>([]);
+  const [appsError, setAppsError] = useState(false);
+  const [appsLoading, setAppsLoading] = useState(false);
+  const [appsRetry, setAppsRetry] = useState(0);
 
   const loadStaff = () => !canStaff ? Promise.resolve() : request<StaffRow[]>({ url: '/staff' }).then(setStaff).catch(() => setStaff([]));
   const loadRoles = () => !canStaff && !canRoles ? Promise.resolve([]) : Promise.all([
@@ -72,6 +93,17 @@ export default function Staff() {
     void loadRoles();
     setOffices((session.access?.offices ?? []).map(o => ({ ...o, enabled: true })));
   }, [session.access, canStaff, canRoles]);
+
+  useEffect(() => {
+    if (!canRoles) return undefined;
+    let alive = true;
+    setAppsLoading(true); setAppsError(false);
+    request<ExternalApp[]>({ url: '/external-access/apps' })
+      .then((rows) => { if (alive) setExternalApps(Array.isArray(rows) ? rows : []); })
+      .catch(() => { if (alive) { setExternalApps([]); setAppsError(true); } })
+      .finally(() => { if (alive) setAppsLoading(false); });
+    return () => { alive = false; };
+  }, [canRoles, appsRetry]);
 
   if (!canStaff && !canRoles) return null;
   if (canStaff && staff === null) return <Loading />;
@@ -92,8 +124,8 @@ export default function Staff() {
         </div>
       </div>
       {tab === 'staff' ? <StaffTab list={staffRows} roles={roles} offices={offices} officeName={officeName} reload={loadStaff} /> : null}
-      {tab === 'roles' ? <RolesTab roles={roles} templates={templates} reload={loadRoles} /> : null}
-      {tab === 'templates' ? <TemplatesTab roles={roles} templates={templates} reload={loadRoles} /> : null}
+      {tab === 'roles' ? <RolesTab roles={roles} templates={templates} reload={loadRoles} externalApps={externalApps} appsError={appsError} appsLoading={appsLoading} reloadApps={() => setAppsRetry((value) => value + 1)} /> : null}
+      {tab === 'templates' ? <TemplatesTab roles={roles} templates={templates} reload={loadRoles} externalApps={externalApps} appsError={appsError} appsLoading={appsLoading} reloadApps={() => setAppsRetry((value) => value + 1)} /> : null}
     </>
   );
 }
@@ -353,7 +385,7 @@ function templateForName(name: string, templates: TemplateRow[]) {
   return [...templates].sort((a, b) => b.name.length - a.name.length).find((t) => name.endsWith(t.name) || name.endsWith(t.name.replace(/^物业/, '')));
 }
 
-function RolesTab({ roles, templates, reload }: { roles: RoleRow[]; templates: TemplateRow[]; reload: () => Promise<unknown> }) {
+function RolesTab({ roles, templates, reload, externalApps, appsError, appsLoading, reloadApps }: { roles: RoleRow[]; templates: TemplateRow[]; reload: () => Promise<unknown>; externalApps: ExternalApp[]; appsError: boolean; appsLoading: boolean; reloadApps: () => void }) {
   const [showOff, setShowOff] = useState(false);
   const [editing, setEditing] = useState<RoleRow | 'new' | null>(null);
   const list = roles.filter((r) => showOff || r.enabled);
@@ -416,13 +448,13 @@ function RolesTab({ roles, templates, reload }: { roles: RoleRow[]; templates: T
           </table>
         </div>
       ))}
-      {editing ? <RoleEditor role={editing === 'new' ? null : editing} templates={templates} onClose={() => setEditing(null)} onSaved={async (m) => { toast(m); setEditing(null); await reload(); }} /> : null}
+      {editing ? <RoleEditor role={editing === 'new' ? null : editing} templates={templates} externalApps={externalApps} appsError={appsError} appsLoading={appsLoading} reloadApps={reloadApps} onClose={() => setEditing(null)} onSaved={async (m) => { toast(m); setEditing(null); await reload(); }} /> : null}
     </>
   );
 }
 
 /** PATCH /roles 要整份字段；数据范围已挪到员工，这里原样带回旧值（旧后台兼容） */
-function rolePayload(r: RoleRow, patch: Partial<{ name: string; remark: string; enabled: boolean; templateId: number | null; permissions: Perm[] }>) {
+function rolePayload(r: RoleRow, patch: Partial<{ name: string; remark: string; enabled: boolean; templateId: number | null; permissions: Perm[]; externalAppIds: number[] }>) {
   const templateId = patch.templateId !== undefined ? patch.templateId : r.templateId;
   return {
     name: patch.name ?? r.name,
@@ -434,26 +466,30 @@ function rolePayload(r: RoleRow, patch: Partial<{ name: string; remark: string; 
     enabled: patch.enabled ?? r.enabled,
     templateId,
     permissions: templateId ? [] : (patch.permissions ?? r.permissions),
-    externalAppIds: templateId ? [] : r.externalAppIds,
+    externalAppIds: templateId ? [] : (patch.externalAppIds ?? r.externalAppIds),
   };
 }
 
-function RoleEditor({ role, templates, onClose, onSaved }: { role: RoleRow | null; templates: TemplateRow[]; onClose: () => void; onSaved: (m: string) => Promise<void> }) {
+function RoleEditor({ role, templates, onClose, onSaved, externalApps, appsError, appsLoading, reloadApps }: { role: RoleRow | null; templates: TemplateRow[]; onClose: () => void; onSaved: (m: string) => Promise<void>; externalApps: ExternalApp[]; appsError: boolean; appsLoading: boolean; reloadApps: () => void }) {
   const [name, setName] = useState(role?.name || '');
   const [remark, setRemark] = useState(role?.remark || '');
   const [templateId, setTemplateId] = useState<number | null>(role ? role.templateId : templates[0]?.id ?? null);
   const [perms, setPerms] = useState<Perm[]>(role?.permissions || []);
+  const [extAppIds, setExtAppIds] = useState<number[]>(role?.externalAppIds || []);
   const [busy, setBusy] = useState(false);
-  const shown = templateId ? templates.find((t) => t.id === templateId)?.permissions || [] : perms;
+  const template = templateId ? templates.find((t) => t.id === templateId) : null;
+  const shown = template ? template.permissions : perms;
+  const shownExt = template ? (template.externalAppIds || []) : extAppIds;
 
   const save = async () => {
     if (!name.trim()) { toast('请填写角色名称'); return; }
     const own = perms.filter((p) => p.canView);
     if (!templateId && !own.length) { toast('至少勾一项权限'); return; }
+    const ownExt = extAppIds;
     setBusy(true);
     try {
-      if (role) await request({ method: 'PATCH', url: `/roles/${role.id}`, data: rolePayload(role, { name: name.trim(), remark, templateId, permissions: own }) });
-      else await request({ method: 'POST', url: '/roles', data: { name: name.trim(), remark: remark || undefined, dataScope: 'all', enabled: true, templateId, permissions: templateId ? [] : own, warehouseIds: [], externalAppIds: [] } });
+      if (role) await request({ method: 'PATCH', url: `/roles/${role.id}`, data: rolePayload(role, { name: name.trim(), remark, templateId, permissions: own, externalAppIds: ownExt }) });
+      else await request({ method: 'POST', url: '/roles', data: { name: name.trim(), remark: remark || undefined, dataScope: 'all', enabled: true, templateId, permissions: templateId ? [] : own, warehouseIds: [], externalAppIds: templateId ? [] : ownExt } });
       await onSaved(role ? '已保存' : '已新建角色');
     } catch (e) { toast(e instanceof Error ? e.message : '保存失败'); }
     finally { setBusy(false); }
@@ -475,12 +511,12 @@ function RoleEditor({ role, templates, onClose, onSaved }: { role: RoleRow | nul
       {role?.builtIn ? null : (
         <>
           <Field label="权限来源">
-            <select className="in" value={templateId ?? ''} onChange={(e) => { const v = e.target.value ? Number(e.target.value) : null; if (!v && templateId) setPerms(templates.find((t) => t.id === templateId)?.permissions || []); setTemplateId(v); }}>
+            <select className="in" value={templateId ?? ''} onChange={(e) => { const v = e.target.value ? Number(e.target.value) : null; if (!v && templateId) { const prev = templates.find((t) => t.id === templateId); setPerms(prev?.permissions || []); setExtAppIds(prev?.externalAppIds || []); } setTemplateId(v); }}>
               {templates.map((t) => <option key={t.id} value={t.id}>跟随模板「{t.name}」（改模板即同步）</option>)}
               <option value="">自定义勾选（不跟随模板）</option>
             </select>
           </Field>
-          <PermMatrix value={shown} readOnly={!!templateId} onChange={setPerms} />
+          <PermMatrix value={shown} readOnly={!!templateId} onChange={setPerms} externalApps={externalApps} externalAppIds={shownExt} onExternalChange={setExtAppIds} appsError={appsError} appsLoading={appsLoading} reloadApps={reloadApps} />
         </>
       )}
       <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
@@ -493,7 +529,7 @@ function RoleEditor({ role, templates, onClose, onSaved }: { role: RoleRow | nul
 }
 
 /* ═════════════ 权限模板 ═════════════ */
-function TemplatesTab({ roles, templates, reload }: { roles: RoleRow[]; templates: TemplateRow[]; reload: () => Promise<unknown> }) {
+function TemplatesTab({ roles, templates, reload, externalApps, appsError, appsLoading, reloadApps }: { roles: RoleRow[]; templates: TemplateRow[]; reload: () => Promise<unknown>; externalApps: ExternalApp[]; appsError: boolean; appsLoading: boolean; reloadApps: () => void }) {
   const [editing, setEditing] = useState<TemplateRow | 'new' | null>(null);
   const remove = async (t: TemplateRow) => {
     const used = roles.filter((r) => r.templateId === t.id);
@@ -526,15 +562,16 @@ function TemplatesTab({ roles, templates, reload }: { roles: RoleRow[]; template
           </tbody>
         </table>
       </div>
-      {editing ? <TemplateEditor tpl={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={async (m) => { toast(m); setEditing(null); await reload(); }} /> : null}
+      {editing ? <TemplateEditor tpl={editing === 'new' ? null : editing} externalApps={externalApps} appsError={appsError} appsLoading={appsLoading} reloadApps={reloadApps} onClose={() => setEditing(null)} onSaved={async (m) => { toast(m); setEditing(null); await reload(); }} /> : null}
     </>
   );
 }
 
-function TemplateEditor({ tpl, onClose, onSaved }: { tpl: TemplateRow | null; onClose: () => void; onSaved: (m: string) => Promise<void> }) {
+function TemplateEditor({ tpl, onClose, onSaved, externalApps, appsError, appsLoading, reloadApps }: { tpl: TemplateRow | null; onClose: () => void; onSaved: (m: string) => Promise<void>; externalApps: ExternalApp[]; appsError: boolean; appsLoading: boolean; reloadApps: () => void }) {
   const [name, setName] = useState(tpl?.name || '');
   const [remark, setRemark] = useState(tpl?.remark || '');
   const [perms, setPerms] = useState<Perm[]>(tpl?.permissions || []);
+  const [extAppIds, setExtAppIds] = useState<number[]>(tpl?.externalAppIds || []);
   const [busy, setBusy] = useState(false);
   const save = async () => {
     if (!name.trim()) { toast('请填写模板名称'); return; }
@@ -542,7 +579,7 @@ function TemplateEditor({ tpl, onClose, onSaved }: { tpl: TemplateRow | null; on
     if (!permissions.length) { toast('至少勾一项权限'); return; }
     setBusy(true);
     try {
-      const data = { name: name.trim(), remark: remark || undefined, permissions, externalAppIds: tpl?.externalAppIds ?? [] };
+      const data = { name: name.trim(), remark: remark || undefined, permissions, externalAppIds: extAppIds };
       if (tpl) await request({ method: 'PATCH', url: `/roles/templates/${tpl.id}`, data });
       else await request({ method: 'POST', url: '/roles/templates', data });
       await onSaved(tpl ? '已保存，跟随的角色已同步' : '已新建模板');
@@ -555,7 +592,7 @@ function TemplateEditor({ tpl, onClose, onSaved }: { tpl: TemplateRow | null; on
         <Field label="模板名称"><input className="in" value={name} onChange={(e) => setName(e.target.value)} placeholder="例如：维修工" /></Field>
         <Field label="备注"><input className="in" value={remark} onChange={(e) => setRemark(e.target.value)} /></Field>
       </div>
-      <PermMatrix value={perms} onChange={setPerms} />
+      <PermMatrix value={perms} onChange={setPerms} externalApps={externalApps} externalAppIds={extAppIds} onExternalChange={setExtAppIds} appsError={appsError} appsLoading={appsLoading} reloadApps={reloadApps} />
       <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
         <Btn kind="p" size="lg" disabled={busy} onClick={() => void save()}>{busy ? '保存中…' : '保存'}</Btn>
         <Btn onClick={onClose}>取消</Btn>
@@ -565,7 +602,11 @@ function TemplateEditor({ tpl, onClose, onSaved }: { tpl: TemplateRow | null; on
 }
 
 /* ═════════════ 权限勾选表 ═════════════ */
-function PermMatrix({ value, onChange, readOnly }: { value: Perm[]; onChange: (p: Perm[]) => void; readOnly?: boolean }) {
+function PermMatrix({ value, onChange, readOnly, externalApps, externalAppIds, onExternalChange, appsError, appsLoading, reloadApps }: {
+  value: Perm[]; onChange: (p: Perm[]) => void; readOnly?: boolean;
+  externalApps: ExternalApp[]; externalAppIds: number[]; onExternalChange: (ids: number[]) => void;
+  appsError: boolean; appsLoading: boolean; reloadApps: () => void;
+}) {
   const get = (k: string) => value.find((p) => p.pageKey === k) || { pageKey: k, canView: false, canEdit: false, canDelete: false };
   const set = (k: string, patch: Partial<Perm>) => {
     if (readOnly) return;
@@ -573,6 +614,10 @@ function PermMatrix({ value, onChange, readOnly }: { value: Perm[]; onChange: (p
     if (patch.canEdit || patch.canDelete) next.canView = true;
     if (patch.canView === false) { next.canEdit = false; next.canDelete = false; }
     onChange([...value.filter((p) => p.pageKey !== k), next]);
+  };
+  const toggleApp = (id: number, checked: boolean) => {
+    if (readOnly) return;
+    onExternalChange(checked ? [...new Set([...externalAppIds, id])] : externalAppIds.filter((value) => value !== id));
   };
   const mapped = new Set(Object.values(APP_BY_GROUP).flat());
   const extraApp = STAFF_APP_PAGES.filter((p) => !mapped.has(p.key) && !p.legacy);
@@ -592,7 +637,6 @@ function PermMatrix({ value, onChange, readOnly }: { value: Perm[]; onChange: (p
       </tr>
     );
   };
-
   return (
     <div className="card" style={{ overflow: 'auto', marginTop: 4, opacity: readOnly ? 0.75 : 1 }}>
       {readOnly ? <div className="muted" style={{ padding: '8px 12px', fontSize: 13.5 }}>跟随模板：这里只读，改勾选请到「权限模板」页改模板</div> : null}
@@ -624,6 +668,23 @@ function PermMatrix({ value, onChange, readOnly }: { value: Perm[]; onChange: (p
             );
           })}
           {extraApp.length ? <GroupRows title="小程序其他入口">{extraApp.map((p) => appRow(p.key))}</GroupRows> : null}
+          <GroupRows title="内网应用">
+            {appsLoading ? <tr className="pm-app-row"><td colSpan={4}><span className="muted">读取应用列表…</span></td></tr>
+              : appsError ? <tr className="pm-app-row pm-app-error"><td colSpan={4}><span className="muted">应用列表读取失败，可重试</span><button type="button" className="btn sm" style={{ marginLeft: 10 }} onClick={() => reloadApps()}>重试</button></td></tr>
+                : !externalApps.length ? <tr className="pm-app-row"><td colSpan={4}><span className="muted">还没有发布内网应用，请先在『内网应用』页发布</span></td></tr>
+                  : externalApps.map((app) => {
+                    const status = extStatus(app);
+                    const usable = extUsable(app);
+                    return (
+                      <tr key={'ext-' + app.id} className={'pm-app-row' + (usable ? '' : ' is-off')}>
+                        <td><span className="pm-app-name"><Icon name="link" size={13} />{app.name}<span className={'pm-app-status ' + status.tone}>{status.text}</span></span></td>
+                        <td className="c"><input type="checkbox" aria-label={'内网应用 ' + app.name} checked={externalAppIds.includes(app.id)} disabled={readOnly || !usable} onChange={(e) => toggleApp(app.id, e.target.checked)} /></td>
+                        <td className="c"><span className="muted">—</span></td>
+                        <td className="c"><span className="muted">—</span></td>
+                      </tr>
+                    );
+                  })}
+          </GroupRows>
         </tbody>
       </table>
     </div>
