@@ -33,8 +33,9 @@ interface WorkOrderReport { range: { from: string; to: string }; groupBy: WorkOr
 interface StaffRow extends AggMetrics {
   userId: number; name: string; phone: string | null; accountStatus: string; onDuty: boolean;
   skillLabels: string[]; canTakeOrders: boolean; completedInRange: number; activeNow: number;
+  jobTypes?: string[]; capabilities?: string[];
 }
-interface StaffReport { range: { from: string; to: string }; summary: AggMetrics; staffCount: number; completedInRange: number; activeNow: number; rows: StaffRow[] }
+interface StaffReport { range: { from: string; to: string }; summary: AggMetrics; staffCount: number; completedInRange: number; activeNow: number; rows: StaffRow[]; capabilities?: string[]; jobTypes?: string[]; filterNote?: string }
 interface StockRow {
   stockId: number; warehouseId: number; warehouseName: string; warehouseType: string; materialId: number;
   code: string; name: string; spec: string | null; category: string | null; unit: string; enabled: boolean;
@@ -332,8 +333,8 @@ export default function Reports() {
               <div className="erp-report-kpis">
                 <Kpi icon="kanban" tone="blue" label="工单数" val={String(woData.summary.total)} note={`完成 ${woData.summary.completed} · 进行中 ${woData.summary.active}`} />
                 <Kpi icon="alert" tone="amber" label="超时" val={String(woData.summary.overdue)} note={`待验收 ${woData.summary.pendingReview}`} />
-                <Kpi icon="cash" tone="green" label="工单收费" val={yuan(woData.summary.feeCents)} note={`材料成本 ${yuan(woData.summary.materialCostCents)}`} />
-                <Kpi icon="chart" tone="blue" label="平均完成时长" val={avg(woData.summary.avgHours) + (woData.summary.avgHours === null ? '' : ' 小时')} note={`评价 ${woData.summary.ratingCount} 条`} />
+                <Kpi icon="cash" tone="green" label="已完成收费（元）" val={yuan(woData.summary.feeCents)} note={`待确认收费 ${yuan(woData.summary.pendingFeeCents)}`} />
+                <Kpi icon="chart" tone="blue" label="平均完成时长" val={avg(woData.summary.avgHours) + (woData.summary.avgHours === null ? '' : ' 小时')} note={`材料成本 ${yuan(woData.summary.materialCostCents)} · 评价 ${woData.summary.ratingCount} 条`} />
               </div>
               <Section title={`工单统计 · ${WO_GROUP_LABELS[woData.groupBy]}`} icon="kanban" right={exportButton('work-orders', { from, to, communityId: communityId || undefined, groupBy: woData.groupBy }, `工单统计_${from}_${to}`, !woData.rows.length)}>
                 <table><thead><tr><th>分组</th><th className="num">工单数</th><th className="num">已完成</th><th className="num">进行中</th><th className="num">待验收</th><th className="num">超时</th><th className="num">平均时长(h)</th><th className="num">收费（元）</th></tr></thead><tbody>
@@ -353,12 +354,13 @@ export default function Reports() {
               <div className="erp-report-kpis">
                 <Kpi icon="box" tone="blue" label="SKU 数" val={String(stockData.summary.skuCount)} note={`${stockData.summary.warehouseCount} 个仓库`} />
                 <Kpi icon="alert" tone="amber" label="低于安全库存" val={String(stockData.summary.lowCount)} note={`有库存行 ${stockData.summary.totalQtyRows}`} />
-                <Kpi icon="cash" tone="green" label="库存金额" val={yuan(stockData.summary.totalAmountCents)} />
+                <Kpi icon="cash" tone="green" label="库存金额（当前结存）" val={yuan(stockData.summary.totalAmountCents)} note={`共 ${stockData.summary.totalQtyRows} 行`} />
                 <Kpi icon="clipboard" tone="blue" label="仓库数" val={String(stockData.byWarehouse.length)} />
               </div>
               <Section title="按仓库" icon="building" right={exportButton('stock', { q: stockQ || undefined, category: stockCategory || undefined, onlyLow: stockOnlyLow ? '1' : undefined }, '库存清单', !stockData.rows.length)}>
                 <table><thead><tr><th>仓库</th><th className="num">SKU 数</th><th className="num">低于安全</th><th className="num">金额（元）</th></tr></thead><tbody>
                   {stockData.byWarehouse.map((r) => <tr key={r.warehouseId}><td>{r.warehouseName}</td><td className="num">{r.skuCount}</td><td className="num">{r.lowCount}</td><td className="num">{yuan(r.amountCents)}</td></tr>)}
+                  {!stockData.byWarehouse.length && <tr><td colSpan={4} className="muted">暂无库存数据</td></tr>}
                 </tbody></table>
               </Section>
               <Section title={`库存明细 · ${stockData.rows.length} 行`} icon="box">
@@ -384,17 +386,19 @@ export default function Reports() {
               <div className="erp-report-kpis">
                 <Kpi icon="layers" tone="blue" label="领用行数" val={String(muData.summary.lines)} note={`${muData.summary.orders} 张工单`} />
                 <Kpi icon="box" tone="green" label="领用数量" val={String(muData.summary.qty)} />
-                <Kpi icon="cash" tone="green" label="材料金额" val={yuan(muData.summary.amountCents)} />
+                <Kpi icon="cash" tone="green" label="材料花费（成本价）" val={yuan(muData.summary.amountCents)} note={`${muData.summary.lines} 行 / ${muData.summary.orders} 单`} />
                 <Kpi icon="file" tone="amber" label="统计口径" val={MU_GROUP_LABELS[muData.groupBy]} note={muData.truncated ? '已截断' : '全量'} />
               </div>
               <Section title={`材料领用 · ${MU_GROUP_LABELS[muData.groupBy]}`} icon="layers" right={exportButton('material-usage', { from, to, communityId: communityId || undefined, groupBy: muData.groupBy }, `材料领用_${from}_${to}`, !muData.rows.length)}>
                 {muData.groupBy === 'detail' ? (
                   <table><thead><tr><th>领用时间</th><th>工单</th><th>责任人</th><th>小区</th><th>物料</th><th className="num">数量</th><th className="num">金额（元）</th></tr></thead><tbody>
                     {(muData.rows as MaterialUsageDetail[]).map((r) => <tr key={r.id}><td>{r.usedAt}</td><td>{r.orderNo}</td><td>{r.assigneeName}</td><td>{r.communityName}</td><td>{r.name}<small className="rb-sub">{r.code}</small></td><td className="num">{r.qty} {r.unit}</td><td className="num">{yuan(r.amountCents)}</td></tr>)}
+                    {!muData.rows.length && <tr><td colSpan={7} className="muted">暂无材料领用数据</td></tr>}
                   </tbody></table>
                 ) : (
                   <table><thead><tr><th>分组</th><th className="num">领用行数</th><th className="num">工单数</th><th className="num">数量</th><th className="num">金额（元）</th></tr></thead><tbody>
                     {(muData.rows as MaterialUsageRow[]).map((r) => <tr key={r.key}><td>{r.label}</td><td className="num">{r.lines}</td><td className="num">{r.orders}</td><td className="num">{r.qty ?? '—'}{r.unit ? ' ' + r.unit : ''}</td><td className="num">{yuan(r.amountCents)}</td></tr>)}
+                    {!muData.rows.length && <tr><td colSpan={5} className="muted">暂无材料领用数据</td></tr>}
                   </tbody></table>
                 )}
               </Section>
@@ -408,15 +412,18 @@ export default function Reports() {
           {staffErr ? <div role="alert" className="note2"><Icon name="alert" />{staffErr}</div> : staffData === null ? <Loading /> : (
             <>
               <div className="erp-report-kpis">
-                <Kpi icon="users" tone="blue" label="员工数" val={String(staffData.staffCount)} />
+                <Kpi icon="users" tone="blue" label="维修工数" val={String(staffData.staffCount)} note="仅统计维修工" />
                 <Kpi icon="kanban" tone="blue" label="区间完成" val={String(staffData.completedInRange)} />
                 <Kpi icon="kanban" tone="amber" label="当前进行" val={String(staffData.activeNow)} />
                 <Kpi icon="chart" tone="green" label="超时工单" val={String(staffData.summary.overdue)} note={`待验收 ${staffData.summary.pendingReview}`} />
               </div>
-              <Section title="人员统计" icon="users" right={exportButton('staff', { from, to, communityId: communityId || undefined }, `人员统计_${from}_${to}`, !staffData.rows.length)}>
-                <table><thead><tr><th>员工</th><th>状态</th><th>在岗</th><th className="num">工单数</th><th className="num">已完成</th><th className="num">进行中</th><th className="num">超时</th><th className="num">区间完成</th><th className="num">当前进行</th></tr></thead><tbody>
-                  {staffData.rows.map((r) => <tr key={r.userId}><td>{r.name}<small className="rb-sub">{r.phone || '未留电话'}</small></td><td>{r.accountStatus}</td><td>{r.onDuty ? '在岗' : '离岗'}</td><td className="num">{r.total}</td><td className="num">{r.completed}</td><td className="num">{r.active}</td><td className="num">{r.overdue}</td><td className="num">{r.completedInRange}</td><td className="num">{r.activeNow}</td></tr>)}
-                  {!staffData.rows.length && <tr><td colSpan={9} className="muted">当前筛选范围没有人员数据</td></tr>}
+              <div className="note2" style={{ marginBottom: 12 }}>
+                <Icon name="alert" />统计口径：仅显示维修工{[...(staffData.capabilities || []), ...(staffData.jobTypes || [])].length ? `（${[...new Set([...(staffData.capabilities || []), ...(staffData.jobTypes || [])])].join('、')}）` : ''}{staffData.filterNote ? ` · ${staffData.filterNote}` : ''}
+              </div>
+              <Section title="维修工统计" icon="users" right={exportButton('staff', { from, to, communityId: communityId || undefined }, `人员统计_${from}_${to}`, !staffData.rows.length)}>
+                <table><thead><tr><th>维修工</th><th>状态</th><th>在岗</th><th className="num">工单数</th><th className="num">已完成</th><th className="num">进行中</th><th className="num">超时</th><th className="num">区间完成</th><th className="num">当前进行</th></tr></thead><tbody>
+                  {staffData.rows.map((r) => <tr key={r.userId}><td>{r.name}<small className="rb-sub">{r.phone || '未留电话'}{r.jobTypes?.length ? ' · ' + r.jobTypes.join('、') : ''}</small></td><td>{r.accountStatus}</td><td>{r.onDuty ? '在岗' : '离岗'}</td><td className="num">{r.total}</td><td className="num">{r.completed}</td><td className="num">{r.active}</td><td className="num">{r.overdue}</td><td className="num">{r.completedInRange}</td><td className="num">{r.activeNow}</td></tr>)}
+                  {!staffData.rows.length && <tr><td colSpan={9} className="muted">当前筛选范围没有维修工数据</td></tr>}
                 </tbody></table>
               </Section>
             </>
