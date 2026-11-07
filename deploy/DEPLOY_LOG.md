@@ -6269,3 +6269,10 @@
   - 9361f0ba fix(intro): temporarily hide traction slide
   - d4049918 fix(intro): remove aging claims; show unpaid list and period range
 
+## 2026-11-07 11:44 · web · 77f68249
+
+- 包：`pms-web-20261107-114326.tar.gz`
+- 提交：77f68249 feat(screen): 数据范围选择（小区/年度）并自动跟随管理处；趋势按年度按月展示
+- 自上次（5638d94d）以来上线的相关提交：
+  - 77f68249 feat(screen): 数据范围选择（小区/年度）并自动跟随管理处；趋势按年度按月展示
+
