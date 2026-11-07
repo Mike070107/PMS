@@ -41,7 +41,7 @@ import { FeesService } from './fees.service';
 import { MisFeesService } from './mis-fees.service';
 import { MisCollectionSmsService } from './mis-collection-sms.service';
 import {MisLedgerQueryDto} from './mis-ledger.dto';
-import { MisFeesQueryDto, MisHouseSearchDto, MisResidentialQueryDto, MisCollectionPreviewDto, MisCollectionSmsStatsQueryDto, MisRecentPaymentsQueryDto } from './mis-fees.dto';
+import { MisFeesQueryDto, MisHouseSearchDto, MisResidentialQueryDto, MisCollectionPreviewDto, MisCollectionSmsStatsQueryDto, MisRecentPaymentsQueryDto, MisTodayQueryDto } from './mis-fees.dto';
 
 /**
  * 物业费（纯管理端页面），走页面权限矩阵。
@@ -90,7 +90,11 @@ export class FeesController {
   @RequirePermission('fees','view')
   misHouses(@Query() query:MisHouseSearchDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.searchHouses(query.communityId,query.q,user,access);}
 
-  @Get('mis/recent-payments')
+  @Get('mis/today')
+ @RequirePermission('fees','view')
+ misToday(@Query() query:MisTodayQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.today(query,user,access);}
+
+ @Get('mis/recent-payments')
   @RequirePermission('fees','view')
   misRecentPayments(@Query() query:MisRecentPaymentsQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.recentPayments(query,user,access);}
 

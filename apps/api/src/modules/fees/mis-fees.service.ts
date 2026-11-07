@@ -167,6 +167,36 @@ export class MisFeesService implements OnModuleDestroy {
   return communities;
  }
  /**
+  * 今日工作页 MIS 实收：只读 WYZJ 当日已缴/退款，口径与 recent-payments 一致（ZJ_SKRQ 当日、TKRQ 空、JE>0）。
+  * byFee 按现有收费分类口径归并为物业费/泊位费/停车/其他四类。
+  */
+ async today(q:{date?:string},user:AuthUser,access?:ResolvedAccess){
+  const date=q.date??new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(`${date}T00:00:00+08:00`))||new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(`${date}T00:00:00+08:00`))!==date)throw new BadRequestException('日期不合法');
+  const communities=await this.collectionCommunities(undefined,user,access);
+  if(!communities.length)return {paidCents:0,paidCount:0,refundedCents:0,paidHouses:0,byFee:[],byChannel:[]};
+  const offices=[...new Set(communities.flatMap(c=>c.offices))];
+  const filter=buildMisFeeFilter({} as MisFeeQuery,offices);
+  filter.params.date=date;
+  const paidWhere=`w.ZJ_SKRQ>=CONVERT(datetime,@date,120) AND w.ZJ_SKRQ<DATEADD(day,1,CONVERT(datetime,@date,120)) AND w.ZJ_TKRQ IS NULL AND w.ZJ_JE>0`;
+  const refundWhere=`w.ZJ_TKRQ>=CONVERT(datetime,@date,120) AND w.ZJ_TKRQ<DATEADD(day,1,CONVERT(datetime,@date,120)) AND w.ZJ_JE>=0`;
+  const feeCategory=`CASE WHEN f.XM LIKE N'%物业%' OR (f.XM LIKE N'%管理费%' AND f.XM NOT LIKE N'%停车%') THEN N'物业费' WHEN f.XM LIKE N'%泊位%' THEN N'泊位费' WHEN f.XM LIKE N'%停车%' OR f.XM LIKE N'%车位%' THEN N'停车' ELSE N'其他' END`;
+  const channelExpr=`COALESCE(NULLIF(LTRIM(RTRIM(w.收款方式)),N''),N'未记录')`;
+  const sql=`SELECT COUNT(*) AS paidCount,COALESCE(SUM(w.ZJ_JE),0) AS paidAmount,COUNT(DISTINCT CONVERT(varchar(10),l.管理处)+':'+CONVERT(varchar(30),s.S_ID)) AS paidHouses ${filter.from} AND ${paidWhere};
+   SELECT COUNT(*) AS refundCount,COALESCE(SUM(-w.ZJ_JE),0) AS refundAmount ${filter.from} AND ${refundWhere};
+   SELECT ${feeCategory} AS feeName,COUNT(*) AS billCount,COALESCE(SUM(w.ZJ_JE),0) AS paidAmount ${filter.from} AND ${paidWhere} GROUP BY ${feeCategory} ORDER BY paidAmount DESC,feeName;
+   SELECT ${channelExpr} AS channel,COUNT(*) AS billCount,COALESCE(SUM(w.ZJ_JE),0) AS paidAmount ${filter.from} AND ${paidWhere} GROUP BY ${channelExpr} ORDER BY paidAmount DESC,channel;`;
+  const result=await this.read(sql,filter.params),sets=(result.recordsets||[]) as any[][],summary=sets[0]?.[0]||{},refund=sets[1]?.[0]||{};
+  return {
+   paidCents:misMoneyToCents(summary.paidAmount),
+   paidCount:Number(summary.paidCount||0),
+   refundedCents:misMoneyToCents(refund.refundAmount),
+   paidHouses:Number(summary.paidHouses||0),
+   byFee:(sets[2]||[]).map((r:any)=>({feeName:String(r.feeName||'其他'),paidCents:misMoneyToCents(r.paidAmount),billCount:Number(r.billCount||0)})),
+   byChannel:(sets[3]||[]).map((r:any)=>({channel:String(r.channel||'未记录'),paidCents:misMoneyToCents(r.paidAmount),billCount:Number(r.billCount||0)})),
+  };
+ }
+ /**
   * 大屏「近期已缴」：MIS WYZJ 的 paid 记录按房号+收款日聚合（同户同日多笔账单合并为一次播报），
   * ZJ_SKRQ 在源库是 smalldatetime 但实际只存日期（全库时分秒均为 0），故 paidAt 返回日期，
   * 另给 recordedAt（updatedate，真实到分钟，仅作 MIS 记录更新时间，非收款时间）。
