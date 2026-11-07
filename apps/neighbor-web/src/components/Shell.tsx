@@ -55,7 +55,7 @@ export const NAV: NavItem[] = [
   { key: 'sku', name: '材料SKU', rail: 'SKU', icon: 'layers', to: '/materials', group: '库存与盘点' },
   { key: 'devices', name: '系统与设备', rail: '系统设备', icon: 'cpu', to: '/devices', group: '系统' },
   { key: 'reports', name: '收费报表', rail: '报表', icon: 'chart', to: '/reports', group: '分析' },
-  { key: 'screen', permissionKey: 'fees', name: '收费大屏', rail: '大屏', icon: 'chart', to: '/screen', newTab: undefined, group: '分析' },
+  { key: 'screen', permissionKey: 'fees', name: '收费大屏', rail: '大屏', icon: 'chart', to: '/screen', newTab: '/screen', group: '分析' },
   { key: 'standards', name: '收费标准', rail: '收费标准', icon: 'wallet', to: '/standards', group: '收费' },
   { key: 'houses', name: '房产', rail: '房产', icon: 'home', to: '/houses', group: '档案' },
   { key: 'owners', name: '业主', rail: '业主', icon: 'users', to: '/owners', group: '档案' },

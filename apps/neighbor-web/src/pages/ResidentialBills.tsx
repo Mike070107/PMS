@@ -2,7 +2,6 @@ import CollectionFollowups, { FollowupCell, FollowupTodayMetric } from '@/compon
 import CollectionEffects from '@/components/CollectionEffects';
 import DateInput from '@/components/DateInput';
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { request } from '@pms/api-client';
 import { Card, Empty, ErrorNote, Sheet, toast } from '@/components/ui';
 import Icon from '@/components/Icon';
@@ -51,7 +50,6 @@ function BillTable({bills,compact=false}:{bills:Notice['bills'];compact?:boolean
 function agingOf(period?:string){if(!period||!/^\d{6}$/.test(period))return <span className="rb-age">—</span>;const y=Number(period.slice(0,4)),m=Number(period.slice(4,6));const now=new Date(chinaDate()+'T00:00:00Z');const days=Math.max(0,Math.round((Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)-Date.UTC(y,m-1,1))/86400000));const cls=days>90?'rb-age hot':days>60?'rb-age warn':'rb-age';return <span className={cls}>{days>90?'>90 天':days>60?'>60 天':days>30?'>30 天':'≤30 天'}</span>}
 function bucketOf(period?:string){if(!period||!/^\d{6}$/.test(period))return '';const y=Number(period.slice(0,4)),m=Number(period.slice(4));const now=new Date(chinaDate()+'T00:00:00Z');const days=Math.max(0,Math.round((Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)-Date.UTC(y,m-1,1))/86400000));return days>90?'90+':days>60?'61-90':days>30?'31-60':'0-30'}
 export default function ResidentialBills(){
- const nav = useNavigate();
  const session=useSession(),editable=can('fees','edit'),[rev,setRev]=useState(0),[tab,setTab]=useState<'overview'|'houses'|'history'>('houses');
  const [category,setCategory]=useState<Category>('all'),[community,setCommunity]=useState(''),[fee,setFee]=useState(''),[term,setTerm]=useState('');
  const [from,setFrom]=useState(chinaDate().slice(0,4)+'-01'),[to,setTo]=useState(chinaDate().slice(0,4)+'-12'),[mode,setMode]=useState<'week'|'month'>('month');
@@ -121,7 +119,7 @@ export default function ResidentialBills(){
   setPage(1);setChecked([]);setAll(false);
  }
  return <div className="rb" data-page="residential-bills">
-  <header className="ph"><div><div className="h1row"><ToneIcon kind="bills"/><h1>账单与待缴</h1></div><p>住宅收费总览与缴费提醒 · 收款、退款在MIS登记</p></div><div className="act"><button className="btn" onClick={()=>setRev(v=>v+1)}><Icon name="refresh"/>刷新MIS</button><button className="btn g" onClick={()=>nav('/screen')}>投屏大屏</button></div></header>
+  <header className="ph"><div><div className="h1row"><ToneIcon kind="bills"/><h1>账单与待缴</h1></div><p>住宅收费总览与缴费提醒 · 收款、退款在MIS登记</p></div><div className="act"><button className="btn" onClick={()=>setRev(v=>v+1)}><Icon name="refresh"/>刷新MIS</button><button className="btn g" onClick={()=>window.open('/screen','_blank','noopener')}>投屏大屏</button></div></header>
   <div className="rb-source"><span className="tag acc">一通MIS · 只读账务</span><span>{community?meta.data?.communities.find(c=>String(c.id)===community)?.name:meta.data?.communities.map(c=>c.name).join(' / ')||'确认授权范围中'}</span><span>读取时间：{dash.data?.queriedAt||list.data?.queriedAt?new Date((dash.data?.queriedAt||list.data?.queriedAt)!).toLocaleString('zh-CN'):'—'}</span></div>
   <State value={meta}>{meta.data&&!meta.data.available&&<ErrorNote>{meta.data.message}</ErrorNote>}</State>
   {meta.data?.available&&<>

@@ -107,8 +107,8 @@ function read(): Session {
 // 首次调用放在函数定义之后：模块顶层的 read() 会撞上 let cached 的 TDZ
 // 浏览器可能恢复 sessionStorage；仅真正刷新允许续用旧会话。
 // 其他新文档进入（包括恢复历史页）一律重新认证，宁可多登录不隐式恢复。
-const navigation = window.performance?.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
-if (navigation?.type !== 'reload') clearStoredSession();
+// sessionStorage 本身按标签隔离：同一标签内刷新、站内直链、新窗口克隆都应继续使用当前会话，
+// 只在没有 token 或 token 过期时才需要重新登录。这里不再按 navigation.type 清空。
 cached = read();
 scheduleDeadline();
 
