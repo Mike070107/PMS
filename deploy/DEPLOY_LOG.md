@@ -6285,3 +6285,10 @@
   - 6a5a75bc feat(intro): add mobile lite deck and narrow-screen redirect
   - 0fbbb581 feat(screen): 底部实时播报条；账单页新增「投屏大屏」入口
 
+## 2026-11-07 12:00 · web · 4208832a
+
+- 包：`pms-web-20261107-115941.tar.gz`
+- 提交：4208832a fix(screen): 大屏入口改同标签跳转，避免新标签丢 sessionStorage 会话
+- 自上次（3f97d561）以来上线的相关提交：
+  - 4208832a fix(screen): 大屏入口改同标签跳转，避免新标签丢 sessionStorage 会话
+
