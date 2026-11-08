@@ -40,6 +40,8 @@ test('收费大屏：多小区合并、达成率/缺口/日均、指标为0时 r
   assert.equal(result.monthToDate.paidCents, 70_000);
   assert.equal(result.monthToDate.targetCents, 150_000);
   assert.equal(result.monthToDate.rate, 46.7);
+  assert.equal(result.monthToDate.targetSource, 'explicit');
+  assert.equal(result.monthToDate.month, '2026-11');
   assert.deepEqual(result.communities.map((row: any) => [row.communityId, row.targetCents, row.paidCents, row.rate]), [[1, 1_000_000, 40_000, 4], [2, 500_000, 30_000, 6]]);
   assert.equal(result.trend.length, 12);
   assert.equal(result.trend[10].key, '2026-11');
@@ -61,8 +63,47 @@ test('收费大屏：未设指标时 annualCents=0、rate/dailyNeed=null，不�
   assert.equal(result.partial, true);
   assert.deepEqual(result.targetScope, { communityIds: [], communityNames: [] });
   assert.deepEqual(result.missingTargetCommunities, [{ id: 1, name: 'A' }]);
+  assert.equal(result.monthToDate.targetCents, 0);
+  assert.equal(result.monthToDate.rate, null);
+  assert.equal(result.monthToDate.targetSource, null);
+  assert.equal(result.monthToDate.month, '2026-11');
   assert.equal(result.today.vsDailyNeed, null);
   assert.equal(result.communities[0].rate, null);
+});
+
+test('收费大屏月度目标：显式 monthCents 优先，null 回退 annual/12；多组求和', () => {
+  const communities = [
+    { id: 1, name: 'A', offices: ['01'] },
+    { id: 2, name: 'B', offices: ['02'] },
+  ];
+  const row = [{ officeCode: '01', day: '2026-11-08', paidCents: 100_000, billCount: 1, houseCount: 1 }];
+  const base = {
+    year: 2026, communities, dailyRows: row, now, granularity: 'month' as const,
+    arrears: { totalCents: 0, houseCount: 0, buckets: [] }, recentPayments: [],
+  };
+  const derived: any = buildScreenSummary({ ...base, targets: [{ id: 1, communityIds: [1], year: 2026, annualCents: 1_200_000, monthCents: Array(12).fill(null) }] });
+  assert.equal(derived.monthToDate.targetCents, 100_000);
+  assert.equal(derived.monthToDate.targetSource, 'derived');
+  assert.equal(derived.monthToDate.rate, 100);
+  assert.equal(derived.today.vsMonthRate, 100);
+  const explicit: any = buildScreenSummary({ ...base, targets: [{ id: 1, communityIds: [1], year: 2026, annualCents: 1_200_000, monthCents: [...Array(10).fill(null), 250_000, null] }] });
+  assert.equal(explicit.monthToDate.targetCents, 250_000);
+  assert.equal(explicit.monthToDate.targetSource, 'explicit');
+  assert.equal(explicit.monthToDate.rate, 40);
+  const mixed: any = buildScreenSummary({
+    ...base,
+    targets: [
+      { id: 1, communityIds: [1], year: 2026, annualCents: 1_200_000, monthCents: [...Array(10).fill(null), 100_000, null] },
+      { id: 2, communityIds: [2], year: 2026, annualCents: 600_000, monthCents: Array(12).fill(null) },
+    ],
+  });
+  assert.equal(mixed.monthToDate.targetCents, 150_000);
+  assert.equal(mixed.monthToDate.targetSource, 'derived');
+  assert.equal(mixed.monthToDate.rate, 66.7);
+  const zeroExplicit: any = buildScreenSummary({ ...base, targets: [{ id: 1, communityIds: [1], year: 2026, annualCents: 1_200_000, monthCents: [...Array(10).fill(null), 0, null] }] });
+  assert.equal(zeroExplicit.monthToDate.targetCents, 0);
+  assert.equal(zeroExplicit.monthToDate.rate, null);
+  assert.equal(zeroExplicit.monthToDate.targetSource, 'explicit');
 });
 
 test('收费大屏：小区组指标只在组内小区全部选中时命中；部分命中不算，未覆盖进 missing', () => {

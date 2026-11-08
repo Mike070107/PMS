@@ -65,8 +65,23 @@ export function buildScreenSummary(input: {
   const targetYtdCents = targetCommunities.reduce((sum, community) => sum + (communityPaid.get(community.id) || 0), 0);
   const partial = missingTargetCommunities.length > 0;
   const currentMonth = todayKey.slice(0, 7);
-  const monthTargetCents = matchedTargets.reduce((sum, target) => sum + (target.monthCents[today.month - 1] ?? 0), 0);
   const monthPaidCents = monthPaid.get(currentMonth) || 0;
+  let explicitMonthCents = 0;
+  let derivedMonthCents = 0;
+  let hasExplicitMonth = false;
+  let hasDerivedMonth = false;
+  for (const target of matchedTargets) {
+    const value = target.monthCents[today.month - 1];
+    if (value === null || value === undefined) {
+      derivedMonthCents += Math.round(target.annualCents / 12);
+      hasDerivedMonth = true;
+    } else {
+      explicitMonthCents += value;
+      hasExplicitMonth = true;
+    }
+  }
+  const monthTargetCents = explicitMonthCents + derivedMonthCents;
+  const monthTargetSource = matchedTargets.length === 0 ? null : (hasDerivedMonth ? 'derived' : hasExplicitMonth ? 'explicit' : null);
   const yearStart = `${year}-01-01`, yearEnd = `${year}-12-31`;
   const remainingDays = year === today.year
     ? Math.max(0, Math.round((Date.parse(`${yearEnd}T00:00:00+08:00`) - Date.parse(`${todayKey}T00:00:00+08:00`)) / 86400000) + 1)
@@ -108,8 +123,8 @@ export function buildScreenSummary(input: {
     targetScope: { communityIds: targetCommunities.map((community) => community.id), communityNames: targetCommunities.map((community) => community.name) },
     missingTargetCommunities,
     partial,
-    today: { paidCents: todayCents, billCount: todayBills, houseCount: todayHouses, vsDailyNeed: dailyNeedCents && dailyNeedCents > 0 ? round1((todayCents / dailyNeedCents) * 100) : null },
-    monthToDate: { paidCents: monthPaidCents, targetCents: monthTargetCents, rate: monthTargetCents > 0 ? round1((monthPaidCents / monthTargetCents) * 100) : null },
+    today: { paidCents: todayCents, billCount: todayBills, houseCount: todayHouses, vsDailyNeed: dailyNeedCents && dailyNeedCents > 0 ? round1((todayCents / dailyNeedCents) * 100) : null, vsMonthRate: monthTargetCents > 0 ? round1((todayCents / monthTargetCents) * 100) : null },
+    monthToDate: { paidCents: monthPaidCents, targetCents: monthTargetCents, rate: monthTargetCents > 0 ? round1((monthPaidCents / monthTargetCents) * 100) : null, targetSource: monthTargetSource, month: currentMonth },
     communities: communityRows,
     trend,
     arrears,
