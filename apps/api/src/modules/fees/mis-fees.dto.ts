@@ -57,7 +57,14 @@ export class MisRecentPaymentsQueryDto {
 }
 /** 今日工作页 MIS 实收：date 缺省取北京时间今天。 */
 export class MisTodayQueryDto {
- @IsOptional() @Matches(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/,{message:'日期不合法'}) date?:string;
+ @IsOptional() @IsDateString({strict:true}) @Matches(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/,{message:'日期不合法'}) date?:string;
+}
+/** 今日分项收入明细：category 为分类 code；page/pageSize 必须真实转数字。 */
+export class MisTodayDetailsQueryDto {
+ @IsOptional() @IsDateString({strict:true}) @Matches(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/,{message:'日期不合法'}) date?:string;
+ @IsOptional() @IsIn(['property','berth','parking','other']) category?:'property'|'berth'|'parking'|'other';
+ @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(1000000) page?:number;
+ @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(50) pageSize?:number;
 }
 export class MisCollectionPreviewDto {
  @IsDefined() @ValidateNested() @Type(()=>MisResidentialQueryDto) filter:MisResidentialQueryDto;
