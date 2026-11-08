@@ -433,72 +433,78 @@ function TodayRing({ pct }: { pct: number | null }) {
 function CumulativeChart({ points, year, granularity, annualTargetCents }: { points: ScreenTrendPoint[]; year: number; granularity: 'day' | 'month'; annualTargetCents: number }) {
   const [hover, setHover] = useState<number | null>(null);
   if (!points.length) return <NoData />;
-  const W = 900; const H = 300;
-  const pad = { l: 48, r: 16, t: 26, b: 30 };
-  const isDay = granularity === 'day' && points[0].key.length >= 10;
-  const daysInYear = (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) ? 366 : 365;
-  const fraction = (key: string) => {
-    if (isDay) {
-      const day = Date.parse(key + 'T00:00:00Z');
-      const startDay = Date.parse(year + '-01-01T00:00:00Z');
-      return Math.min(1, Math.max(0, (day - startDay) / 86400000 / daysInYear));
+  const W = 800; const H = 300;
+  const pad = { l: 48, r: 24, t: 16, b: 16 };
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const monthDays = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  const xFraction = (key: string) => {
+    const month = Math.max(1, Math.min(12, Number(key.slice(5, 7)) || 1));
+    if (granularity === 'day') {
+      const day = Math.max(1, Math.min(monthDays[month - 1], Number(key.slice(8, 10)) || 1));
+      return (month - 1 + (day - 1) / monthDays[month - 1]) / 12;
     }
-    const month = Number(key.slice(5, 7));
-    return Math.min(1, Math.max(0, (month - 1) / 11));
+    return month / 12;
   };
-  const px = (index: number) => pad.l + fraction(points[index].key) * (W - pad.l - pad.r);
-  const rawMax = Math.max(1, ...points.map((point) => Math.max(point.cumPaidCents, point.cumTargetCents)), annualTargetCents || 0) * 1.15;
-  const rawStep = rawMax / 4;
-  const magnitude = Math.pow(10, Math.floor(Math.log10(Math.max(1, rawStep))));
-  const normalized = rawStep / magnitude;
-  const step = (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 2.5 ? 2.5 : normalized <= 5 ? 5 : 10) * magnitude;
-  const max = Math.ceil(rawMax / step) * step;
-  const py = (value: number) => pad.t + (1 - value / max) * (H - pad.t - pad.b);
-  const paidPath = points.map((point, index) => `${index ? 'L' : 'M'} ${px(index)} ${py(point.cumPaidCents)}`).join(' ');
-  const targetPath = points.map((point, index) => `${index ? 'L' : 'M'} ${px(index)} ${py(point.cumTargetCents)}`).join(' ');
+  const px = (fraction: number) => pad.l + fraction * (W - pad.l - pad.r);
   const last = points[points.length - 1];
-  const refTarget = annualTargetCents > 0 ? annualTargetCents : last.cumTargetCents;
-  const diff = last.cumPaidCents - refTarget;
-  const rate = refTarget > 0 ? Math.round((last.cumPaidCents / refTarget) * 1000) / 10 : null;
-  const fmtWan = (value: number) => (value / 1_000_000).toLocaleString('zh-CN', { maximumFractionDigits: 1 }) + '万';
-  const ticks = Array.from({ length: Math.round(max / step) + 1 }, (_, index) => ({ value: index * step, y: py(index * step) }));
-  const monthMarks = isDay
-    ? [1, 4, 7, 10].map((month) => ({ key: String(month), frac: (Date.UTC(year, month - 1, 1) - Date.UTC(year, 0, 1)) / 86400000 / daysInYear, label: String(month).padStart(2, '0') + '-01' }))
-      .concat([{ key: 'end', frac: 1, label: '12-31' }])
-    : [1, 4, 7, 10].map((month) => ({ key: String(month), frac: (month - 1) / 11, label: String(month).padStart(2, '0') }))
-      .concat([{ key: 'end', frac: 1, label: '12' }]);
+  const lastFraction = Math.max(0, Math.min(1, xFraction(last.key)));
+  const targetAt = (fraction: number) => Math.round(annualTargetCents * Math.max(0, Math.min(1, fraction)));
+  const targetLast = targetAt(lastFraction);
+  const maxPaid = Math.max(...points.map((point) => point.cumPaidCents));
+  const max = Math.max(1, annualTargetCents, maxPaid) * 1.1;
+  const py = (value: number) => pad.t + (1 - value / max) * (H - pad.t - pad.b);
+  const xOf = (index: number) => px(xFraction(points[index].key));
+  const paidPath = points.map((point, index) => `${index ? 'L' : 'M'} ${xOf(index)} ${py(point.cumPaidCents)}`).join(' ');
+  const areaPath = paidPath + ` L ${xOf(points.length - 1)} ${py(0)} L ${xOf(0)} ${py(0)} Z`;
+  const targetStart = { x: px(0), y: py(0) };
+  const targetEnd = { x: px(1), y: py(annualTargetCents) };
+  const fmtWan = (value: number) => (value / 1_000_000).toLocaleString('zh-CN', { maximumFractionDigits: 2 }) + ' 万';
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => ({ value: max * f, y: py(max * f) }));
+  const diff = last.cumPaidCents - targetLast;
+  const rate = targetLast > 0 ? Math.round((last.cumPaidCents / targetLast) * 1000) / 10 : null;
+  const months = Array.from({ length: 12 }, (_, index) => ({ month: index + 1, x: px((index + 0.5) / 12) }));
+  const hoverPoint = hover !== null ? points[hover] : null;
+  const hoverFraction = hoverPoint ? xFraction(hoverPoint.key) : 0;
+  const hoverTarget = targetAt(hoverFraction);
+  const hoverDiff = hoverPoint ? hoverPoint.cumPaidCents - hoverTarget : 0;
+  const hoverRate = hoverTarget > 0 && hoverPoint ? Math.round((hoverPoint.cumPaidCents / hoverTarget) * 1000) / 10 : null;
   return (
     <div className="scr-cum-chart" onMouseLeave={() => setHover(null)}>
-      <div className={'scr-cum-diff ' + (diff >= 0 ? 'lead' : 'lag')}>{diff >= 0 ? '超前' : '落后'} ¥{cents(Math.abs(diff))}{rate !== null ? ' · 达成 ' + rate + '%' : ''}</div>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: '100%', height: '100%' }}>
-        {ticks.map((tick) => <line key={tick.y} className="scr-gridline" x1={pad.l} y1={tick.y} x2={W - pad.r} y2={tick.y} />)}
-        {ticks.filter((tick) => tick.value > 0).map((tick) => <text key={'tick' + tick.y} x={pad.l - 7} y={tick.y + 3.5} className="scr-axis-label" textAnchor="end">{fmtWan(tick.value)}</text>)}
-        {monthMarks.map((mark) => <line key={'v' + mark.key} className="scr-gridline v" x1={pad.l + mark.frac * (W - pad.l - pad.r)} y1={pad.t} x2={pad.l + mark.frac * (W - pad.l - pad.r)} y2={H - pad.b} />)}
+      <div className="scr-cum-legend"><span><i className="paid" />实收累计</span><span><i className="target" />目标累计</span></div>
+      <div className={'scr-cum-diff ' + (diff >= 0 ? 'lead' : 'lag')}>{diff >= 0 ? '超前' : '落后'} ¥{cents(Math.abs(diff))}{rate !== null ? '（达成 ' + rate + '%）' : ''}</div>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ aspectRatio: '16 / 6', width: '100%', height: '100%', maxWidth: '100%' }}>
+        <defs>
+          <linearGradient id="scrCumArea" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#5fd6ff" stopOpacity="0.18" />
+            <stop offset="1" stopColor="#5fd6ff" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {ticks.map((tick) => <line key={'grid' + tick.y} className="scr-gridline" x1={pad.l} y1={tick.y} x2={W - pad.r} y2={tick.y} />)}
+        {ticks.map((tick) => <text key={'y' + tick.y} x={pad.l - 8} y={tick.y + 4} className="scr-axis-label" textAnchor="end">{fmtWan(tick.value)}</text>)}
+        {months.map(({ month, x }) => <text key={'m' + month} x={x} y={H - 4} className="scr-chart-label" textAnchor="middle">{String(month).padStart(2, '0')}</text>)}
+        <path d={areaPath} fill="url(#scrCumArea)" />
         {points.slice(0, -1).map((point, index) => {
           const next = points[index + 1];
-          const d = `M ${px(index)} ${py(point.cumPaidCents)} L ${px(index + 1)} ${py(next.cumPaidCents)} L ${px(index + 1)} ${py(next.cumTargetCents)} L ${px(index)} ${py(point.cumTargetCents)} Z`;
-          return <path key={'band' + point.key} d={d} className={'scr-cum-seg ' + ((point.cumPaidCents + next.cumPaidCents) / 2 >= (point.cumTargetCents + next.cumTargetCents) / 2 ? 'lead' : 'lag')} />;
+          const f1 = xFraction(point.key); const f2 = xFraction(next.key);
+          const d = `M ${px(f1)} ${py(point.cumPaidCents)} L ${px(f2)} ${py(next.cumPaidCents)} L ${px(f2)} ${py(targetAt(f2))} L ${px(f1)} ${py(targetAt(f1))} Z`;
+          return <path key={'band' + point.key} d={d} className={'scr-cum-seg ' + ((point.cumPaidCents + next.cumPaidCents) / 2 >= (targetAt(f1) + targetAt(f2)) / 2 ? 'lead' : 'lag')} />;
         })}
-        {annualTargetCents > 0 ? (
-          <g>
-            <line className="scr-goal-line" x1={pad.l} y1={py(annualTargetCents)} x2={W - pad.r} y2={py(annualTargetCents)} />
-            <text className="scr-goal-label" x={W - pad.r} y={py(annualTargetCents) - 6} textAnchor="end">目标 ¥{fmtWan(annualTargetCents)}（100%）</text>
-          </g>
-        ) : null}
-        <path d={targetPath} className="scr-cum-target" />
+        <line className="scr-goal-line" x1={pad.l} y1={py(annualTargetCents)} x2={W - pad.r} y2={py(annualTargetCents)} />
+        <text className="scr-goal-label" x={W - pad.r} y={py(annualTargetCents) + 15} textAnchor="end">{annualTargetCents > 0 ? '目标 ¥' + fmtWan(annualTargetCents) : '未设年度目标'}</text>
+        <line className="scr-cum-target" x1={targetStart.x} y1={targetStart.y} x2={targetEnd.x} y2={targetEnd.y} />
         <path d={paidPath} className="scr-cum-paid" />
         {points.map((point, index) => (
-          <rect key={'hit' + point.key} x={px(index) - Math.max(3, (W - pad.l - pad.r) / points.length / 2)} y={pad.t} width={Math.max(6, (W - pad.l - pad.r) / points.length)} height={H - pad.t - pad.b} fill="transparent" onMouseEnter={() => setHover(index)} />
+          <rect key={'hit' + point.key} x={xOf(index) - Math.max(3, (W - pad.l - pad.r) / Math.max(12, points.length))} y={pad.t} width={Math.max(6, (W - pad.l - pad.r) / Math.max(12, points.length))} height={H - pad.t - pad.b} fill="transparent" onMouseEnter={() => setHover(index)} />
         ))}
-        {monthMarks.map((mark) => <text key={'x' + mark.key} x={pad.l + mark.frac * (W - pad.l - pad.r)} y={H - 8} className="scr-chart-label" textAnchor={mark.frac === 1 ? 'end' : 'middle'}>{mark.label}</text>)}
-        {hover !== null ? <circle cx={px(hover)} cy={py(points[hover].cumPaidCents)} r={4} className="scr-point" /> : null}
+        {hover !== null && hoverPoint ? (
+          <line className="scr-hover-line" x1={xOf(hover)} y1={pad.t} x2={xOf(hover)} y2={H - pad.b} />
+        ) : null}
       </svg>
-      {hover !== null ? (
-        <div className="scr-chart-tip" style={{ left: `${(px(hover) / W) * 100}%` }}>
-          <b>{points[hover].key}</b>
-          <span>实收累计 ¥{cents(points[hover].cumPaidCents)} · 目标累计 ¥{cents(points[hover].cumTargetCents)}</span>
-          <span className={points[hover].cumPaidCents >= points[hover].cumTargetCents ? 'lead' : 'lag'}>差额 {points[hover].cumPaidCents >= points[hover].cumTargetCents ? '+' : '-'}¥{cents(Math.abs(points[hover].cumPaidCents - points[hover].cumTargetCents))}</span>
-          <span>达成率 {annualTargetCents > 0 ? Math.round((points[hover].cumPaidCents / annualTargetCents) * 1000) / 10 + '%' : '—'}</span>
+      {hover !== null && hoverPoint ? (
+        <div className="scr-chart-tip" style={{ left: `${(xOf(hover) / W) * 100}%` }}>
+          <b>{Number(hoverPoint.key.slice(5, 7)) + '月'}</b>
+          <span>实收 ¥{cents(hoverPoint.cumPaidCents)} · 目标 ¥{cents(hoverTarget)}</span>
+          <span className={hoverDiff >= 0 ? 'lead' : 'lag'}>差额 {hoverDiff >= 0 ? '+' : '-'}¥{cents(Math.abs(hoverDiff))} · 达成 {hoverRate === null ? '—' : hoverRate + '%'}</span>
         </div>
       ) : null}
     </div>
@@ -507,7 +513,7 @@ function CumulativeChart({ points, year, granularity, annualTargetCents }: { poi
 
 function MonthlyChart({ months }: { months: { key: string; label: string; paidCents: number; targetCents: number; current: boolean }[] }) {
   if (!months.length) return <NoData />;
-  const W = 800; const H = 180;
+  const W = 800; const H = 250;
   const pad = { l: 12, r: 12, t: 12, b: 24 };
   const max = Math.max(1, ...months.map((month) => Math.max(month.paidCents, month.targetCents)));
   const slot = (W - pad.l - pad.r) / months.length;
@@ -515,7 +521,7 @@ function MonthlyChart({ months }: { months: { key: string; label: string; paidCe
   const py = (value: number) => pad.t + (1 - value / max) * (H - pad.t - pad.b);
   const targetLine = months.map((month, index) => `${index ? 'L' : 'M'} ${pad.l + slot * index + slot / 2} ${py(month.targetCents)}`).join(' ');
   return (
-    <svg className="scr-month-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="月度实收与指标">
+    <svg className="scr-month-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet" style={{ aspectRatio: '16 / 5', width: '100%', height: '100%', maxWidth: '100%' }} role="img" aria-label="月度实收与指标">
       {[0.25, 0.5, 0.75].map((f) => <line key={f} className="scr-gridline" x1={pad.l} y1={py(max * f)} x2={W - pad.r} y2={py(max * f)} />)}
       {months.map((month, index) => {
         const x = pad.l + slot * index + (slot - barW) / 2;

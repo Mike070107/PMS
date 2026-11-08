@@ -1,4 +1,4 @@
-/* 全屏看板：深色主题只作用于 .screen，不影响后台其它页面；1920×1080 基准等比缩放（--u 为 1 设计像素）。 */
+﻿/* 鍏ㄥ睆鐪嬫澘锛氭繁鑹蹭富棰樺彧浣滅敤浜?.screen锛屼笉褰卞搷鍚庡彴鍏跺畠椤甸潰锛?920脳1080 鍩哄噯绛夋瘮缂╂斁锛?-u 涓?1 璁捐鍍忕礌锛夈€?*/
 .screen{
  --scr-text:#e7eefb; --scr-dim:#93a9c6; --scr-faint:#6c82a2;
  --scr-line:rgba(120,168,255,.16); --scr-blue:#5aa2ff; --scr-green:#54d6a0; --scr-amber:#ffb454; --scr-red:#ff7a6b;
@@ -20,7 +20,7 @@
 .screen .scr-panel{position:relative;min-width:0;min-height:0;padding:calc(var(--u)*18) calc(var(--u)*22);border:1px solid var(--scr-line);border-radius:calc(var(--u)*14);background:var(--scr-panel);box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 calc(var(--u)*12) calc(var(--u)*32) rgba(0,0,0,.35);overflow:hidden}
 .screen .scr-panel::before{content:'';position:absolute;left:0;right:0;top:0;height:calc(var(--u)*2);background:linear-gradient(90deg,rgba(90,162,255,0),rgba(90,162,255,.55),rgba(90,162,255,0))}
 
-/* 顶部：标题 + 最后更新时间 + 全屏 / 返回后台 */
+/* 椤堕儴锛氭爣棰?+ 鏈€鍚庢洿鏂版椂闂?+ 鍏ㄥ睆 / 杩斿洖鍚庡彴 */
 .screen .scr-head{display:flex;align-items:center;justify-content:space-between;gap:calc(var(--u)*18);min-width:0;padding:0 calc(var(--u)*4)}
 .screen .scr-brand{display:flex;align-items:center;gap:calc(var(--u)*14);min-width:0}
 .screen .scr-mark{width:calc(var(--u)*10);height:calc(var(--u)*48);border-radius:999px;background:linear-gradient(180deg,#7dbdff,#2b62c9);box-shadow:0 0 calc(var(--u)*20) rgba(90,162,255,.65);flex:none}
@@ -40,7 +40,7 @@
 .screen .scr-btn.ghost{background:transparent;color:var(--scr-dim)}
 .screen .scr-btn.ghost:hover{color:#fff;border-color:rgba(120,168,255,.5)}
 
-/* 四张 KPI 卡 */
+/* 鍥涘紶 KPI 鍗?*/
 .screen .scr-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:calc(var(--u)*16);min-width:0}
 .screen .scr-kpi{display:flex;flex-direction:column;justify-content:center;gap:calc(var(--u)*6);min-height:calc(var(--u)*132)}
 .screen .scr-kpi-label{font-size:calc(var(--u)*14);color:var(--scr-dim);letter-spacing:calc(var(--u)*.6)}
@@ -55,7 +55,7 @@
 .screen .scr-panel-head h2{font-size:calc(var(--u)*19);font-weight:650;letter-spacing:calc(var(--u)*.3);white-space:nowrap}
 .screen .scr-legend{font-size:calc(var(--u)*12.5);color:var(--scr-faint);white-space:nowrap}
 
-/* 中部：左趋势（面积图）/ 右账龄（横条） */
+/* 涓儴锛氬乏瓒嬪娍锛堥潰绉浘锛? 鍙宠处榫勶紙妯潯锛?*/
 .screen .scr-mid{display:grid;grid-template-columns:minmax(0,1.62fr) minmax(0,1fr);gap:calc(var(--u)*16);min-height:0;min-width:0}
 .screen .scr-trend,.screen .scr-aging-panel{display:flex;flex-direction:column;min-height:0}
 .screen .scr-chart{display:flex;flex-direction:column;flex:1;min-height:0;gap:calc(var(--u)*4)}
@@ -83,7 +83,7 @@
 .screen .scr-aging-row small{font-size:calc(var(--u)*11.5);color:var(--scr-faint)}
 .screen .scr-footnote{margin-top:calc(var(--u)*2);font-size:calc(var(--u)*11.5);color:var(--scr-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-/* 底部三张卡：批次 / T+30 / 短信 */
+/* 搴曢儴涓夊紶鍗★細鎵规 / T+30 / 鐭俊 */
 .screen .scr-bottom{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:calc(var(--u)*16);min-width:0}
 .screen .scr-mini{display:flex;flex-direction:column;min-height:calc(var(--u)*152);padding:calc(var(--u)*16) calc(var(--u)*20)}
 .screen .scr-mini .scr-panel-head{margin-bottom:calc(var(--u)*4)}
@@ -94,7 +94,7 @@
 .screen .scr-mini-body small{font-size:calc(var(--u)*12);color:var(--scr-faint);white-space:nowrap}
 .screen .scr-mini-note{margin-left:auto;font-size:calc(var(--u)*11.5);color:var(--scr-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62%;padding-bottom:calc(var(--u)*2)}
 
-/* 空态 / 待接口占位 */
+/* 绌烘€?/ 寰呮帴鍙ｅ崰浣?*/
 .screen .scr-empty{flex:1;min-height:calc(var(--u)*80);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:calc(var(--u)*6);padding:calc(var(--u)*14);border:1px dashed rgba(120,168,255,.25);border-radius:calc(var(--u)*10);background:rgba(12,24,44,.45);color:var(--scr-dim);text-align:center}
 .screen .scr-empty b{font-size:calc(var(--u)*14);font-weight:600}
 .screen .scr-empty small{font-size:calc(var(--u)*11.5);color:var(--scr-faint);max-width:92%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -105,7 +105,7 @@
  .screen .scr-aging-bar{transition:none}
 }
 
-/* 底部实时播报：26s 一轮，hover 暂停；prefers-reduced-motion 下关闭位移动画，改 JS 静态轮播。 */
+/* 搴曢儴瀹炴椂鎾姤锛?6s 涓€杞紝hover 鏆傚仠锛沺refers-reduced-motion 涓嬪叧闂綅绉诲姩鐢伙紝鏀?JS 闈欐€佽疆鎾€?*/
 .screen.has-ticker{grid-template-rows:auto auto minmax(0,1fr) auto auto}
 .screen .scr-ticker{display:flex;align-items:center;gap:calc(var(--u)*14);height:calc(var(--u)*44);min-width:0;padding:0 calc(var(--u)*14);border:1px solid var(--scr-line);border-radius:calc(var(--u)*10);background:linear-gradient(90deg,rgba(9,22,38,.96),rgba(7,16,28,.96));overflow:hidden}
 .screen .scr-ticker-label{flex:none;display:inline-flex;align-items:center;gap:calc(var(--u)*7);height:calc(var(--u)*26);padding:0 calc(var(--u)*10);border-radius:999px;border:1px solid rgba(61,218,208,.42);background:rgba(61,218,208,.12);color:#48e2d8;font-size:calc(var(--u)*12.5);font-weight:650;letter-spacing:calc(var(--u)*.6);white-space:nowrap}
@@ -120,13 +120,13 @@
 .screen .scr-ticker-static span{font-size:calc(var(--u)*13);color:#c9dcf4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media (prefers-reduced-motion: reduce){ .screen .scr-ticker-track{animation:none} }
 .screen .scr-ticker-paid{font-style:normal;color:#3ddc97;font-weight:600;margin-left:calc(var(--u)*8)}
-/* 无缝循环：间距放在每一项的右侧，-50% 位移才能与前半段严格对齐 */
+/* 鏃犵紳寰幆锛氶棿璺濇斁鍦ㄦ瘡涓€椤圭殑鍙充晶锛?50% 浣嶇Щ鎵嶈兘涓庡墠鍗婃涓ユ牸瀵归綈 */
 .screen .scr-ticker-track>span{margin-right:calc(var(--u)*44)}
 
-/* MIS 离线/镜像同步时间：最后更新旁的小字，不告警 */
+/* MIS 绂荤嚎/闀滃儚鍚屾鏃堕棿锛氭渶鍚庢洿鏂版梺鐨勫皬瀛楋紝涓嶅憡璀?*/
 .screen .scr-asof{color:var(--scr-dim);font-size:calc(var(--u)*13);white-space:nowrap;opacity:.92}
 
-/* ── 2026 大屏改版：年度达成 / 今日实时 / 累计曲线 / 月度柱 / 小区排行 / 欠费结构 ── */
+/* 鈹€鈹€ 2026 澶у睆鏀圭増锛氬勾搴﹁揪鎴?/ 浠婃棩瀹炴椂 / 绱鏇茬嚎 / 鏈堝害鏌?/ 灏忓尯鎺掕 / 娆犺垂缁撴瀯 鈹€鈹€ */
 .screen.scr-v2{display:flex;flex-direction:column;gap:calc(var(--u)*14)}
 .screen.scr-v2>.scr-top,
 .screen.scr-v2>.scr-main{min-height:0;min-width:0}
@@ -139,7 +139,7 @@
 .screen.scr-v2 .scr-ranking{display:flex;flex-direction:column;min-height:0;overflow:hidden}
 .screen.scr-v2 .scr-ticker{flex:none}
 
-/* 年度达成 */
+/* 骞村害杈炬垚 */
 .screen.scr-v2 .scr-annual{display:flex;flex-direction:column;justify-content:center;gap:calc(var(--u)*14)}
 .screen.scr-v2 .scr-target-line{display:flex;align-items:center;gap:calc(var(--u)*10);font-size:calc(var(--u)*15);color:#cfe2ff;flex-wrap:wrap}
 .screen.scr-v2 .scr-target-line i{width:1px;height:calc(var(--u)*12);background:rgba(120,168,255,.3)}
@@ -155,7 +155,7 @@
 .screen.scr-v2 .scr-target-empty span{font-size:calc(var(--u)*13.5);color:var(--scr-faint)}
 .screen .scr-btn{font-size:calc(var(--u)*13)}
 
-/* 今日实时 */
+/* 浠婃棩瀹炴椂 */
 .screen.scr-v2 .scr-today-body{display:flex;align-items:center;justify-content:space-between;gap:calc(var(--u)*22);flex:1;min-height:0}
 .screen.scr-v2 .scr-today-main{display:flex;flex-direction:column;gap:calc(var(--u)*4);min-width:0}
 .screen.scr-v2 .scr-today-label{font-size:calc(var(--u)*14);color:var(--scr-dim);letter-spacing:calc(var(--u)*.4)}
@@ -170,7 +170,7 @@
 .screen.scr-v2 .scr-today-ring svg{width:100%;height:100%;display:block}
 .screen.scr-v2 .scr-today-ring>span{position:absolute;inset:0;display:grid;place-items:center;font-size:calc(var(--u)*19);font-weight:750;color:currentColor}
 
-/* 累计曲线 */
+/* 绱鏇茬嚎 */
 .screen.scr-v2 .scr-cum-panel .scr-panel-head{margin-bottom:calc(var(--u)*2)}
 .screen.scr-v2 .scr-gran{display:inline-flex;border:1px solid rgba(120,168,255,.24);border-radius:calc(var(--u)*8);overflow:hidden;flex:none}
 .screen.scr-v2 .scr-gran-btn{height:calc(var(--u)*30);padding:0 calc(var(--u)*13);background:transparent;color:var(--scr-dim);font:inherit;font-size:calc(var(--u)*12.5);border:0;cursor:pointer}
@@ -193,14 +193,14 @@
 .screen.scr-v2 .scr-chart-tip span.lag{color:#ffb0a8}
 .screen.scr-v2 .scr-chart-tip span.lead{color:#8ff0c8}
 
-/* 月度柱 */
+/* 鏈堝害鏌?*/
 .screen.scr-v2 .scr-month-chart{width:100%;flex:1;min-height:0;display:block}
 .screen.scr-v2 .scr-month-bar.ok{fill:rgba(84,214,160,.7)}
 .screen.scr-v2 .scr-month-bar.low{fill:rgba(255,122,107,.42)}
 .screen.scr-v2 .scr-month-bar.current{stroke:#fff;stroke-width:2;stroke-dasharray:4 3}
 .screen.scr-v2 .scr-month-target{fill:none;stroke:#ffb454;stroke-width:2;stroke-dasharray:5 4;vector-effect:non-scaling-stroke}
 
-/* 小区排行 */
+/* 灏忓尯鎺掕 */
 .screen.scr-v2 .scr-community-list{display:flex;flex-direction:column;gap:calc(var(--u)*7);flex:1;min-height:0;overflow:auto;padding-right:calc(var(--u)*2)}
 .screen.scr-v2 .scr-community-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) calc(var(--u)*68);align-items:center;gap:calc(var(--u)*10);width:100%;padding:calc(var(--u)*5) calc(var(--u)*6);border:0;border-radius:calc(var(--u)*8);background:transparent;color:var(--scr-text);font:inherit;text-align:left;cursor:pointer}
 .screen.scr-v2 .scr-community-row:hover{background:rgba(90,162,255,.1)}
@@ -215,7 +215,7 @@
 
 .screen.scr-v2 .scr-no-data{display:grid;place-items:center;flex:1;min-height:calc(var(--u)*90);color:var(--scr-faint);font-size:calc(var(--u)*13.5);letter-spacing:calc(var(--u)*.3)}
 
-/* 顶部多小区勾选 */
+/* 椤堕儴澶氬皬鍖哄嬀閫?*/
 .screen .scr-checks{height:auto;min-height:calc(var(--u)*38);padding:calc(var(--u)*3) calc(var(--u)*9);gap:calc(var(--u)*8);max-width:calc(var(--u)*620);flex-wrap:wrap}
 .screen .scr-check{display:inline-flex;align-items:center;gap:calc(var(--u)*4);font-size:calc(var(--u)*12);color:#cfe2ff;cursor:pointer;white-space:nowrap}
 .screen .scr-check input{accent-color:#5aa2ff;width:calc(var(--u)*13);height:calc(var(--u)*13);cursor:pointer}
@@ -226,18 +226,18 @@
   .screen.scr-v2 .scr-top{grid-template-columns:minmax(0,1fr) minmax(0,1.3fr)}
 }
 
-/* screen-v2 arrears compact：避免内容居中溢出压到标题 */
+/* screen-v2 arrears compact锛氶伩鍏嶅唴瀹瑰眳涓孩鍑哄帇鍒版爣棰?*/
 .screen.scr-v2 .scr-aging-panel .scr-aging{justify-content:flex-start;gap:calc(var(--u)*6);overflow:auto;padding-top:calc(var(--u)*2)}
 .screen.scr-v2 .scr-aging-panel .scr-aging-row{gap:calc(var(--u)*2)}
 .screen.scr-v2 .scr-aging-panel .scr-aging-head b{font-size:calc(var(--u)*15)}
 .screen.scr-v2 .scr-aging-panel .scr-footnote{flex:none}
 
-/* 部分口径 / 未设指标 */
+/* 閮ㄥ垎鍙ｅ緞 / 鏈鎸囨爣 */
 .screen.scr-v2 .scr-partial-tag{display:inline-flex;align-items:center;padding:calc(var(--u)*2) calc(var(--u)*8);border-radius:999px;background:rgba(255,180,84,.16);color:#ffcf8a;font-style:normal;font-size:calc(var(--u)*12);font-weight:650;margin-right:calc(var(--u)*8);vertical-align:middle}
 .screen.scr-v2 .scr-target-scope{font-size:calc(var(--u)*12);color:var(--scr-faint);line-height:1.45}
 .screen.scr-v2 .scr-today-ring>span.idle{font-size:calc(var(--u)*12.5);font-weight:600;color:var(--scr-faint)}
 
-/* Three.js 背景层：只做装饰，内容在其上；无 WebGL/reduced-motion 时用静态渐变 */
+/* Three.js 鑳屾櫙灞傦細鍙仛瑁呴グ锛屽唴瀹瑰湪鍏朵笂锛涙棤 WebGL/reduced-motion 鏃剁敤闈欐€佹笎鍙?*/
 .screen.scr-v2{isolation:isolate}
 .screen .scr-three{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
 .screen.scr-v2 > :not(.scr-three){position:relative;z-index:1}
@@ -245,7 +245,7 @@
   radial-gradient(60% 50% at 18% 25%, rgba(60,132,210,.18), transparent 70%),
   radial-gradient(50% 40% at 82% 70%, rgba(45,150,160,.12), transparent 70%)}
 
-/* 小区下拉多选 */
+/* 灏忓尯涓嬫媺澶氶€?*/
 .screen .scr-community-picker{position:relative;flex:none}
 .screen .scr-picker-btn{display:inline-flex;align-items:center;gap:calc(var(--u)*7);cursor:pointer;background:rgba(22,44,78,.65)}
 .screen .scr-picker-btn b{font-weight:600;color:#dbe9ff;max-width:calc(var(--u)*210);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -258,10 +258,10 @@
 .screen .scr-pop-item:hover{background:rgba(90,162,255,.12)}
 .screen .scr-pop-item input{width:calc(var(--u)*14);height:calc(var(--u)*14);accent-color:#5aa2ff;cursor:pointer}
 .screen .scr-pop-empty{padding:calc(var(--u)*12) calc(var(--u)*5);color:var(--scr-faint);font-size:calc(var(--u)*12)}
-/* 年度进度条：真实像素宽度，两端同等半径 */
+/* 骞村害杩涘害鏉★細鐪熷疄鍍忕礌瀹藉害锛屼袱绔悓绛夊崐寰?*/
 .screen .scr-target-bar-host{flex:1;min-width:0}
 .screen .scr-target-bar-svg{display:block;width:100%;height:calc(var(--u)*24)}
-/* 累计图：Y 轴/目标线/分段填充 */
+/* 绱鍥撅細Y 杞?鐩爣绾?鍒嗘濉厖 */
 .screen .scr-axis-label{font-size:calc(var(--u)*12);fill:#9db4d3}
 .screen .scr-gridline.v{stroke:rgba(120,168,255,.07)}
 .screen .scr-cum-seg.lag{fill:rgba(255,122,107,.20)}
@@ -269,10 +269,10 @@
 .screen .scr-goal-line{stroke:#ffce73;stroke-width:1.6;stroke-dasharray:8 5;opacity:.9;vector-effect:non-scaling-stroke}
 .screen .scr-goal-label{font-size:calc(var(--u)*12);fill:#ffce73;font-weight:600}
 
-/* screen-v2 header stacking：下拉面板要盖住下方图表 */
+/* screen-v2 header stacking锛氫笅鎷夐潰鏉胯鐩栦綇涓嬫柟鍥捐〃 */
 .screen.scr-v2>.scr-head{position:relative;z-index:8}
 
-/* 顶部三板块：等比三等分、同高同圆角 */
+/* 椤堕儴涓夋澘鍧楋細绛夋瘮涓夌瓑鍒嗐€佸悓楂樺悓鍦嗚 */
 .screen.scr-v2 .scr-top{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:calc(var(--u)*16);align-items:stretch}
 .screen.scr-v2 .scr-top>.scr-panel{display:flex;flex-direction:column;min-height:calc(var(--u)*208);padding:calc(var(--u)*14) calc(var(--u)*18);gap:calc(var(--u)*7)}
 .screen.scr-v2 .scr-top .scr-panel-head{margin-bottom:calc(var(--u)*2)}
@@ -297,6 +297,97 @@
 .screen.scr-v2 .scr-today-ring{width:calc(var(--u)*80);height:calc(var(--u)*80)}
 .screen.scr-v2 .scr-today-ring>span{font-size:calc(var(--u)*17)}
 .screen.scr-v2 .scr-today-side>span{font-size:calc(var(--u)*10.5)}
-/* 刷新说明精简 */
+/* 鍒锋柊璇存槑绮剧畝 */
 .screen .scr-updated-stale{font-style:normal;color:#ffd56a;font-weight:650}
 .screen .scr-updated{cursor:default}
+
+/* 涓撲笟绱杈炬垚鍥?*/
+.screen.scr-v2 .scr-cum-legend{position:absolute;right:calc(var(--u)*6);top:calc(var(--u)*2);display:flex;gap:calc(var(--u)*12);font-size:calc(var(--u)*12);color:#b9cce6;z-index:3}
+.screen .scr-cum-legend span{display:inline-flex;align-items:center;gap:calc(var(--u)*5)}
+.screen .scr-cum-legend i{width:calc(var(--u)*14);height:calc(var(--u)*3);border-radius:2px;display:inline-block}
+.screen .scr-cum-legend i.paid{background:#5fd6ff}
+.screen .scr-cum-legend i.target{background:#ffb454;opacity:.8}
+.screen.scr-v2 .scr-cum-diff{top:calc(var(--u)*22);right:calc(var(--u)*6);font-size:12px;background:transparent!important;padding:0!important;white-space:nowrap}
+.screen .scr-cum-diff.lag{color:#ff9b90}
+.screen .scr-cum-diff.lead{color:#8ff0c8}
+.screen .scr-cum-target{stroke:#ffb454;stroke-width:1.5;stroke-dasharray:6 5;fill:none;opacity:.7;vector-effect:non-scaling-stroke}
+.screen .scr-goal-line{stroke:#ffd56a;stroke-width:1;opacity:.5;stroke-dasharray:none;vector-effect:non-scaling-stroke}
+.screen .scr-goal-label{font-size:calc(var(--u)*11.5);fill:#ffd56a;opacity:.9;font-weight:500}
+.screen .scr-cum-seg.lag{fill:rgba(255,122,107,.12)}
+.screen .scr-cum-seg.lead{fill:rgba(84,214,160,.12)}
+.screen .scr-hover-line{stroke:rgba(190,220,255,.4);stroke-width:1;stroke-dasharray:3 3;vector-effect:non-scaling-stroke}
+.screen .scr-cum-paid{stroke:#5fd6ff;stroke-width:2;filter:none}
+.screen .scr-gridline{stroke:rgba(140,175,220,.12)}
+
+/* palette convergence锛氱粺涓€鎶曞睆璋冭壊鏉?*/
+.screen{--scr-text:#e8eef7;--scr-dim:#8fa3bf;--scr-faint:#5f7391;--scr-line:#1e2b42;--scr-blue:#4da3ff;--scr-green:#2fd39b;--scr-amber:#f5b544;--scr-red:#ef6b6b;--scr-panel:#111a2b;background:#0b1220}
+.screen .scr-panel{background:#111a2b;border-color:#1e2b42;box-shadow:none}
+.screen .scr-panel::before{display:none}
+.screen.scr-v2{background:#0b1220}
+.screen .scr-mark{background:linear-gradient(180deg,#4da3ff,#2f6fbe);box-shadow:none}
+.screen .scr-btn,.screen .scr-scope{background:#111a2b;border-color:#1e2b42;color:#e8eef7}
+.screen .scr-btn:hover,.screen .scr-scope:hover{border-color:#2f4b6f;background:#162338}
+.screen .scr-community-pop{background:#111a2b;border-color:#1e2b42;box-shadow:0 12px 32px rgba(0,0,0,.45)}
+.screen .scr-gridline,.screen .scr-gridline.v{stroke:#1c2740;opacity:.6}
+.screen .scr-axis-label,.screen .scr-chart-label{font-size:11px;fill:#8fa3bf}
+.screen .scr-cum-paid{stroke:#4da3ff;stroke-width:2;filter:none}
+.screen .scr-cum-target{stroke:#f5b544;stroke-width:1.5;stroke-dasharray:6 5;fill:none;opacity:.7}
+.screen .scr-goal-line{stroke:#f5b544;stroke-width:1;opacity:.5;stroke-dasharray:none}
+.screen .scr-goal-label{font-size:11px;fill:#f5b544;opacity:.9;font-weight:500}
+.screen .scr-cum-seg.lag{fill:rgba(239,107,107,.12)}
+.screen .scr-cum-seg.lead{fill:rgba(47,211,155,.12)}
+.screen .scr-hover-line{stroke:#4da3ff;opacity:.35;stroke-width:1;stroke-dasharray:3 3}
+.screen .scr-cum-legend{font-size:12px;color:#8fa3bf}
+.screen .scr-cum-legend i.paid{background:#4da3ff}
+.screen .scr-cum-legend i.target{background:#f5b544;opacity:1}
+.screen .scr-cum-diff{font-size:12px}
+.screen .scr-cum-diff.lag{color:#ef6b6b}
+.screen .scr-cum-diff.lead{color:#2fd39b}
+.screen .scr-month-bar.ok{fill:#2fd39b;opacity:.75}
+.screen .scr-month-bar.low{fill:#ef6b6b;opacity:.42}
+.screen .scr-month-target{stroke:#f5b544;opacity:.75}
+.screen .scr-community-track i{background:#4da3ff}
+.screen .scr-community-track i.ok{background:#4da3ff}
+.screen .scr-community-track i.none{background:#1e2b42}
+.screen .scr-community-row.picked .scr-community-track i{background:#2fd39b}
+.screen .scr-community-rate{color:#e8eef7}
+.screen .scr-aging-bar{background:linear-gradient(90deg,#2f6fbe,#4da3ff)}
+.screen .scr-aging-row:nth-child(2) .scr-aging-bar,.screen .scr-aging-row:nth-child(3) .scr-aging-bar,.screen .scr-aging-row:nth-child(4) .scr-aging-bar{background:linear-gradient(90deg,#2f6fbe,#4da3ff)}
+.screen .scr-partial-tag{background:rgba(245,181,68,.14);color:#f5b544}
+.screen .scr-partial-tag.gold{background:rgba(245,181,68,.16);color:#f5b544}
+.screen .scr-today-ring{color:#4da3ff}
+.screen .scr-today-ring.done{color:#2fd39b}
+.screen .scr-today-value{color:#2fd39b;text-shadow:none}
+.screen .scr-target-pct{color:#2fd39b}
+.screen .scr-target-pct.over{color:#f5b544}
+.screen .scr-updated-stale{color:#f5b544}
+.screen .scr-pop-head button{color:#4da3ff}
+.screen .scr-pop-item input,.screen .scr-check input{accent-color:#4da3ff}
+.screen .scr-ticker-paid{color:#2fd39b}
+/* 椤堕儴涓夊崱鍘嬬缉鍒扮害 150px */
+.screen.scr-v2 .scr-top>.scr-panel{height:150px;min-height:150px;padding:12px 14px;gap:5px}
+.screen.scr-v2 .scr-top .scr-panel-head h2,.screen.scr-v2 .scr-panel-head h2{font-size:15px}
+.screen.scr-v2 .scr-top .scr-target-pct,.screen.scr-v2 .scr-month-kpi .scr-target-pct{font-size:32px}
+.screen.scr-v2 .scr-annual .scr-target-line,.screen.scr-v2 .scr-annual .scr-target-sub{font-size:12px;gap:6px}
+.screen.scr-v2 .scr-annual .scr-target-scope{font-size:11px;line-height:1.35}
+.screen.scr-v2 .scr-annual .scr-target-bar-svg{height:20px}
+.screen.scr-v2 .scr-kpi-lines{font-size:12px}
+.screen.scr-v2 .scr-today-value{font-size:32px}
+.screen.scr-v2 .scr-today-label,.screen.scr-v2 .scr-today-sub{font-size:12px}
+.screen.scr-v2 .scr-today-ring{width:64px;height:64px}
+.screen.scr-v2 .scr-today-ring>span{font-size:15px}
+.screen.scr-v2 .scr-today-side>span{font-size:11px}
+/* 娆犺垂缁撴瀯 4 琛岀揣鍑戙€佹棤鍐呴儴婊氬姩 */
+.screen.scr-v2 .scr-aging-panel{min-height:0}
+.screen.scr-v2 .scr-aging-panel .scr-aging{justify-content:flex-start;gap:0;overflow:visible;padding-top:0}
+.screen.scr-v2 .scr-aging-panel .scr-aging-row{height:34px;min-height:34px;justify-content:center;gap:3px}
+.screen.scr-v2 .scr-aging-panel .scr-aging-head b{font-size:14px}
+.screen.scr-v2 .scr-aging-panel .scr-aging-head span{font-size:12px}
+.screen.scr-v2 .scr-aging-panel .scr-aging-head em{font-size:11px}
+.screen.scr-v2 .scr-aging-panel .scr-aging-track{height:6px}
+.screen.scr-v2 .scr-aging-panel .scr-footnote{font-size:11px;margin-top:2px}
+.screen.scr-v2 .scr-cum-chart{min-height:0;display:flex;align-items:center;justify-content:center}
+.screen.scr-v2 .scr-cum-chart svg{display:block;margin:0 auto}
+.screen.scr-v2 .scr-month-chart{display:block;margin:0 auto}
+.screen.scr-v2 .scr-cum-panel{flex:1.25}
+.screen.scr-v2 .scr-month-panel{flex:1}
