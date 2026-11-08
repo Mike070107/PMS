@@ -271,7 +271,7 @@ export class MisFeesService implements OnModuleDestroy {
   const categoryFilter = q.category ? `AND (${categoryExpr})=@category` : '';
   if (q.category) filter.params.category = q.category;
   const scope = `${filter.from} AND w.ZJ_SKRQ>=CONVERT(datetime,@date,120) AND w.ZJ_SKRQ<DATEADD(day,1,CONVERT(datetime,@date,120)) AND w.ZJ_JE>0 ${categoryFilter}`;
-  const sql = `SELECT COUNT(*) AS total FROM (SELECT COUNT(*) ${scope} GROUP BY ${houseAndDate}) g;
+  const sql = `SELECT COUNT(*) AS groupCount,COALESCE(SUM(g.billCount),0) AS total FROM (SELECT COUNT(*) AS billCount ${scope} GROUP BY ${houseAndDate}) g;
    WITH grouped AS (
      SELECT l.管理处 AS officeCode,${filter.address} AS address,z.姓名 AS ownerName,${paidDate} AS paidDate,
             CONVERT(varchar(50),SUM(w.ZJ_JE),2) AS amount,COUNT_BIG(*) AS billCount,
@@ -282,7 +282,7 @@ export class MisFeesService implements OnModuleDestroy {
    ) SELECT * FROM grouped WHERE rowNo BETWEEN @firstRow AND @lastRow ORDER BY rowNo;`;
   const result = await this.read(sql, filter.params), sets = (result.recordsets || []) as any[][];
   return {
-   total: Number(sets[0]?.[0]?.total || 0), page, pageSize,
+   total: Number(sets[0]?.[0]?.total || 0), groupCount: Number(sets[0]?.[0]?.groupCount || 0), page, pageSize,
    rows: (sets[1] || []).map((r: any) => ({
     recordedAt: r.recordedAt ? `${String(r.recordedAt).replace(' ', 'T')}+08:00` : null,
     paidDate: String(r.paidDate ?? ''), address: String(r.address ?? ''), ownerName: String(r.ownerName ?? ''),

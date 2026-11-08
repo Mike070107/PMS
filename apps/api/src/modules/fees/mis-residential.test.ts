@@ -237,5 +237,7 @@ test('今日分项收入 byFee 返回中文名+英文 feeCode；details 按 cate
  assert.equal(out.total,1);assert.equal(out.page,1);assert.equal(out.pageSize,20);
  assert.deepEqual(out.rows,[{recordedAt:'2026-11-08T10:00:00+08:00',paidDate:'2026-11-08',address:'A',ownerName:'甲',channel:'微信',amountCents:10000,billCount:2}]);
  assert.match(sql,/property/);assert.ok(sql.includes('=@category'));assert.equal(params.category,'property');
+ assert.match(sql,/w\.ZJ_SKRQ>=CONVERT\(datetime,@date,120\)/);
+ assert.match(sql,/w\.ZJ_SKRQ<DATEADD\(day,1,CONVERT\(datetime,@date,120\)\)/);
  await assert.rejects(s.todayDetails({category:'bad'},{id:1,tenantId:1},{scopeAll:true}),/分类/);
 });

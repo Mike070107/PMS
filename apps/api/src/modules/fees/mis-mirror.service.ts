@@ -621,14 +621,15 @@ export class MisMirrorService {
     if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 50) throw new BadRequestException('pageSize 须为1-50的整数');
     const communities = await this.misFees.collectionCommunities(undefined, user, access);
     const offices = [...new Set(communities.flatMap((community) => community.offices))];
-    if (!offices.length) return { total: 0, page, pageSize, rows: [], source: 'mirror', dataAsOf: asOf };
+    if (!offices.length) return { total: 0, groupCount: 0, page, pageSize, rows: [], source: 'mirror', dataAsOf: asOf };
     const params: unknown[] = [...offices, date];
     const officePlaceholders = offices.map((_, index) => `$${index + 1}`).join(',');
     const dateParam = `$${params.length}`;
     const categoryFilter = q.category ? `AND (${this.categorySql}) = $${params.push(q.category)}` : '';
     const where = `office_code IN (${officePlaceholders}) AND paid_date=${dateParam} AND refund_date IS NULL AND amount_cents>0 ${categoryFilter}`;
     const totalRows: any[] = await this.dataSource.query(
-      `SELECT COUNT(*)::int AS total FROM (SELECT office_code,s_id,zh_id FROM mis_mirror_bill WHERE ${where} GROUP BY office_code,s_id,zh_id) g`,
+      `SELECT COUNT(*)::int AS "groupCount",COALESCE(SUM(g.bill_count),0)::int AS total
+         FROM (SELECT COUNT(*)::int AS bill_count FROM mis_mirror_bill WHERE ${where} GROUP BY office_code,s_id,zh_id) g`,
       params,
     );
     const rows: any[] = await this.dataSource.query(
@@ -641,11 +642,22 @@ export class MisMirrorService {
        ) SELECT * FROM grouped ORDER BY recorded_at DESC,zh_id ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, pageSize, (page - 1) * pageSize],
     );
+    // PostgreSQL 的 date/timestamptz 在 Node 里可能按本地时区构造 Date，直接 toISOString 会偏一天/8 小时。
+    const cstDay = (value: any) => {
+      if (!value) return null;
+      if (typeof value === 'string') return value.slice(0, 10);
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(value));
+    };
+    const cstIso = (value: any) => {
+      if (!value) return null;
+      const time = new Date(value).getTime();
+      return Number.isNaN(time) ? null : new Date(time + 8 * 3600_000).toISOString().replace(/\.\d{3}Z$/, '+08:00');
+    };
     return {
-      total: Number(totalRows[0]?.total || 0), page, pageSize, source: 'mirror', dataAsOf: asOf,
+      total: Number(totalRows[0]?.total || 0), groupCount: Number(totalRows[0]?.groupCount || 0), page, pageSize, source: 'mirror', dataAsOf: asOf,
       rows: rows.map((row) => ({
-        recordedAt: row.recorded_at ? new Date(row.recorded_at).toISOString() : null,
-        paidDate: row.paid_date ? new Date(row.paid_date).toISOString().slice(0, 10) : date,
+        recordedAt: cstIso(row.recorded_at),
+        paidDate: cstDay(row.paid_date) ?? date,
         address: String(row.address || ''), ownerName: String(row.owner_name || ''),
         channel: String(row.channel || '未记录'), amountCents: Number(row.amount_cents || 0), billCount: Number(row.bill_count || 0),
       })),

@@ -20,7 +20,7 @@ type MisToday = { paidCents: number; paidCount: number; refundedCents: number; p
 type RecentPayment = { paidAt: string; address: string; ownerName: string; amountCents: number; channel: string | null; billCount: number; recordedAt: string | null };
 type MisState = { key: string; today: MisToday | null; todayMissing: boolean };
 type FeeDetailRow = { id: string; recordedAt: string | null; roomNo: string; ownerName: string; channel: string | null; amountCents: number; billCount: number };
-type FeeDetailState = { key: string; rows: FeeDetailRow[]; total: number; page: number; missing: boolean; loading: boolean };
+type FeeDetailState = { key: string; rows: FeeDetailRow[]; total: number; groupCount?: number; page: number; missing: boolean; loading: boolean };
 type RecentState = { key: string; page: number; rows: RecentPayment[]; total: number; houseCount: number | null; seenHouses: string[]; missing: boolean; loading: boolean; paged: boolean };
 
 const FEE_LABEL: Record<string, string> = { property: '物业费', parking: '停车', berth: '泊位费', other: '其他' };
@@ -239,7 +239,7 @@ export default function Today() {
           amountCents: Number(row?.amountCents ?? row?.paidCents) || 0,
           billCount: Number(row?.billCount ?? row?.count) || 1,
         }));
-        setDetail({ key, rows, total: Number(Array.isArray(raw) ? rows.length : raw?.total) || rows.length, page: detailPage, missing: false, loading: false });
+        setDetail({ key, rows, total: Number(Array.isArray(raw) ? rows.length : raw?.total) || rows.length, groupCount: Number(raw?.groupCount) || rows.length, page: detailPage, missing: false, loading: false });
       })
       .catch(() => { if (alive) setDetail({ key, rows: [], total: 0, page: detailPage, missing: true, loading: false }); });
     return () => { alive = false; };
@@ -278,7 +278,7 @@ export default function Today() {
   const feeTotal = feeRows.reduce((sum, row) => sum + row.amountCents, 0);
   const feeBreakdown = feeRows.map((row, index) => ({ ...row, color: feeColorOf(row.feeCode || '', index), share: feeTotal ? Math.round((row.amountCents / feeTotal) * 1000) / 10 : 0 }));
   const openFeeDetail = (row: MisFeeRow) => { setFeeDetail(row); setDetailPage(1); setDetail(null); };
-  const detailTotalPages = detail ? Math.max(1, Math.ceil(detail.total / 20)) : 1;
+  const detailTotalPages = detail ? Math.max(1, Math.ceil((detail.groupCount ?? detail.total) / 20)) : 1;
 
   const repairStat = useMemo(() => {
     const list = visibleOrders ?? [];
