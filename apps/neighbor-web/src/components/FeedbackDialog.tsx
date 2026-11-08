@@ -38,20 +38,28 @@ let seq = 0;
 const nextId = () => 'fb-' + Date.now() + '-' + (++seq);
 const humanSize = (size: number) => size >= 1024 * 1024 ? (size / 1024 / 1024).toFixed(1) + ' MB' : Math.max(1, Math.round(size / 1024)) + ' KB';
 
-export default function FeedbackDialog({ open, onClose, defaultType = 'error' }: { open: boolean; onClose: () => void; defaultType?: FeedbackType }) {
-  const [type, setType] = useState<FeedbackType>('error');
+export default function FeedbackDialog({ open, onClose, defaultType = 'suggestion' }: { open: boolean; onClose: () => void; defaultType?: FeedbackType }) {
+  const [type, setType] = useState<FeedbackType>(defaultType);
   const [content, setContent] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [includeErrors, setIncludeErrors] = useState(true);
+  const [includeErrors, setIncludeErrors] = useState(defaultType === 'error');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [dragOver, setDragOver] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const images = attachments.filter((item) => item.preview);
 
   useEffect(() => {
     if (!open) return;
-    setType(defaultType); setContent(''); setAttachments([]); setIncludeErrors(defaultType === 'error'); setBusy(false); setError('');
+    setType(defaultType);
+    setContent('');
+    setAttachments([]);
+    setIncludeErrors(defaultType === 'error');
+    setBusy(false);
+    setError('');
+    setPreviewIndex(null);
   }, [open, defaultType]);
   useEffect(() => () => { attachments.forEach((item) => { if (item.preview) URL.revokeObjectURL(item.preview); }); }, [attachments]);
   // 高度自适应：文字多时变高，最高 240px 后内部滚动
@@ -59,10 +67,22 @@ export default function FeedbackDialog({ open, onClose, defaultType = 'error' }:
     const textarea = textareaRef.current;
     if (!textarea) return;
     textarea.style.height = 'auto';
-    textarea.style.height = Math.min(240, Math.max(96, textarea.scrollHeight)) + 'px';
+    textarea.style.height = Math.min(240, Math.max(72, textarea.scrollHeight)) + 'px';
   }, [content, open]);
+  // 灯箱键盘：Esc 关闭，左右切换
+  useEffect(() => {
+    if (previewIndex === null) return undefined;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setPreviewIndex(null); }
+      if (event.key === 'ArrowLeft') { event.preventDefault(); setPreviewIndex((index) => index === null ? index : (index - 1 + images.length) % images.length); }
+      if (event.key === 'ArrowRight') { event.preventDefault(); setPreviewIndex((index) => index === null ? index : (index + 1) % images.length); }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [previewIndex, images.length]);
 
   const hasOversize = attachments.some((item) => item.oversize);
+  const canSend = !busy && !hasOversize && !!content.trim();
   const changeType = (next: FeedbackType) => {
     setType(next);
     setIncludeErrors(next === 'error');
@@ -95,7 +115,8 @@ export default function FeedbackDialog({ open, onClose, defaultType = 'error' }:
       if (item.preview) URL.revokeObjectURL(item.preview);
       return [];
     }));
-    setError((current) => current.startsWith('有附件超过 20MB') ? '' : current);
+    setPreviewIndex(null);
+    setError((current) => current.startsWith('「') || current.startsWith('有附件') ? '' : current);
   };
   const onPaste = (event: React.ClipboardEvent) => {
     const files = Array.from(event.clipboardData?.files || []);
@@ -106,6 +127,10 @@ export default function FeedbackDialog({ open, onClose, defaultType = 'error' }:
   const onDrop = (event: React.DragEvent) => {
     event.preventDefault(); setDragOver(false);
     addFiles(event.dataTransfer.files);
+  };
+  const openPreview = (id: string) => {
+    const index = images.findIndex((item) => item.id === id);
+    if (index >= 0) setPreviewIndex(index);
   };
 
   const submit = async () => {
@@ -132,7 +157,7 @@ export default function FeedbackDialog({ open, onClose, defaultType = 'error' }:
         context: {
           page: typeof window !== 'undefined' ? window.location.pathname : '',
           userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
-          recentErrors: includeErrors ? recentClientErrors(3).map((entry) => ({ at: entry.at, message: entry.message })) : [],
+          recentErrors: type === 'error' && includeErrors ? recentClientErrors(3).map((entry) => ({ at: entry.at, message: entry.message })) : [],
         },
       };
       await request({ method: 'POST', url: '/feedback', data: payload });
@@ -150,8 +175,8 @@ export default function FeedbackDialog({ open, onClose, defaultType = 'error' }:
     <Sheet open onClose={() => { if (!busy) onClose(); }} width={620} title="意见与建议 / 异常反馈" subtitle={type === 'error' ? '遇到问题或页面报错，描述一下发生了什么' : '对系统有什么想法，欢迎告诉我们'}>
       <div className="fb-form">
         <div className="chips" role="tablist" aria-label="反馈类型">
-          <button type="button" role="tab" aria-selected={type === 'error'} className={'chip ' + (type === 'error' ? 'on' : '')} onClick={() => changeType('error')}>异常反馈</button>
           <button type="button" role="tab" aria-selected={type === 'suggestion'} className={'chip ' + (type === 'suggestion' ? 'on' : '')} onClick={() => changeType('suggestion')}>意见与建议</button>
+          <button type="button" role="tab" aria-selected={type === 'error'} className={'chip ' + (type === 'error' ? 'on' : '')} onClick={() => changeType('error')}>异常反馈</button>
         </div>
 
         <div
@@ -162,6 +187,25 @@ export default function FeedbackDialog({ open, onClose, defaultType = 'error' }:
           onDrop={onDrop}
           onClick={(event) => { if (event.target === event.currentTarget) textareaRef.current?.focus(); }}
         >
+          {attachments.length ? (
+            <div className="fb-atts">
+              {attachments.map((item) => (
+                <div className={'fb-att' + (item.oversize ? ' bad' : '')} key={item.id}>
+                  <div className="fb-thumb-wrap">
+                    {item.preview ? (
+                      <button type="button" className="fb-thumb" title="预览大图" onClick={(event) => { event.stopPropagation(); openPreview(item.id); }}>
+                        <img src={item.preview} alt={item.file.name} />
+                      </button>
+                    ) : (
+                      <div className="fb-thumb"><span className="fb-file-icon"><Icon name="file" size={20} /></span></div>
+                    )}
+                    <button type="button" className="fb-remove" aria-label={'移除附件 ' + item.file.name} disabled={busy} onClick={(event) => { event.stopPropagation(); removeAttachment(item.id); }}>×</button>
+                  </div>
+                  <div className="fb-att-meta"><b title={item.file.name}>{item.file.name}</b><small>{humanSize(item.file.size)}{item.oversize ? ' · 超过 20MB' : ''}</small></div>
+                </div>
+              ))}
+            </div>
+          ) : null}
           <textarea
             ref={textareaRef}
             className="fb-input"
@@ -172,41 +216,35 @@ export default function FeedbackDialog({ open, onClose, defaultType = 'error' }:
             onChange={(event) => setContent(event.target.value)}
             aria-label="反馈内容"
           />
-          <div className="fb-composer-bottom">
-            <button type="button" className="fb-clip" title="添加附件" aria-label="添加附件" disabled={busy || attachments.length >= MAX_FILES} onClick={(event) => { event.stopPropagation(); inputRef.current?.click(); }}>
-              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21.4 11.6l-8.5 8.5a5 5 0 0 1-7.1-7.1l8.5-8.5a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-2.8-2.8l7.8-7.8" /></svg>
+          <div className="fb-bar">
+            <button type="button" className="fb-plus" title="添加附件" aria-label="添加附件" disabled={busy || attachments.length >= MAX_FILES} onClick={(event) => { event.stopPropagation(); inputRef.current?.click(); }}>+</button>
+            <span className="fb-hint">Ctrl+V 粘贴 · 拖拽到框内</span>
+            <button type="button" className="fb-send" title="发送" aria-label="发送" disabled={!canSend} onClick={() => void submit()}>
+              {busy ? <span className="fb-sending" /> : <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></svg>}
             </button>
-            {attachments.length ? (
-              <div className="fb-atts">
-                {attachments.map((item) => (
-                  <div className={'fb-att' + (item.oversize ? ' bad' : '')} key={item.id}>
-                    <div className="fb-thumb">
-                      {item.preview ? <img src={item.preview} alt={item.file.name} /> : <span className="fb-file-icon"><Icon name="file" size={20} /></span>}
-                      <button type="button" className="fb-remove" aria-label={'移除附件 ' + item.file.name} disabled={busy} onClick={(event) => { event.stopPropagation(); removeAttachment(item.id); }}>×</button>
-                    </div>
-                    <div className="fb-att-meta">
-                      <b title={item.file.name}>{item.file.name}</b>
-                      <small>{humanSize(item.file.size)}{item.oversize ? ' · 超过 20MB' : ''}{item.url ? ' · 已上传' : ''}</small>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
           </div>
           <input ref={inputRef} type="file" multiple hidden accept="image/*,video/*,application/pdf" onChange={(event) => { if (event.target.files) addFiles(event.target.files); event.target.value = ''; }} />
         </div>
+
         {error ? <div className="fb-error" role="alert">{error}</div> : null}
         <div className="fb-count">{content.length} / 1000</div>
 
-        <label className="fb-check">
-          <input type="checkbox" checked={includeErrors} disabled={busy} onChange={(event) => setIncludeErrors(event.target.checked)} />
-          附上最近的系统报错（最近 3 条前端错误，含时间、页面、UA）
-        </label>
+        {type === 'error' ? (
+          <label className="fb-check">
+            <input type="checkbox" checked={includeErrors} disabled={busy} onChange={(event) => setIncludeErrors(event.target.checked)} />
+            附上最近的系统报错（最近 3 条前端错误，含时间、页面、UA）
+          </label>
+        ) : null}
 
-        <div className="fb-actions">
-          <button type="button" className="btn" disabled={busy} onClick={onClose}>取消</button>
-          <button type="button" className="btn p" disabled={busy || hasOversize} onClick={() => void submit()}>{busy ? '发送中…' : '发送'}</button>
-        </div>
+        {previewIndex !== null && images[previewIndex] ? (
+          <div className="fb-lightbox" role="dialog" aria-modal="true" onClick={() => setPreviewIndex(null)}>
+            <button type="button" className="fb-lb-close" aria-label="关闭预览" onClick={(event) => { event.stopPropagation(); setPreviewIndex(null); }}>×</button>
+            {images.length > 1 ? <button type="button" className="fb-lb-arrow fb-lb-prev" aria-label="上一张" onClick={(event) => { event.stopPropagation(); setPreviewIndex((index) => index === null ? index : (index - 1 + images.length) % images.length); }}>‹</button> : null}
+            <img className="fb-lb-img" src={images[previewIndex].preview} alt={images[previewIndex].file.name} onClick={(event) => event.stopPropagation()} />
+            {images.length > 1 ? <button type="button" className="fb-lb-arrow fb-lb-next" aria-label="下一张" onClick={(event) => { event.stopPropagation(); setPreviewIndex((index) => index === null ? index : (index + 1) % images.length); }}>›</button> : null}
+            <div className="fb-lb-count">{previewIndex + 1} / {images.length}</div>
+          </div>
+        ) : null}
       </div>
     </Sheet>
   );
