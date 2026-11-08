@@ -6717,3 +6717,10 @@
 - 自上次（2a404b17）以来上线的相关提交：
   - a5c468af feat(screen): 收费大屏改版（年度达成、今日实时、累计vs指标、月度柱、小区排行、多小区勾选）
 
+## 2026-11-08 18:05 · api · bf8d4e45
+
+- 包：`pms-api-fast-20261108-180422.tar.gz`
+- 提交：bf8d4e45 fix(screen): 达成率按已设指标小区口径计算，返回 targetScope/partial/missingTargetCommunities
+- 自上次（1160f5f4）以来上线的相关提交：
+  - bf8d4e45 fix(screen): 达成率按已设指标小区口径计算，返回 targetScope/partial/missingTargetCommunities
+
