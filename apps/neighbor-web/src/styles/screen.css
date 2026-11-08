@@ -391,3 +391,11 @@
 .screen.scr-v2 .scr-month-chart{display:block;margin:0 auto}
 .screen.scr-v2 .scr-cum-panel{flex:1.25}
 .screen.scr-v2 .scr-month-panel{flex:1}
+
+/* 月度柱：12 月统一蓝，仅当月判定 */
+.screen .scr-month-bar.base{fill:#4da3ff;opacity:.62}
+.screen .scr-month-bar.ok{fill:#2fd39b;opacity:.85}
+.screen .scr-month-bar.below{fill:#f5b544;opacity:.8}
+.screen .scr-month-bar.current{stroke:#e8eef7;stroke-width:1.5;stroke-dasharray:4 3}
+.screen .scr-month-target-seg{stroke:#f5b544;stroke-width:1.8;stroke-dasharray:5 4;vector-effect:non-scaling-stroke;opacity:.9}
+.screen .scr-month-target-label{font-size:11px;fill:#f5b544;font-weight:600}
