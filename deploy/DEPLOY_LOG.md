@@ -6724,3 +6724,10 @@
 - 自上次（1160f5f4）以来上线的相关提交：
   - bf8d4e45 fix(screen): 达成率按已设指标小区口径计算，返回 targetScope/partial/missingTargetCommunities
 
+## 2026-11-08 18:06 · web · d9a6c9c5
+
+- 包：`pms-web-20261108-180530.tar.gz`
+- 提交：d9a6c9c5 fix(screen): 已收取年累计、达成率按已设指标口径、今日笔数户数修正
+- 自上次（a5c468af）以来上线的相关提交：
+  - d9a6c9c5 fix(screen): 已收取年累计、达成率按已设指标口径、今日笔数户数修正
+
