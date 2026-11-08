@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { request } from '@pms/api-client';
 import { cents, chinaDate } from '@/lib/residential-bills';
@@ -20,6 +20,77 @@ type Batches = { rows: Batch[]; total: number };
 type Effect = { summary: { notifiedCents: number; recoveredCents: number; recoveryRate: number; clearedHouseholds: number }; invalidPaidDateCount?: number };
 type SmsStats = Record<string, unknown>;
 type Options = { available?: boolean; message?: string; communities: { id: number; name: string }[] };
+
+type ScreenTarget = { annualCents: number; paidCents: number; gapCents: number; remainingDays: number; dailyNeedCents: number; rate: number | null; hasTarget: boolean };
+type ScreenToday = { paidCents: number; count: number; houses: number; dailyNeedCents: number };
+type ScreenTrendPoint = { key: string; label: string; paidCents: number; targetCents: number; cumPaidCents: number; cumTargetCents: number };
+type ScreenCommunity = { id: number; name: string; targetCents: number; paidCents: number; rate: number | null; hasTarget: boolean };
+type ScreenArrearsBucket = { key: string; label: string; count: number; amountCents: number };
+type ScreenArrears = { buckets: ScreenArrearsBucket[]; totalCount: number; totalAmountCents: number };
+type ScreenSummary = { year: number; target: ScreenTarget; today: ScreenToday; trend: ScreenTrendPoint[]; communities: ScreenCommunity[]; arrears: ScreenArrears | null };
+const SCREEN_ARREARS_META: { key: string; label: string }[] = [
+  { key: 'le500', label: '≤¥500' }, { key: '500to2000', label: '¥500–2000' },
+  { key: '2000to5000', label: '¥2000–5000' }, { key: 'gt5000', label: '>¥5000' },
+];
+function normalizeScreenSummary(raw: unknown): ScreenSummary | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const data = raw as Record<string, any>;
+  const targetRaw = data.target && typeof data.target === 'object' ? data.target : {};
+  const todayRaw = data.today && typeof data.today === 'object' ? data.today : {};
+  const annualCents = num(targetRaw.annualCents ?? targetRaw.annualTargetCents ?? targetRaw.targetCents ?? targetRaw.amountCents ?? data.annualTargetCents ?? data.targetCents);
+  const paidCents = num(targetRaw.paidCents ?? data.paidCents ?? data.yearPaidCents ?? data.monthToDate?.paidCents);
+  const gapCents = num(targetRaw.gapCents ?? targetRaw.gap ?? data.gapCents ?? (annualCents ? annualCents - paidCents : 0));
+  const remainingDays = num(targetRaw.remainingDays ?? data.remainingDays);
+  const dailyNeedCents = num(targetRaw.dailyNeedCents ?? data.dailyNeedCents ?? (remainingDays > 0 ? Math.max(0, gapCents) / remainingDays : 0));
+  const rateRaw = Number(targetRaw.rate ?? targetRaw.progress ?? (annualCents ? (paidCents / annualCents) * 100 : NaN));
+  const hasTarget = annualCents > 0;
+  const target: ScreenTarget = { annualCents, paidCents, gapCents, remainingDays, dailyNeedCents: Math.round(dailyNeedCents), rate: Number.isFinite(rateRaw) ? Math.round(rateRaw * 10) / 10 : null, hasTarget };
+  const today: ScreenToday = {
+    paidCents: num(todayRaw.paidCents ?? todayRaw.amountCents),
+    count: num(todayRaw.count ?? todayRaw.paidCount),
+    houses: num(todayRaw.houses ?? todayRaw.paidHouses),
+    dailyNeedCents: num(todayRaw.dailyNeedCents ?? todayRaw.targetCents ?? dailyNeedCents),
+  };
+  const trendRaw = Array.isArray(data.trend) ? data.trend : Array.isArray(data.months) ? data.months : [];
+  let cumPaid = 0; let cumTarget = 0;
+  const trend: ScreenTrendPoint[] = trendRaw.map((row: any, index: number) => {
+    const key = String(row?.key ?? row?.date ?? row?.month ?? row?.bucket ?? index + 1);
+    const paid = num(row?.paidCents ?? row?.amountCents ?? row?.paid);
+    const targetCents = num(row?.targetCents ?? row?.target ?? row?.indicatorCents);
+    cumPaid += paid; cumTarget += targetCents;
+    return {
+      key,
+      label: String(row?.label ?? (key.length >= 7 ? monthLabel(key) : key)),
+      paidCents: paid,
+      targetCents,
+      cumPaidCents: num(row?.cumPaidCents ?? row?.cumulativePaidCents) || cumPaid,
+      cumTargetCents: num(row?.cumTargetCents ?? row?.cumulativeTargetCents) || cumTarget,
+    };
+  });
+  const communitiesRaw = Array.isArray(data.communities) ? data.communities : [];
+  const communities: ScreenCommunity[] = communitiesRaw.map((row: any, index: number) => {
+    const annual = num(row?.targetCents ?? row?.annualCents ?? row?.target?.annualCents);
+    const paid = num(row?.paidCents ?? row?.paidCentsYear ?? row?.paid);
+    const has = annual > 0;
+    return { id: Number(row?.id ?? index), name: String(row?.name ?? row?.communityName ?? '未命名小区'), targetCents: annual, paidCents: paid, rate: has ? Math.round((paid / annual) * 1000) / 10 : null, hasTarget: has };
+  });
+  let arrears: ScreenArrears | null = null;
+  const arrearsRaw = data.arrears && typeof data.arrears === 'object' ? data.arrears : null;
+  if (arrearsRaw) {
+    const bucketsRaw = Array.isArray(arrearsRaw.buckets) ? arrearsRaw.buckets : Array.isArray(arrearsRaw.rows) ? arrearsRaw.rows : [];
+    const byKey = new Map(bucketsRaw.map((bucket: any) => [String(bucket?.key ?? bucket?.bucket ?? ''), bucket]));
+    const buckets = SCREEN_ARREARS_META.map(({ key, label }) => {
+      const hit: any = byKey.get(key);
+      return { key, label, count: num(hit?.count ?? hit?.houses), amountCents: num(hit?.amountCents ?? hit?.amount) };
+    });
+    arrears = {
+      buckets,
+      totalCount: num(arrearsRaw.total?.count ?? arrearsRaw.totalCount ?? buckets.reduce((sum, bucket) => sum + bucket.count, 0)),
+      totalAmountCents: num(arrearsRaw.total?.amountCents ?? arrearsRaw.totalAmountCents ?? buckets.reduce((sum, bucket) => sum + bucket.amountCents, 0)),
+    };
+  }
+  return { year: num(data.year) || new Date().getFullYear(), target, today, trend, communities, arrears };
+}
 
 const REFRESH_MS = 300_000;
 const AMOUNT_BUCKETS = [
@@ -203,6 +274,184 @@ function AmountBars({ buckets, totalAmount, totalCount }: { buckets: AmountBucke
   );
 }
 
+function RollingCents({ value }: { value: number }) {
+  const [shown, setShown] = useState(value);
+  const current = useRef(value);
+  useEffect(() => {
+    const from = current.current;
+    const started = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - started) / 700);
+      const eased = 1 - Math.pow(1 - t, 3);
+      const next = Math.round(from + (value - from) * eased);
+      current.current = next;
+      setShown(next);
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+  return <>¥{cents(shown)}</>;
+}
+
+function NoData({ text = '暂无数据' }: { text?: string }) {
+  return <div className="scr-no-data">{text}</div>;
+}
+
+function AnnualPanel({ target, year, loading, error, onSettings }: { target: ScreenTarget | null; year: string; loading: boolean; error: string; onSettings: () => void }) {
+  if (error) return <article className="scr-panel scr-annual"><div className="scr-panel-head"><h2>{year} 年度达成</h2></div><NoData /></article>;
+  if (!target) return <article className="scr-panel scr-annual"><div className="scr-panel-head"><h2>{year} 年度达成</h2></div>{loading ? <div className="scr-no-data">读取中…</div> : <NoData />}</article>;
+  if (!target.hasTarget) {
+    return (
+      <article className="scr-panel scr-annual">
+        <div className="scr-panel-head"><h2>{year} 年度达成</h2><span className="scr-legend">年度指标</span></div>
+        <div className="scr-target-empty"><b>未设置年度指标</b><span>设置后这里会显示年度达成进度与缺口</span><button type="button" className="scr-btn" onClick={onSettings}>设置年度指标</button></div>
+      </article>
+    );
+  }
+  const rate = target.rate ?? 0;
+  const over = rate > 100;
+  const width = Math.min(100, Math.max(0, rate));
+  return (
+    <article className={'scr-panel scr-annual' + (over ? ' over' : '')}>
+      <div className="scr-panel-head"><h2>{year} 年度达成</h2><span className="scr-legend">年度指标</span></div>
+      <div className="scr-target-line"><span>年度指标 ¥{cents(target.annualCents)}</span><i /> <span>已收 ¥{cents(target.paidCents)}</span></div>
+      <div className="scr-target-bar-wrap">
+        <svg className="scr-target-bar" viewBox="0 0 100 12" preserveAspectRatio="none" role="img" aria-label={`年度达成 ${rate}%`}>
+          <defs>
+            <linearGradient id="scrTargetGreen" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#1f8f68" /><stop offset="1" stopColor="#69e0ad" /></linearGradient>
+            <linearGradient id="scrTargetGold" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#b8860b" /><stop offset="1" stopColor="#ffd56a" /></linearGradient>
+          </defs>
+          <rect x="0" y="0" width="100" height="12" rx="6" fill="rgba(120,168,255,.16)" />
+          <rect x="0" y="0" width={width} height="12" rx="6" fill={over ? 'url(#scrTargetGold)' : 'url(#scrTargetGreen)'} />
+        </svg>
+        <b className={'scr-target-pct' + (over ? ' over' : '')}>{rate}%</b>
+      </div>
+      <div className="scr-target-sub">
+        <span>缺口 ¥{cents(Math.max(0, target.gapCents))}</span><i />
+        <span>剩余 {target.remainingDays} 天</span><i />
+        <span>日均需收 ¥{cents(target.dailyNeedCents)}</span>
+        {over ? <em className="scr-over-tag">已超额</em> : null}
+      </div>
+    </article>
+  );
+}
+
+function TodayRing({ pct }: { pct: number | null }) {
+  const safe = pct === null ? 0 : Math.min(100, Math.max(0, pct));
+  const r = 24;
+  const circumference = 2 * Math.PI * r;
+  return (
+    <div className={'scr-today-ring' + (pct !== null && pct >= 100 ? ' done' : '')}>
+      <svg viewBox="0 0 64 64" aria-hidden="true">
+        <circle cx="32" cy="32" r={r} fill="none" stroke="rgba(120,168,255,.16)" strokeWidth="7" />
+        <circle cx="32" cy="32" r={r} fill="none" stroke="currentColor" strokeWidth="7" strokeLinecap="round" strokeDasharray={`${(safe / 100) * circumference} ${circumference}`} transform="rotate(-90 32 32)" />
+      </svg>
+      <span>{pct === null ? '—' : Math.round(pct) + '%'}</span>
+    </div>
+  );
+}
+
+function CumulativeChart({ points }: { points: ScreenTrendPoint[] }) {
+  const [hover, setHover] = useState<number | null>(null);
+  if (!points.length) return <NoData />;
+  const W = 800; const H = 280;
+  const pad = { l: 58, r: 16, t: 18, b: 30 };
+  const max = Math.max(1, ...points.map((point) => Math.max(point.cumPaidCents, point.cumTargetCents)));
+  const n = points.length;
+  const px = (index: number) => pad.l + (n === 1 ? 0 : (index / (n - 1)) * (W - pad.l - pad.r));
+  const py = (value: number) => pad.t + (1 - value / max) * (H - pad.t - pad.b);
+  const paidLine = points.map((point, index) => `${index ? 'L' : 'M'} ${px(index)} ${py(point.cumPaidCents)}`).join(' ');
+  const targetLine = points.map((point, index) => `${index ? 'L' : 'M'} ${px(index)} ${py(point.cumTargetCents)}`).join(' ');
+  const band = points.map((point, index) => `${index ? 'L' : 'M'} ${px(index)} ${py(point.cumPaidCents)}`).join(' ')
+    + ' ' + [...points].reverse().map((point, index) => `L ${px(n - 1 - index)} ${py(point.cumTargetCents)}`).join(' ') + ' Z';
+  const last = points[n - 1];
+  const diff = last.cumPaidCents - last.cumTargetCents;
+  const labelStep = Math.max(1, Math.ceil(n / 8));
+  return (
+    <div className="scr-cum-chart" onMouseLeave={() => setHover(null)}>
+      <div className={'scr-cum-diff ' + (diff >= 0 ? 'lead' : 'lag')}>{diff >= 0 ? '超前' : '落后'} ¥{cents(Math.abs(diff))}</div>
+      <svg viewBox={`0 0 ${W} ${H}`} onMouseLeave={() => setHover(null)}>
+        {[0.25, 0.5, 0.75].map((f) => <line key={f} className="scr-gridline" x1={pad.l} y1={py(max * f)} x2={W - pad.r} y2={py(max * f)} />)}
+        <path d={band} className={'scr-cum-band ' + (diff >= 0 ? 'lead' : 'lag')} />
+        <path d={targetLine} className="scr-cum-target" />
+        <path d={paidLine} className="scr-cum-paid" />
+        {points.map((point, index) => (
+          <rect key={point.key} x={px(index) - Math.max(3, (W - pad.l - pad.r) / n / 2)} y={pad.t} width={Math.max(6, (W - pad.l - pad.r) / n)} height={H - pad.t - pad.b} fill="transparent" onMouseEnter={() => setHover(index)} />
+        ))}
+        {points.map((point, index) => (index % labelStep === 0 || index === n - 1) ? <text key={'x' + point.key} x={px(index)} y={H - 8} className="scr-chart-label" textAnchor={index === 0 ? 'start' : index === n - 1 ? 'end' : 'middle'}>{point.label}</text> : null)}
+        {hover !== null ? <circle cx={px(hover)} cy={py(points[hover].cumPaidCents)} r={4} className="scr-point" /> : null}
+      </svg>
+      {hover !== null ? (
+        <div className="scr-chart-tip" style={{ left: `${(px(hover) / W) * 100}%` }}>
+          <b>{points[hover].label}</b>
+          <span>实收 ¥{cents(points[hover].paidCents)} · 指标 ¥{cents(points[hover].targetCents)}</span>
+          <span className={points[hover].cumPaidCents >= points[hover].cumTargetCents ? 'lead' : 'lag'}>累计差额 {points[hover].cumPaidCents >= points[hover].cumTargetCents ? '+' : '-'}¥{cents(Math.abs(points[hover].cumPaidCents - points[hover].cumTargetCents))}</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MonthlyChart({ months }: { months: { key: string; label: string; paidCents: number; targetCents: number; current: boolean }[] }) {
+  if (!months.length) return <NoData />;
+  const W = 800; const H = 180;
+  const pad = { l: 12, r: 12, t: 12, b: 24 };
+  const max = Math.max(1, ...months.map((month) => Math.max(month.paidCents, month.targetCents)));
+  const slot = (W - pad.l - pad.r) / months.length;
+  const barW = Math.max(8, slot * 0.5);
+  const py = (value: number) => pad.t + (1 - value / max) * (H - pad.t - pad.b);
+  const targetLine = months.map((month, index) => `${index ? 'L' : 'M'} ${pad.l + slot * index + slot / 2} ${py(month.targetCents)}`).join(' ');
+  return (
+    <svg className="scr-month-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="月度实收与指标">
+      {[0.25, 0.5, 0.75].map((f) => <line key={f} className="scr-gridline" x1={pad.l} y1={py(max * f)} x2={W - pad.r} y2={py(max * f)} />)}
+      {months.map((month, index) => {
+        const x = pad.l + slot * index + (slot - barW) / 2;
+        const y = py(month.paidCents);
+        return <rect key={month.key} x={x} y={y} width={barW} height={Math.max(1, H - pad.b - y)} rx="3" className={'scr-month-bar ' + (month.paidCents >= month.targetCents ? 'ok' : 'low') + (month.current ? ' current' : '')} />;
+      })}
+      <path d={targetLine} className="scr-month-target" />
+      {months.map((month, index) => <text key={'m' + month.key} x={pad.l + slot * index + slot / 2} y={H - 7} className="scr-chart-label" textAnchor="middle">{month.label}</text>)}
+    </svg>
+  );
+}
+
+function CommunityRanking({ rows, selectedIds, onPick }: { rows: ScreenCommunity[]; selectedIds: number[]; onPick: (id: number) => void }) {
+  if (!rows.length) return <NoData />;
+  const sorted = [...rows].sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1));
+  return (
+    <div className="scr-community-list">
+      {sorted.map((row) => (
+        <button type="button" key={row.id} className={'scr-community-row' + (selectedIds.length === 1 && selectedIds[0] === row.id ? ' picked' : '')} onClick={() => onPick(row.id)} title="只选该小区">
+          <span className="scr-community-name">{row.name}</span>
+          <span className="scr-community-track"><i className={row.hasTarget ? (row.rate !== null && row.rate >= 100 ? 'ok' : '') : 'none'} style={{ width: row.hasTarget ? `${Math.min(100, Math.max(0, row.rate ?? 0))}%` : '100%' }} /></span>
+          <span className={'scr-community-rate' + (row.hasTarget ? '' : ' none')}>{row.hasTarget ? (row.rate ?? 0) + '%' : '未设指标'}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ScreenArrearsBars({ arrears }: { arrears: ScreenArrears | null }) {
+  if (!arrears) return <NoData />;
+  const max = Math.max(1, ...arrears.buckets.map((bucket) => bucket.amountCents));
+  return (
+    <div className="scr-aging">
+      {arrears.buckets.map((bucket) => {
+        const share = arrears.totalAmountCents ? Math.round((bucket.amountCents / arrears.totalAmountCents) * 1000) / 10 : 0;
+        return (
+          <div className="scr-aging-row" key={bucket.key}>
+            <div className="scr-aging-head"><span>{bucket.label}</span><b>¥{cents(bucket.amountCents)}</b><em>{share}%</em></div>
+            <div className="scr-aging-track"><i className="scr-aging-bar" style={{ width: `${Math.max(bucket.amountCents ? 2 : 0, (bucket.amountCents / max) * 100)}%` }} /></div>
+          </div>
+        );
+      })}
+      <p className="scr-footnote">按户待缴总额分档 · 合计 ¥{cents(arrears.totalAmountCents)} · {arrears.totalCount} 户</p>
+    </div>
+  );
+}
+
 export default function Screen() {
   const navigate = useNavigate();
   const session = useSession();
@@ -213,6 +462,8 @@ export default function Screen() {
   const [tickerIndex, setTickerIndex] = useState(0);
   const currentYear = chinaDate().slice(0, 4);
   const [year, setYear] = useState(currentYear);
+  const [selectedCommunities, setSelectedCommunities] = useState<number[]>([]);
+  const [granularity, setGranularity] = useState<'day' | 'month'>('day');
 
   // 跟随顶栏管理处：actingOffice / 登录代次变化时，重置范围；activeOffice 与范围在同一次更新里提交，避免先按旧小区请求一次。
   const officeKey = JSON.stringify([session.user?.id, session.actingTenant?.id, session.actingOffice?.id, session.generation]);
@@ -225,7 +476,7 @@ export default function Screen() {
   }, [officeKey, activeOffice, currentYear]);
 
   // 范围（小区/年度）、自动刷新、管理处任一变化都推进 signal，全部请求一起重拉。
-  const signal = `${tick}|${activeOffice}|${community}|${year}`;
+  const signal = `${tick}|${activeOffice}|${community}|${year}|${selectedCommunities.join(',')}|${granularity}`;
 
   const today = chinaDate();
   const communityId = community ? Number(community) : undefined;
@@ -237,6 +488,7 @@ export default function Screen() {
   const yearOptions = Array.from({ length: 4 }, (_, i) => String(Number(currentYear) - i));
 
   const options = useLive<Options>('/fees/mis/options', {}, signal);
+  const screenSummary = useLive<unknown>('/fees/mis/screen-summary', { year, communityIds: selectedCommunities.length ? selectedCommunities.join(',') : undefined, granularity }, signal);
   const dash = useLive<Dashboard>('/fees/mis/residential', { view: 'dashboard', category: 'all', communityId, periodFrom: `${year}01`, periodTo: `${year}12` }, signal);
   const trend = useLive<Trend>('/fees/mis/residential', { view: 'trend', category: 'all', communityId, paidFrom: yearFrom, paidTo: yearTo }, signal);
   const brackets = useLive<AmountBracketsResponse>('/fees/mis/residential', { view: 'amount-brackets', communityId, periodFrom: `${year}01`, periodTo: `${year}12` }, signal);
@@ -281,6 +533,11 @@ export default function Screen() {
     } catch { /* 浏览器不允许时保持窗口模式 */ }
   };
 
+  const communities = options.data?.communities || [];
+  useEffect(() => {
+    if (!communities.length) return;
+    setSelectedCommunities((prev) => (prev.length ? prev : communities.map((item) => item.id)));
+  }, [options.data]);
   const sync = offlineStatus(dash.data ?? options.data);
   const offlineMode = sync.offline;
   const quietEmpty = (text: string, detail?: string) => offlineMode
@@ -289,8 +546,8 @@ export default function Screen() {
   const summary = dash.data?.summary;
   const paidRate = summary && summary.receivableCents ? Math.round((summary.paidCents / summary.receivableCents) * 1000) / 10 : null;
   const unpaidShare = summary && summary.receivableCents ? Math.round((summary.unpaidCents / summary.receivableCents) * 1000) / 10 : null;
-  const loadedAt = Math.max(dash.loadedAt, trend.loadedAt, brackets.loadedAt, batches.loadedAt, effect.loadedAt, sms.loadedAt, recent.loadedAt);
-  const loading = [dash, trend, brackets, batches, effect, sms, recent].some((item) => item.loading);
+  const loadedAt = Math.max(dash.loadedAt, trend.loadedAt, brackets.loadedAt, batches.loadedAt, effect.loadedAt, sms.loadedAt, recent.loadedAt, screenSummary.loadedAt);
+  const loading = [dash, trend, brackets, batches, effect, sms, recent, screenSummary].some((item) => item.loading);
 
   const monthly: TrendBucket[] = yearMonths.map((month) => {
     const rows = (trend.data?.rows || []).filter((row) => row.day.slice(0, 7) === month);
@@ -305,9 +562,42 @@ export default function Screen() {
   const smsTotal = num(sms.data?.total ?? sms.data?.sent ?? sms.data?.count);
   const smsDelivered = num(sms.data?.delivered ?? sms.data?.deliveryCount ?? sms.data?.success);
   const smsRate = typeof sms.data?.deliveredRate === 'number' ? sms.data.deliveredRate : smsTotal ? Math.round((smsDelivered / smsTotal) * 1000) / 10 : null;
-  const communities = options.data?.communities || [];
 
   const bracketView = brackets.data ? normalizeBrackets(brackets.data) : null;
+  const screenData = normalizeScreenSummary(screenSummary.data);
+  const screenTarget = screenData?.target ?? null;
+  const screenToday = screenData?.today ?? null;
+  const trendPoints = screenData?.trend ?? [];
+  const communitiesRank = screenData?.communities ?? [];
+  const allCommunityIds = communities.map((item) => item.id);
+  const allCommunitiesSelected = selectedCommunities.length === 0 || (allCommunityIds.length > 0 && selectedCommunities.length === allCommunityIds.length);
+  const toggleCommunity = (id: number) => {
+    setSelectedCommunities((prev) => {
+      const current = prev.length ? prev : allCommunityIds;
+      const next = current.includes(id) ? current.filter((item) => item !== id) : [...current, id];
+      return next.length ? next : allCommunityIds;
+    });
+  };
+  const pickCommunityOnly = (id: number) => setSelectedCommunities([id]);
+  const monthKeys = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
+  const monthBuckets = monthKeys.map((key) => {
+    const rows = trendPoints.filter((point) => point.key.slice(0, 7) === key);
+    return {
+      key,
+      label: key.slice(5),
+      paidCents: rows.reduce((sum, point) => sum + point.paidCents, 0),
+      targetCents: rows.reduce((sum, point) => sum + point.targetCents, 0),
+      current: key === today.slice(0, 7),
+    };
+  });
+  const chartPoints = granularity === 'month' && trendPoints.length && trendPoints[0].key.length >= 7
+    ? (() => { let cp = 0; let ct = 0; return monthKeys.map((key) => { const bucket = monthBuckets.find((item) => item.key === key)!; cp += bucket.paidCents; ct += bucket.targetCents; return { key, label: key.slice(5), paidCents: bucket.paidCents, targetCents: bucket.targetCents, cumPaidCents: cp, cumTargetCents: ct }; }); })()
+    : trendPoints;
+  const arrearsView: ScreenArrears | null = screenData?.arrears ?? (bracketView ? { buckets: bracketView.buckets, totalCount: bracketView.total.count, totalAmountCents: bracketView.total.amountCents } : null);
+  const todayNeed = screenToday?.dailyNeedCents || screenTarget?.dailyNeedCents || 0;
+  const todayPct = todayNeed > 0 && screenToday ? (screenToday.paidCents / todayNeed) * 100 : null;
+  const summaryError = screenSummary.error;
+  const summaryLoading = screenSummary.loading;
 
   // 底部实时播报：近期缴费（MIS 只有日期精度，只显示 paidAt 的月-日）→ 今日实收 → 通知批次数 → 短信送达率 → 欠费小区。
   // 不把 recordedAt 当收款时间；需要时刻时只能写「登记 HH:mm」，本次不展示。
@@ -346,7 +636,7 @@ export default function Screen() {
   }, [reduceMotion, tickerMessages.length]);
 
   return (
-    <div className={"screen" + (tickerMessages.length ? " has-ticker" : "")} data-page="screen">
+    <div className={"screen scr-v2" + (tickerMessages.length ? " has-ticker" : "")} data-page="screen">
       <header className="scr-head">
         <div className="scr-brand">
           <span className="scr-mark" aria-hidden="true" />
@@ -356,13 +646,15 @@ export default function Screen() {
           </div>
         </div>
         <div className="scr-meta">
-          <label className="scr-scope" title={options.error || '按当前管理处授权范围筛选'}>
+          <div className="scr-scope scr-checks" title={options.error || '勾选一个或多个小区，全部图表一起刷新'}>
             <span>小区</span>
-            <select value={community} onChange={(e) => setCommunity(e.target.value)} aria-label="数据范围小区">
-              <option value="">全部授权小区</option>
-              {communities.map((c) => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
-            </select>
-          </label>
+            {communities.length ? communities.map((item) => (
+              <label key={item.id} className="scr-check">
+                <input type="checkbox" checked={allCommunitiesSelected || selectedCommunities.includes(item.id)} onChange={() => toggleCommunity(item.id)} />
+                <b>{item.name}</b>
+              </label>
+            )) : <em>全部授权小区</em>}
+          </div>
           <label className="scr-scope" title="切换年度后重新读取该年度数据">
             <span>年度</span>
             <select value={year} onChange={(e) => setYear(e.target.value)} aria-label="数据范围年度">
@@ -378,89 +670,53 @@ export default function Screen() {
         </div>
       </header>
 
-      <section className="scr-kpis" aria-label="本期收费指标">
-        {dash.error && !summary ? (
-          offlineMode ? <div className="scr-panel scr-kpi"><Empty text="MIS 同步中，稍后自动刷新" /></div> : <div className="scr-panel scr-kpi err"><Empty text="MIS 指标读取失败" detail={dash.error} /></div>
-        ) : (
-          <>
-            <article className="scr-panel scr-kpi">
-              <span className="scr-kpi-label">本期应收</span>
-              <b className="scr-kpi-value due">¥{cents(summary?.receivableCents || 0)}</b>
-              <span className="scr-kpi-sub">{year} 年非退款账单</span>
-            </article>
-            <article className="scr-panel scr-kpi">
-              <span className="scr-kpi-label">本期已缴</span>
-              <b className="scr-kpi-value paid">¥{cents(summary?.paidCents || 0)}</b>
-              <span className="scr-kpi-sub">收缴完成率 {paidRate === null ? '—' : paidRate + '%'}</span>
-            </article>
-            <article className="scr-panel scr-kpi">
-              <span className="scr-kpi-label">本期待缴</span>
-              <b className="scr-kpi-value owe">¥{cents(summary?.unpaidCents || 0)}</b>
-              <span className="scr-kpi-sub">{summary?.unpaidHouses ?? 0} 户未结清{unpaidShare === null ? '' : ' · 占应收 ' + unpaidShare + '%'}</span>
-            </article>
-            <article className="scr-panel scr-kpi">
-              <span className="scr-kpi-label">本期收缴率</span>
-              <b className="scr-kpi-value rate">{paidRate === null ? '—' : paidRate + '%'}</b>
-              <span className="scr-kpi-sub">按金额，不是按户数</span>
-            </article>
-          </>
-        )}
-      </section>
-
-      <section className="scr-mid">
-        <article className="scr-panel scr-trend">
-          <div className="scr-panel-head">
-            <h2>{year} 年按月收缴趋势</h2>
-            <span className="scr-legend">实收净额 · 按月{community ? ' · ' + (communities.find((c) => String(c.id) === community)?.name || '所选小区') : ' · 全部授权小区'}</span>
-          </div>
-          {trend.error ? quietEmpty("趋势读取失败", trend.error) : trend.data ? <TrendChart buckets={monthly} /> : <Empty text="正在读取趋势…" />}
-        </article>
-
-        <article className="scr-panel scr-aging-panel">
-          <div className="scr-panel-head">
-            <h2>待缴金额分布</h2>
-            <span className="scr-legend">按户待缴总额分档</span>
-          </div>
-          {brackets.error ? quietEmpty("待缴金额读取失败", brackets.error) : bracketView ? (
-            <AmountBars buckets={bracketView.buckets} totalAmount={bracketView.total.amountCents} totalCount={bracketView.total.count} />
-          ) : <Empty text="正在读取待缴金额…" />}
-        </article>
-      </section>
-
-      <section className="scr-bottom" aria-label="催缴成效">
-        <article className="scr-panel scr-mini">
-          <div className="scr-panel-head"><h2>本轮催缴批次与户数</h2><span className="scr-legend">最近 100 批</span></div>
-          {batches.error ? quietEmpty("催缴批次读取失败", batches.error) : (
-            <div className="scr-mini-body">
-              <div><b>{batchTotal}</b><small>批次</small></div>
-              <div><b>{batchHouses}</b><small>通知户次</small></div>
-              <span className="scr-mini-note">{latestBatch ? '最近批次 ' + new Date(latestBatch.createdAt).toLocaleDateString('zh-CN') + (latestBatch.purpose === 'sms' ? ' · 短信' : ' · 纸质') : '暂无批次'}</span>
+      <section className="scr-top" aria-label="年度达成与今日实时">
+        <AnnualPanel target={screenTarget} year={year} loading={summaryLoading} error={summaryError} onSettings={() => navigate('/settings')} />
+        <article className="scr-panel scr-today">
+          <div className="scr-panel-head"><h2>今日实时</h2><span className="scr-legend">今日实收 · 日均需收完成度</span></div>
+          {summaryError ? <NoData /> : !screenToday ? (summaryLoading ? <div className="scr-no-data">读取中…</div> : <NoData />) : (
+            <div className="scr-today-body" key={screenSummary.loadedAt}>
+              <div className="scr-today-main">
+                <span className="scr-today-label">今日实收</span>
+                <b className="scr-today-value scr-flash"><RollingCents value={screenToday.paidCents} /></b>
+                <span className="scr-today-sub">{screenToday.count} 笔 · {screenToday.houses} 户</span>
+              </div>
+              <div className="scr-today-side">
+                <TodayRing pct={todayPct} />
+                <span>今日 / 日均需收</span>
+              </div>
             </div>
           )}
         </article>
+      </section>
 
-        <article className="scr-panel scr-mini">
-          <div className="scr-panel-head"><h2>T+30 回款与回款率</h2><span className="scr-legend">通知批次归因</span></div>
-          {effect.error || !effect.data ? (
-            effect.loading ? <Empty text="正在核对 T+30 回款…" /> : offlineMode ? <Empty text="MIS 同步中，稍后自动刷新" /> : <Empty text="T+30 回款暂不可用" todo detail={effect.error || undefined} />
-          ) : (
-            <div className="scr-mini-body">
-              <div><b>¥{cents(effect.data.summary.recoveredCents)}</b><small>归因回款</small></div>
-              <div><b>{effect.data.summary.recoveryRate}%</b><small>金额回款率</small></div>
-              <span className="scr-mini-note">通知金额 ¥{cents(effect.data.summary.notifiedCents)} · 缴清 {effect.data.summary.clearedHouseholds} 户</span>
+      <section className="scr-main">
+        <div className="scr-main-left">
+          <article className="scr-panel scr-cum-panel">
+            <div className="scr-panel-head">
+              <h2>累计实收 vs 指标</h2>
+              <div className="scr-gran">
+                <button type="button" className={'scr-gran-btn' + (granularity === 'day' ? ' on' : '')} onClick={() => setGranularity('day')}>按日</button>
+                <button type="button" className={'scr-gran-btn' + (granularity === 'month' ? ' on' : '')} onClick={() => setGranularity('month')}>按月</button>
+              </div>
             </div>
-          )}
-        </article>
+            {summaryError ? <NoData /> : chartPoints.length ? <CumulativeChart points={chartPoints} /> : <NoData />}
+          </article>
 
-        <article className="scr-panel scr-mini">
-          <div className="scr-panel-head"><h2>短信送达率</h2><span className="scr-legend">催缴短信</span></div>
-          {sms.error ? quietEmpty("短信送达率暂不可用", sms.error) : sms.data ? (
-            <div className="scr-mini-body">
-              <div><b>{smsRate === null ? '—' : smsRate + '%'}</b><small>送达率</small></div>
-              <div><b>{smsDelivered || '—'}</b><small>已送达</small></div>
-              <span className="scr-mini-note">共 {smsTotal || '—'} 条 · 数据来自短信发送记录</span>
-            </div>
-          ) : <Empty text="正在读取短信送达…" />}
+          <article className="scr-panel scr-month-panel">
+            <div className="scr-panel-head"><h2>月度实收 vs 指标</h2><span className="scr-legend">绿=达标 · 浅红=未达标 · 本月高亮</span></div>
+            {summaryError || !trendPoints.length ? <NoData /> : <MonthlyChart months={monthBuckets} />}
+          </article>
+
+          <article className="scr-panel scr-aging-panel">
+            <div className="scr-panel-head"><h2>欠费结构</h2><span className="scr-legend">按户待缴总额分档</span></div>
+            {summaryError && !arrearsView ? <NoData /> : <ScreenArrearsBars arrears={arrearsView} />}
+          </article>
+        </div>
+
+        <article className="scr-panel scr-ranking">
+          <div className="scr-panel-head"><h2>小区达成率排行</h2><span className="scr-legend">点击只看该小区</span></div>
+          {summaryError ? <NoData /> : <CommunityRanking rows={communitiesRank} selectedIds={selectedCommunities} onPick={pickCommunityOnly} />}
         </article>
       </section>
 
