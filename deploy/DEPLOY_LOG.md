@@ -6631,3 +6631,10 @@
 - 自上次（addd528d）以来上线的相关提交：
   - 8e7bd83e feat(logs): 使用统计下钻明细；顶部意见与建议入口与反馈对话框；日志新增用户反馈 tab
 
+## 2026-11-08 08:48 · api · fe48943b
+
+- 包：`pms-api-fast-20261108-084806.tar.gz`
+- 提交：fe48943b feat(feedback): 顶层 recentErrors 与通知「需看报错」标记；20MB 服务端对象大小校验
+- 自上次（77bed0d1）以来上线的相关提交：
+  - fe48943b feat(feedback): 顶层 recentErrors 与通知「需看报错」标记；20MB 服务端对象大小校验
+
