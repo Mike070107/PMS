@@ -27,6 +27,40 @@ export class TasksService {
     try {
       const result = await this.misMirror.syncAll();
       if (result.rows) this.logger.log(`MIS mirror synced ${result.rows} bill rows`);
+      for (const failure of result.failures || []) {
+        // 每 5 分钟一轮，连续 3 次（约 15 分钟）才升级微信；成功会清零计数，不会持续刷屏。
+        if (failure.consecutiveFailures !== 3) continue;
+        const receivers = await this.access.userIdsWithPermission(failure.tenantId, 'logs', 'view');
+        if (!receivers.length) continue;
+        const now = new Date();
+        const lastSync = failure.lastSuccessAt ? new Date(failure.lastSuccessAt) : null;
+        const lagMinutes = lastSync ? Math.max(0, Math.round((now.getTime() - lastSync.getTime()) / 60_000)) : null;
+        const content = `MIS 镜像增量同步已连续失败 3 次（约 15 分钟）。最后成功：${lastSync ? formatWxTime(lastSync) : '未知'}${lagMinutes === null ? '' : `（滞后 ${lagMinutes} 分钟）`}；错误：${failure.lastError.slice(0, 160)}`;
+        for (const receiverId of receivers) {
+          await this.notifications.notifyUser({
+            tenantId: failure.tenantId,
+            receiverId,
+            eventKey: 'mis_mirror_sync_failed',
+            title: 'MIS 镜像同步失败',
+            payload: { content, consecutiveFailures: failure.consecutiveFailures, lastError: failure.lastError, lastSuccessAt: failure.lastSuccessAt },
+            page: '/pages/messages/messages',
+            template: 'orderOverdue',
+            templateFields: {
+              orderNo: `MIS-${now.getTime()}`,
+              type: '系统告警',
+              status: '镜像同步失败',
+              statusShort: '失败',
+              content,
+              assignee: '系统管理员',
+              address: 'MIS 镜像',
+              reporter: '系统监控',
+              time: formatWxTime(now),
+              reportedAt: formatWxTime(now),
+              dueAt: formatWxTime(now),
+            },
+          });
+        }
+      }
     } catch (err) {
       this.logger.error('syncMisMirror failed', err as Error);
     }

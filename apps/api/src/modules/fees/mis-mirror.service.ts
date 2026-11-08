@@ -13,7 +13,8 @@ type MirrorCommunity = { id: number; name: string; offices: string[] };
 const DATA_SOURCE_KEY = 'data_source_mode';
 const BATCH_SIZE = 500;
 const MAX_BATCHES_PER_TICK = 4;
-const MIS_TIMEOUT = 5_000;
+const MIS_TIMEOUT = 15_000;
+const SWEEP_BATCH_FALLBACK = 200;
 
 /**
  * MIS 镜像第一阶段。
@@ -91,14 +92,19 @@ export class MisMirrorService {
       await this.syncSmallDimensions();
       return { skipped: null, rows };
     } catch (error) {
-      await this.recordSyncError(tenantId, 'bill', error).catch(() => undefined);
+      const consecutiveFailures = await this.recordSyncError(tenantId, 'bill', error).catch(() => 0);
+      const staleRows: any[] = await this.dataSource.query(
+        `SELECT last_success_at FROM mis_sync_state WHERE tenant_id=$1 AND source_table='bill' LIMIT 1`,
+        [tenantId],
+      ).catch(() => []);
+      const lastSuccessAt = staleRows[0]?.last_success_at ? new Date(staleRows[0].last_success_at).toISOString() : null;
       await this.dataSource.query(
         `INSERT INTO system_logs(tenant_id,category,level,source,action,success,message,detail,created_at,updated_at)
          VALUES($1,'alert','warning','mis-mirror','mis_mirror_sync',false,$2,$3::jsonb,now(),now())`,
-        [tenantId, `MIS 镜像同步失败：${(error as Error).message}`.slice(0, 500), JSON.stringify({ error: String((error as Error).message).slice(0, 500) })],
+        [tenantId, `MIS 镜像同步失败：${(error as Error).message}`.slice(0, 500), JSON.stringify({ error: String((error as Error).message).slice(0, 500), consecutiveFailures, lastSuccessAt })],
       ).catch(() => undefined);
       this.logger.warn(`MIS 镜像增量同步失败：${(error as Error).message}`);
-      return { skipped: 'error', rows };
+      return { skipped: 'error', rows, failed: true, consecutiveFailures, lastError: String((error as Error).message), lastSuccessAt };
     } finally {
       await this.dataSource.query(`SELECT pg_advisory_unlock(hashtext('mis-mirror-sync'))`).catch(() => undefined);
     }
@@ -124,34 +130,60 @@ export class MisMirrorService {
     let lastUpdated = state.last_updated_at ? new Date(state.last_updated_at) : null;
     let lastId = Number(state.last_id ?? 0);
     let total = 0;
+    // 主增量：ZJ_ID 主键 keyset；不碰 updatedate，保证不扫 65 万行。
     for (let i = 0; i < MAX_BATCHES_PER_TICK; i += 1) {
-      const since = lastUpdated ? new Date(lastUpdated.getTime() - 5 * 60_000) : null;
-      const rows = await this.readBillBatch(since, lastId);
+      const rows = await this.readNewBillBatch(lastId);
       if (!rows.length) break;
       await this.upsertBills(rows);
       total += rows.length;
-      const tail = rows[rows.length - 1];
-      lastUpdated = tail.sourceUpdatedAt ? new Date(tail.sourceUpdatedAt) : lastUpdated;
-      lastId = Number(tail.zjId);
+      lastId = Number(rows[rows.length - 1].zjId);
       if (rows.length < BATCH_SIZE) break;
+    }
+    // 补漏：旧 ZJ_ID 的 updatedate 变更每 15 分钟扫一次；不能作为每 5 分钟主谓词。
+    const sweepStates: any[] = await this.dataSource.query(
+      `SELECT * FROM mis_sync_state WHERE tenant_id=$1 AND source_table='bill_sweep' LIMIT 1`,
+      [tenantId],
+    );
+    const sweep = sweepStates[0];
+    const sweepSince = sweep?.last_updated_at
+      ? new Date(sweep.last_updated_at)
+      : (lastUpdated ?? new Date(Date.now() - 15 * 60_000));
+    const due = !sweep?.last_updated_at || Date.now() - new Date(sweep.last_updated_at).getTime() >= 15 * 60_000;
+    if (due) {
+      let rows: any[] = [];
+      try {
+        rows = await this.readUpdatedBillBatch(sweepSince);
+      } catch (error) {
+        // 超时/慢查询降级到 200 行再试一次；仍失败才上抛。
+        rows = await this.readUpdatedBillBatch(sweepSince, SWEEP_BATCH_FALLBACK);
+      }
+      if (rows.length) {
+        await this.upsertBills(rows);
+        total += rows.length;
+        lastUpdated = rows[rows.length - 1].sourceUpdatedAt ? new Date(rows[rows.length - 1].sourceUpdatedAt) : lastUpdated;
+      }
+      const sweepLast = rows.length ? rows[rows.length - 1].sourceUpdatedAt : sweepSince;
+      await this.dataSource.query(
+        `INSERT INTO mis_sync_state(tenant_id,source_table,last_updated_at,last_success_at,last_attempt_at,last_error)
+         VALUES($1,'bill_sweep',$2,now(),now(),NULL)
+         ON CONFLICT (tenant_id,source_table) DO UPDATE SET
+           last_updated_at=EXCLUDED.last_updated_at,last_success_at=now(),last_attempt_at=now(),last_error=NULL`,
+        [tenantId, sweepLast],
+      );
     }
     await this.dataSource.query(
       `UPDATE mis_sync_state
           SET last_updated_at=$2,last_id=$3,last_success_at=now(),last_attempt_at=now(),
-              last_error=NULL,lag_rows=$4,synced_rows=COALESCE(synced_rows,0)+$5
+              last_error=NULL,lag_rows=$4,synced_rows=COALESCE(synced_rows,0)+$5,
+              consecutive_failures=0,last_failure_at=NULL
         WHERE tenant_id=$1 AND source_table='bill'`,
       [tenantId, lastUpdated, lastId, total >= BATCH_SIZE ? BATCH_SIZE : 0, total],
     );
     return total;
   }
 
-  private async readBillBatch(since: Date | null, lastId: number) {
-    const params: Record<string, string | number> = { take: BATCH_SIZE, lastId };
-    const watermark = since
-      ? `AND (w.updatedate > CONVERT(datetime,@since,126) OR (w.updatedate = CONVERT(datetime,@since,126) AND w.ZJ_ID > @lastId))`
-      : '';
-    if (since) params.since = this.misDateTime(since);
-    const sql = `SELECT TOP (@take) w.ZJ_ID AS zjId, l.管理处 AS officeCode, l.L_ID AS lId,
+  private billSelect(where: string, order: string, params: Record<string, string | number>) {
+    return `SELECT TOP (@take) w.ZJ_ID AS zjId, l.管理处 AS officeCode, l.L_ID AS lId,
         s.S_ID AS sId, z.ZH_ID AS zhId, z.姓名 AS ownerName, s.室 AS roomNo,
         ISNULL(l.地址1,N'')+ISNULL(l.字1,N'')+ISNULL(l.地址2,N'')+ISNULL(l.字2,N'')+
         ISNULL(l.地址3,N'')+ISNULL(l.字3,N'')+ISNULL(l.地址4,N'')+ISNULL(l.字4,N'')+
@@ -169,9 +201,20 @@ export class MisMirrorService {
       INNER JOIN dbo.楼表 l ON l.L_ID=s.L_ID
       LEFT JOIN dbo.SETUPSFXM f ON f.DH=w.ZJ_LX
       LEFT JOIN dbo.收款方式列表 m ON m.id=w.收款方式ID
-      WHERE ${since ? watermark : 'w.ZJ_ID > @lastId'}
-        AND ISNULL(w.SC,N'0')=N'0'
-      ORDER BY w.updatedate ASC,w.ZJ_ID ASC`;
+      WHERE ${where} AND ISNULL(w.SC,N'0')=N'0'
+      ORDER BY ${order}`;
+  }
+
+  private async readNewBillBatch(lastId: number) {
+    const params: Record<string, string | number> = { take: BATCH_SIZE, lastId };
+    const sql = this.billSelect('w.ZJ_ID > @lastId', 'w.ZJ_ID ASC', params);
+    const result = await this.misFees.mirrorRead(sql, params, MIS_TIMEOUT);
+    return (result?.recordsets?.[0] ?? []) as any[];
+  }
+
+  private async readUpdatedBillBatch(since: Date, take = BATCH_SIZE) {
+    const params: Record<string, string | number> = { take, since: this.misDateTime(since) };
+    const sql = this.billSelect('w.updatedate > CONVERT(datetime,@since,126)', 'w.updatedate ASC,w.ZJ_ID ASC', params);
     const result = await this.misFees.mirrorRead(sql, params, MIS_TIMEOUT);
     return (result?.recordsets?.[0] ?? []) as any[];
   }
@@ -309,13 +352,17 @@ export class MisMirrorService {
     }
   }
 
-  private async recordSyncError(tenantId: number, source: string, error: unknown) {
-    await this.dataSource.query(
-      `INSERT INTO mis_sync_state(tenant_id,source_table,last_attempt_at,last_error)
-       VALUES($1,$2,now(),$3)
-       ON CONFLICT (tenant_id,source_table) DO UPDATE SET last_attempt_at=now(),last_error=EXCLUDED.last_error`,
+  private async recordSyncError(tenantId: number, source: string, error: unknown): Promise<number> {
+    const result: any[] = await this.dataSource.query(
+      `INSERT INTO mis_sync_state(tenant_id,source_table,last_attempt_at,last_error,consecutive_failures,last_failure_at)
+       VALUES($1,$2,now(),$3,1,now())
+       ON CONFLICT (tenant_id,source_table) DO UPDATE SET
+         last_attempt_at=now(),last_error=EXCLUDED.last_error,
+         consecutive_failures=COALESCE(mis_sync_state.consecutive_failures,0)+1,last_failure_at=now()
+       RETURNING consecutive_failures`,
       [tenantId, source, String((error as Error)?.message ?? error).slice(0, 500)],
     );
+    return Number(result[0]?.consecutive_failures || 1);
   }
 
   private misDateTime(value: Date) {
@@ -455,8 +502,13 @@ export class MisMirrorService {
   async syncAll() {
     const tenants: any[] = await this.dataSource.query(`SELECT id FROM tenants WHERE enabled=true ORDER BY id`).catch(() => []);
     let rows = 0;
-    for (const tenant of tenants) rows += (await this.syncTick(Number(tenant.id)))?.rows || 0;
-    return { rows, tenants: tenants.length };
+    const failures: Array<{ tenantId: number; consecutiveFailures: number; lastError: string; lastSuccessAt: string | null }> = [];
+    for (const tenant of tenants) {
+      const result: any = await this.syncTick(Number(tenant.id));
+      rows += result?.rows || 0;
+      if (result?.failed) failures.push({ tenantId: Number(tenant.id), consecutiveFailures: Number(result.consecutiveFailures || 0), lastError: String(result.lastError || ''), lastSuccessAt: result.lastSuccessAt ?? null });
+    }
+    return { rows, tenants: tenants.length, failures };
   }
 
   async reconcileAll() {

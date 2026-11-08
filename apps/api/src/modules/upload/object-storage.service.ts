@@ -205,6 +205,15 @@ export class ObjectStorageService {
     };
   }
 
+  /** 只读元数据（不下载对象）：用于服务端校验附件真实大小/类型。 */
+  async statObject(objectKey: string): Promise<{ contentType?: string; size: number }> {
+    if (!this.client || !this.bucket) {
+      throw new Error('COS storage is not configured');
+    }
+    const stat = await this.client.statObject(this.bucket, objectKey);
+    return { contentType: stat.metaData?.['content-type'], size: Number(stat.size) || 0 };
+  }
+
   private buildObjectKey(folder: string, originalName?: string): string {
     const now = new Date();
     const yyyy = now.getFullYear();

@@ -472,6 +472,11 @@ export class NotificationsService {
     template?: SubscribeTemplateKey;
     /** 事件的语义字段；填到模板哪个位置由 buildTemplateData 按模板真实字段决定 */
     templateFields?: TemplateFields;
+    /**
+     * 只走服务号（公众号）模板消息的提醒字段。用于「没有专属订阅模板、但需要微信提醒」的管理事件
+     * （如用户反馈）。服务号未配置或收件人没关注时静默退回仅站内信，不会套用别的订阅模板。
+     */
+    serviceAccountFields?: TemplateFields;
   }): Promise<{ externalSent: boolean; reason: string } | undefined> {
     try {
       const saved = await this.notificationRepo.save(
@@ -489,7 +494,26 @@ export class NotificationsService {
         }),
       );
 
-      if (!input.template || !input.templateFields) return;
+      // 服务号优先：只要人关注着就能一直推，不吃订阅额度。推成功就不再走订阅模板。
+      if (input.serviceAccountFields) {
+        const viaMp = await this.trySendServiceAccount({
+          tenantId: input.tenantId,
+          receiverId: input.receiverId,
+          fields: input.serviceAccountFields,
+          page: input.page,
+          notificationId: saved.id,
+        });
+        if (viaMp) return { externalSent: true, reason: '公众号已发送（不代表已读）' };
+      }
+
+      if (!input.template || !input.templateFields) {
+        return {
+          externalSent: false,
+          reason: input.serviceAccountFields
+            ? '服务号未配置或收件人未关注，仅站内通知'
+            : '仅站内通知',
+        };
+      }
 
       // 优先走服务号：只要人关注着就能一直推，不吃订阅额度，落在聊天列表里更显眼。
       // 推成功就到此为止 —— 两条都发的话，维修工同一件事会收到两遍。

@@ -111,6 +111,10 @@ export class FeesController {
   @RequirePermission('settings','edit')
   misMirrorReload(@CurrentUser() user:AuthUser){return this.misMirrorService.reloadAll(Number(user.tenantId||0));}
 
+  @Post('mis/mirror/sync')
+  @RequirePermission('settings','edit')
+  misMirrorSync(){return this.misMirrorService.syncAll();}
+
   @Get('mis/mirror/reconcile')
   @RequirePermission(['settings','fees'],'view')
   misMirrorReconcile(@CurrentUser() user:AuthUser){return this.misMirrorService.reconcile(Number(user.tenantId||0));}

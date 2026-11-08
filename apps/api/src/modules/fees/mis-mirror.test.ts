@@ -3,12 +3,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PGlite } from '@electric-sql/pglite';
 import { MisMirror1794500000000 } from '../../migrations/1794500000000-MisMirror';
+import { MisMirrorFailureCount1794600000000 } from '../../migrations/1794600000000-MisMirrorFailureCount';
 import { MisMirrorService } from './mis-mirror.service';
 
 async function fixture() {
   const pg = new PGlite();
   const migration = new MisMirror1794500000000();
   await migration.up({ query: (sql: string) => pg.query(sql) } as any);
+  const health = new MisMirrorFailureCount1794600000000();
+  await health.up({ query: (sql: string) => pg.query(sql) } as any);
   const dataSource: any = { query: async (sql: string, params?: any[]) => (await pg.query(sql, params)).rows };
   const misFees: any = {
     residentialScope: async () => [{ id: 1, name: '枫桦苑一期', offices: ['01'] }],
@@ -28,11 +31,11 @@ async function fixture() {
   await add(5, 4, 4, 600000);
   await add(6, 5, 5, 50000, '2026-11-08');
   await add(7, 6, 6, 30000, null, '2026-11-08');
-  return { pg, service, migration };
+  return { pg, service, migration, health };
 }
 
 test('镜像迁移可 up/down，金额分档按户聚合后分档', async () => {
-  const { pg, service, migration } = await fixture();
+  const { pg, service, migration, health } = await fixture();
   try {
     const result: any = await service.residential({ view: 'amount-brackets' }, { id: 1, tenantId: 1 }, { scopeAll: true } as any);
     assert.deepEqual(result.buckets.map((row: any) => [row.key, row.count, row.amountCents]), [
@@ -53,6 +56,7 @@ test('镜像迁移可 up/down，金额分档按户聚合后分档', async () => 
     const today: any = await service.today({ date: '2026-11-08' }, { id: 1, tenantId: 1 }, { scopeAll: true } as any);
     assert.equal(today.paidCents, 50000);
     assert.equal(today.refundedCents, 30000);
+    await health.down({ query: (sql: string) => pg.query(sql) } as any);
     await migration.down({ query: (sql: string) => pg.query(sql) } as any);
   } finally { await pg.close(); }
 });
@@ -69,4 +73,25 @@ test('镜像未初始化时明确报错，不返回全 0 假装有数据', async
     );
     await assert.rejects(() => service.residential({ view: 'dashboard' }, { id: 1, tenantId: 1 }, { scopeAll: true } as any), /镜像尚未完成初始化/);
   } finally { await pg.close(); }
+});
+
+test('增量同步主谓词用 ZJ_ID keyset，updatedate 只做 15 分钟补漏，不再生成 WHERE AND', async () => {
+  const service: any = Object.create(MisMirrorService.prototype);
+  const state = { tenant_id: 1, source_table: 'bill', initialized_at: new Date(), last_updated_at: new Date('2026-11-07T15:34:00+08:00'), last_id: 654544 };
+  const sqls: string[] = [];
+  service.dataSource = {
+    async query(sql: string) {
+      sqls.push(String(sql));
+      if (/SELECT \* FROM mis_sync_state/.test(sql) && /source_table='bill_sweep'/.test(sql)) return [];
+      if (/SELECT \* FROM mis_sync_state/.test(sql)) return [state];
+      return [];
+    },
+  };
+  service.misFees = { mirrorRead: async (sql: string) => { sqls.push(String(sql)); return { recordsets: [[]] }; } };
+  await service.syncBills(1);
+  const newSql = sqls.find((sql) => sql.includes('WHERE w.ZJ_ID > @lastId'));
+  const sweepSql = sqls.find((sql) => sql.includes('WHERE w.updatedate >'));
+  assert.ok(newSql, '主增量必须走 ZJ_IDkeyset');
+  assert.ok(sweepSql, '旧行补漏走 updatedate');
+  assert.ok(!sqls.some((sql) => /WHERE\s+AND/.test(sql)), '不得生成 WHERE AND');
 });
