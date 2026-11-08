@@ -1,0 +1,60 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { buildScreenSummary } from './screen-summary.util';
+
+const now = new Date('2026-11-08T08:00:00+08:00');
+
+test('收费大屏：多小区合并、达成率/缺口/日均、指标为0时 rate=null', () => {
+  const communities = [
+    { id: 1, name: '枫桦景苑一期', offices: ['01'] },
+    { id: 2, name: '枫桦景苑二期', offices: ['02', '03'] },
+  ];
+  const targets = [
+    { communityId: 1, communityName: '枫桦景苑一期', year: 2026, annualCents: 1_000_000, monthCents: Array(12).fill(100_000) },
+    { communityId: 2, communityName: '枫桦景苑二期', year: 2026, annualCents: 500_000, monthCents: Array(12).fill(50_000) },
+  ];
+  const dailyRows = [
+    { officeCode: '01', day: '2026-11-08', paidCents: 30_000, billCount: 3, houseCount: 2 },
+    { officeCode: '02', day: '2026-11-08', paidCents: 20_000, billCount: 2, houseCount: 1 },
+    { officeCode: '03', day: '2026-11-08', paidCents: 10_000, billCount: 1, houseCount: 1 },
+    { officeCode: '01', day: '2026-11-07', paidCents: 10_000, billCount: 1, houseCount: 1 },
+  ];
+  const result: any = buildScreenSummary({
+    year: 2026, communities, targets, dailyRows, granularity: 'month', now,
+    arrears: { totalCents: 4_128_388, houseCount: 1_399, buckets: [{ key: 'le500', count: 103, amountCents: 2_493_010 }] },
+    recentPayments: [{ address: 'A' }],
+  });
+  assert.deepEqual(result.scope, { communityIds: [1, 2], communityNames: ['枫桦景苑一期', '枫桦景苑二期'] });
+  assert.equal(result.target.annualCents, 1_500_000);
+  assert.equal(result.target.yearToDateCents, 70_000);
+  assert.equal(result.target.rate, 4.7);
+  assert.equal(result.target.gapCents, 1_430_000);
+  assert.equal(result.target.remainingDays, 54);
+  assert.equal(result.target.dailyNeedCents, 26_481);
+  assert.equal(result.today.paidCents, 60_000);
+  assert.equal(result.today.billCount, 6);
+  assert.equal(result.today.vsDailyNeed, 226.6);
+  assert.equal(result.monthToDate.paidCents, 70_000);
+  assert.equal(result.monthToDate.targetCents, 150_000);
+  assert.equal(result.monthToDate.rate, 46.7);
+  assert.deepEqual(result.communities.map((row: any) => [row.communityId, row.targetCents, row.paidCents, row.rate]), [[1, 1_000_000, 40_000, 4], [2, 500_000, 30_000, 6]]);
+  assert.equal(result.trend.length, 12);
+  assert.equal(result.trend[10].key, '2026-11');
+  assert.equal(result.trend[10].paidCents, 70_000);
+  assert.equal(result.arrears.totalCents, 4_128_388);
+  assert.equal(result.recentPayments.length, 1);
+});
+
+test('收费大屏：未设指标时 annualCents=0、rate/dailyNeed=null，不显示 0%', () => {
+  const result: any = buildScreenSummary({
+    year: 2026,
+    communities: [{ id: 1, name: 'A', offices: ['01'] }],
+    targets: [], dailyRows: [{ officeCode: '01', day: '2026-11-08', paidCents: 100, billCount: 1, houseCount: 1 }],
+    arrears: { totalCents: 0, houseCount: 0, buckets: [] }, recentPayments: [], now,
+  });
+  assert.equal(result.target.annualCents, 0);
+  assert.equal(result.target.rate, null);
+  assert.equal(result.target.dailyNeedCents, null);
+  assert.equal(result.today.vsDailyNeed, null);
+  assert.equal(result.communities[0].rate, null);
+});

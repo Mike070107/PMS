@@ -9,7 +9,7 @@ import { TenantConfig } from '../../entities/tenant-config.entity';
 import { MisCollectionBatch } from '../../entities/mis-collection-batch.entity';
 import type { MisCollectionPreviewDto } from './mis-fees.dto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { MisCollectionPromise, MisCollectionHold, MisCollectionEvent, MisCollectionPrint } from '../../entities/mis-collection-followup.entity';
 import { Building, Community, House, User } from '../../entities';
 import { AuthUser } from '../../common/current-user.decorator';
@@ -20,6 +20,8 @@ import {buildMisLedgerQuery,MisLedgerQuery,MisLedgerAddress} from './mis-ledger.
 import {resolveAddressForTenant} from '../../common/address-lookup';
 import { buildMisFeeFilter, buildMisFeeQuery, buildMisResidentialQuery, MisResidentialQuery, MisFeeQuery, MisHouseFilter, misFeeStatus, misMoneyToCents } from './mis-fees.query';
 import { MIS_FEE_CATEGORY_LABELS, isMisFeeCategory, misFeeCategoryLabel, misFeeCategoryOfText, misFeeCategorySql, type MisFeeCategory } from './mis-fee-category';
+import { loadCollectionTargets } from './collection-targets.util';
+import { buildScreenSummary } from './screen-summary.util';
 
 /** 模块级日志器：不参与依赖注入，避免改动构造函数（历史事故：注入新服务导致 API 启动失败）。 */
 const logger=new Logger('MisFeesService');
@@ -69,7 +71,7 @@ export const MIS_PROPERTY_OFFICES:Record<string,string[]>={
 export class MisFeesService implements OnModuleDestroy {
  private poolPromise:Promise<any>|null=null;
  private responseCache:Map<string,{expiresAt:number;value:any}>|undefined=new Map();
- constructor(@InjectRepository(Community) private readonly communities:Repository<Community>,@InjectRepository(House) private readonly houses:Repository<House>,@InjectRepository(MisCollectionBatch) private readonly batches?:Repository<MisCollectionBatch>, private readonly smsSettings?:CollectionSmsService){}
+ constructor(@InjectRepository(Community) private readonly communities:Repository<Community>,@InjectRepository(House) private readonly houses:Repository<House>,@InjectRepository(MisCollectionBatch) private readonly batches?:Repository<MisCollectionBatch>, private readonly smsSettings?:CollectionSmsService, private readonly dataSource?:DataSource){}
  /** 缓存键包含租户、数据范围与完整参数签名，避免不同权限/筛选串数据。 */
  private cacheKey(kind:string,q:unknown,user:AuthUser,access?:ResolvedAccess){
   const normalize=(value:any):any=>{
@@ -126,7 +128,7 @@ export class MisFeesService implements OnModuleDestroy {
  /** 镜像同步专用：强制短超时，避免定时任务卡住 MIS；仍走同一只读校验。 */
  async mirrorRead(text:string,params:Record<string,string|number>={},timeoutMs=5000){return this.read(text,params,timeoutMs);}
  async ledger(q:MisLedgerQuery,user:AuthUser,access?:ResolvedAccess){
-  let communities=await this.scope(user,access);if(q.communityId){if(!communities.some(c=>c.id===q.communityId))throw new ForbiddenException('该小区不在MIS流水查询范围');communities=communities.filter(c=>c.id===q.communityId)}if(!communities.length)throw new ForbiddenException('当前范围没有已映射的MIS小区');
+  let communities=await this.scope(user,access);if(q.communityIds?.length){for(const id of q.communityIds)if(!communities.some(c=>c.id===id))throw new ForbiddenException('该小区不在MIS流水查询范围');communities=communities.filter(c=>q.communityIds!.includes(c.id))}if(q.communityId){if(!communities.some(c=>c.id===q.communityId))throw new ForbiddenException('该小区不在MIS流水查询范围');communities=communities.filter(c=>c.id===q.communityId)}if(!communities.length)throw new ForbiddenException('当前范围没有已映射的MIS小区');
   const count=(v:unknown)=>{const n=Number(v??0);if(!Number.isSafeInteger(n)||n<0)throw new ServiceUnavailableException('MIS流水计数无法确认，请缩小范围重试');return n};
   let addresses:MisLedgerAddress[]|undefined;
   if(q.q?.trim()){const hit=await resolveAddressForTenant(this.communities.manager.connection,user.tenantId!,q.q);if(hit){
@@ -177,6 +179,7 @@ export class MisFeesService implements OnModuleDestroy {
  }
  async list(query:MisFeeQuery,user:AuthUser,access?:ResolvedAccess){
   let communities=await this.scope(user,access);
+  if(query.communityIds?.length){for(const id of query.communityIds)if(!communities.some(c=>c.id===id))throw new ForbiddenException('该小区不在MIS查询授权范围');communities=communities.filter(c=>query.communityIds!.includes(c.id));}
   if(query.communityId){if(!communities.some(c=>c.id===query.communityId))throw new ForbiddenException('该小区不在MIS查询授权范围');communities=communities.filter(c=>c.id===query.communityId);}
   if(!communities.length)throw new ForbiddenException('当前范围没有可查询的一通MIS物业数据');
   let houseFilter:MisHouseFilter|undefined;
@@ -195,15 +198,17 @@ export class MisFeesService implements OnModuleDestroy {
  async residentialScope(q:MisResidentialQuery,user:AuthUser,access?:ResolvedAccess){
   let communities=await this.scope(user,access);
   if(q.houseId)throw new BadRequestException('住宅总览请使用范围与住户查询，不接受内部房号ID');
+  if(q.communityIds?.length){for(const id of q.communityIds)if(!communities.some(c=>c.id===id))throw new ForbiddenException('该小区不在MIS查询授权范围');communities=communities.filter(c=>q.communityIds!.includes(c.id));}
   if(q.communityId){if(!communities.some(c=>c.id===q.communityId))throw new ForbiddenException('该小区不在MIS查询授权范围');communities=communities.filter(c=>c.id===q.communityId);}
   if(!communities.length)throw new ForbiddenException('当前范围没有可查询的一通MIS物业数据');
   return communities;
  }
  /** 只读短信统计复用住宅授权范围：不查 MIS、不依赖 MIS 连接，空范围由调用方返回 0。 */
- async collectionCommunities(communityId:number|undefined,user:AuthUser,access?:ResolvedAccess){
+ async collectionCommunities(communityId:number|undefined,user:AuthUser,access?:ResolvedAccess,communityIds?:number[]){
   if(!user.tenantId)throw new ForbiddenException('请选择公司后查询');
   if(!access)throw new ForbiddenException('缺少数据范围授权');
   let communities=await this.scope(user,access);
+  if(communityIds?.length){for(const id of communityIds)if(!communities.some(c=>c.id===id))throw new ForbiddenException('该小区不在MIS查询授权范围');communities=communities.filter(c=>communityIds.includes(c.id));}
   if(communityId!==undefined){if(!communities.some(c=>c.id===communityId))throw new ForbiddenException('该小区不在MIS查询授权范围');communities=communities.filter(c=>c.id===communityId);}
   return communities;
  }
@@ -211,18 +216,18 @@ export class MisFeesService implements OnModuleDestroy {
   * 今日工作页 MIS 实收：只读 WYZJ 当日已缴/退款，口径与 recent-payments 一致（ZJ_SKRQ 当日、TKRQ 空、JE>0）。
   * byFee 按现有收费分类口径归并为物业费/泊位费/停车/其他四类。
   */
- async today(q:{date?:string},user:AuthUser,access?:ResolvedAccess){
+ async today(q:{date?:string;communityIds?:number[]},user:AuthUser,access?:ResolvedAccess){
   const date=q.date??new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-  const key=this.cacheKey('today',{date},user,access),hit=this.cacheGet(key);
+  const key=this.cacheKey('today',{date,communityIds:q.communityIds},user,access),hit=this.cacheGet(key);
   if(hit!==undefined)return hit;
-  const value=await this.todayUncached({date},user,access);
+  const value=await this.todayUncached({date,communityIds:q.communityIds},user,access);
   this.cacheSet(key,value);
   return value;
  }
- private async todayUncached(q:{date?:string},user:AuthUser,access?:ResolvedAccess){
+ private async todayUncached(q:{date?:string;communityIds?:number[]},user:AuthUser,access?:ResolvedAccess){
   const date=q.date??new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(`${date}T00:00:00+08:00`))||new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(`${date}T00:00:00+08:00`))!==date)throw new BadRequestException('日期不合法');
-  const communities=await this.collectionCommunities(undefined,user,access);
+  const communities=await this.collectionCommunities(undefined,user,access,q.communityIds);
   if(!communities.length)return {paidCents:0,paidCount:0,refundedCents:0,paidHouses:0,byFee:[],byChannel:[]};
   const offices=[...new Set(communities.flatMap(c=>c.offices))];
   const filter=buildMisFeeFilter({} as MisFeeQuery,offices);
@@ -251,14 +256,14 @@ export class MisFeesService implements OnModuleDestroy {
   * 另给 recordedAt（updatedate，真实到分钟，仅作 MIS 记录更新时间，非收款时间）。
   */
  /** 今日分项收入明细：按房号+收款日聚合，和 recent-payments 同口径；category 过滤分类。 */
- async todayDetails(q: { date?: string; category?: string; page?: number; pageSize?: number }, user: AuthUser, access?: ResolvedAccess) {
+ async todayDetails(q: { date?: string; category?: string; page?: number; pageSize?: number; communityIds?: number[] }, user: AuthUser, access?: ResolvedAccess) {
   const date = q.date ?? new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(`${date}T00:00:00+08:00`)) || new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(`${date}T00:00:00+08:00`)) !== date) throw new BadRequestException('日期不合法');
   if (q.category !== undefined && !isMisFeeCategory(q.category)) throw new BadRequestException('分类不合法');
   const page = q.page ?? 1, pageSize = q.pageSize ?? 20;
   if (!Number.isInteger(page) || page < 1) throw new BadRequestException('page 须为正整数');
   if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 50) throw new BadRequestException('pageSize 须为1-50的整数');
-  const communities = await this.collectionCommunities(undefined, user, access);
+  const communities = await this.collectionCommunities(undefined, user, access, q.communityIds);
   if (!communities.length) return { total: 0, page, pageSize, rows: [] };
   const offices = [...new Set(communities.flatMap((c) => c.offices))];
   const filter = buildMisFeeFilter({ status: 'paid' } as MisFeeQuery, offices);
@@ -290,7 +295,27 @@ export class MisFeesService implements OnModuleDestroy {
    })),
   };
  }
- async recentPayments(q:{date?:string;page?:number;pageSize?:number;communityId?:number},user:AuthUser,access?:ResolvedAccess){
+ /** 收费大屏聚合：实收按收款日自然日/月，指标来自 collection_targets；不复用分页接口。 */
+ async screenSummary(q:{year?:number;communityIds?:number[];granularity?:'day'|'month'},user:AuthUser,access?:ResolvedAccess){
+  const now=new Date(),cst=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now);
+  const get=(type:string)=>Number(cst.find(part=>part.type===type)?.value||0);
+  const year=q.year??get('year');
+  if(!Number.isInteger(year)||year<2000||year>2100)throw new BadRequestException('年份不合法');
+  const communities=await this.residentialScope({communityIds:q.communityIds} as MisResidentialQuery,user,access);
+  const ids=communities.map(c=>c.id),offices=communities.flatMap(c=>c.offices);
+  const filter=buildMisFeeFilter({status:'paid'} as MisFeeQuery,offices);
+  filter.params.yearStart=`${year}-01-01`;filter.params.yearEnd=`${year+1}-01-01`;
+  const sql=`SELECT l.管理处 AS officeCode,CONVERT(varchar(10),w.ZJ_SKRQ,23) AS day,CONVERT(varchar(50),SUM(w.ZJ_JE),2) AS amount,COUNT(*) AS billCount,COUNT(DISTINCT CONVERT(varchar(30),s.S_ID)) AS houseCount
+    ${filter.from} AND w.ZJ_SKRQ>=CONVERT(datetime,@yearStart,120) AND w.ZJ_SKRQ<CONVERT(datetime,@yearEnd,120) AND w.ZJ_JE>0
+    GROUP BY l.管理处,CONVERT(varchar(10),w.ZJ_SKRQ,23) ORDER BY day`;
+  const result=await this.read(sql,filter.params);
+  const dailyRows=(result.recordsets?.[0]||[]).map((row:any)=>({officeCode:String(row.officeCode),day:String(row.day),paidCents:misMoneyToCents(row.amount),billCount:Number(row.billCount||0),houseCount:Number(row.houseCount||0)}));
+  const targets=this.dataSource?await loadCollectionTargets(this.dataSource,Number(user.tenantId),ids,year):[];
+  const arrearsResult:any=await this.residential({view:'amount-brackets',communityIds:q.communityIds} as MisResidentialQuery,user,access);
+  const recent:any=await this.recentPayments({pageSize:10,communityIds:q.communityIds},user,access);
+  return buildScreenSummary({year,communities,targets,dailyRows,arrears:{totalCents:Number(arrearsResult.total?.amountCents||0),houseCount:Number(arrearsResult.total?.count||0),buckets:(arrearsResult.buckets||[]).map((row:any)=>({key:String(row.key),count:Number(row.count||0),amountCents:Number(row.amountCents||0)}))},recentPayments:recent.rows||[],granularity:q.granularity,now});
+ }
+ async recentPayments(q:{date?:string;page?:number;pageSize?:number;communityId?:number;communityIds?:number[]},user:AuthUser,access?:ResolvedAccess){
   const date=q.date??new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const key=this.cacheKey('recent-payments',{...q,date},user,access),hit=this.cacheGet(key);
   if(hit!==undefined)return hit;
@@ -298,13 +323,13 @@ export class MisFeesService implements OnModuleDestroy {
   this.cacheSet(key,value);
   return value;
  }
- private async recentPaymentsUncached(q:{date?:string;page?:number;pageSize?:number;communityId?:number},user:AuthUser,access?:ResolvedAccess){
+ private async recentPaymentsUncached(q:{date?:string;page?:number;pageSize?:number;communityId?:number;communityIds?:number[]},user:AuthUser,access?:ResolvedAccess){
   const page=q.page??1,pageSize=q.pageSize??10;
   if(!Number.isInteger(page)||page<1)throw new BadRequestException('page 须为正整数');
   if(!Number.isInteger(pageSize)||pageSize<1||pageSize>50)throw new BadRequestException('pageSize 须为1-50的整数');
   const date=q.date??new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(Date.parse(`${date}T00:00:00+08:00`))||new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(`${date}T00:00:00+08:00`))!==date)throw new BadRequestException('日期不合法');
-  const communities=await this.collectionCommunities(q.communityId,user,access);
+  const communities=await this.collectionCommunities(q.communityId,user,access,q.communityIds);
   if(!communities.length)return {total:0,totalBills:0,totalHouses:0,page,pageSize,rows:[]};
   const offices=[...new Set(communities.flatMap(c=>c.offices))];
   const filter=buildMisFeeFilter({status:'paid'} as MisFeeQuery,offices);

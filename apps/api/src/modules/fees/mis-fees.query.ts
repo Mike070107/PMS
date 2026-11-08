@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 
 export interface MisFeeQuery {
- communityId?:number; houseId?:number; q?:string; feeCode?:string;
+ communityId?:number; communityIds?:number[]; houseId?:number; q?:string; feeCode?:string;
  periodFrom?:string; periodTo?:string; paidFrom?:string; paidTo?:string;
  status?:'paid'|'unpaid'|'refunded'|'adjustment'; page?:number;pageSize?:number;
 }

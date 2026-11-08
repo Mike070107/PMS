@@ -8,6 +8,7 @@ export class MisHouseSearchDto {
 }
 export class MisFeesQueryDto implements MisFeeQuery {
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) communityId?:number;
+ @IsOptional() @Transform(({value})=>typeof value==='string'?value.split(',').map((item:string)=>Number(item.trim())):value) @IsArray() @ArrayMaxSize(50) @IsInt({each:true}) @Min(1,{each:true}) communityIds?:number[];
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) houseId?:number;
  @IsOptional() @IsString() @MaxLength(60) q?:string;
  @IsOptional() @IsString() @MaxLength(20) feeCode?:string;
@@ -54,10 +55,12 @@ export class MisRecentPaymentsQueryDto {
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) page?:number;
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(50) pageSize?:number;
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) communityId?:number;
+ @IsOptional() @Transform(({value})=>typeof value==='string'?value.split(',').map((item:string)=>Number(item.trim())):value) @IsArray() @ArrayMaxSize(50) @IsInt({each:true}) @Min(1,{each:true}) communityIds?:number[];
 }
 /** 今日工作页 MIS 实收：date 缺省取北京时间今天。 */
 export class MisTodayQueryDto {
  @IsOptional() @IsDateString({strict:true}) @Matches(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/,{message:'日期不合法'}) date?:string;
+ @IsOptional() @Transform(({value})=>typeof value==='string'?value.split(',').map((item:string)=>Number(item.trim())):value) @IsArray() @ArrayMaxSize(50) @IsInt({each:true}) @Min(1,{each:true}) communityIds?:number[];
 }
 /** 今日分项收入明细：category 为分类 code；page/pageSize 必须真实转数字。 */
 export class MisTodayDetailsQueryDto {
@@ -65,6 +68,7 @@ export class MisTodayDetailsQueryDto {
  @IsOptional() @IsIn(['property','berth','parking','other']) category?:'property'|'berth'|'parking'|'other';
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(1000000) page?:number;
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(50) pageSize?:number;
+ @IsOptional() @Transform(({value})=>typeof value==='string'?value.split(',').map((item:string)=>Number(item.trim())):value) @IsArray() @ArrayMaxSize(50) @IsInt({each:true}) @Min(1,{each:true}) communityIds?:number[];
 }
 export class MisCollectionPreviewDto {
  @IsDefined() @ValidateNested() @Type(()=>MisResidentialQueryDto) filter:MisResidentialQueryDto;

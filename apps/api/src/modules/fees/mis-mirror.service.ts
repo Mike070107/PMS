@@ -7,6 +7,8 @@ import { ResolvedAccess } from '../access/access.service';
 import { TenantConfig } from '../../entities';
 import { MisFeesService } from './mis-fees.service';
 import { misFeeCategoryLabel, misFeeCategorySql } from './mis-fee-category';
+import { loadCollectionTargets } from './collection-targets.util';
+import { buildScreenSummary } from './screen-summary.util';
 
 type MirrorMode = 'mis' | 'mirror';
 type MirrorCommunity = { id: number; name: string; offices: string[] };
@@ -571,10 +573,10 @@ export class MisMirrorService {
     return { ok, sourceTotal: Number(sourceRow.total || 0), mirrorTotal: Number(mirror[0]?.total || 0), sourceAmountCents: Math.round(Number(sourceRow.amount || 0)), mirrorAmountCents: Number(mirror[0]?.amount || 0), totalDiff, amountDiff };
   }
 
-  async today(q: { date?: string }, user: AuthUser, access?: ResolvedAccess) {
+  async today(q: { date?: string; communityIds?: number[] }, user: AuthUser, access?: ResolvedAccess) {
     const asOf = await this.assertReady(Number(user.tenantId));
     const date = q.date ?? new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-    const communities = await this.misFees.collectionCommunities(undefined, user, access);
+    const communities = await this.misFees.collectionCommunities(undefined, user, access, q.communityIds);
     const offices = [...new Set(communities.flatMap((community) => community.offices))];
     const params: unknown[] = [...offices];
     const placeholders = offices.map((_, index) => `$${index + 1}`).join(',');
@@ -611,7 +613,7 @@ export class MisMirrorService {
     return { source: 'mirror', dataAsOf: asOf, paidCents: Number(summary.paidCents || 0), paidCount: Number(summary.paidCount || 0), refundedCents: Number(refund.refundedCents || 0), paidHouses: Number(summary.paidHouses || 0), byFee: byFee.map((row) => ({ feeCode: String(row.feeCode || 'other'), feeName: misFeeCategoryLabel(row.feeCode), paidCents: Number(row.paidCents || 0), billCount: Number(row.billCount || 0), houseCount: Number(row.houseCount || 0) })), byChannel: byChannel.map((row) => ({ channel: row.channel, paidCents: Number(row.paidCents || 0), billCount: Number(row.billCount || 0), houseCount: Number(row.houseCount || 0) })) };
   }
 
-  async todayDetails(q: { date?: string; category?: string; page?: number; pageSize?: number }, user: AuthUser, access?: ResolvedAccess) {
+  async todayDetails(q: { date?: string; category?: string; page?: number; pageSize?: number; communityIds?: number[] }, user: AuthUser, access?: ResolvedAccess) {
     const asOf = await this.assertReady(Number(user.tenantId));
     const date = q.date ?? new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(`${date}T00:00:00+08:00`))) throw new BadRequestException('日期不合法');
@@ -619,7 +621,7 @@ export class MisMirrorService {
     const page = q.page ?? 1, pageSize = q.pageSize ?? 20;
     if (!Number.isInteger(page) || page < 1) throw new BadRequestException('page 须为正整数');
     if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 50) throw new BadRequestException('pageSize 须为1-50的整数');
-    const communities = await this.misFees.collectionCommunities(undefined, user, access);
+    const communities = await this.misFees.collectionCommunities(undefined, user, access, q.communityIds);
     const offices = [...new Set(communities.flatMap((community) => community.offices))];
     if (!offices.length) return { total: 0, groupCount: 0, page, pageSize, rows: [], source: 'mirror', dataAsOf: asOf };
     const params: unknown[] = [...offices, date];
@@ -664,14 +666,40 @@ export class MisMirrorService {
     };
   }
 
-  async recentPayments(q: { date?: string; page?: number; pageSize?: number; communityId?: number }, user: AuthUser, access?: ResolvedAccess) {
+  async screenSummary(q: { year?: number; communityIds?: number[]; granularity?: 'day' | 'month' }, user: AuthUser, access?: ResolvedAccess) {
+    await this.assertReady(Number(user.tenantId));
+    const now = new Date();
+    const cst = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
+    const get = (type: string) => Number(cst.find((part) => part.type === type)?.value || 0);
+    const year = q.year ?? get('year');
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) throw new BadRequestException('年份不合法');
+    const communities = await this.misFees.residentialScope({ communityIds: q.communityIds } as any, user, access);
+    const ids = communities.map((community) => community.id), offices = communities.flatMap((community) => community.offices);
+    const placeholders = offices.map((_, index) => `$${index + 1}`).join(',');
+    const startParam = `$${offices.length + 1}`, endParam = `$${offices.length + 2}`;
+    const rows: any[] = await this.dataSource.query(
+      `SELECT office_code AS "officeCode",paid_date::text AS day,SUM(amount_cents)::bigint AS amount,COUNT(*)::int AS "billCount",COUNT(DISTINCT s_id)::int AS "houseCount"
+         FROM mis_mirror_bill
+        WHERE office_code IN (${placeholders}) AND paid_date>=${startParam} AND paid_date<${endParam} AND refund_date IS NULL AND amount_cents>0
+        GROUP BY office_code,paid_date ORDER BY paid_date`,
+      [...offices, `${year}-01-01`, `${year + 1}-01-01`],
+    );
+    // 参数顺序固定为 offices..., yearStart, yearEnd；占位符从 offices.length+1 开始。
+    const dailyRows = rows.map((row) => ({ officeCode: String(row.officeCode), day: String(row.day).slice(0, 10), paidCents: Number(row.amount || 0), billCount: Number(row.billCount || 0), houseCount: Number(row.houseCount || 0) }));
+    const targets = await loadCollectionTargets(this.dataSource, Number(user.tenantId), ids, year);
+    const arrearsResult: any = await this.residential({ view: 'amount-brackets', communityIds: q.communityIds } as any, user, access);
+    const recent: any = await this.recentPayments({ pageSize: 10, communityIds: q.communityIds }, user, access);
+    return buildScreenSummary({ year, communities, targets, dailyRows, arrears: { totalCents: Number(arrearsResult.total?.amountCents || 0), houseCount: Number(arrearsResult.total?.count || 0), buckets: (arrearsResult.buckets || []).map((row: any) => ({ key: String(row.key), count: Number(row.count || 0), amountCents: Number(row.amountCents || 0) })) }, recentPayments: recent.rows || [], granularity: q.granularity, now });
+  }
+
+  async recentPayments(q: { date?: string; page?: number; pageSize?: number; communityId?: number; communityIds?: number[] }, user: AuthUser, access?: ResolvedAccess) {
     const asOf = await this.assertReady(Number(user.tenantId));
     const date = q.date ?? new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
     const page = q.page ?? 1;
     const pageSize = q.pageSize ?? 10;
     if (!Number.isInteger(page) || page < 1) throw new BadRequestException('page 须为正整数');
     if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 50) throw new BadRequestException('pageSize 须为1-50的整数');
-    const communities = await this.misFees.collectionCommunities(q.communityId, user, access);
+    const communities = await this.misFees.collectionCommunities(q.communityId, user, access, q.communityIds);
     const offices = [...new Set(communities.flatMap((community) => community.offices))];
     if (!offices.length) return { source: 'mirror', dataAsOf: asOf, total: 0, totalBills: 0, totalHouses: 0, page, pageSize, rows: [] };
     const params: unknown[] = [...offices, date];

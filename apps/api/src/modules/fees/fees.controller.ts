@@ -8,6 +8,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   Query,
   StreamableFile,
   UseGuards,
@@ -41,6 +42,8 @@ import { FeesService } from './fees.service';
 import { MisFeesService } from './mis-fees.service';
 import { MisMirrorService } from './mis-mirror.service';
 import { MisCollectionSmsService } from './mis-collection-sms.service';
+import { CollectionTargetsService } from './collection-targets.service';
+import { ListCollectionTargetsQueryDto, ScreenSummaryQueryDto, UpsertCollectionTargetDto } from './collection-targets.dto';
 import {MisLedgerQueryDto} from './mis-ledger.dto';
 import { MisFeesQueryDto, MisHouseSearchDto, MisResidentialQueryDto, MisCollectionPreviewDto, MisCollectionSmsStatsQueryDto, MisRecentPaymentsQueryDto, MisTodayQueryDto, MisTodayDetailsQueryDto } from './mis-fees.dto';
 
@@ -53,7 +56,7 @@ import { MisFeesQueryDto, MisHouseSearchDto, MisResidentialQueryDto, MisCollecti
 @Controller('fees')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class FeesController {
-  constructor(private readonly feesService: FeesService,private readonly misFeesService:MisFeesService,private readonly misCollectionSmsService:MisCollectionSmsService,private readonly misMirrorService:MisMirrorService) {}
+  constructor(private readonly feesService: FeesService,private readonly misFeesService:MisFeesService,private readonly misCollectionSmsService:MisCollectionSmsService,private readonly misMirrorService:MisMirrorService,private readonly collectionTargetsService:CollectionTargetsService) {}
 
   @Post('mis/collections/:id/prints')
   @RequirePermission('fees','edit')
@@ -102,6 +105,29 @@ export class FeesController {
  @Get('mis/recent-payments')
   @RequirePermission('fees','view')
   misRecentPayments(@Query() query:MisRecentPaymentsQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misRead(user,()=>this.misFeesService.recentPayments(query,user,access),()=>this.misMirrorService.recentPayments(query,user,access));}
+
+  @Get('targets')
+  @RequirePermission('fees','view')
+  collectionTargets(@Query() query:ListCollectionTargetsQueryDto,@CurrentUser() user:AuthUser){
+    const now=new Date();const year=query.year??Number(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric'}).format(now));
+    return this.collectionTargetsService.list(Number(user.tenantId||0),year);
+  }
+
+  @Put('targets')
+  @RequirePermission('fees','edit')
+  upsertCollectionTarget(@Body() dto:UpsertCollectionTargetDto,@CurrentUser() user:AuthUser){return this.collectionTargetsService.upsert(Number(user.tenantId||0),Number(user.id||0),dto);}
+
+  @Delete('targets/:communityId')
+  @RequirePermission('fees','edit')
+  deleteCollectionTarget(@Param('communityId',ParseIntPipe) communityId:number,@Query('year',ParseIntPipe) year:number,@CurrentUser() user:AuthUser){return this.collectionTargetsService.remove(Number(user.tenantId||0),communityId,year);}
+
+  @Get('mis/screen-summary')
+  @RequirePermission('fees','view')
+  misScreenSummary(@Query() query:ScreenSummaryQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){
+    const communityIds=query.communityIds?query.communityIds.split(',').map(value=>Number(value.trim())).filter(value=>Number.isInteger(value)&&value>0):undefined;
+    const q={year:query.year,granularity:query.granularity??'month',communityIds};
+    return this.misRead(user,()=>this.misFeesService.screenSummary(q,user,access),()=>this.misMirrorService.screenSummary(q,user,access));
+  }
 
   @Get('mis/mirror/status')
   @RequirePermission(['settings','fees'],'view')
