@@ -6696,3 +6696,10 @@
 - 自上次（de6917b3）以来上线的相关提交：
   - 17f9ae42 fix(today): 明细日期按北京时间格式化、recordedAt 返回 +08:00，total 改账单笔数并补 groupCount
 
+## 2026-11-08 17:41 · web · 2a404b17
+
+- 包：`pms-web-20261108-174020.tar.gz`
+- 提交：2a404b17 deploy: api → 17f9ae42
+- 自上次（73b6f882）以来上线的相关提交：
+  - 17f9ae42 fix(today): 明细日期按北京时间格式化、recordedAt 返回 +08:00，total 改账单笔数并补 groupCount
+
