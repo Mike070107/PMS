@@ -18,6 +18,10 @@ export class UpsertCollectionTargetDto {
   @Min(1, { each: true })
   communityIds: number[];
 
+  @IsOptional()
+  @IsIn(['property', 'berth', 'parking', 'other'])
+  feeCode?: 'property' | 'berth' | 'parking' | 'other';
+
   @Type(() => Number)
   @IsInt()
   @Min(2000)

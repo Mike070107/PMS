@@ -305,11 +305,12 @@ export class MisFeesService implements OnModuleDestroy {
   const ids=communities.map(c=>c.id),offices=communities.flatMap(c=>c.offices);
   const filter=buildMisFeeFilter({status:'paid'} as MisFeeQuery,offices);
   filter.params.yearStart=`${year}-01-01`;filter.params.yearEnd=`${year+1}-01-01`;
-  const sql=`SELECT l.管理处 AS officeCode,CONVERT(varchar(10),w.ZJ_SKRQ,23) AS day,CONVERT(varchar(50),SUM(w.ZJ_JE),2) AS amount,COUNT(*) AS billCount,COUNT(DISTINCT CONVERT(varchar(30),s.S_ID)) AS houseCount
+  const categoryExpr=misFeeCategorySql('f.XM',{nPrefix:true});
+  const sql=`SELECT l.管理处 AS officeCode,CONVERT(varchar(10),w.ZJ_SKRQ,23) AS day,${categoryExpr} AS feeCode,CONVERT(varchar(50),SUM(w.ZJ_JE),2) AS amount,COUNT(*) AS billCount,COUNT(DISTINCT CONVERT(varchar(30),s.S_ID)) AS houseCount
     ${filter.from} AND w.ZJ_SKRQ>=CONVERT(datetime,@yearStart,120) AND w.ZJ_SKRQ<CONVERT(datetime,@yearEnd,120) AND w.ZJ_JE>0
-    GROUP BY l.管理处,CONVERT(varchar(10),w.ZJ_SKRQ,23) ORDER BY day`;
+    GROUP BY l.管理处,CONVERT(varchar(10),w.ZJ_SKRQ,23),${categoryExpr} ORDER BY day`;
   const result=await this.read(sql,filter.params);
-  const dailyRows=(result.recordsets?.[0]||[]).map((row:any)=>({officeCode:String(row.officeCode),day:String(row.day),paidCents:misMoneyToCents(row.amount),billCount:Number(row.billCount||0),houseCount:Number(row.houseCount||0)}));
+  const dailyRows=(result.recordsets?.[0]||[]).map((row:any)=>({officeCode:String(row.officeCode),day:String(row.day),feeCode:String(row.feeCode||'property'),paidCents:misMoneyToCents(row.amount),billCount:Number(row.billCount||0),houseCount:Number(row.houseCount||0)}));
   const targets=this.dataSource?await loadCollectionTargets(this.dataSource,Number(user.tenantId),ids,year):[];
   const arrearsResult:any=await this.residential({view:'amount-brackets',communityIds:q.communityIds} as MisResidentialQuery,user,access);
   const recent:any=await this.recentPayments({pageSize:10,communityIds:q.communityIds},user,access);

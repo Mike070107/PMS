@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { PGlite } from '@electric-sql/pglite';
 import { CollectionTargets1794900000000 } from '../../migrations/1794900000000-CollectionTargets';
 import { CollectionTargetGroups1795000000000 } from '../../migrations/1795000000000-CollectionTargetGroups';
+import { CollectionTargetFeeCode1795100000000 } from '../../migrations/1795100000000-CollectionTargetFeeCode';
 import { CollectionTargetsService } from './collection-targets.service';
 import { normalizeMonthCents, targetWarnings } from './collection-targets.util';
 
@@ -15,6 +16,8 @@ test('收费指标：迁移/upsert/唯一约束/月度合计警告', async () =>
   await migration.up({ query: (sql: string) => pg.query(sql) } as any);
   const groups = new CollectionTargetGroups1795000000000();
   await groups.up({ query: (sql: string) => pg.query(sql) } as any);
+  const feeCode = new CollectionTargetFeeCode1795100000000();
+  await feeCode.up({ query: (sql: string) => pg.query(sql) } as any);
   const ds: any = { query: async (sql: string, params?: unknown[]) => (await pg.query(sql, params)).rows };
   const service = new CollectionTargetsService(ds);
   try {
@@ -24,6 +27,7 @@ test('收费指标：迁移/upsert/唯一约束/月度合计警告', async () =>
     assert.deepEqual(saved.communityNames, ['枫桦景苑一期']);
     assert.equal(saved.annualCents, 1_500_000);
     assert.equal(saved.monthCents.length, 12);
+    assert.equal(saved.feeCode, 'property');
     assert.deepEqual(saved.warnings, ['月度合计 1,200,000 与年度指标 1,500,000 不一致']);
     const updated: any = await service.upsert(1, 8, { communityIds: [10], year: 2026, annualCents: 1_200_000, monthCents: [100_000, 100_000, 100_000, 100_000, 100_000, 100_000, 100_000, 100_000, 100_000, 100_000, 100_000, 100_000] });
     assert.deepEqual(updated.warnings, []);
@@ -40,10 +44,12 @@ test('收费指标：迁移/upsert/唯一约束/月度合计警告', async () =>
     assert.equal(group.id > 0, true);
     assert.deepEqual(group.communityIds, [10, 11]);
     assert.deepEqual(group.communityNames, ['枫桦景苑一期', '上海新家']);
+    assert.equal(group.feeCode, 'property');
     const groupList: any = await service.list(1, 2026);
     assert.equal(groupList.length, 1);
     assert.deepEqual(groupList[0].communityIds, [10, 11]);
     assert.equal(await service.clearYear(1, 2026).then((result: any) => result.deleted), 1);
+    await feeCode.down({ query: (sql: string) => pg.query(sql) } as any);
     await groups.down({ query: (sql: string) => pg.query(sql) } as any);
     await migration.down({ query: (sql: string) => pg.query(sql) } as any);
   } finally {

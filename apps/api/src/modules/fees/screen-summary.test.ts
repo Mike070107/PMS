@@ -10,8 +10,8 @@ test('收费大屏：多小区合并、达成率/缺口/日均、指标为0时 r
     { id: 2, name: '枫桦景苑二期', offices: ['02', '03'] },
   ];
   const targets = [
-    { id: 1, communityIds: [1], year: 2026, annualCents: 1_000_000, monthCents: Array(12).fill(100_000) },
-    { id: 2, communityIds: [2], year: 2026, annualCents: 500_000, monthCents: Array(12).fill(50_000) },
+    { id: 1, communityIds: [1], feeCode: 'property', year: 2026, annualCents: 1_000_000, monthCents: Array(12).fill(100_000) },
+    { id: 2, communityIds: [2], feeCode: 'property', year: 2026, annualCents: 500_000, monthCents: Array(12).fill(50_000) },
   ];
   const dailyRows = [
     { officeCode: '01', day: '2026-11-08', paidCents: 30_000, billCount: 3, houseCount: 2 },
@@ -81,29 +81,81 @@ test('收费大屏月度目标：显式 monthCents 优先，null 回退 annual/1
     year: 2026, communities, dailyRows: row, now, granularity: 'month' as const,
     arrears: { totalCents: 0, houseCount: 0, buckets: [] }, recentPayments: [],
   };
-  const derived: any = buildScreenSummary({ ...base, targets: [{ id: 1, communityIds: [1], year: 2026, annualCents: 1_200_000, monthCents: Array(12).fill(null) }] });
+  const derived: any = buildScreenSummary({ ...base, targets: [{ id: 1, communityIds: [1], feeCode: 'property', year: 2026, annualCents: 1_200_000, monthCents: Array(12).fill(null) }] });
   assert.equal(derived.monthToDate.targetCents, 100_000);
   assert.equal(derived.monthToDate.targetSource, 'derived');
   assert.equal(derived.monthToDate.rate, 100);
   assert.equal(derived.today.vsMonthRate, 100);
-  const explicit: any = buildScreenSummary({ ...base, targets: [{ id: 1, communityIds: [1], year: 2026, annualCents: 1_200_000, monthCents: [...Array(10).fill(null), 250_000, null] }] });
+  const explicit: any = buildScreenSummary({ ...base, targets: [{ id: 1, communityIds: [1], feeCode: 'property', year: 2026, annualCents: 1_200_000, monthCents: [...Array(10).fill(null), 250_000, null] }] });
   assert.equal(explicit.monthToDate.targetCents, 250_000);
   assert.equal(explicit.monthToDate.targetSource, 'explicit');
   assert.equal(explicit.monthToDate.rate, 40);
   const mixed: any = buildScreenSummary({
     ...base,
     targets: [
-      { id: 1, communityIds: [1], year: 2026, annualCents: 1_200_000, monthCents: [...Array(10).fill(null), 100_000, null] },
-      { id: 2, communityIds: [2], year: 2026, annualCents: 600_000, monthCents: Array(12).fill(null) },
+      { id: 1, communityIds: [1], feeCode: 'property', year: 2026, annualCents: 1_200_000, monthCents: [...Array(10).fill(null), 100_000, null] },
+      { id: 2, communityIds: [2], feeCode: 'property', year: 2026, annualCents: 600_000, monthCents: Array(12).fill(null) },
     ],
   });
   assert.equal(mixed.monthToDate.targetCents, 150_000);
   assert.equal(mixed.monthToDate.targetSource, 'derived');
   assert.equal(mixed.monthToDate.rate, 66.7);
-  const zeroExplicit: any = buildScreenSummary({ ...base, targets: [{ id: 1, communityIds: [1], year: 2026, annualCents: 1_200_000, monthCents: [...Array(10).fill(null), 0, null] }] });
+  const zeroExplicit: any = buildScreenSummary({ ...base, targets: [{ id: 1, communityIds: [1], feeCode: 'property', year: 2026, annualCents: 1_200_000, monthCents: [...Array(10).fill(null), 0, null] }] });
   assert.equal(zeroExplicit.monthToDate.targetCents, 0);
   assert.equal(zeroExplicit.monthToDate.rate, null);
   assert.equal(zeroExplicit.monthToDate.targetSource, 'explicit');
+});
+
+test('收费大屏：达成率/趋势/社区实收按指标 feeCode 过滤；today 保留全费和 byFee', () => {
+  const communities = [
+    { id: 1, name: '一期', offices: ['01'] },
+    { id: 2, name: '二期', offices: ['02'] },
+  ];
+  const target = { id: 1, communityIds: [1], feeCode: 'property', year: 2026, annualCents: 100_000, monthCents: Array(12).fill(10_000) };
+  const rows = [
+    { officeCode: '01', day: '2026-11-08', paidCents: 100, billCount: 1, houseCount: 1, feeCode: 'property' },
+    { officeCode: '01', day: '2026-11-08', paidCents: 50, billCount: 2, houseCount: 1, feeCode: 'berth' },
+    { officeCode: '01', day: '2026-11-08', paidCents: 20, billCount: 1, houseCount: 1, feeCode: 'parking' },
+    { officeCode: '01', day: '2026-11-08', paidCents: 30, billCount: 1, houseCount: 1, feeCode: 'other' },
+    { officeCode: '02', day: '2026-11-08', paidCents: 777, billCount: 1, houseCount: 1, feeCode: 'property' },
+  ];
+  const result: any = buildScreenSummary({
+    year: 2026, communities, targets: [target], dailyRows: rows, granularity: 'month', now,
+    arrears: { totalCents: 0, houseCount: 0, buckets: [] }, recentPayments: [],
+  });
+  assert.equal(result.target.yearToDateCents, 100);
+  assert.equal(result.target.rate, 0.1);
+  assert.equal(result.monthToDate.paidCents, 100);
+  assert.equal(result.monthToDate.targetCents, 10_000);
+  assert.equal(result.today.paidCents, 977);
+  assert.deepEqual(result.today.byFee, { propertyCents: 877, berthCents: 50, parkingCents: 20, otherCents: 30 });
+  assert.equal(result.communities.find((row: any) => row.communityId === 1).paidCents, 100);
+  assert.equal(result.communities.find((row: any) => row.communityId === 2).paidCents, 777);
+  assert.equal(result.trend[10].paidCents, 100);
+});
+
+test('收费大屏：多指标组不同 feeCode 分别按各自费项求和', () => {
+  const communities = [
+    { id: 1, name: '一期', offices: ['01'] },
+    { id: 2, name: '二期', offices: ['02'] },
+  ];
+  const targets = [
+    { id: 1, communityIds: [1], feeCode: 'property', year: 2026, annualCents: 100_000, monthCents: Array(12).fill(10_000) },
+    { id: 2, communityIds: [2], feeCode: 'berth', year: 2026, annualCents: 20_000, monthCents: Array(12).fill(2_000) },
+  ];
+  const rows = [
+    { officeCode: '01', day: '2026-11-08', paidCents: 10_000, billCount: 1, houseCount: 1, feeCode: 'property' },
+    { officeCode: '01', day: '2026-11-08', paidCents: 99_999, billCount: 1, houseCount: 1, feeCode: 'berth' },
+    { officeCode: '02', day: '2026-11-08', paidCents: 2_000, billCount: 1, houseCount: 1, feeCode: 'berth' },
+    { officeCode: '02', day: '2026-11-08', paidCents: 99_999, billCount: 1, houseCount: 1, feeCode: 'property' },
+  ];
+  const result: any = buildScreenSummary({ year: 2026, communities, targets, dailyRows: rows, granularity: 'month', now, arrears: { totalCents: 0, houseCount: 0, buckets: [] }, recentPayments: [] });
+  assert.equal(result.target.annualCents, 120_000);
+  assert.equal(result.target.yearToDateCents, 12_000);
+  assert.equal(result.target.rate, 10);
+  assert.equal(result.monthToDate.paidCents, 12_000);
+  assert.equal(result.monthToDate.targetCents, 12_000);
+  assert.equal(result.monthToDate.rate, 100);
 });
 
 test('收费大屏：小区组指标只在组内小区全部选中时命中；部分命中不算，未覆盖进 missing', () => {
@@ -112,7 +164,7 @@ test('收费大屏：小区组指标只在组内小区全部选中时命中；�
     { id: 2, name: '枫桦景苑二期', offices: ['02'] },
     { id: 16, name: '上海新家', offices: ['04'] },
   ];
-  const targets = [{ id: 9, communityIds: [1, 2], year: 2026, annualCents: 1_000_000, monthCents: Array(12).fill(0) }];
+  const targets = [{ id: 9, communityIds: [1, 2], feeCode: 'property', year: 2026, annualCents: 1_000_000, monthCents: Array(12).fill(0) }];
   const rows = [
     { officeCode: '01', day: '2026-11-08', paidCents: 100_000, billCount: 1, houseCount: 1 },
     { officeCode: '02', day: '2026-11-08', paidCents: 200_000, billCount: 1, houseCount: 1 },
@@ -142,7 +194,7 @@ test('收费大屏：混合范围只有部分小区有指标时，rate/日均只
     { id: 2, name: '枫桦景苑二期', offices: ['02'] },
     { id: 16, name: '上海新家', offices: ['04'] },
   ];
-  const targets = [{ id: 2, communityIds: [2], year: 2026, annualCents: 398_277_240, monthCents: Array(12).fill(0) }];
+  const targets = [{ id: 2, communityIds: [2], feeCode: 'property', year: 2026, annualCents: 398_277_240, monthCents: Array(12).fill(0) }];
   const dailyRows = [
     { officeCode: '01', day: '2026-11-08', paidCents: 100_958_190, billCount: 1, houseCount: 1 },
     { officeCode: '02', day: '2026-11-08', paidCents: 176_862_870, billCount: 80, houseCount: 8 },

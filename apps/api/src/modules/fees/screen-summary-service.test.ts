@@ -26,7 +26,9 @@ test('screenSummary 直连聚合：多小区 scope、无指标时 null、今日/
   assert.equal(result.target.dailyNeedCents, null);
   assert.equal(result.today.paidCents, 50000);
   assert.equal(result.today.billCount, 5);
-  assert.equal(result.monthToDate.paidCents, 60000);
+  assert.deepEqual(result.today.byFee, { propertyCents: 50000, berthCents: 0, parkingCents: 0, otherCents: 0 });
+  assert.equal(result.monthToDate.paidCents, 0);
+  assert.equal(result.monthToDate.targetCents, 0);
   assert.equal(result.trend.length, 12);
   assert.deepEqual(result.arrears.buckets[0], { key: 'le500', count: 4, amountCents: 5000 });
   assert.equal(result.recentPayments.length, 1);

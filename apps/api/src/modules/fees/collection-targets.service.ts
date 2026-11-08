@@ -16,7 +16,7 @@ export class CollectionTargetsService {
 
   async list(tenantId: number, year: number) {
     const rows: any[] = await this.dataSource.query(
-      `SELECT t.id,t.community_ids AS "communityIds",t.year,t.annual_cents AS "annualCents",t.month_cents AS "monthCents"
+      `SELECT t.id,t.community_ids AS "communityIds",t.fee_code AS "feeCode",t.year,t.annual_cents AS "annualCents",t.month_cents AS "monthCents"
          FROM collection_targets t WHERE t.tenant_id=$1 AND t.year=$2 ORDER BY t.id`,
       [tenantId, year],
     );
@@ -26,7 +26,7 @@ export class CollectionTargetsService {
     return rows.map((row) => {
       const communityIds = normalizeCommunityIds(row.communityIds);
       return {
-        id: Number(row.id), communityIds, communityNames: communityIds.map((id) => nameMap.get(id) || String(id)),
+        id: Number(row.id), communityIds, communityNames: communityIds.map((id) => nameMap.get(id) || String(id)), feeCode: String(row.feeCode || 'property'),
         year: Number(row.year), annualCents: Number(row.annualCents || 0), monthCents: normalizeMonthCents(row.monthCents),
       };
     });
@@ -53,21 +53,22 @@ export class CollectionTargetsService {
       else if (overlap.length) throw new BadRequestException(`小区组与已有指标重叠：${overlap.join(',')}`);
     }
     const monthCents = normalizeMonthCents(dto.monthCents);
+    const feeCode = dto.feeCode || 'property';
     const saved: any[] = targetId
       ? await this.dataSource.query(
-        `UPDATE collection_targets SET annual_cents=$1,month_cents=$2::jsonb,community_ids=$3::int[],updated_by=$4,updated_at=now() WHERE id=$5 RETURNING id,community_ids AS "communityIds",year,annual_cents AS "annualCents",month_cents AS "monthCents"`,
-        [dto.annualCents, JSON.stringify(monthCents), communityIds, userId, targetId],
+        `UPDATE collection_targets SET annual_cents=$1,month_cents=$2::jsonb,community_ids=$3::int[],fee_code=$4,updated_by=$5,updated_at=now() WHERE id=$6 RETURNING id,community_ids AS "communityIds",fee_code AS "feeCode",year,annual_cents AS "annualCents",month_cents AS "monthCents"`,
+        [dto.annualCents, JSON.stringify(monthCents), communityIds, feeCode, userId, targetId],
       )
       : await this.dataSource.query(
-        `INSERT INTO collection_targets(tenant_id,community_id,community_ids,year,annual_cents,month_cents,created_by,updated_by,updated_at)
-         VALUES($1,$2,$3::int[],$4,$5,$6::jsonb,$7,$7,now())
-         RETURNING id,community_ids AS "communityIds",year,annual_cents AS "annualCents",month_cents AS "monthCents"`,
-        [tenantId, communityIds[0], communityIds, dto.year, dto.annualCents, JSON.stringify(monthCents), userId],
+        `INSERT INTO collection_targets(tenant_id,community_id,community_ids,fee_code,year,annual_cents,month_cents,created_by,updated_by,updated_at)
+         VALUES($1,$2,$3::int[],$4,$5,$6,$7::jsonb,$8,$8,now())
+         RETURNING id,community_ids AS "communityIds",fee_code AS "feeCode",year,annual_cents AS "annualCents",month_cents AS "monthCents"`,
+        [tenantId, communityIds[0], communityIds, feeCode, dto.year, dto.annualCents, JSON.stringify(monthCents), userId],
       );
     const savedRow = saved[0];
     const savedIds = normalizeCommunityIds(savedRow?.communityIds);
     return {
-      id: Number(savedRow?.id), communityIds: savedIds, communityNames: await this.names(savedIds),
+      id: Number(savedRow?.id), communityIds: savedIds, communityNames: await this.names(savedIds), feeCode: String(savedRow?.feeCode || feeCode),
       year: dto.year, annualCents: Number(savedRow?.annualCents || dto.annualCents), monthCents: normalizeMonthCents(savedRow?.monthCents),
       warnings: targetWarnings(dto.annualCents, monthCents),
     };

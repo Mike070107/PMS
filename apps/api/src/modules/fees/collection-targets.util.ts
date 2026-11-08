@@ -1,6 +1,7 @@
 export type CollectionTargetRow = {
   id: number;
   communityIds: number[];
+  feeCode: string;
   year: number;
   annualCents: number;
   monthCents: (number | null)[];
@@ -8,6 +9,7 @@ export type CollectionTargetRow = {
 
 export type CollectionTargetInput = {
   communityIds: number[];
+  feeCode?: string;
   year: number;
   annualCents: number;
   monthCents?: (number | null)[];
@@ -42,13 +44,13 @@ export function targetWarnings(annualCents: number, monthCents: (number | null)[
 export async function loadCollectionTargets(ds: TargetDataSource, tenantId: number, communityIds: number[], year: number): Promise<CollectionTargetRow[]> {
   if (!communityIds.length) return [];
   const rows: any[] = await ds.query(
-    `SELECT t.id,t.community_ids AS "communityIds",t.year,t.annual_cents AS "annualCents",t.month_cents AS "monthCents"
+    `SELECT t.id,t.community_ids AS "communityIds",t.fee_code AS "feeCode",t.year,t.annual_cents AS "annualCents",t.month_cents AS "monthCents"
        FROM collection_targets t
       WHERE t.tenant_id=$1 AND t.year=$2 AND t.community_ids && $3::int[]`,
     [tenantId, year, communityIds],
   );
   return rows.map((row) => ({
-    id: Number(row.id), communityIds: normalizeCommunityIds(row.communityIds),
+    id: Number(row.id), communityIds: normalizeCommunityIds(row.communityIds), feeCode: String(row.feeCode || 'property'),
     year: Number(row.year), annualCents: Number(row.annualCents || 0), monthCents: normalizeMonthCents(row.monthCents),
   }));
 }

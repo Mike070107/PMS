@@ -678,14 +678,14 @@ export class MisMirrorService {
     const placeholders = offices.map((_, index) => `$${index + 1}`).join(',');
     const startParam = `$${offices.length + 1}`, endParam = `$${offices.length + 2}`;
     const rows: any[] = await this.dataSource.query(
-      `SELECT office_code AS "officeCode",paid_date::text AS day,SUM(amount_cents)::bigint AS amount,COUNT(*)::int AS "billCount",COUNT(DISTINCT s_id)::int AS "houseCount"
+      `SELECT office_code AS "officeCode",paid_date::text AS day,${this.categorySql} AS "feeCode",SUM(amount_cents)::bigint AS amount,COUNT(*)::int AS "billCount",COUNT(DISTINCT s_id)::int AS "houseCount"
          FROM mis_mirror_bill
         WHERE office_code IN (${placeholders}) AND paid_date>=${startParam} AND paid_date<${endParam} AND refund_date IS NULL AND amount_cents>0
-        GROUP BY office_code,paid_date ORDER BY paid_date`,
+        GROUP BY office_code,paid_date,${this.categorySql} ORDER BY paid_date`,
       [...offices, `${year}-01-01`, `${year + 1}-01-01`],
     );
     // 参数顺序固定为 offices..., yearStart, yearEnd；占位符从 offices.length+1 开始。
-    const dailyRows = rows.map((row) => ({ officeCode: String(row.officeCode), day: String(row.day).slice(0, 10), paidCents: Number(row.amount || 0), billCount: Number(row.billCount || 0), houseCount: Number(row.houseCount || 0) }));
+    const dailyRows = rows.map((row) => ({ officeCode: String(row.officeCode), day: String(row.day).slice(0, 10), feeCode: String(row.feeCode || 'property'), paidCents: Number(row.amount || 0), billCount: Number(row.billCount || 0), houseCount: Number(row.houseCount || 0) }));
     const targets = await loadCollectionTargets(this.dataSource, Number(user.tenantId), ids, year);
     const arrearsResult: any = await this.residential({ view: 'amount-brackets', communityIds: q.communityIds } as any, user, access);
     const recent: any = await this.recentPayments({ pageSize: 10, communityIds: q.communityIds }, user, access);
