@@ -6788,3 +6788,12 @@
   - d8b9123f fix(screen): restrict dashboard settings to mapped MIS communities
   - 0ff951c4 feat(screen): add decision dashboard and scoped manual metric settings
 
+## 2026-11-08 21:04 · web · 8bf79f06
+
+- 包：`pms-web-20261108-210350.tar.gz`
+- 提交：8bf79f06 deploy: api → d8b9123f
+- 自上次（b659194d）以来上线的相关提交：
+  - d8b9123f fix(screen): restrict dashboard settings to mapped MIS communities
+  - e6f5dc1f fix(screen): restore action icons and clarify chart and MIS provenance
+  - 0ff951c4 feat(screen): add decision dashboard and scoped manual metric settings
+
