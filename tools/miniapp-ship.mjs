@@ -13,7 +13,7 @@
  *
  * 前置（只配一次）：开发者工具 → 设置 → 安全设置 → 打开「服务端口」。
  */
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync, execSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -94,26 +94,39 @@ function runCli(args) {
           NODE_OPTIONS: [process.env.NODE_OPTIONS, preloadOption].filter(Boolean).join(' '),
         }
       : process.env;
-  let output = '';
-  try {
-    output =
-      process.platform === 'win32'
-        ? execSync(command, { encoding: 'utf8', shell: 'cmd.exe', env: cliEnv })
-        : execFileSync(cli, args, { encoding: 'utf8' });
-  } catch (err) {
-    output = `${err.stdout ?? ''}${err.stderr ?? ''}`;
-    process.stdout.write(output);
-    fail(`开发者工具 CLI 执行失败：${args[0]}`);
-  }
-  process.stdout.write(output);
-  if (/\[error\]|[✖×]|initialize error|listen EACCES/i.test(output)) {
+  // 微信开发者工具 CLI 失败时经常仍然返回 exit code 0，错误只写 stderr。
+  // 这里必须同时捕获 stdout 与 stderr，否则「需要重新登录」会被当成上传成功。
+  const result =
+    process.platform === 'win32'
+      ? spawnSync(command, { encoding: 'utf8', shell: 'cmd.exe', env: cliEnv })
+      : spawnSync(cli, args, { encoding: 'utf8' });
+  const out = `${result.stdout ?? ''}`;
+  const errText = `${result.stderr ?? ''}`;
+  const output = out + errText;
+  process.stdout.write(out);
+  if (errText) process.stderr.write(errText);
+  if (result.error) fail(`开发者工具 CLI 无法启动：${result.error.message}`);
+  if (typeof result.status === 'number' && result.status !== 0)
+    fail(`开发者工具 CLI 退出码 ${result.status}：${args[0]}`);
+  if (/\[error\]|[✖×]|initialize error|listen EACCES|需要重新登录|上传失败/i.test(output)) {
     fail(explainCliError(output, args[0]));
+  }
+  if (args[0] === 'upload' && !/Upload|上传/.test(output)) {
+    fail(`没有看到上传成功的输出，请检查开发者工具登录状态：${args[0]}`);
   }
   return output;
 }
 
 /** 把 CLI 那串 stack 翻成能直接照做的一句话 */
 function explainCliError(output, action) {
+  // 开发者工具登录态过期：CLI 仍返回 exit 0，只有 stderr 里带这句话。
+  if (/需要重新登录|not login|login required|code 10/i.test(output)) {
+    return [
+      `${action} 失败：微信开发者工具登录已失效（CLI 报「需要重新登录」）。`,
+      '   处理：打开微信开发者工具 → 右上角登录 → 扫码登录（需有该小程序开发者权限）→ 重新执行本命令。',
+      '   注意：CLI 这种情况可能返回 0，本脚本已改为读取 stderr 判定失败。',
+    ].join('\n');
+  }
   // 这条文案极具误导性：node_modules 明明在，真正的原因是上一行
   // 「Fetching AppID detailed information」失败 —— 当前登录的微信号
   // 对这个小程序没有权限，工具拿不到它的配置，于是在打包 npm 这步炸掉。
