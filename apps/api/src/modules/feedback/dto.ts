@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsDateString,
   IsInt,
   IsOptional,
   IsString,
@@ -139,10 +140,12 @@ export class ListUserFeedbackDto {
   status?: (typeof FEEDBACK_STATUSES)[number];
 
   @IsOptional()
+  @IsDateString({ strict: true })
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   from?: string;
 
   @IsOptional()
+  @IsDateString({ strict: true })
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   to?: string;
 
