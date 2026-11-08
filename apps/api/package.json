@@ -38,7 +38,7 @@
     "test:password-lockout": "node -r ts-node/register --test src/modules/auth/password-lockout.test.ts",
     "test:mis-mirror": "node -r ts-node/register --test src/modules/fees/mis-mirror.test.ts",
     "test:feedback": "node -r ts-node/register --test src/modules/feedback/dto.test.ts src/modules/feedback/feedback-unified.test.ts src/modules/feedback/feedback-list.persistence.test.ts src/modules/feedback/feedback.http.test.ts",
-    "test:screen-decision": "node -r ts-node/register --test src/modules/fees/screen-decision.test.ts src/modules/fees/screen-summary.test.ts src/modules/fees/screen-settings.persistence.test.ts"
+    "test:screen-decision": "node -r ts-node/register --test src/modules/fees/screen-local-read.test.ts src/modules/fees/screen-decision.test.ts src/modules/fees/screen-summary.test.ts src/modules/fees/screen-settings.persistence.test.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.0",

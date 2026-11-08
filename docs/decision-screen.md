@@ -4,7 +4,7 @@
 
 - 正式前端路由 `/screen`，后台“分析 → 大屏设置”路由 `/screen-settings`；沿用 fees:view / fees:edit，服务端同样校验权限。
 - 小程序、Windows 助手不涉及本轮变更。大屏原有小区多选、年度选择、全屏、每5分钟自动刷新保留；隐藏页面不轮询，回到页面立即更新。
-- 实收复用 `/fees/mis/screen-summary` 与原有 MIS 直连／镜像选择。没有修改连接身份、同步任务、凭据或读写方向。镜像返回真实 `dataAsOf`，页面不把浏览器读取时间当作同步时间。
+- 实收复用 `/fees/mis/screen-summary`，现固定读取定期同步的本地镜像，不再跟随全局数据源开关或回退直连MIS。小区选项通过 `/fees/screen-options` 读取本地授权范围。没有修改连接身份、同步任务、凭据或读写方向。镜像返回真实 `dataAsOf`，页面不把浏览器读取时间当作同步时间。
 - 本轮新增数据只写 PMS `tenant_configs` 与已有 `collection_targets`，不向 MIS 写回，不修改真实收费记录，不需要新表迁移。
 
 ## 数据口径
@@ -91,3 +91,13 @@
 - 本轮未发布小程序或助手，未验证现场电视；其他公司不在核验范围。基线所见tenant2镜像未初始化属原有状态，未处理或宣称恢复。
 
 脱敏证据：`outputs/screen-production-20261108/`下的before/after、independent-mis-audit、browser-real-data-evidence、ui-value-checks、production-geometry及真实页面截图。截图只展示汇总和小区名，原库复算不导出住户明细。
+
+## 固定本地取数（2026-11-08，开发完成待发布）
+
+用户明确要求数据改为从已有本地同步机制获取。生产此前已经是mirror模式；本次进一步固定大屏汇总调用MisMirrorService，绕过全局mode选择；本地未初始化/读取失败直接报错，禁止借回退路径触发MIS连接。其余业务页面的数据源选择保持原样。
+
+大屏三个读取入口现在均为本地：screen-summary（PG镜像及目标）、screen-settings（PG配置）、screen-options（PG授权小区）。新增回归将mode和MIS直连方法设置为调用即失败，并验证本地失败时不会触发直连；HTTP验证screen-options权限及小区范围，浏览器不再提供MIS选项接口的成功替身。
+
+本次从生产PG只读事务重新统计2026收款分月合计，11个月与之前结果逐月相同。同步截止2026-11-08 21:30:00+08:00：全部已接入费项9,305,867.60元，大屏口径一期/二期物业费1,618,983.10元。证据outputs/screen-production-20261108/monthly-local-2026.json；本次统计没有连接MIS原库。
+
+本次未重新部署，生产仍为前述Web 2.0.20261108-2103 / API api-d8b9123，线上现有mirror配置及同步任务未改动。后续发布不得夹带其他会话未提交的收费查询/镜像/账单页面改动。

@@ -77,7 +77,7 @@ function ScreenContent() {
     void Promise.allSettled([
       request<DecisionSummary>({ url: '/fees/mis/screen-summary', query: { year, communityIds: scope || undefined, granularity: 'day' }, timeout: 30000 }),
       request<ScreenSettingsData>({ url: '/fees/screen-settings', query: { year, communityIds: scope || undefined }, timeout: 15000 }),
-      request<{ communities: { id: number; name: string }[] }>({ url: '/fees/mis/options', timeout: 15000 }),
+      request<{ communities: { id: number; name: string }[] }>({ url: '/fees/screen-options', timeout: 15000 }),
     ]).then(([summary, config, opts]) => {
       if (!active) return;
       if (summary.status === 'fulfilled') {
@@ -114,7 +114,7 @@ function ScreenContent() {
   const manualAge = manual ? Math.floor((Date.parse(chinaToday() + 'T00:00:00Z') - Date.parse(manual.asOf.slice(0, 10) + 'T00:00:00Z')) / 86400000) : 0;
   const busy = loading || loadedKey !== requestKey;
   const dataTime = data?.source === 'mirror'
-    ? 'MIS镜像 · 数据截至 ' + (data.dataAsOf ? new Date(data.dataAsOf).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '时间未知')
+    ? '本地同步库 · 数据截至 ' + (data.dataAsOf ? new Date(data.dataAsOf).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '时间未知')
     : (data?.source === 'mis' ? 'MIS直连' : data?.source === 'fixture' ? '隔离测试数据' : '来源待确认') + ' · 读取于 ' + loadedAt;
 
   return <main className="decision-screen">

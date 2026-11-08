@@ -36,6 +36,8 @@ test('大屏HTTP真实权限守卫、嵌套DTO、目标保存和刷新读回',as
  const put=(path:string,data:any,h:any=headers)=>fetch(base+path,{method:'PUT',headers:h,body:JSON.stringify(data)});
  try{
   assert.equal((await fetch(base+'/screen-settings?year=2026')).status,403);
+  assert.equal((await fetch(base+'/screen-options')).status,403);
+  const options:any=await(await fetch(base+'/screen-options',{headers})).json();assert.deepEqual(options.communities.map((c:any)=>c.id),[1]);
   const dto={year:2026,revision:0,owners:[],manual:manualFixture};
   assert.equal((await put('/screen-settings',dto,{...headers,'x-test-edit':'no'})).status,403);
   for(const bad of [{...dto,revision:-1},{...dto,manual:{...manualFixture,overdueHouses:-1}},{...dto,manual:{...manualFixture,asOf:'2026-02-30'}},{...dto,manual:{...manualFixture,sample:'false'}}])assert.equal((await put('/screen-settings',bad)).status,400);

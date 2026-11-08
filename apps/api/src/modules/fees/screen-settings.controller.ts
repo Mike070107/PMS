@@ -13,6 +13,11 @@ import { ScreenSummaryQueryDto, UpsertCollectionTargetDto } from './collection-t
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ScreenSettingsController {
   constructor(private readonly screenSettingsService: ScreenSettingsService, private readonly collectionTargetsService: CollectionTargetsService) {}
+  @Get('screen-options')
+  @RequirePermission('fees','view')
+  async screenOptions(@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){
+    return {communities:await this.screenSettingsService.scope(user,access)};
+  }
   @Get('screen-settings')
   @RequirePermission('fees','view')
   screenSettings(@Query() query:ScreenSummaryQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){

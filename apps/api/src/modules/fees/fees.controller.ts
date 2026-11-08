@@ -130,7 +130,8 @@ export class FeesController {
   misScreenSummary(@Query() query:ScreenSummaryQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){
     const communityIds=query.communityIds?query.communityIds.split(',').map(value=>Number(value.trim())).filter(value=>Number.isInteger(value)&&value>0):undefined;
     const q={year:query.year,granularity:query.granularity??'month',communityIds};
-    return this.misRead(user,()=>this.misFeesService.screenSummary(q,user,access),()=>this.misMirrorService.screenSummary(q,user,access));
+    // 大屏只读定期同步的本地库；不随全局模式直连MIS，也不在本地失败时回退外部库。
+    return this.misMirrorService.screenSummary(q,user,access);
   }
 
   @Get('mis/mirror/status')
