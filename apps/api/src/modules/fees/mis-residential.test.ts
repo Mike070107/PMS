@@ -181,9 +181,9 @@ test('今日实收：空日期/空数据返回0，包含 byFee/byChannel 聚合�
  const s:any=Object.create(MisFeesService.prototype);
  s.collectionCommunities=async()=>[{id:1,name:'合成小区',offices:['01']}];
  let sql='',params:any={};
- s.read=async(q:any,p:any)=>{sql=q;params=p;return {recordsets:[[{paidCount:'3',paidAmount:'123.45',paidHouses:'2'}],[{refundCount:'1',refundAmount:'10.00'}],[{feeName:'物业费',billCount:'2',houseCount:'1',paidAmount:'100.00'},{feeName:'停车',billCount:'1',houseCount:'1',paidAmount:'23.45'}],[{channel:'微信',billCount:'2',houseCount:'2',paidAmount:'100.00'},{channel:'现金',billCount:'1',houseCount:'1',paidAmount:'23.45'}]]}};
+  s.read=async(q:any,p:any)=>{sql=q;params=p;return {recordsets:[[{paidCount:'3',paidAmount:'123.45',paidHouses:'2'}],[{refundCount:'1',refundAmount:'10.00'}],[{feeCode:'property',feeName:'物业费',billCount:'2',houseCount:'1',paidAmount:'100.00'},{feeCode:'parking',feeName:'停车',billCount:'1',houseCount:'1',paidAmount:'23.45'}],[{channel:'微信',billCount:'2',houseCount:'2',paidAmount:'100.00'},{channel:'现金',billCount:'1',houseCount:'1',paidAmount:'23.45'}]]}};
  const out:any=await s.today({date:'2026-11-07'},{id:1,tenantId:1},{scopeAll:true});
- assert.deepEqual(out,{paidCents:12345,paidCount:3,refundedCents:1000,paidHouses:2,byFee:[{feeName:'物业费',paidCents:10000,billCount:2,houseCount:1},{feeName:'停车',paidCents:2345,billCount:1,houseCount:1}],byChannel:[{channel:'微信',paidCents:10000,billCount:2,houseCount:2},{channel:'现金',paidCents:2345,billCount:1,houseCount:1}]});
+  assert.deepEqual(out,{paidCents:12345,paidCount:3,refundedCents:1000,paidHouses:2,byFee:[{feeCode:'property',feeName:'物业费',paidCents:10000,billCount:2,houseCount:1},{feeCode:'parking',feeName:'停车',paidCents:2345,billCount:1,houseCount:1}],byChannel:[{channel:'微信',paidCents:10000,billCount:2,houseCount:2},{channel:'现金',paidCents:2345,billCount:1,houseCount:1}]});
  assert.equal(out.byFee[0].billCount,2);assert.equal(out.byFee[0].houseCount,1,'同户同日多张账单按房号去重只算1户');
  assert.equal((sql.match(/AS houseCount/g)||[]).length,2,'byFee/byChannel 都要按管理处+S_ID去重户数');
  assert.match(sql,/w\.ZJ_SKRQ>=CONVERT\(datetime,@date,120\)/);assert.match(sql,/ZJ_TKRQ IS NULL AND w\.ZJ_JE>0/);assert.equal(params.date,'2026-11-07');
@@ -225,4 +225,17 @@ test('待缴金额分档必须先按户聚合，再按户级金额（分）分�
  assert.ok(sql.includes('h.amount*100<=200000'), '户级金额比较 ≤2000 元');
  assert.ok(sql.includes('h.amount*100<=500000'), '户级金额比较 ≤5000 元');
  assert.ok(!/SUM\(w\.ZJ_JE\)[^)]*<=50000/.test(sql.replace(/\s+/g,' ')), '未直接用单条账单金额分档');
+});
+
+
+test('今日分项收入 byFee 返回中文名+英文 feeCode；details 按 category 过滤并分页', async () => {
+ const s:any=Object.create(MisFeesService.prototype);
+ s.collectionCommunities=async()=>[{id:10,name:'合成小区',offices:['01']}];
+ let sql='',params:any={};
+ s.read=async(q:any,p:any)=>{sql=q;params=p;return {recordsets:[[{total:'1'}],[{officeCode:'01',address:'A',ownerName:'甲',paidDate:'2026-11-08',amount:'100.00',billCount:2,channel:'微信',recordedAt:'2026-11-08 10:00:00'}]]}};
+ const out:any=await s.todayDetails({category:'property',page:1,pageSize:20,date:'2026-11-08'},{id:1,tenantId:1},{scopeAll:true});
+ assert.equal(out.total,1);assert.equal(out.page,1);assert.equal(out.pageSize,20);
+ assert.deepEqual(out.rows,[{recordedAt:'2026-11-08T10:00:00+08:00',paidDate:'2026-11-08',address:'A',ownerName:'甲',channel:'微信',amountCents:10000,billCount:2}]);
+ assert.match(sql,/property/);assert.ok(sql.includes('=@category'));assert.equal(params.category,'property');
+ await assert.rejects(s.todayDetails({category:'bad'},{id:1,tenantId:1},{scopeAll:true}),/分类/);
 });

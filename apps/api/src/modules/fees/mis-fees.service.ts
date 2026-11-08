@@ -19,6 +19,7 @@ import { naturalNumberSql } from '../../common/natural-order';
 import {buildMisLedgerQuery,MisLedgerQuery,MisLedgerAddress} from './mis-ledger.query';
 import {resolveAddressForTenant} from '../../common/address-lookup';
 import { buildMisFeeFilter, buildMisFeeQuery, buildMisResidentialQuery, MisResidentialQuery, MisFeeQuery, MisHouseFilter, misFeeStatus, misMoneyToCents } from './mis-fees.query';
+import { MIS_FEE_CATEGORY_LABELS, isMisFeeCategory, misFeeCategoryLabel, misFeeCategoryOfText, misFeeCategorySql, type MisFeeCategory } from './mis-fee-category';
 
 /** 模块级日志器：不参与依赖注入，避免改动构造函数（历史事故：注入新服务导致 API 启动失败）。 */
 const logger=new Logger('MisFeesService');
@@ -228,11 +229,11 @@ export class MisFeesService implements OnModuleDestroy {
   filter.params.date=date;
   const paidWhere=`w.ZJ_SKRQ>=CONVERT(datetime,@date,120) AND w.ZJ_SKRQ<DATEADD(day,1,CONVERT(datetime,@date,120)) AND w.ZJ_TKRQ IS NULL AND w.ZJ_JE>0`;
   const refundWhere=`w.ZJ_TKRQ>=CONVERT(datetime,@date,120) AND w.ZJ_TKRQ<DATEADD(day,1,CONVERT(datetime,@date,120)) AND w.ZJ_JE>=0`;
-  const feeCategory=`CASE WHEN f.XM LIKE N'%物业%' OR (f.XM LIKE N'%管理费%' AND f.XM NOT LIKE N'%停车%') THEN N'物业费' WHEN f.XM LIKE N'%泊位%' THEN N'泊位费' WHEN f.XM LIKE N'%停车%' OR f.XM LIKE N'%车位%' THEN N'停车' ELSE N'其他' END`;
+  const feeCategoryCode=misFeeCategorySql('f.XM',{nPrefix:true});
   const channelExpr=`COALESCE(NULLIF(LTRIM(RTRIM(w.收款方式)),N''),N'未记录')`;
   const sql=`SELECT COUNT(*) AS paidCount,COALESCE(SUM(w.ZJ_JE),0) AS paidAmount,COUNT(DISTINCT CONVERT(varchar(10),l.管理处)+':'+CONVERT(varchar(30),s.S_ID)) AS paidHouses ${filter.from} AND ${paidWhere};
    SELECT COUNT(*) AS refundCount,COALESCE(SUM(-w.ZJ_JE),0) AS refundAmount ${filter.from} AND ${refundWhere};
-   SELECT ${feeCategory} AS feeName,COUNT(*) AS billCount,COUNT(DISTINCT CONVERT(varchar(10),l.管理处)+':'+CONVERT(varchar(30),s.S_ID)) AS houseCount,COALESCE(SUM(w.ZJ_JE),0) AS paidAmount ${filter.from} AND ${paidWhere} GROUP BY ${feeCategory} ORDER BY paidAmount DESC,feeName;
+   SELECT ${feeCategoryCode} AS feeCode,COUNT(*) AS billCount,COUNT(DISTINCT CONVERT(varchar(10),l.管理处)+':'+CONVERT(varchar(30),s.S_ID)) AS houseCount,COALESCE(SUM(w.ZJ_JE),0) AS paidAmount ${filter.from} AND ${paidWhere} GROUP BY ${feeCategoryCode} ORDER BY paidAmount DESC,feeCode;
    SELECT ${channelExpr} AS channel,COUNT(*) AS billCount,COUNT(DISTINCT CONVERT(varchar(10),l.管理处)+':'+CONVERT(varchar(30),s.S_ID)) AS houseCount,COALESCE(SUM(w.ZJ_JE),0) AS paidAmount ${filter.from} AND ${paidWhere} GROUP BY ${channelExpr} ORDER BY paidAmount DESC,channel;`;
   const result=await this.read(sql,filter.params),sets=(result.recordsets||[]) as any[][],summary=sets[0]?.[0]||{},refund=sets[1]?.[0]||{};
   return {
@@ -240,7 +241,7 @@ export class MisFeesService implements OnModuleDestroy {
    paidCount:Number(summary.paidCount||0),
    refundedCents:misMoneyToCents(refund.refundAmount),
    paidHouses:Number(summary.paidHouses||0),
-   byFee:(sets[2]||[]).map((r:any)=>({feeName:String(r.feeName||'其他'),paidCents:misMoneyToCents(r.paidAmount),billCount:Number(r.billCount||0),houseCount:Number(r.houseCount||0)})),
+   byFee:(sets[2]||[]).map((r:any)=>{const feeCode=isMisFeeCategory(r.feeCode)?r.feeCode:misFeeCategoryOfText(r.feeName);return {feeCode,feeName:misFeeCategoryLabel(feeCode),paidCents:misMoneyToCents(r.paidAmount),billCount:Number(r.billCount||0),houseCount:Number(r.houseCount||0)}}),
    byChannel:(sets[3]||[]).map((r:any)=>({channel:String(r.channel||'未记录'),paidCents:misMoneyToCents(r.paidAmount),billCount:Number(r.billCount||0),houseCount:Number(r.houseCount||0)})),
   };
  }
@@ -249,6 +250,46 @@ export class MisFeesService implements OnModuleDestroy {
   * ZJ_SKRQ 在源库是 smalldatetime 但实际只存日期（全库时分秒均为 0），故 paidAt 返回日期，
   * 另给 recordedAt（updatedate，真实到分钟，仅作 MIS 记录更新时间，非收款时间）。
   */
+ /** 今日分项收入明细：按房号+收款日聚合，和 recent-payments 同口径；category 过滤分类。 */
+ async todayDetails(q: { date?: string; category?: string; page?: number; pageSize?: number }, user: AuthUser, access?: ResolvedAccess) {
+  const date = q.date ?? new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(`${date}T00:00:00+08:00`)) || new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(`${date}T00:00:00+08:00`)) !== date) throw new BadRequestException('日期不合法');
+  if (q.category !== undefined && !isMisFeeCategory(q.category)) throw new BadRequestException('分类不合法');
+  const page = q.page ?? 1, pageSize = q.pageSize ?? 20;
+  if (!Number.isInteger(page) || page < 1) throw new BadRequestException('page 须为正整数');
+  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 50) throw new BadRequestException('pageSize 须为1-50的整数');
+  const communities = await this.collectionCommunities(undefined, user, access);
+  if (!communities.length) return { total: 0, page, pageSize, rows: [] };
+  const offices = [...new Set(communities.flatMap((c) => c.offices))];
+  const filter = buildMisFeeFilter({ status: 'paid' } as MisFeeQuery, offices);
+  filter.params.date = date;
+  filter.params.firstRow = (page - 1) * pageSize + 1;
+  filter.params.lastRow = page * pageSize;
+  const paidDate = `CONVERT(varchar(10),w.ZJ_SKRQ,23)`;
+  const houseAndDate = `l.管理处,${filter.address},z.姓名,${paidDate}`;
+  const categoryExpr = misFeeCategorySql('f.XM', { nPrefix: true });
+  const categoryFilter = q.category ? `AND (${categoryExpr})=@category` : '';
+  if (q.category) filter.params.category = q.category;
+  const scope = `${filter.from} AND w.ZJ_SKRQ>=CONVERT(datetime,@date,120) AND w.ZJ_SKRQ<DATEADD(day,1,CONVERT(datetime,@date,120)) AND w.ZJ_JE>0 ${categoryFilter}`;
+  const sql = `SELECT COUNT(*) AS total FROM (SELECT COUNT(*) ${scope} GROUP BY ${houseAndDate}) g;
+   WITH grouped AS (
+     SELECT l.管理处 AS officeCode,${filter.address} AS address,z.姓名 AS ownerName,${paidDate} AS paidDate,
+            CONVERT(varchar(50),SUM(w.ZJ_JE),2) AS amount,COUNT_BIG(*) AS billCount,
+            COALESCE(NULLIF(LTRIM(RTRIM(MAX(w.收款方式))),N''),N'未记录') AS channel,
+            CONVERT(varchar(19),MAX(w.updatedate),120) AS recordedAt,
+            ROW_NUMBER() OVER(ORDER BY MAX(w.updatedate) DESC,MAX(w.ZJ_ID) DESC) AS rowNo
+       ${scope} GROUP BY ${houseAndDate}
+   ) SELECT * FROM grouped WHERE rowNo BETWEEN @firstRow AND @lastRow ORDER BY rowNo;`;
+  const result = await this.read(sql, filter.params), sets = (result.recordsets || []) as any[][];
+  return {
+   total: Number(sets[0]?.[0]?.total || 0), page, pageSize,
+   rows: (sets[1] || []).map((r: any) => ({
+    recordedAt: r.recordedAt ? `${String(r.recordedAt).replace(' ', 'T')}+08:00` : null,
+    paidDate: String(r.paidDate ?? ''), address: String(r.address ?? ''), ownerName: String(r.ownerName ?? ''),
+    channel: String(r.channel || '未记录'), amountCents: misMoneyToCents(r.amount), billCount: Number(r.billCount || 0),
+   })),
+  };
+ }
  async recentPayments(q:{date?:string;page?:number;pageSize?:number;communityId?:number},user:AuthUser,access?:ResolvedAccess){
   const date=q.date??new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   const key=this.cacheKey('recent-payments',{...q,date},user,access),hit=this.cacheGet(key);

@@ -56,6 +56,12 @@ test('镜像迁移可 up/down，金额分档按户聚合后分档', async () => 
     const today: any = await service.today({ date: '2026-11-08' }, { id: 1, tenantId: 1 }, { scopeAll: true } as any);
     assert.equal(today.paidCents, 50000);
     assert.equal(today.refundedCents, 30000);
+    assert.deepEqual(today.byFee.map((row: any) => [row.feeCode, row.feeName]), [['property', '物业费']]);
+    const details: any = await service.todayDetails({ date: '2026-11-08', category: 'property' }, { id: 1, tenantId: 1 }, { scopeAll: true } as any);
+    assert.equal(details.total, 1);
+    assert.equal(details.rows[0].paidDate, '2026-11-08');
+    assert.equal(details.rows[0].channel, '现金');
+    assert.equal(details.rows[0].billCount, 1);
     await health.down({ query: (sql: string) => pg.query(sql) } as any);
     await migration.down({ query: (sql: string) => pg.query(sql) } as any);
   } finally { await pg.close(); }

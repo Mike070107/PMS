@@ -95,6 +95,10 @@ export class FeesController {
  @RequirePermission('fees','view')
  misToday(@Query() query:MisTodayQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misRead(user,()=>this.misFeesService.today(query,user,access),()=>this.misMirrorService.today(query,user,access));}
 
+ @Get('mis/today/details')
+ @RequirePermission('fees','view')
+ misTodayDetails(@Query() query:{date?:string;category?:string;page?:number;pageSize?:number},@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misRead(user,()=>this.misFeesService.todayDetails(query,user,access),()=>this.misMirrorService.todayDetails(query,user,access));}
+
  @Get('mis/recent-payments')
   @RequirePermission('fees','view')
   misRecentPayments(@Query() query:MisRecentPaymentsQueryDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misRead(user,()=>this.misFeesService.recentPayments(query,user,access),()=>this.misMirrorService.recentPayments(query,user,access));}

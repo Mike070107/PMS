@@ -6,6 +6,7 @@ import { AuthUser } from '../../common/current-user.decorator';
 import { ResolvedAccess } from '../access/access.service';
 import { TenantConfig } from '../../entities';
 import { MisFeesService } from './mis-fees.service';
+import { misFeeCategoryLabel, misFeeCategorySql } from './mis-fee-category';
 
 type MirrorMode = 'mis' | 'mirror';
 type MirrorCommunity = { id: number; name: string; offices: string[] };
@@ -393,7 +394,7 @@ export class MisMirrorService {
     return { where: clauses.join(' AND '), params };
   }
 
-  private categorySql = `(CASE WHEN fee_name LIKE '%泊位%' OR fee_name LIKE '%车位%' OR fee_name LIKE '%停车%' THEN 'berth' WHEN fee_name LIKE '%物业%' OR (fee_name LIKE '%管理费%' AND fee_name NOT LIKE '%停车%') THEN 'property' ELSE 'other' END)`;
+  private categorySql = misFeeCategorySql('fee_name');
 
   async residential(q: any, user: AuthUser, access?: ResolvedAccess) {
     if (!['dashboard', 'households', 'amount-brackets', 'communities'].includes(q.view || 'dashboard')) {
@@ -592,7 +593,7 @@ export class MisMirrorService {
       params,
     ))[0] || {};
     const byFee: any[] = await this.dataSource.query(
-      `SELECT ${this.categorySql} AS "feeName",COUNT(*)::int AS "billCount",
+      `SELECT ${this.categorySql} AS "feeCode",COUNT(*)::int AS "billCount",
               COUNT(DISTINCT office_code||':'||s_id)::int AS "houseCount",COALESCE(SUM(amount_cents),0)::bigint AS "paidCents"
          FROM mis_mirror_bill
         WHERE office_code IN (${placeholders}) AND paid_date=${dateParam} AND refund_date IS NULL AND amount_cents>0
@@ -607,7 +608,48 @@ export class MisMirrorService {
         GROUP BY channel ORDER BY "paidCents" DESC`,
       params,
     );
-    return { source: 'mirror', dataAsOf: asOf, paidCents: Number(summary.paidCents || 0), paidCount: Number(summary.paidCount || 0), refundedCents: Number(refund.refundedCents || 0), paidHouses: Number(summary.paidHouses || 0), byFee: byFee.map((row) => ({ feeName: row.feeName, paidCents: Number(row.paidCents || 0), billCount: Number(row.billCount || 0), houseCount: Number(row.houseCount || 0) })), byChannel: byChannel.map((row) => ({ channel: row.channel, paidCents: Number(row.paidCents || 0), billCount: Number(row.billCount || 0), houseCount: Number(row.houseCount || 0) })) };
+    return { source: 'mirror', dataAsOf: asOf, paidCents: Number(summary.paidCents || 0), paidCount: Number(summary.paidCount || 0), refundedCents: Number(refund.refundedCents || 0), paidHouses: Number(summary.paidHouses || 0), byFee: byFee.map((row) => ({ feeCode: String(row.feeCode || 'other'), feeName: misFeeCategoryLabel(row.feeCode), paidCents: Number(row.paidCents || 0), billCount: Number(row.billCount || 0), houseCount: Number(row.houseCount || 0) })), byChannel: byChannel.map((row) => ({ channel: row.channel, paidCents: Number(row.paidCents || 0), billCount: Number(row.billCount || 0), houseCount: Number(row.houseCount || 0) })) };
+  }
+
+  async todayDetails(q: { date?: string; category?: string; page?: number; pageSize?: number }, user: AuthUser, access?: ResolvedAccess) {
+    const asOf = await this.assertReady(Number(user.tenantId));
+    const date = q.date ?? new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(`${date}T00:00:00+08:00`))) throw new BadRequestException('日期不合法');
+    if (q.category !== undefined && !['property', 'berth', 'parking', 'other'].includes(q.category)) throw new BadRequestException('分类不合法');
+    const page = q.page ?? 1, pageSize = q.pageSize ?? 20;
+    if (!Number.isInteger(page) || page < 1) throw new BadRequestException('page 须为正整数');
+    if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 50) throw new BadRequestException('pageSize 须为1-50的整数');
+    const communities = await this.misFees.collectionCommunities(undefined, user, access);
+    const offices = [...new Set(communities.flatMap((community) => community.offices))];
+    if (!offices.length) return { total: 0, page, pageSize, rows: [], source: 'mirror', dataAsOf: asOf };
+    const params: unknown[] = [...offices, date];
+    const officePlaceholders = offices.map((_, index) => `$${index + 1}`).join(',');
+    const dateParam = `$${params.length}`;
+    const categoryFilter = q.category ? `AND (${this.categorySql}) = $${params.push(q.category)}` : '';
+    const where = `office_code IN (${officePlaceholders}) AND paid_date=${dateParam} AND refund_date IS NULL AND amount_cents>0 ${categoryFilter}`;
+    const totalRows: any[] = await this.dataSource.query(
+      `SELECT COUNT(*)::int AS total FROM (SELECT office_code,s_id,zh_id FROM mis_mirror_bill WHERE ${where} GROUP BY office_code,s_id,zh_id) g`,
+      params,
+    );
+    const rows: any[] = await this.dataSource.query(
+      `WITH grouped AS (
+         SELECT office_code,s_id,zh_id,address,owner_name,MAX(paid_date) AS paid_date,
+                COALESCE(MAX(payment_method),'未记录') AS channel,SUM(amount_cents)::bigint AS amount_cents,
+                COUNT(*)::int AS bill_count,MAX(source_updated_at) AS recorded_at
+           FROM mis_mirror_bill WHERE ${where}
+          GROUP BY office_code,s_id,zh_id,address,owner_name
+       ) SELECT * FROM grouped ORDER BY recorded_at DESC,zh_id ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, pageSize, (page - 1) * pageSize],
+    );
+    return {
+      total: Number(totalRows[0]?.total || 0), page, pageSize, source: 'mirror', dataAsOf: asOf,
+      rows: rows.map((row) => ({
+        recordedAt: row.recorded_at ? new Date(row.recorded_at).toISOString() : null,
+        paidDate: row.paid_date ? new Date(row.paid_date).toISOString().slice(0, 10) : date,
+        address: String(row.address || ''), ownerName: String(row.owner_name || ''),
+        channel: String(row.channel || '未记录'), amountCents: Number(row.amount_cents || 0), billCount: Number(row.bill_count || 0),
+      })),
+    };
   }
 
   async recentPayments(q: { date?: string; page?: number; pageSize?: number; communityId?: number }, user: AuthUser, access?: ResolvedAccess) {
