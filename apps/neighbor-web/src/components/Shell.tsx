@@ -111,6 +111,7 @@ export default function Shell() {
 
   const [counts, setCounts] = useState<{ dispatch: number; accept: number }>({ dispatch: 0, accept: 0 });
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackType, setFeedbackType] = useState<'suggestion' | 'error'>('suggestion');
 
   useEffect(() => {
     let alive = true;
@@ -251,7 +252,10 @@ export default function Shell() {
             <Icon name="cash" size={18} />收费办理
           </button> : null}
           <ThemePicker mobile/>
-          <button className="btn" title="意见与建议 / 异常反馈" onClick={() => setFeedbackOpen(true)}><Icon name="edit" size={17} />意见与建议</button>
+          <div className="fb-entry">
+            <button className="btn" title="意见与建议" aria-label="意见与建议" onClick={() => { setFeedbackType('suggestion'); setFeedbackOpen(true); }}><Icon name="edit" size={17} /><span className="fb-entry-label">意见与建议</span></button>
+            <button className="btn" title="异常反馈" aria-label="异常反馈" onClick={() => { setFeedbackType('error'); setFeedbackOpen(true); }}><Icon name="alert" size={17} /><span className="fb-entry-label">异常反馈</span></button>
+          </div>
           <button className="ib" title="通知" onClick={() => { window.location.href = '/dashboard'; }}>
             <Icon name="bell" />
             {unread ? <span className="dot" /> : null}
@@ -264,7 +268,7 @@ export default function Shell() {
         </div>
       </section>
 
-      <FeedbackDialog open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
+      <FeedbackDialog open={feedbackOpen} onClose={() => setFeedbackOpen(false)} defaultType={feedbackType} />
 
       {cmdk ? (
         <div className="cmdk" onClick={() => setCmdk(false)}>

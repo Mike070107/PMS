@@ -4,7 +4,7 @@ import { request } from '@pms/api-client';
 import { logObjectLabel, safeLogTechnical, type LogPresentation } from '@/lib/logs-presentation';
 import Icon from '@/components/Icon';
 import type { IconName } from '@/components/Icon';
-import { Loading, Sheet } from '@/components/ui';
+import { Loading, Sheet, toast } from '@/components/ui';
 import ToneIcon from '@/components/ToneIcon';
 import {useSession} from '@/lib/auth';
 import {can} from '@/lib/perm';
@@ -542,7 +542,14 @@ interface FeedbackRow {
   imageUrls?: string[] | null;
   source?: string | null;
   status?: string | null;
-  recentErrors?: unknown;
+  origin?: 'unified' | 'legacy' | string | null;
+  handledByName?: string | null;
+  handledAt?: string | null;
+  resolvedByName?: string | null;
+  resolvedAt?: string | null;
+  processorName?: string | null;
+  context?: { page?: string; userAgent?: string; recentErrors?: Array<{ at?: string; message?: string; page?: string }> } | null;
+  recentErrors?: Array<{ at?: string; message?: string; page?: string }> | unknown;
 }
 const FB_TYPE_LABEL: Record<string, string> = { suggestion: '意见与建议', error: '异常反馈', bug: '异常反馈', issue: '异常反馈', other: '其他' };
 const FB_STATUS_LABEL: Record<string, string> = { pending: '待处理', handled: '已处理', done: '已处理', closed: '已处理', processing: '处理中', new: '待处理', resolved: '已处理', ignored: '已忽略' };
@@ -559,6 +566,14 @@ const fbAttachments = (row: FeedbackRow) => [
   return [];
 });
 const fileName = (url: string) => { try { const path = decodeURIComponent(url.split('?')[0]); return path.split('/').pop() || '附件'; } catch { return '附件'; } };
+const fbRecentErrors = (row: FeedbackRow): Array<{ at?: string; message?: string; page?: string }> => {
+  const list = Array.isArray(row.recentErrors) ? row.recentErrors : Array.isArray(row.context?.recentErrors) ? row.context.recentErrors : [];
+  return list.flatMap((item: any) => {
+    if (typeof item === 'string') return [{ message: item }];
+    if (item && typeof item === 'object' && item.message) return [{ at: item.at ? String(item.at) : undefined, message: String(item.message), page: item.page ? String(item.page) : undefined }];
+    return [];
+  });
+};
 
 function FeedbackPanel({ scopeKey }: { scopeKey: string }) {
   const [rows, setRows] = useState<FeedbackRow[] | null>(null);
@@ -571,6 +586,11 @@ function FeedbackPanel({ scopeKey }: { scopeKey: string }) {
   const [to, setTo] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
+  const [pendingCount, setPendingCount] = useState<number | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [marking, setMarking] = useState<string | null>(null);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const canEdit = can('logs', 'edit');
 
   useEffect(() => {
     let alive = true;
@@ -586,7 +606,79 @@ function FeedbackPanel({ scopeKey }: { scopeKey: string }) {
     return () => { alive = false; };
   }, [page, type, status, from, to, scopeKey, retry]);
 
+  // 待处理数量徽标：单独查一次，不依赖当前筛选
+  useEffect(() => {
+    let alive = true;
+    request<unknown>({ url: '/feedback', query: { page: 1, pageSize: 1, status: 'pending' } })
+      .then((raw: any) => {
+        if (!alive) return;
+        const count = Number(Array.isArray(raw) ? raw.length : raw?.total ?? raw?.pendingCount ?? raw?.counts?.pending);
+        if (Number.isFinite(count) && count >= 0) setPendingCount(count);
+      })
+      .catch(() => { if (alive) setPendingCount(null); });
+    return () => { alive = false; };
+  }, [scopeKey, retry]);
+
   const pages = Math.max(1, Math.ceil(total / 20));
+  const pendingIds = (rows || []).filter((row) => fbStatus(row) === '待处理').map((row) => String(row.id));
+  const allPendingSelected = pendingIds.length > 0 && pendingIds.every((id) => selected.has(id));
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const togglePage = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allPendingSelected) pendingIds.forEach((id) => next.delete(id));
+      else pendingIds.forEach((id) => next.add(id));
+      return next;
+    });
+  };
+  const setRowStatus = (id: string, nextStatus: string) => {
+    setRows((prev) => prev ? prev.flatMap((row) => {
+      if (String(row.id) !== id) return [row];
+      if (status && nextStatus !== status) return [];
+      return [{ ...row, status: nextStatus, handledByName: undefined, handledAt: undefined }];
+    }) : prev);
+    setPendingCount((count) => count == null ? count : Math.max(0, count + (nextStatus === 'handled' ? -1 : 1)));
+  };
+  const markHandled = async (row: FeedbackRow, nextStatus: 'handled' | 'pending') => {
+    if (!canEdit || marking) return;
+    const key = String(row.id);
+    setMarking(key);
+    try {
+      await request({ method: 'PATCH', url: '/feedback/' + encodeURIComponent(key), data: { status: nextStatus } });
+      setRowStatus(key, nextStatus);
+      toast(nextStatus === 'handled' ? '已标记为已处理' : '已撤回为待处理');
+    } catch (e) {
+      toast(e instanceof Error && e.message ? e.message : '操作失败，请稍后重试');
+    } finally {
+      setMarking(null);
+    }
+  };
+  const batchHandled = async () => {
+    if (!canEdit || !selected.size || batchBusy) return;
+    const ids = [...selected];
+    setBatchBusy(true);
+    let failed = 0;
+    for (const id of ids) {
+      try {
+        await request({ method: 'PATCH', url: '/feedback/' + encodeURIComponent(id), data: { status: 'handled' } });
+        setRowStatus(id, 'handled');
+      } catch {
+        failed += 1;
+      }
+    }
+    setBatchBusy(false);
+    setSelected(new Set());
+    if (failed) toast(failed + ' 条失败');
+    setRetry((value) => value + 1);
+  };
+
   return (
     <div className="card" style={{ overflow: 'hidden' }}>
       <div className="intro-list-head" style={{ flexWrap: 'wrap', gap: 10 }}>
@@ -598,7 +690,9 @@ function FeedbackPanel({ scopeKey }: { scopeKey: string }) {
         </div>
         <div className="chips" role="tablist" aria-label="反馈状态">
           {([['', '全部状态'], ['pending', '待处理'], ['handled', '已处理']] as const).map(([key, label]) => (
-            <button key={key} className={'chip ' + (status === key ? 'on' : '')} onClick={() => { setStatus(key); setPage(1); }}>{label}</button>
+            <button key={key} className={'chip ' + (status === key ? 'on' : '')} onClick={() => { setStatus(key); setPage(1); }}>
+              {key === 'pending' && pendingCount != null ? '待处理 ' + pendingCount : label}
+            </button>
           ))}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
@@ -608,27 +702,44 @@ function FeedbackPanel({ scopeKey }: { scopeKey: string }) {
         </div>
       </div>
 
+      {canEdit && selected.size > 0 ? (
+        <div className="fb-batch">
+          <span>已选 {selected.size} 条</span>
+          <button className="btn sm p" disabled={batchBusy} onClick={() => void batchHandled()}>{batchBusy ? '处理中…' : '批量标记已处理'}</button>
+          <button className="btn sm" disabled={batchBusy} onClick={() => setSelected(new Set())}>取消选择</button>
+        </div>
+      ) : null}
+
       {error ? (
         <div className="usage-missing" role="status">
           <span className="usage-tag">待接口</span>
           <b>用户反馈接口未就绪</b>
-          <small>GET /observability/feedback 暂不可用；接口上线后会显示类型、反馈人、时间、内容、附件、来源与状态。</small>
+          <small>GET /feedback 暂不可用；接口上线后会显示类型、反馈人、时间、内容、附件、来源与状态。</small>
           <button className="btn sm" onClick={() => setRetry((value) => value + 1)}>重试</button>
         </div>
       ) : rows === null ? <div style={{ padding: 32 }}><Loading /></div> : (
         <>
           <div className="intro-table-wrap">
-            <table className="t usage-table" style={{ minWidth: 880 }}>
-              <thead><tr><th>类型</th><th>反馈人</th><th>时间</th><th>内容</th><th>附件</th><th>来源</th><th>状态</th></tr></thead>
+            <table className="t usage-table" style={{ minWidth: 980 }}>
+              <thead><tr>
+                <th className="fb-check-col">{canEdit ? <input type="checkbox" aria-label="全选待处理反馈" checked={allPendingSelected} onChange={togglePage} /> : null}</th>
+                <th>类型</th><th>反馈人</th><th>时间</th><th>内容</th><th>附件</th><th>来源</th><th>状态</th>
+              </tr></thead>
               <tbody>
                 {rows.map((row) => {
                   const key = String(row.id);
                   const open = expanded === key;
                   const files = fbAttachments(row);
+                  const errors = fbRecentErrors(row);
+                  const handled = fbStatus(row) === '已处理';
+                  const trace = handled ? [row.handledByName || row.resolvedByName || row.processorName, row.handledAt ? dayjs(row.handledAt).format('YYYY-MM-DD HH:mm') : row.resolvedAt ? dayjs(row.resolvedAt).format('YYYY-MM-DD HH:mm') : null].filter(Boolean).join(' · ') : '';
                   return (
                     <Fragment key={key}>
                       <tr className="fb-row" onClick={() => setExpanded(open ? null : key)}>
-                        <td className="nw"><span className={'tag ' + (/异常|bug|error|issue/.test(String(row.type || row.kind)) ? 'warn' : 'acc')}>{fbType(row)}</span></td>
+                        <td className="fb-check-col" onClick={(event) => event.stopPropagation()}>
+                          {canEdit && !handled ? <input type="checkbox" aria-label={'选择反馈 ' + key} checked={selected.has(key)} onChange={() => toggleSelect(key)} /> : null}
+                        </td>
+                        <td className="nw"><span className={'tag ' + (/异常|bug|error|issue/.test(String(row.type || row.kind)) ? 'warn' : 'acc')}>{fbType(row)}</span>{row.origin === 'legacy' ? <small className="fb-origin">历史</small> : row.origin === 'unified' ? <small className="fb-origin">统一</small> : null}</td>
                         <td className="nw">{row.userName || '未记录'}{row.userPhone ? <small className="muted"> · {row.userPhone}</small> : null}</td>
                         <td className="nw">{row.createdAt || row.time ? dayjs(row.createdAt || row.time).format('YYYY-MM-DD HH:mm') : '—'}</td>
                         <td><span className="fb-summary">{String(row.content || '—')}</span></td>
@@ -641,15 +752,30 @@ function FeedbackPanel({ scopeKey }: { scopeKey: string }) {
                           )) : '—'}
                         </td>
                         <td className="nw">{fbSource(row)}</td>
-                        <td className="nw"><span className={'tag ' + (fbStatus(row) === '已处理' ? 'ok' : 'warn')}>{fbStatus(row)}</span></td>
+                        <td className="nw"><span className={'tag ' + (handled ? 'ok' : 'warn')}>{fbStatus(row)}</span>{trace ? <small className="fb-trace"> · {trace}</small> : null}</td>
                       </tr>
                       {open ? (
                         <tr className="fb-detail-row">
-                          <td colSpan={7}>
+                          <td colSpan={8}>
                             <div className="fb-detail">
                               <b>完整内容</b>
                               <p>{String(row.content || '—')}</p>
-                              {row.recentErrors ? <details><summary>附带的最近系统报错</summary><pre>{JSON.stringify(row.recentErrors, null, 2)}</pre></details> : null}
+                              {errors.length ? (
+                                <div className="fb-detail-errors">
+                                  <b>最近的系统报错（{errors.length} 条）</b>
+                                  <ul className="fb-errors">{errors.map((item, index) => <li key={index}><time>{item.at ? dayjs(item.at).format('YYYY-MM-DD HH:mm:ss') : '时间未知'}</time><span>{item.message}</span>{item.page ? <small>{item.page}</small> : null}</li>)}</ul>
+                                </div>
+                              ) : null}
+                              {files.length ? (
+                                <div className="fb-detail-files">
+                                  <b>附件</b>
+                                  <div>{files.map((file) => <span className="fb-file" key={file.url}><a href={file.url} target="_blank" rel="noopener">{file.name || fileName(file.url)}</a><a href={file.url} download={file.name || fileName(file.url)}>下载</a></span>)}</div>
+                                </div>
+                              ) : null}
+                              <div className="fb-detail-actions" onClick={(event) => event.stopPropagation()}>
+                                {canEdit ? <button className="btn sm p" disabled={marking === key || batchBusy} onClick={() => void markHandled(row, handled ? 'pending' : 'handled')}>{marking === key ? '处理中…' : handled ? '撤回为待处理' : '标记已处理'}</button> : null}
+                                {!handled && row.context?.page ? <a className="btn sm" href={String(row.context.page).startsWith('/') ? String(row.context.page) : '/' + String(row.context.page)}>去处理</a> : null}
+                              </div>
                             </div>
                           </td>
                         </tr>
@@ -673,6 +799,7 @@ function FeedbackPanel({ scopeKey }: { scopeKey: string }) {
     </div>
   );
 }
+
 /* ───────────── 使用统计下钻 ───────────── */
 type DrillKind = 'page-events' | 'page-users' | 'user-events' | 'user-pages';
 type DrillTarget = { kind: DrillKind; title: string; subtitle: string; path?: string; userId?: string };

@@ -166,3 +166,20 @@
 .usage-link:hover { color: var(--acc); }
 .usage-drill-summary { font-size: 12.5px; margin-bottom: 10px; }
 .usage-drill-pager { display: flex; align-items: center; justify-content: center; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line2); margin-top: 10px; }
+
+.fb-origin { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--line2); color: var(--ink3); font-size: 11px; vertical-align: 1px; }
+.fb-errors-btn { margin-left: 8px; padding: 1px 8px; font-size: 12px; vertical-align: 1px; }
+.fb-errors { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.fb-errors li { display: grid; grid-template-columns: 150px 1fr auto; gap: 10px; align-items: baseline; border-top: 1px dashed var(--line2); padding-top: 8px; }
+.fb-errors li:first-child { border-top: 0; padding-top: 0; }
+.fb-errors time { color: var(--ink3); font-size: 12px; font-variant-numeric: tabular-nums; }
+.fb-errors small { color: var(--ink3); font-size: 12px; }
+@media (max-width: 760px) { .fb-errors li { grid-template-columns: 1fr; gap: 3px; } }
+
+/* 用户反馈：批量/处理痕迹/详情操作 */
+.fb-check-col { width: 34px; text-align: center; }
+.fb-check-col input { width: 16px; height: 16px; accent-color: var(--acc); }
+.fb-batch { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--acc-w, #eef4fc); border-top: 1px solid var(--line2); border-bottom: 1px solid var(--line2); font-size: 13px; color: var(--ink2); }
+.fb-trace { color: var(--ink3); font-size: 11.5px; white-space: nowrap; }
+.fb-detail-errors, .fb-detail-files { display: flex; flex-direction: column; gap: 8px; }
+.fb-detail-actions { display: flex; gap: 8px; padding-top: 4px; }
