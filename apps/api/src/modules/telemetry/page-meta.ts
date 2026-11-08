@@ -34,6 +34,7 @@ export const PAGE_META: Record<string, { name: string; pageKey?: string }> = {
   '/plates': { name: '车牌登记审核' },
   '/family-cars': { name: '亲情车管理', pageKey: 'family-cars' },
   '/screen': { name: '收费大屏', pageKey: 'fees' },
+  '/screen-settings': { name: '大屏设置', pageKey: 'fees' },
 };
 
 export function pageName(path: string): string {

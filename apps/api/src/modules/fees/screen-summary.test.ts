@@ -60,6 +60,9 @@ test('收费大屏：未设指标时 annualCents=0、rate/dailyNeed=null，不�
   assert.equal(result.target.annualCents, 0);
   assert.equal(result.target.rate, null);
   assert.equal(result.target.dailyNeedCents, null);
+  assert.equal(result.target.expectedToDateCents, null);
+  assert.equal(result.target.paceGapCents, null);
+  assert.equal(result.target.paceRate, null);
   assert.equal(result.partial, true);
   assert.deepEqual(result.targetScope, { communityIds: [], communityNames: [] });
   assert.deepEqual(result.missingTargetCommunities, [{ id: 1, name: 'A' }]);
@@ -104,6 +107,22 @@ test('收费大屏月度目标：显式 monthCents 优先，null 回退 annual/1
   assert.equal(zeroExplicit.monthToDate.targetCents, 0);
   assert.equal(zeroExplicit.monthToDate.rate, null);
   assert.equal(zeroExplicit.monthToDate.targetSource, 'explicit');
+});
+
+test('收费大屏时间进度：闰年 366 天、年初 1 天、未设指标 null', () => {
+  const communities = [{ id: 1, name: 'A', offices: ['01'] }];
+  const base = { communities, targets: [{ id: 1, communityIds: [1], feeCode: 'property', year: 2024, annualCents: 3_660_000, monthCents: Array(12).fill(null) }], dailyRows: [], arrears: { totalCents: 0, houseCount: 0, buckets: [] }, recentPayments: [], granularity: 'month' as const };
+  const leap: any = buildScreenSummary({ ...base, year: 2024, now: new Date('2024-02-29T12:00:00+08:00') });
+  assert.equal(leap.target.expectedToDateCents, 600_000); // 60/366
+  assert.equal(leap.target.paceGapCents, -600_000);
+  assert.equal(leap.target.paceRate, 0);
+  const start: any = buildScreenSummary({ ...base, year: 2026, targets: [{ ...base.targets[0], year: 2026, annualCents: 365_000 }], now: new Date('2026-01-01T12:00:00+08:00') });
+  assert.equal(start.target.expectedToDateCents, 1_000);
+  assert.equal(start.target.paceGapCents, -1_000);
+  const none: any = buildScreenSummary({ ...base, targets: [], year: 2026, now: new Date('2026-01-01T12:00:00+08:00') });
+  assert.equal(none.target.expectedToDateCents, null);
+  assert.equal(none.target.paceGapCents, null);
+  assert.equal(none.target.paceRate, null);
 });
 
 test('收费大屏：达成率/趋势/社区实收按指标 feeCode 过滤；today 保留全费和 byFee', () => {

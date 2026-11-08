@@ -10,6 +10,8 @@ import { FeeTemplatesController } from './fee-templates.controller';
 import { MisFeesService } from './mis-fees.service';
 import { MisCollectionSmsService } from './mis-collection-sms.service';
 import { CollectionTargetsService } from './collection-targets.service';
+import { ScreenSettingsService } from './screen-settings.service';
+import { ScreenSettingsController } from './screen-settings.controller';
 import { SettingsModule } from '../settings/settings.module';
 import { MisPostingService } from './mis-posting.service';
 import { MisPostingConnector } from './mis-posting.connector';
@@ -21,8 +23,8 @@ import { MisCollectionBatch } from '../../entities/mis-collection-batch.entity';
   imports: [SettingsModule,
     TypeOrmModule.forFeature([MisCollectionPromise, MisCollectionHold, MisCollectionEvent, MisCollectionPrint, BusinessTransaction, MisCollectionBatch, FeeBill, FeeStandard, House, Building, Community, User, TenantConfig]),
   ],
-  controllers: [FeesController, FeeTemplatesController, MisPostingController],
-  providers: [FeesService, FeeTemplatesService, MisFeesService, MisCollectionSmsService, MisPostingService, MisPostingConnector, MisMirrorService, CollectionTargetsService, { provide: 'MIS_POSTING_CONNECTOR', useExisting: MisPostingConnector }],
+  controllers: [ScreenSettingsController, FeesController, FeeTemplatesController, MisPostingController],
+  providers: [FeesService, FeeTemplatesService, MisFeesService, MisCollectionSmsService, MisPostingService, MisPostingConnector, MisMirrorService, CollectionTargetsService, ScreenSettingsService, { provide: 'MIS_POSTING_CONNECTOR', useExisting: MisPostingConnector }],
   exports: [MisMirrorService],
 })
 export class FeesModule {}

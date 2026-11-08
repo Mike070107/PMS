@@ -57,6 +57,7 @@ export const NAV: NavItem[] = [
   { key: 'devices', name: '系统与设备', rail: '系统设备', icon: 'cpu', to: '/devices', group: '系统' },
   { key: 'reports', name: '收费报表', rail: '报表', icon: 'chart', to: '/reports', group: '分析' },
   { key: 'screen', permissionKey: 'fees', name: '收费大屏', rail: '大屏', icon: 'chart', to: '/screen', newTab: '/screen', group: '分析' },
+  { key: 'screen-settings', permissionKey: 'fees', name: '大屏设置', rail: '大屏设置', icon: 'gear', to: '/screen-settings', group: '分析' },
   { key: 'standards', name: '收费标准', rail: '收费标准', icon: 'wallet', to: '/standards', group: '收费' },
   { key: 'houses', name: '房产', rail: '房产', icon: 'home', to: '/houses', group: '档案' },
   { key: 'owners', name: '业主', rail: '业主', icon: 'users', to: '/owners', group: '档案' },
@@ -77,7 +78,7 @@ export const GROUPS: Array<{ title: string; keys: string[]; icon: IconName; tone
   { title: '门禁管理', keys: ['access-cards'], icon: 'key', tone: 'blue' },
   { title: '报修养护', keys: ['work-orders', 'maint', 'notes'], icon: 'wrench', tone: 'orange' },
   { title: '库存与盘点', keys: ['purchase', 'stock', 'count', 'sku'], icon: 'box', tone: 'green' },
-  { title: '分析', keys: ['reports', 'screen'], icon: 'chart', tone: 'violet' },
+  { title: '分析', keys: ['reports', 'screen', 'screen-settings'], icon: 'chart', tone: 'violet' },
   { title: '档案', keys: ['houses', 'owners', 'people', 'offices'], icon: 'home', tone: 'brown' },
   { title: '系统', keys: ['devices', 'settings', 'qr', 'intranet', 'logs'], icon: 'cpu', tone: 'slate' },
 ];

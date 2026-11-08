@@ -667,7 +667,7 @@ export class MisMirrorService {
   }
 
   async screenSummary(q: { year?: number; communityIds?: number[]; granularity?: 'day' | 'month' }, user: AuthUser, access?: ResolvedAccess) {
-    await this.assertReady(Number(user.tenantId));
+    const dataAsOf = await this.assertReady(Number(user.tenantId));
     const now = new Date();
     const cst = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
     const get = (type: string) => Number(cst.find((part) => part.type === type)?.value || 0);
@@ -689,7 +689,7 @@ export class MisMirrorService {
     const targets = await loadCollectionTargets(this.dataSource, Number(user.tenantId), ids, year);
     const arrearsResult: any = await this.residential({ view: 'amount-brackets', communityIds: q.communityIds } as any, user, access);
     const recent: any = await this.recentPayments({ pageSize: 10, communityIds: q.communityIds }, user, access);
-    return buildScreenSummary({ year, communities, targets, dailyRows, arrears: { totalCents: Number(arrearsResult.total?.amountCents || 0), houseCount: Number(arrearsResult.total?.count || 0), buckets: (arrearsResult.buckets || []).map((row: any) => ({ key: String(row.key), count: Number(row.count || 0), amountCents: Number(row.amountCents || 0) })) }, recentPayments: recent.rows || [], granularity: q.granularity, now });
+    return { source: 'mirror', dataAsOf, queriedAt: now.toISOString(), ...buildScreenSummary({ year, communities, targets, dailyRows, arrears: { totalCents: Number(arrearsResult.total?.amountCents || 0), houseCount: Number(arrearsResult.total?.count || 0), buckets: (arrearsResult.buckets || []).map((row: any) => ({ key: String(row.key), count: Number(row.count || 0), amountCents: Number(row.amountCents || 0) })) }, recentPayments: recent.rows || [], granularity: q.granularity, now }) };
   }
 
   async recentPayments(q: { date?: string; page?: number; pageSize?: number; communityId?: number; communityIds?: number[] }, user: AuthUser, access?: ResolvedAccess) {

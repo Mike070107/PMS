@@ -50,6 +50,7 @@ const Plates = lazy(() => import('@/pages/Plates'));
 const FamilyCars = lazy(() => import('@/pages/FamilyCars'));
 const PlateForm = lazy(() => import('@/pages/PlateForm'));
 const ScreenPage = lazy(() => import('@/pages/Screen'));
+const ScreenSettings = lazy(() => import('@/pages/ScreenSettings'));
 
 /** 页面访问埋点：30 秒或满 20 条批量发一次；页面隐藏/卸载时 flush，fetch keepalive 失败再走 sendBeacon。 */
 type TelemetryView = { path: string; pageKey?: string };
@@ -207,6 +208,7 @@ export default function App() {
           <Route path="/login" element={<Navigate to={landing} replace />} />
           <Route path="/screen" element={screenAllowed ? <ScreenPage /> : <Navigate to={landing} replace />} />
           <Route element={<Shell />}>
+            <Route path="/screen-settings" element={<ScreenSettings />} />
             <Route path="/" element={<Navigate to={landing} replace />} />
             <Route path="/today" element={<Today />} />
             <Route path="/work-orders" element={<WorkOrders />} />

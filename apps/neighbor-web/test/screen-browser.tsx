@@ -1,0 +1,12 @@
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import Screen from '../src/pages/Screen';
+import ScreenSettings from '../src/pages/ScreenSettings';
+import '../src/styles/design.css';
+import '../src/styles/app.css';
+import '../src/styles/large.css';
+import '../src/styles/guards.css';
+import '../src/styles/erp-reference.css';
+import { IconSprite } from '../src/components/Icon';
+createRoot(document.getElementById('root')!).render(<BrowserRouter><IconSprite/><Routes><Route path="/screen-settings" element={<ScreenSettings/>}/><Route path="/screen" element={<Screen/>}/></Routes></BrowserRouter>);

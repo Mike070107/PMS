@@ -18,7 +18,8 @@
     "test:residential-bills": "node --test test/vehicle-category-tone.test.cjs test/residential-bills.test.cjs test/residential-list.test.cjs",
     "test:parking-renewal": "node --test test/parking-category-scope.test.cjs test/vehicle-category-tone.test.cjs test/renewal-months.test.cjs test/vehicle-renewal.test.cjs test/parking-renewal-dates.test.cjs test/parking-renewal-quote.test.cjs test/parking-browser.test.cjs test/parking-monthly-settings.test.cjs",
     "test:purchase-export": "node --test test/purchase-export.test.cjs",
-    "test:parking-garage": "node --test test/parking-garage-layout.test.cjs"
+    "test:parking-garage": "node --test test/parking-garage-layout.test.cjs",
+    "test:screen-decision": "node --test --test-force-exit test/screen-browser.test.cjs test/page-access.test.cjs"
   },
   "dependencies": {
     "@ant-design/icons": "^5.6.1",

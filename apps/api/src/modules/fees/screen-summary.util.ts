@@ -38,9 +38,11 @@ export function buildScreenSummary(input: {
   granularity?: 'day' | 'month';
   now?: Date;
 }) {
-  const { year, communities, targets, dailyRows, arrears, recentPayments } = input;
+  const { year, communities, targets, arrears, recentPayments } = input;
   const granularity = input.granularity === 'day' ? 'day' : 'month';
   const today = cstToday(input.now);
+  const asOf = dayKey(today.year, today.month, today.day);
+  const dailyRows = input.dailyRows.filter(row => String(row.day).slice(0, 10) <= asOf);
   const selectedIds = new Set(communities.map((community) => community.id));
   const officeToCommunity = new Map<string, ScreenSummaryCommunity>();
   for (const community of communities) for (const office of community.offices) officeToCommunity.set(String(office), community);
@@ -107,6 +109,11 @@ export function buildScreenSummary(input: {
   const gapCents = annualCents > 0 ? annualCents - targetYtdCents : 0;
   const dailyNeedCents = annualCents > 0 && remainingDays > 0 ? Math.round(gapCents / remainingDays) : null;
   const rate = annualCents > 0 ? round1((targetYtdCents / annualCents) * 100) : null;
+  const daysInYear = Math.round((Date.UTC(year + 1, 0, 1) - Date.UTC(year, 0, 1)) / 86400000);
+  const elapsedDaysForPace = year < today.year ? daysInYear : (year > today.year ? 0 : Math.round((Date.UTC(today.year, today.month - 1, today.day) - Date.UTC(year, 0, 1)) / 86400000) + 1);
+  const expectedToDateCents = annualCents > 0 ? Math.round(annualCents * elapsedDaysForPace / daysInYear) : null;
+  const paceGapCents = expectedToDateCents === null ? null : targetYtdCents - expectedToDateCents;
+  const paceRate = expectedToDateCents && expectedToDateCents > 0 ? round1((targetYtdCents / expectedToDateCents) * 100) : null;
 
   const communityRows = communities.map((community) => {
     const covered = matchedTargets.find((target) => target.communityIds.includes(community.id));
@@ -131,17 +138,55 @@ export function buildScreenSummary(input: {
     const monthlyTargets = monthlyTargetForDaily(matchedTargets);
     const startUtc = Date.UTC(year, 0, 1), endUtc = Date.UTC(Number(end.slice(0, 4)), Number(end.slice(5, 7)) - 1, Number(end.slice(8, 10)));
     const dailyPaid = dailyTargetPaid(dailyRows, matchedTargets, officeToCommunity, year);
-    for (let time = startUtc; time <= endUtc; time += 86400000) {
+    for (let time = startUtc; year <= today.year && time <= endUtc; time += 86400000) {
       const date = new Date(time);
       const key = `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
       trend.push({ key, paidCents: dailyPaid.get(key) || 0, targetCents: monthlyTargets[key.slice(0, 7)] || 0 });
     }
   }
 
+  // 决策口径与年度目标保持一致；速度只用截至昨日的完整自然日。
+  const dayMs = 86400000;
+  const todayUtc = Date.UTC(today.year, today.month - 1, today.day);
+  const recentDays = Math.max(0, Math.min(28, Math.round((todayUtc - Date.UTC(year, 0, 1)) / dayMs)));
+  const recentFrom = new Date(todayUtc - recentDays * dayMs).toISOString().slice(0, 10);
+  const selectedPaid = dailyTargetPaid(dailyRows, matchedTargets, officeToCommunity, year);
+  const recentPaid = [...selectedPaid].filter(([day]) => day >= recentFrom && day < todayKey).reduce((sum, [, amount]) => sum + amount, 0);
+  const recentDailyCents = recentDays > 0 ? Math.round(recentPaid / recentDays) : null;
+  const plannedFor = (items: CollectionTargetRow[], at = today) => {
+    if (year < today.year) return items.reduce((sum, row) => sum + row.annualCents, 0);
+    if (year > today.year) return 0;
+    const days = new Date(Date.UTC(year, at.month, 0)).getUTCDate();
+    return Math.round(items.reduce((sum, row) => sum + Array.from({ length: at.month - 1 }, (_, i) => targetMonthValue(row, i + 1).value).reduce((a, b) => a + b, 0)
+      + targetMonthValue(row, at.month).value * at.day / days, 0));
+  };
+  const plannedToDateCents = annualCents > 0 ? plannedFor(matchedTargets) : null;
+  const forecastCents = year === today.year && annualCents > 0 && recentDays >= 14 && recentPaid >= 0
+    ? Math.round(targetYtdCents + (recentDailyCents || 0) * Math.max(0, remainingDays - 1)) : null;
+  const projects = matchedTargets.map(target => {
+    const paidCents = target.communityIds.reduce((sum, id) => sum + (categoryCommunityPaid.get(`${id}|${target.feeCode}`) || 0), 0);
+    const plannedCents = plannedFor([target]);
+    return { targetId: target.id, communityId: target.communityIds.length === 1 ? target.communityIds[0] : null,
+      communityIds: target.communityIds, name: target.communityIds.map(id => communities.find(c => c.id === id)?.name).filter(Boolean).join('、'),
+      annualCents: target.annualCents, paidCents, plannedCents, behindCents: plannedCents - paidCents,
+      rate: target.annualCents > 0 ? round1(paidCents / target.annualCents * 100) : null,
+      planRate: target.annualCents > 0 ? round1(plannedCents / target.annualCents * 100) : null };
+  }).sort((a, b) => b.behindCents - a.behindCents);
   return {
+    asOf: todayKey,
+    decision: { plannedToDateCents, behindCents: plannedToDateCents === null ? null : plannedToDateCents - targetYtdCents,
+      planSource: matchedTargets.some(row => row.monthCents.some(value => value === null || value === undefined)) ? 'derived' : 'explicit',
+      requiredDailyCents: annualCents > 0 && remainingDays > 0 ? Math.ceil(Math.max(0, gapCents) / remainingDays) : null,
+      recentDailyCents: year === today.year ? recentDailyCents : null, recentDays: recentDays, forecastCents, projects,
+      planCurve: Array.from({length:12},(_,i)=>{
+        const month=i+1,day=new Date(Date.UTC(year,month,0)).getUTCDate();
+        // 月末计划必须保留季节性，不能把未来计划简单连成一条直线。
+        const plannedCents=matchedTargets.reduce((sum,row)=>sum+Array.from({length:month},(_,m)=>targetMonthValue(row,m+1).value).reduce((a,b)=>a+b,0),0);
+        return {key:dayKey(year,month,day),plannedCents};
+      }) },
     year,
     scope: { communityIds: communities.map((community) => community.id), communityNames: communities.map((community) => community.name) },
-    target: { annualCents, yearToDateCents: targetYtdCents, rate, gapCents, remainingDays, dailyNeedCents },
+    target: { annualCents, yearToDateCents: targetYtdCents, rate, gapCents, remainingDays, dailyNeedCents, expectedToDateCents, paceGapCents, paceRate },
     targetScope: { communityIds: targetCommunities.map((community) => community.id), communityNames: targetCommunities.map((community) => community.name) },
     missingTargetCommunities,
     partial,
