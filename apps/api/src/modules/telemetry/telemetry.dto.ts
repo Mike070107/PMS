@@ -14,6 +14,10 @@ import {
   ValidateNested,
 } from 'class-validator';
 
+/** 页面访问来源白名单：网页端 / 员工小程序 / 业主小程序 */
+export const PAGE_VIEW_SOURCES = ['web', 'miniapp-staff', 'miniapp-owner'] as const;
+export type PageViewSource = (typeof PAGE_VIEW_SOURCES)[number];
+
 export class PageViewItemDto {
   @IsString()
   @MaxLength(300)
@@ -29,6 +33,11 @@ export class PageViewItemDto {
   @IsString()
   @MaxLength(40)
   at?: string;
+
+  /** 访问来源；不传时服务端按 x-client-source 请求头兜底。非法值在 DTO 层直接 400。 */
+  @IsOptional()
+  @IsIn([...PAGE_VIEW_SOURCES])
+  source?: PageViewSource;
 }
 
 export class PageViewsDto {
@@ -74,6 +83,11 @@ export class PageUsageDrilldownQueryDto {
   @IsString()
   @MaxLength(300)
   path?: string;
+
+  /** 来源过滤：web / miniapp-staff / miniapp-owner */
+  @IsOptional()
+  @IsIn([...PAGE_VIEW_SOURCES])
+  source?: PageViewSource;
 
   @IsOptional()
   @Type(() => Number)

@@ -8,7 +8,7 @@ import { PageView } from '../../entities/page-view.entity';
 import { User } from '../../entities/user.entity';
 import { LOGIN_REASON_TEXT, type LoginFailureReason } from './login-attempt.util';
 import { pageKey, pageName } from './page-meta';
-import { LoginHistoryQueryDto, PageUsageDrilldownQueryDto, PageUsageQueryDto, PageViewsDto } from './telemetry.dto';
+import { LoginHistoryQueryDto, PAGE_VIEW_SOURCES, PageUsageDrilldownQueryDto, PageUsageQueryDto, PageViewsDto, type PageViewSource } from './telemetry.dto';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_RANGE_DAYS = 366;
@@ -52,6 +52,18 @@ function normalizeViewPath(raw: unknown): string | null {
   return path.slice(0, 300);
 }
 
+/** 来源归一：只认三种白名单取值；返回 null 表示「不是合法来源」。 */
+function normalizeViewSource(value: unknown): PageViewSource | null {
+  const text = String(value ?? '').trim().toLowerCase();
+  return (PAGE_VIEW_SOURCES as readonly string[]).includes(text) ? (text as PageViewSource) : null;
+}
+
+/** x-client-source 请求头 → page_views.source：小程序两端直接对应，网页/未知一律 web。 */
+function sourceFromHeader(req: Request): PageViewSource {
+  const header = String(req.headers['x-client-source'] || '').trim().toLowerCase();
+  return header === 'miniapp-staff' || header === 'miniapp-owner' ? header : 'web';
+}
+
 @Injectable()
 export class TelemetryService {
   constructor(
@@ -70,17 +82,21 @@ export class TelemetryService {
     const views = Array.isArray(dto.views) ? dto.views : [];
     if (views.length > 50) throw new BadRequestException('单次最多上报50条页面访问');
     const now = Date.now();
-    const rows: Array<{ path: string; pageKey: string | null; createdAt: Date }> = [];
+    const headerSource = sourceFromHeader(req);
+    const rows: Array<{ path: string; pageKey: string | null; source: PageViewSource; createdAt: Date }> = [];
     let skipped = 0;
     for (const item of views) {
       const path = normalizeViewPath(item.path);
       if (!path) { skipped += 1; continue; }
+      // 显式来源必须在 DTO 白名单内；这里不静默纠正，直接拒绝脏数据。
+      const explicitSource = item.source == null ? null : normalizeViewSource(item.source);
+      if (item.source != null && !explicitSource) throw new BadRequestException('页面来源不合法');
       let at = now;
       const parsed = item.at ? Date.parse(item.at) : NaN;
       if (Number.isFinite(parsed) && Math.abs(parsed - now) <= 5 * 60 * 1000) at = parsed;
       // 秒级截断：与唯一索引共同保证同用户+路径+同秒只落一条。
       const createdAt = new Date(Math.floor(at / 1000) * 1000);
-      rows.push({ path, pageKey: pageKey(path, item.pageKey), createdAt });
+      rows.push({ path, pageKey: pageKey(path, item.pageKey), source: explicitSource ?? headerSource, createdAt });
     }
     if (!rows.length) return { ok: true, received: views.length, recorded: 0, deduped: 0, skipped };
     const tenantId = user.tenantId;
@@ -90,11 +106,11 @@ export class TelemetryService {
     const params: unknown[] = [];
     const values = rows.map((row) => {
       const offset = params.length;
-      params.push(tenantId, user.id, userName, row.path, row.pageKey, row.createdAt, ip, userAgent);
-      return `($${offset + 1},$${offset + 2},$${offset + 3},$${offset + 4},$${offset + 5},$${offset + 6},$${offset + 7},$${offset + 8})`;
+      params.push(tenantId, user.id, userName, row.path, row.pageKey, row.source, row.createdAt, ip, userAgent);
+      return `($${offset + 1},$${offset + 2},$${offset + 3},$${offset + 4},$${offset + 5},$${offset + 6},$${offset + 7},$${offset + 8},$${offset + 9})`;
     });
     const inserted: Array<{ id: number }> = await this.views.query(
-      `INSERT INTO page_views (tenant_id,user_id,user_name,path,page_key,created_at,ip,user_agent)
+      `INSERT INTO page_views (tenant_id,user_id,user_name,path,page_key,source,created_at,ip,user_agent)
        VALUES ${values.join(',')}
        ON CONFLICT (tenant_id,user_id,path,created_at) DO NOTHING
        RETURNING id`,
@@ -165,6 +181,12 @@ export class TelemetryService {
       params.push(query.userId);
       filters.push(`user_id=$${params.length}`);
     }
+    if (query.source != null) {
+      const source = normalizeViewSource(query.source);
+      if (!source) throw new BadRequestException('来源不合法');
+      params.push(source);
+      filters.push(`source=$${params.length}`);
+    }
     const where = filters.join(' AND ');
     const limitSql = `LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
     const pageParams = [...params, pageSize, (page - 1) * pageSize];
@@ -211,8 +233,8 @@ export class TelemetryService {
     }
 
     const total = await this.countValue(`SELECT COUNT(*)::int AS n FROM page_views WHERE ${where}`, params);
-    const rows: Array<{ at: Date; userId: number; userName: string | null; path: string; ip: string | null }> = await this.views.query(
-      `SELECT created_at AS "at", user_id AS "userId", user_name AS "userName", path, ip
+    const rows: Array<{ at: Date; userId: number; userName: string | null; path: string; ip: string | null; source: string | null }> = await this.views.query(
+      `SELECT created_at AS "at", user_id AS "userId", user_name AS "userName", path, ip, source
          FROM page_views WHERE ${where}
         ORDER BY created_at DESC, id DESC
         ${limitSql}`,
@@ -229,6 +251,7 @@ export class TelemetryService {
         path: row.path,
         pageName: pageName(row.path),
         ip: row.ip || null,
+        source: normalizeViewSource(row.source) ?? 'web',
       })),
     };
   }
@@ -243,13 +266,62 @@ export class TelemetryService {
        FROM page_views WHERE tenant_id=$1 AND created_at>=$2 AND created_at<$3`,
       params,
     ))[0] || { totalViews: 0, uniqueUsers: 0 };
-    const days = await this.views.query(
+    const daysRaw: Array<{ day: string; views: number; users: number }> = await this.views.query(
       `SELECT TO_CHAR(created_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM-DD') AS day,
               COUNT(*)::int AS views, COUNT(DISTINCT user_id)::int AS users
        FROM page_views WHERE tenant_id=$1 AND created_at>=$2 AND created_at<$3
        GROUP BY 1 ORDER BY 1`,
       params,
     );
+    const daysBySourceRaw: Array<{ day: string; source: string | null; views: number; users: number }> = await this.views.query(
+      `SELECT TO_CHAR(created_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM-DD') AS day,
+              source, COUNT(*)::int AS views, COUNT(DISTINCT user_id)::int AS users
+         FROM page_views WHERE tenant_id=$1 AND created_at>=$2 AND created_at<$3
+        GROUP BY 1, source ORDER BY 1, source`,
+      params,
+    );
+    const bySourceRaw: Array<{ source: string | null; views: number; users: number }> = await this.views.query(
+      `SELECT source, COUNT(*)::int AS views, COUNT(DISTINCT user_id)::int AS users
+         FROM page_views WHERE tenant_id=$1 AND created_at>=$2 AND created_at<$3
+        GROUP BY source`,
+      params,
+    );
+    // 三个来源固定顺序返回（0 也返回），前端画来源分布/堆叠趋势时结构稳定。
+    const sourceBreakdown = (rows: Array<{ source: string | null; views: number; users: number }>) =>
+      PAGE_VIEW_SOURCES.map((source) => {
+        const hit = rows.find((row) => (normalizeViewSource(row.source) ?? 'web') === source);
+        return { source, views: Number(hit?.views || 0), users: Number(hit?.users || 0) };
+      });
+    const daySourceMap = new Map<string, Array<{ source: string | null; views: number; users: number }>>();
+    for (const row of daysBySourceRaw) {
+      const list = daySourceMap.get(row.day) || [];
+      list.push(row);
+      daySourceMap.set(row.day, list);
+    }
+    const days = daysRaw.map((row) => ({
+      day: row.day,
+      views: Number(row.views),
+      users: Number(row.users),
+      bySource: sourceBreakdown(daySourceMap.get(row.day) || []),
+    }));
+    const bySource = sourceBreakdown(bySourceRaw);
+    // 登录次数：口径与 login-history 一致（本租户 + 未知账号的失败尝试）。
+    const loginTotals = (await this.attempts.query(
+      `SELECT COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE status='success')::int AS success,
+              COUNT(*) FILTER (WHERE status='failed')::int AS failed,
+              COUNT(DISTINCT user_id)::int AS "uniqueUsers"
+         FROM login_attempts
+        WHERE (tenant_id=$1 OR (tenant_id IS NULL AND status='failed'))
+          AND created_at>=$2 AND created_at<$3`,
+      params,
+    ))[0] || {};
+    const logins = {
+      total: Number(loginTotals.total || 0),
+      success: Number(loginTotals.success || 0),
+      failed: Number(loginTotals.failed || 0),
+      uniqueUsers: Number(loginTotals.uniqueUsers || 0),
+    };
     const topPagesRaw: Array<{ path: string; views: number; users: number }> = await this.views.query(
       `SELECT path, COUNT(*)::int AS views, COUNT(DISTINCT user_id)::int AS users
        FROM page_views WHERE tenant_id=$1 AND created_at>=$2 AND created_at<$3
@@ -284,7 +356,7 @@ export class TelemetryService {
       topPage: row.topPage || '',
       topPageName: row.topPage ? pageName(row.topPage) : '',
     }));
-    return { totalViews: Number(totals.totalViews || 0), uniqueUsers: Number(totals.uniqueUsers || 0), days, topPages, topUsers };
+    return { totalViews: Number(totals.totalViews || 0), uniqueUsers: Number(totals.uniqueUsers || 0), days, topPages, topUsers, bySource, logins };
   }
 
   async loginHistory(user: AuthUser, query: LoginHistoryQueryDto) {

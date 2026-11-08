@@ -8,6 +8,7 @@ import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 @Index('idx_page_views_tenant_created', ['tenantId', 'createdAt'])
 @Index('idx_page_views_tenant_user_created', ['tenantId', 'userId', 'createdAt'])
 @Index('idx_page_views_tenant_path', ['tenantId', 'path'])
+@Index('idx_page_views_tenant_source_created', ['tenantId', 'source', 'createdAt'])
 @Index('uq_page_views_user_path_second', ['tenantId', 'userId', 'path', 'createdAt'], { unique: true })
 export class PageView {
   @PrimaryGeneratedColumn()
@@ -25,6 +26,10 @@ export class PageView {
 
   @Column({ type: 'varchar', length: 300 })
   path: string;
+
+  /** 访问来源：web / miniapp-staff / miniapp-owner；加列前的旧数据默认 web */
+  @Column({ type: 'varchar', length: 20, default: 'web' })
+  source: string;
 
   @Column({ name: 'page_key', type: 'varchar', length: 60, nullable: true })
   pageKey: string | null;
