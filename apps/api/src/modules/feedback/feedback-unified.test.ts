@@ -133,6 +133,7 @@ test('通知：有 logs:view 的管理员收到类型/提交人/摘要/是否看
     assert.deepEqual(row.payload.feedbackIds, [firstCheck.id, second.id]);
     assert.equal(row.payload.needsErrorCheck, true, '合并后只要有一条异常就需要看报错');
     assert.match(row.title, /收到 2 条反馈/);
+    assert.match(row.title, /需看报错/, '微信/站内信标题要能看出需要看报错');
   }
 });
 

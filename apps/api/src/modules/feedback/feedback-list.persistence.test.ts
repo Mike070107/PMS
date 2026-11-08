@@ -78,6 +78,7 @@ test('统一列表：user_feedback 与历史异常反馈读时合并，kind/stat
     assert.equal(legacyError.context.userAgent, 'WechatUA/1.0');
     assert.equal(legacyError.context.appVersion, '1.2.3');
     assert.equal(legacyError.context.recentErrors[0].message, '点击失败');
+    assert.equal(legacyError.recentErrors[0].message, '点击失败', '顶层 recentErrors 供前端日志表直接展示');
     assert.deepEqual(legacyError.attachments, [{ url: '/api/v1/upload/file?key=uploads/old.jpg', name: null, size: null, mime: null }]);
     assert.equal(all.rows[0].source, 'web', '历史 admin-web 来源统一成 web');
     assert.equal(all.rows[0].status, 'handled', 'resolved 映射为 handled');

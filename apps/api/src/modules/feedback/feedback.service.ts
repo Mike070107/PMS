@@ -345,6 +345,7 @@ export class FeedbackService {
         if (existing) {
           const payload = (existing.payload || {}) as Record<string, any>;
           const count = (Number(payload.count) || 1) + 1;
+          const mergedNeedsErrorCheck = Boolean(payload.needsErrorCheck) || needsErrorCheck;
           const feedbackIds = Array.isArray(payload.feedbackIds) ? payload.feedbackIds.map(Number).filter(Number.isInteger) : [];
           const items = Array.isArray(payload.items) ? payload.items.slice(-4) : [];
           existing.payload = {
@@ -357,10 +358,10 @@ export class FeedbackService {
             kindLabel,
             submitter,
             summary,
-            needsErrorCheck: Boolean(payload.needsErrorCheck) || needsErrorCheck,
+            needsErrorCheck: mergedNeedsErrorCheck,
             page: '/logs',
           };
-          existing.title = this.feedbackTitle(kindLabel, submitter, summary, count);
+          existing.title = this.feedbackTitle(kindLabel, submitter, summary, count, mergedNeedsErrorCheck);
           existing.readAt = null;
           await this.notificationRepo.save(existing);
           continue;
@@ -368,9 +369,9 @@ export class FeedbackService {
         const fields: TemplateFields = {
           orderNo: `FB-${row.id}`,
           type: kindLabel,
-          status: `新${kindLabel}`,
+          status: needsErrorCheck ? `新${kindLabel}·需看报错` : `新${kindLabel}`,
           statusShort: '新反馈',
-          content: `${submitter}：${summary}`,
+          content: `${submitter}${needsErrorCheck ? '（需看报错）' : ''}：${summary}`,
           assignee: '',
           address: summary,
           reporter: submitter,
@@ -382,7 +383,7 @@ export class FeedbackService {
           tenantId: row.tenantId,
           receiverId,
           eventKey: FEEDBACK_EVENT_KEY,
-          title: this.feedbackTitle(kindLabel, submitter, summary, 1),
+          title: this.feedbackTitle(kindLabel, submitter, summary, 1, needsErrorCheck),
           payload: {
             feedbackId: row.id,
             feedbackIds: [row.id],
@@ -405,10 +406,12 @@ export class FeedbackService {
     }
   }
 
-  private feedbackTitle(kindLabel: string, submitter: string, summary: string, count: number) {
+  /** 站内信标题/微信字段都带「类型 + 提交人 + 摘要 + 是否需要看报错」，一眼能判断优先级。 */
+  private feedbackTitle(kindLabel: string, submitter: string, summary: string, count: number, needsErrorCheck: boolean) {
+    const flag = needsErrorCheck ? '（需看报错）' : '';
     const title = count > 1
-      ? `收到 ${count} 条反馈（最新：${submitter} - ${summary}）`
-      : `收到${kindLabel}：${submitter} - ${summary}`;
+      ? `收到 ${count} 条反馈${needsErrorCheck ? '（含需看报错）' : ''}（最新：${submitter} - ${summary}）`
+      : `收到${kindLabel}${flag}：${submitter} - ${summary}`;
     return title.slice(0, 160);
   }
 
@@ -426,6 +429,8 @@ export class FeedbackService {
         content: String(row.content || ''),
         attachments: this.unifiedAttachments(row),
         context: row.context_json ?? null,
+        /** 前端日志表直接展示用；与 context.recentErrors 同源，免去再解一层。 */
+        recentErrors: Array.isArray(row.context_json?.recentErrors) ? row.context_json.recentErrors : [],
         source: feedbackSource(row.source),
         status: feedbackStatus(row.status),
         origin: 'unified' as const,
@@ -455,6 +460,7 @@ export class FeedbackService {
         recentErrors: errors,
         appVersion: detail.version || undefined,
       },
+      recentErrors: errors,
       source: feedbackSource(row.source),
       status: ['resolved', 'ignored'].includes(String(row.status)) ? 'handled' : 'pending',
       origin: 'legacy' as const,
