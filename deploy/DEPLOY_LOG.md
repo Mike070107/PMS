@@ -6780,3 +6780,11 @@
 - 自上次（9bfccb23）以来上线的相关提交：
   - b659194d feat(screen): 累计图改用时间进度差额、月度柱仅当月判定达标
 
+## 2026-11-08 21:03 · api · d8b9123f
+
+- 包：`pms-api-fast-20261108-210226.tar.gz`
+- 提交：d8b9123f fix(screen): restrict dashboard settings to mapped MIS communities
+- 自上次（2f9d7ecd）以来上线的相关提交：
+  - d8b9123f fix(screen): restrict dashboard settings to mapped MIS communities
+  - 0ff951c4 feat(screen): add decision dashboard and scoped manual metric settings
+
