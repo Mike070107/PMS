@@ -51,18 +51,21 @@ function offlineStatus(raw: unknown) {
   const offline = meta.offline === true || meta.misOffline === true || meta.misOnline === false
     || meta.isOffline === true || meta.stale === true || mirror.offline === true
     || /镜像/.test(String(meta.sourceLabel || ''));
-  if (!offline) return { offline: false, asOf: null as string | null };
+  if (!offline) return { offline: false, asOf: null as string | null, stale: false };
   const rawAsOf = meta.dataAsOf ?? meta.dataAsOfAt ?? meta.asOf ?? meta.mirrorAsOf ?? meta.syncedAt
     ?? meta.lastSyncedAt ?? meta.mirrorSyncedAt ?? mirror.syncedAt ?? meta.queriedAt ?? null;
   let clock: string | null = null;
+  let stale = false;
   if (rawAsOf) {
     const text = String(rawAsOf);
     const direct = /(\d{2}):(\d{2})/.exec(text);
     const date = new Date(text);
-    if (!Number.isNaN(date.getTime())) clock = date.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Shanghai' });
-    else if (direct) clock = direct[1] + ':' + direct[2];
+    if (!Number.isNaN(date.getTime())) {
+      clock = date.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Shanghai' });
+      stale = Date.now() - date.getTime() > 15 * 60_000;
+    } else if (direct) clock = direct[1] + ':' + direct[2];
   }
-  return { offline: true, asOf: clock };
+  return { offline: true, asOf: clock, stale };
 }
 
 function message(e: unknown) {
@@ -367,7 +370,7 @@ export default function Screen() {
             </select>
           </label>
           <span className="scr-updated">最后更新 {loadedAt ? new Date(loadedAt).toLocaleString('zh-CN', { hour12: false }) : '读取中…'}</span>
-          {offlineMode && sync.asOf ? <span className="scr-asof">数据截至 {sync.asOf}（MIS 同步）</span> : null}
+          {offlineMode && sync.asOf ? <span className="scr-asof" style={sync.stale ? { color: 'var(--warn)', fontWeight: 700 } : undefined}>数据截至 {sync.asOf}（MIS 同步{sync.stale ? ' · 已滞后' : ''}）</span> : null}
           {loading && <span className="scr-live"><i />刷新中</span>}
           <button type="button" className="scr-btn" onClick={() => setTick((value) => value + 1)}>刷新</button>
           <button type="button" className="scr-btn" onClick={() => void toggleFullscreen()}>{fullscreen ? '退出全屏' : '全屏'}</button>

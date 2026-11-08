@@ -6,6 +6,7 @@ import Icon from '@/components/Icon';
 import ThemePicker from '@/components/ThemePicker';
 import {useUiPreferences} from '@/components/UiPreferencesProvider';
 import PageBoundary from '@/components/PageBoundary';
+import FeedbackDialog from '@/components/FeedbackDialog';
 import type { IconName } from '@/components/Icon';
 import { legacyUrl } from '@/lib/legacy';
 import { statusOf } from '@/lib/format';
@@ -109,6 +110,7 @@ export default function Shell() {
   const current = NAV.find((i) => i.key === page) ?? NAV[0];
 
   const [counts, setCounts] = useState<{ dispatch: number; accept: number }>({ dispatch: 0, accept: 0 });
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -249,6 +251,7 @@ export default function Shell() {
             <Icon name="cash" size={18} />收费办理
           </button> : null}
           <ThemePicker mobile/>
+          <button className="btn" title="意见与建议 / 异常反馈" onClick={() => setFeedbackOpen(true)}><Icon name="edit" size={17} />意见与建议</button>
           <button className="ib" title="通知" onClick={() => { window.location.href = '/dashboard'; }}>
             <Icon name="bell" />
             {unread ? <span className="dot" /> : null}
@@ -260,6 +263,8 @@ export default function Shell() {
           </div>
         </div>
       </section>
+
+      <FeedbackDialog open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
 
       {cmdk ? (
         <div className="cmdk" onClick={() => setCmdk(false)}>

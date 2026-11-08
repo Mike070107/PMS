@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import dayjs from 'dayjs';
 import { request } from '@pms/api-client';
 import { logObjectLabel, safeLogTechnical, type LogPresentation } from '@/lib/logs-presentation';
 import Icon from '@/components/Icon';
 import type { IconName } from '@/components/Icon';
-import { Loading } from '@/components/ui';
+import { Loading, Sheet } from '@/components/ui';
 import ToneIcon from '@/components/ToneIcon';
 import {useSession} from '@/lib/auth';
 import {can} from '@/lib/perm';
@@ -45,7 +45,6 @@ const CATS: Array<{ k: string; n: string; icon: IconName; tone: string }> = [
   { k: 'operation', n: '业务操作', icon: 'check', tone: 'blue' },
   { k: 'login', n: '登录', icon: 'users', tone: 'green' },
   { k: 'error', n: '自动异常', icon: 'alert', tone: 'red' },
-  { k: 'feedback', n: '异常反馈', icon: 'bell', tone: 'amber' },
   { k: 'alert', n: '系统告警', icon: 'alert', tone: 'red' },
 ];
 const SRC: Record<string, string> = { 'admin-web': '管理后台', 'neighbor-web': '新版后台', 'miniapp-staff': '员工端', 'miniapp-owner': '业主端', miniapp: '小程序' };
@@ -59,7 +58,7 @@ export default function Logs() {
   const session = useSession();
   const canView = can('logs', 'view');
   const scopeKey = JSON.stringify([session.user?.id,session.user?.tenantId,session.actingTenant?.id,session.actingOffice?.id]);
-  const [tab, setTab] = useState<'logs' | 'intro' | 'usage'>('logs');
+  const [tab, setTab] = useState<'logs' | 'intro' | 'usage' | 'feedback'>('logs');
   const [ov, setOv] = useState<Overview | null>(null);
   const [cat, setCat] = useState('');
   const [onlyFail, setOnlyFail] = useState(false);
@@ -112,6 +111,7 @@ export default function Logs() {
         <button role="tab" aria-selected={tab === 'logs'} className={`chip ${tab === 'logs' ? 'on' : ''}`} onClick={() => setTab('logs')}><Icon name="log" size={14} />系统日志</button>
         <button role="tab" aria-selected={tab === 'intro'} className={`chip ${tab === 'intro' ? 'on' : ''}`} onClick={() => setTab('intro')}><Icon name="globe" size={14} />汇报页访问</button>
         <button role="tab" aria-selected={tab === 'usage'} className={`chip ${tab === 'usage' ? 'on' : ''}`} onClick={() => setTab('usage')}><Icon name="chart" size={14} />使用统计</button>
+        <button role="tab" aria-selected={tab === 'feedback'} className={`chip ${tab === 'feedback' ? 'on' : ''}`} onClick={() => setTab('feedback')}><Icon name="bell" size={14} />用户反馈</button>
       </div>
 
       {tab === 'logs' ? (<>
@@ -176,8 +176,10 @@ export default function Logs() {
       ) : null}
       </>) : tab === 'intro' ? (
         <IntroViewsPanel retry={retryIntro} />
-      ) : (
+      ) : tab === 'usage' ? (
         <UsagePanel scopeKey={scopeKey} />
+      ) : (
+        <FeedbackPanel scopeKey={scopeKey} />
       )}
     </>
   );
@@ -267,8 +269,8 @@ function IntroViewsPanel({ retry }: { retry: number }) {
 
 /** 使用统计：page-usage + login-history；接口未就绪时显示「待接口」，不造假数据。 */
 type UsageDay = { date: string; count: number };
-type UsagePageRow = { name: string; views: number; users: number; share: number };
-type UsageUserRow = { name: string; views: number; pages: number; topPage: string };
+type UsagePageRow = { name: string; path?: string; views: number; users: number; share: number };
+type UsageUserRow = { name: string; userId?: string; views: number; pages: number; topPage: string };
 type UsageData = { totalViews: number; uniqueUsers: number; days: UsageDay[]; topPages: UsagePageRow[]; topUsers: UsageUserRow[] };
 type LoginRow = { id: string; time: string; user: string; method: string; status: 'success' | 'failed' | 'unknown'; reason: string; ip: string };
 type LoginData = { rows: LoginRow[]; total: number };
@@ -293,10 +295,11 @@ function normalizeUsage(raw: any): UsageData {
     const views = numberValue(row?.views ?? row?.count ?? row?.visits);
     const shareRaw = Number(row?.share ?? row?.ratio);
     const share = Number.isFinite(shareRaw) && shareRaw > 0 ? (shareRaw <= 1 ? shareRaw * 100 : shareRaw) : (totalViews ? (views / totalViews) * 100 : 0);
-    return { name: textValue(row?.name, row?.pageName, row?.path, row?.pageKey) || '未命名页面', views, users: numberValue(row?.uniqueUsers ?? row?.users ?? row?.userCount), share: Math.round(share * 10) / 10 };
+    return { name: textValue(row?.name, row?.pageName, row?.path, row?.pageKey) || '未命名页面', path: textValue(row?.path, row?.pagePath, row?.pageKey, row?.name) || undefined, views, users: numberValue(row?.uniqueUsers ?? row?.users ?? row?.userCount), share: Math.round(share * 10) / 10 };
   }) : [];
   const topUsers = Array.isArray(raw?.topUsers) ? raw.topUsers.map((row: any) => ({
     name: textValue(row?.name, row?.userName, row?.user, row?.loginAccount) || (row?.userId ? '用户 #' + row.userId : '未知用户'),
+    userId: textValue(row?.userId, row?.id) || undefined,
     views: numberValue(row?.views ?? row?.count ?? row?.visits),
     pages: numberValue(row?.pages ?? row?.pageCount ?? row?.uniquePages),
     topPage: textValue(row?.topPage, row?.topPageName, row?.page, row?.mostVisitedPage) || '—',
@@ -335,6 +338,7 @@ function UsagePanel({ scopeKey }: { scopeKey: string }) {
   const [loginFilter, setLoginFilter] = useState<LoginFilter>('all');
   const [loginPage, setLoginPage] = useState(1);
   const [retry, setRetry] = useState(0);
+  const [drill, setDrill] = useState<DrillTarget | null>(null);
 
   const chooseWindow = (key: 'today' | '7d' | '30d' | 'custom') => {
     setWindowKey(key);
@@ -437,8 +441,8 @@ function UsagePanel({ scopeKey }: { scopeKey: string }) {
                         {usage.topPages.map((row, index) => (
                           <tr key={row.name + index}>
                             <td>{row.name}</td>
-                            <td className="usage-num">{row.views.toLocaleString()}</td>
-                            <td className="usage-num">{row.users.toLocaleString()}</td>
+                            <td className="usage-num"><button type="button" className="usage-link" title="查看该页面的访问明细" onClick={() => setDrill({ kind: 'page-events', title: '页面访问明细', subtitle: `时间窗 ${from} 至 ${to} · ${row.name}`, path: row.path || row.name })}>{row.views.toLocaleString()}</button></td>
+                            <td className="usage-num"><button type="button" className="usage-link" title="查看该页面的用户列表" onClick={() => setDrill({ kind: 'page-users', title: '页面用户列表', subtitle: `时间窗 ${from} 至 ${to} · ${row.name}`, path: row.path || row.name })}>{row.users.toLocaleString()}</button></td>
                             <td><div className="usage-share"><i style={{ width: `${Math.min(100, Math.max(0, row.share))}%` }} /><span>{row.share}%</span></div></td>
                           </tr>
                         ))}
@@ -457,8 +461,8 @@ function UsagePanel({ scopeKey }: { scopeKey: string }) {
                         {usage.topUsers.map((row, index) => (
                           <tr key={row.name + index}>
                             <td>{row.name}</td>
-                            <td className="usage-num">{row.views.toLocaleString()}</td>
-                            <td className="usage-num">{row.pages.toLocaleString()}</td>
+                            <td className="usage-num"><button type="button" className="usage-link" title="查看该用户的访问明细" onClick={() => setDrill({ kind: 'user-events', title: '用户访问明细', subtitle: `时间窗 ${from} 至 ${to} · ${row.name}`, userId: row.userId })}>{row.views.toLocaleString()}</button></td>
+                            <td className="usage-num"><button type="button" className="usage-link" title="查看该用户访问过的页面" onClick={() => setDrill({ kind: 'user-pages', title: '用户访问页面', subtitle: `时间窗 ${from} 至 ${to} · ${row.name}`, userId: row.userId })}>{row.pages.toLocaleString()}</button></td>
                             <td>{row.topPage}</td>
                           </tr>
                         ))}
@@ -518,6 +522,233 @@ function UsagePanel({ scopeKey }: { scopeKey: string }) {
           </div>
         </>
       )}
+      {drill ? <UsageDrilldown target={drill} from={from} to={to} onClose={() => setDrill(null)} /> : null}
     </>
+  );
+}
+
+/* ───────────── 用户反馈（合并原「异常反馈」） ───────────── */
+interface FeedbackRow {
+  id: number | string;
+  attachments?: Array<{ url?: string; name?: string | null }> | null;
+  type?: string | null;
+  kind?: string | null;
+  userName?: string | null;
+  userPhone?: string | null;
+  createdAt?: string | null;
+  time?: string | null;
+  content?: string | null;
+  attachmentUrls?: string[] | null;
+  imageUrls?: string[] | null;
+  source?: string | null;
+  status?: string | null;
+  recentErrors?: unknown;
+}
+const FB_TYPE_LABEL: Record<string, string> = { suggestion: '意见与建议', error: '异常反馈', bug: '异常反馈', issue: '异常反馈', other: '其他' };
+const FB_STATUS_LABEL: Record<string, string> = { pending: '待处理', handled: '已处理', done: '已处理', closed: '已处理', processing: '处理中', new: '待处理', resolved: '已处理', ignored: '已忽略' };
+const fbType = (row: FeedbackRow) => FB_TYPE_LABEL[String(row.type || row.kind || '')] || (row.type || row.kind ? String(row.type || row.kind) : '意见与建议');
+const fbStatus = (row: FeedbackRow) => FB_STATUS_LABEL[String(row.status || '')] || (row.status ? String(row.status) : '待处理');
+const fbSource = (row: FeedbackRow) => /mini|wx|小程序/i.test(String(row.source || '')) ? '小程序' : /web|网页|admin/i.test(String(row.source || '')) ? '网页' : (row.source || '网页');
+const fbAttachments = (row: FeedbackRow) => [
+  ...(Array.isArray(row.attachments) ? row.attachments : []),
+  ...(Array.isArray(row.attachmentUrls) ? row.attachmentUrls : []),
+  ...(Array.isArray(row.imageUrls) ? row.imageUrls : []),
+].flatMap((item: any) => {
+  if (typeof item === 'string' && item) return [{ url: item, name: null }];
+  if (item && typeof item === 'object' && item.url) return [{ url: String(item.url), name: item.name ? String(item.name) : null }];
+  return [];
+});
+const fileName = (url: string) => { try { const path = decodeURIComponent(url.split('?')[0]); return path.split('/').pop() || '附件'; } catch { return '附件'; } };
+
+function FeedbackPanel({ scopeKey }: { scopeKey: string }) {
+  const [rows, setRows] = useState<FeedbackRow[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [error, setError] = useState(false);
+  const [page, setPage] = useState(1);
+  const [type, setType] = useState('');
+  const [status, setStatus] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    setRows(null); setError(false);
+    request<unknown>({ url: '/feedback', query: { page, pageSize: 20, kind: type || undefined, status: status || undefined, from: from || undefined, to: to || undefined } })
+      .then((raw: any) => {
+        if (!alive) return;
+        const list = Array.isArray(raw) ? raw : Array.isArray(raw?.rows) ? raw.rows : Array.isArray(raw?.list) ? raw.list : [];
+        setRows(list);
+        setTotal(Number(Array.isArray(raw) ? raw.length : raw?.total) || list.length);
+      })
+      .catch(() => { if (alive) { setRows([]); setError(true); } });
+    return () => { alive = false; };
+  }, [page, type, status, from, to, scopeKey, retry]);
+
+  const pages = Math.max(1, Math.ceil(total / 20));
+  return (
+    <div className="card" style={{ overflow: 'hidden' }}>
+      <div className="intro-list-head" style={{ flexWrap: 'wrap', gap: 10 }}>
+        <b>用户反馈</b>
+        <div className="chips" role="tablist" aria-label="反馈类型">
+          {([['', '全部类型'], ['suggestion', '意见与建议'], ['error', '异常反馈']] as const).map(([key, label]) => (
+            <button key={key} className={'chip ' + (type === key ? 'on' : '')} onClick={() => { setType(key); setPage(1); }}>{label}</button>
+          ))}
+        </div>
+        <div className="chips" role="tablist" aria-label="反馈状态">
+          {([['', '全部状态'], ['pending', '待处理'], ['handled', '已处理']] as const).map(([key, label]) => (
+            <button key={key} className={'chip ' + (status === key ? 'on' : '')} onClick={() => { setStatus(key); setPage(1); }}>{label}</button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+          <input className="in" type="date" style={{ width: 145 }} value={from} max={to || undefined} onChange={(event) => { setFrom(event.target.value); setPage(1); }} aria-label="反馈开始日期" />
+          <span className="muted">至</span>
+          <input className="in" type="date" style={{ width: 145 }} value={to} min={from || undefined} onChange={(event) => { setTo(event.target.value); setPage(1); }} aria-label="反馈结束日期" />
+        </div>
+      </div>
+
+      {error ? (
+        <div className="usage-missing" role="status">
+          <span className="usage-tag">待接口</span>
+          <b>用户反馈接口未就绪</b>
+          <small>GET /observability/feedback 暂不可用；接口上线后会显示类型、反馈人、时间、内容、附件、来源与状态。</small>
+          <button className="btn sm" onClick={() => setRetry((value) => value + 1)}>重试</button>
+        </div>
+      ) : rows === null ? <div style={{ padding: 32 }}><Loading /></div> : (
+        <>
+          <div className="intro-table-wrap">
+            <table className="t usage-table" style={{ minWidth: 880 }}>
+              <thead><tr><th>类型</th><th>反馈人</th><th>时间</th><th>内容</th><th>附件</th><th>来源</th><th>状态</th></tr></thead>
+              <tbody>
+                {rows.map((row) => {
+                  const key = String(row.id);
+                  const open = expanded === key;
+                  const files = fbAttachments(row);
+                  return (
+                    <Fragment key={key}>
+                      <tr className="fb-row" onClick={() => setExpanded(open ? null : key)}>
+                        <td className="nw"><span className={'tag ' + (/异常|bug|error|issue/.test(String(row.type || row.kind)) ? 'warn' : 'acc')}>{fbType(row)}</span></td>
+                        <td className="nw">{row.userName || '未记录'}{row.userPhone ? <small className="muted"> · {row.userPhone}</small> : null}</td>
+                        <td className="nw">{row.createdAt || row.time ? dayjs(row.createdAt || row.time).format('YYYY-MM-DD HH:mm') : '—'}</td>
+                        <td><span className="fb-summary">{String(row.content || '—')}</span></td>
+                        <td className="nw" onClick={(event) => event.stopPropagation()}>
+                          {files.length ? files.map((file) => (
+                            <span className="fb-file" key={file.url}>
+                              <a href={file.url} target="_blank" rel="noopener">{file.name || fileName(file.url)}</a>
+                              <a href={file.url} download={file.name || fileName(file.url)} title="下载">下载</a>
+                            </span>
+                          )) : '—'}
+                        </td>
+                        <td className="nw">{fbSource(row)}</td>
+                        <td className="nw"><span className={'tag ' + (fbStatus(row) === '已处理' ? 'ok' : 'warn')}>{fbStatus(row)}</span></td>
+                      </tr>
+                      {open ? (
+                        <tr className="fb-detail-row">
+                          <td colSpan={7}>
+                            <div className="fb-detail">
+                              <b>完整内容</b>
+                              <p>{String(row.content || '—')}</p>
+                              {row.recentErrors ? <details><summary>附带的最近系统报错</summary><pre>{JSON.stringify(row.recentErrors, null, 2)}</pre></details> : null}
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+            {rows.length === 0 ? <div className="muted" style={{ padding: 40, textAlign: 'center' }}>暂无用户反馈</div> : null}
+          </div>
+          {total > 20 ? (
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', alignItems: 'center', padding: 14, borderTop: '1px solid var(--line2)' }}>
+              <button className="btn sm" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>上一页</button>
+              <span className="muted">第 {page} / {pages} 页 · 共 {total} 条</span>
+              <button className="btn sm" disabled={page >= pages} onClick={() => setPage((value) => value + 1)}>下一页</button>
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+/* ───────────── 使用统计下钻 ───────────── */
+type DrillKind = 'page-events' | 'page-users' | 'user-events' | 'user-pages';
+type DrillTarget = { kind: DrillKind; title: string; subtitle: string; path?: string; userId?: string };
+const DRILL_COLUMNS: Record<DrillKind, string[]> = {
+  'page-events': ['时间', '用户', 'IP'],
+  'page-users': ['用户', '次数', '最近访问时间'],
+  'user-events': ['时间', '页面'],
+  'user-pages': ['页面', '次数', '最近时间'],
+};
+const drillGroup = (kind: DrillKind) => kind === 'page-users' ? 'users' : kind === 'user-pages' ? 'pages' : 'events';
+const drillRow = (kind: DrillKind, row: any) => {
+  const time = textValue(row?.time, row?.createdAt, row?.at, row?.visitedAt);
+  const page = textValue(row?.page, row?.path, row?.pageName, row?.name) || '—';
+  const user = textValue(row?.userName, row?.name, row?.user, row?.account) || '—';
+  const ip = textValue(row?.ip, row?.ipAddress, row?.clientIp) || '—';
+  const count = numberValue(row?.count ?? row?.views ?? row?.visits);
+  const last = textValue(row?.lastAt, row?.lastVisitedAt, row?.lastSeenAt, row?.lastTime);
+  return kind === 'page-events' ? [time, user, ip]
+    : kind === 'page-users' ? [user, String(count), last]
+      : kind === 'user-events' ? [time, page]
+        : [page, String(count), last];
+};
+
+function UsageDrilldown({ target, from, to, onClose }: { target: DrillTarget; from: string; to: string; onClose: () => void }) {
+  const [rows, setRows] = useState<any[] | null>(null);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [missing, setMissing] = useState(false);
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    setRows(null); setMissing(false);
+    request<unknown>({ url: '/telemetry/page-usage/drilldown', query: { from, to, path: target.path, userId: target.userId, groupBy: drillGroup(target.kind), page, pageSize: 20 } })
+      .then((raw: any) => {
+        if (!alive) return;
+        const list = Array.isArray(raw) ? raw : Array.isArray(raw?.rows) ? raw.rows : Array.isArray(raw?.list) ? raw.list : [];
+        setRows(list);
+        setTotal(numberValue(Array.isArray(raw) ? raw.length : raw?.total) || list.length);
+      })
+      .catch(() => { if (alive) { setRows([]); setMissing(true); } });
+    return () => { alive = false; };
+  }, [target, from, to, page, retry]);
+  const pages = Math.max(1, Math.ceil(total / 20));
+  const columns = DRILL_COLUMNS[target.kind];
+  return (
+    <Sheet open onClose={onClose} width={720} title={target.title} subtitle={target.subtitle}>
+      {missing ? (
+        <div className="usage-missing" role="status">
+          <span className="usage-tag">待接口</span>
+          <b>下钻明细接口未就绪</b>
+          <small>GET /telemetry/page-usage/drilldown 暂不可用；接口上线后这里会显示明细与分页。</small>
+          <button className="btn sm" onClick={() => setRetry((value) => value + 1)}>重试</button>
+        </div>
+      ) : rows === null ? <Loading /> : (
+        <>
+          <div className="usage-drill-summary muted">时间窗 {from} 至 {to}{target.path ? ' · ' + target.path : ''}</div>
+          <div className="intro-table-wrap">
+            <table className="t usage-table">
+              <thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
+              <tbody>
+                {rows.map((row, index) => (
+                  <tr key={index}>{drillRow(target.kind, row).map((value, columnIndex) => <td key={columnIndex}>{value}</td>)}</tr>
+                ))}
+              </tbody>
+            </table>
+            {rows.length === 0 ? <div className="muted" style={{ padding: 40, textAlign: 'center' }}>该范围内没有访问记录</div> : null}
+          </div>
+          {total > 20 ? (
+            <div className="usage-drill-pager">
+              <button className="btn sm" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>上一页</button>
+              <span className="muted">第 {page} / {pages} 页 · 共 {total} 条</span>
+              <button className="btn sm" disabled={page >= pages} onClick={() => setPage((value) => value + 1)}>下一页</button>
+            </div>
+          ) : null}
+        </>
+      )}
+    </Sheet>
   );
 }

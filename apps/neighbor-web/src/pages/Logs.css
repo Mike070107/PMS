@@ -149,3 +149,20 @@
 .usage-missing b{font-size:15px}
 .usage-missing small{font-size:13px;color:var(--ink2);line-height:1.6;max-width:760px}
 .usage-tag{display:inline-flex;align-items:center;padding:2px 10px;border-radius:999px;background:var(--warn-w);color:var(--warn);border:1px solid #f0b46a;font-size:12px;font-weight:600}
+
+/* 用户反馈 tab：内容摘要/展开/附件 */
+.fb-row { cursor: pointer; }
+.fb-row:hover td { background: #f7f9fc; }
+.fb-summary { display: block; max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink2); }
+.fb-file { display: inline-flex; align-items: center; gap: 6px; margin-right: 8px; white-space: nowrap; }
+.fb-file a { color: var(--acc-t); font-size: 12.5px; }
+.fb-detail-row td { padding: 0 !important; background: var(--sunken, #f8fafc); }
+.fb-detail { display: flex; flex-direction: column; gap: 8px; padding: 14px 18px; font-size: 13.5px; }
+.fb-detail p { margin: 0; white-space: pre-wrap; line-height: 1.7; color: var(--ink2); }
+.fb-detail pre { max-height: 200px; overflow: auto; margin: 0; padding: 10px 12px; border-radius: 8px; background: #0f1725; color: #cfe3ff; font-size: 12px; line-height: 1.5; }
+
+/* 使用统计：数字可点击下钻 */
+.usage-link { border: 0; background: none; padding: 0; color: var(--acc-t); font: inherit; font-variant-numeric: tabular-nums; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.usage-link:hover { color: var(--acc); }
+.usage-drill-summary { font-size: 12.5px; margin-bottom: 10px; }
+.usage-drill-pager { display: flex; align-items: center; justify-content: center; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line2); margin-top: 10px; }

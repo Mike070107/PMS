@@ -15,7 +15,7 @@ interface Txn {
 }
 type LedgerSummary = { paidCents: number; refundedCents: number; paidCount: number; byService: Array<{ serviceType: string; paidCents: number; paidCount: number }> };
 type MisFeeRow = { name: string; amountCents: number; count: number; houseCount: number | null };
-type MisToday = { paidCents: number; paidCount: number; refundedCents: number; paidHouses: number; byFee: MisFeeRow[] };
+type MisToday = { paidCents: number; paidCount: number; refundedCents: number; paidHouses: number; byFee: MisFeeRow[]; dataAsOf?: string | null };
 type RecentPayment = { paidAt: string; address: string; ownerName: string; amountCents: number; channel: string | null; billCount: number; recordedAt: string | null };
 type MisState = { key: string; today: MisToday | null; todayMissing: boolean };
 type RecentState = { key: string; page: number; rows: RecentPayment[]; total: number; houseCount: number | null; seenHouses: string[]; missing: boolean; loading: boolean; paged: boolean };
@@ -40,6 +40,7 @@ function normalizeMisToday(raw: unknown): MisToday | null {
     refundedCents: Number(data.refundedCents) || 0,
     paidHouses: Number(data.paidHouses) || 0,
     byFee,
+    dataAsOf: typeof data.dataAsOf === 'string' ? data.dataAsOf : null,
   };
 }
 function normalizeRecent(raw: unknown): { rows: RecentPayment[]; total: number; houseCount: number | null; paged: boolean } | null {
@@ -207,6 +208,11 @@ export default function Today() {
   ];
 
   const misValue = (value: number, suffix = '') => todayMissing ? <span className="erp-todo">待接口</span> : <>{money(value / 100)}{suffix}</>;
+  const dataAsOfDate = today?.dataAsOf ? new Date(today.dataAsOf) : null;
+  const dataAsOfClock = dataAsOfDate && !Number.isNaN(dataAsOfDate.getTime())
+    ? dataAsOfDate.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Shanghai' })
+    : null;
+  const mirrorStale = !!dataAsOfDate && !Number.isNaN(dataAsOfDate.getTime()) && Date.now() - dataAsOfDate.getTime() > 15 * 60_000;
 
   return (
     <>
@@ -214,6 +220,7 @@ export default function Today() {
         <div>
           <h1 style={{ fontSize: 22 }}>今日工作</h1>
           <p>{dayjs().format('YYYY 年 M 月 D 日 dddd')}{officeName ? ` · ${officeName}` : ''} · 实时数据来自正式库（MIS 收款 + PMS 流水）</p>
+          {dataAsOfClock ? <p style={{ margin: '4px 0 0', fontSize: 13, color: mirrorStale ? 'var(--warn)' : 'var(--muted)' }}>数据截至 {dataAsOfClock}{mirrorStale ? ' · 已滞后，镜像同步异常' : '（MIS 镜像）'}</p> : null}
         </div>
         <div className="act">
           <button className="btn" onClick={() => nav('/work-orders?new=1')}><Icon name="plus" size={18} />登记报修</button>

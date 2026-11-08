@@ -1,0 +1,137 @@
+/* 意见与建议 / 异常反馈对话框 */
+.fb-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fb-textarea {
+  resize: vertical;
+  min-height: 120px;
+  line-height: 1.65;
+}
+
+.fb-count {
+  margin-top: -6px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--ink3);
+}
+
+.fb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fb-attach-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--ink2);
+}
+
+.fb-drop {
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink3);
+  cursor: pointer;
+  background: var(--sunken, #f8fafc);
+  transition: border-color .15s, background .15s;
+}
+
+.fb-drop.over,
+.fb-drop:hover {
+  border-color: var(--acc);
+  background: var(--acc-w, #eef4fc);
+}
+
+.fb-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fb-attachment {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #fff;
+}
+
+.fb-attachment img {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 8px;
+  flex: none;
+  border: 1px solid var(--line);
+}
+
+.fb-file-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--sunken, #f8fafc);
+  color: var(--ink2);
+  flex: none;
+}
+
+.fb-file-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fb-file-meta b {
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fb-file-meta small {
+  font-size: 12px;
+  color: var(--ink3);
+}
+
+.fb-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink2);
+  line-height: 1.5;
+}
+
+.fb-check input {
+  width: 17px;
+  height: 17px;
+  margin-top: 2px;
+  accent-color: var(--acc);
+  flex: none;
+}
+
+.fb-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+@media (max-width: 640px) {
+  .fb-attachment {
+    align-items: flex-start;
+  }
+}
