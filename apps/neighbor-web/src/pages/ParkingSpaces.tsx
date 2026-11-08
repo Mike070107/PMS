@@ -1,11 +1,14 @@
 import DateInput from '@/components/DateInput';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { request } from '@pms/api-client';
 import { dayjs } from '@/lib/format';
 import Icon from '@/components/Icon';
 import ToneIcon from '@/components/ToneIcon';
 import { Loading, Sheet, toast } from '@/components/ui';
 import '@/styles/parking-glass.css';
+
+/** 3D 视图单独分包：three.js 只在切到「车位图」时下载。 */
+const ParkingGarage3D = lazy(() => import('@/components/parking/ParkingGarage3D'));
 
 interface SpaceRow {
   id: number; garage: 'main' | 'civil'; spaceNo: string; houseNo: string | null; areaSqm: string | null;
@@ -72,7 +75,7 @@ export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) 
   const [err, setErr] = useState('');
   const [q, setQ] = useState('');
   const [only, setOnly] = useState<'all' | 'bound' | 'free'>('all');
-  const [view, setView] = useState<'card' | 'table'>('card');
+  const [view, setView] = useState<'card' | 'table' | 'iso'>('card');
   const [edit, setEdit] = useState<SpaceRow | null>(null);
 
   const load = useCallback(async () => {
@@ -97,6 +100,12 @@ export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) 
       return [r.spaceNo, r.plate, r.houseNo, r.ownerName].some((v) => (v || '').toUpperCase().includes(kw));
     });
   }, [rows, q, only]);
+
+  /** 车位图用：搜索/筛选命中的车位；全部命中传 null，避免每个车位都做一次判断。 */
+  const matchIds = useMemo(() => {
+    if (only === 'all' && !q.trim()) return null;
+    return new Set(shown.map((r) => r.id));
+  }, [only, q, shown]);
 
   const bound = (rows ?? []).filter((r) => r.plate && r.plate.trim()).length;
   const total = rows?.length ?? 0;
@@ -128,12 +137,32 @@ export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) 
         <div className="chips" style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
           <button className={`chip ${view === 'card' ? 'on' : ''}`} onClick={() => setView('card')}><Icon name="apps" size={14} />卡片</button>
           <button className={`chip ${view === 'table' ? 'on' : ''}`} onClick={() => setView('table')}><Icon name="kanban" size={14} />表格</button>
+          <button className={`chip ${view === 'iso' ? 'on' : ''}`} onClick={() => setView('iso')}><Icon name="layers" size={14} />车位图</button>
         </div>
       </div>
 
       {err ? <div className="note2" style={{ background: 'var(--dang-w)', color: 'var(--dang)', marginBottom: 12 }}><Icon name="alert" />{err}</div> : null}
 
-      {rows === null ? <Loading /> : shown.length === 0 ? (
+      {rows === null ? <Loading /> : view === 'iso' ? (
+        <Suspense
+          fallback={(
+            <div style={{ minHeight: 420, display: 'grid', placeItems: 'center', borderRadius: 20, border: '1px solid #e2e8f1', background: '#f4f8fc', color: '#6b7890' }}>
+              <Loading text="正在加载车位示意图…" />
+            </div>
+          )}
+        >
+          <ParkingGarage3D
+            rows={rows}
+            garage={garage}
+            matchIds={matchIds}
+            selectedId={edit?.id ?? null}
+            onSelect={(row) => {
+              const full = rows.find((item) => item.id === row.id);
+              if (full) setEdit(full);
+            }}
+          />
+        </Suspense>
+      ) : shown.length === 0 ? (
         <div className="card" style={{ padding: 42, textAlign: 'center' }}><span className="muted">没有符合条件的车位</span></div>
       ) : (
         view === 'table' ? (

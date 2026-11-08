@@ -1,0 +1,285 @@
+/* 车位 2.5D 示意视图：浅色底、teal/蓝灰车位块，浮在页面上的玻璃层。 */
+.pgarage {
+  position: relative;
+  height: clamp(400px, 62vh, 620px);
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid #e2e8f1;
+  background:
+    radial-gradient(120% 90% at 18% 0%, #fbfdff 0%, #eef3f9 52%, #e3ebf4 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 1px 2px rgba(60, 90, 130, 0.05),
+    0 10px 24px rgba(60, 90, 130, 0.07);
+  isolation: isolate;
+}
+
+.pgarage__stage {
+  position: absolute;
+  inset: 0;
+}
+
+.pgarage__canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  touch-action: none;
+  cursor: grab;
+  outline: none;
+  filter: drop-shadow(0 16px 24px rgba(60, 90, 130, 0.1));
+}
+
+/* 顶栏图例 */
+.pgarage__legend {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.pgarage__total,
+.pgarage__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(214, 224, 236, 0.9);
+  backdrop-filter: blur(6px);
+  font-size: 12px;
+  color: #55607a;
+  white-space: nowrap;
+}
+
+.pgarage__total {
+  font-weight: 600;
+  color: #2f3b50;
+  font-variant-numeric: tabular-nums;
+}
+
+.pgarage__legend-item i {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgba(23, 32, 51, 0.08);
+}
+
+.pgarage__legend-item b {
+  font-weight: 700;
+  color: #172033;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 操作提示 / 说明 / 复位 */
+.pgarage__hint {
+  position: absolute;
+  left: 14px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 62%;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #7c8a9e;
+  pointer-events: none;
+}
+
+.pgarage__hint-sub {
+  font-size: 10.5px;
+  color: #9aa6b8;
+}
+
+.pgarage__reset {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(205, 216, 230, 0.95);
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(6px);
+  color: #3a648f;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(60, 90, 130, 0.08);
+}
+
+.pgarage__reset:hover {
+  background: #fff;
+  border-color: #b9c9dc;
+}
+
+.pgarage__reset:active {
+  transform: translateY(1px);
+}
+
+/* 加载 / 错误 / 空数据 */
+.pgarage__status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  font-size: 14px;
+  color: #6b7890;
+  background: rgba(244, 248, 252, 0.58);
+  backdrop-filter: blur(2px);
+}
+
+.pgarage__status small {
+  font-size: 12px;
+  color: #9099ad;
+}
+
+.pgarage__status.is-error {
+  color: #bd352c;
+}
+
+.pgarage__nomatch {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(214, 224, 236, 0.9);
+  font-size: 12px;
+  color: #55607a;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* 悬停卡片（fixed 定位跟随指针，避免被画布裁剪） */
+.pgarage__tip {
+  position: fixed;
+  z-index: 35;
+  left: 0;
+  top: 0;
+  width: 232px;
+  padding: 11px 13px 9px;
+  border-radius: 12px;
+  border: 1px solid #e1e8f1;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(23, 32, 51, 0.14);
+  pointer-events: none;
+  color: #3b465c;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.pgarage__tip-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #55607a;
+}
+
+.pgarage__tip-head b {
+  font-size: 15px;
+  color: #172033;
+  font-variant-numeric: tabular-nums;
+}
+
+.pgarage__tip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-left: auto;
+}
+
+.pgarage__tip-plate {
+  display: inline-block;
+  margin: 8px 0 9px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #eef4fb;
+  color: #2d4e73;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+
+.pgarage__tip-kv {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 3px 8px;
+  margin: 0;
+}
+
+.pgarage__tip-kv dt {
+  color: #9099ad;
+}
+
+.pgarage__tip-kv dd {
+  margin: 0;
+  color: #3b465c;
+  word-break: break-all;
+}
+
+.pgarage__tip-foot {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed #e8edf4;
+  font-size: 11.5px;
+  color: #8a96a9;
+}
+
+.pgarage__legend-item,
+.pgarage__total,
+.pgarage__reset {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (max-width: 640px) {
+  .pgarage {
+    height: clamp(360px, 50vh, 480px);
+    border-radius: 16px;
+  }
+
+  .pgarage__legend {
+    gap: 4px;
+  }
+
+  .pgarage__legend-item {
+    padding: 3px 7px;
+    font-size: 11px;
+  }
+
+  .pgarage__total {
+    padding: 3px 8px;
+    font-size: 11px;
+  }
+
+  .pgarage__hint {
+    font-size: 11px;
+    max-width: 58%;
+  }
+
+  .pgarage__hint-sub {
+    font-size: 10px;
+  }
+
+  .pgarage__nomatch {
+    bottom: 52px;
+    max-width: calc(100% - 24px);
+    white-space: normal;
+    text-align: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pgarage__reset:active {
+    transform: none;
+  }
+}
