@@ -6703,3 +6703,10 @@
 - 自上次（73b6f882）以来上线的相关提交：
   - 17f9ae42 fix(today): 明细日期按北京时间格式化、recordedAt 返回 +08:00，total 改账单笔数并补 groupCount
 
+## 2026-11-08 17:57 · api · 1160f5f4
+
+- 包：`pms-api-fast-20261108-175707.tar.gz`
+- 提交：1160f5f4 feat(targets): 收费指标表与接口；大屏 screen-summary 聚合（多小区、达成率、趋势）；多社区查询参数
+- 自上次（17f9ae42）以来上线的相关提交：
+  - 1160f5f4 feat(targets): 收费指标表与接口；大屏 screen-summary 聚合（多小区、达成率、趋势）；多社区查询参数
+
