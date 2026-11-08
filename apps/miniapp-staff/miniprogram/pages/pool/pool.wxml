@@ -1,4 +1,5 @@
 <import src="/templates/wo-card.wxml"/>
+<import src="/templates/notify-banner.wxml"/>
 
 <!-- 现场工作页头：标题、当前范围和三个关键数字放在同一张浅蓝工作卡里。 -->
 <view class="work-hero">
@@ -64,6 +65,11 @@
     <view wx:if="{{canSeeMyRepairs}}" class="tab {{mainTab === 'reported' ? 'tab--on' : ''}}" data-tab="reported" bindtap="onSwitchMainTab">我报的</view>
     <view wx:if="{{canSeeDone}}" class="tab {{mainTab === 'done' ? 'tab--on' : ''}}" data-tab="done" bindtap="onSwitchMainTab">已完结</view>
   </view>
+
+  <!-- 微信提醒额度快用完：没勾「总是保持」的人额度扣完就静默收不到派单了。
+       微信规定授权框必须由点击唤起，所以只能把入口摆在这里，由人点一下
+       （见 utils/notify-prompt.ts）。-->
+  <template is="notify-banner" data="{{notifyPrompt: notifyPrompt, notifyRemaining: notifyRemaining, notifyRenewing: notifyRenewing}}"/>
 
   <!-- 维修工侧同理：卡片上不出现「接单」时，必须写清是权限收着，不是没活干 -->
   <view wx:if="{{!dispatcher && mainTab === 'pool' && canSeePool && !canAccept}}" class="notice">

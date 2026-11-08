@@ -1,4 +1,5 @@
 <import src="/templates/wo-card.wxml"/>
+<import src="/templates/notify-banner.wxml"/>
 
 <view class="work-hero">
   <view class="work-hero__top">
@@ -32,6 +33,10 @@
      「我报的」和「已完结」2026-08-31 搬去工单池的三档 Tab 了 —— 这一屏是干活的地方，
      底下压着一摞已经结束的单，人得先翻过它们才看得到今天该干什么。 -->
 <view class="hero-sheet hero-sheet--tabbar">
+  <!-- 微信提醒额度快用完：额度扣完就静默收不到派单，只能等人点一下再唤起授权框
+       （见 utils/notify-prompt.ts）-->
+  <template is="notify-banner" data="{{notifyPrompt: notifyPrompt, notifyRemaining: notifyRemaining, notifyRenewing: notifyRenewing}}"/>
+
   <view wx:if="{{!active.length && loaded}}">
     <pms-empty text="手上没有工单，去「工单池」接一单"/>
   </view>

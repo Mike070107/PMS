@@ -118,15 +118,36 @@ export interface SubscribeState {
   remaining: number;
 }
 
-export async function getSubscribeState(): Promise<SubscribeState> {
+/**
+ * 最近一次查到的状态。工单池、在手工单、「我的」都要问一次，
+ * 但切个筛选档就会重走 load —— 60 秒内复用上次结果，别每次都打两个请求。
+ * 补过额度之后要立刻看到新余量，所以 settle 里会 invalidate。
+ */
+let cachedState: SubscribeState | null = null;
+let cachedStateAt = 0;
+
+export function invalidateSubscribeState(): void {
+  cachedState = null;
+  cachedStateAt = 0;
+}
+
+export async function getSubscribeState(force = false): Promise<SubscribeState> {
+  const now = Date.now();
+  if (!force && cachedState && now - cachedStateAt < 60 * 1000) return cachedState;
   const me = (await getSession()).me;
   const tmplId = (me?.subscribeTemplates || []).filter(Boolean)[0] || '';
-  if (!tmplId) return { tmplId: '', always: false, remaining: 0 };
+  if (!tmplId) {
+    cachedState = { tmplId: '', always: false, remaining: 0 };
+    cachedStateAt = now;
+    return cachedState;
+  }
   const [always, state] = await Promise.all([
     isAlwaysAllowed(tmplId),
     notifications.subscribeState([tmplId]).catch(() => ({} as Record<string, number>)),
   ]);
-  return { tmplId, always: always || alwaysFlag(), remaining: Number(state[tmplId] ?? 0) };
+  cachedState = { tmplId, always: always || alwaysFlag(), remaining: Number(state[tmplId] ?? 0) };
+  cachedStateAt = Date.now();
+  return cachedState;
 }
 
 // ---------------------------------------------------------------------------
@@ -238,10 +259,22 @@ async function settle(tmplIds: string[], outcome: SubscribeOutcome, silent: bool
   const accepted = tmplIds.filter((id) => outcome.res[id] === 'accept');
   if (!accepted.length) {
     if (!silent) {
+      // 微信连框都没弹，但回了「拒绝 / 屏蔽」：说明以前在弹窗里勾过
+      // 「总是保持以上选择」并选了拒绝，之后再怎么点都不会再弹 ——
+      // 只能去微信的设置里把这一项改回来（这也是额度用完最常见的死角）
+      const blocked = tmplIds.some((id) => outcome.res[id] === 'reject' || outcome.res[id] === 'ban');
       if (outcome.errMsg) {
         wx.showModal({
           title: '没有开启',
           content: explainSubscribeFailure(outcome.errMsg),
+          showCancel: false,
+          confirmText: '知道了',
+        });
+      } else if (blocked) {
+        wx.showModal({
+          title: '没有开启',
+          content:
+            '微信没有允许这次提醒。再点一次并选「允许」；如果点了根本不弹框，说明你以前勾过「总是保持以上选择」却选了拒绝 —— 请点右上角「…」→ 设置 → 订阅消息，把「新工单提醒」打开后再回来。',
           showCancel: false,
           confirmText: '知道了',
         });
@@ -252,6 +285,8 @@ async function settle(tmplIds: string[], outcome: SubscribeOutcome, silent: bool
     return false;
   }
   await notifications.subscribe(accepted);
+  // 余量刚 +1，别让「我的」「工单池」继续用 60 秒内的旧数字
+  invalidateSubscribeState();
   cachedAlways = (await isAlwaysAllowed(accepted[0])) || alwaysFlag();
   if (!silent) {
     // 勾了「总是保持」= 一劳永逸；没勾 = 这次只换来一条，要说明白，

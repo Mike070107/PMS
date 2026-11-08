@@ -5,3 +5,4 @@ export * from './status';
 export * from './format';
 export * from './speech';
 export * from './autoUpdate';
+export * from './pageTelemetry';

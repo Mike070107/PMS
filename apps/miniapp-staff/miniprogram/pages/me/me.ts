@@ -180,15 +180,16 @@ Page({
   /** 用户主动点「开启新工单提醒」：要给明确反馈，不能静默失败 */
   async onEnableNotify() {
     await askOrderSubscribe(false);
-    await this.refreshNotifyState();
+    // 强制重查：刚才可能刚好 +1，缓存里还是旧余量
+    await this.refreshNotifyState(true);
   },
 
   /**
    * 「开启新工单提醒」这一项显示的是当前状态，不是一个动作按钮 ——
    * 已经勾过「总是保持」的人再看到「开启提醒」会以为没生效，又点一遍。
    */
-  async refreshNotifyState() {
-    const state = await getSubscribeState();
+  async refreshNotifyState(force = false) {
+    const state = await getSubscribeState(force);
     const notifyState = state.always ? 'always' : state.remaining > 0 ? 'banked' : 'off';
     // 勾了「总是保持」也要把剩余条数显出来（2026-08-31 反馈「怎么不显示剩余条数了」）：
     // 「已开启」是靠**每次点击悄悄补额度**换来的，不是微信给了长期权限 ——
@@ -197,7 +198,12 @@ Page({
     this.setData({
       notifyState,
       notifyRemaining: state.remaining,
-      notifyTone: notifyState === 'always' ? 'on' : notifyState === 'banked' ? 'partial' : '',
+      // 勾了「总是保持」但正好一条不剩：别用绿色「已开启」盖过去，
+      // 那一下派单是收不到的，要让人看见并补一次
+      notifyTone:
+        notifyState === 'always'
+          ? state.remaining > 0 ? 'on' : 'partial'
+          : notifyState === 'banked' ? 'partial' : '',
       notifyStateText:
         notifyState === 'always'
           ? `已开启 · 剩 ${state.remaining} 条`
@@ -206,7 +212,9 @@ Page({
             : '未开启',
       notifyDesc:
         notifyState === 'always'
-          ? '每次派单微信都会提醒你。你在小程序里切底部页签、点开工单时会自动补额度，不用再点允许'
+          ? state.remaining > 0
+            ? '每次派单微信都会提醒你。你在小程序里切底部页签、点开工单时会自动补额度，不用再点允许'
+            : '额度刚好用完了，点这里补一次；平时切页签、点开工单也会自动补'
           : notifyState === 'banked'
             ? '每收一条提醒少一条，用完就收不到了。点这里再开一次，并勾上「总是保持以上选择」，以后就会自动补'
             : '点这里开启；弹窗里记得勾上「总是保持以上选择」',

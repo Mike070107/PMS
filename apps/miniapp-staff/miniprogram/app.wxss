@@ -236,6 +236,16 @@ button::after { border: none; }
   line-height: 1.6;
 }
 
+/* 「微信提醒额度快用完」那一排动作（模板 templates/notify-banner.wxml 共用）。
+   按钮用 .btn--sm（width:auto），两个并排：这一条是提示不是拦截，
+   主按钮点得到就行，不要撑满整行把列表挤下去。 */
+.notify-prompt__actions {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-top: 20rpx;
+}
+
 /* ---------- 表单 ---------- */
 .field { margin-bottom: 32rpx; }
 .field:last-child { margin-bottom: 0; }

@@ -24,6 +24,7 @@ import {
   takePoolTabTapped,
 } from '../../utils/tabbar';
 import { askOrderSubscribe, topUpQuietly } from '../../utils/unread';
+import { notifyPromptHandlers } from '../../utils/notify-prompt';
 import { refreshTabBadges } from '../../utils/badges';
 import { guideHandlers } from '../../utils/guide';
 
@@ -205,6 +206,7 @@ const PAGE_CAP = 100;
 
 Page({
   ...guideHandlers(),
+  ...notifyPromptHandlers(),
   data: {
     /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
     guide: false,
@@ -221,6 +223,13 @@ Page({
     canReport: false,
     /** 接单权：和派单同一个勾选（工单池那一格的「接单 / 派单」） */
     canAccept: false,
+    /**
+     * 微信提醒额度快用完的提示条（见 utils/notify-prompt.ts）。
+     * 只有能接单的人才有「新工单提醒」这回事 —— 口径和「我的」页 canSubscribe 一致。
+     */
+    notifyPrompt: false,
+    notifyRemaining: 0,
+    notifyRenewing: false,
     /**
      * 这一屏看哪一批单：工单池（待接的）/ 我报的 / 已完结。
      * 只有工单池这一侧有这三档 —— 派单台自己就有 7 档状态筛选，再叠一层人分不清点哪排。
@@ -552,6 +561,12 @@ Page({
                   // 2026-09-08 起工单池只列和本人有关的单，空了要说清是「没有你的活」而不是「系统坏了」
                   : '暂时没有你的活：跟你有关的单（推给你的、你负责那一类的、还没定人的）都处理完了',
       });
+      /**
+       * 顺手看一眼微信提醒还剩几条：没勾「总是保持」的人额度用完就静默收不到派单了，
+       * 要在这一屏把「重新开启」摆出来（见 utils/notify-prompt.ts 为什么不能自动弹窗）。
+       * 状态带 60 秒缓存，切筛选档、搜索只会读缓存，不会每次都打请求。
+       */
+      this.checkNotifyPrompt(session.canAccept);
       // 顶栏标题跟着身份走：办公室进来看到的不是「工单池」而是「派单台」。
       // 标题写在 pool.json 里是静态的，只能在这儿按身份改一次
       wx.setNavigationBarTitle({

@@ -5,6 +5,7 @@ import { isActiveOrder } from '../../utils/order-status';
 import { getSession } from '../../utils/session';
 import { setTabBadge, syncTabBar } from '../../utils/tabbar';
 import { topUpQuietly } from '../../utils/unread';
+import { notifyPromptHandlers } from '../../utils/notify-prompt';
 import { refreshTabBadges } from '../../utils/badges';
 import { guideHandlers } from '../../utils/guide';
 
@@ -53,9 +54,14 @@ const ACTION_TEXT: Record<string, string> = {
 
 Page({
   ...guideHandlers(),
+  ...notifyPromptHandlers(),
   data: {
     /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
     guide: false,
+    /** 微信提醒额度快用完的提示条（见 utils/notify-prompt.ts） */
+    notifyPrompt: false,
+    notifyRemaining: 0,
+    notifyRenewing: false,
     active: [] as OrderRow[],
     /**
      * 页头那个红数字：在手的单里压了 3 天以上的（stayTone 的 danger 档）。
@@ -113,6 +119,8 @@ Page({
         loaded: true,
       });
       setTabBadge(this, 'mine', active.length);
+      // 微信提醒额度快用完了没有：这一屏是维修工每天都会打开的，提示放这里才看得到
+      this.checkNotifyPrompt(session.canAccept);
     } catch (e: any) {
       wx.showToast({ icon: 'none', title: e?.message || '加载失败' });
     }

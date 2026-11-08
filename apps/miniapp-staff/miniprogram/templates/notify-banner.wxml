@@ -1,0 +1,31 @@
+<!--
+  微信提醒额度快用完的提示条（工单池 / 在手工单共用）。
+
+  为什么摆在页头而不是弹窗：微信规定授权框必须由真实点击同步唤起，
+  额度用完那一刻没有人点、也弹不出来（见 utils/notify-prompt.ts）。
+  人打开小程序就能看见这条，点「重新开启」才把授权框叫起来。
+
+  样式在 app.wxss 的「微信提醒额度提示」一节，事件处理在 utils/notify-prompt.ts。
+
+  用法：
+    <import src="/templates/notify-banner.wxml"/>
+    <template is="notify-banner" data="{{notifyPrompt, notifyRemaining, notifyRenewing}}"/>
+-->
+<template name="notify-banner">
+  <view wx:if="{{notifyPrompt}}" class="notice notify-prompt">
+    <view class="notice__body">
+      <view class="notice__title">
+        微信提醒{{notifyRemaining > 0 ? '只剩 ' + notifyRemaining + ' 条' : '收不到了'}}
+      </view>
+      <view class="notice__desc">
+        微信规定「允许一次只推一条」，用完就收不到派单提醒了，只会落到「消息」里。点下面重新开启，并在弹窗里勾上「总是保持以上选择」，以后会自动补额度。
+      </view>
+      <view class="notify-prompt__actions">
+        <button class="btn btn--primary btn--sm" bindtap="onRenewNotify" loading="{{notifyRenewing}}">
+          <text>重新开启</text>
+        </button>
+        <button class="btn btn--ghost btn--sm" bindtap="onDismissNotify">今天不再提示</button>
+      </view>
+    </view>
+  </view>
+</template>
