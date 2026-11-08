@@ -399,7 +399,7 @@ export class MisMirrorService {
   private categorySql = misFeeCategorySql('fee_name');
 
   async residential(q: any, user: AuthUser, access?: ResolvedAccess) {
-    if (!['dashboard', 'households', 'amount-brackets', 'communities'].includes(q.view || 'dashboard')) {
+    if (!['dashboard', 'households', 'amount-brackets', 'communities', 'trend', 'detail'].includes(q.view || 'dashboard')) {
       throw new BadRequestException('镜像模式暂不支持该视图，请先切回 MIS 直连');
     }
     const communities = await this.communities(q, user, access);
@@ -412,12 +412,75 @@ export class MisMirrorService {
       for (const community of communities) {
         const one = await this.residential({ ...q, view: 'dashboard', communityId: community.id }, user, access) as any;
         const sum = one.summary || {};
-        rows.push({ id: community.id, name: community.name, receivableCents: Number(sum.receivableCents || 0), paidCents: Number(sum.paidCents || 0), unpaidCents: Number(sum.unpaidCents || 0), unpaidHouses: Number(sum.unpaidHouses || 0), rate: Number(sum.receivableCents) > 0 ? Math.round((Number(sum.paidCents) / Number(sum.receivableCents)) * 1000) / 10 : null });
+        rows.push({ id: community.id, name: community.name, receivableCents: Number(sum.receivableCents || 0), paidCents: Number(sum.paidCents || 0), unpaidCents: Number(sum.unpaidCents || 0), unpaidHouses: Number(sum.unpaidHouses || 0), rate: Number(sum.receivableCents) > 0 ? Math.round((Number(sum.netPaidCents ?? sum.paidCents) / Number(sum.receivableCents)) * 1000) / 10 : null });
       }
       rows.sort((a, b) => b.unpaidCents - a.unpaidCents);
       return { ...meta, rows };
     }
     const built = await this.buildWhere(q, offices);
+    if (q.view === 'trend') {
+      if (!q.paidFrom || !q.paidTo) throw new BadRequestException('趋势需指定收款日期范围');
+      const from = Date.parse(`${q.paidFrom}T00:00:00+08:00`), to = Date.parse(`${q.paidTo}T00:00:00+08:00`);
+      if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) throw new BadRequestException('收款日期范围不合法');
+      if ((to - from) / 86400000 > 366) throw new BadRequestException('收款日期范围不能超过一年');
+      const bucket = q.bucket === 'month' ? 'month' : 'day';
+      const params = [...built.params];
+      const add = (value: unknown) => { params.push(value); return `$${params.length}`; };
+      const fromParam = add(q.paidFrom), toParam = add(q.paidTo);
+      const category = this.categoryFilter(q, params);
+      const key = bucket === 'month' ? `to_char(paid_date,'YYYY-MM')` : `to_char(paid_date,'YYYY-MM-DD')`;
+      const refundKey = bucket === 'month' ? `to_char(refund_date,'YYYY-MM')` : `to_char(refund_date,'YYYY-MM-DD')`;
+      const rows: any[] = await this.dataSource.query(
+        `WITH flows AS (
+           SELECT ${key} AS key,amount_cents AS amount,0 AS refund
+             FROM mis_mirror_bill
+            WHERE ${built.where} AND ${category} AND amount_cents>=0 AND paid_date>=${fromParam}::date AND paid_date<(${toParam}::date + INTERVAL '1 day')
+           UNION ALL
+           SELECT ${refundKey} AS key,-amount_cents AS amount,1 AS refund
+             FROM mis_mirror_bill
+            WHERE ${built.where} AND ${category} AND amount_cents>=0 AND paid_date IS NOT NULL AND refund_date>=${fromParam}::date AND refund_date<(${toParam}::date + INTERVAL '1 day')
+         )
+         SELECT key,COALESCE(SUM(amount),0)::bigint AS "netCents",
+                COALESCE(SUM(CASE WHEN refund=0 THEN amount ELSE 0 END),0)::bigint AS "chargedCents",
+                COALESCE(SUM(CASE WHEN refund=1 THEN -amount ELSE 0 END),0)::bigint AS "refundedCents"
+           FROM flows GROUP BY key ORDER BY key`,
+        params,
+      );
+      return { ...meta, bucket, invalidDateCount: 0, rows: rows.map((row) => bucket === 'month'
+        ? { month: String(row.key), netCents: Number(row.netCents), chargedCents: Number(row.chargedCents), refundedCents: Number(row.refundedCents) }
+        : { day: String(row.key), netCents: Number(row.netCents), chargedCents: Number(row.chargedCents), refundedCents: Number(row.refundedCents) }) };
+    }
+    if (q.view === 'detail') {
+      if (!q.houseKeys?.length) throw new BadRequestException('请先选择住户');
+      if (q.houseKeys.length > 200) throw new BadRequestException('每批最多200户，请按楼栋分批');
+      const keys: any[] = [...new Set(q.houseKeys.map((key: string) => {
+        const m = /^(0[1-4]):([1-9]\d{0,18}):([1-9]\d{0,18})$/.exec(String(key));
+        if (!m || !offices.includes(m[1])) throw new BadRequestException('所选住户不在查询范围');
+        return { office: m[1], sid: Number(m[2]), zhid: Number(m[3]), raw: m[0] };
+      }))];
+      const params = [...built.params];
+      const add = (value: unknown) => { params.push(value); return `$${params.length}`; };
+      const predicates = keys.map((key) => `(office_code=${add(key.office)} AND s_id=${add(key.sid)} AND zh_id=${add(key.zhid)})`);
+      const category = this.categoryFilter(q, params);
+      const status = q.status === 'paid' ? 'paid_date IS NOT NULL' : 'paid_date IS NULL';
+      const rows: any[] = await this.dataSource.query(
+        `SELECT zj_id AS id,office_code AS "officeCode",s_id AS "sId",zh_id AS "zhId",address,owner_name AS "ownerName",
+                fee_code AS "feeCode",fee_name AS "feeName",period,amount_cents AS "amountCents",paid_date AS "paidDate",
+                source_updated_at AS "updatedAt"
+           FROM mis_mirror_bill
+          WHERE ${built.where} AND ${category} AND refund_date IS NULL AND amount_cents>0 AND ${status} AND (${predicates.join(' OR ')})
+          ORDER BY address,period,fee_code,zj_id LIMIT 10001`,
+        params,
+      );
+      if (rows.length > 10000) throw new BadRequestException('账单明细超过一万条，请缩小账期或分批');
+      return { ...meta, rows: rows.map((row) => {
+        const community = communities.find((item) => item.offices.includes(String(row.officeCode)));
+        const paidAt = row.paidDate ? (row.paidDate instanceof Date
+          ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(row.paidDate)
+          : String(row.paidDate).slice(0, 10)) : null;
+        return { houseKey: `${row.officeCode}:${row.sId}:${row.zhId}`, id: String(row.id), officeCode: String(row.officeCode), address: String(row.address || ''), ownerName: String(row.ownerName || ''), feeCode: row.feeCode, feeName: row.feeName || '未命名费项', period: row.period, amountCents: Number(row.amountCents || 0), billCount: 1, paidAt, updatedAt: row.updatedAt ? String(row.updatedAt) : null, communityId: community?.id, phone: undefined, phoneMasked: '未留手机号', contactEligible: false };
+      }) };
+    }
     if (q.view === 'amount-brackets') {
       const rows: any[] = await this.dataSource.query(
         `WITH per_house AS (
@@ -446,6 +509,7 @@ export class MisMirrorService {
                 COALESCE(SUM(CASE WHEN refund_date IS NULL AND amount_cents>=0 THEN amount_cents ELSE 0 END),0)::bigint AS "receivableCents",
                 COALESCE(SUM(CASE WHEN paid_date IS NOT NULL AND refund_date IS NULL AND amount_cents>=0 THEN amount_cents ELSE 0 END),0)::bigint AS "paidCents",
                 COALESCE(SUM(CASE WHEN paid_date IS NULL AND refund_date IS NULL AND amount_cents>0 THEN amount_cents ELSE 0 END),0)::bigint AS "unpaidCents",
+                COALESCE(SUM(CASE WHEN refund_date IS NULL AND amount_cents<0 THEN amount_cents ELSE 0 END),0)::bigint AS "adjustmentCents",
                 COUNT(DISTINCT CASE WHEN paid_date IS NULL AND refund_date IS NULL AND amount_cents>0 THEN office_code||':'||s_id END)::int AS "unpaidHouses",
                 SUM(CASE WHEN amount_cents<0 THEN 1 ELSE 0 END)::int AS "adjustmentCount"
            FROM mis_mirror_bill WHERE ${built.where}`,
@@ -456,11 +520,12 @@ export class MisMirrorService {
                 COALESCE(SUM(CASE WHEN refund_date IS NULL AND amount_cents>=0 THEN amount_cents ELSE 0 END),0)::bigint AS "receivableCents",
                 COALESCE(SUM(CASE WHEN paid_date IS NOT NULL AND refund_date IS NULL AND amount_cents>=0 THEN amount_cents ELSE 0 END),0)::bigint AS "paidCents",
                 COALESCE(SUM(CASE WHEN paid_date IS NULL AND refund_date IS NULL AND amount_cents>0 THEN amount_cents ELSE 0 END),0)::bigint AS "unpaidCents",
+                COALESCE(SUM(CASE WHEN refund_date IS NULL AND amount_cents<0 THEN amount_cents ELSE 0 END),0)::bigint AS "adjustmentCents",
                 COUNT(DISTINCT CASE WHEN paid_date IS NULL AND refund_date IS NULL AND amount_cents>0 THEN office_code||':'||s_id END)::int AS "unpaidHouses"
            FROM mis_mirror_bill WHERE ${built.where} GROUP BY fee_code,fee_name,${this.categorySql} ORDER BY "unpaidCents" DESC`,
         built.params,
       );
-      return { ...meta, summary: { receivableCents: Number(summaryRows[0]?.receivableCents || 0), paidCents: Number(summaryRows[0]?.paidCents || 0), unpaidCents: Number(summaryRows[0]?.unpaidCents || 0), total: Number(summaryRows[0]?.total || 0), unpaidHouses: Number(summaryRows[0]?.unpaidHouses || 0), adjustmentCount: Number(summaryRows[0]?.adjustmentCount || 0) }, byFee: byFee.map((row) => ({ receivableCents: Number(row.receivableCents || 0), paidCents: Number(row.paidCents || 0), unpaidCents: Number(row.unpaidCents || 0), feeCode: row.feeCode, feeName: row.feeName || '未命名费项', category: row.category, unpaidHouses: Number(row.unpaidHouses || 0) })) };
+      const adj=Number(summaryRows[0]?.adjustmentCents||0),paid=Number(summaryRows[0]?.paidCents||0);return { ...meta, summary: { receivableCents: Number(summaryRows[0]?.receivableCents || 0), paidCents: paid, unpaidCents: Number(summaryRows[0]?.unpaidCents || 0), total: Number(summaryRows[0]?.total || 0), unpaidHouses: Number(summaryRows[0]?.unpaidHouses || 0), adjustmentCount: Number(summaryRows[0]?.adjustmentCount || 0),adjustmentCents:adj,netPaidCents:paid+adj }, byFee: byFee.map((row) => {const p=Number(row.paidCents||0),a=Number(row.adjustmentCents||0);return { receivableCents: Number(row.receivableCents || 0), paidCents: p, unpaidCents: Number(row.unpaidCents || 0), adjustmentCents:a,netPaidCents:p+a, feeCode: row.feeCode, feeName: row.feeName || '未命名费项', category: row.category, unpaidHouses: Number(row.unpaidHouses || 0) };}) };
     }
     const status = q.status === 'paid' ? `paid_date IS NOT NULL AND refund_date IS NULL AND amount_cents>0` : `paid_date IS NULL AND refund_date IS NULL AND amount_cents>0`;
     const where = `${built.where} AND ${status} AND ${this.categoryFilter(q, built.params)}`;

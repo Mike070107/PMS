@@ -120,7 +120,8 @@ export function buildMisResidentialQuery(q:MisResidentialQuery,offices:string[])
  const receivable=`CASE WHEN w.ZJ_TKRQ IS NULL AND w.ZJ_JE>=0 THEN w.ZJ_JE ELSE 0 END`;
  const paid=`CASE WHEN w.ZJ_TKRQ IS NULL AND w.ZJ_JE>=0 AND w.ZJ_SKRQ IS NOT NULL THEN w.ZJ_JE ELSE 0 END`;
  const unpaid=`CASE WHEN w.ZJ_TKRQ IS NULL AND w.ZJ_JE>0 AND w.ZJ_SKRQ IS NULL THEN w.ZJ_JE ELSE 0 END`;
- const amounts=`CONVERT(varchar(50),SUM(${receivable}),2) AS receivableAmount,CONVERT(varchar(50),SUM(${paid}),2) AS paidAmount,CONVERT(varchar(50),SUM(${unpaid}),2) AS unpaidAmount`;
+ const adjustment=`CASE WHEN w.ZJ_TKRQ IS NULL AND w.ZJ_JE<0 THEN w.ZJ_JE ELSE 0 END`;
+ const amounts=`CONVERT(varchar(50),SUM(${receivable}),2) AS receivableAmount,CONVERT(varchar(50),SUM(${paid}),2) AS paidAmount,CONVERT(varchar(50),SUM(${unpaid}),2) AS unpaidAmount,CONVERT(varchar(50),SUM(${adjustment}),2) AS adjustmentAmount`;
  if(view==='dashboard')return {sql:`SELECT COUNT_BIG(*) AS total,${amounts},COUNT(DISTINCT CASE WHEN w.ZJ_TKRQ IS NULL AND w.ZJ_SKRQ IS NULL AND w.ZJ_JE>0 THEN CONVERT(varchar(10),l.管理处)+':'+CONVERT(varchar(30),s.S_ID) END) AS unpaidHouses,SUM(CASE WHEN w.ZJ_JE<0 THEN 1 ELSE 0 END) AS adjustmentCount ${from}; SELECT w.ZJ_LX AS feeCode,f.XM AS feeName,${categorySql} AS category,${amounts},COUNT(DISTINCT CASE WHEN w.ZJ_TKRQ IS NULL AND w.ZJ_SKRQ IS NULL AND w.ZJ_JE>0 THEN CONVERT(varchar(10),l.管理处)+':'+CONVERT(varchar(30),s.S_ID) END) AS unpaidHouses ${from} GROUP BY w.ZJ_LX,f.XM ORDER BY w.ZJ_LX;`,params};
  if(q.status==='paid')from+=' AND w.ZJ_SKRQ IS NOT NULL AND w.ZJ_TKRQ IS NULL AND w.ZJ_JE>0';
  else from+=' AND w.ZJ_SKRQ IS NULL AND w.ZJ_TKRQ IS NULL AND w.ZJ_JE>0';

@@ -31,6 +31,8 @@ async function fixture() {
   await add(5, 4, 4, 600000);
   await add(6, 5, 5, 50000, '2026-11-08');
   await add(7, 6, 6, 30000, null, '2026-11-08');
+  await add(8, 1, 1, -500);
+  await add(9, 8, 8, 10000, '2026-11-08', '2026-11-08');
   return { pg, service, migration, health };
 }
 
@@ -49,13 +51,16 @@ test('镜像迁移可 up/down，金额分档按户聚合后分档', async () => 
     const dashboard: any = await service.residential({ view: 'dashboard' }, { id: 1, tenantId: 1 }, { scopeAll: true } as any);
     assert.equal(dashboard.summary.unpaidCents, 1080000);
     assert.equal(dashboard.summary.unpaidHouses, 4);
+    assert.equal(dashboard.summary.adjustmentCount, 1);
+    assert.equal(dashboard.summary.adjustmentCents, -500);
+    assert.equal(dashboard.summary.netPaidCents, dashboard.summary.paidCents - 500);
     const houses: any = await service.residential({ view: 'households', status: 'unpaid' }, { id: 1, tenantId: 1 }, { scopeAll: true } as any);
     assert.equal(houses.total, 4);
     assert.equal(houses.rows.length, 4);
     assert.equal(houses.rows[0].amountCents, 30000);
     const today: any = await service.today({ date: '2026-11-08' }, { id: 1, tenantId: 1 }, { scopeAll: true } as any);
     assert.equal(today.paidCents, 50000);
-    assert.equal(today.refundedCents, 30000);
+    assert.equal(today.refundedCents, 40000);
     assert.deepEqual(today.byFee.map((row: any) => [row.feeCode, row.feeName]), [['property', '物业费']]);
     const details: any = await service.todayDetails({ date: '2026-11-08', category: 'property' }, { id: 1, tenantId: 1 }, { scopeAll: true } as any);
     assert.equal(details.total, 1);
@@ -65,7 +70,7 @@ test('镜像迁移可 up/down，金额分档按户聚合后分档', async () => 
     // 收款日 11-08、登记日 11-09：明细必须按收款日归到 11-08，不能按登记日漂到 11-09。
     await pg.query(
       `INSERT INTO mis_mirror_bill(zj_id,office_code,s_id,zh_id,owner_name,room_no,address,fee_code,fee_name,period,amount_cents,paid_date,refund_date,payment_method,source_updated_at)
-       VALUES(8,'01',7,7,'业主7','7','枫桦苑一期7号','01','管理费','202610',12345,'2026-11-08',NULL,'现金','2026-11-09T10:00:00+08:00')`,
+       VALUES(10,'01',7,7,'业主7','7','枫桦苑一期7号','01','管理费','202610',12345,'2026-11-08',NULL,'现金','2026-11-09T10:00:00+08:00')`,
     );
     const detailsSameDay: any = await service.todayDetails({ date: '2026-11-08', category: 'property' }, { id: 1, tenantId: 1 }, { scopeAll: true } as any);
     assert.equal(detailsSameDay.total, 2);
@@ -78,6 +83,16 @@ test('镜像迁移可 up/down，金额分档按户聚合后分档', async () => 
     const todayAfter: any = await service.today({ date: '2026-11-08' }, { id: 1, tenantId: 1 }, { scopeAll: true } as any);
     assert.equal(detailsSameDay.total, todayAfter.byFee.reduce((sum: number, row: any) => sum + row.billCount, 0));
     assert.equal(detailsSameDay.rows.reduce((sum: number, row: any) => sum + row.amountCents, 0), todayAfter.paidCents);
+    const trend: any = await service.residential({ view: 'trend', paidFrom: '2026-11-01', paidTo: '2026-11-08', bucket: 'day' }, { id: 1, tenantId: 1 }, { scopeAll: true } as any);
+    assert.equal(trend.rows[0].day, '2026-11-08');
+    assert.equal(trend.rows[0].chargedCents, 72345);
+    assert.equal(trend.rows[0].refundedCents, 10000);
+    assert.equal(trend.rows[0].netCents, 62345);
+    const detail: any = await service.residential({ view: 'detail', houseKeys: ['01:7:7'], status: 'paid' }, { id: 1, tenantId: 1 }, { scopeAll: true } as any);
+    assert.equal(detail.rows.length, 1);
+    assert.equal(detail.rows[0].houseKey, '01:7:7');
+    assert.equal(detail.rows[0].amountCents, 12345);
+    assert.equal(detail.rows[0].paidAt, '2026-11-08');
     await health.down({ query: (sql: string) => pg.query(sql) } as any);
     await migration.down({ query: (sql: string) => pg.query(sql) } as any);
   } finally { await pg.close(); }

@@ -383,12 +383,12 @@ export class MisFeesService implements OnModuleDestroy {
   const communities=await this.residentialScope(q,user,access),built=buildMisResidentialQuery(q,communities.flatMap(c=>c.offices));
   const result=await this.read(built.sql,built.params),sets=result.recordsets||[];
   const meta={sourceLabel:'一通MIS',readOnly:true,queriedAt:new Date().toISOString(),communities,smsAvailable:false,smsReason:'尚未接入审核通过的住宅缴费短信通道；仅可预览，不会发送'};
-  const amounts=(r:any)=>({receivableCents:misMoneyToCents(r.receivableAmount),paidCents:misMoneyToCents(r.paidAmount),unpaidCents:misMoneyToCents(r.unpaidAmount)});
+  const amounts=(r:any)=>{const paidCents=misMoneyToCents(r.paidAmount),adjustmentCents=misMoneyToCents(r.adjustmentAmount);return {receivableCents:misMoneyToCents(r.receivableAmount),paidCents,unpaidCents:misMoneyToCents(r.unpaidAmount),adjustmentCents,netPaidCents:paidCents+adjustmentCents};};
   if(q.view==='communities'){
    const rows:any[]=[];
    for(const c of communities){
     const one:any=await this.residential({...q,view:'dashboard',communityId:c.id} as any,user,access);
-    const sum=one.summary||{};const receivable=Number(sum.receivableCents||0),paid=Number(sum.paidCents||0);
+    const sum=one.summary||{};const receivable=Number(sum.receivableCents||0),paid=Number(sum.netPaidCents??sum.paidCents??0);
     rows.push({id:c.id,name:c.name,receivableCents:receivable,paidCents:paid,unpaidCents:Number(sum.unpaidCents||0),unpaidHouses:Number(sum.unpaidHouses||0),rate:receivable>0?Math.round((paid/receivable)*1000)/10:null});
    }
    rows.sort((a,b)=>b.unpaidCents-a.unpaidCents);
