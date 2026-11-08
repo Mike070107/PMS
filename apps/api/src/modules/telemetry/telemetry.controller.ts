@@ -4,7 +4,7 @@ import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { RequirePermission } from '../../common/require-permission.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../access/permissions.guard';
-import { LoginHistoryQueryDto, PageUsageQueryDto, PageViewsDto } from './telemetry.dto';
+import { LoginHistoryQueryDto, PageUsageDrilldownQueryDto, PageUsageQueryDto, PageViewsDto } from './telemetry.dto';
 import { TelemetryService } from './telemetry.service';
 
 @Controller('telemetry')
@@ -24,6 +24,14 @@ export class TelemetryController {
   @RequirePermission('logs', 'view')
   pageUsage(@Query() query: PageUsageQueryDto, @CurrentUser() user: AuthUser) {
     return this.telemetry.pageUsage(user, query);
+  }
+
+  /** 使用统计下钻：顶层榜单点数字后按页面/用户查看明细或聚合。 */
+  @Get('page-usage/drilldown')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermission('logs', 'view')
+  pageUsageDrilldown(@Query() query: PageUsageDrilldownQueryDto, @CurrentUser() user: AuthUser) {
+    return this.telemetry.pageUsageDrilldown(user, query);
   }
 
   /** 登录历史：优先复用 system_logs（登录审计），结构化失败原因来自 login_attempts。 */

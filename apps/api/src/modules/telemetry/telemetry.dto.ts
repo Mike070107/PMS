@@ -56,6 +56,50 @@ export class PageUsageQueryDto {
   communityId?: number;
 }
 
+/**
+ * 使用统计下钻：页面 Top20 / 用户 Top20 点数字后打开明细。
+ * from/to 缺省为近 7 天（含今天，Asia/Shanghai）；pageSize 上限 100。
+ */
+export class PageUsageDrilldownQueryDto {
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: '开始日期不合法' })
+  from?: string;
+
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: '结束日期不合法' })
+  to?: string;
+
+  /** 页面路径（会按上报口径归一：去 query/hash 与末尾斜杠） */
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  path?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  userId?: number;
+
+  /** events=逐条访问；users=按用户聚合；pages=按页面聚合 */
+  @IsOptional()
+  @IsIn(['events', 'users', 'pages'])
+  groupBy?: 'events' | 'users' | 'pages';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  pageSize?: number;
+}
+
 export class LoginHistoryQueryDto {
   @IsDefined()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: '开始日期不合法' })

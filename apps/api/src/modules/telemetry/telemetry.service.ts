@@ -8,7 +8,7 @@ import { PageView } from '../../entities/page-view.entity';
 import { User } from '../../entities/user.entity';
 import { LOGIN_REASON_TEXT, type LoginFailureReason } from './login-attempt.util';
 import { pageKey, pageName } from './page-meta';
-import { LoginHistoryQueryDto, PageUsageQueryDto, PageViewsDto } from './telemetry.dto';
+import { LoginHistoryQueryDto, PageUsageDrilldownQueryDto, PageUsageQueryDto, PageViewsDto } from './telemetry.dto';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_RANGE_DAYS = 366;
@@ -114,6 +114,123 @@ export class TelemetryService {
     const end = new Date(endDay.getTime() + 86400000);
     if (end.getTime() - start.getTime() > MAX_RANGE_DAYS * 86400000) throw new BadRequestException('时间范围不能超过一年');
     return { start, end };
+  }
+
+  /** 下钻的 from/to 允许省略：缺省近 7 天（含今天），仍按北京时间自然日校验。 */
+  private rangeWithDefaults(from?: string, to?: string): { start: Date; end: Date } {
+    const toDate = String(to ?? '').trim() || shanghaiDate(new Date());
+    let fromDate = String(from ?? '').trim();
+    if (!fromDate) {
+      const endDay = new Date(`${toDate}T00:00:00+08:00`);
+      if (!Number.isFinite(endDay.getTime())) throw new BadRequestException('日期不合法');
+      fromDate = shanghaiDate(new Date(endDay.getTime() - 6 * 86400000));
+    }
+    return this.range(fromDate, toDate);
+  }
+
+  private async countValue(sql: string, params: unknown[]): Promise<number> {
+    const rows: Array<{ n: number }> = await this.views.query(sql, params);
+    return Number(rows?.[0]?.n || 0);
+  }
+
+  /**
+   * 使用统计下钻（复用 page_views）：
+   * - events（默认）：逐条访问记录，按时间倒序；
+   * - users：按用户聚合（views + 最近一次 lastAt）；
+   * - pages：按页面聚合（views + 最近一次 lastAt）。
+   * path / userId 都是可选过滤；分页作用于返回的明细或聚合行，total 为对应总数。
+   */
+  async pageUsageDrilldown(user: AuthUser, query: PageUsageDrilldownQueryDto) {
+    if (!user.tenantId) throw new BadRequestException('请先选择公司');
+    const groupBy = query.groupBy ?? 'events';
+    if (groupBy !== 'events' && groupBy !== 'users' && groupBy !== 'pages') {
+      throw new BadRequestException('groupBy 只支持 events/users/pages');
+    }
+    const page = query.page ?? 1;
+    if (!Number.isInteger(page) || page < 1) throw new BadRequestException('页码必须从 1 开始');
+    const pageSize = query.pageSize ?? 20;
+    if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 100) throw new BadRequestException('每页条数必须是 1–100 的整数');
+    const { start, end } = this.rangeWithDefaults(query.from, query.to);
+    const params: unknown[] = [user.tenantId, start, end];
+    const filters = ['tenant_id=$1', 'created_at>=$2', 'created_at<$3'];
+    const rawPath = String(query.path ?? '').trim();
+    if (rawPath) {
+      const path = normalizeViewPath(rawPath);
+      if (!path) throw new BadRequestException('页面路径不合法');
+      params.push(path);
+      filters.push(`path=$${params.length}`);
+    }
+    if (query.userId != null) {
+      if (!Number.isInteger(query.userId) || query.userId < 1) throw new BadRequestException('用户ID不合法');
+      params.push(query.userId);
+      filters.push(`user_id=$${params.length}`);
+    }
+    const where = filters.join(' AND ');
+    const limitSql = `LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    const pageParams = [...params, pageSize, (page - 1) * pageSize];
+
+    if (groupBy === 'users') {
+      const total = await this.countValue(`SELECT COUNT(DISTINCT user_id)::int AS n FROM page_views WHERE ${where}`, params);
+      const rows: Array<{ userId: number; userName: string | null; views: number; lastAt: Date }> = await this.views.query(
+        `SELECT user_id AS "userId", MAX(user_name) AS "userName", COUNT(*)::int AS views, MAX(created_at) AS "lastAt"
+           FROM page_views WHERE ${where}
+          GROUP BY user_id
+          ORDER BY views DESC, "userId" ASC
+          ${limitSql}`,
+        pageParams,
+      );
+      return {
+        total,
+        page,
+        pageSize,
+        rows: rows.map((row) => ({
+          userId: Number(row.userId),
+          userName: clip(row.userName, 60) || `用户#${Number(row.userId)}`,
+          views: Number(row.views),
+          lastAt: shanghaiIso(row.lastAt),
+        })),
+      };
+    }
+
+    if (groupBy === 'pages') {
+      const total = await this.countValue(`SELECT COUNT(DISTINCT path)::int AS n FROM page_views WHERE ${where}`, params);
+      const rows: Array<{ path: string; views: number; lastAt: Date }> = await this.views.query(
+        `SELECT path, COUNT(*)::int AS views, MAX(created_at) AS "lastAt"
+           FROM page_views WHERE ${where}
+          GROUP BY path
+          ORDER BY views DESC, path ASC
+          ${limitSql}`,
+        pageParams,
+      );
+      return {
+        total,
+        page,
+        pageSize,
+        rows: rows.map((row) => ({ path: row.path, pageName: pageName(row.path), views: Number(row.views), lastAt: shanghaiIso(row.lastAt) })),
+      };
+    }
+
+    const total = await this.countValue(`SELECT COUNT(*)::int AS n FROM page_views WHERE ${where}`, params);
+    const rows: Array<{ at: Date; userId: number; userName: string | null; path: string; ip: string | null }> = await this.views.query(
+      `SELECT created_at AS "at", user_id AS "userId", user_name AS "userName", path, ip
+         FROM page_views WHERE ${where}
+        ORDER BY created_at DESC, id DESC
+        ${limitSql}`,
+      pageParams,
+    );
+    return {
+      total,
+      page,
+      pageSize,
+      rows: rows.map((row) => ({
+        at: shanghaiIso(row.at),
+        userId: Number(row.userId),
+        userName: clip(row.userName, 60) || '未知用户',
+        path: row.path,
+        pageName: pageName(row.path),
+        ip: row.ip || null,
+      })),
+    };
   }
 
   async pageUsage(user: AuthUser, query: PageUsageQueryDto) {

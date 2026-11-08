@@ -70,6 +70,88 @@ test('页面使用统计按北京时间天聚合、topPages/topUsers 排序与 t
   } finally { await f.pg.close(); }
 });
 
+test('页面使用下钻：按 path 查逐条 events（分页/总数/字段）与 users 聚合', async () => {
+  const f = await fixture();
+  try {
+    const insert = (tenantId: number, userId: number, userName: string, path: string, at: string, ip: string | null = '1.1.1.1') =>
+      f.query(`INSERT INTO page_views(tenant_id,user_id,user_name,path,page_key,created_at,ip) VALUES($1,$2,$3,$4,$5,$6,$7)`, [tenantId, userId, userName, path, null, at, ip]);
+    await insert(1, 1, '张三', '/bills', '2026-11-05T02:00:00Z');
+    await insert(1, 1, '张三', '/bills', '2026-11-05T02:01:00Z');
+    await insert(1, 2, '李四', '/bills', '2026-11-06T03:00:00Z');
+    await insert(1, 2, '李四', '/fees', '2026-11-06T04:00:00Z');
+    await insert(2, 3, '外部', '/bills', '2026-11-05T02:00:00Z');
+    const user: any = { id: 1, tenantId: 1 };
+    const base: any = { from: '2026-11-01', to: '2026-11-07', path: '/bills' };
+    const first: any = await f.service.pageUsageDrilldown(user, { ...base, pageSize: 2 } as any);
+    assert.deepEqual(Object.keys(first).sort(), ['page', 'pageSize', 'rows', 'total']);
+    assert.deepEqual([first.total, first.page, first.pageSize, first.rows.length], [3, 1, 2, 2]);
+    assert.deepEqual(first.rows.map((r: any) => [r.userId, r.userName, r.path, r.pageName, r.ip]), [
+      [2, '李四', '/bills', '账单与待缴', '1.1.1.1'],
+      [1, '张三', '/bills', '账单与待缴', '1.1.1.1'],
+    ]);
+    assert.ok(first.rows.every((r: any) => r.at.endsWith('+08:00')), '明细时间必须返回北京时间 ISO');
+    assert.equal(first.rows[0].at, '2026-11-06T11:00:00+08:00');
+    const second: any = await f.service.pageUsageDrilldown(user, { ...base, page: 2, pageSize: 2 } as any);
+    assert.deepEqual([second.total, second.rows.length, second.rows[0].at], [3, 1, '2026-11-05T10:00:00+08:00']);
+    const users: any = await f.service.pageUsageDrilldown(user, { ...base, groupBy: 'users' } as any);
+    assert.deepEqual([users.total, users.rows.length], [2, 2]);
+    assert.deepEqual(users.rows, [
+      { userId: 1, userName: '张三', views: 2, lastAt: '2026-11-05T10:01:00+08:00' },
+      { userId: 2, userName: '李四', views: 1, lastAt: '2026-11-06T11:00:00+08:00' },
+    ]);
+  } finally { await f.pg.close(); }
+});
+
+test('页面使用下钻：按 userId 查 pages 聚合；未传 path/userId 时按 groupBy 返回全部聚合', async () => {
+  const f = await fixture();
+  try {
+    const insert = (tenantId: number, userId: number, userName: string, path: string, at: string) =>
+      f.query(`INSERT INTO page_views(tenant_id,user_id,user_name,path,page_key,created_at) VALUES($1,$2,$3,$4,$5,$6)`, [tenantId, userId, userName, path, null, at]);
+    await insert(1, 1, '张三', '/bills', '2026-11-05T02:00:00Z');
+    await insert(1, 1, '张三', '/bills', '2026-11-05T02:01:00Z');
+    await insert(1, 1, '张三', '/fees', '2026-11-06T02:00:00Z');
+    await insert(1, 2, '李四', '/logs', '2026-11-05T03:00:00Z');
+    await insert(2, 3, '外部', '/bills', '2026-11-05T02:00:00Z');
+    const user: any = { id: 1, tenantId: 1 };
+    const base: any = { from: '2026-11-01', to: '2026-11-07' };
+    const pages: any = await f.service.pageUsageDrilldown(user, { ...base, userId: 1, groupBy: 'pages' } as any);
+    assert.deepEqual([pages.total, pages.rows.length], [2, 2]);
+    assert.deepEqual(pages.rows, [
+      { path: '/bills', pageName: '账单与待缴', views: 2, lastAt: '2026-11-05T10:01:00+08:00' },
+      { path: '/fees', pageName: '物业费', views: 1, lastAt: '2026-11-06T10:00:00+08:00' },
+    ]);
+    const allUsers: any = await f.service.pageUsageDrilldown(user, { ...base, groupBy: 'users' } as any);
+    assert.equal(allUsers.total, 2);
+    assert.deepEqual(allUsers.rows.map((r: any) => [r.userId, r.views]), [[1, 3], [2, 1]]);
+    const allPages: any = await f.service.pageUsageDrilldown(user, { ...base, groupBy: 'pages' } as any);
+    assert.equal(allPages.total, 3);
+    assert.deepEqual(allPages.rows.map((r: any) => [r.path, r.views]), [['/bills', 2], ['/fees', 1], ['/logs', 1]]);
+    const events: any = await f.service.pageUsageDrilldown(user, { ...base } as any);
+    assert.deepEqual([events.total, events.rows.length, events.pageSize], [4, 4, 20], '默认 groupBy=events、pageSize=20');
+    assert.ok(!events.rows.some((r: any) => r.userId === 3), '其他公司数据不得混入');
+  } finally { await f.pg.close(); }
+});
+
+test('页面使用下钻参数校验：默认近7天、pageSize≤100、非法 page/groupBy/路径/用户/日期拒绝', async () => {
+  const f = await fixture();
+  try {
+    await f.query(`INSERT INTO page_views(tenant_id,user_id,user_name,path,page_key,created_at) VALUES(1,1,'张三','/today',null,$1)`, [new Date().toISOString()]);
+    const user: any = { id: 1, tenantId: 1 };
+    const out: any = await f.service.pageUsageDrilldown(user, {} as any);
+    assert.deepEqual([out.page, out.pageSize], [1, 20]);
+    assert.equal(out.total, 1, '不传 from/to 默认近 7 天');
+    assert.deepEqual(out.rows.map((r: any) => r.path), ['/today']);
+    await assert.rejects(f.service.pageUsageDrilldown(user, { pageSize: 101 } as any), /每页条数/);
+    await assert.rejects(f.service.pageUsageDrilldown(user, { page: 0 } as any), /页码/);
+    await assert.rejects(f.service.pageUsageDrilldown(user, { groupBy: 'bad' } as any), /groupBy/);
+    await assert.rejects(f.service.pageUsageDrilldown(user, { path: 'bills' } as any), /路径/);
+    await assert.rejects(f.service.pageUsageDrilldown(user, { userId: 0 } as any), /用户ID/);
+    await assert.rejects(f.service.pageUsageDrilldown(user, { from: '2026-11-08', to: '2026-11-01' } as any), /日期/);
+    await assert.rejects(f.service.pageUsageDrilldown(user, { from: '2026-13-01', to: '2026-11-07' } as any), /日期/);
+    await assert.rejects(f.service.pageUsageDrilldown({ id: 1, tenantId: null } as any, {} as any), /公司/);
+  } finally { await f.pg.close(); }
+});
+
 test('登录历史查询 login_attempts：status 过滤、失败原因/方式/脱敏账号、未知租户失败可见', async () => {
   const f = await fixture();
   try {
