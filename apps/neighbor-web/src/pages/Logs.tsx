@@ -268,13 +268,37 @@ function IntroViewsPanel({ retry }: { retry: number }) {
 }
 
 /** 使用统计：page-usage + login-history；接口未就绪时显示「待接口」，不造假数据。 */
-type UsageDay = { date: string; count: number };
+type UsageSourceKey = 'web' | 'staff' | 'owner';
+type UsageSource = { key: UsageSourceKey; label: string; views: number; users: number };
+type UsageDay = { date: string; count: number; bySource?: Partial<Record<UsageSourceKey, number>> };
+type LoginStats = { total: number; success: number; failed: number; uniqueUsers: number };
 type UsagePageRow = { name: string; path?: string; views: number; users: number; share: number };
 type UsageUserRow = { name: string; userId?: string; views: number; pages: number; topPage: string };
-type UsageData = { totalViews: number; uniqueUsers: number; days: UsageDay[]; topPages: UsagePageRow[]; topUsers: UsageUserRow[] };
+type UsageData = { totalViews: number; uniqueUsers: number; days: UsageDay[]; topPages: UsagePageRow[]; topUsers: UsageUserRow[]; bySource?: UsageSource[]; logins?: LoginStats };
 type LoginRow = { id: string; time: string; user: string; method: string; status: 'success' | 'failed' | 'unknown'; reason: string; ip: string };
 type LoginData = { rows: LoginRow[]; total: number };
 type LoginFilter = 'all' | 'success' | 'failed';
+const SOURCE_ORDER: UsageSourceKey[] = ['web', 'staff', 'owner'];
+const SOURCE_LABEL: Record<UsageSourceKey, string> = { web: '网页', staff: '员工小程序', owner: '业主小程序' };
+const SOURCE_SHORT: Record<UsageSourceKey, string> = { web: '网页', staff: '员工端', owner: '业主端' };
+const SOURCE_TONE: Record<UsageSourceKey, string> = { web: 'blue', staff: 'teal', owner: 'purple' };
+function sourceKey(value: unknown): UsageSourceKey | null {
+  const text = String(value || '').toLowerCase();
+  if (!text) return null;
+  if (/miniapp.?staff|staff|employee|员工/.test(text)) return 'staff';
+  if (/miniapp.?owner|owner|业主/.test(text)) return 'owner';
+  if (/web|admin|网页/.test(text)) return 'web';
+  return null;
+}
+function sourceMeta(value: unknown) {
+  const key = sourceKey(value);
+  if (key) return { key, label: SOURCE_SHORT[key], long: SOURCE_LABEL[key], tone: SOURCE_TONE[key] };
+  return { key: null, label: String(value || '—'), long: String(value || '—'), tone: 'mute' };
+}
+function emptySourceStats(): UsageSource[] {
+  return SOURCE_ORDER.map((key) => ({ key, label: SOURCE_LABEL[key], views: 0, users: 0 }));
+}
+
 
 function numberValue(value: unknown) {
   const n = Number(value);
@@ -290,7 +314,26 @@ function textValue(...values: unknown[]) {
 function normalizeUsage(raw: any): UsageData {
   const totalViews = numberValue(raw?.totalViews ?? raw?.views ?? raw?.total);
   const uniqueUsers = numberValue(raw?.uniqueUsers ?? raw?.users ?? raw?.userCount);
-  const days = Array.isArray(raw?.days) ? raw.days.map((row: any) => ({ date: textValue(row?.date, row?.day, row?.bucket).slice(0, 10), count: numberValue(row?.count ?? row?.views ?? row?.visits) })) : [];
+  const days = Array.isArray(raw?.days) ? raw.days.map((row: any) => {
+    let bySource: Partial<Record<UsageSourceKey, number>> | undefined;
+    if (row?.bySource && typeof row.bySource === 'object' && !Array.isArray(row.bySource)) {
+      bySource = {};
+      for (const [key, value] of Object.entries(row.bySource)) {
+        const normalized = sourceKey(key);
+        if (normalized) bySource[normalized] = numberValue(value);
+      }
+    }
+    return { date: textValue(row?.date, row?.day, row?.bucket).slice(0, 10), count: numberValue(row?.count ?? row?.views ?? row?.visits), bySource };
+  }) : [];
+  const bySource = Array.isArray(raw?.bySource)
+    ? SOURCE_ORDER.map((key) => {
+      const row = raw.bySource.find((item: any) => sourceKey(item?.source) === key);
+      return { key, label: SOURCE_LABEL[key], views: numberValue(row?.views ?? row?.count), users: numberValue(row?.users ?? row?.uniqueUsers) };
+    })
+    : undefined;
+  const logins = raw?.logins && typeof raw.logins === 'object'
+    ? { total: numberValue(raw.logins.total), success: numberValue(raw.logins.success), failed: numberValue(raw.logins.failed), uniqueUsers: numberValue(raw.logins.uniqueUsers ?? raw.logins.users) }
+    : undefined;
   const topPages = Array.isArray(raw?.topPages) ? raw.topPages.map((row: any) => {
     const views = numberValue(row?.views ?? row?.count ?? row?.visits);
     const shareRaw = Number(row?.share ?? row?.ratio);
@@ -304,7 +347,7 @@ function normalizeUsage(raw: any): UsageData {
     pages: numberValue(row?.pages ?? row?.pageCount ?? row?.uniquePages),
     topPage: textValue(row?.topPage, row?.topPageName, row?.page, row?.mostVisitedPage) || '—',
   })) : [];
-  return { totalViews, uniqueUsers, days, topPages, topUsers };
+  return { totalViews, uniqueUsers, days, topPages, topUsers, bySource, logins };
 }
 function normalizeLogin(raw: any): LoginData {
   const list = Array.isArray(raw) ? raw : Array.isArray(raw?.rows) ? raw.rows : Array.isArray(raw?.list) ? raw.list : [];
@@ -375,6 +418,10 @@ function UsagePanel({ scopeKey }: { scopeKey: string }) {
   const perUser = usage && usage.uniqueUsers ? Math.round((usage.totalViews / usage.uniqueUsers) * 10) / 10 : null;
   const trend = (usage?.days || []).slice(-trendDays);
   const trendMax = Math.max(1, ...trend.map((d) => d.count));
+  const sourceStats = usage?.bySource;
+  const loginStats = usage?.logins;
+  const sourceMax = Math.max(1, ...(sourceStats || []).map((item) => item.views));
+  const trendHasSource = trend.some((day) => day.bySource && SOURCE_ORDER.some((key) => (day.bySource?.[key] || 0) > 0));
   const visibleLogin = (login?.rows || []).filter((row) => loginFilter === 'all' || row.status === loginFilter);
   const loginPages = login ? Math.max(1, Math.ceil(login.total / 20)) : 1;
 
@@ -409,6 +456,45 @@ function UsagePanel({ scopeKey }: { scopeKey: string }) {
                 <div className="stat"><div className="ic amber"><Icon name="today" /></div><div className="v">{perUser === null ? '—' : perUser}</div><div className="k">人均访问页数</div></div>
               </div>
 
+              <div className="usage-insights">
+                <section className="card usage-source-panel">
+                  <div className="intro-list-head"><b>来源分布</b><span className="muted">网页 / 员工小程序 / 业主小程序 · 访问次数与独立用户</span></div>
+                  {!sourceStats ? (
+                    <div className="usage-missing usage-missing-inline" role="status">
+                      <span className="usage-tag">待接口</span>
+                      <b>来源分布待接口</b>
+                      <small>page-usage 尚未返回 bySource；接口上线后这里显示三种来源的访问次数与独立用户（0 也显示）。</small>
+                    </div>
+                  ) : (
+                    <div className="usage-source-body">
+                      {sourceStats.map((item) => (
+                        <div className="usage-source-row" key={item.key}>
+                          <div className="usage-source-name"><i className={'usage-dot ' + item.key} /><b>{item.label}</b><span>{item.views.toLocaleString()} 次 · {item.users.toLocaleString()} 人</span></div>
+                          <div className="usage-source-track"><i className={item.key} style={{ width: `${Math.min(100, (item.views / sourceMax) * 100)}%` }} /></div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+                <section className="card usage-login-panel">
+                  <div className="intro-list-head"><b>登录统计</b><span className="muted">登录次数（含小程序静默登录）</span></div>
+                  {!loginStats ? (
+                    <div className="usage-missing usage-missing-inline" role="status">
+                      <span className="usage-tag">待接口</span>
+                      <b>登录统计待接口</b>
+                      <small>page-usage 尚未返回 logins；接口上线后这里显示总登录、成功、失败与独立用户。</small>
+                    </div>
+                  ) : (
+                    <div className="usage-login-grid">
+                      <div><b>{loginStats.total.toLocaleString()}</b><small>总登录次数</small></div>
+                      <div><b className="ok">{loginStats.success.toLocaleString()}</b><small>成功</small></div>
+                      <div><b className="bad">{loginStats.failed.toLocaleString()}</b><small>失败</small></div>
+                      <div><b>{loginStats.uniqueUsers.toLocaleString()}</b><small>独立用户</small></div>
+                    </div>
+                  )}
+                </section>
+              </div>
+
               <div className="card intro-chart" style={{ marginBottom: 16 }}>
                 <div className="intro-chart-head">
                   <b>访问趋势 · 按北京时间自然日</b>
@@ -418,15 +504,26 @@ function UsagePanel({ scopeKey }: { scopeKey: string }) {
                     ))}
                   </div>
                 </div>
+                {trendHasSource ? <div className="usage-source-legend">{SOURCE_ORDER.map((key) => <span key={key}><i className={'usage-dot ' + key} />{SOURCE_SHORT[key]}</span>)}</div> : null}
                 {trend.length === 0 ? <div className="muted" style={{ padding: '24px 0' }}>所选时间窗内没有访问记录。</div> : (
                   <div className="intro-bars">
-                    {trend.map((d) => (
-                      <div className="intro-bar" key={d.date || String(d.count)} title={`${d.date || '未标注日期'} · ${d.count} 次`}>
-                        <b>{d.count}</b>
-                        <span style={{ height: `${Math.max(3, (d.count / trendMax) * 100)}%` }} className={d.count ? '' : 'empty'} />
-                        <small>{(d.date || '').slice(5) || '—'}</small>
-                      </div>
-                    ))}
+                    {trend.map((d) => {
+                      const bySource = d.bySource;
+                      const total = bySource ? SOURCE_ORDER.reduce((sum, key) => sum + (bySource[key] || 0), 0) : d.count;
+                      return (
+                        <div className="intro-bar" key={d.date || String(d.count)} title={`${d.date || '未标注日期'} · ${total} 次${bySource ? '（网页 ' + (bySource.web || 0) + ' / 员工端 ' + (bySource.staff || 0) + ' / 业主端 ' + (bySource.owner || 0) + '）' : ''}`}>
+                          <b>{total}</b>
+                          {bySource ? (
+                            <span className="usage-stack" style={{ height: `${Math.max(3, (total / trendMax) * 100)}%` }}>
+                              {SOURCE_ORDER.map((key) => <i key={key} className={key} style={{ height: total ? `${((bySource[key] || 0) / total) * 100}%` : '0%' }} />)}
+                            </span>
+                          ) : (
+                            <span style={{ height: `${Math.max(3, (d.count / trendMax) * 100)}%` }} className={d.count ? '' : 'empty'} />
+                          )}
+                          <small>{(d.date || '').slice(5) || '—'}</small>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -804,11 +901,17 @@ function FeedbackPanel({ scopeKey }: { scopeKey: string }) {
 type DrillKind = 'page-events' | 'page-users' | 'user-events' | 'user-pages';
 type DrillTarget = { kind: DrillKind; title: string; subtitle: string; path?: string; userId?: string };
 const DRILL_COLUMNS: Record<DrillKind, string[]> = {
-  'page-events': ['时间', '用户', 'IP'],
-  'page-users': ['用户', '次数', '最近访问时间'],
-  'user-events': ['时间', '页面'],
-  'user-pages': ['页面', '次数', '最近时间'],
+  'page-events': ['时间', '用户', 'IP', '来源'],
+  'page-users': ['用户', '次数', '最近访问时间', '来源'],
+  'user-events': ['时间', '页面', '来源'],
+  'user-pages': ['页面', '次数', '最近时间', '来源'],
 };
+const DRILL_SOURCES: Array<{ key: string; label: string }> = [
+  { key: '', label: '全部来源' },
+  { key: 'web', label: '网页' },
+  { key: 'miniapp-staff', label: '员工端' },
+  { key: 'miniapp-owner', label: '业主端' },
+];
 const drillGroup = (kind: DrillKind) => kind === 'page-users' ? 'users' : kind === 'user-pages' ? 'pages' : 'events';
 const drillRow = (kind: DrillKind, row: any) => {
   const time = textValue(row?.time, row?.createdAt, row?.at, row?.visitedAt);
@@ -827,12 +930,13 @@ function UsageDrilldown({ target, from, to, onClose }: { target: DrillTarget; fr
   const [rows, setRows] = useState<any[] | null>(null);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
+  const [source, setSource] = useState('');
   const [missing, setMissing] = useState(false);
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     let alive = true;
     setRows(null); setMissing(false);
-    request<unknown>({ url: '/telemetry/page-usage/drilldown', query: { from, to, path: target.path, userId: target.userId, groupBy: drillGroup(target.kind), page, pageSize: 20 } })
+    request<unknown>({ url: '/telemetry/page-usage/drilldown', query: { from, to, path: target.path, userId: target.userId, groupBy: drillGroup(target.kind), source: source || undefined, page, pageSize: 20 } })
       .then((raw: any) => {
         if (!alive) return;
         const list = Array.isArray(raw) ? raw : Array.isArray(raw?.rows) ? raw.rows : Array.isArray(raw?.list) ? raw.list : [];
@@ -841,7 +945,7 @@ function UsageDrilldown({ target, from, to, onClose }: { target: DrillTarget; fr
       })
       .catch(() => { if (alive) { setRows([]); setMissing(true); } });
     return () => { alive = false; };
-  }, [target, from, to, page, retry]);
+  }, [target, from, to, source, page, retry]);
   const pages = Math.max(1, Math.ceil(total / 20));
   const columns = DRILL_COLUMNS[target.kind];
   return (
@@ -855,14 +959,26 @@ function UsageDrilldown({ target, from, to, onClose }: { target: DrillTarget; fr
         </div>
       ) : rows === null ? <Loading /> : (
         <>
+          <div className="usage-drill-filter">
+            <span className="muted">来源</span>
+            <div className="chips" role="tablist" aria-label="访问来源">
+              {DRILL_SOURCES.map((item) => <button key={item.key} className={'chip ' + (source === item.key ? 'on' : '')} onClick={() => { setSource(item.key); setPage(1); }}>{item.label}</button>)}
+            </div>
+          </div>
           <div className="usage-drill-summary muted">时间窗 {from} 至 {to}{target.path ? ' · ' + target.path : ''}</div>
           <div className="intro-table-wrap">
             <table className="t usage-table">
               <thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
               <tbody>
-                {rows.map((row, index) => (
-                  <tr key={index}>{drillRow(target.kind, row).map((value, columnIndex) => <td key={columnIndex}>{value}</td>)}</tr>
-                ))}
+                {rows.map((row, index) => {
+                  const meta = sourceMeta(row?.source);
+                  return (
+                    <tr key={index}>
+                      {drillRow(target.kind, row).map((value, columnIndex) => <td key={columnIndex}>{value}</td>)}
+                      <td><span className={'usage-source-tag ' + meta.tone}>{meta.label}</span></td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             {rows.length === 0 ? <div className="muted" style={{ padding: 40, textAlign: 'center' }}>该范围内没有访问记录</div> : null}

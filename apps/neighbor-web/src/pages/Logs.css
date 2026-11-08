@@ -183,3 +183,37 @@
 .fb-trace { color: var(--ink3); font-size: 11.5px; white-space: nowrap; }
 .fb-detail-errors, .fb-detail-files { display: flex; flex-direction: column; gap: 8px; }
 .fb-detail-actions { display: flex; gap: 8px; padding-top: 4px; }
+
+/* 使用统计：来源分布 / 登录统计 / 来源下钻 */
+.usage-insights{display:grid;grid-template-columns:1.1fr .9fr;gap:16px;margin-bottom:16px}
+.usage-insights .card{min-width:0}
+.usage-source-body{display:flex;flex-direction:column;gap:13px;padding:16px 18px 18px}
+.usage-source-row{display:flex;flex-direction:column;gap:6px}
+.usage-source-name{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink2)}
+.usage-source-name b{font-weight:600;color:var(--ink)}
+.usage-source-name span{margin-left:auto;color:var(--ink3);font-size:12px;font-variant-numeric:tabular-nums}
+.usage-dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
+.usage-dot.web,.usage-source-track i.web,.usage-stack i.web{background:#2f6fbe}
+.usage-dot.staff,.usage-source-track i.staff,.usage-stack i.staff{background:#138a8a}
+.usage-dot.owner,.usage-source-track i.owner,.usage-stack i.owner{background:#7250c9}
+.usage-source-track{height:7px;border-radius:4px;background:var(--line2);overflow:hidden}
+.usage-source-track i{display:block;height:100%;border-radius:4px}
+.usage-login-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:16px 18px 18px}
+.usage-login-grid>div{border:1px solid var(--line2);border-radius:9px;padding:9px 10px;min-width:0}
+.usage-login-grid b{display:block;font-size:21px;font-variant-numeric:tabular-nums;line-height:1.2}
+.usage-login-grid b.ok{color:var(--ok)}
+.usage-login-grid b.bad{color:var(--dang)}
+.usage-login-grid small{display:block;margin-top:3px;font-size:11.5px;color:var(--ink3);white-space:nowrap}
+.usage-source-legend{display:flex;align-items:center;gap:14px;margin:2px 0 8px;font-size:12px;color:var(--ink3)}
+.usage-source-legend span{display:inline-flex;align-items:center;gap:6px}
+.intro-bar>span.usage-stack{display:flex!important;flex-direction:column-reverse;max-width:46px!important;background:transparent!important;overflow:hidden;border-radius:4px 4px 0 0}
+.usage-stack i{display:block;width:100%}
+.usage-source-tag{display:inline-flex;align-items:center;padding:1px 8px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.usage-source-tag.blue{background:#e8f0fa;color:#2f6fbe}
+.usage-source-tag.teal{background:#e3f5f5;color:#0f7c7c}
+.usage-source-tag.purple{background:#efeafb;color:#6a45bd}
+.usage-source-tag.mute{background:var(--line2);color:var(--ink3)}
+.usage-drill-filter{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.usage-drill-filter .chips{margin:0}
+@media (max-width:1000px){.usage-insights{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:640px){.usage-login-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
