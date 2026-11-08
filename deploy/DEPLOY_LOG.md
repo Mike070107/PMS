@@ -6797,3 +6797,11 @@
   - e6f5dc1f fix(screen): restore action icons and clarify chart and MIS provenance
   - 0ff951c4 feat(screen): add decision dashboard and scoped manual metric settings
 
+## 2026-11-08 21:34 · api · fe4340bc
+
+- 包：`pms-api-fast-20261108-213347.tar.gz`
+- 提交：fe4340bc fix(screen): read synchronized local data without MIS fallback
+- 自上次（d8b9123f）以来上线的相关提交：
+  - fe4340bc fix(screen): read synchronized local data without MIS fallback
+  - b333afbd feat(mirror): 镜像支持趋势与住户明细；负数调整计入净额并恢复收缴率
+
