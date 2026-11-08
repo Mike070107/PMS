@@ -6738,3 +6738,10 @@
 - 自上次（d9a6c9c5）以来上线的相关提交：
   - d90cb031 feat(screen): Three.js 粒子与流光背景（动态加载、可降级、隐藏暂停）
 
+## 2026-11-08 18:27 · api · ea0d1520
+
+- 包：`pms-api-fast-20261108-182658.tar.gz`
+- 提交：ea0d1520 feat(targets): 指标支持小区组（community_ids），screen-summary 按组命中计算
+- 自上次（bf8d4e45）以来上线的相关提交：
+  - ea0d1520 feat(targets): 指标支持小区组（community_ids），screen-summary 按组命中计算
+
