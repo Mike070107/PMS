@@ -4,6 +4,7 @@ import { request } from '@pms/api-client';
 import { cents, chinaDate } from '@/lib/residential-bills';
 import { firstAllowedPath } from '@/lib/page-access';
 import { useSession } from '@/lib/auth';
+import ThreeBackdrop from '@/components/ThreeBackdrop';
 import '@/styles/screen.css';
 
 type Query = Record<string, string | number | boolean | undefined>;
@@ -651,6 +652,7 @@ export default function Screen() {
 
   return (
     <div className={"screen scr-v2" + (tickerMessages.length ? " has-ticker" : "")} data-page="screen">
+      <ThreeBackdrop reducedMotion={reduceMotion} />
       <header className="scr-head">
         <div className="scr-brand">
           <span className="scr-mark" aria-hidden="true" />

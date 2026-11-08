@@ -236,3 +236,11 @@
 .screen.scr-v2 .scr-partial-tag{display:inline-flex;align-items:center;padding:calc(var(--u)*2) calc(var(--u)*8);border-radius:999px;background:rgba(255,180,84,.16);color:#ffcf8a;font-style:normal;font-size:calc(var(--u)*12);font-weight:650;margin-right:calc(var(--u)*8);vertical-align:middle}
 .screen.scr-v2 .scr-target-scope{font-size:calc(var(--u)*12);color:var(--scr-faint);line-height:1.45}
 .screen.scr-v2 .scr-today-ring>span.idle{font-size:calc(var(--u)*12.5);font-weight:600;color:var(--scr-faint)}
+
+/* Three.js 背景层：只做装饰，内容在其上；无 WebGL/reduced-motion 时用静态渐变 */
+.screen.scr-v2{isolation:isolate}
+.screen .scr-three{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.screen.scr-v2 > :not(.scr-three){position:relative;z-index:1}
+.screen .scr-three.static{background:
+  radial-gradient(60% 50% at 18% 25%, rgba(60,132,210,.18), transparent 70%),
+  radial-gradient(50% 40% at 82% 70%, rgba(45,150,160,.12), transparent 70%)}
