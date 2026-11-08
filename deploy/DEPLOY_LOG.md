@@ -6689,3 +6689,10 @@
 - 自上次（4898915f）以来上线的相关提交：
   - de6917b3 fix(today): 明细查询改用 DTO 做数字转换与校验，修复 ?page=1 被 400
 
+## 2026-11-08 17:40 · api · 17f9ae42
+
+- 包：`pms-api-fast-20261108-173920.tar.gz`
+- 提交：17f9ae42 fix(today): 明细日期按北京时间格式化、recordedAt 返回 +08:00，total 改账单笔数并补 groupCount
+- 自上次（de6917b3）以来上线的相关提交：
+  - 17f9ae42 fix(today): 明细日期按北京时间格式化、recordedAt 返回 +08:00，total 改账单笔数并补 groupCount
+
