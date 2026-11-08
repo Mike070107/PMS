@@ -6610,3 +6610,17 @@
   - d785ab51 chore(api): 新增 test:mis-mirror 脚本
   - addd528d feat(mirror): MIS 镜像表与 5 分钟增量同步、数据源开关与降级读；修复大屏播报已收款标签与近期收款回退
 
+## 2026-11-08 08:43 · api · 77bed0d1
+
+- 包：`pms-api-fast-20261108-084243.tar.gz`
+- 提交：77bed0d1 chore(api): 反馈模块中间态快照（供发布镜像修复）
+- 自上次（d785ab51）以来上线的相关提交：
+  - 77bed0d1 chore(api): 反馈模块中间态快照（供发布镜像修复）
+  - 54670f4c chore(api): 反馈 HTTP 测试与脚本（解发布阻塞）
+  - 37b496b1 chore(observability): 业务动作登记中间态（解发布阻塞）
+  - e1389118 test(feedback): 统一反馈测试中间态（解发布阻塞）
+  - 9d36f9ed chore(api): 反馈测试与脚本中间态提交（解发布阻塞）
+  - cade7855 feat: 使用统计下钻接口与反馈列表数据层（中间态，编译通过）
+  - 61176bb6 feat(feedback): 统一反馈接口中间态（编译通过，供发布解阻塞）
+  - 6d9a9c0b fix(mirror): 修正同步 SQL 语法错误，增量改 ZJ_ID keyset + updatedate 补漏；连续失败告警与滞后标注
+
