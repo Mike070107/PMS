@@ -185,7 +185,7 @@
 .screen.scr-v2 .scr-cum-band.lead{fill:#54d6a0}
 .screen.scr-v2 .scr-cum-paid{fill:none;stroke:#5aa2ff;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;filter:drop-shadow(0 0 calc(var(--u)*6) rgba(90,162,255,.55))}
 .screen.scr-v2 .scr-cum-target{fill:none;stroke:#ffb454;stroke-width:2;stroke-dasharray:6 6;vector-effect:non-scaling-stroke}
-.screen.scr-v2 .scr-chart-label{font-size:calc(var(--u)*10.5);fill:var(--scr-faint)}
+.screen.scr-v2 .scr-chart-label{font-size:calc(var(--u)*11.5);fill:#9db4d3}
 .screen.scr-v2 .scr-point{fill:#fff;stroke:#5aa2ff;stroke-width:2}
 .screen.scr-v2 .scr-chart-tip{position:absolute;top:calc(var(--u)*22);transform:translateX(-50%);z-index:3;display:flex;flex-direction:column;gap:calc(var(--u)*3);padding:calc(var(--u)*8) calc(var(--u)*11);border:1px solid rgba(120,168,255,.3);border-radius:calc(var(--u)*9);background:rgba(7,16,30,.94);box-shadow:0 8px 24px rgba(0,0,0,.4);pointer-events:none;white-space:nowrap}
 .screen.scr-v2 .scr-chart-tip b{font-size:calc(var(--u)*12.5);color:#dbe9ff}
@@ -244,3 +244,59 @@
 .screen .scr-three.static{background:
   radial-gradient(60% 50% at 18% 25%, rgba(60,132,210,.18), transparent 70%),
   radial-gradient(50% 40% at 82% 70%, rgba(45,150,160,.12), transparent 70%)}
+
+/* 小区下拉多选 */
+.screen .scr-community-picker{position:relative;flex:none}
+.screen .scr-picker-btn{display:inline-flex;align-items:center;gap:calc(var(--u)*7);cursor:pointer;background:rgba(22,44,78,.65)}
+.screen .scr-picker-btn b{font-weight:600;color:#dbe9ff;max-width:calc(var(--u)*210);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.screen .scr-picker-btn i{font-style:normal;color:var(--scr-faint);font-size:calc(var(--u)*11)}
+.screen .scr-community-pop{position:absolute;right:0;top:calc(100% + calc(var(--u)*7));z-index:20;min-width:calc(var(--u)*240);max-height:calc(var(--u)*340);overflow:auto;padding:calc(var(--u)*10);border:1px solid rgba(120,168,255,.3);border-radius:calc(var(--u)*10);background:#081323;box-shadow:0 calc(var(--u)*12) calc(var(--u)*32) rgba(0,0,0,.55)}
+.screen .scr-pop-head{display:flex;gap:calc(var(--u)*8);padding:calc(var(--u)*2) calc(var(--u)*4) calc(var(--u)*8);border-bottom:1px solid rgba(120,168,255,.14);margin-bottom:calc(var(--u)*6)}
+.screen .scr-pop-head button{font:inherit;font-size:calc(var(--u)*12);color:#7fb7ff;background:none;border:0;cursor:pointer;padding:0}
+.screen .scr-pop-head button:hover{color:#fff}
+.screen .scr-pop-item{display:flex;align-items:center;gap:calc(var(--u)*8);padding:calc(var(--u)*7) calc(var(--u)*5);border-radius:calc(var(--u)*6);font-size:calc(var(--u)*13);color:#dbe9ff;cursor:pointer;white-space:nowrap}
+.screen .scr-pop-item:hover{background:rgba(90,162,255,.12)}
+.screen .scr-pop-item input{width:calc(var(--u)*14);height:calc(var(--u)*14);accent-color:#5aa2ff;cursor:pointer}
+.screen .scr-pop-empty{padding:calc(var(--u)*12) calc(var(--u)*5);color:var(--scr-faint);font-size:calc(var(--u)*12)}
+/* 年度进度条：真实像素宽度，两端同等半径 */
+.screen .scr-target-bar-host{flex:1;min-width:0}
+.screen .scr-target-bar-svg{display:block;width:100%;height:calc(var(--u)*24)}
+/* 累计图：Y 轴/目标线/分段填充 */
+.screen .scr-axis-label{font-size:calc(var(--u)*12);fill:#9db4d3}
+.screen .scr-gridline.v{stroke:rgba(120,168,255,.07)}
+.screen .scr-cum-seg.lag{fill:rgba(255,122,107,.20)}
+.screen .scr-cum-seg.lead{fill:rgba(84,214,160,.20)}
+.screen .scr-goal-line{stroke:#ffce73;stroke-width:1.6;stroke-dasharray:8 5;opacity:.9;vector-effect:non-scaling-stroke}
+.screen .scr-goal-label{font-size:calc(var(--u)*12);fill:#ffce73;font-weight:600}
+
+/* screen-v2 header stacking：下拉面板要盖住下方图表 */
+.screen.scr-v2>.scr-head{position:relative;z-index:8}
+
+/* 顶部三板块：等比三等分、同高同圆角 */
+.screen.scr-v2 .scr-top{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:calc(var(--u)*16);align-items:stretch}
+.screen.scr-v2 .scr-top>.scr-panel{display:flex;flex-direction:column;min-height:calc(var(--u)*208);padding:calc(var(--u)*14) calc(var(--u)*18);gap:calc(var(--u)*7)}
+.screen.scr-v2 .scr-top .scr-panel-head{margin-bottom:calc(var(--u)*2)}
+.screen.scr-v2 .scr-annual{justify-content:center;gap:calc(var(--u)*8)}
+.screen.scr-v2 .scr-annual .scr-target-pct{font-size:calc(var(--u)*30)}
+.screen.scr-v2 .scr-annual .scr-target-line{font-size:calc(var(--u)*13.5);gap:calc(var(--u)*7)}
+.screen.scr-v2 .scr-annual .scr-target-sub{font-size:calc(var(--u)*12);gap:calc(var(--u)*7)}
+.screen.scr-v2 .scr-annual .scr-target-scope{font-size:calc(var(--u)*11.5);white-space:normal}
+.screen.scr-v2 .scr-month-kpi{justify-content:center}
+.screen.scr-v2 .scr-kpi-pct-row{display:flex;align-items:center;gap:calc(var(--u)*8);min-height:calc(var(--u)*48)}
+.screen.scr-v2 .scr-month-kpi .scr-target-pct{font-size:calc(var(--u)*34)}
+.screen.scr-v2 .scr-partial-tag.gold{color:#ffd56a;background:rgba(255,213,106,.16)}
+.screen.scr-v2 .scr-kpi-lines{display:flex;align-items:center;justify-content:space-between;gap:calc(var(--u)*8);font-size:calc(var(--u)*12.5);color:var(--scr-dim);flex-wrap:wrap}
+.screen.scr-v2 .scr-kpi-lines small{display:inline-block;margin-left:calc(var(--u)*5);padding:calc(var(--u)*1) calc(var(--u)*6);border-radius:999px;background:rgba(120,168,255,.14);color:var(--scr-faint);font-size:calc(var(--u)*10.5)}
+.screen.scr-v2 .scr-kpi-empty{display:flex;flex-direction:column;gap:calc(var(--u)*6);justify-content:center;flex:1}
+.screen.scr-v2 .scr-kpi-empty b{font-size:calc(var(--u)*26);font-weight:720;color:var(--scr-text)}
+.screen.scr-v2 .scr-kpi-empty span{font-size:calc(var(--u)*12.5);color:var(--scr-faint)}
+.screen.scr-v2 .scr-today-body{gap:calc(var(--u)*12)}
+.screen.scr-v2 .scr-today-value{font-size:calc(var(--u)*48)}
+.screen.scr-v2 .scr-today-label{font-size:calc(var(--u)*13)}
+.screen.scr-v2 .scr-today-sub{font-size:calc(var(--u)*13)}
+.screen.scr-v2 .scr-today-ring{width:calc(var(--u)*80);height:calc(var(--u)*80)}
+.screen.scr-v2 .scr-today-ring>span{font-size:calc(var(--u)*17)}
+.screen.scr-v2 .scr-today-side>span{font-size:calc(var(--u)*10.5)}
+/* 刷新说明精简 */
+.screen .scr-updated-stale{font-style:normal;color:#ffd56a;font-weight:650}
+.screen .scr-updated{cursor:default}

@@ -28,7 +28,8 @@ type ScreenTrendPoint = { key: string; label: string; paidCents: number; targetC
 type ScreenCommunity = { id: number; name: string; targetCents: number; paidCents: number; rate: number | null; hasTarget: boolean };
 type ScreenArrearsBucket = { key: string; label: string; count: number; amountCents: number };
 type ScreenArrears = { buckets: ScreenArrearsBucket[]; totalCount: number; totalAmountCents: number };
-type ScreenSummary = { year: number; target: ScreenTarget; today: ScreenToday; trend: ScreenTrendPoint[]; communities: ScreenCommunity[]; arrears: ScreenArrears | null };
+type ScreenMonth = { paidCents: number; targetCents: number; rate: number | null; targetSource: string; month: string; hasTarget: boolean };
+type ScreenSummary = { year: number; target: ScreenTarget; monthToDate: ScreenMonth; today: ScreenToday; trend: ScreenTrendPoint[]; communities: ScreenCommunity[]; arrears: ScreenArrears | null };
 const SCREEN_ARREARS_META: { key: string; label: string }[] = [
   { key: 'le500', label: '≤¥500' }, { key: '500to2000', label: '¥500–2000' },
   { key: '2000to5000', label: '¥2000–5000' }, { key: 'gt5000', label: '>¥5000' },
@@ -56,6 +57,18 @@ function normalizeScreenSummary(raw: unknown): ScreenSummary | null {
           : String(scopeRaw?.name ?? scopeRaw?.label ?? scopeRaw?.communityName ?? '');
   const partial = Boolean(targetRaw.partial ?? data.partial ?? missingTargetCommunities.length > 0);
   const target: ScreenTarget = { annualCents, paidCents, gapCents, remainingDays, dailyNeedCents: Math.round(dailyNeedCents), rate: Number.isFinite(rateRaw) ? Math.round(rateRaw * 10) / 10 : null, hasTarget, partial, targetScope, missingTargetCommunities };
+  const monthRaw = data.monthToDate && typeof data.monthToDate === 'object' ? data.monthToDate : {};
+  const monthTargetCents = num(monthRaw.targetCents ?? monthRaw.target ?? 0);
+  const monthPaidCents = num(monthRaw.paidCents);
+  const monthRateRaw = Number(monthRaw.rate ?? (monthTargetCents > 0 ? (monthPaidCents / monthTargetCents) * 100 : NaN));
+  const monthToDate: ScreenMonth = {
+    paidCents: monthPaidCents,
+    targetCents: monthTargetCents,
+    rate: Number.isFinite(monthRateRaw) ? Math.round(monthRateRaw * 10) / 10 : null,
+    targetSource: String(monthRaw.targetSource ?? ''),
+    month: String(monthRaw.month ?? ''),
+    hasTarget: monthTargetCents > 0,
+  };
   const today: ScreenToday = {
     paidCents: num(todayRaw.paidCents ?? todayRaw.amountCents),
     count: num(todayRaw.billCount ?? todayRaw.count ?? todayRaw.paidCount),
@@ -101,7 +114,7 @@ function normalizeScreenSummary(raw: unknown): ScreenSummary | null {
       totalAmountCents: num(arrearsRaw.total?.amountCents ?? arrearsRaw.totalAmountCents ?? buckets.reduce((sum, bucket) => sum + bucket.amountCents, 0)),
     };
   }
-  return { year: num(data.year) || new Date().getFullYear(), target, today, trend, communities, arrears };
+  return { year: num(data.year) || new Date().getFullYear(), target, monthToDate, today, trend, communities, arrears };
 }
 
 const REFRESH_MS = 300_000;
@@ -311,6 +324,36 @@ function NoData({ text = '暂无数据' }: { text?: string }) {
   return <div className="scr-no-data">{text}</div>;
 }
 
+function AnnualProgress({ rate, over }: { rate: number; over: boolean }) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(560);
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return undefined;
+    const measure = () => setWidth(Math.max(120, Math.round(host.getBoundingClientRect().width)));
+    measure();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    observer?.observe(host);
+    window.addEventListener('resize', measure);
+    return () => { observer?.disconnect(); window.removeEventListener('resize', measure); };
+  }, []);
+  const height = 24;
+  const radius = height / 2;
+  const filled = Math.max(height, Math.min(1, Math.max(0, rate) / 100) * width);
+  return (
+    <div ref={hostRef} className="scr-target-bar-host">
+      <svg className="scr-target-bar-svg" width="100%" height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`年度达成 ${rate}%`}>
+        <defs>
+          <linearGradient id="scrTargetGreenRounded" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#1f8f68" /><stop offset="1" stopColor="#7bf0c0" /></linearGradient>
+          <linearGradient id="scrTargetGoldRounded" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#b8860b" /><stop offset="1" stopColor="#ffe28a" /></linearGradient>
+        </defs>
+        <rect x="0" y="0" width={width} height={height} rx={radius} ry={radius} fill="rgba(120,168,255,.16)" />
+        <rect x="0" y="0" width={filled} height={height} rx={radius} ry={radius} fill={over ? 'url(#scrTargetGoldRounded)' : 'url(#scrTargetGreenRounded)'} />
+      </svg>
+    </div>
+  );
+}
+
 function AnnualPanel({ target, year, loading, error, onSettings }: { target: ScreenTarget | null; year: string; loading: boolean; error: string; onSettings: () => void }) {
   if (error) return <article className="scr-panel scr-annual"><div className="scr-panel-head"><h2>{year} 年度达成</h2></div><NoData /></article>;
   if (!target) return <article className="scr-panel scr-annual"><div className="scr-panel-head"><h2>{year} 年度达成</h2></div>{loading ? <div className="scr-no-data">读取中…</div> : <NoData />}</article>;
@@ -330,14 +373,7 @@ function AnnualPanel({ target, year, loading, error, onSettings }: { target: Scr
       <div className="scr-panel-head"><h2>{year} 年度达成</h2><span className="scr-legend">{target.partial ? '部分口径' : '年度指标'}</span></div>
       <div className="scr-target-line"><span>年度指标 ¥{cents(target.annualCents)}</span><i /> <span>已收 ¥{cents(target.paidCents)}</span></div>
       <div className="scr-target-bar-wrap">
-        <svg className="scr-target-bar" viewBox="0 0 100 12" preserveAspectRatio="none" role="img" aria-label={`年度达成 ${rate}%`}>
-          <defs>
-            <linearGradient id="scrTargetGreen" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#1f8f68" /><stop offset="1" stopColor="#69e0ad" /></linearGradient>
-            <linearGradient id="scrTargetGold" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#b8860b" /><stop offset="1" stopColor="#ffd56a" /></linearGradient>
-          </defs>
-          <rect x="0" y="0" width="100" height="12" rx="6" fill="rgba(120,168,255,.16)" />
-          <rect x="0" y="0" width={width} height="12" rx="6" fill={over ? 'url(#scrTargetGold)' : 'url(#scrTargetGreen)'} />
-        </svg>
+        <AnnualProgress rate={rate} over={over} />
         {target.partial ? <em className="scr-partial-tag">部分口径</em> : null}<b className={'scr-target-pct' + (over ? ' over' : '')}>{rate}%</b>
       </div>
       <div className="scr-target-sub">
@@ -347,6 +383,34 @@ function AnnualPanel({ target, year, loading, error, onSettings }: { target: Scr
         {over ? <em className="scr-over-tag">已超额</em> : null}
       </div>
       {target.partial ? <div className="scr-target-scope">指标口径：仅 {target.targetScope || '已设指标小区'}{target.missingTargetCommunities.length ? `（另有 ${target.missingTargetCommunities.join('、')} 未设指标）` : ''}</div> : null}
+    </article>
+  );
+}
+
+function MonthPanel({ month }: { month: ScreenMonth | null }) {
+  if (!month) return <article className="scr-panel scr-month-kpi"><div className="scr-panel-head"><h2>月度达成</h2></div><NoData /></article>;
+  if (!month.hasTarget) {
+    return (
+      <article className="scr-panel scr-month-kpi">
+        <div className="scr-panel-head"><h2>月度达成</h2><span className="scr-legend">{month.month || '本月'}</span></div>
+        <div className="scr-kpi-empty"><b>未设指标</b><span>本月未配置月度目标</span></div>
+      </article>
+    );
+  }
+  const rate = month.rate ?? 0;
+  const over = rate > 100;
+  return (
+    <article className={'scr-panel scr-month-kpi' + (over ? ' over' : '')}>
+      <div className="scr-panel-head"><h2>月度达成</h2><span className="scr-legend">{month.month || '本月'}</span></div>
+      <div className="scr-kpi-pct-row">
+        {over ? <em className="scr-partial-tag gold">已超额</em> : null}
+        <b className={'scr-target-pct' + (over ? ' over' : '')}>{rate}%</b>
+      </div>
+      <AnnualProgress rate={rate} over={over} />
+      <div className="scr-kpi-lines">
+        <span>目标 ¥{cents(month.targetCents)}{month.targetSource === 'derived' ? <small>按年度均摊</small> : null}</span>
+        <span>已收 ¥{cents(month.paidCents)}</span>
+      </div>
     </article>
   );
 }
@@ -366,41 +430,75 @@ function TodayRing({ pct }: { pct: number | null }) {
   );
 }
 
-function CumulativeChart({ points }: { points: ScreenTrendPoint[] }) {
+function CumulativeChart({ points, year, granularity, annualTargetCents }: { points: ScreenTrendPoint[]; year: number; granularity: 'day' | 'month'; annualTargetCents: number }) {
   const [hover, setHover] = useState<number | null>(null);
   if (!points.length) return <NoData />;
-  const W = 800; const H = 280;
-  const pad = { l: 58, r: 16, t: 18, b: 30 };
-  const max = Math.max(1, ...points.map((point) => Math.max(point.cumPaidCents, point.cumTargetCents)));
-  const n = points.length;
-  const px = (index: number) => pad.l + (n === 1 ? 0 : (index / (n - 1)) * (W - pad.l - pad.r));
+  const W = 900; const H = 300;
+  const pad = { l: 48, r: 16, t: 26, b: 30 };
+  const isDay = granularity === 'day' && points[0].key.length >= 10;
+  const daysInYear = (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) ? 366 : 365;
+  const fraction = (key: string) => {
+    if (isDay) {
+      const day = Date.parse(key + 'T00:00:00Z');
+      const startDay = Date.parse(year + '-01-01T00:00:00Z');
+      return Math.min(1, Math.max(0, (day - startDay) / 86400000 / daysInYear));
+    }
+    const month = Number(key.slice(5, 7));
+    return Math.min(1, Math.max(0, (month - 1) / 11));
+  };
+  const px = (index: number) => pad.l + fraction(points[index].key) * (W - pad.l - pad.r);
+  const rawMax = Math.max(1, ...points.map((point) => Math.max(point.cumPaidCents, point.cumTargetCents)), annualTargetCents || 0) * 1.15;
+  const rawStep = rawMax / 4;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(Math.max(1, rawStep))));
+  const normalized = rawStep / magnitude;
+  const step = (normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 2.5 ? 2.5 : normalized <= 5 ? 5 : 10) * magnitude;
+  const max = Math.ceil(rawMax / step) * step;
   const py = (value: number) => pad.t + (1 - value / max) * (H - pad.t - pad.b);
-  const paidLine = points.map((point, index) => `${index ? 'L' : 'M'} ${px(index)} ${py(point.cumPaidCents)}`).join(' ');
-  const targetLine = points.map((point, index) => `${index ? 'L' : 'M'} ${px(index)} ${py(point.cumTargetCents)}`).join(' ');
-  const band = points.map((point, index) => `${index ? 'L' : 'M'} ${px(index)} ${py(point.cumPaidCents)}`).join(' ')
-    + ' ' + [...points].reverse().map((point, index) => `L ${px(n - 1 - index)} ${py(point.cumTargetCents)}`).join(' ') + ' Z';
-  const last = points[n - 1];
-  const diff = last.cumPaidCents - last.cumTargetCents;
-  const labelStep = Math.max(1, Math.ceil(n / 8));
+  const paidPath = points.map((point, index) => `${index ? 'L' : 'M'} ${px(index)} ${py(point.cumPaidCents)}`).join(' ');
+  const targetPath = points.map((point, index) => `${index ? 'L' : 'M'} ${px(index)} ${py(point.cumTargetCents)}`).join(' ');
+  const last = points[points.length - 1];
+  const refTarget = annualTargetCents > 0 ? annualTargetCents : last.cumTargetCents;
+  const diff = last.cumPaidCents - refTarget;
+  const rate = refTarget > 0 ? Math.round((last.cumPaidCents / refTarget) * 1000) / 10 : null;
+  const fmtWan = (value: number) => (value / 1_000_000).toLocaleString('zh-CN', { maximumFractionDigits: 1 }) + '万';
+  const ticks = Array.from({ length: Math.round(max / step) + 1 }, (_, index) => ({ value: index * step, y: py(index * step) }));
+  const monthMarks = isDay
+    ? [1, 4, 7, 10].map((month) => ({ key: String(month), frac: (Date.UTC(year, month - 1, 1) - Date.UTC(year, 0, 1)) / 86400000 / daysInYear, label: String(month).padStart(2, '0') + '-01' }))
+      .concat([{ key: 'end', frac: 1, label: '12-31' }])
+    : [1, 4, 7, 10].map((month) => ({ key: String(month), frac: (month - 1) / 11, label: String(month).padStart(2, '0') }))
+      .concat([{ key: 'end', frac: 1, label: '12' }]);
   return (
     <div className="scr-cum-chart" onMouseLeave={() => setHover(null)}>
-      <div className={'scr-cum-diff ' + (diff >= 0 ? 'lead' : 'lag')}>{diff >= 0 ? '超前' : '落后'} ¥{cents(Math.abs(diff))}</div>
-      <svg viewBox={`0 0 ${W} ${H}`} onMouseLeave={() => setHover(null)}>
-        {[0.25, 0.5, 0.75].map((f) => <line key={f} className="scr-gridline" x1={pad.l} y1={py(max * f)} x2={W - pad.r} y2={py(max * f)} />)}
-        <path d={band} className={'scr-cum-band ' + (diff >= 0 ? 'lead' : 'lag')} />
-        <path d={targetLine} className="scr-cum-target" />
-        <path d={paidLine} className="scr-cum-paid" />
+      <div className={'scr-cum-diff ' + (diff >= 0 ? 'lead' : 'lag')}>{diff >= 0 ? '超前' : '落后'} ¥{cents(Math.abs(diff))}{rate !== null ? ' · 达成 ' + rate + '%' : ''}</div>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: '100%', height: '100%' }}>
+        {ticks.map((tick) => <line key={tick.y} className="scr-gridline" x1={pad.l} y1={tick.y} x2={W - pad.r} y2={tick.y} />)}
+        {ticks.filter((tick) => tick.value > 0).map((tick) => <text key={'tick' + tick.y} x={pad.l - 7} y={tick.y + 3.5} className="scr-axis-label" textAnchor="end">{fmtWan(tick.value)}</text>)}
+        {monthMarks.map((mark) => <line key={'v' + mark.key} className="scr-gridline v" x1={pad.l + mark.frac * (W - pad.l - pad.r)} y1={pad.t} x2={pad.l + mark.frac * (W - pad.l - pad.r)} y2={H - pad.b} />)}
+        {points.slice(0, -1).map((point, index) => {
+          const next = points[index + 1];
+          const d = `M ${px(index)} ${py(point.cumPaidCents)} L ${px(index + 1)} ${py(next.cumPaidCents)} L ${px(index + 1)} ${py(next.cumTargetCents)} L ${px(index)} ${py(point.cumTargetCents)} Z`;
+          return <path key={'band' + point.key} d={d} className={'scr-cum-seg ' + ((point.cumPaidCents + next.cumPaidCents) / 2 >= (point.cumTargetCents + next.cumTargetCents) / 2 ? 'lead' : 'lag')} />;
+        })}
+        {annualTargetCents > 0 ? (
+          <g>
+            <line className="scr-goal-line" x1={pad.l} y1={py(annualTargetCents)} x2={W - pad.r} y2={py(annualTargetCents)} />
+            <text className="scr-goal-label" x={W - pad.r} y={py(annualTargetCents) - 6} textAnchor="end">目标 ¥{fmtWan(annualTargetCents)}（100%）</text>
+          </g>
+        ) : null}
+        <path d={targetPath} className="scr-cum-target" />
+        <path d={paidPath} className="scr-cum-paid" />
         {points.map((point, index) => (
-          <rect key={point.key} x={px(index) - Math.max(3, (W - pad.l - pad.r) / n / 2)} y={pad.t} width={Math.max(6, (W - pad.l - pad.r) / n)} height={H - pad.t - pad.b} fill="transparent" onMouseEnter={() => setHover(index)} />
+          <rect key={'hit' + point.key} x={px(index) - Math.max(3, (W - pad.l - pad.r) / points.length / 2)} y={pad.t} width={Math.max(6, (W - pad.l - pad.r) / points.length)} height={H - pad.t - pad.b} fill="transparent" onMouseEnter={() => setHover(index)} />
         ))}
-        {points.map((point, index) => (index % labelStep === 0 || index === n - 1) ? <text key={'x' + point.key} x={px(index)} y={H - 8} className="scr-chart-label" textAnchor={index === 0 ? 'start' : index === n - 1 ? 'end' : 'middle'}>{point.label}</text> : null)}
+        {monthMarks.map((mark) => <text key={'x' + mark.key} x={pad.l + mark.frac * (W - pad.l - pad.r)} y={H - 8} className="scr-chart-label" textAnchor={mark.frac === 1 ? 'end' : 'middle'}>{mark.label}</text>)}
         {hover !== null ? <circle cx={px(hover)} cy={py(points[hover].cumPaidCents)} r={4} className="scr-point" /> : null}
       </svg>
       {hover !== null ? (
         <div className="scr-chart-tip" style={{ left: `${(px(hover) / W) * 100}%` }}>
-          <b>{points[hover].label}</b>
-          <span>实收 ¥{cents(points[hover].paidCents)} · 指标 ¥{cents(points[hover].targetCents)}</span>
-          <span className={points[hover].cumPaidCents >= points[hover].cumTargetCents ? 'lead' : 'lag'}>累计差额 {points[hover].cumPaidCents >= points[hover].cumTargetCents ? '+' : '-'}¥{cents(Math.abs(points[hover].cumPaidCents - points[hover].cumTargetCents))}</span>
+          <b>{points[hover].key}</b>
+          <span>实收累计 ¥{cents(points[hover].cumPaidCents)} · 目标累计 ¥{cents(points[hover].cumTargetCents)}</span>
+          <span className={points[hover].cumPaidCents >= points[hover].cumTargetCents ? 'lead' : 'lag'}>差额 {points[hover].cumPaidCents >= points[hover].cumTargetCents ? '+' : '-'}¥{cents(Math.abs(points[hover].cumPaidCents - points[hover].cumTargetCents))}</span>
+          <span>达成率 {annualTargetCents > 0 ? Math.round((points[hover].cumPaidCents / annualTargetCents) * 1000) / 10 + '%' : '—'}</span>
         </div>
       ) : null}
     </div>
@@ -417,7 +515,7 @@ function MonthlyChart({ months }: { months: { key: string; label: string; paidCe
   const py = (value: number) => pad.t + (1 - value / max) * (H - pad.t - pad.b);
   const targetLine = months.map((month, index) => `${index ? 'L' : 'M'} ${pad.l + slot * index + slot / 2} ${py(month.targetCents)}`).join(' ');
   return (
-    <svg className="scr-month-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="月度实收与指标">
+    <svg className="scr-month-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="月度实收与指标">
       {[0.25, 0.5, 0.75].map((f) => <line key={f} className="scr-gridline" x1={pad.l} y1={py(max * f)} x2={W - pad.r} y2={py(max * f)} />)}
       {months.map((month, index) => {
         const x = pad.l + slot * index + (slot - barW) / 2;
@@ -477,6 +575,8 @@ export default function Screen() {
   const [year, setYear] = useState(currentYear);
   const [selectedCommunities, setSelectedCommunities] = useState<number[]>([]);
   const [granularity, setGranularity] = useState<'day' | 'month'>('day');
+  const [communityMenuOpen, setCommunityMenuOpen] = useState(false);
+  const communityMenuRef = useRef<HTMLDivElement | null>(null);
 
   // 跟随顶栏管理处：actingOffice / 登录代次变化时，重置范围；activeOffice 与范围在同一次更新里提交，避免先按旧小区请求一次。
   const officeKey = JSON.stringify([session.user?.id, session.actingTenant?.id, session.actingOffice?.id, session.generation]);
@@ -560,6 +660,8 @@ export default function Screen() {
   const paidRate = summary && summary.receivableCents ? Math.round((summary.paidCents / summary.receivableCents) * 1000) / 10 : null;
   const unpaidShare = summary && summary.receivableCents ? Math.round((summary.unpaidCents / summary.receivableCents) * 1000) / 10 : null;
   const loadedAt = Math.max(dash.loadedAt, trend.loadedAt, brackets.loadedAt, batches.loadedAt, effect.loadedAt, sms.loadedAt, recent.loadedAt, screenSummary.loadedAt);
+  const lastUpdatedClock = loadedAt ? new Date(loadedAt).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Shanghai' }) : null;
+  const staleAsOf = sync.stale && sync.asOf ? sync.asOf : null;
   const loading = [dash, trend, brackets, batches, effect, sms, recent, screenSummary].some((item) => item.loading);
 
   const monthly: TrendBucket[] = yearMonths.map((month) => {
@@ -580,10 +682,28 @@ export default function Screen() {
   const screenData = normalizeScreenSummary(screenSummary.data);
   const screenTarget = screenData?.target ?? null;
   const screenToday = screenData?.today ?? null;
+  const screenMonth = screenData?.monthToDate ?? null;
   const trendPoints = screenData?.trend ?? [];
   const communitiesRank = screenData?.communities ?? [];
   const allCommunityIds = communities.map((item) => item.id);
   const allCommunitiesSelected = selectedCommunities.length === 0 || (allCommunityIds.length > 0 && selectedCommunities.length === allCommunityIds.length);
+  const selectedCommunityNames = communities.filter((item) => allCommunitiesSelected || selectedCommunities.includes(item.id)).map((item) => item.name);
+  const communityLabel = selectedCommunities.length === 0
+    ? '未选择'
+    : allCommunitiesSelected
+      ? '全部 ' + allCommunityIds.length + ' 个'
+      : selectedCommunities.length === 1
+        ? (selectedCommunityNames[0] || '1 个')
+        : selectedCommunities.length + ' 个';
+  useEffect(() => {
+    if (!communityMenuOpen) return undefined;
+    const onPointer = (event: MouseEvent | TouchEvent) => {
+      if (!communityMenuRef.current?.contains(event.target as Node)) setCommunityMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onPointer);
+    document.addEventListener('touchstart', onPointer);
+    return () => { document.removeEventListener('mousedown', onPointer); document.removeEventListener('touchstart', onPointer); };
+  }, [communityMenuOpen]);
   const toggleCommunity = (id: number) => {
     setSelectedCommunities((prev) => {
       const current = prev.length ? prev : allCommunityIds;
@@ -598,8 +718,8 @@ export default function Screen() {
     return {
       key,
       label: key.slice(5),
-      paidCents: rows.reduce((sum, point) => sum + point.paidCents, 0),
-      targetCents: rows.reduce((sum, point) => sum + point.targetCents, 0),
+      paidCents: key === today.slice(0, 7) && (screenMonth?.paidCents ?? 0) > 0 ? (screenMonth?.paidCents || 0) : rows.reduce((sum, point) => sum + point.paidCents, 0),
+      targetCents: screenTarget?.hasTarget ? Math.round(screenTarget.annualCents / 12) : rows.reduce((sum, point) => sum + point.targetCents, 0),
       current: key === today.slice(0, 7),
     };
   });
@@ -658,18 +778,28 @@ export default function Screen() {
           <span className="scr-mark" aria-hidden="true" />
           <div>
             <h1>收费与催缴看板</h1>
-            <p>住宅收费 · 一通MIS · 只读账务 · 1920×1080 投屏</p>
+            
           </div>
         </div>
         <div className="scr-meta">
-          <div className="scr-scope scr-checks" title={options.error || '勾选一个或多个小区，全部图表一起刷新'}>
-            <span>小区</span>
-            {communities.length ? communities.map((item) => (
-              <label key={item.id} className="scr-check">
-                <input type="checkbox" checked={allCommunitiesSelected || selectedCommunities.includes(item.id)} onChange={() => toggleCommunity(item.id)} />
-                <b>{item.name}</b>
-              </label>
-            )) : <em>全部授权小区</em>}
+          <div className="scr-community-picker" ref={communityMenuRef}>
+            <button type="button" className="scr-scope scr-picker-btn" aria-haspopup="true" aria-expanded={communityMenuOpen} onClick={() => setCommunityMenuOpen((value) => !value)} title={options.error || '勾选小区，全部图表一起刷新'}>
+              <span>小区</span><b>{communityLabel}</b><i aria-hidden="true">▾</i>
+            </button>
+            {communityMenuOpen ? (
+              <div className="scr-community-pop" role="dialog" aria-label="选择小区">
+                <div className="scr-pop-head">
+                  <button type="button" onClick={() => setSelectedCommunities(allCommunityIds)}>全选</button>
+                  <button type="button" onClick={() => setSelectedCommunities([])}>清空</button>
+                </div>
+                {communities.length ? communities.map((item) => (
+                  <label key={item.id} className="scr-pop-item">
+                    <input type="checkbox" checked={allCommunitiesSelected || selectedCommunities.includes(item.id)} onChange={() => toggleCommunity(item.id)} />
+                    <span>{item.name}</span>
+                  </label>
+                )) : <div className="scr-pop-empty">暂无小区</div>}
+              </div>
+            ) : null}
           </div>
           <label className="scr-scope" title="切换年度后重新读取该年度数据">
             <span>年度</span>
@@ -677,8 +807,7 @@ export default function Screen() {
               {yearOptions.map((y) => <option key={y} value={y}>{y} 年</option>)}
             </select>
           </label>
-          <span className="scr-updated">最后更新 {loadedAt ? new Date(loadedAt).toLocaleString('zh-CN', { hour12: false }) : '读取中…'}</span>
-          {offlineMode && sync.asOf ? <span className="scr-asof" style={sync.stale ? { color: 'var(--warn)', fontWeight: 700 } : undefined}>数据截至 {sync.asOf}（MIS 同步{sync.stale ? ' · 已滞后' : ''}）</span> : null}
+          <span className="scr-updated" title={lastUpdatedClock ? '最后更新 ' + lastUpdatedClock : undefined}>每 5 分钟自动刷新{staleAsOf ? <em className="scr-updated-stale"> · 数据截至 {staleAsOf}</em> : null}</span>
           {loading && <span className="scr-live"><i />刷新中</span>}
           <button type="button" className="scr-btn" onClick={() => setTick((value) => value + 1)}>刷新</button>
           <button type="button" className="scr-btn" onClick={() => void toggleFullscreen()}>{fullscreen ? '退出全屏' : '全屏'}</button>
@@ -688,6 +817,7 @@ export default function Screen() {
 
       <section className="scr-top" aria-label="年度达成与今日实时">
         <AnnualPanel target={screenTarget} year={year} loading={summaryLoading} error={summaryError} onSettings={() => navigate('/settings')} />
+        <MonthPanel month={screenMonth} />
         <article className="scr-panel scr-today">
           <div className="scr-panel-head"><h2>今日实时</h2><span className="scr-legend">今日实收 · 日均需收完成度</span></div>
           {summaryError ? <NoData /> : !screenToday ? (summaryLoading ? <div className="scr-no-data">读取中…</div> : <NoData />) : (
@@ -717,7 +847,7 @@ export default function Screen() {
                 <button type="button" className={'scr-gran-btn' + (granularity === 'month' ? ' on' : '')} onClick={() => setGranularity('month')}>按月</button>
               </div>
             </div>
-            {summaryError ? <NoData /> : chartPoints.length ? <CumulativeChart points={chartPoints} /> : <NoData />}
+            {summaryError ? <NoData /> : chartPoints.length ? <CumulativeChart points={chartPoints} year={Number(year)} granularity={granularity} annualTargetCents={screenTarget?.annualCents ?? 0} /> : <NoData />}
           </article>
 
           <article className="scr-panel scr-month-panel">

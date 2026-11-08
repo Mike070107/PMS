@@ -47,12 +47,12 @@ export default function ThreeBackdrop({ reducedMotion }: { reducedMotion: boolea
       camera.position.z = 10;
 
       // 粒子：约 780 个，主题蓝/青，低透明度，极慢流动
-      const COUNT = 780;
+      const COUNT = 900;
       const positions = new Float32Array(COUNT * 3);
       const colors = new Float32Array(COUNT * 3);
       const speeds = new Float32Array(COUNT);
       const drift = new Float32Array(COUNT);
-      const palette = [new THREE.Color('#5aa2ff'), new THREE.Color('#54d6c8'), new THREE.Color('#8fd0ff')];
+      const palette = [new THREE.Color('#7dbdff'), new THREE.Color('#6ef0d8'), new THREE.Color('#b8e4ff')];
       for (let i = 0; i < COUNT; i += 1) {
         positions[i * 3] = (Math.random() - 0.5) * window.innerWidth;
         positions[i * 3 + 1] = (Math.random() - 0.5) * window.innerHeight;
@@ -68,23 +68,34 @@ export default function ThreeBackdrop({ reducedMotion }: { reducedMotion: boolea
       particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
       const particleMaterial = new THREE.PointsMaterial({
-        size: 1.7,
+        size: 2.8,
         vertexColors: true,
         transparent: true,
-        opacity: 0.32,
+        opacity: 0.55,
         depthWrite: false,
         sizeAttenuation: false,
         blending: THREE.AdditiveBlending,
       });
       const particles = new THREE.Points(particleGeometry, particleMaterial);
       scene.add(particles);
+      // 简单加色光晕：同一粒子几何放大一层低透明度点，不引后处理库
+      const glowMaterial = new THREE.PointsMaterial({ size: 6.2, vertexColors: true, transparent: true, opacity: 0.10, depthWrite: false, sizeAttenuation: false, blending: THREE.AdditiveBlending });
+      const glow = new THREE.Points(particleGeometry, glowMaterial);
+      scene.add(glow);
 
-      // 一条从左向右缓慢横穿的光带（约 12 秒）
-      const bandWidth = Math.max(160, window.innerWidth * 0.16);
-      const bandGeometry = new THREE.PlaneGeometry(bandWidth, window.innerHeight * 1.2);
-      const bandMaterial = new THREE.MeshBasicMaterial({ color: 0x2f7fbf, transparent: true, opacity: 0.055, depthWrite: false, blending: THREE.AdditiveBlending });
-      const band = new THREE.Mesh(bandGeometry, bandMaterial);
-      scene.add(band);
+      // 一条从左向右缓慢横穿的光带（约 12 秒），多层叠加做出拖尾
+      const bandWidth = Math.max(240, window.innerWidth * 0.26);
+      const bandLayers = [
+        { width: bandWidth, opacity: 0.11, color: 0x2f8fd0 },
+        { width: bandWidth * 0.55, opacity: 0.10, color: 0x5fc8ff },
+        { width: bandWidth * 0.16, opacity: 0.14, color: 0xa6ecff },
+      ].map((layer) => {
+        const geometry = new THREE.PlaneGeometry(layer.width, window.innerHeight * 1.25);
+        const material = new THREE.MeshBasicMaterial({ color: layer.color, transparent: true, opacity: layer.opacity, depthWrite: false, blending: THREE.AdditiveBlending });
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+        return { mesh, geometry, material, width: layer.width };
+      });
 
       let raf = 0;
       let last = performance.now();
@@ -106,7 +117,10 @@ export default function ThreeBackdrop({ reducedMotion }: { reducedMotion: boolea
           }
           particleGeometry.attributes.position.needsUpdate = true;
           const cycle = ((now / 1000) % 12) / 12;
-          band.position.x = -halfW - bandWidth / 2 + cycle * (window.innerWidth + bandWidth);
+          for (let i = 0; i < bandLayers.length; i += 1) {
+            const layer = bandLayers[i];
+            layer.mesh.position.x = -halfW - layer.width / 2 + cycle * (window.innerWidth + layer.width) - i * layer.width * 0.22;
+          }
           renderer.render(scene, camera);
         }
         raf = requestAnimationFrame(loop);
@@ -141,8 +155,8 @@ export default function ThreeBackdrop({ reducedMotion }: { reducedMotion: boolea
         window.removeEventListener('resize', onResize);
         particleGeometry.dispose();
         particleMaterial.dispose();
-        bandGeometry.dispose();
-        bandMaterial.dispose();
+        glowMaterial.dispose();
+        bandLayers.forEach((layer) => { layer.geometry.dispose(); layer.material.dispose(); });
         renderer.dispose();
         renderer.forceContextLoss();
         renderer.domElement.remove();
