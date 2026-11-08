@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { request } from '@pms/api-client';
 import Icon from '@/components/Icon';
+import ScreenActionIcon, { type ScreenActionKind } from '@/components/ScreenActionIcon';
 import { useSession } from '@/lib/auth';
 import { can } from '@/lib/perm';
 import { amountWan, chinaToday, sampleManual, type DecisionSummary, type ScreenSettingsData } from '@/lib/screen-decision';
@@ -18,6 +19,11 @@ function DecisionChart({ data }: { data: DecisionSummary }) {
   const actual = data.trend.map(p => { paid += p.paidCents; return `${dayX(p.key)},${y(paid)}`; });
   const planned = [`64,${y(0)}`, ...decision.planCurve.map(p => `${dayX(p.key)},${y(p.plannedCents)}`)];
   const xNow = Math.max(64, Math.min(920, dayX(data.asOf)));
+  const current = year === Number(chinaToday().slice(0, 4));
+  const actualY = y(target.yearToDateCents);
+  const planY = y(decision.plannedToDateCents || 0);
+  const actualLabelY = Math.min(265, actualY + 24);
+  const planLabelY = Math.max(26, Math.min(planY - 12, actualLabelY - 38));
   return <svg viewBox="0 0 960 330" role="img" aria-label="年度累计实收、计划进度和趋势估算对比">
     <title>年度累计实收、计划进度和趋势估算；金额单位万元</title>
     {[0, 1, 2, 3, 4].map(i => <g key={i}>
@@ -33,6 +39,13 @@ function DecisionChart({ data }: { data: DecisionSummary }) {
       <circle cx={xNow} cy={y(target.yearToDateCents)} r="5" className="dec-dot" />
     </>}
     {decision.forecastCents !== null && <line x1={xNow} y1={y(target.yearToDateCents)} x2="920" y2={y(decision.forecastCents)} className="dec-forecast" />}
+    {current && actual.length > 0 && <g className="dec-chart-annotations">
+      <line x1={xNow} x2={xNow} y1="35" y2="278" className="dec-today-line"/>
+      <text x={xNow} y="326" textAnchor="middle">今日</text>
+      <text x={Math.max(230, xNow - 12)} y={planLabelY} textAnchor="end" className="dec-plan-label">计划 {amountWan(decision.plannedToDateCents)}万</text>
+      <text x={Math.max(230, xNow - 12)} y={actualLabelY} textAnchor="end" className="dec-actual-label">实收 {amountWan(target.yearToDateCents)}万</text>
+      {decision.forecastCents !== null && <text x="920" y={Math.min(266, y(decision.forecastCents) + 24)} textAnchor="end" className="dec-forecast-label">年末估算 {amountWan(decision.forecastCents)}万</text>}
+    </g>}
     {[0, 2, 4, 6, 8, 11].map(m => <text key={m} x={dayX(`${year}-${String(m + 1).padStart(2, '0')}-01`)} y="307" textAnchor="middle">{m + 1}月</text>)}
   </svg>;
 }
@@ -52,6 +65,7 @@ function ScreenContent() {
   const [loading, setLoading] = useState(true);
   const [loadedAt, setLoadedAt] = useState('');
   const [fullError, setFullError] = useState('');
+  const [fullscreen, setFullscreen] = useState(!!document.fullscreenElement);
   const [loadedKey, setLoadedKey] = useState('');
   const requestKey = `${year}|${scope}|${tick}`;
   const data = loadedKey === requestKey ? rawData : null;
@@ -59,7 +73,7 @@ function ScreenContent() {
 
   useEffect(() => {
     let active = true;
-    setData(null); setSettings(null); setError(''); setManualError(''); setLoading(true);
+    setData(null); setSettings(null); setError(''); setManualError(''); setLoadedAt(''); setLoading(true);
     void Promise.allSettled([
       request<DecisionSummary>({ url: '/fees/mis/screen-summary', query: { year, communityIds: scope || undefined, granularity: 'day' }, timeout: 30000 }),
       request<ScreenSettingsData>({ url: '/fees/screen-settings', query: { year, communityIds: scope || undefined }, timeout: 15000 }),
@@ -68,7 +82,7 @@ function ScreenContent() {
       if (!active) return;
       if (summary.status === 'fulfilled') {
         setData(summary.value);
-        setLoadedAt(new Date().toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }));
+        setLoadedAt(new Date(summary.value.queriedAt || Date.now()).toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }));
       } else setError(summary.reason instanceof Error ? summary.reason.message : '经营数据读取失败');
       if (config.status === 'fulfilled') setSettings(config.value);
       else setManualError('人工指标读取失败，请重试');
@@ -83,6 +97,11 @@ function ScreenContent() {
     document.addEventListener('visibilitychange', refresh);
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', refresh); };
   }, []);
+  useEffect(() => {
+    const update = () => setFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', update);
+    return () => document.removeEventListener('fullscreenchange', update);
+  }, []);
 
   const d = data?.decision, t = data?.target;
   const manual = settings ? settings.manual || sampleManual(year) : null;
@@ -95,8 +114,8 @@ function ScreenContent() {
   const manualAge = manual ? Math.floor((Date.parse(chinaToday() + 'T00:00:00Z') - Date.parse(manual.asOf.slice(0, 10) + 'T00:00:00Z')) / 86400000) : 0;
   const busy = loading || loadedKey !== requestKey;
   const dataTime = data?.source === 'mirror'
-    ? '数据截至 ' + (data.dataAsOf ? new Date(data.dataAsOf).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '时间未知')
-    : '读取于 ' + loadedAt;
+    ? 'MIS镜像 · 数据截至 ' + (data.dataAsOf ? new Date(data.dataAsOf).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '时间未知')
+    : (data?.source === 'mis' ? 'MIS直连' : data?.source === 'fixture' ? '隔离测试数据' : '来源待确认') + ' · 读取于 ' + loadedAt;
 
   return <main className="decision-screen">
     <header className="dec-head">
@@ -115,7 +134,7 @@ function ScreenContent() {
           {Array.from({ length: 5 }, (_, i) => Number(chinaToday().slice(0, 4)) + 1 - i).map(y => <option key={y} value={y}>{y}年度</option>)}
         </select>
         <button onClick={() => setTick(n => n + 1)} disabled={busy} aria-label="刷新大屏"><Icon name="refresh" /></button>
-        <button onClick={() => { setFullError(''); void (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => setFullError('浏览器未允许全屏，可使用 F11')); }}>全屏</button>
+        <button aria-label="切换全屏" onClick={() => { setFullError(''); void (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => setFullError('浏览器未允许全屏，可使用 F11')); }}>{fullscreen ? '退出全屏' : '全屏'}</button>
         {can('fees', 'edit') && <button onClick={() => nav(settingsUrl)}>大屏设置</button>}
         <button onClick={() => nav('/reports')}>返回后台</button>
       </div>
@@ -138,13 +157,13 @@ function ScreenContent() {
       <div><span>每日回款压力</span><strong>{current ? amountWan(d?.requiredDailyCents) : '—'}<small>万元</small></strong><p>近{d?.recentDays || 28}个完整日日均 {amountWan(d?.recentDailyCents)} 万</p><p className="warning">{uplift != null ? uplift > 0 ? `需提升 ${uplift}%` : '当前速度可覆盖日均要求' : current ? '暂无可比速度' : '历史年度不预测'}</p></div>
     </section>
     <div className="dec-middle">
-      <section className="dec-panel dec-trend"><header><h2>目标进度与达标趋势</h2><div className="dec-legend"><span>实线 · 实际</span><span>灰虚线 · 计划</span><span>蓝虚线 · 估算</span></div></header>
+      <section className="dec-panel dec-trend"><header><h2>目标进度与达标趋势</h2><div className="dec-legend"><span className="actual">实际回款</span><span className="plan">计划进度</span><span className="forecast">趋势估算</span></div></header>
         {data && t?.annualCents ? <DecisionChart data={data} /> : <div className="dec-empty">{busy ? '正在读取趋势…' : '尚未设置目标，暂无法分析达标趋势'}</div>}
         <div className="dec-forecast-note">{d?.forecastCents != null && t ? <>按近{d.recentDays}日速度估算，年末{d.forecastCents < t.annualCents ? '距目标约' : '超出目标约'} <b>{amountWan(Math.abs(t.annualCents - d.forecastCents))} 万元</b></> : '至少需要14个完整自然日，且已设置目标，才展示趋势估算'}
           <small title="当前累计实收 + 近28个完整日日均 × 今日后剩余自然日；不重复估算今天">趋势参考，不作为回款承诺</small>
         </div>
       </section>
-      <section className="dec-panel dec-projects"><header><h2>优先关注项目</h2><span>按落后金额排序</span></header>
+      <section className="dec-panel dec-projects"><header><h2>优先关注项目</h2><span>按落后金额排序{(d?.projects.length || 0) > 6 ? ' · 前6组' : ''}</span></header>
         <div className="dec-table-wrap"><table><thead><tr><th>指标组／负责人</th><th>实际 · 计划</th><th>落后金额</th></tr></thead><tbody>
           {d?.projects.slice(0, 6).map(p => <tr key={p.targetId}><td><b>{p.name}</b><small>{p.communityIds.map(id => settings?.owners.find(o => o.communityId === id)?.name).filter(Boolean).join('、') || '负责人未设置'}</small></td>
             <td>{p.rate?.toFixed(1) ?? '—'}% / {p.planRate?.toFixed(1) ?? '—'}%<div className="dec-progress"><i style={{ width: Math.min(100, Math.max(0, p.rate || 0)) + '%' }} /><em style={{ left: Math.min(99, Math.max(0, p.planRate || 0)) + '%' }} /></div></td>
@@ -156,9 +175,9 @@ function ScreenContent() {
     </div>
     <div className="dec-bottom">
       <section className="dec-panel"><header><h2>优先处理事项</h2><span>{manual?.sample ? '示例数据 · 人工预填' : '人工台账'}</span></header><div className="dec-actions">
-        {[{ title: '承诺付款逾期', count: manual?.overdueHouses, cents: manual?.overdueCents, unit: '户' },
-          { title: '大额欠费未跟进', count: manual?.untouchedHouses, cents: manual?.untouchedCents, unit: '户' },
-          { title: '争议待处理', count: manual?.disputeCount, cents: manual?.disputeCents, unit: '件' }].map(item => <div key={item.title}><h3>{item.title}</h3><strong>{item.count ?? '—'}<small>{item.unit}</small></strong><p>涉及 {amountWan(item.cents)} 万</p></div>)}
+        {[{ title: '承诺付款逾期', icon: 'promise', count: manual?.overdueHouses, cents: manual?.overdueCents, unit: '户' },
+          { title: '大额欠费未跟进', icon: 'arrears', count: manual?.untouchedHouses, cents: manual?.untouchedCents, unit: '户' },
+          { title: '争议待处理', icon: 'dispute', count: manual?.disputeCount, cents: manual?.disputeCents, unit: '件' }].map(item => <div key={item.title} className="dec-action-item"><ScreenActionIcon kind={item.icon as ScreenActionKind}/><div><h3>{item.title}</h3><strong>{item.count ?? '—'}<small>{item.unit}</small></strong><p>涉及 {amountWan(item.cents)} 万</p></div></div>)}
       </div></section>
       <section className="dec-panel"><header><h2>催缴行动成效</h2><span>{manual?.sample ? '示例数据' : '人工台账 · 近30日'}</span></header><div className="dec-actions">
         <div><h3>30日跟进后回款</h3><strong>{amountWan(manual?.recoveredCents)}<small>万</small></strong></div>
