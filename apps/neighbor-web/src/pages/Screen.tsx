@@ -21,8 +21,8 @@ type Effect = { summary: { notifiedCents: number; recoveredCents: number; recove
 type SmsStats = Record<string, unknown>;
 type Options = { available?: boolean; message?: string; communities: { id: number; name: string }[] };
 
-type ScreenTarget = { annualCents: number; paidCents: number; gapCents: number; remainingDays: number; dailyNeedCents: number; rate: number | null; hasTarget: boolean };
-type ScreenToday = { paidCents: number; count: number; houses: number; dailyNeedCents: number };
+type ScreenTarget = { annualCents: number; paidCents: number; gapCents: number; remainingDays: number; dailyNeedCents: number; rate: number | null; hasTarget: boolean; partial: boolean; targetScope: string; missingTargetCommunities: string[] };
+type ScreenToday = { paidCents: number; count: number; houses: number; dailyNeedCents: number; vsDailyNeed: number | null };
 type ScreenTrendPoint = { key: string; label: string; paidCents: number; targetCents: number; cumPaidCents: number; cumTargetCents: number };
 type ScreenCommunity = { id: number; name: string; targetCents: number; paidCents: number; rate: number | null; hasTarget: boolean };
 type ScreenArrearsBucket = { key: string; label: string; count: number; amountCents: number };
@@ -38,18 +38,29 @@ function normalizeScreenSummary(raw: unknown): ScreenSummary | null {
   const targetRaw = data.target && typeof data.target === 'object' ? data.target : {};
   const todayRaw = data.today && typeof data.today === 'object' ? data.today : {};
   const annualCents = num(targetRaw.annualCents ?? targetRaw.annualTargetCents ?? targetRaw.targetCents ?? targetRaw.amountCents ?? data.annualTargetCents ?? data.targetCents);
-  const paidCents = num(targetRaw.paidCents ?? data.paidCents ?? data.yearPaidCents ?? data.monthToDate?.paidCents);
+  // 已收必须用年度累计（yearToDateCents），不能用 monthToDate 或全范围合计
+  const paidCents = num(targetRaw.yearToDateCents ?? targetRaw.paidCents ?? data.yearToDateCents ?? data.paidCents);
   const gapCents = num(targetRaw.gapCents ?? targetRaw.gap ?? data.gapCents ?? (annualCents ? annualCents - paidCents : 0));
   const remainingDays = num(targetRaw.remainingDays ?? data.remainingDays);
   const dailyNeedCents = num(targetRaw.dailyNeedCents ?? data.dailyNeedCents ?? (remainingDays > 0 ? Math.max(0, gapCents) / remainingDays : 0));
   const rateRaw = Number(targetRaw.rate ?? targetRaw.progress ?? (annualCents ? (paidCents / annualCents) * 100 : NaN));
   const hasTarget = annualCents > 0;
-  const target: ScreenTarget = { annualCents, paidCents, gapCents, remainingDays, dailyNeedCents: Math.round(dailyNeedCents), rate: Number.isFinite(rateRaw) ? Math.round(rateRaw * 10) / 10 : null, hasTarget };
+  const missingRaw = targetRaw.missingTargetCommunities ?? data.missingTargetCommunities;
+  const missingTargetCommunities = Array.isArray(missingRaw) ? missingRaw.map((item: any) => typeof item === 'string' ? item : String(item?.name ?? '')).filter(Boolean) : [];
+  const scopeRaw = targetRaw.targetScope ?? data.targetScope;
+  const targetScope = typeof scopeRaw === 'string' ? scopeRaw
+    : Array.isArray(scopeRaw) ? scopeRaw.map((item: any) => typeof item === 'string' ? item : String(item?.name ?? '')).filter(Boolean).join('、')
+      : Array.isArray(scopeRaw?.communityNames) ? scopeRaw.communityNames.filter(Boolean).join('、')
+        : Array.isArray(scopeRaw?.names) ? scopeRaw.names.filter(Boolean).join('、')
+          : String(scopeRaw?.name ?? scopeRaw?.label ?? scopeRaw?.communityName ?? '');
+  const partial = Boolean(targetRaw.partial ?? data.partial ?? missingTargetCommunities.length > 0);
+  const target: ScreenTarget = { annualCents, paidCents, gapCents, remainingDays, dailyNeedCents: Math.round(dailyNeedCents), rate: Number.isFinite(rateRaw) ? Math.round(rateRaw * 10) / 10 : null, hasTarget, partial, targetScope, missingTargetCommunities };
   const today: ScreenToday = {
     paidCents: num(todayRaw.paidCents ?? todayRaw.amountCents),
-    count: num(todayRaw.count ?? todayRaw.paidCount),
-    houses: num(todayRaw.houses ?? todayRaw.paidHouses),
+    count: num(todayRaw.billCount ?? todayRaw.count ?? todayRaw.paidCount),
+    houses: num(todayRaw.houseCount ?? todayRaw.houses ?? todayRaw.paidHouses),
     dailyNeedCents: num(todayRaw.dailyNeedCents ?? todayRaw.targetCents ?? dailyNeedCents),
+    vsDailyNeed: todayRaw.vsDailyNeed === null || todayRaw.vsDailyNeed === undefined ? null : num(todayRaw.vsDailyNeed),
   };
   const trendRaw = Array.isArray(data.trend) ? data.trend : Array.isArray(data.months) ? data.months : [];
   let cumPaid = 0; let cumTarget = 0;
@@ -315,7 +326,7 @@ function AnnualPanel({ target, year, loading, error, onSettings }: { target: Scr
   const width = Math.min(100, Math.max(0, rate));
   return (
     <article className={'scr-panel scr-annual' + (over ? ' over' : '')}>
-      <div className="scr-panel-head"><h2>{year} 年度达成</h2><span className="scr-legend">年度指标</span></div>
+      <div className="scr-panel-head"><h2>{year} 年度达成</h2><span className="scr-legend">{target.partial ? '部分口径' : '年度指标'}</span></div>
       <div className="scr-target-line"><span>年度指标 ¥{cents(target.annualCents)}</span><i /> <span>已收 ¥{cents(target.paidCents)}</span></div>
       <div className="scr-target-bar-wrap">
         <svg className="scr-target-bar" viewBox="0 0 100 12" preserveAspectRatio="none" role="img" aria-label={`年度达成 ${rate}%`}>
@@ -326,7 +337,7 @@ function AnnualPanel({ target, year, loading, error, onSettings }: { target: Scr
           <rect x="0" y="0" width="100" height="12" rx="6" fill="rgba(120,168,255,.16)" />
           <rect x="0" y="0" width={width} height="12" rx="6" fill={over ? 'url(#scrTargetGold)' : 'url(#scrTargetGreen)'} />
         </svg>
-        <b className={'scr-target-pct' + (over ? ' over' : '')}>{rate}%</b>
+        {target.partial ? <em className="scr-partial-tag">部分口径</em> : null}<b className={'scr-target-pct' + (over ? ' over' : '')}>{rate}%</b>
       </div>
       <div className="scr-target-sub">
         <span>缺口 ¥{cents(Math.max(0, target.gapCents))}</span><i />
@@ -334,6 +345,7 @@ function AnnualPanel({ target, year, loading, error, onSettings }: { target: Scr
         <span>日均需收 ¥{cents(target.dailyNeedCents)}</span>
         {over ? <em className="scr-over-tag">已超额</em> : null}
       </div>
+      {target.partial ? <div className="scr-target-scope">指标口径：仅 {target.targetScope || '已设指标小区'}{target.missingTargetCommunities.length ? `（另有 ${target.missingTargetCommunities.join('、')} 未设指标）` : ''}</div> : null}
     </article>
   );
 }
@@ -348,7 +360,7 @@ function TodayRing({ pct }: { pct: number | null }) {
         <circle cx="32" cy="32" r={r} fill="none" stroke="rgba(120,168,255,.16)" strokeWidth="7" />
         <circle cx="32" cy="32" r={r} fill="none" stroke="currentColor" strokeWidth="7" strokeLinecap="round" strokeDasharray={`${(safe / 100) * circumference} ${circumference}`} transform="rotate(-90 32 32)" />
       </svg>
-      <span>{pct === null ? '—' : Math.round(pct) + '%'}</span>
+      <span className={pct === null ? 'idle' : ''}>{pct === null ? '未设指标' : Math.round(pct) + '%'}</span>
     </div>
   );
 }
@@ -595,7 +607,9 @@ export default function Screen() {
     : trendPoints;
   const arrearsView: ScreenArrears | null = screenData?.arrears ?? (bracketView ? { buckets: bracketView.buckets, totalCount: bracketView.total.count, totalAmountCents: bracketView.total.amountCents } : null);
   const todayNeed = screenToday?.dailyNeedCents || screenTarget?.dailyNeedCents || 0;
-  const todayPct = todayNeed > 0 && screenToday ? (screenToday.paidCents / todayNeed) * 100 : null;
+  const todayPct = screenToday?.vsDailyNeed !== undefined && screenToday?.vsDailyNeed !== null
+    ? screenToday.vsDailyNeed
+    : (screenToday && todayNeed > 0 ? (screenToday.paidCents / todayNeed) * 100 : null);
   const summaryError = screenSummary.error;
   const summaryLoading = screenSummary.loading;
 
@@ -695,6 +709,7 @@ export default function Screen() {
           <article className="scr-panel scr-cum-panel">
             <div className="scr-panel-head">
               <h2>累计实收 vs 指标</h2>
+              <span className="scr-legend">{screenTarget?.partial ? '实收累计 · 指标线仅已设指标小区' : '实收累计 · 指标累计'}</span>
               <div className="scr-gran">
                 <button type="button" className={'scr-gran-btn' + (granularity === 'day' ? ' on' : '')} onClick={() => setGranularity('day')}>按日</button>
                 <button type="button" className={'scr-gran-btn' + (granularity === 'month' ? ' on' : '')} onClick={() => setGranularity('month')}>按月</button>
@@ -704,7 +719,7 @@ export default function Screen() {
           </article>
 
           <article className="scr-panel scr-month-panel">
-            <div className="scr-panel-head"><h2>月度实收 vs 指标</h2><span className="scr-legend">绿=达标 · 浅红=未达标 · 本月高亮</span></div>
+            <div className="scr-panel-head"><h2>月度实收 vs 指标</h2><span className="scr-legend">绿=达标 · 浅红=未达标 · 本月高亮{screenTarget?.partial ? ' · 指标线仅已设指标小区' : ''}</span></div>
             {summaryError || !trendPoints.length ? <NoData /> : <MonthlyChart months={monthBuckets} />}
           </article>
 
