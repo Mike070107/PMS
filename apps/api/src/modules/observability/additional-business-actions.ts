@@ -4,6 +4,7 @@
  * 请求受理不等于设备执行完成、消息送达或纸张打印完成。
  */
 const TEMPLATES: ReadonlyArray<readonly [string, string, string, string, string]> = [
+  ["PATCH", "/feedback/:id", "patch_feedback_id", "标记用户反馈已处理", "用户反馈"],
   ["POST", "/fees/mis/collections/followups", "post_fees_mis_collections_followups", "登记催缴跟进", "账单催缴"],
   ["POST", "/fees/mis/collections/:id/prints", "post_fees_mis_collections_id_prints", "登记通知单打印请求", "账单催缴"],
   ["POST", "/access-card-issuance/agents", "post_access_card_issuance_agents", "登记发卡代理", "门禁发卡"],
