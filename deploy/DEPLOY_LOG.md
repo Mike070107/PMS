@@ -6745,3 +6745,10 @@
 - 自上次（bf8d4e45）以来上线的相关提交：
   - ea0d1520 feat(targets): 指标支持小区组（community_ids），screen-summary 按组命中计算
 
+## 2026-11-08 18:33 · api · c7c8e3a8
+
+- 包：`pms-api-fast-20261108-183243.tar.gz`
+- 提交：c7c8e3a8 feat(screen): 月度达成口径（显式月度指标优先，缺失按年度均摊）
+- 自上次（ea0d1520）以来上线的相关提交：
+  - c7c8e3a8 feat(screen): 月度达成口径（显式月度指标优先，缺失按年度均摊）
+
