@@ -6638,3 +6638,10 @@
 - 自上次（77bed0d1）以来上线的相关提交：
   - fe48943b feat(feedback): 顶层 recentErrors 与通知「需看报错」标记；20MB 服务端对象大小校验
 
+## 2026-11-08 09:02 · web · 5f894a60
+
+- 包：`pms-web-20261108-090212.tar.gz`
+- 提交：5f894a60 feat(feedback): 双入口、composer 内嵌缩略图、日志反馈状态操作与批量处理
+- 自上次（8e7bd83e）以来上线的相关提交：
+  - 5f894a60 feat(feedback): 双入口、composer 内嵌缩略图、日志反馈状态操作与批量处理
+
