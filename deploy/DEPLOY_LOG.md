@@ -6813,3 +6813,10 @@
   - fe4340bc fix(screen): read synchronized local data without MIS fallback
   - b333afbd feat(mirror): 镜像支持趋势与住户明细；负数调整计入净额并恢复收缴率
 
+## 2026-11-08 21:44 · web · 1b553adf
+
+- 包：`pms-web-20261108-214358.tar.gz`
+- 提交：1b553adf feat(screen): inspect monthly receipts across all twelve months
+- 自上次（a40b8619）以来上线的相关提交：
+  - 1b553adf feat(screen): inspect monthly receipts across all twelve months
+
