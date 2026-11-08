@@ -7,6 +7,7 @@ import { repairs, request } from '@pms/api-client';
 import { useSession } from '@/lib/auth';
 import { dayjs, isActive, isOverdue, money, stageOf } from '@/lib/format';
 import Icon from '@/components/Icon';
+import { Sheet } from '@/components/ui';
 import type { IconName } from '@/components/Icon';
 
 interface Txn {
@@ -14,11 +15,32 @@ interface Txn {
   amountCents: number; paymentMethod: string | null; createdAt: string;
 }
 type LedgerSummary = { paidCents: number; refundedCents: number; paidCount: number; byService: Array<{ serviceType: string; paidCents: number; paidCount: number }> };
-type MisFeeRow = { name: string; amountCents: number; count: number; houseCount: number | null };
+type MisFeeRow = { name: string; feeCode?: string; amountCents: number; count: number; houseCount: number | null };
 type MisToday = { paidCents: number; paidCount: number; refundedCents: number; paidHouses: number; byFee: MisFeeRow[]; dataAsOf?: string | null };
 type RecentPayment = { paidAt: string; address: string; ownerName: string; amountCents: number; channel: string | null; billCount: number; recordedAt: string | null };
 type MisState = { key: string; today: MisToday | null; todayMissing: boolean };
+type FeeDetailRow = { id: string; recordedAt: string | null; roomNo: string; ownerName: string; channel: string | null; amountCents: number; billCount: number };
+type FeeDetailState = { key: string; rows: FeeDetailRow[]; total: number; page: number; missing: boolean; loading: boolean };
 type RecentState = { key: string; page: number; rows: RecentPayment[]; total: number; houseCount: number | null; seenHouses: string[]; missing: boolean; loading: boolean; paged: boolean };
+
+const FEE_LABEL: Record<string, string> = { property: '物业费', parking: '停车', berth: '泊位费', other: '其他' };
+const FEE_COLOR: Record<string, string> = { property: '#2f9e6e', parking: '#2f6fbe', berth: '#a5754a', other: '#7c8ba1' };
+const FEE_COLOR_FALLBACK = ['#7c8ba1', '#2f9e6e', '#2f6fbe', '#a5754a'];
+const feeCodeOf = (raw: unknown) => {
+  const text = String(raw ?? '').toLowerCase().replace(/[\s_-]/g, '');
+  if (!text) return '';
+  if (text.includes('propert') || text.includes('物业')) return 'property';
+  if (text.includes('berth') || text.includes('泊位')) return 'berth';
+  if (text.includes('parking') || text.includes('停车')) return 'parking';
+  if (text.includes('other') || text.includes('其他')) return 'other';
+  return text;
+};
+const feeLabelOf = (rawName: unknown, code: string) => {
+  const name = String(rawName ?? '').trim();
+  if (name && !/^(property|parking|berth|other)$/i.test(name)) return name;
+  return FEE_LABEL[code] || FEE_LABEL[feeCodeOf(name)] || '其他';
+};
+const feeColorOf = (code: string, index: number) => FEE_COLOR[code] || FEE_COLOR_FALLBACK[index % FEE_COLOR_FALLBACK.length];
 
 const CHANNEL_LABEL: Record<string, string> = { wechat: '微信', alipay: '支付宝', cash: '现金', bank: '银行', pos: '刷卡', transfer: '转账', other: '其他' };
 const channelLabel = (raw: string | null) => (!raw ? '渠道未记录' : CHANNEL_LABEL[raw.toLowerCase()] || raw);
@@ -28,12 +50,16 @@ function normalizeMisToday(raw: unknown): MisToday | null {
   const data = raw as Record<string, unknown>;
   const paidCents = Number(data.paidCents);
   if (!Number.isSafeInteger(paidCents) || paidCents < 0) return null;
-  const byFee = Array.isArray(data.byFee) ? data.byFee.map((row: any) => ({
-    name: String(row?.feeName || row?.name || row?.category || '其他'),
-    amountCents: Math.max(0, Number(row?.paidCents ?? row?.amountCents ?? 0) || 0),
-    count: Number(row?.billCount ?? row?.count ?? row?.paidCount ?? 0) || 0,
-    houseCount: Number.isFinite(Number(row?.houseCount)) && Number(row?.houseCount) >= 0 ? Number(row.houseCount) : null,
-  })) : [];
+  const byFee = Array.isArray(data.byFee) ? data.byFee.map((row: any) => {
+    const code = feeCodeOf(row?.feeCode ?? row?.code ?? row?.feeType ?? row?.category ?? row?.feeName ?? row?.name);
+    return {
+      name: feeLabelOf(row?.feeName ?? row?.name ?? row?.category, code),
+      feeCode: code || 'other',
+      amountCents: Math.max(0, Number(row?.paidCents ?? row?.amountCents ?? 0) || 0),
+      count: Number(row?.billCount ?? row?.count ?? row?.paidCount ?? 0) || 0,
+      houseCount: Number.isFinite(Number(row?.houseCount)) && Number(row?.houseCount) >= 0 ? Number(row.houseCount) : null,
+    };
+  }) : [];
   return {
     paidCents,
     paidCount: Number(data.paidCount) || 0,
@@ -64,6 +90,46 @@ function normalizeRecent(raw: unknown): { rows: RecentPayment[]; total: number; 
   };
 }
 
+/** 今日分项收入环形图：纯 SVG 描边圆环，点击扇区看明细。 */
+function FeeDonut({ rows, total, onPick }: { rows: Array<MisFeeRow & { color: string; share: number }>; total: number; onPick: (index: number) => void }) {
+  const size = 210;
+  const stroke = 20;
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+  return (
+    <div className="erp-fee-donut-wrap">
+      <svg viewBox={`0 0 ${size} ${size}`} className="erp-fee-donut" role="img" aria-label="今日分项收入环形图">
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--line2)" strokeWidth={stroke} />
+        {rows.filter((row) => row.amountCents > 0).map((row, index) => {
+          const length = total ? (row.amountCents / total) * circumference : 0;
+          const circle = (
+            <circle
+              key={row.name + index}
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              fill="none"
+              stroke={row.color}
+              strokeWidth={stroke}
+              strokeDasharray={`${length} ${Math.max(0, circumference - length)}`}
+              strokeDashoffset={-offset}
+              transform={`rotate(-90 ${size / 2} ${size / 2})`}
+              className="erp-fee-slice"
+              onClick={() => onPick(index)}
+            >
+              <title>{`${row.name} ${money(row.amountCents / 100)} · ${row.count} 笔`}</title>
+            </circle>
+          );
+          offset += length;
+          return circle;
+        })}
+      </svg>
+      <div className="erp-fee-donut-center"><b>{money(total / 100)}</b><small>今日合计</small></div>
+    </div>
+  );
+}
+
 /**
  * 今日工作：顶部三卡与分项收入用 MIS 当日口径（/fees/mis/today）；PMS 当日收款单独一行小字并列，两者不混算。
  * 最近收款用 /fees/mis/recent-payments（MIS 收款时间只有日期精度，只显示日期）。
@@ -91,6 +157,10 @@ export default function Today() {
   const [mis, setMis] = useState<MisState | null>(null);
   const [recentPage, setRecentPage] = useState(1);
   const [recent, setRecent] = useState<RecentState | null>(null);
+  const [feeDetail, setFeeDetail] = useState<MisFeeRow | null>(null);
+  const [detailPage, setDetailPage] = useState(1);
+  const [detailRetry, setDetailRetry] = useState(0);
+  const [detail, setDetail] = useState<FeeDetailState | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -150,6 +220,31 @@ export default function Today() {
     return () => { alive = false; };
   }, [misKey, recentPage]);
 
+  // 今日分项收入明细：点分类后按 category=feeCode 分页取当日收款
+  useEffect(() => {
+    if (!feeDetail) return undefined;
+    let alive = true;
+    const key = JSON.stringify([feeDetail.feeCode, feeDetail.name, date, detailPage, detailRetry]);
+    setDetail((prev) => (prev && prev.key === key ? { ...prev, loading: true, missing: false } : { key, rows: [], total: 0, page: detailPage, missing: false, loading: true }));
+    request<unknown>({ url: '/fees/mis/today/details', query: { category: feeDetail.feeCode || feeCodeOf(feeDetail.name), date, page: detailPage, pageSize: 20 } })
+      .then((raw: any) => {
+        if (!alive) return;
+        const list = Array.isArray(raw) ? raw : Array.isArray(raw?.rows) ? raw.rows : Array.isArray(raw?.list) ? raw.list : [];
+        const rows: FeeDetailRow[] = list.map((row: any, index: number) => ({
+          id: String(row?.id ?? index),
+          recordedAt: row?.recordedAt ? String(row.recordedAt) : row?.time ? String(row.time) : null,
+          roomNo: String(row?.roomNo || row?.address || row?.addressText || ''),
+          ownerName: String(row?.ownerName || row?.name || ''),
+          channel: row?.channel ? String(row.channel) : row?.paymentMethod ? String(row.paymentMethod) : null,
+          amountCents: Number(row?.amountCents ?? row?.paidCents) || 0,
+          billCount: Number(row?.billCount ?? row?.count) || 1,
+        }));
+        setDetail({ key, rows, total: Number(Array.isArray(raw) ? rows.length : raw?.total) || rows.length, page: detailPage, missing: false, loading: false });
+      })
+      .catch(() => { if (alive) setDetail({ key, rows: [], total: 0, page: detailPage, missing: true, loading: false }); });
+    return () => { alive = false; };
+  }, [feeDetail, date, detailPage, detailRetry]);
+
   const data = ledger?.key === key ? ledger.data : null;
   const error = failure?.key === key ? failure.message : '';
   const misReady = mis?.key === misKey ? mis : null;
@@ -174,13 +269,16 @@ export default function Today() {
   const sumService = (types: string[]) => data?.summary.byService.filter((row) => types.includes(row.serviceType)).reduce((sum, row) => sum + row.paidCents, 0) ?? 0;
   const countService = (types: string[]) => data?.summary.byService.filter((row) => types.includes(row.serviceType)).reduce((sum, row) => sum + row.paidCount, 0) ?? 0;
   const legacyFeeRows: MisFeeRow[] = data ? [
-    { name: '物业费', amountCents: sumService(['mis_property']), count: countService(['mis_property']), houseCount: null },
-    { name: '泊位费', amountCents: sumService(['mis_berth']), count: countService(['mis_berth']), houseCount: null },
-    { name: '停车月租', amountCents: sumService(['parking_monthly']), count: countService(['parking_monthly']), houseCount: null },
-    { name: '门禁卡', amountCents: sumService(['access_card']), count: countService(['access_card']), houseCount: null },
+    { name: '物业费', feeCode: 'property', amountCents: sumService(['mis_property']), count: countService(['mis_property']), houseCount: null },
+    { name: '泊位费', feeCode: 'berth', amountCents: sumService(['mis_berth']), count: countService(['mis_berth']), houseCount: null },
+    { name: '停车', feeCode: 'parking', amountCents: sumService(['parking_monthly']), count: countService(['parking_monthly']), houseCount: null },
+    { name: '其他', feeCode: 'other', amountCents: sumService(['access_card']), count: countService(['access_card']), houseCount: null },
   ].filter((row) => row.amountCents !== 0 || row.count !== 0) : [];
   const feeRows = today?.byFee ?? (pmsFallback ? legacyFeeRows : []);
-  const feeMax = Math.max(1, ...feeRows.map((row) => row.amountCents));
+  const feeTotal = feeRows.reduce((sum, row) => sum + row.amountCents, 0);
+  const feeBreakdown = feeRows.map((row, index) => ({ ...row, color: feeColorOf(row.feeCode || '', index), share: feeTotal ? Math.round((row.amountCents / feeTotal) * 1000) / 10 : 0 }));
+  const openFeeDetail = (row: MisFeeRow) => { setFeeDetail(row); setDetailPage(1); setDetail(null); };
+  const detailTotalPages = detail ? Math.max(1, Math.ceil(detail.total / 20)) : 1;
 
   const repairStat = useMemo(() => {
     const list = visibleOrders ?? [];
@@ -261,16 +359,20 @@ export default function Today() {
             <div style={{ marginTop: 12 }}>
               {misReady === null && !pmsFallback ? <p>分项收入读取中…</p> : todayMissing ? (
                 <div className="erp-todo-block"><span className="erp-todo">待接口</span><span>今日分项收入接口未就绪，未显示 0。</span><button className="btn sm" onClick={() => setRetryMis(n => n + 1)}>重试</button></div>
-              ) : feeRows.length === 0 ? <p style={{ color: 'var(--ink2)' }}>{pmsFallback ? 'PMS 今日暂无分项收入' : '今日暂无 MIS 分项收款'}</p> : feeRows.map((row, index) => {
-                const colors = ['var(--ok)', 'var(--acc)', 'var(--warn)', '#7c6bd6'];
-                return (
-                  <div key={row.name + index} className="erp-income-row">
-                    <div style={{ width: 96, fontSize: 16, color: 'var(--ink2)' }}>{row.name}</div>
-                    <div style={{ flex: 1, height: 10, borderRadius: 6, background: 'var(--line2)', overflow: 'hidden' }}><div style={{ height: '100%', borderRadius: 6, width: `${Math.round(row.amountCents / feeMax * 100)}%`, background: colors[index % colors.length] }} /></div>
-                    <div style={{ width: 110, textAlign: 'right', fontWeight: 700, fontSize: 16 }}>{money(row.amountCents / 100)}<small className="erp-kpi-sub" style={{ textAlign: 'right' }}>{row.count} 笔{row.houseCount != null ? ` · ${row.houseCount} 户` : ""}</small></div>
+              ) : feeRows.length === 0 ? <p style={{ color: 'var(--ink2)' }}>{pmsFallback ? 'PMS 今日暂无分项收入' : '今日暂无 MIS 分项收款'}</p> : (
+                <div className="erp-fee-breakdown">
+                  <FeeDonut rows={feeBreakdown} total={feeTotal} onPick={(index) => openFeeDetail(feeRows[index])} />
+                  <div className="erp-fee-list">
+                    {feeBreakdown.map((row, index) => (
+                      <button type="button" className="erp-fee-item" key={row.name + index} onClick={() => openFeeDetail(feeRows[index])} title={`查看${row.name}今日收款明细`}>
+                        <i className="erp-fee-dot" style={{ background: row.color }} />
+                        <span className="erp-fee-name">{row.name}</span>
+                        <span className="erp-fee-value">{money(row.amountCents / 100)}<small>{row.count} 笔{row.houseCount != null ? ` · ${row.houseCount} 户` : ''} · {row.share}%</small></span>
+                      </button>
+                    ))}
                   </div>
-                );
-              })}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -341,6 +443,48 @@ export default function Today() {
       </div>
 
       <div className="note2" style={{ marginTop: 18 }}><Icon name="alert" />口径：今日实收 / 退款 / 收款笔数取 MIS 当日收款（北京时间，MIS 仅有日期精度）；PMS 当日收款单独标注、不混算。源 MIS 历史缴费另见收费流水。收款事实与外部写入核验分开，结果未知先查原单，不要重复收款。</div>
+
+      {feeDetail ? (
+        <Sheet open onClose={() => setFeeDetail(null)} width={760} title={`${feeDetail.name} · 今日收款明细`} subtitle={`${date} · ${detail && !detail.loading && !detail.missing ? `共 ${detail.total} 条` : '分项明细'}`}>
+          {!detail || detail.loading ? <div style={{ padding: 28 }} className="muted">读取中…</div> : detail.missing ? (
+            <div className="erp-todo-block">
+              <span className="erp-todo">待接口</span>
+              <span>分项收款明细接口未就绪，未显示 0。</span>
+              <button className="btn sm" onClick={() => setDetailRetry((value) => value + 1)}>重试</button>
+            </div>
+          ) : detail.rows.length === 0 ? <div className="muted" style={{ padding: 36, textAlign: 'center' }}>该分类今天没有收款</div> : (
+            <>
+              <div className="intro-table-wrap">
+                <table className="t usage-table">
+                  <thead><tr><th>登记时间</th><th>房号</th><th>业主</th><th>渠道</th><th className="usage-num">金额</th><th className="usage-num">笔数</th></tr></thead>
+                  <tbody>
+                    {detail.rows.map((row) => (
+                      <tr key={row.id}>
+                        <td className="nw">{row.recordedAt ? <>{dayjs(row.recordedAt).format('MM-DD HH:mm')}<small className="muted"> 登记</small></> : '—'}</td>
+                        <td>{row.roomNo || '—'}</td>
+                        <td>{row.ownerName || '—'}</td>
+                        <td>{channelLabel(row.channel)}</td>
+                        <td className="usage-num"><b>{money(row.amountCents / 100)}</b></td>
+                        <td className="usage-num">{row.billCount} 笔</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="erp-fee-detail-foot">
+                <span className="muted">共 {detail.total} 条</span>
+                {detailTotalPages > 1 ? (
+                  <span className="today-recent-pager">
+                    <button className="btn sm" disabled={detailPage <= 1} onClick={() => setDetailPage((value) => Math.max(1, value - 1))}>上一页</button>
+                    <span className="muted">第 {detailPage} / {detailTotalPages} 页</span>
+                    <button className="btn sm" disabled={detailPage >= detailTotalPages} onClick={() => setDetailPage((value) => value + 1)}>下一页</button>
+                  </span>
+                ) : null}
+              </div>
+            </>
+          )}
+        </Sheet>
+      ) : null}
     </>
   );
 }

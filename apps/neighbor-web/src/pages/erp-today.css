@@ -32,3 +32,28 @@
 .today-recent-amount{text-align:right;font-size:14px;font-variant-numeric:tabular-nums}
 .today-recent-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:12px 18px;border-top:1px solid var(--line2)}
 .today-recent-pager{display:flex;align-items:center;gap:10px}
+
+/* 今日分项收入：环形图 + 分类列表 */
+.erp-fee-breakdown{display:flex;align-items:center;gap:18px;margin-top:4px}
+.erp-fee-donut-wrap{position:relative;width:210px;height:210px;flex:none}
+.erp-fee-donut{width:210px;height:210px;display:block}
+.erp-fee-slice{cursor:pointer;transition:opacity .15s}
+.erp-fee-slice:hover{opacity:.82}
+.erp-fee-donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;text-align:center}
+.erp-fee-donut-center b{font-size:20px;line-height:1.15;font-variant-numeric:tabular-nums;color:var(--ink)}
+.erp-fee-donut-center small{margin-top:4px;font-size:12px;color:var(--ink3)}
+.erp-fee-list{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.erp-fee-item{display:flex;align-items:center;gap:9px;width:100%;padding:8px 7px;border-radius:8px;text-align:left;background:transparent;border:0;cursor:pointer}
+.erp-fee-item:hover{background:var(--sunken)}
+.erp-fee-dot{width:9px;height:9px;border-radius:50%;flex:none}
+.erp-fee-name{flex:1;min-width:0;font-size:14px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.erp-fee-value{text-align:right;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.erp-fee-value small{display:block;margin-top:2px;font-size:11.5px;font-weight:400;color:var(--ink3)}
+.erp-fee-detail-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 2px 0;border-top:1px solid var(--line2);margin-top:12px}
+@media (max-width:768px){
+  .erp-fee-breakdown{flex-direction:column;align-items:stretch;gap:12px}
+  .erp-fee-donut-wrap{align-self:center;width:190px;height:190px}
+  .erp-fee-donut{width:190px;height:190px}
+  .erp-fee-list{gap:2px}
+  .erp-fee-item{padding:7px 4px}
+}
