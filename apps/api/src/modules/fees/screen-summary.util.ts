@@ -31,7 +31,6 @@ export function buildScreenSummary(input: {
   const { year, communities, targets, dailyRows, arrears, recentPayments } = input;
   const granularity = input.granularity === 'day' ? 'day' : 'month';
   const today = cstToday(input.now);
-  const targetMap = new Map(targets.map((target) => [target.communityId, target]));
   const officeToCommunity = new Map<string, ScreenSummaryCommunity>();
   for (const community of communities) for (const office of community.offices) officeToCommunity.set(String(office), community);
   const communityPaid = new Map<number, number>();
@@ -56,14 +55,17 @@ export function buildScreenSummary(input: {
     }
   }
 
-  const annualCents = targets.reduce((sum, target) => sum + target.annualCents, 0);
-  const targetCommunities = communities.filter((community) => targetMap.has(community.id));
-  const missingTargetCommunities = communities.filter((community) => !targetMap.has(community.id)).map((community) => ({ id: community.id, name: community.name }));
-  const targetCommunityIds = new Set(targetCommunities.map((community) => community.id));
+  const selectedIds = new Set(communities.map((community) => community.id));
+  // 只命中「组内小区全部被选中」的指标组；部分选中不算命中。
+  const matchedTargets = targets.filter((target) => target.communityIds.length > 0 && target.communityIds.every((id) => selectedIds.has(id)));
+  const targetCommunityIdSet = new Set(matchedTargets.flatMap((target) => target.communityIds));
+  const targetCommunities = communities.filter((community) => targetCommunityIdSet.has(community.id));
+  const missingTargetCommunities = communities.filter((community) => !targetCommunityIdSet.has(community.id)).map((community) => ({ id: community.id, name: community.name }));
+  const annualCents = matchedTargets.reduce((sum, target) => sum + target.annualCents, 0);
   const targetYtdCents = targetCommunities.reduce((sum, community) => sum + (communityPaid.get(community.id) || 0), 0);
   const partial = missingTargetCommunities.length > 0;
   const currentMonth = todayKey.slice(0, 7);
-  const monthTargetCents = targets.reduce((sum, target) => sum + (target.monthCents[today.month - 1] ?? 0), 0);
+  const monthTargetCents = matchedTargets.reduce((sum, target) => sum + (target.monthCents[today.month - 1] ?? 0), 0);
   const monthPaidCents = monthPaid.get(currentMonth) || 0;
   const yearStart = `${year}-01-01`, yearEnd = `${year}-12-31`;
   const remainingDays = year === today.year
@@ -74,7 +76,7 @@ export function buildScreenSummary(input: {
   const rate = annualCents > 0 ? round1((targetYtdCents / annualCents) * 100) : null;
 
   const communityRows = communities.map((community) => {
-    const annual = targetMap.get(community.id)?.annualCents || 0;
+    const annual = matchedTargets.find((target) => target.communityIds.length === 1 && target.communityIds[0] === community.id)?.annualCents || 0;
     const paid = communityPaid.get(community.id) || 0;
     return { communityId: community.id, name: community.name, targetCents: annual, paidCents: paid, rate: annual > 0 ? round1((paid / annual) * 100) : null };
   });
@@ -83,12 +85,12 @@ export function buildScreenSummary(input: {
   if (granularity === 'month') {
     for (let month = 1; month <= 12; month += 1) {
       const key = `${year}-${pad(month)}`;
-      const targetCents = targets.reduce((sum, target) => sum + (target.monthCents[month - 1] ?? 0), 0);
+      const targetCents = matchedTargets.reduce((sum, target) => sum + (target.monthCents[month - 1] ?? 0), 0);
       trend.push({ key, paidCents: monthPaid.get(key) || 0, targetCents });
     }
   } else {
     const end = year === today.year ? todayKey : yearEnd;
-    const monthlyTargets = monthlyTargetForDaily(targets);
+    const monthlyTargets = monthlyTargetForDaily(matchedTargets);
     const startUtc = Date.UTC(year, 0, 1), endUtc = Date.UTC(Number(end.slice(0, 4)), Number(end.slice(5, 7)) - 1, Number(end.slice(8, 10)));
     for (let time = startUtc; time <= endUtc; time += 86400000) {
       const date = new Date(time);
@@ -103,7 +105,7 @@ export function buildScreenSummary(input: {
     target: {
       annualCents, yearToDateCents: targetYtdCents, rate, gapCents, remainingDays, dailyNeedCents,
     },
-    targetScope: { communityIds: [...targetCommunityIds], communityNames: targetCommunities.map((community) => community.name) },
+    targetScope: { communityIds: targetCommunities.map((community) => community.id), communityNames: targetCommunities.map((community) => community.name) },
     missingTargetCommunities,
     partial,
     today: { paidCents: todayCents, billCount: todayBills, houseCount: todayHouses, vsDailyNeed: dailyNeedCents && dailyNeedCents > 0 ? round1((todayCents / dailyNeedCents) * 100) : null },

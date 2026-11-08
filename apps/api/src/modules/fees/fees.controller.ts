@@ -117,9 +117,13 @@ export class FeesController {
   @RequirePermission('fees','edit')
   upsertCollectionTarget(@Body() dto:UpsertCollectionTargetDto,@CurrentUser() user:AuthUser){return this.collectionTargetsService.upsert(Number(user.tenantId||0),Number(user.id||0),dto);}
 
-  @Delete('targets/:communityId')
+  @Delete('targets/:id')
   @RequirePermission('fees','edit')
-  deleteCollectionTarget(@Param('communityId',ParseIntPipe) communityId:number,@Query('year',ParseIntPipe) year:number,@CurrentUser() user:AuthUser){return this.collectionTargetsService.remove(Number(user.tenantId||0),communityId,year);}
+  deleteCollectionTarget(@Param('id',ParseIntPipe) id:number,@CurrentUser() user:AuthUser){return this.collectionTargetsService.remove(Number(user.tenantId||0),id);}
+
+  @Delete('targets')
+  @RequirePermission('fees','edit')
+  clearCollectionTargets(@Query('year',ParseIntPipe) year:number,@CurrentUser() user:AuthUser){return this.collectionTargetsService.clearYear(Number(user.tenantId||0),year);}
 
   @Get('mis/screen-summary')
   @RequirePermission('fees','view')

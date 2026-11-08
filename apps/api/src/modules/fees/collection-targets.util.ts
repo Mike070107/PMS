@@ -1,13 +1,13 @@
 export type CollectionTargetRow = {
-  communityId: number;
-  communityName: string;
+  id: number;
+  communityIds: number[];
   year: number;
   annualCents: number;
   monthCents: (number | null)[];
 };
 
 export type CollectionTargetInput = {
-  communityId: number;
+  communityIds: number[];
   year: number;
   annualCents: number;
   monthCents?: (number | null)[];
@@ -26,6 +26,11 @@ export function normalizeMonthCents(value: unknown): (number | null)[] {
   return result;
 }
 
+export function normalizeCommunityIds(value: unknown): number[] {
+  const source = Array.isArray(value) ? value : [];
+  return [...new Set(source.map(Number).filter((id) => Number.isInteger(id) && id > 0))].sort((a, b) => a - b);
+}
+
 export function targetWarnings(annualCents: number, monthCents: (number | null)[]): string[] {
   const sum = monthCents.reduce<number>((total, value) => total + (value ?? 0), 0);
   if (sum === annualCents) return [];
@@ -37,13 +42,13 @@ export function targetWarnings(annualCents: number, monthCents: (number | null)[
 export async function loadCollectionTargets(ds: TargetDataSource, tenantId: number, communityIds: number[], year: number): Promise<CollectionTargetRow[]> {
   if (!communityIds.length) return [];
   const rows: any[] = await ds.query(
-    `SELECT t.community_id AS "communityId",c.name AS "communityName",t.year,t.annual_cents AS "annualCents",t.month_cents AS "monthCents"
-       FROM collection_targets t JOIN communities c ON c.id=t.community_id
-      WHERE t.tenant_id=$1 AND t.year=$2 AND t.community_id = ANY($3::int[])`,
+    `SELECT t.id,t.community_ids AS "communityIds",t.year,t.annual_cents AS "annualCents",t.month_cents AS "monthCents"
+       FROM collection_targets t
+      WHERE t.tenant_id=$1 AND t.year=$2 AND t.community_ids && $3::int[]`,
     [tenantId, year, communityIds],
   );
   return rows.map((row) => ({
-    communityId: Number(row.communityId), communityName: String(row.communityName || ''),
+    id: Number(row.id), communityIds: normalizeCommunityIds(row.communityIds),
     year: Number(row.year), annualCents: Number(row.annualCents || 0), monthCents: normalizeMonthCents(row.monthCents),
   }));
 }

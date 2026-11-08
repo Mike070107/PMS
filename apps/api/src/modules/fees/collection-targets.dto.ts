@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsDateString, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class ListCollectionTargetsQueryDto {
   @IsOptional()
@@ -11,10 +11,12 @@ export class ListCollectionTargetsQueryDto {
 }
 
 export class UpsertCollectionTargetDto {
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  communityId: number;
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  communityIds: number[];
 
   @Type(() => Number)
   @IsInt()
