@@ -6805,3 +6805,11 @@
   - fe4340bc fix(screen): read synchronized local data without MIS fallback
   - b333afbd feat(mirror): 镜像支持趋势与住户明细；负数调整计入净额并恢复收缴率
 
+## 2026-11-08 21:35 · web · a40b8619
+
+- 包：`pms-web-20261108-213447.tar.gz`
+- 提交：a40b8619 deploy: api → fe4340bc
+- 自上次（8bf79f06）以来上线的相关提交：
+  - fe4340bc fix(screen): read synchronized local data without MIS fallback
+  - b333afbd feat(mirror): 镜像支持趋势与住户明细；负数调整计入净额并恢复收缴率
+
