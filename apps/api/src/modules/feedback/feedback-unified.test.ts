@@ -24,10 +24,14 @@ function fixture(storageOverride?: any) {
     find: async () => [],
   };
   const notificationRepo: any = {
-    findOne: async ({ where }: any) => state.notifications
-      .filter((row: any) => row.tenantId === where.tenantId && row.receiverId === where.receiverId
-        && row.eventKey === where.eventKey && row.createdAt >= where.createdAt.value)
-      .sort((a: any, b: any) => b.id - a.id)[0] || null,
+    findOne: async ({ where }: any) => {
+      const found = state.notifications
+        .filter((row: any) => row.tenantId === where.tenantId && row.receiverId === where.receiverId
+          && row.eventKey === where.eventKey && row.createdAt >= where.createdAt.value)
+        .sort((a: any, b: any) => b.id - a.id)[0] || null;
+      console.error('DEBUG findOne', where.receiverId, where.eventKey, !!found);
+      return found;
+    },
     save: async (row: any) => {
       const index = state.notifications.findIndex((item: any) => item.id === row.id);
       if (index >= 0) state.notifications[index] = row;
@@ -126,6 +130,7 @@ test('通知：有 logs:view 的管理员收到类型/提交人/摘要/是否看
   assert.match(String(first.payload.summary), /第一条反馈/);
   assert.equal(first.payload.needsErrorCheck, false);
   const pushed = f.state.notifications.filter((row: any) => row.payload?.count);
+  console.error('DEBUG store', f.state.notifications.length, f.state.notifications.map((row: any) => [row.id, row.receiverId, row.payload?.count]));
   assert.equal(pushed.length, 2);
   for (const row of pushed) {
     assert.equal(row.payload.count, 2, '同分钟第二条合并进同一条站内信');
