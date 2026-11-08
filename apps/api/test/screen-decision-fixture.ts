@@ -5,7 +5,7 @@ import { CollectionTargetsService } from '../src/modules/fees/collection-targets
 export async function screenFixture(){
   const pg=new PGlite();
   await pg.exec(`CREATE TABLE communities(id int PRIMARY KEY,tenant_id int,name text,enabled boolean);
-    INSERT INTO communities VALUES(1,1,'白玉兰小楼',true),(2,1,'海棠新村',true),(3,2,'其他公司',true);
+    INSERT INTO communities VALUES(1,1,'枫桦景苑一期',true),(2,1,'上海新家',true),(3,2,'其他公司',true);
     CREATE TABLE tenant_configs(id serial PRIMARY KEY,tenant_id int NOT NULL,key varchar(60) NOT NULL,value jsonb NOT NULL,
     created_by int,updated_by int,created_at timestamptz DEFAULT now(),updated_at timestamptz DEFAULT now(),UNIQUE(tenant_id,key));
     CREATE TABLE collection_targets(id serial PRIMARY KEY,tenant_id int,community_id int,community_ids int[],fee_code text,year int,

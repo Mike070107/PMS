@@ -21,7 +21,7 @@ test('决策大屏真实浏览器：表单校验→实际API/PG→刷新回读�
  for(const out of build.outputFiles)fs.writeFileSync(out.path,out.contents);
  const express=server.getHttpAdapter().getInstance();
  express.use((req,res,next)=>{if(req.headers['x-test-fail']==='yes'&&req.path.startsWith('/fees/'))return res.status(503).json({message:'隔离测试：网络读取失败'});next();});
- express.get('/fees/mis/options',(_req,res)=>res.json({communities:[{id:1,name:'白玉兰小楼'},{id:2,name:'海棠新村'}]}));
+ express.get('/fees/mis/options',(_req,res)=>res.json({communities:[{id:1,name:'枫桦景苑一期'},{id:2,name:'上海新家'}]}));
  express.get('/fees/mis/screen-summary',async(req,res)=>{
    const cfg=await f.settings.read(user,scope,Number(req.query.year),req.query.communityIds);
    const now=new Date(),yr=Number(req.query.year),dailyRows=[];
@@ -46,7 +46,7 @@ test('决策大屏真实浏览器：表单校验→实际API/PG→刷新回读�
   assert.match(await js('document.body.textContent'),/预填值尚未保存/);
   await click('#target-new button[type=submit]');assert.equal(await js("document.querySelector('#target-new [aria-invalid=true]').tagName"),'SELECT');assert.ok(await js("document.activeElement.getAttribute('aria-invalid')==='true'"));
   await js("(()=>{const e=document.querySelector('#target-new-ids');e.options[0].selected=true;e.dispatchEvent(new Event('change',{bubbles:true}));})()");
-  await click('#target-new input[type=checkbox]');await click('#target-new button[type=submit]');await waitFor("document.body.textContent.includes('白玉兰小楼')&&!!document.querySelector('#target-1')");
+  await click('#target-new input[type=checkbox]');await click('#target-new button[type=submit]');await waitFor("document.body.textContent.includes('枫桦景苑一期')&&!!document.querySelector('#target-1')");
   await fill('#manual-overdueHouses','');await click('.ss-save button');assert.equal(await js('document.activeElement.id'),'manual-overdueHouses');assert.ok(await js("document.querySelector('#manual-overdueHouses-error').textContent.length>0"));
   await fill('#manual-overdueHouses','15');await fill('#owner-1','测试负责人');await click('.ss-save button');await waitFor("document.body.textContent.includes('人工指标和负责人已保存并回读')");
   assert.equal((await f.settings.read(user,scope,2026)).manual.overdueHouses,15);

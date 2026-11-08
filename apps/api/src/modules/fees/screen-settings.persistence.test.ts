@@ -12,7 +12,8 @@ import { AccessService } from '../access/access.service';
 test('大屏人工台账真实PG保存回读、范围隔离和乐观并发',async()=>{
  const f=await screenFixture(),u:any={tenantId:1,id:7},a:any={scopeAll:true};
  try{
-  const initial=await f.settings.read(u,a,2026);assert.equal(initial.manual,null);assert.equal(initial.revision,0);
+  await f.db.query("INSERT INTO communities VALUES(4,1,'未映射公寓',true)");
+  const initial=await f.settings.read(u,a,2026);assert.deepEqual(initial.communities.map(c=>c.id),[1,2]);await assert.rejects(f.settings.read(u,a,2026,'4'),/授权范围/);assert.equal(initial.manual,null);assert.equal(initial.revision,0);
   const dto:any={year:2026,revision:0,owners:[{communityId:1,name:'王经理'}],manual:manualFixture};
   const saved=await f.settings.save(u,a,dto);assert.equal(saved.revision,1);assert.equal(saved.manual.overdueHouses,12);
   const read=await f.settings.read(u,a,2026);assert.equal(read.owners[0].name,'王经理');assert.equal(read.manual.sample,true);

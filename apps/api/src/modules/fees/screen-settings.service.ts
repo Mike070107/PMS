@@ -5,13 +5,14 @@ import { AuthUser } from '../../common/current-user.decorator';
 import { ResolvedAccess } from '../access/access.service';
 import { SaveScreenSettingsDto } from './screen-settings.dto';
 import { loadCollectionTargets } from './collection-targets.util';
+import { MIS_PROPERTY_OFFICES } from './mis-fees.service';
 @Injectable()
 export class ScreenSettingsService {
   constructor(private readonly db: DataSource) {}
   async scope(user: AuthUser, access: ResolvedAccess, requested?: string) {
     if (!user.tenantId) throw new ForbiddenException('请先选择公司');
     const rows: { id: number; name: string }[] = await this.db.query('SELECT id,name FROM communities WHERE tenant_id=$1 AND enabled=true ORDER BY id', [user.tenantId]);
-    const allowed = rows.filter(row => access.scopeAll || access.communityIds?.includes(Number(row.id)));
+    const allowed = rows.filter(row => MIS_PROPERTY_OFFICES[row.name] && (access.scopeAll || access.communityIds?.includes(Number(row.id))));
     if (!requested) return allowed;
     const ids = requested.split(',').map(Number);
     if (!ids.length || ids.some(id => !Number.isInteger(id) || !allowed.some(row => Number(row.id) === id))) throw new ForbiddenException('选择的小区不在当前授权范围');
