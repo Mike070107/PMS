@@ -10,6 +10,17 @@ import '@/styles/screen.css';
 
 function DecisionChart({ data }: { data: DecisionSummary }) {
   const { target, decision, year } = data;
+  const [activeMonth, setActiveMonth] = useState<number | null>(null);
+  const money = (cents: number) => (cents / 100).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  let cumulative = 0;
+  const months = Array.from({ length: 12 }, (_, i) => {
+    const prefix = `${year}-${String(i + 1).padStart(2, '0')}`;
+    const endKey = `${prefix}-${new Date(Date.UTC(year, i + 1, 0)).getUTCDate()}`;
+    const future = prefix > data.asOf.slice(0, 7);
+    const paidCents = data.trend.filter(p => p.key.startsWith(prefix) && p.key <= data.asOf).reduce((sum, p) => sum + p.paidCents, 0);
+    cumulative += paidCents;
+    return { prefix, endKey, future, paidCents, cumulative, partial: prefix === data.asOf.slice(0, 7) && data.asOf < endKey };
+  });
   const start = Date.UTC(year, 0, 1), end = Date.UTC(year, 11, 31);
   const dayX = (key: string) => 64 + (Date.parse(key + 'T00:00:00Z') - start) / (end - start) * 856;
   const max = Math.max(1, target.annualCents, target.yearToDateCents, decision.forecastCents || 0,
@@ -24,7 +35,9 @@ function DecisionChart({ data }: { data: DecisionSummary }) {
   const planY = y(decision.plannedToDateCents || 0);
   const actualLabelY = Math.min(265, actualY + 24);
   const planLabelY = Math.max(26, Math.min(planY - 12, actualLabelY - 38));
-  return <svg viewBox="0 0 960 330" role="img" aria-label="年度累计实收、计划进度和趋势估算对比">
+  const selected = activeMonth === null ? null : months[activeMonth];
+  const tooltipX = activeMonth === null ? 64 : Math.max(64, Math.min(630, dayX(`${months[activeMonth].prefix}-15`) - 145));
+  return <svg viewBox="0 0 960 330" role="group" aria-label="年度累计实收、计划进度和趋势估算对比，悬停或聚焦月份查看实收" onMouseLeave={() => setActiveMonth(null)} onKeyDown={event => { if (event.key === 'Escape') setActiveMonth(null); }}>
     <title>年度累计实收、计划进度和趋势估算；金额单位万元</title>
     {[0, 1, 2, 3, 4].map(i => <g key={i}>
       <line x1="64" x2="920" y1={y(max * i / 4)} y2={y(max * i / 4)} className="dec-grid" />
@@ -46,7 +59,28 @@ function DecisionChart({ data }: { data: DecisionSummary }) {
       <text x={Math.max(230, xNow - 12)} y={actualLabelY} textAnchor="end" className="dec-actual-label">实收 {amountWan(target.yearToDateCents)}万</text>
       {decision.forecastCents !== null && <text x="920" y={Math.min(266, y(decision.forecastCents) + 24)} textAnchor="end" className="dec-forecast-label">年末估算 {amountWan(decision.forecastCents)}万</text>}
     </g>}
-    {[0, 2, 4, 6, 8, 11].map(m => <text key={m} x={dayX(`${year}-${String(m + 1).padStart(2, '0')}-01`)} y="307" textAnchor="middle">{m + 1}月</text>)}
+    {months.map((month, i) => {
+      const left = dayX(`${month.prefix}-01`), right = i === 11 ? 920 : dayX(`${months[i + 1].prefix}-01`);
+      const pointX = dayX(month.partial ? data.asOf : month.endKey);
+      const label = `${year}年${i + 1}月${month.future ? '，尚未发生' : `${month.partial ? `，截至${data.asOf}` : ''}，当月实收${money(month.paidCents)}元，年内累计${money(month.cumulative)}元`}`;
+      return <g key={month.prefix}>
+        <text className="dec-month-label" x={(left + right) / 2} y="307" textAnchor="middle">{i + 1}月</text>
+        <g className="dec-month-hit" role="button" tabIndex={0} data-chart-month={i + 1} aria-label={label}
+          onMouseEnter={() => setActiveMonth(i)} onFocus={() => setActiveMonth(i)} onBlur={() => setActiveMonth(null)}
+          onClick={() => setActiveMonth(i)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setActiveMonth(i); } }}>
+          <rect x={left} y="35" width={right - left} height="278" fill="transparent" />
+          {!month.future && <circle cx={pointX} cy={y(month.cumulative)} r={activeMonth === i ? 6 : 3} className="dec-dot" pointerEvents="none" />}
+        </g>
+      </g>;
+    })}
+    {selected && <g className="dec-month-tooltip" role="tooltip" pointerEvents="none" transform={`translate(${tooltipX},44)`}>
+      <rect width="290" height={selected.future ? 76 : 110} rx="8" />
+      <text x="16" y="25" className="dec-tooltip-title">{year}年{activeMonth! + 1}月{selected.partial ? ` · 截至${Number(data.asOf.slice(5, 7))}月${Number(data.asOf.slice(8))}日` : ''}</text>
+      {selected.future ? <text x="16" y="54">尚未发生</text> : <>
+        <text x="16" y="56">当月实收<tspan x="274" textAnchor="end">{money(selected.paidCents)} 元</tspan></text>
+        <text x="16" y="86">年内累计<tspan x="274" textAnchor="end">{money(selected.cumulative)} 元</tspan></text>
+      </>}
+    </g>}
   </svg>;
 }
 

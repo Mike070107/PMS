@@ -56,6 +56,24 @@ test('决策大屏真实浏览器：表单校验→实际API/PG→刷新回读�
   for(const width of [1440,390,320]){await call('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:false});await js('window.scrollTo(0,0)');await pause(150);const g=await js('({width:innerWidth,scroll:document.documentElement.scrollWidth})');geometry.push({page:'settings',...g});assert.ok(g.scroll<=width+1,JSON.stringify(g));const shot=await call('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});fs.writeFileSync(path.join(dir,`settings-${width}.png`),Buffer.from(shot.data,'base64'));}
   await call('Page.navigate',{url:base+'/screen?year=2026'});await waitFor("document.body.textContent.includes('当前回款')");assert.match(await js('document.body.textContent'),/示例数据/);assert.match(await js('document.body.textContent'),/测试负责人/);assert.equal(await js("document.querySelector('.dec-actions strong').textContent"),'15户');
   assert.equal(await js("document.querySelectorAll('.dec-action-icon').length"),3);assert.ok(await js("[...document.querySelectorAll('.dec-action-icon')].every(e=>e.querySelector('path')&&e.getBoundingClientRect().width>=28)"));assert.equal(await js("document.querySelectorAll('.dec-chart-annotations text').length"),4);assert.match(await js("document.querySelector('.dec-chart-annotations').textContent"),/今日.*计划.*实收.*年末估算/);assert.equal(await js("document.querySelectorAll('.dec-legend span').length"),3);assert.match(await js("document.querySelector('.dec-notice').textContent"),/隔离测试数据/);
+  assert.deepEqual(await js("[...document.querySelectorAll('.dec-month-label')].map(e=>e.textContent)"),Array.from({length:12},(_,i)=>`${i+1}月`));
+  await js("document.querySelector('[data-chart-month=\"1\"]').focus()");
+  await waitFor("!!document.querySelector('.dec-month-tooltip')");
+  assert.match(await js("document.querySelector('.dec-month-tooltip').textContent"),/1月.*当月实收.*75,600.00.*年内累计.*75,600.00/);
+  await js("document.querySelector('[data-chart-month=\"2\"]').focus()");
+  assert.match(await js("document.querySelector('.dec-month-tooltip').textContent"),/2月.*75,600.00.*151,200.00/);
+  await call('Emulation.setDeviceMetricsOverride',{width:1920,height:1080,deviceScaleFactor:1,mobile:false});
+  await js("document.querySelector('[data-chart-month=\"12\"]').scrollIntoView({block:'center'})");
+  const monthPoint=await js("(()=>{const r=document.querySelector('[data-chart-month=\"12\"] rect').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()");
+  await call('Input.dispatchMouseEvent',{type:'mouseMoved',...monthPoint});
+  await waitFor("document.querySelector('.dec-month-tooltip')?.textContent.includes('12月')");
+  assert.match(await js("document.querySelector('.dec-month-tooltip').textContent"),/尚未发生/);
+  await js("document.querySelector('[data-chart-month=\"11\"]').focus()");
+  await waitFor("document.querySelector('.dec-month-tooltip')?.textContent.includes('截至')");
+  assert.match(await js("document.querySelector('.dec-month-tooltip').textContent"),/21,600.00.*777,600.00/);
+  const tooltipShot=await call('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(dir,'screen-month-tooltip.png'),Buffer.from(tooltipShot.data,'base64'));
+  await call('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape'});
+  await waitFor("!document.querySelector('.dec-month-tooltip')");
   const toggleFullscreen=async()=>{const p=await js("(()=>{const e=document.querySelector('[aria-label=\"切换全屏\"]');e.scrollIntoView({block:'center'});const r=e.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()");for(const type of ['mousePressed','mouseReleased'])await call('Input.dispatchMouseEvent',{type,button:'left',clickCount:1,...p});};
   await toggleFullscreen();await waitFor("!!document.fullscreenElement||document.body.textContent.includes('浏览器未允许全屏')");if(await js('!!document.fullscreenElement')){await waitFor("document.querySelector('[aria-label=\"切换全屏\"]').textContent==='退出全屏'");assert.equal(await js("document.querySelector('[aria-label=\"切换全屏\"]').textContent"),'退出全屏');await toggleFullscreen();await waitFor("!document.fullscreenElement&&document.querySelector('[aria-label=\"切换全屏\"]').textContent==='全屏'");assert.equal(await js("document.querySelector('[aria-label=\"切换全屏\"]').textContent"),'全屏');}
 

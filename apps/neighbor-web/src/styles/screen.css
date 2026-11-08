@@ -703,3 +703,10 @@
 @media(max-width:1400px){.dec-action-item{gap:10px}.dec-action-icon{width:32px;height:32px}}
 @media(max-width:600px){.dec-action-item{flex-direction:column;gap:10px}.dec-action-icon{width:28px;height:28px}.dec-chart-annotations text{font-size:15px}}
 @media(max-width:600px){.dec-action-item h3{min-height:3em}}
+
+/* Monthly receipt inspection preserves the daily cumulative curve. */
+.dec-month-hit { cursor: pointer; outline: none; }
+.dec-month-hit:focus-visible > rect { stroke: #8dceff; stroke-width: 2; }
+.dec-trend .dec-month-tooltip > rect { fill: #142b43; stroke: #6587a9; stroke-width: 1; }
+.dec-trend .dec-month-tooltip text { fill: #e7f2ff; font-size: 15px; font-variant-numeric: tabular-nums; }
+.dec-trend .dec-month-tooltip .dec-tooltip-title { font-weight: 600; fill: #a9dbff; }
