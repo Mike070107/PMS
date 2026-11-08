@@ -24,14 +24,10 @@ function fixture(storageOverride?: any) {
     find: async () => [],
   };
   const notificationRepo: any = {
-    findOne: async ({ where }: any) => {
-      const found = state.notifications
-        .filter((row: any) => row.tenantId === where.tenantId && row.receiverId === where.receiverId
-          && row.eventKey === where.eventKey && row.createdAt >= where.createdAt.value)
-        .sort((a: any, b: any) => b.id - a.id)[0] || null;
-      console.error('DEBUG findOne', where.receiverId, where.eventKey, !!found);
-      return found;
-    },
+    findOne: async ({ where }: any) => state.notifications
+      .filter((row: any) => row.tenantId === where.tenantId && row.receiverId === where.receiverId
+        && row.eventKey === where.eventKey && row.createdAt >= where.createdAt.value)
+      .sort((a: any, b: any) => b.id - a.id)[0] || null,
     save: async (row: any) => {
       const index = state.notifications.findIndex((item: any) => item.id === row.id);
       if (index >= 0) state.notifications[index] = row;
@@ -120,8 +116,8 @@ test('附件：数量/真实大小/类型/来源校验，旧字段仍可提交',
 
 test('通知：有 logs:view 的管理员收到类型/提交人/摘要/是否看报错，同一分钟多条只推一次', async () => {
   const f = fixture();
-  await f.service.create({ content: '第一条反馈', kind: 'suggestion', source: 'web' }, auth, req);
-  await f.service.create({ content: '第二条反馈', kind: 'error', source: 'web', context: { recentErrors: [{ at: '2026-11-08T00:00:00Z', message: '接口 500' }] } }, auth, req);
+  const firstCheck = await f.service.create({ content: '第一条反馈', kind: 'suggestion', source: 'web' }, auth, req);
+  const second = await f.service.create({ content: '第二条反馈', kind: 'error', source: 'web', context: { recentErrors: [{ at: '2026-11-08T00:00:00Z', message: '接口 500' }] } }, auth, req);
   assert.equal(f.state.calls.length, 2, '两个管理员各推一次，不因同分钟第二条重复推送');
   assert.deepEqual(f.state.calls.map((call: any) => call.receiverId).sort(), [8, 9]);
   const first = f.state.calls[0];
@@ -130,12 +126,11 @@ test('通知：有 logs:view 的管理员收到类型/提交人/摘要/是否看
   assert.match(String(first.payload.summary), /第一条反馈/);
   assert.equal(first.payload.needsErrorCheck, false);
   const pushed = f.state.notifications.filter((row: any) => row.payload?.count);
-  console.error('DEBUG store', f.state.notifications.length, f.state.notifications.map((row: any) => [row.id, row.receiverId, row.payload?.count]));
   assert.equal(pushed.length, 2);
   for (const row of pushed) {
     assert.equal(row.payload.count, 2, '同分钟第二条合并进同一条站内信');
-    assert.equal(row.payload.latestId, 2);
-    assert.equal(row.payload.feedbackIds.length, 2);
+    assert.equal(row.payload.latestId, second.id);
+    assert.deepEqual(row.payload.feedbackIds, [firstCheck.id, second.id]);
     assert.equal(row.payload.needsErrorCheck, true, '合并后只要有一条异常就需要看报错');
     assert.match(row.title, /收到 2 条反馈/);
   }
