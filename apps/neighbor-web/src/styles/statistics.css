@@ -661,6 +661,15 @@
 .stats-building-ledger-table td.num, .stats-building-ledger-table th.num { text-align: right; }
 .stats-property-table .num:first-child, .stats-property-table th:first-child { text-align: left; }
 
+/* P4-A：减免情况统计 / 签报情况统计 */
+.stats-relief-scroll, .stats-signoffs-scroll { max-height: 62vh; }
+.stats-relief-table { min-width: 1560px; }
+.stats-signoffs-table { min-width: 1620px; }
+.stats-relief-table th, .stats-relief-table td,
+.stats-signoffs-table th, .stats-signoffs-table td { white-space: nowrap; }
+.stats-relief-table td.num, .stats-relief-table th.num,
+.stats-signoffs-table td.num, .stats-signoffs-table th.num { text-align: right; }
+
 .stats-received-table { min-width: 980px; }
 
 .stats-received-table tbody tr:hover td { background: var(--sunken); }

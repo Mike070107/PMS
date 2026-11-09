@@ -266,6 +266,42 @@ test('统计汇总金额/CSV 纯函数：整数分格式化、UTF-8 BOM、筛选
   assert.ok(buildingCsvText.includes('228弄'));
   assert.ok(buildingCsvText.includes('合计,,,,1,48,45,4800.5'));
 
+  // P4-A：减免/签报请求参数与 CSV。
+  const reliefQuery = {
+    type: 'relief', officeCodes: ['01'], feeCodes: ['01'], dateFrom: '2026-01-01', dateTo: '2026-11-10', keyword: ' 宝秀路 ',
+  };
+  const reliefParams = lib.reliefParams(reliefQuery, 0, 200);
+  assert.equal(reliefParams.dateFrom, '2026-01-01');
+  assert.equal(reliefParams.keyword, '宝秀路');
+  assert.equal(reliefParams.limit, 200);
+  const reliefReport = {
+    rows: [{ id: 1, docNo: 'JM202603001', officeCode: '01', officeName: '一期', address: '宝秀路701号701', ownerName: '陆乾一', feeCode: '01', feeName: '管理费', oldReceivableCents: 1200000, receivableCents: 960000, reliefCents: 240000, reliefStartDate: '2026-03-01', reliefEndDate: '2026-03-31', reliefDate: '2026-03-05', method: '减免单' }],
+    totals: { count: 1, oldReceivableCents: 1200000, receivableCents: 960000, reliefCents: 240000 },
+    count: 1,
+  };
+  const reliefCsvText = lib.reliefCsv(reliefReport, reliefQuery);
+  assert.equal(reliefCsvText.charCodeAt(0), 0xFEFF);
+  assert.ok(reliefCsvText.includes('减免情况统计'));
+  assert.ok(reliefCsvText.includes('减免金额'));
+  assert.ok(reliefCsvText.includes('2400.00'));
+
+  const signoffQuery = {
+    type: 'signoffs', officeCodes: ['01'], types: ['减免签报'], status: 'voided', dateFrom: '2026-01-01', dateTo: '2026-11-10', keyword: '',
+  };
+  const signoffParams = lib.signoffsParams(signoffQuery, 0, 200);
+  assert.equal(signoffParams.status, 'voided');
+  assert.equal(signoffParams.types, '减免签报');
+  const signoffReport = {
+    rows: [{ id: 1, docNo: 'QB202603001', title: '管理费减免签报', type: '减免签报', officeCode: '01', officeName: '一期', address: '宝秀路701号701', ownerName: '陆乾一', draftDate: '2026-03-02', approveDate: '2026-03-04', result: '同意', voided: false, ended: true, adjustAmountCents: -240000, feeCode: '01' }],
+    totals: { count: 1, voidedCount: 0, endedCount: 1, adjustAmountCents: -240000 },
+    count: 1,
+  };
+  const signoffsCsvText = lib.signoffsCsv(signoffReport, signoffQuery);
+  assert.equal(signoffsCsvText.charCodeAt(0), 0xFEFF);
+  assert.ok(signoffsCsvText.includes('签报情况统计'));
+  assert.ok(signoffsCsvText.includes('调整金额'));
+  assert.ok(signoffsCsvText.includes('-2400.00'));
+
   const annual = {
     type: 'arrears',
     columns: [2011, 2014],
@@ -419,9 +455,11 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     assert.ok(await js("!!document.querySelector('[data-report-type=\"property-summary\"]')"), '房产汇总已启用');
     assert.ok(await js("!!document.querySelector('[data-report-type=\"owner-ledger\"]')"), '住户台账已启用');
     assert.ok(await js("!!document.querySelector('[data-report-type=\"building-ledger\"]')"), '楼房台账已启用');
-    assert.ok(await js("document.querySelectorAll('.stats-report-pending').length >= 12"), '待接入报表要用灰字列出');
+    assert.ok(await js("!!document.querySelector('[data-report-type=relief]')"), '减免情况统计已启用');
+    assert.ok(await js("!!document.querySelector('[data-report-type=signoffs]')"), '签报情况统计已启用');
+    assert.ok(await js("document.querySelectorAll('.stats-report-pending').length >= 10"), '待接入报表要用灰字列出');
     assert.equal(
-      await js("[...document.querySelectorAll('.stats-report-pending')].some((e) => ['收费汇总', '收款日报表', '欠收与溢收汇总', '收缴考核', '收款分析', '收费月报表（核心指标）', '房产汇总', '住户台账', '楼房台账'].includes(e.textContent.trim()))"),
+      await js("[...document.querySelectorAll('.stats-report-pending')].some((e) => ['收费汇总', '收款日报表', '欠收与溢收汇总', '收缴考核', '收款分析', '收费月报表（核心指标）', '房产汇总', '住户台账', '楼房台账', '减免情况统计', '签报情况统计'].includes(e.textContent.trim()))"),
       false,
       '已启用报表不能仍列在待接入',
     );
@@ -1354,6 +1392,96 @@ test('P3-A 住户台账/楼房台账：关键词/分页/空值/合计/CSV/窄屏
     await call('Emulation.setDeviceMetricsOverride', { width: 320, height: 900, deviceScaleFactor: 1, mobile: false });
     await pause(400);
     assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '台账 320 页面横向溢出');
+  });
+});
+
+test('P4-A 减免情况统计/签报情况统计：日期关键词参数/合计/状态标签/CSV/窄屏', { timeout: 180000 }, async () => {
+  await withPage(async ({ js, call, waitFor, screenshot }) => {
+    const setInput = async (selector, value) => {
+      await js(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+      await pause(150);
+    };
+    const setSelect = async (selector, value) => {
+      await js(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set; setter.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+      await pause(150);
+    };
+    await waitFor("!!document.querySelector('.stats')", '统计页挂载', 25000);
+    await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度表', 25000);
+    const year = String(new Date().getFullYear());
+    const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+
+    // 减免情况统计
+    await js("document.querySelector('[data-report-type=relief]').click()");
+    await waitFor("!!document.querySelector('[data-testid=relief-table]')", '减免情况表', 25000);
+    const reliefQuery = await js("window.__calls.filter((c) => c.url === '/statistics/relief').slice(-1)[0].query");
+    assert.equal(reliefQuery.dateFrom, `${year}-01-01`, '减免日期默认今年');
+    assert.equal(reliefQuery.dateTo, today);
+    assert.equal(await js("document.querySelectorAll('[data-testid=relief-table] tbody tr[data-relief-id]').length"), 3);
+    const reliefTotal = await js("document.querySelector('[data-testid=relief-total]').textContent");
+    assert.ok(reliefTotal.includes('¥26,000.00'), '原应收合计');
+    assert.ok(reliefTotal.includes('¥20,100.00'), '现应收合计');
+    assert.ok(reliefTotal.includes('¥5,900.00'), '减免金额合计');
+    await screenshot('statistics-relief-1440.png');
+    await setInput('[data-testid=ledger-keyword]', '泊位');
+    await js("document.querySelector('[data-testid=stats-submit]').click()");
+    await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/relief'); const last = list[list.length - 1]; return last && last.query.keyword === '泊位'; })()", '减免关键词请求');
+    await waitFor("document.querySelectorAll('[data-testid=relief-table] tbody tr[data-relief-id]').length === 1", '减免关键词结果');
+    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
+    await js("document.querySelector('[data-testid=stats-export]').click()");
+    await waitFor("window.__blobs.length >= 1", '减免 CSV Blob');
+    const reliefCsv = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], title: text.includes('减免情况统计'), header: text.includes('减免金额'), amount: text.includes('3000.00') }; })()");
+    assert.deepEqual(reliefCsv.bom, [0xEF, 0xBB, 0xBF]);
+    assert.ok(reliefCsv.title && reliefCsv.header && reliefCsv.amount, '减免 CSV 内容');
+    await pause(2600);
+
+    // 签报情况统计
+    await setInput('[data-testid=ledger-keyword]', '');
+    await js("document.querySelector('[data-report-type=signoffs]').click()");
+    await waitFor("!!document.querySelector('[data-testid=signoffs-table]')", '签报情况表', 25000);
+    const signoffsQuery = await js("window.__calls.filter((c) => c.url === '/statistics/signoffs').slice(-1)[0].query");
+    assert.equal(signoffsQuery.dateFrom, `${year}-01-01`);
+    assert.equal(signoffsQuery.status, 'all');
+    assert.ok(await js("!!document.querySelector('[data-signoff-type=\"减免签报\"]')"), '签报类型从数据 distinct');
+    const bodyText = await js('document.body.textContent');
+    assert.ok(bodyText.includes('作废') && bodyText.includes('生效') && bodyText.includes('未结束'), '状态标签');
+    assert.equal(await js("document.querySelector('[data-status=\"voided\"]').textContent.includes('作废')"), true);
+    const signoffTotal = await js("document.querySelector('[data-testid=signoffs-total]').textContent");
+    assert.ok(signoffTotal.includes('¥-2,900.00'), '调整金额合计');
+    assert.ok(signoffTotal.includes('3 件'), '件数合计');
+    await screenshot('statistics-signoffs-1440.png');
+
+    // 类型多选 + 状态筛选参数
+    await js("document.querySelector('[data-signoff-type=\"减免签报\"]').click()");
+    await js("document.querySelector('[data-testid=stats-submit]').click()");
+    await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/signoffs'); const last = list[list.length - 1]; return last && last.query.types === '减免签报' && last.query.status === 'all'; })()", '签报类型请求');
+    await waitFor("document.querySelectorAll('[data-testid=signoffs-table] tbody tr[data-signoff-id]').length === 2", '签报类型结果');
+    await js("document.querySelector('[data-signoff-type=\"减免签报\"]').click()");
+    await setSelect('[data-testid=signoff-status]', 'voided');
+    await js("document.querySelector('[data-testid=stats-submit]').click()");
+    await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/signoffs'); const last = list[list.length - 1]; return last && last.query.status === 'voided' && last.query.types === ''; })()", '签报作废状态请求');
+    await waitFor("document.querySelectorAll('[data-testid=signoffs-table] tbody tr[data-signoff-id]').length === 1", '签报作废结果');
+    assert.equal(await js("document.querySelector('[data-status=\"voided\"]')?.textContent.includes('作废')"), true);
+
+    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
+    await js("document.querySelector('[data-testid=stats-export]').click()");
+    await waitFor("window.__blobs.length >= 1", '签报 CSV Blob');
+    const signoffCsv = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], title: text.includes('签报情况统计'), header: text.includes('调整金额') }; })()");
+    assert.deepEqual(signoffCsv.bom, [0xEF, 0xBB, 0xBF]);
+    assert.ok(signoffCsv.title && signoffCsv.header, '签报 CSV 内容');
+    await pause(2600);
+
+    await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
+    await pause(500);
+    if (await js("!!document.querySelector('.stats-filter-float')")) {
+      await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
+      await pause(300);
+    }
+    assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '签报/减免 390 页面横向溢出');
+    assert.ok(await js("(() => { const el = document.querySelector('.stats-signoffs-scroll'); return el && el.scrollWidth > el.clientWidth; })()"), '签报宽表内部滚动');
+    await screenshot('statistics-signoffs-390.png');
+    await call('Emulation.setDeviceMetricsOverride', { width: 320, height: 900, deviceScaleFactor: 1, mobile: false });
+    await pause(400);
+    assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '签报/减免 320 页面横向溢出');
   });
 });
 

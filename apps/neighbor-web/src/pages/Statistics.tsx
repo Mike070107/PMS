@@ -17,6 +17,8 @@ import MonthlyReportTable from '@/components/statistics/MonthlyReportTable';
 import PropertySummaryTable from '@/components/statistics/PropertySummaryTable';
 import OwnerLedgerTable from '@/components/statistics/OwnerLedgerTable';
 import BuildingLedgerTable from '@/components/statistics/BuildingLedgerTable';
+import ReliefTable from '@/components/statistics/ReliefTable';
+import SignoffsTable from '@/components/statistics/SignoffsTable';
 import StatisticsFilters from '@/components/statistics/StatisticsFilters';
 import { dayjs } from '@/lib/format';
 import {
@@ -25,14 +27,15 @@ import {
   assessmentCsv, assessmentQueryParams, buildingLedgerCsv, buildingLedgerParams,
   collectionAnalysisCsv, collectionAnalysisParams, collectionQueryParams, dailyCsv, dailyQueryParams, downloadCsv,
   feeNatureCsv, fmtCents, monthlyReportCsv, monthlyReportParams, ownerLedgerCsv, ownerLedgerParams,
-  propertySummaryCsv, propertySummaryParams, reportName,
+  propertySummaryCsv, propertySummaryParams, reliefCsv, reliefParams, reportName, signoffsCsv, signoffsParams,
   type AnnualQuery, type AnnualReportType, type AnnualSummaryResponse, type ArrearsPrepaidDetailResponse,
   type ArrearsPrepaidQuery, type ArrearsPrepaidSummaryResponse, type ArrearsPrepaidDetailRow,
   type AssessmentQuery, type AssessmentResponse, type BuildingLedgerQuery, type BuildingLedgerResponse,
   type CollectionAnalysisQuery, type CollectionAnalysisResponse, type CollectionQuery, type DailyQuery,
   type DailyResponse, type FeeNatureResponse, type FilterDraft, type MonthlyReportQuery, type MonthlyReportResponse,
   type OwnerLedgerQuery, type OwnerLedgerResponse, type PropertySummaryQuery, type PropertySummaryResponse,
-  type ReportQuery, type StatisticsOptions, type StatisticsReportType,
+  type ReliefQuery, type ReliefResponse, type ReportQuery, type SignoffsQuery, type SignoffsResponse,
+  type StatisticsOptions, type StatisticsReportType,
 } from '@/lib/statistics';
 import '@/styles/statistics.css';
 
@@ -54,16 +57,21 @@ const DEFAULT_EXCLUDED_NATURE_BY_REPORT: Record<StatisticsReportType, Set<string
   'property-summary': new Set(),
   'owner-ledger': new Set(),
   'building-ledger': new Set(),
+  relief: new Set(),
+  signoffs: new Set(),
 };
 
 /** P2 报表日期区间必填，默认本月 1 日~今天；P1 报表保留原行为（日期可选）。 */
 function isDateRequired(type: StatisticsReportType): boolean {
-  return type === 'fee-nature' || type === 'daily' || type === 'collection-analysis';
+  return type === 'fee-nature' || type === 'daily' || type === 'collection-analysis' || type === 'relief' || type === 'signoffs';
 }
 
 function defaultDateRange(type: StatisticsReportType): { from: string; to: string } {
   if (!isDateRequired(type)) return { from: '', to: '' };
   const today = dayjs();
+  if (type === 'relief' || type === 'signoffs') {
+    return { from: `${today.year()}-01-01`, to: today.format('YYYY-MM-DD') };
+  }
   return { from: `${today.year()}-${String(today.month() + 1).padStart(2, '0')}-01`, to: today.format('YYYY-MM-DD') };
 }
 
@@ -106,8 +114,7 @@ function defaultDraft(options: StatisticsOptions, reportType: StatisticsReportTy
     feeCodes: options.feeItems.map((fee) => fee.code),
     natures: defaultNatures(options, reportType),
     paidDateFrom: range.from,
-    paidDateTo: reportType === 'arrears-prepaid' || reportType === 'assessment' ? today.format('YYYY-MM-DD') : range.to,
-    asOfPeriod: reportType === 'arrears-prepaid' || reportType === 'collection-analysis' || reportType === 'monthly-report'
+    paidDateTo: reportType === 'arrears-prepaid' || reportType === 'assessment' ? today.format('YYYY-MM-DD') : range.to,    asOfPeriod: reportType === 'arrears-prepaid' || reportType === 'collection-analysis' || reportType === 'monthly-report'
       ? `${today.year()}${String(today.month() + 1).padStart(2, '0')}`
       : `${dayjs().year()}12`,
     paymentMethods: (options.paymentMethods ?? []).map((method) => method.id),
@@ -117,6 +124,8 @@ function defaultDraft(options: StatisticsOptions, reportType: StatisticsReportTy
     assessmentYear: String(today.year()),
     analysisSort: 'currentArrears',
     ledgerKeyword: '',
+    signoffTypes: [],
+    signoffStatus: 'all',
   };
 }
 
@@ -211,6 +220,29 @@ function buildQuery(type: StatisticsReportType, draft: FilterDraft, options: Sta
     const query: BuildingLedgerQuery = { type: 'building-ledger', officeCodes: draft.officeCodes, keyword: draft.ledgerKeyword };
     return query;
   }
+  if (type === 'relief') {
+    const query: ReliefQuery = {
+      type: 'relief',
+      officeCodes: draft.officeCodes,
+      feeCodes: draft.feeCodes,
+      dateFrom: draft.paidDateFrom,
+      dateTo: draft.paidDateTo,
+      keyword: draft.ledgerKeyword,
+    };
+    return query;
+  }
+  if (type === 'signoffs') {
+    const query: SignoffsQuery = {
+      type: 'signoffs',
+      officeCodes: draft.officeCodes,
+      types: draft.signoffTypes,
+      status: draft.signoffStatus,
+      dateFrom: draft.paidDateFrom,
+      dateTo: draft.paidDateTo,
+      keyword: draft.ledgerKeyword,
+    };
+    return query;
+  }
   const query: DailyQuery = {
     type: 'daily',
     officeCodes: draft.officeCodes,
@@ -240,7 +272,7 @@ export default function Statistics() {
   const [draft, setDraft] = useState<FilterDraft>({
     officeCodes: [], feeCodes: [], natures: [], paidDateFrom: '', paidDateTo: '', asOfPeriod: '',
     paymentMethods: [], cashier: '', subjectYearFrom: '', subjectYearTo: '', assessmentYear: String(dayjs().year()),
-    analysisSort: 'currentArrears', ledgerKeyword: '',
+    analysisSort: 'currentArrears', ledgerKeyword: '', signoffTypes: [], signoffStatus: 'all',
   });
   const [reportType, setReportType] = useState<StatisticsReportType>('received');
   const reportTypeRef = useRef<StatisticsReportType>('received');
@@ -280,6 +312,12 @@ export default function Statistics() {
   const [buildingLedger, setBuildingLedger] = useState<BuildingLedgerResponse | null>(null);
   const [buildingLoading, setBuildingLoading] = useState(false);
   const [buildingError, setBuildingError] = useState('');
+  const [relief, setRelief] = useState<ReliefResponse | null>(null);
+  const [reliefLoading, setReliefLoading] = useState(false);
+  const [reliefError, setReliefError] = useState('');
+  const [signoffs, setSignoffs] = useState<SignoffsResponse | null>(null);
+  const [signoffsLoading, setSignoffsLoading] = useState(false);
+  const [signoffsError, setSignoffsError] = useState('');
   const [reportRetry, setReportRetry] = useState(0);
   const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -382,22 +420,38 @@ export default function Statistics() {
         .then((response) => { if (!cancelled) setOwnerLedger(response); })
         .catch((error) => { if (!cancelled) setOwnerError(error instanceof Error && error.message ? error.message : '住户台账读取失败'); })
         .finally(() => { if (!cancelled) setOwnerLoading(false); });
-    } else {
+    } else if (applied.type === 'building-ledger') {
       setBuildingLoading(true); setBuildingError('');
       request<BuildingLedgerResponse>({ url: '/statistics/building-ledger', query: buildingLedgerParams(applied as BuildingLedgerQuery) })
         .then((response) => { if (!cancelled) setBuildingLedger(response); })
         .catch((error) => { if (!cancelled) setBuildingError(error instanceof Error && error.message ? error.message : '楼房台账读取失败'); })
         .finally(() => { if (!cancelled) setBuildingLoading(false); });
+    } else if (applied.type === 'relief') {
+      setReliefLoading(true); setReliefError('');
+      request<ReliefResponse>({ url: '/statistics/relief', query: reliefParams(applied) })
+        .then((response) => { if (!cancelled) setRelief(response); })
+        .catch((error) => { if (!cancelled) setReliefError(error instanceof Error && error.message ? error.message : '减免情况读取失败'); })
+        .finally(() => { if (!cancelled) setReliefLoading(false); });
+    } else {
+      setSignoffsLoading(true); setSignoffsError('');
+      request<SignoffsResponse>({ url: '/statistics/signoffs', query: signoffsParams(applied as SignoffsQuery) })
+        .then((response) => { if (!cancelled) setSignoffs(response); })
+        .catch((error) => { if (!cancelled) setSignoffsError(error instanceof Error && error.message ? error.message : '签报情况读取失败'); })
+        .finally(() => { if (!cancelled) setSignoffsLoading(false); });
     }
     return () => { cancelled = true; };
   }, [applied, reportRetry]);
 
   const datesFilled = !!draft.paidDateFrom && !!draft.paidDateTo;
   const isLedger = reportType === 'property-summary' || reportType === 'owner-ledger' || reportType === 'building-ledger';
+  const hasRequiredSelections = isLedger || reportType === 'signoffs'
+    ? draft.officeCodes.length > 0
+    : reportType === 'relief'
+      ? draft.officeCodes.length > 0 && draft.feeCodes.length > 0
+      : draft.officeCodes.length > 0 && draft.feeCodes.length > 0 && draft.natures.length > 0;
   const canSubmit = !!options
-    && draft.officeCodes.length > 0
-    && (isLedger || (draft.feeCodes.length > 0 && draft.natures.length > 0))
-    && (reportType !== 'fee-nature' && reportType !== 'daily' && reportType !== 'collection-analysis' || datesFilled)
+    && hasRequiredSelections
+    && (!isDateRequired(reportType) || datesFilled)
     && (reportType !== 'arrears-prepaid' || (!!draft.asOfPeriod && !!draft.paidDateTo))
     && (reportType !== 'assessment' || !!draft.assessmentYear)
     && (reportType !== 'monthly-report' || !!draft.asOfPeriod)
@@ -605,6 +659,30 @@ export default function Statistics() {
     }
   };
 
+  const loadMoreRelief = async () => {
+    if (!applied || applied.type !== 'relief' || !relief) return;
+    try {
+      const response = await request<ReliefResponse>({ url: '/statistics/relief', query: reliefParams(applied, relief.rows.length) });
+      setRelief((previous) => (previous
+        ? { ...previous, rows: [...previous.rows, ...(response.rows ?? [])], totals: response.totals ?? previous.totals, count: response.count ?? previous.count }
+        : response));
+    } catch (e) {
+      toast(e instanceof Error && e.message ? e.message : '加载更多失败');
+    }
+  };
+
+  const loadMoreSignoffs = async () => {
+    if (!applied || applied.type !== 'signoffs' || !signoffs) return;
+    try {
+      const response = await request<SignoffsResponse>({ url: '/statistics/signoffs', query: signoffsParams(applied, signoffs.rows.length) });
+      setSignoffs((previous) => (previous
+        ? { ...previous, rows: [...previous.rows, ...(response.rows ?? [])], totals: response.totals ?? previous.totals, count: response.count ?? previous.count }
+        : response));
+    } catch (e) {
+      toast(e instanceof Error && e.message ? e.message : '加载更多失败');
+    }
+  };
+
   const exportCurrent = () => {
     if (!applied) return;
     const stamp = dayjs().format('YYYYMMDD');
@@ -678,6 +756,20 @@ export default function Statistics() {
       else toast('导出失败，请重试');
       return;
     }
+    if (applied.type === 'relief') {
+      if (!relief) return;
+      const name = `统计汇总-减免情况统计-${stamp}.csv`;
+      if (downloadCsv(name, reliefCsv(relief, applied))) toast('已导出减免情况统计 CSV');
+      else toast('导出失败，请重试');
+      return;
+    }
+    if (applied.type === 'signoffs') {
+      if (!signoffs) return;
+      const name = `统计汇总-签报情况统计-${stamp}.csv`;
+      if (downloadCsv(name, signoffsCsv(signoffs, applied))) toast('已导出签报情况统计 CSV');
+      else toast('导出失败，请重试');
+      return;
+    }
     if (applied.type === 'assessment') {
       if (!assessment) return;
       const name = `统计汇总-收缴考核-${stamp}.csv`;
@@ -687,6 +779,30 @@ export default function Statistics() {
   };
 
   const activeLabel = reportName(applied?.type ?? reportType);
+  const signoffTypeOptions = Array.from(new Set((signoffs?.rows ?? []).map((row) => row.type).filter((value): value is string => !!value)));
+  const hasExportData = applied?.type === 'fee-nature'
+    ? !!collection
+    : applied?.type === 'daily'
+      ? !!daily
+      : applied?.type === 'arrears-prepaid'
+        ? !!arrearsDetail
+        : applied?.type === 'assessment'
+          ? !!assessment
+          : applied?.type === 'collection-analysis'
+            ? !!analysis
+            : applied?.type === 'monthly-report'
+              ? !!monthlyReport
+              : applied?.type === 'property-summary'
+                ? !!propertySummary
+                : applied?.type === 'owner-ledger'
+                  ? !!ownerLedger
+                  : applied?.type === 'building-ledger'
+                    ? !!buildingLedger
+                    : applied?.type === 'relief'
+                      ? !!relief
+                      : applied?.type === 'signoffs'
+                        ? !!signoffs
+                        : !!annual;
   const isLoading = applied?.type === 'fee-nature'
     ? collectionLoading
     : applied?.type === 'daily'
@@ -705,7 +821,11 @@ export default function Statistics() {
                   ? ownerLoading
                   : applied?.type === 'building-ledger'
                     ? buildingLoading
-                    : annualLoading;
+                    : applied?.type === 'relief'
+                      ? reliefLoading
+                      : applied?.type === 'signoffs'
+                        ? signoffsLoading
+                        : annualLoading;
   const activeError = applied?.type === 'fee-nature'
     ? collectionError
     : applied?.type === 'daily'
@@ -724,7 +844,11 @@ export default function Statistics() {
                   ? ownerError
                   : applied?.type === 'building-ledger'
                     ? buildingError
-                    : annualError;
+                    : applied?.type === 'relief'
+                      ? reliefError
+                      : applied?.type === 'signoffs'
+                        ? signoffsError
+                        : annualError;
   const activeDataAsOf = applied?.type === 'fee-nature'
     ? collection?.dataAsOf
     : applied?.type === 'daily'
@@ -743,7 +867,11 @@ export default function Statistics() {
                   ? ownerLedger?.dataAsOf
                   : applied?.type === 'building-ledger'
                     ? buildingLedger?.dataAsOf
-                    : annual?.dataAsOf;
+                    : applied?.type === 'relief'
+                      ? relief?.dataAsOf
+                      : applied?.type === 'signoffs'
+                        ? signoffs?.dataAsOf
+                        : annual?.dataAsOf;
   const dataAsOf = timeText(activeDataAsOf || options?.dataAsOf);
   const sourceLabel = options?.sourceMode === 'mirror' ? 'MIS 镜像' : (options?.sourceMode || '');
   const activeAvailable = applied?.type === 'fee-nature'
@@ -764,7 +892,11 @@ export default function Statistics() {
                   ? ownerLedger?.available
                   : applied?.type === 'building-ledger'
                     ? buildingLedger?.available
-                    : annual?.available;
+                    : applied?.type === 'relief'
+                      ? relief?.available
+                      : applied?.type === 'signoffs'
+                        ? signoffs?.available
+                        : annual?.available;
   const activeMessage = applied?.type === 'fee-nature'
     ? collection?.message
     : applied?.type === 'daily'
@@ -783,7 +915,11 @@ export default function Statistics() {
                   ? ownerLedger?.message
                   : applied?.type === 'building-ledger'
                     ? buildingLedger?.message
-                    : annual?.message;
+                    : applied?.type === 'relief'
+                      ? relief?.message
+                      : applied?.type === 'signoffs'
+                        ? signoffs?.message
+                        : annual?.message;
 
   const dateRangeText = applied?.type === 'arrears-prepaid'
     ? `统计年月 ${applied.asOfPeriod} · 收款截止 ${applied.paidDateTo}`
@@ -844,7 +980,8 @@ export default function Statistics() {
                   onExport={exportCurrent}
                   onCollapse={toggleFilters}
                   reportType={reportType}
-                  canExport={activeAvailable !== false && (applied?.type === 'fee-nature' ? !!collection : applied?.type === 'daily' ? !!daily : !!annual)}
+                  signoffTypeOptions={signoffTypeOptions}
+                  canExport={activeAvailable !== false && hasExportData}
                   loading={isLoading}
                 />
               </div>
@@ -916,6 +1053,12 @@ export default function Statistics() {
                 {activeAvailable !== false && applied?.type === 'building-ledger' && buildingLedger ? (
                   <span className="tag mute">{buildingLedger.count ?? buildingLedger.rows.length} 栋</span>
                 ) : null}
+                {activeAvailable !== false && applied?.type === 'relief' && relief ? (
+                  <span className="tag mute">{relief.count ?? relief.rows.length} 条</span>
+                ) : null}
+                {activeAvailable !== false && applied?.type === 'signoffs' && signoffs ? (
+                  <span className="tag mute">{signoffs.count ?? signoffs.rows.length} 件</span>
+                ) : null}
                 {applied?.type === 'received' || applied?.type === 'arrears' ? (
                   annual?.columns?.length ? <span className="muted stats-range">{annual.columns[0]}–{annual.columns[annual.columns.length - 1]} 年度</span> : null
                 ) : dateRangeText ? <span className="muted stats-range">{dateRangeText}</span> : null}
@@ -961,6 +1104,16 @@ export default function Statistics() {
               {applied?.type === 'building-ledger' && buildingLedger?.available !== false ? (
                 <div className="note2 stats-received-hint" data-testid="building-ledger-hint">
                   <Icon name="alert" />关键词匹配路/弄/楼号；每页 200 栋，可加载更多。
+                </div>
+              ) : null}
+              {applied?.type === 'relief' && relief?.available !== false ? (
+                <div className="note2 stats-received-hint" data-testid="relief-hint">
+                  <Icon name="alert" />减免记录按减免日期筛选；金额合计=原应收/现应收/减免金额，每页 200 条可加载更多。
+                </div>
+              ) : null}
+              {applied?.type === 'signoffs' && signoffs?.available !== false ? (
+                <div className="note2 stats-received-hint" data-testid="signoffs-hint">
+                  <Icon name="alert" />签报按拟稿日期筛选；状态标签：生效绿/作废灰/未结束橙；合计为调整金额与件数。
                 </div>
               ) : null}
 
@@ -1126,6 +1279,40 @@ export default function Statistics() {
                       ) : null}
                     </>
                   ) : <div className="empty">{buildingLedger.message || '当前筛选没有楼房数据'}</div>
+                ) : null
+              ) : applied?.type === 'relief' ? (
+                relief ? (
+                  relief.available === false ? (
+                    <div className="note2" role="status"><Icon name="alert" />{relief.message || '减免情况数据尚未就绪；请稍后再试。'}</div>
+                  ) : relief.rows.length ? (
+                    <>
+                      <ReliefTable report={relief} />
+                      {relief.count != null && relief.rows.length < relief.count ? (
+                        <div className="stats-load-more">
+                          <button type="button" className="btn sm" onClick={() => void loadMoreRelief()}>
+                            加载更多（已显示 {relief.rows.length}/{relief.count}）
+                          </button>
+                        </div>
+                      ) : null}
+                    </>
+                  ) : <div className="empty">{relief.message || '当前筛选没有减免记录'}</div>
+                ) : null
+              ) : applied?.type === 'signoffs' ? (
+                signoffs ? (
+                  signoffs.available === false ? (
+                    <div className="note2" role="status"><Icon name="alert" />{signoffs.message || '签报情况数据尚未就绪；请稍后再试。'}</div>
+                  ) : signoffs.rows.length ? (
+                    <>
+                      <SignoffsTable report={signoffs} />
+                      {signoffs.count != null && signoffs.rows.length < signoffs.count ? (
+                        <div className="stats-load-more">
+                          <button type="button" className="btn sm" onClick={() => void loadMoreSignoffs()}>
+                            加载更多（已显示 {signoffs.rows.length}/{signoffs.count}）
+                          </button>
+                        </div>
+                      ) : null}
+                    </>
+                  ) : <div className="empty">{signoffs.message || '当前筛选没有签报记录'}</div>
                 ) : null
               ) : annual ? (
                 annual.available === false ? (

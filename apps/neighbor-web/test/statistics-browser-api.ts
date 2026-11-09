@@ -459,6 +459,63 @@ function buildingLedgerResponse(query: any) {
   };
 }
 
+// P4-A 减免情况 / 签报情况。
+const RELIEF_ROWS = [
+  { id: 1, docNo: 'JM202603001', officeCode: '01', officeName: '枫桦景苑一期', zhId: 1001, address: '宝秀路701号701', ownerName: '陆乾一', feeCode: '01', feeName: '管理费', oldReceivableCents: 1200000, receivableCents: 960000, reliefCents: 240000, reliefStartDate: '2026-03-01', reliefEndDate: '2026-03-31', reliefDate: '2026-03-05', method: '减免单' },
+  { id: 2, docNo: 'JM202604002', officeCode: '02', officeName: '枫桦景苑二期A', zhId: 1002, address: '宝秀路723-725号723-725', ownerName: '杨凤林', feeCode: '04', feeName: '泊位费', oldReceivableCents: 900000, receivableCents: 600000, reliefCents: 300000, reliefStartDate: '2026-04-01', reliefEndDate: '2026-04-30', reliefDate: '2026-04-08', method: '减免单' },
+  { id: 3, docNo: 'JM202605003', officeCode: '01', officeName: '枫桦景苑一期', zhId: 1003, address: '永德路228弄31号1101', ownerName: '邱解平', feeCode: '01', feeName: '管理费', oldReceivableCents: 500000, receivableCents: 450000, reliefCents: 50000, reliefStartDate: '2026-05-01', reliefEndDate: '2026-05-31', reliefDate: '2026-05-06', method: '减免单' },
+];
+
+function reliefResponse(query: any) {
+  const keyword = String(query?.keyword ?? '').trim();
+  const dateFrom = String(query?.dateFrom ?? '');
+  const dateTo = String(query?.dateTo ?? '');
+  const filtered = RELIEF_ROWS.filter((row) => {
+    if (keyword && ![row.docNo, row.address, row.ownerName, row.feeName].some((value) => String(value ?? '').includes(keyword))) return false;
+    if (dateFrom && String(row.reliefDate) < dateFrom) return false;
+    if (dateTo && String(row.reliefDate) > dateTo) return false;
+    return true;
+  });
+  const totals = filtered.reduce((sum, row) => ({
+    count: sum.count + 1,
+    oldReceivableCents: sum.oldReceivableCents + row.oldReceivableCents,
+    receivableCents: sum.receivableCents + row.receivableCents,
+    reliefCents: sum.reliefCents + row.reliefCents,
+  }), { count: 0, oldReceivableCents: 0, receivableCents: 0, reliefCents: 0 });
+  return { rows: filtered, totals, count: filtered.length, limit: 200, offset: 0, dataAsOf: OPTIONS.dataAsOf, available: true, message: null };
+}
+
+const SIGNOFF_ROWS = [
+  { id: 1, docNo: 'QB202603001', title: '管理费减免签报', type: '减免签报', detail: '因漏水减免一个月', officeCode: '01', officeName: '枫桦景苑一期', zhId: 1001, address: '宝秀路701号701', ownerName: '陆乾一', draftDate: '2026-03-02', approveDate: '2026-03-04', result: '同意', voided: false, ended: true, adjustAmountCents: -240000, feeCode: '01' },
+  { id: 2, docNo: 'QB202604002', title: '泊位费调整签报', type: '租金调整', detail: '车位划线调整', officeCode: '02', officeName: '枫桦景苑二期A', zhId: 1002, address: '宝秀路723-725号723-725', ownerName: '杨凤林', draftDate: '2026-04-03', approveDate: '2026-04-06', result: '不同意', voided: true, ended: true, adjustAmountCents: 0, feeCode: '04' },
+  { id: 3, docNo: 'QB202605003', title: '空房租金减免签报', type: '减免签报', detail: '空置期减免', officeCode: '01', officeName: '枫桦景苑一期', zhId: 1003, address: '永德路228弄31号1101', ownerName: '邱解平', draftDate: '2026-05-04', approveDate: null, result: '审批中', voided: false, ended: false, adjustAmountCents: -50000, feeCode: '15' },
+];
+
+function signoffsResponse(query: any) {
+  const keyword = String(query?.keyword ?? '').trim();
+  const status = String(query?.status ?? 'all');
+  const types = String(query?.types ?? '').split(',').filter(Boolean);
+  const dateFrom = String(query?.dateFrom ?? '');
+  const dateTo = String(query?.dateTo ?? '');
+  const filtered = SIGNOFF_ROWS.filter((row) => {
+    if (keyword && ![row.docNo, row.title, row.address, row.ownerName, row.result, row.type].some((value) => String(value ?? '').includes(keyword))) return false;
+    if (dateFrom && String(row.draftDate) < dateFrom) return false;
+    if (dateTo && String(row.draftDate) > dateTo) return false;
+    if (types.length && !types.includes(String(row.type))) return false;
+    if (status === 'voided') return row.voided;
+    if (status === 'open') return !row.voided && !row.ended;
+    if (status === 'effective') return !row.voided && row.ended;
+    return true;
+  });
+  const totals = {
+    count: filtered.length,
+    voidedCount: filtered.filter((row) => row.voided).length,
+    endedCount: filtered.filter((row) => row.ended).length,
+    adjustAmountCents: filtered.reduce((sum, row) => sum + row.adjustAmountCents, 0),
+  };
+  return { rows: filtered, totals, count: filtered.length, limit: 200, offset: 0, dataAsOf: OPTIONS.dataAsOf, available: true, message: null };
+}
+
 export async function request<T>(options: any): Promise<T> {
   w.__calls.push({ url: options.url, method: options.method ?? 'GET', query: options.query ?? null, at: Date.now() });
   await pause(20);
@@ -576,6 +633,14 @@ export async function request<T>(options: any): Promise<T> {
 
   if (options.url === '/statistics/building-ledger') {
     return buildingLedgerResponse(options.query) as T;
+  }
+
+  if (options.url === '/statistics/relief') {
+    return reliefResponse(options.query) as T;
+  }
+
+  if (options.url === '/statistics/signoffs') {
+    return signoffsResponse(options.query) as T;
   }
 
   throw Error('Unhandled synthetic request ' + String(options.url));

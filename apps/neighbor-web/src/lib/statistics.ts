@@ -3,7 +3,7 @@
  * 金额一律是整数分；页面显示统一 ¥x,xxx.xx，CSV 用纯数字便于 Excel 计算。
  */
 
-export type StatisticsReportType = 'received' | 'arrears' | 'fee-nature' | 'daily' | 'arrears-prepaid' | 'assessment' | 'collection-analysis' | 'monthly-report' | 'property-summary' | 'owner-ledger' | 'building-ledger';
+export type StatisticsReportType = 'received' | 'arrears' | 'fee-nature' | 'daily' | 'arrears-prepaid' | 'assessment' | 'collection-analysis' | 'monthly-report' | 'property-summary' | 'owner-ledger' | 'building-ledger' | 'relief' | 'signoffs';
 /** P1 年度报表：共用应收截止年月/收款日期等筛选。 */
 export type AnnualReportType = 'received' | 'arrears';
 
@@ -237,7 +237,28 @@ export interface BuildingLedgerQuery {
   keyword: string;
 }
 
-export type ReportQuery = AnnualQuery | CollectionQuery | DailyQuery | ArrearsPrepaidQuery | AssessmentQuery | CollectionAnalysisQuery | MonthlyReportQuery | PropertySummaryQuery | OwnerLedgerQuery | BuildingLedgerQuery;
+/** P4-A 减免情况统计：减免日期范围 + 管理处/收费项目 + 关键词分页。 */
+export interface ReliefQuery {
+  type: 'relief';
+  officeCodes: string[];
+  feeCodes: string[];
+  dateFrom: string;
+  dateTo: string;
+  keyword: string;
+}
+
+/** P4-A 签报情况统计：拟稿日期范围 + 管理处/状态/类型 + 关键词分页。 */
+export interface SignoffsQuery {
+  type: 'signoffs';
+  officeCodes: string[];
+  types: string[];
+  status: 'all' | 'effective' | 'voided' | 'open';
+  dateFrom: string;
+  dateTo: string;
+  keyword: string;
+}
+
+export type ReportQuery = AnnualQuery | CollectionQuery | DailyQuery | ArrearsPrepaidQuery | AssessmentQuery | CollectionAnalysisQuery | MonthlyReportQuery | PropertySummaryQuery | OwnerLedgerQuery | BuildingLedgerQuery | ReliefQuery | SignoffsQuery;
 
 export interface FilterDraft {
   officeCodes: string[];
@@ -259,6 +280,10 @@ export interface FilterDraft {
   analysisSort: 'currentArrears' | 'historyArrears' | 'address';
   /** P3-A 住户/楼房台账关键词 */
   ledgerKeyword: string;
+  /** P4-A 签报类型多选（来自数据 distinct；空 = 全部） */
+  signoffTypes: string[];
+  /** P4-A 签报状态筛选 */
+  signoffStatus: 'all' | 'effective' | 'voided' | 'open';
 }
 
 export const REPORTS: Array<{ type: StatisticsReportType; name: string; hint: string }> = [
@@ -273,6 +298,8 @@ export const REPORTS: Array<{ type: StatisticsReportType; name: string; hint: st
   { type: 'property-summary', name: '房产汇总', hint: '按管理处统计楼栋/房屋/业主/建筑面积及各房屋性质房屋数' },
   { type: 'owner-ledger', name: '住户台账', hint: '按管理处/房屋性质与关键词查住户（地址/房号/业主/电话）；分页导出' },
   { type: 'building-ledger', name: '楼房台账', hint: '按管理处与关键词查楼栋（房屋数/业主数/面积）；分页导出' },
+  { type: 'relief', name: '减免情况统计', hint: '按减免日期/管理处/收费项目查减免记录（原应收/现应收/减免金额）；分页导出' },
+  { type: 'signoffs', name: '签报情况统计', hint: '按拟稿日期/管理处/状态/类型查签报；含作废/结束/调整金额与状态标签' },
 ];
 
 /** 旧系统里尚未接入的报表：只列灰字，不做假按钮，不伪造数据。 */
@@ -286,8 +313,6 @@ export const PENDING_REPORTS = [
   '开票数据统计',
   '住户票据查询',
   '票据使用数量统计',
-  '签报情况统计',
-  '减免情况统计',
   '线上收费查询',
 ];
 
@@ -1032,6 +1057,132 @@ export function buildingLedgerCsv(report: BuildingLedgerResponse, query: Buildin
   if (report.totals) {
     lines.push(['合计', '', '', '', String(report.totals.buildingCount ?? report.rows.length), String(report.totals.roomCount ?? 0), String(report.totals.ownerCount ?? 0), String(report.totals.areaSqm ?? 0)]);
   }
+  return '\uFEFF' + lines.map((line) => line.map(csvCell).join(',')).join('\r\n');
+}
+
+// ───────────────────────── P4-A：减免情况统计 / 签报情况统计 ─────────────────────────
+
+export interface ReliefRow {
+  id: number | string;
+  docNo: string | null;
+  officeCode: string;
+  officeName?: string | null;
+  zhId?: number | string | null;
+  address: string | null;
+  ownerName: string | null;
+  feeCode?: string | null;
+  feeName: string | null;
+  oldReceivableCents: number;
+  receivableCents: number;
+  reliefCents: number;
+  reliefStartDate: string | null;
+  reliefEndDate: string | null;
+  reliefDate: string | null;
+  method: string | null;
+}
+export interface ReliefResponse {
+  rows: ReliefRow[];
+  totals: { count?: number; oldReceivableCents?: number; receivableCents?: number; reliefCents?: number } | null;
+  count?: number | null;
+  dataAsOf?: string | null;
+  available?: boolean;
+  message?: string | null;
+}
+
+export interface SignoffRow {
+  id: number | string;
+  docNo: string | null;
+  title: string | null;
+  type: string | null;
+  detail?: string | null;
+  officeCode: string;
+  officeName?: string | null;
+  zhId?: number | string | null;
+  address: string | null;
+  ownerName: string | null;
+  draftDate: string | null;
+  approveDate: string | null;
+  result: string | null;
+  voided: boolean;
+  ended: boolean;
+  adjustAmountCents: number;
+  feeCode?: string | null;
+}
+export interface SignoffsResponse {
+  rows: SignoffRow[];
+  totals: { count?: number; voidedCount?: number; endedCount?: number; adjustAmountCents?: number } | null;
+  count?: number | null;
+  dataAsOf?: string | null;
+  available?: boolean;
+  message?: string | null;
+}
+
+export function reliefParams(query: ReliefQuery, offset = 0, limit = 200) {
+  return {
+    dateFrom: query.dateFrom || undefined,
+    dateTo: query.dateTo || undefined,
+    officeCodes: query.officeCodes.join(','),
+    feeCodes: query.feeCodes.join(','),
+    keyword: query.keyword.trim() || undefined,
+    limit,
+    offset,
+  };
+}
+export function signoffsParams(query: SignoffsQuery, offset = 0, limit = 200) {
+  return {
+    dateFrom: query.dateFrom || undefined,
+    dateTo: query.dateTo || undefined,
+    officeCodes: query.officeCodes.join(','),
+    types: query.types.join(','),
+    status: query.status,
+    keyword: query.keyword.trim() || undefined,
+    limit,
+    offset,
+  };
+}
+
+/** 减免情况 -> CSV。 */
+export function reliefCsv(report: ReliefResponse, query: ReliefQuery): string {
+  const lines: string[][] = [
+    ['统计汇总', '减免情况统计'],
+    ['减免日期范围', [query.dateFrom, query.dateTo].filter(Boolean).join('~')],
+    ['管理处', query.officeCodes.join('/') || '全部'],
+    ['收费项目', query.feeCodes.join('/') || '全部'],
+    ['关键词', query.keyword.trim() || ''],
+    [],
+    ['序号', '文号', '管理处', '地址', '业主', '收费项目', '原应收', '现应收', '减免金额', '减免起', '减免止', '减免日期', '方式'],
+  ];
+  report.rows.forEach((row, index) => {
+    lines.push([
+      String(index + 1), row.docNo || '', row.officeName || row.officeCode, row.address || '', row.ownerName || '',
+      row.feeName || row.feeCode || '', centsForCsv(row.oldReceivableCents), centsForCsv(row.receivableCents),
+      centsForCsv(row.reliefCents), row.reliefStartDate || '', row.reliefEndDate || '', row.reliefDate || '', row.method || '',
+    ]);
+  });
+  if (report.totals) lines.push(['合计', '', '', '', '', '', centsForCsv(report.totals.oldReceivableCents), centsForCsv(report.totals.receivableCents), centsForCsv(report.totals.reliefCents), '', '', '', '']);
+  return '\uFEFF' + lines.map((line) => line.map(csvCell).join(',')).join('\r\n');
+}
+
+/** 签报情况 -> CSV。 */
+export function signoffsCsv(report: SignoffsResponse, query: SignoffsQuery): string {
+  const lines: string[][] = [
+    ['统计汇总', '签报情况统计'],
+    ['拟稿日期范围', [query.dateFrom, query.dateTo].filter(Boolean).join('~')],
+    ['管理处', query.officeCodes.join('/') || '全部'],
+    ['状态', query.status],
+    ['类型', query.types.join('/') || '全部'],
+    ['关键词', query.keyword.trim() || ''],
+    [],
+    ['序号', '文号', '标题', '类型', '管理处', '地址', '业主', '拟稿日期', '审批日期', '结果', '是否作废', '是否结束', '调整金额'],
+  ];
+  report.rows.forEach((row, index) => {
+    lines.push([
+      String(index + 1), row.docNo || '', row.title || '', row.type || '', row.officeName || row.officeCode,
+      row.address || '', row.ownerName || '', row.draftDate || '', row.approveDate || '', row.result || '',
+      row.voided ? '是' : '否', row.ended ? '是' : '否', centsForCsv(row.adjustAmountCents),
+    ]);
+  });
+  if (report.totals) lines.push(['合计', '', '', '', '', '', '', '', '', '', '', '', centsForCsv(report.totals.adjustAmountCents)]);
   return '\uFEFF' + lines.map((line) => line.map(csvCell).join(',')).join('\r\n');
 }
 

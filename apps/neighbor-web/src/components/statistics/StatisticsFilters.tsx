@@ -16,6 +16,8 @@ export interface StatisticsFiltersProps {
   onCollapse: () => void;
   /** 当前报表：应收截止年月只对欠费报表展示/生效。 */
   reportType: StatisticsReportType;
+  /** P4-A 签报类型选项（来自已加载数据 distinct）。 */
+  signoffTypeOptions?: string[];
   canExport: boolean;
   loading: boolean;
 }
@@ -94,7 +96,7 @@ function FeeCategoryRow({
 
 /** 左侧悬浮筛选：管理处/小区、收费项目分类树、房屋性质、收款日期范围；只在点「统计」时生效。 */
 export default function StatisticsFilters({
-  options, draft, onChange, onSubmit, onReset, onExport, onCollapse, reportType, canExport, loading,
+  options, draft, onChange, onSubmit, onReset, onExport, onCollapse, reportType, signoffTypeOptions = [], canExport, loading,
 }: StatisticsFiltersProps) {
   const [officeQuery, setOfficeQuery] = useState('');
   const [feeQuery, setFeeQuery] = useState('');
@@ -115,9 +117,12 @@ export default function StatisticsFilters({
   }, [feeGroups, feeQuery]);
 
   const isLedger = reportType === 'property-summary' || reportType === 'owner-ledger' || reportType === 'building-ledger';
+  const dateRequired = reportType === 'fee-nature' || reportType === 'daily' || reportType === 'collection-analysis'
+    || reportType === 'relief' || reportType === 'signoffs';
   const canSubmit = draft.officeCodes.length > 0
-    && (isLedger || (draft.feeCodes.length > 0 && draft.natures.length > 0))
-    && (reportType !== 'fee-nature' && reportType !== 'daily' && reportType !== 'collection-analysis' || (!!draft.paidDateFrom && !!draft.paidDateTo))
+    && (isLedger || reportType === 'signoffs'
+      || (reportType === 'relief' ? draft.feeCodes.length > 0 : (draft.feeCodes.length > 0 && draft.natures.length > 0)))
+    && (!dateRequired || (!!draft.paidDateFrom && !!draft.paidDateTo))
     && (reportType !== 'arrears-prepaid' || (!!draft.asOfPeriod && !!draft.paidDateTo))
     && (reportType !== 'assessment' || !!draft.assessmentYear)
     && (reportType !== 'monthly-report' || !!draft.asOfPeriod)
@@ -193,8 +198,8 @@ export default function StatisticsFilters({
           </div>
         </CheckGroup>
 
-        {reportType === 'owner-ledger' || reportType === 'building-ledger' ? (
-          <CheckGroup title="关键词" hint="匹配地址/房号/业主/手机/电话（楼房台账匹配路/弄/楼号）">
+        {reportType === 'owner-ledger' || reportType === 'building-ledger' || reportType === 'relief' || reportType === 'signoffs' ? (
+          <CheckGroup title="关键词" hint={reportType === 'signoffs' ? '匹配文号/标题/地址/业主/结果' : reportType === 'relief' ? '匹配文号/地址/业主/收费项目' : '匹配地址/房号/业主/手机/电话（楼房台账匹配路/弄/楼号）'}>
             <div className="stats-office-search">
               <Icon name="search" size={15} />
               <input
@@ -208,7 +213,7 @@ export default function StatisticsFilters({
           </CheckGroup>
         ) : null}
 
-        {reportType !== 'property-summary' && reportType !== 'owner-ledger' && reportType !== 'building-ledger' ? (
+        {reportType !== 'property-summary' && reportType !== 'owner-ledger' && reportType !== 'building-ledger' && reportType !== 'signoffs' ? (
         <CheckGroup title="收费项目" hint="按旧 MIS 分类树；勾选后统计仍传扁平 feeCodes" actions={groupActions('fees', options.feeItems.map((fee) => fee.code))}>
           <div className="stats-office-search">
             <Icon name="search" size={15} />
@@ -235,7 +240,7 @@ export default function StatisticsFilters({
         </CheckGroup>
         ) : null}
 
-        {reportType !== 'property-summary' && reportType !== 'building-ledger' ? (
+        {reportType !== 'property-summary' && reportType !== 'building-ledger' && reportType !== 'relief' && reportType !== 'signoffs' ? (
         <CheckGroup
           title="房屋性质"
           hint="按收费发生时点性质统计；空房（06）默认不勾选，可手动勾选"
@@ -263,13 +268,23 @@ export default function StatisticsFilters({
             && reportType !== 'property-summary' && reportType !== 'owner-ledger' && reportType !== 'building-ledger' ? (
             <>
           <div className="stats-date-range-label">
-            {reportType === 'fee-nature' || reportType === 'daily' ? '收款日期范围（必填）' : '收款日期范围'}
+            {reportType === 'fee-nature' || reportType === 'daily' || reportType === 'collection-analysis'
+              ? '收款日期范围（必填）'
+              : reportType === 'relief'
+                ? '减免日期范围（必填）'
+                : reportType === 'signoffs'
+                  ? '拟稿日期范围（必填）'
+                  : '收款日期范围'}
             <span className="muted">
               {reportType === 'received'
                 ? '（仅实收；年度按应收年月归年，此范围只做筛选）'
                 : reportType === 'arrears'
                   ? '（欠费报表不使用收款日期）'
-                  : '（按收款日期统计收款/退款/调整）'}
+                  : reportType === 'relief'
+                    ? '（按减免日期筛选）'
+                    : reportType === 'signoffs'
+                      ? '（按拟稿日期筛选）'
+                      : '（按收款日期统计收款/退款/调整）'}
             </span>
           </div>
           <div className="stats-date-range" data-date-from={draft.paidDateFrom} data-date-to={draft.paidDateTo}>
@@ -289,6 +304,38 @@ export default function StatisticsFilters({
               onChange={(event) => onChange({ paidDateTo: event.target.value })}
             />
           </div>
+          {reportType === 'signoffs' ? (
+            <>
+              <div className="stats-extra-fields">
+                <label>
+                  状态
+                  <select className="in" data-testid="signoff-status" value={draft.signoffStatus} onChange={(event) => onChange({ signoffStatus: event.target.value as FilterDraft['signoffStatus'] })}>
+                    <option value="all">全部</option>
+                    <option value="effective">生效</option>
+                    <option value="voided">作废</option>
+                    <option value="open">未结束</option>
+                  </select>
+                </label>
+              </div>
+              <div className="stats-filter-group">
+                <div className="stats-filter-group-head"><b>签报类型</b><small className="muted">不选 = 全部</small></div>
+                <div className="stats-check-list" role="group" aria-label="签报类型">
+                  {signoffTypeOptions.map((type) => (
+                    <label key={type} className="stats-check">
+                      <input
+                        type="checkbox"
+                        data-signoff-type={type}
+                        checked={draft.signoffTypes.includes(type)}
+                        onChange={() => onChange({ signoffTypes: toggle(draft.signoffTypes, type) })}
+                      />
+                      <span className="stats-check-name">{type}</span>
+                    </label>
+                  ))}
+                  {!signoffTypeOptions.length ? <div className="muted">暂无可选类型</div> : null}
+                </div>
+              </div>
+            </>
+          ) : null}
             </>
           ) : null}
           {reportType === 'arrears-prepaid' ? (
@@ -409,6 +456,10 @@ export default function StatisticsFilters({
             <div className="stats-filter-hint" data-testid="owner-ledger-filter-hint">按管理处/房屋性质筛选，关键词匹配地址/房号/业主/手机/电话。</div>
           ) : reportType === 'building-ledger' ? (
             <div className="stats-filter-hint" data-testid="building-ledger-filter-hint">按管理处筛选，关键词匹配路/弄/楼号。</div>
+          ) : reportType === 'relief' ? (
+            <div className="stats-filter-hint" data-testid="relief-filter-hint">关键词匹配文号/地址/业主/收费项目；日期按减免日期。</div>
+          ) : reportType === 'signoffs' ? (
+            <div className="stats-filter-hint" data-testid="signoffs-filter-hint">状态/类型不选即全部；日期按签报拟稿日期。</div>
           ) : null}
         </div>
       </div>
@@ -435,7 +486,11 @@ export default function StatisticsFilters({
                     ? '请至少各选一个管理处、收费项目和房屋性质，并选择统计年月。'
                     : isLedger
                       ? '请至少选择一个管理处。'
-                      : '请至少各选一个管理处、收费项目和房屋性质。'}
+                      : reportType === 'signoffs'
+                        ? '请至少选择一个管理处，并填写拟稿日期范围。'
+                        : reportType === 'relief'
+                          ? '请至少选择一个管理处和一个收费项目，并填写减免日期范围。'
+                          : '请至少各选一个管理处、收费项目和房屋性质。'}
         </div>
       ) : null}
     </aside>
