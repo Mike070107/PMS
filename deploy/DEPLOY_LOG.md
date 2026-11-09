@@ -6904,3 +6904,11 @@
 - 自上次（b3be3a01）以来上线的相关提交：
   - 05aebeab fix(staff): correct warehouse and work order flows
 
+## 2026-11-09 23:36 · web · 4ce953ba
+
+- 包：`pms-web-20261109-233446.tar.gz`
+- 提交：4ce953ba feat(statistics-api): P2-A 收费汇总类只读报表接口（收费汇总/实收明细/日常日报表/月报表）
+- 自上次（9fdfd19b）以来上线的相关提交：
+  - d5e5e0ea feat(statistics-ui): 统计汇总改版——编号独立列、表头/数值对齐、表格线、筛选悬浮收纳；菜单合并「统计分析」
+  - 05aebeab fix(staff): correct warehouse and work order flows
+
