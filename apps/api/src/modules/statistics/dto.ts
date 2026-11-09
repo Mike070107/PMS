@@ -504,3 +504,77 @@ export class MonthlyReportQueryDto {
   @Matches(CODE_RE, { each: true, message: 'natures 不合法' })
   natures?: string[];
 }
+/** P3-A 房产汇总。 */
+export class PropertySummaryQueryDto {
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(OFFICE_CODE_RE, { each: true, message: 'officeCodes 必须是两位管理处代码' })
+  officeCodes?: string[];
+}
+
+/** P3-A 住户台账。 */
+export class OwnerLedgerQueryDto {
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(OFFICE_CODE_RE, { each: true, message: 'officeCodes 必须是两位管理处代码' })
+  officeCodes?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(CODE_RE, { each: true, message: 'natures 不合法' })
+  natures?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value == null ? undefined : String(value).trim()))
+  @IsString()
+  @MaxLength(50, { message: 'keyword 不能超过 50 个字符' })
+  keyword?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'limit 必须是整数' })
+  @Min(1)
+  @Max(COLLECTION_MAX_DETAIL_LIMIT, { message: `limit 不能超过 ${COLLECTION_MAX_DETAIL_LIMIT}` })
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'offset 必须是整数' })
+  @Min(0)
+  offset?: number;
+}
+
+/** P3-A 楼房台账。 */
+export class BuildingLedgerQueryDto {
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(OFFICE_CODE_RE, { each: true, message: 'officeCodes 必须是两位管理处代码' })
+  officeCodes?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value == null ? undefined : String(value).trim()))
+  @IsString()
+  @MaxLength(50, { message: 'keyword 不能超过 50 个字符' })
+  keyword?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'limit 必须是整数' })
+  @Min(1)
+  @Max(COLLECTION_MAX_DETAIL_LIMIT, { message: `limit 不能超过 ${COLLECTION_MAX_DETAIL_LIMIT}` })
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'offset 必须是整数' })
+  @Min(0)
+  offset?: number;
+}

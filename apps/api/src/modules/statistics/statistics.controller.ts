@@ -6,6 +6,7 @@ import { CurrentAccess } from '../access/current-access.decorator';
 import { PermissionsGuard } from '../access/permissions.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AnalysisStatisticsService } from './analysis.service';
+import { LedgerStatisticsService } from './ledger.service';
 import { ArrearsStatisticsService } from './arrears.service';
 import { CollectionStatisticsService } from './collection.service';
 import {
@@ -21,6 +22,9 @@ import {
   CollectionMonthlyQueryDto,
   CollectionSummaryQueryDto,
   MonthlyReportQueryDto,
+  BuildingLedgerQueryDto,
+  OwnerLedgerQueryDto,
+  PropertySummaryQueryDto,
   StatisticsAnnualDetailQueryDto,
   StatisticsAnnualQueryDto,
   StatisticsBillsQueryDto,
@@ -36,6 +40,7 @@ export class StatisticsController {
     private readonly collectionService: CollectionStatisticsService,
     private readonly arrearsService: ArrearsStatisticsService,
     private readonly analysisService: AnalysisStatisticsService,
+    private readonly ledgerService: LedgerStatisticsService,
   ) {}
 
   @Get('options')
@@ -179,6 +184,37 @@ export class StatisticsController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.analysisService.monthlyReport(query, user, access);
+  }
+
+  /** P3-A 基础台账：房产汇总 / 住户台账 / 楼房台账。 */
+  @Get('property-summary')
+  @RequirePermission('business', 'view')
+  propertySummary(
+    @Query() query: PropertySummaryQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.ledgerService.propertySummary(query, user, access);
+  }
+
+  @Get('owner-ledger')
+  @RequirePermission('business', 'view')
+  ownerLedger(
+    @Query() query: OwnerLedgerQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.ledgerService.ownerLedger(query, user, access);
+  }
+
+  @Get('building-ledger')
+  @RequirePermission('business', 'view')
+  buildingLedger(
+    @Query() query: BuildingLedgerQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.ledgerService.buildingLedger(query, user, access);
   }
 
   @Get('daily')
