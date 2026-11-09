@@ -1,4 +1,4 @@
-param(
+﻿param(
     [ValidateSet('auto', 'api', 'web', 'assistant')]
     [string] $Target = 'auto',
     [switch] $NoFetch
