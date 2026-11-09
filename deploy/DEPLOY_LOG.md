@@ -6834,3 +6834,10 @@
 - 自上次（fe4340bc）以来上线的相关提交：
   - a1e933e9 fix(stock): 流水接口500（offices→management_offices）、库位CRUD、按货架聚合、排序与Excel导出
 
+## 2026-11-09 15:50 · api · d1dad125
+
+- 包：`pms-api-fast-20261109-154918.tar.gz`
+- 提交：d1dad125 feat(access): 捷顺发卡历史与最近30笔查询、单卡状态聚合、写入Access与多楼栋授权（独立失败）
+- 自上次（a1e933e9）以来上线的相关提交：
+  - d1dad125 feat(access): 捷顺发卡历史与最近30笔查询、单卡状态聚合、写入Access与多楼栋授权（独立失败）
+
