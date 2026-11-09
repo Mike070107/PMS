@@ -32,14 +32,15 @@ ALTER TABLE mis_sync_state ADD COLUMN IF NOT EXISTS consecutive_failures int NOT
 ALTER TABLE mis_sync_state ADD COLUMN IF NOT EXISTS last_failure_at timestamptz;
 ```
 
-## 二、线上版本（2026-11-09 22:11）
+## 二、线上版本（2026-11-09 22:50）
 
 ```
-Web = 2.0.20261109-2211
-API = api-bcf058a（db up）
+Web = 2.0.20261109-2249
+API = api-55e7e96（db up）
 ```
 
 > 22:11 上线：P0-4 最近30笔不再 pending、P0-5 门禁页助手状态按真实网关+能力分项显示（详见「待办」P0 4/5）。
+> 22:50 上线：统计汇总 P1（`/statistics`：项目实收/欠费年度汇总 + 三级下钻 + 勾选筛选 + CSV），口径见 `docs/statistics-reports-spec.md`。
 
 ## 三、已完成并上线（不要重复做）
 
@@ -72,7 +73,9 @@ API = api-bcf058a（db up）
 
 > 用户 2026-11-09 夜提出：旧「一通软件」的统计汇总菜单（约 30 张报表）要复刻，数字必须可向下穿透明细，筛选按管理处/收费项目/房屋性质勾选多选。
 > 口径与数据盘点见 **`docs/statistics-reports-spec.md`**（已核对：项目欠费年度汇总 02 管理处合计 ¥745,182.10、2026 年度 ¥726,881.20、明细 宝秀路719号719 201410-201412 ¥477.90 与旧系统截图逐格一致）。
-> 计划：P1 先做「统计汇总」页面 + 项目实收年度汇总 / 项目欠费年度汇总 + 三级下钻 + 勾选筛选 + 导出；P2 收费汇总/月报/日报/收款分析等；P4 补镜像（票据、减免/签报、能耗抄表、空置状态）后做对应报表并对齐一期历史欠费差异（差 ¥232,344.20 疑为核销/减免未镜像）。
+> **P1 已上线（22:50）**：`/statistics` 菜单「统计汇总」，后端 `apps/api/src/modules/statistics/`，前端 `apps/neighbor-web/src/pages/Statistics.tsx`；生产接口实测数字全部对上（见 spec §6）。
+> **待用户用 MIS 截图对齐的差异**：01 管理处 2007–2018 欠费，PMS 比旧系统多 ¥232,344.20，已定位 4 套房（永德路199-201号199-201 王立 ¥166,417.20；永德路203号203 刘二珠 ¥32,642.00；永德路187号187 陈僮潼、陈明加 ¥23,180.00；永德路157-159号157-159、永德路191号191「开发商」商铺 ¥10,105.00），疑为核销/减免/空置口径，待确认后补镜像（票据、签报/减免、能耗抄表、空置状态）做 P2–P4 报表。
+> 计划：P1 已做「统计汇总」页面 + 项目实收年度汇总 / 项目欠费年度汇总 + 三级下钻 + 勾选筛选 + 导出；P2 收费汇总/月报/日报/收款分析等。
 
 
 6. **MIS 镜像 Phase 3**：断线收款 + 核销（`pms_mis_receipts`、差异清单 `pms_mis_collection_differences`、页面放「账单与待缴 → 收款差异」页签）。设计稿 `docs/mis-mirror-design.md`。
@@ -110,6 +113,9 @@ API = api-bcf058a（db up）
 | 门禁后端 | `apps/api/src/modules/access-card-issuance/`（`legacy-card-history.util.ts`） |
 | 库存后端 | `apps/api/src/modules/inventory/` |
 | 权限注册表 | `apps/api/src/common/pages.ts` + `packages/shared-types/src/pages.ts` + `apps/neighbor-web/src/lib/page-access.ts` |
+| 统计汇总后端 | `apps/api/src/modules/statistics/`（options/annual/annual-detail/annual-detail-bills） |
+| 统计汇总前端 | `apps/neighbor-web/src/pages/Statistics.tsx`、`components/statistics/`、`lib/statistics.ts`、`styles/statistics.css` |
+| 统计口径文档 | `docs/statistics-reports-spec.md`（含旧菜单报表清单、数据缺口、对账证据） |
 
 ## 六、恢复 MIS 镜像 / 指标的操作
 
