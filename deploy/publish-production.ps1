@@ -68,7 +68,7 @@ function Make-WebPackage([string] $stamp) {
     $env:VITE_APP_VERSION = "2.0.$(Get-Date -Format 'yyyyMMdd-HHmm')"
     # 构建输出不经过 Run 的管道：Windows PowerShell 5.1 在 ErrorActionPreference=Stop 下
     # 会把管道中 pnpm/node 的 stderr 转成 ErrorRecord，导致 vite/esbuild 警告误判为失败。
-    & pnpm --filter '@pms/neighbor-web' build
+    & pnpm --filter '@pms/neighbor-web' build | Out-Host
     if ($LASTEXITCODE -ne 0) { Die '构建正式新版管理后台失败' }
     Run '记录 Web 制品身份' { node deploy/release-check.mjs stamp web $SourceCommit }
     $dist = Join-Path $RepoRoot 'apps\neighbor-web\dist'
