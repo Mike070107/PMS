@@ -104,6 +104,9 @@ async function seed(pg: PGlite) {
   for (const [code, name, category] of FEE_ITEMS) {
     await pg.query(`INSERT INTO mis_mirror_fee_item(fee_code,fee_name,category) VALUES($1,$2,$3)`, [code, name, category]);
   }
+  for (const [methodId, methodName] of [[1, '现金'], [2, '微信'], [3, '支付宝'], [4, '转账']]) {
+    await pg.query(`INSERT INTO mis_mirror_payment_method(method_id,method_name) VALUES($1,$2)`, [methodId, methodName]);
+  }
   for (const [sId, nature, area] of ROOMS) {
     await pg.query(
       `INSERT INTO mis_mirror_room(s_id,room_no,nature,area_sqm) VALUES($1,$2,$3,$4)`,
@@ -288,6 +291,9 @@ test('options：管理处/收费项目/FWXZK 字典/年度范围/镜像水位', 
       officeCode: '05', name: '馨香北桥-二期', communityId: null, communityName: null,
     });
     assert.equal(result.feeItems.length, 16);
+    assert.deepEqual(result.paymentMethods, [
+      { id: 1, name: '现金' }, { id: 2, name: '微信' }, { id: 3, name: '支付宝' }, { id: 4, name: '转账' },
+    ]);
     assert.deepEqual(result.feeItems.map((item: any) => item.code), FEE_ITEM_ORDER);
     assert.deepEqual(result.feeItems[0], { code: '12', name: '水费', category: '代收费' });
     // category 为空归「其它」，排序在代收费之后。
@@ -969,6 +975,7 @@ test('镜像未同步时明确的空数组+message，不伪造 0', async () => {
     assert.equal(options.available, false);
     assert.equal(options.dataAsOf, null);
     assert.deepEqual(options.feeItems, []);
+    assert.deepEqual(options.paymentMethods, []);
     // 房屋性质字典是 FWXZK 常量，与镜像是否有数据无关。
     assert.deepEqual(options.natures, STATISTICS_NATURE_OPTIONS);
     assert.deepEqual(options.yearRange, { min: null, max: null });

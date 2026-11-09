@@ -48,6 +48,10 @@ const OPTIONS = {
   offices: OFFICES,
   feeItems: FEE_ITEMS,
   natures: NATURES,
+  paymentMethods: [
+    { id: '现金', name: '现金' }, { id: '微信', name: '微信' }, { id: '支付宝', name: '支付宝' },
+    { id: '银行', name: '银行' }, { id: '转账', name: '转账' },
+  ],
   yearRange: { min: 2004, max: 2027 },
   dataAsOf: '2026-11-09T21:00:00+08:00',
   sourceMode: 'mirror',
@@ -119,6 +123,111 @@ function annualResponse(type: string, officeCodes: string[], yearFrom: number, y
   return { type, columns, rows, subtotal, dataAsOf: OPTIONS.dataAsOf, available: true, message: null };
 }
 
+// P2 收费汇总：行=收费项目、列=房屋性质净额；行尾收款/退款/调整/净额。
+// 夹具数值自洽：net = received - refund + adjust，同时等于各 nature 单元格之和。
+const FEE_NATURE_ROWS = [
+  { feeCode: '01', feeName: '管理费', cells: { '01': 11915220 }, receivedCents: 11915220, refundCents: 0, adjustCents: 0, netCents: 11915220 },
+  { feeCode: '04', feeName: '泊位费', cells: { '01': -60000, '06': 3090000 }, receivedCents: 3105000, refundCents: 15000, adjustCents: -60000, netCents: 3030000 },
+  { feeCode: '14', feeName: '停车管理费', cells: { '06': 324000 }, receivedCents: 324000, refundCents: 0, adjustCents: 0, netCents: 324000 },
+  { feeCode: '16', feeName: '置业泊位费', cells: { '06': 30000 }, receivedCents: 30000, refundCents: 0, adjustCents: 0, netCents: 30000 },
+];
+
+function feeNatureResponse(query: any) {
+  const feeCodes = String(query?.feeCodes ?? '').split(',').filter(Boolean);
+  const selected = feeCodes.length ? FEE_NATURE_ROWS.filter((row) => feeCodes.includes(row.feeCode)) : FEE_NATURE_ROWS;
+  const cellsOf = (row: { cells: Record<string, number> }) => {
+    const cells: Record<string, number> = {};
+    for (const nature of NATURES) cells[nature.code] = row.cells[nature.code] ?? 0;
+    return cells;
+  };
+  const rows = selected.map((row) => ({ ...row, cells: cellsOf(row) }));
+  const subtotal = {
+    feeCode: '', feeName: '总计',
+    cells: Object.fromEntries(NATURES.map((nature) => [nature.code, rows.reduce((sum, row) => sum + row.cells[nature.code], 0)])),
+    receivedCents: rows.reduce((sum, row) => sum + row.receivedCents, 0),
+    refundCents: rows.reduce((sum, row) => sum + row.refundCents, 0),
+    adjustCents: rows.reduce((sum, row) => sum + row.adjustCents, 0),
+    netCents: rows.reduce((sum, row) => sum + row.netCents, 0),
+  };
+  return {
+    columns: NATURES, natures: NATURES, rows, subtotal,
+    dataAsOf: OPTIONS.dataAsOf, available: true, message: null,
+  };
+}
+
+// P2 收款日报表：单元格=当日收款；没有收款的日期不返回 0 行。
+// 日期跟随当前自然月，默认筛选（本月 1 日~今天）正好覆盖夹具数据。
+const NOW = new Date();
+const DAY = (day: number) => `${NOW.getFullYear()}-${String(NOW.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+const COLLECTION_DETAIL_ROWS = [
+  { rowKind: 'received', feeCode: '01', feeName: '管理费', natureCode: '01', natureName: '商品房', address: '宝秀路719号101室', ownerName: '合成业主1', period: `${NOW.getFullYear()}${String(NOW.getMonth() + 1).padStart(2, '0')}`, amountCents: 8000000, paidDate: DAY(1), refundDate: null, paymentMethod: '微信', cashier: '合成收费员' },
+  { rowKind: 'received', feeCode: '01', feeName: '管理费', natureCode: '01', natureName: '商品房', address: '宝秀路720号102室', ownerName: '合成业主2', period: `${NOW.getFullYear()}${String(NOW.getMonth() + 1).padStart(2, '0')}`, amountCents: 3915220, paidDate: DAY(3), refundDate: null, paymentMethod: '现金', cashier: '合成收费员' },
+  { rowKind: 'adjust', feeCode: '04', feeName: '泊位费', natureCode: '01', natureName: '商品房', address: '宝秀路721号103室', ownerName: '合成业主3', period: `${NOW.getFullYear()}${String(NOW.getMonth() + 1).padStart(2, '0')}`, amountCents: -60000, paidDate: DAY(5), refundDate: null, paymentMethod: '现金', cashier: '合成收费员' },
+  { rowKind: 'received', feeCode: '04', feeName: '泊位费', natureCode: '06', natureName: '空房', address: '宝秀路722号104室', ownerName: '合成业主4', period: `${NOW.getFullYear()}${String(NOW.getMonth() + 1).padStart(2, '0')}`, amountCents: 3105000, paidDate: DAY(9), refundDate: null, paymentMethod: '微信', cashier: '合成收费员' },
+  { rowKind: 'refund', feeCode: '04', feeName: '泊位费', natureCode: '06', natureName: '空房', address: '宝秀路722号104室', ownerName: '合成业主4', period: `${NOW.getFullYear()}${String(NOW.getMonth() + 1).padStart(2, '0')}`, amountCents: 15000, paidDate: null, refundDate: DAY(8), paymentMethod: '微信', cashier: '合成收费员' },
+  { rowKind: 'received', feeCode: '14', feeName: '停车管理费', natureCode: '06', natureName: '空房', address: '宝秀路730号112室', ownerName: '合成业主12', period: `${NOW.getFullYear()}${String(NOW.getMonth() + 1).padStart(2, '0')}`, amountCents: 324000, paidDate: DAY(14), refundDate: null, paymentMethod: '银行', cashier: '合成收费员' },
+  { rowKind: 'received', feeCode: '16', feeName: '置业泊位费', natureCode: '06', natureName: '空房', address: '宝秀路741号123室', ownerName: '合成业主23', period: `${NOW.getFullYear()}${String(NOW.getMonth() + 1).padStart(2, '0')}`, amountCents: 30000, paidDate: DAY(20), refundDate: null, paymentMethod: '微信', cashier: '合成收费员' },
+];
+
+function collectionDetailResponse(query: any) {
+  const feeCodes = String(query?.feeCodes ?? '').split(',').filter(Boolean);
+  const natures = String(query?.natures ?? '').split(',').filter(Boolean);
+  const kind = String(query?.kind ?? 'all');
+  const dateFrom = query?.dateFrom ? String(query.dateFrom) : '';
+  const dateTo = query?.dateTo ? String(query.dateTo) : '';
+  const inRange = (value: string | null) => {
+    if (!value) return false;
+    if (dateFrom && value < dateFrom) return false;
+    if (dateTo && value > dateTo) return false;
+    return true;
+  };
+  const rows = COLLECTION_DETAIL_ROWS.filter((row) => {
+    if (feeCodes.length && !feeCodes.includes(row.feeCode)) return false;
+    if (natures.length && !natures.includes(row.natureCode)) return false;
+    if (kind !== 'all' && row.rowKind !== kind) return false;
+    if (kind === 'refund') return inRange(row.refundDate);
+    if (kind === 'all' && row.rowKind === 'refund') return inRange(row.refundDate);
+    return inRange(row.paidDate);
+  });
+  const totalCents = rows.reduce((sum, row) => {
+    if (row.rowKind === 'refund') return sum - row.amountCents;
+    return sum + row.amountCents;
+  }, 0);
+  const offset = Number(query?.offset ?? 0);
+  const limit = Number(query?.limit ?? 200);
+  return {
+    rows: rows.slice(offset, offset + limit), totalCents, count: rows.length,
+    available: true, message: null,
+  };
+}
+
+function dailyResponse(query: any) {
+  const feeCodes = String(query?.feeCodes ?? '').split(',').filter(Boolean);
+  const columns = FEE_ITEMS.filter((fee) => !feeCodes.length || feeCodes.includes(fee.code))
+    .filter((fee) => ['01', '04', '14', '16'].includes(fee.code))
+    .map((fee) => ({ code: fee.code, name: fee.name }));
+  const received = COLLECTION_DETAIL_ROWS.filter((row) => row.rowKind === 'received' && row.paidDate);
+  const dates = [...new Set(received.map((row) => String(row.paidDate)))].sort();
+  const rows = dates.map((date) => {
+    const cells: Record<string, number> = {};
+    for (const column of columns) {
+      cells[column.code] = received
+        .filter((row) => row.paidDate === date && row.feeCode === column.code)
+        .reduce((sum, row) => sum + row.amountCents, 0);
+    }
+    return { date, cells, totalCents: columns.reduce((sum, column) => sum + cells[column.code], 0) };
+  });
+  const subtotalCells = Object.fromEntries(columns.map((column) => [
+    column.code, rows.reduce((sum, row) => sum + Number(row.cells[column.code] ?? 0), 0),
+  ]));
+  return {
+    columns, rows,
+    subtotal: { cells: subtotalCells, totalCents: rows.reduce((sum, row) => sum + row.totalCents, 0) },
+    refundTotalCents: 15000, adjustTotalCents: -60000,
+    dataAsOf: OPTIONS.dataAsOf, available: true, message: null,
+  };
+}
+
 export async function request<T>(options: any): Promise<T> {
   w.__calls.push({ url: options.url, method: options.method ?? 'GET', query: options.query ?? null, at: Date.now() });
   await pause(20);
@@ -184,6 +293,18 @@ export async function request<T>(options: any): Promise<T> {
       paidDate: null, refundDate: null, paymentMethod: null, cashier: null,
     }));
     return { rows, totalCents: 47790 } as T;
+  }
+
+  if (options.url === '/statistics/collection/fee-nature') {
+    return feeNatureResponse(options.query) as T;
+  }
+
+  if (options.url === '/statistics/collection/detail') {
+    return collectionDetailResponse(options.query) as T;
+  }
+
+  if (options.url === '/statistics/daily') {
+    return dailyResponse(options.query) as T;
   }
 
   throw Error('Unhandled synthetic request ' + String(options.url));

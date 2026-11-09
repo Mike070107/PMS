@@ -9,6 +9,7 @@ import { CollectionStatisticsService } from './collection.service';
 import {
   CollectionDailyQueryDto,
   CollectionDetailQueryDto,
+  CollectionFeeNatureQueryDto,
   CollectionMonthlyQueryDto,
   CollectionSummaryQueryDto,
   StatisticsAnnualDetailQueryDto,
@@ -74,6 +75,16 @@ export class StatisticsController {
   }
 
   /** P2-A 实收明细：逐笔账单，合计 = 实收 - 退款。 */
+  @Get('collection/fee-nature')
+  @RequirePermission('business', 'view')
+  collectionFeeNature(
+    @Query() query: CollectionFeeNatureQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.collectionService.collectionFeeNature(query, user, access);
+  }
+
   @Get('collection/detail')
   @RequirePermission('business', 'view')
   collectionDetail(

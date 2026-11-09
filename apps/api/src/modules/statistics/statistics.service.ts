@@ -53,9 +53,10 @@ export class StatisticsService {
   /** GET /statistics/options：管理处、收费项目、房屋性质、年度范围、镜像水位。 */
   async options(user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
-    const [communities, feeItems, yearRange, state] = await Promise.all([
+    const [communities, feeItems, paymentMethods, yearRange, state] = await Promise.all([
       this.loadCommunities(tenantId),
       this.loadFeeItems(),
+      this.loadPaymentMethods(),
       this.loadYearRange(),
       this.mirrorState(tenantId),
     ]);
@@ -69,6 +70,7 @@ export class StatisticsService {
     return {
       offices,
       feeItems,
+      paymentMethods,
       natures: STATISTICS_NATURE_OPTIONS,
       yearRange,
       dataAsOf: state.dataAsOf,
@@ -331,6 +333,14 @@ export class StatisticsService {
       name: String(row.name ?? ''),
       category: normalizeStatisticsFeeCategory(row.category == null ? null : String(row.category)),
     })));
+  }
+
+  /** 收款方式字典（镜像 mis_mirror_payment_method）；镜像为空返回 []。 */
+  private async loadPaymentMethods(): Promise<Array<{ id: number; name: string }>> {
+    const rows: any[] = await this.dataSource
+      .query('SELECT method_id AS "id", method_name AS "name" FROM mis_mirror_payment_method ORDER BY method_id')
+      .catch(() => []);
+    return rows.map((row) => ({ id: Number(row.id), name: String(row.name ?? '') }));
   }
 
   private async loadYearRange(): Promise<{ min: number | null; max: number | null }> {

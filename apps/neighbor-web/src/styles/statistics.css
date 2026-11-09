@@ -564,6 +564,35 @@
 
 /* 实收逐笔清单：只读、列多，横向滚动；缺镜像列显示「—」 */
 .stats-received-hint { margin-bottom: 10px; font-size: 12.5px; }
+/* P2：收费汇总 / 收款日报表矩阵 */
+.stats-matrix-scroll { max-height: 62vh; overflow: auto; }
+.stats-fee-nature-table, .stats-daily-table { min-width: 1680px; }
+.stats-fee-nature-table th.num, .stats-daily-table th.num,
+.stats-fee-nature-table td.num, .stats-daily-table td.num { text-align: right; white-space: nowrap; }
+.stats-fee-nature-table .stats-sticky-name, .stats-daily-table .stats-sticky-name {
+  position: sticky; left: 0; z-index: 2; background: #fff; min-width: 150px; max-width: 220px;
+  box-shadow: 1px 0 0 var(--line);
+}
+.stats-fee-nature-table thead .stats-sticky-name, .stats-daily-table thead .stats-sticky-name { z-index: 3; background: var(--bg2, #f7f9fc); }
+.stats-fee-nature-table tbody tr:hover td, .stats-daily-table tbody tr:hover td { background: #f7f9fc; }
+.stats-p2-total-col { background: #f8fafd; }
+.stats-p2-net-col { background: #eef4fb; }
+.stats-fee-nature-table .stats-subtotal-row td, .stats-daily-table .stats-subtotal-row td { background: #eef4fb; font-weight: 600; }
+.stats-money-btn {
+  background: none; border: 0; padding: 2px 4px; cursor: pointer; color: inherit; font: inherit;
+  border-radius: 4px; text-decoration: underline dotted rgba(37, 99, 235, .45); text-underline-offset: 3px;
+}
+.stats-money-btn:hover { color: var(--acc, #2563eb); background: rgba(37, 99, 235, .07); }
+.stats-extra-fields { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.stats-extra-fields > label { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; color: var(--ink3); }
+.stats-year-range { display: flex; align-items: center; gap: 6px; }
+.stats-year-range .in { flex: 1; min-width: 0; }
+.stats-collection-detail-table { min-width: 1120px; }
+.stats-collection-detail-table th, .stats-collection-detail-table td { white-space: nowrap; }
+.stats-collection-detail-table td.num { text-align: right; }
+.stats-detail-tools { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.stats-detail-scroll { max-height: 56vh; overflow: auto; }
+.stats-load-more { padding: 12px 0 2px; text-align: center; }
 
 .stats-received-table { min-width: 980px; }
 

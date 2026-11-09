@@ -1,10 +1,12 @@
 import { Transform, Type } from 'class-transformer';
-import { IsArray, IsIn, IsInt, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
+import { IsArray, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import {
+  COLLECTION_DETAIL_KINDS,
   COLLECTION_GROUP_BYS,
   COLLECTION_MAX_DETAIL_LIMIT,
   COLLECTION_YEAR_MAX,
   COLLECTION_YEAR_MIN,
+  type CollectionDetailKind,
   type CollectionGroupBy,
 } from './collection.util';
 import { STATISTICS_TYPES, type StatisticsType } from './statistics.util';
@@ -153,11 +155,41 @@ export class CollectionFiltersQueryDto {
   @Matches(CODE_RE, { each: true, message: 'natures 不合法' })
   natures?: string[];
 
-  /** 收款截止日期：报表事件日期（收款日/退款日）<= paidDateTo。 */
+  /** 收款截止日期（P2-A 月报表旧口径沿用；P2-B 新报表用 dateFrom/dateTo 区间）。 */
   @IsOptional()
   @Transform(({ value }) => (value === '' || value == null ? undefined : value))
   @Matches(DATE_RE, { message: 'paidDateTo 必须是 YYYY-MM-DD' })
   paidDateTo?: string;
+
+  /** 收款方式名称多选（来自 options.paymentMethods 的 name）；空=全部。 */
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(50, { each: true, message: 'paymentMethods 名称过长' })
+  paymentMethods?: string[];
+
+  /** 收款人精确筛选（单选）；空=全部。 */
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value == null ? undefined : value))
+  @IsString()
+  @MaxLength(60)
+  cashier?: string;
+
+  /** 所属年度起止：substr(period,1,4) ∈ [yearFrom,yearTo]。 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'yearFrom 必须是四位年度' })
+  @Min(COLLECTION_YEAR_MIN)
+  @Max(COLLECTION_YEAR_MAX)
+  yearFrom?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'yearTo 必须是四位年度' })
+  @Min(COLLECTION_YEAR_MIN)
+  @Max(COLLECTION_YEAR_MAX)
+  yearTo?: number;
 }
 
 /** 收费汇总/实收明细/日常日报表的日期区间；dateFrom、dateTo 必填。 */
@@ -179,6 +211,11 @@ export class CollectionSummaryQueryDto extends CollectionDateRangeQueryDto {
 }
 
 export class CollectionDetailQueryDto extends CollectionDateRangeQueryDto {
+  /** 行类别：all=全部（收款/退款/调整），其余只看对应块；totals 随 kind 收敛。 */
+  @IsOptional()
+  @IsIn(COLLECTION_DETAIL_KINDS, { message: 'kind 必须是 all/received/refund/adjust' })
+  kind?: CollectionDetailKind;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt({ message: 'limit 必须是整数' })
@@ -192,6 +229,8 @@ export class CollectionDetailQueryDto extends CollectionDateRangeQueryDto {
   @Min(0)
   offset?: number;
 }
+
+export class CollectionFeeNatureQueryDto extends CollectionDateRangeQueryDto {}
 
 export class CollectionDailyQueryDto extends CollectionDateRangeQueryDto {}
 

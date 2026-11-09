@@ -5,25 +5,42 @@ import Icon from '@/components/Icon';
 import { Loading, toast } from '@/components/ui';
 import AnnualSummaryTable, { type AnnualCellTarget } from '@/components/statistics/AnnualSummaryTable';
 import HouseDetailSheet, { type DetailTarget } from '@/components/statistics/HouseDetailSheet';
+import FeeNatureTable, { type FeeNatureCellTarget } from '@/components/statistics/FeeNatureTable';
+import DailyTable, { type DailyCellTarget } from '@/components/statistics/DailyTable';
+import CollectionDetailSheet, { type CollectionDetailTarget } from '@/components/statistics/CollectionDetailSheet';
 import StatisticsFilters from '@/components/statistics/StatisticsFilters';
 import { dayjs } from '@/lib/format';
 import {
-  PENDING_REPORTS, REPORTS, annualCsv, annualQueryParams, downloadCsv, fmtCents, reportName,
-  type AnnualQuery, type AnnualSummaryResponse, type FilterDraft, type StatisticsOptions,
-  type StatisticsReportType,
+  PENDING_REPORTS, REPORTS,
+  annualCsv, annualQueryParams, collectionQueryParams, dailyCsv, dailyQueryParams, downloadCsv, feeNatureCsv, fmtCents, reportName,
+  type AnnualQuery, type AnnualReportType, type AnnualSummaryResponse, type CollectionQuery, type DailyQuery, type DailyResponse,
+  type FeeNatureResponse, type FilterDraft, type ReportQuery, type StatisticsOptions, type StatisticsReportType,
 } from '@/lib/statistics';
 import '@/styles/statistics.css';
 
 /**
- * 两张报表默认房屋性质不同（旧系统截图口径）：
+ * 各报表默认房屋性质（旧系统截图口径）：
  * - 实收年度汇总：包含 06 空房（13 项全选）；
- * - 欠费年度汇总：排除 06 空房（12 项），与旧系统截图 01=662,269.00 一致。
- * 房屋性质本身按「收费发生时点性质」（MIS WYZJ.FWXZ_DH）。
+ * - 欠费年度汇总：排除 06 空房（12 项），与旧系统截图 01=662,269.00 一致；
+ * - P2 收费汇总/日报表：13 项全选（列模板需要全部房屋性质）。
  */
 const DEFAULT_EXCLUDED_NATURE_BY_REPORT: Record<StatisticsReportType, Set<string>> = {
   received: new Set(),
   arrears: new Set(['06']),
+  'fee-nature': new Set(),
+  daily: new Set(),
 };
+
+/** P2 报表日期区间必填，默认本月 1 日~今天；P1 报表保留原行为（日期可选）。 */
+function isDateRequired(type: StatisticsReportType): boolean {
+  return type === 'fee-nature' || type === 'daily';
+}
+
+function defaultDateRange(type: StatisticsReportType): { from: string; to: string } {
+  if (!isDateRequired(type)) return { from: '', to: '' };
+  const today = dayjs();
+  return { from: `${today.year()}-${String(today.month() + 1).padStart(2, '0')}-01`, to: today.format('YYYY-MM-DD') };
+}
 
 /** 筛选悬浮面板收纳状态（用户要求记住上次状态；窄屏默认收起）。 */
 const FILTERS_COLLAPSED_KEY = 'statistics.filters.collapsed';
@@ -42,7 +59,7 @@ function rememberFiltersCollapsed(collapsed: boolean) {
   try { window.localStorage.setItem(FILTERS_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch { /* 忽略存储失败 */ }
 }
 
-/** 指定报表类型的默认房屋性质（实收含 06；欠费排除 06）。 */
+/** 指定报表类型的默认房屋性质（实收含 06；欠费排除 06；P2 全选）。 */
 function defaultNatures(options: StatisticsOptions, reportType: StatisticsReportType): string[] {
   const excluded = DEFAULT_EXCLUDED_NATURE_BY_REPORT[reportType];
   return options.natures.map((nature) => nature.code).filter((code) => !excluded.has(code));
@@ -55,16 +72,63 @@ function sameNatureSelection(left: string[], right: string[]): boolean {
   return left.every((code) => expected.has(code));
 }
 
-/** 筛选草稿的默认值：管理处/收费项目全选；房屋性质按报表类型默认；应收到当年 12 月，收款日期范围留空。 */
+/** 筛选草稿的默认值：管理处/收费项目全选；房屋性质按报表类型默认；P2 日期默认本月。 */
 function defaultDraft(options: StatisticsOptions, reportType: StatisticsReportType): FilterDraft {
+  const range = defaultDateRange(reportType);
   return {
     officeCodes: options.offices.map((office) => office.officeCode),
     feeCodes: options.feeItems.map((fee) => fee.code),
     natures: defaultNatures(options, reportType),
-    paidDateFrom: '',
-    paidDateTo: '',
+    paidDateFrom: range.from,
+    paidDateTo: range.to,
     asOfPeriod: `${dayjs().year()}12`,
+    paymentMethods: (options.paymentMethods ?? []).map((method) => method.id),
+    cashier: '',
+    subjectYearFrom: '',
+    subjectYearTo: '',
   };
+}
+
+/** 由草稿 + 当前报表生成请求快照（类型收窄放这里，页面渲染只读快照）。 */
+function buildQuery(type: StatisticsReportType, draft: FilterDraft, options: StatisticsOptions): ReportQuery {
+  if (type === 'received' || type === 'arrears') {
+    const annual: AnnualQuery = {
+      type: type as AnnualReportType,
+      officeCodes: draft.officeCodes,
+      feeCodes: draft.feeCodes,
+      natures: draft.natures,
+      yearFrom: options.yearRange.min,
+      yearTo: options.yearRange.max,
+      asOfPeriod: draft.asOfPeriod,
+      paidDateFrom: draft.paidDateFrom,
+      paidDateTo: draft.paidDateTo,
+    };
+    return annual;
+  }
+  if (type === 'fee-nature') {
+    const query: CollectionQuery = {
+      type: 'fee-nature',
+      officeCodes: draft.officeCodes,
+      feeCodes: draft.feeCodes,
+      natures: draft.natures,
+      paymentMethods: draft.paymentMethods,
+      cashier: draft.cashier.trim(),
+      dateFrom: draft.paidDateFrom,
+      dateTo: draft.paidDateTo,
+      subjectYearFrom: draft.subjectYearFrom,
+      subjectYearTo: draft.subjectYearTo,
+    };
+    return query;
+  }
+  const query: DailyQuery = {
+    type: 'daily',
+    officeCodes: draft.officeCodes,
+    feeCodes: draft.feeCodes,
+    natures: draft.natures,
+    dateFrom: draft.paidDateFrom,
+    dateTo: draft.paidDateTo,
+  };
+  return query;
 }
 
 function timeText(value?: string | null): string {
@@ -74,24 +138,35 @@ function timeText(value?: string | null): string {
 }
 
 /**
- * 统计汇总（P1）：旧「一通软件」统计菜单的前端复刻。
- * 左侧筛选勾选，主区年度汇总表（管理处固定列 / 年度横向滚动 / 合计高亮 / 小计），
- * 点金额单元格 → 房屋明细 → 逐笔账单三级下钻；导出当前筛选的 CSV（UTF-8 BOM）。
+ * 统计汇总（P1 + P2）：旧「一通软件」统计菜单的前端复刻。
+ * 左侧筛选勾选；已接入：实收/欠费年度汇总、收费汇总（费项×性质矩阵）、收款日报表（日期×费项矩阵）。
+ * 点金额单元格下钻逐笔明细；导出当前筛选的 CSV（UTF-8 BOM）。
  */
 export default function Statistics() {
   const [options, setOptions] = useState<StatisticsOptions | null>(null);
   const [optionsError, setOptionsError] = useState('');
   const [optionsRetry, setOptionsRetry] = useState(0);
-  const [draft, setDraft] = useState<FilterDraft>({ officeCodes: [], feeCodes: [], natures: [], paidDateFrom: '', paidDateTo: '', asOfPeriod: '' });
+  const [draft, setDraft] = useState<FilterDraft>({
+    officeCodes: [], feeCodes: [], natures: [], paidDateFrom: '', paidDateTo: '', asOfPeriod: '',
+    paymentMethods: [], cashier: '', subjectYearFrom: '', subjectYearTo: '',
+  });
   const [reportType, setReportType] = useState<StatisticsReportType>('received');
   const reportTypeRef = useRef<StatisticsReportType>('received');
-  const [applied, setApplied] = useState<AnnualQuery | null>(null);
+  const [applied, setApplied] = useState<ReportQuery | null>(null);
   const [annual, setAnnual] = useState<AnnualSummaryResponse | null>(null);
   const [annualLoading, setAnnualLoading] = useState(false);
   const [annualError, setAnnualError] = useState('');
-  const [annualRetry, setAnnualRetry] = useState(0);
+  const [collection, setCollection] = useState<FeeNatureResponse | null>(null);
+  const [collectionLoading, setCollectionLoading] = useState(false);
+  const [collectionError, setCollectionError] = useState('');
+  const [daily, setDaily] = useState<DailyResponse | null>(null);
+  const [dailyLoading, setDailyLoading] = useState(false);
+  const [dailyError, setDailyError] = useState('');
+  const [reportRetry, setReportRetry] = useState(0);
   const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [collectionTarget, setCollectionTarget] = useState<CollectionDetailTarget | null>(null);
+  const [collectionDetailOpen, setCollectionDetailOpen] = useState(false);
   const [filtersCollapsed, setFiltersCollapsed] = useState<boolean>(initialFiltersCollapsed);
 
   const toggleFilters = () => {
@@ -114,17 +189,7 @@ export default function Statistics() {
         setOptions(response);
         const nextDraft = defaultDraft(response, reportTypeRef.current);
         setDraft(nextDraft);
-        setApplied({
-          type: reportTypeRef.current,
-          officeCodes: nextDraft.officeCodes,
-          feeCodes: nextDraft.feeCodes,
-          natures: nextDraft.natures,
-          yearFrom: response.yearRange.min,
-          yearTo: response.yearRange.max,
-          asOfPeriod: nextDraft.asOfPeriod,
-          paidDateFrom: nextDraft.paidDateFrom,
-          paidDateTo: nextDraft.paidDateTo,
-        });
+        setApplied(buildQuery(reportTypeRef.current, nextDraft, response));
       })
       .catch((error) => {
         if (cancelled) return;
@@ -138,15 +203,33 @@ export default function Statistics() {
   useEffect(() => {
     if (!applied) return undefined;
     let cancelled = false;
-    setAnnualLoading(true); setAnnualError('');
-    request<AnnualSummaryResponse>({ url: '/statistics/annual', query: annualQueryParams(applied) })
-      .then((response) => { if (!cancelled) setAnnual(response); })
-      .catch((error) => { if (!cancelled) setAnnualError(error instanceof Error && error.message ? error.message : '统计数据读取失败'); })
-      .finally(() => { if (!cancelled) setAnnualLoading(false); });
+    if (applied.type === 'received' || applied.type === 'arrears') {
+      setAnnualLoading(true); setAnnualError('');
+      request<AnnualSummaryResponse>({ url: '/statistics/annual', query: annualQueryParams(applied) })
+        .then((response) => { if (!cancelled) setAnnual(response); })
+        .catch((error) => { if (!cancelled) setAnnualError(error instanceof Error && error.message ? error.message : '统计数据读取失败'); })
+        .finally(() => { if (!cancelled) setAnnualLoading(false); });
+    } else if (applied.type === 'fee-nature') {
+      setCollectionLoading(true); setCollectionError('');
+      request<FeeNatureResponse>({ url: '/statistics/collection/fee-nature', query: collectionQueryParams(applied) })
+        .then((response) => { if (!cancelled) setCollection(response); })
+        .catch((error) => { if (!cancelled) setCollectionError(error instanceof Error && error.message ? error.message : '收费汇总读取失败'); })
+        .finally(() => { if (!cancelled) setCollectionLoading(false); });
+    } else {
+      setDailyLoading(true); setDailyError('');
+      request<DailyResponse>({ url: '/statistics/daily', query: dailyQueryParams(applied as DailyQuery) })
+        .then((response) => { if (!cancelled) setDaily(response); })
+        .catch((error) => { if (!cancelled) setDailyError(error instanceof Error && error.message ? error.message : '收款日报表读取失败'); })
+        .finally(() => { if (!cancelled) setDailyLoading(false); });
+    }
     return () => { cancelled = true; };
-  }, [applied, annualRetry]);
+  }, [applied, reportRetry]);
 
-  const canSubmit = draft.officeCodes.length > 0 && draft.feeCodes.length > 0 && draft.natures.length > 0;
+  const datesFilled = !!draft.paidDateFrom && !!draft.paidDateTo;
+  const canSubmit = !!options
+    && draft.officeCodes.length > 0 && draft.feeCodes.length > 0 && draft.natures.length > 0
+    && (!isDateRequired(reportType) || datesFilled)
+    && (reportType !== 'fee-nature' || draft.paymentMethods.length > 0);
 
   const resetDraft = () => {
     if (!options) return;
@@ -155,78 +238,143 @@ export default function Statistics() {
 
   const submit = () => {
     if (!options || !canSubmit) return;
-    // 收款日期范围校验：只允许「从 ≤ 至」；不合法时提示且不发请求。
+    if (isDateRequired(reportType) && !datesFilled) { toast('请填写收款日期范围'); return; }
     if (draft.paidDateFrom && draft.paidDateTo && draft.paidDateFrom > draft.paidDateTo) {
       toast('收款日期起不能晚于收款日期至');
       return;
     }
+    if (draft.subjectYearFrom && draft.subjectYearTo && Number(draft.subjectYearFrom) > Number(draft.subjectYearTo)) {
+      toast('所属年度起不能晚于所属年度止');
+      return;
+    }
     setDetailOpen(false);
     setDetailTarget(null);
-    setApplied({
-      type: reportType,
-      officeCodes: draft.officeCodes,
-      feeCodes: draft.feeCodes,
-      natures: draft.natures,
-      yearFrom: options.yearRange.min,
-      yearTo: options.yearRange.max,
-      asOfPeriod: draft.asOfPeriod,
-      paidDateFrom: draft.paidDateFrom,
-      paidDateTo: draft.paidDateTo,
-    });
+    setCollectionDetailOpen(false);
+    setCollectionTarget(null);
+    setApplied(buildQuery(reportType, draft, options));
   };
 
   const switchReport = (type: StatisticsReportType) => {
     setDetailOpen(false);
     setDetailTarget(null);
+    setCollectionDetailOpen(false);
+    setCollectionTarget(null);
     if (!options) {
       setReportType(type);
-      setApplied((previous) => (previous ? { ...previous, type } : previous));
       return;
     }
     // 只有当前房屋性质仍等于「切换前报表的默认值」时才自动换成新报表默认；
-    // 用户手动改过就保留（两张报表默认差在 06 空房）。
+    // 用户手动改过就保留（实收/欠费默认差在 06 空房，P2 为 13 项全选）。
     const followsPreviousDefault = sameNatureSelection(draft.natures, defaultNatures(options, reportType));
-    const nextNatures = followsPreviousDefault ? defaultNatures(options, type) : draft.natures;
+    const nextDraft: FilterDraft = { ...draft, natures: followsPreviousDefault ? defaultNatures(options, type) : draft.natures };
+    // P2 报表日期必填：从其它报表切过来时用默认本月，避免空日期导致不能统计。
+    if (isDateRequired(type) && (!nextDraft.paidDateFrom || !nextDraft.paidDateTo)) {
+      const range = defaultDateRange(type);
+      nextDraft.paidDateFrom = range.from;
+      nextDraft.paidDateTo = range.to;
+    }
+    if (type === 'fee-nature' && !nextDraft.paymentMethods.length) {
+      nextDraft.paymentMethods = (options.paymentMethods ?? []).map((method) => method.id);
+    }
     setReportType(type);
-    if (followsPreviousDefault) setDraft((previous) => ({ ...previous, natures: nextNatures }));
-    setApplied((previous) => (previous ? { ...previous, type, natures: nextNatures } : previous));
+    setDraft(nextDraft);
+    setApplied(buildQuery(type, nextDraft, options));
   };
 
   const openCell = (target: AnnualCellTarget) => {
-    if (!applied) return;
     setDetailTarget(target);
     setDetailOpen(true);
   };
 
-  const exportCurrent = () => {
-    if (!annual || !applied) return;
-    const csv = annualCsv(annual, {
-      dataAsOf: annual.dataAsOf || options?.dataAsOf || null,
-      filters: applied,
-      offices: options?.offices,
-      feeItems: options?.feeItems,
-      natures: options?.natures,
+  const openFeeNatureCell = (target: FeeNatureCellTarget) => {
+    if (!applied || applied.type !== 'fee-nature') return;
+    setCollectionTarget({
+      feeCode: target.feeCode,
+      feeName: target.feeName,
+      natureCode: target.natureCode,
+      natureName: collection?.columns.find((column) => column.code === target.natureCode)?.name ?? target.natureCode,
+      kind: target.kind,
     });
-    const name = `统计汇总-${reportName(annual.type)}-${dayjs().format('YYYYMMDD')}.csv`;
-    if (downloadCsv(name, csv)) toast('已导出当前筛选结果 CSV');
+    setCollectionDetailOpen(true);
+  };
+
+  const openDailyCell = (target: DailyCellTarget) => {
+    if (!applied || applied.type !== 'daily') return;
+    setCollectionTarget({
+      feeCode: target.feeCode,
+      feeName: target.feeName,
+      date: target.date,
+      kind: 'received',
+    });
+    setCollectionDetailOpen(true);
+  };
+
+  const exportCurrent = () => {
+    if (!applied) return;
+    const stamp = dayjs().format('YYYYMMDD');
+    if (applied.type === 'received' || applied.type === 'arrears') {
+      if (!annual) return;
+      const csv = annualCsv(annual, {
+        dataAsOf: annual.dataAsOf || options?.dataAsOf || null,
+        filters: applied,
+        offices: options?.offices,
+        feeItems: options?.feeItems,
+        natures: options?.natures,
+      });
+      const name = `统计汇总-${reportName(annual.type)}-${stamp}.csv`;
+      if (downloadCsv(name, csv)) toast('已导出当前筛选结果 CSV');
+      else toast('导出失败，请重试');
+      return;
+    }
+    if (applied.type === 'fee-nature') {
+      if (!collection) return;
+      const name = `统计汇总-收费汇总-${stamp}.csv`;
+      if (downloadCsv(name, feeNatureCsv(collection, applied, options?.feeItems))) toast('已导出收费汇总 CSV');
+      else toast('导出失败，请重试');
+      return;
+    }
+    if (!daily) return;
+    const name = `统计汇总-收款日报表-${stamp}.csv`;
+    if (downloadCsv(name, dailyCsv(daily, applied as DailyQuery, options?.feeItems))) toast('已导出收款日报表 CSV');
     else toast('导出失败，请重试');
   };
 
-  const annualLabel = reportName(annual?.type ?? applied?.type ?? reportType);
-  const dataAsOf = timeText(annual?.dataAsOf || options?.dataAsOf);
+  const activeLabel = reportName(applied?.type ?? reportType);
+  const isLoading = applied?.type === 'fee-nature' ? collectionLoading : applied?.type === 'daily' ? dailyLoading : annualLoading;
+  const activeError = applied?.type === 'fee-nature' ? collectionError : applied?.type === 'daily' ? dailyError : annualError;
+  const activeDataAsOf = applied?.type === 'fee-nature'
+    ? collection?.dataAsOf
+    : applied?.type === 'daily'
+      ? daily?.dataAsOf
+      : annual?.dataAsOf;
+  const dataAsOf = timeText(activeDataAsOf || options?.dataAsOf);
   const sourceLabel = options?.sourceMode === 'mirror' ? 'MIS 镜像' : (options?.sourceMode || '');
+  const activeAvailable = applied?.type === 'fee-nature'
+    ? collection?.available
+    : applied?.type === 'daily'
+      ? daily?.available
+      : annual?.available;
+  const activeMessage = applied?.type === 'fee-nature'
+    ? collection?.message
+    : applied?.type === 'daily'
+      ? daily?.message
+      : annual?.message;
+
+  const dateRangeText = applied && 'dateFrom' in applied
+    ? [applied.dateFrom, applied.dateTo].filter(Boolean).join(' 至 ')
+    : '';
 
   return (
     <div className="stats">
       <div className="ph" style={{ marginBottom: 14 }}>
         <div>
           <div className="h1row"><ToneIcon kind="dashboard" /><h1 style={{ fontSize: 22 }}>统计汇总</h1></div>
-          <p>按管理处 / 收费项目 / 房屋性质勾选汇总；年度金额可逐级下钻到房屋与逐笔账单</p>
+          <p>按管理处 / 收费项目 / 房屋性质勾选汇总；年度与收款矩阵均可逐级下钻到逐笔明细</p>
         </div>
         <div className="act stats-head-actions">
           {dataAsOf ? <span className="tag mute">数据截止 {dataAsOf}</span> : null}
           {sourceLabel ? <span className="tag acc">{sourceLabel}</span> : null}
-          <button type="button" className="btn sm" disabled={!applied || annualLoading} onClick={() => setAnnualRetry((value) => value + 1)}>
+          <button type="button" className="btn sm" disabled={!applied || isLoading} onClick={() => setReportRetry((value) => value + 1)}>
             <Icon name="refresh" size={15} />刷新
           </button>
         </div>
@@ -263,8 +411,8 @@ export default function Statistics() {
                   onExport={exportCurrent}
                   onCollapse={toggleFilters}
                   reportType={reportType}
-                  canExport={!!annual && !!applied}
-                  loading={annualLoading}
+                  canExport={activeAvailable !== false && (applied?.type === 'fee-nature' ? !!collection : applied?.type === 'daily' ? !!daily : !!annual)}
+                  loading={isLoading}
                 />
               </div>
             </>
@@ -278,7 +426,7 @@ export default function Statistics() {
                     key={report.type}
                     type="button"
                     data-report-type={report.type}
-                    className={`stats-report-tab${(annual?.type ?? applied?.type ?? reportType) === report.type ? ' on' : ''}`}
+                    className={`stats-report-tab${(applied?.type ?? reportType) === report.type ? ' on' : ''}`}
                     title={report.hint}
                     onClick={() => switchReport(report.type)}
                   >{report.name}</button>
@@ -303,24 +451,57 @@ export default function Statistics() {
                 >
                   <Icon name="search" size={15} />{filtersCollapsed ? '筛选' : '收起筛选'}
                 </button>
-                <b>{annualLabel}</b>
-                {annual && annual.available !== false ? <span className="tag mute">{annual.rows.length} 个管理处</span> : null}
-                {annual && annual.available !== false && annual.subtotal ? <span className="tag acc">合计 {fmtCents(annual.subtotal.totalCents)}</span> : null}
-                {annual?.columns?.length ? <span className="muted stats-range">{annual.columns[0]}–{annual.columns[annual.columns.length - 1]} 年度</span> : null}
+                <b>{activeLabel}</b>
+                {applied?.type === 'fee-nature' && collection && collection.available !== false ? <span className="tag mute">{collection.rows.length} 个收费项目</span> : null}
+                {applied?.type === 'daily' && daily && daily.available !== false ? <span className="tag mute">{daily.rows.length} 天</span> : null}
+                {applied?.type !== 'fee-nature' && applied?.type !== 'daily' && annual && annual.available !== false ? <span className="tag mute">{annual.rows.length} 个管理处</span> : null}
+                {activeAvailable !== false && applied?.type === 'received' && annual?.subtotal ? <span className="tag acc">合计 {fmtCents(annual.subtotal.totalCents)}</span> : null}
+                {activeAvailable !== false && applied?.type === 'arrears' && annual?.subtotal ? <span className="tag acc">合计 {fmtCents(annual.subtotal.totalCents)}</span> : null}
+                {activeAvailable !== false && applied?.type === 'fee-nature' && collection?.subtotal ? <span className="tag acc">合计 {fmtCents(collection.subtotal.netCents)}</span> : null}
+                {activeAvailable !== false && applied?.type === 'daily' && daily?.subtotal ? <span className="tag acc">合计 {fmtCents(daily.subtotal.totalCents)}</span> : null}
+                {applied?.type === 'received' || applied?.type === 'arrears' ? (
+                  annual?.columns?.length ? <span className="muted stats-range">{annual.columns[0]}–{annual.columns[annual.columns.length - 1]} 年度</span> : null
+                ) : dateRangeText ? <span className="muted stats-range">{dateRangeText}</span> : null}
                 <span className="muted stats-as-of">{dataAsOf ? `数据截止 ${dataAsOf}` : ''}</span>
               </div>
 
-              {(annual?.type ?? applied?.type ?? reportType) === 'received' && annual?.available !== false ? (
+              {applied?.type === 'received' && annual?.available !== false ? (
                 <div className="note2 stats-received-hint">
                   <Icon name="alert" />实收年度按「应收年月」归年（收款日期可跨年）；收款日期范围只用于筛选已收流水，不改变年度归属。点单元格查逐笔清单。
                 </div>
               ) : null}
-
-              {annualLoading ? <Loading text="统计中…" /> : annualError ? (
-                <div className="note2" role="alert" style={{ background: 'var(--dang-w)', color: 'var(--dang)' }}>
-                  <Icon name="alert" />{annualError}
-                  <button className="btn sm" style={{ marginLeft: 10 }} onClick={() => setAnnualRetry((value) => value + 1)}>重试</button>
+              {applied?.type === 'fee-nature' && collection?.available !== false ? (
+                <div className="note2 stats-received-hint" data-testid="fee-nature-hint">
+                  <Icon name="alert" />按收款日期统计收款/退款/调整；所属年度按应收年月筛选。行尾金额与房屋性质单元格均可点击查看逐笔明细，明细合计=单元格。
                 </div>
+              ) : null}
+              {applied?.type === 'daily' && daily?.available !== false ? (
+                <div className="note2 stats-received-hint" data-testid="daily-report-hint">
+                  <Icon name="alert" />按收款日期逐日统计；没有收款的日期不显示 0 行。点单元格查当日收款明细。
+                </div>
+              ) : null}
+
+              {isLoading ? <Loading text="统计中…" /> : activeError ? (
+                <div className="note2" role="alert" style={{ background: 'var(--dang-w)', color: 'var(--dang)' }}>
+                  <Icon name="alert" />{activeError}
+                  <button className="btn sm" style={{ marginLeft: 10 }} onClick={() => setReportRetry((value) => value + 1)}>重试</button>
+                </div>
+              ) : applied?.type === 'fee-nature' ? (
+                collection ? (
+                  collection.available === false ? (
+                    <div className="note2" role="status"><Icon name="alert" />{collection.message || '收费汇总数据尚未就绪；请稍后再试。'}</div>
+                  ) : collection.rows.length ? (
+                    <FeeNatureTable report={collection} onCellClick={openFeeNatureCell} />
+                  ) : <div className="empty">{collection.message || '当前筛选没有可汇总的数据'}</div>
+                ) : null
+              ) : applied?.type === 'daily' ? (
+                daily ? (
+                  daily.available === false ? (
+                    <div className="note2" role="status"><Icon name="alert" />{daily.message || '收款日报表数据尚未就绪；请稍后再试。'}</div>
+                  ) : daily.rows.length ? (
+                    <DailyTable report={daily} onCellClick={openDailyCell} />
+                  ) : <div className="empty">{daily.message || '当前筛选没有可汇总的数据'}</div>
+                ) : null
               ) : annual ? (
                 annual.available === false ? (
                   <div className="note2" role="status">
@@ -333,7 +514,7 @@ export default function Statistics() {
                 )
               ) : null}
 
-              {(annual?.type ?? applied?.type) === 'arrears' && annual?.available !== false ? (
+              {applied?.type === 'arrears' && annual?.available !== false ? (
                 <div className="note2 stats-known-gap" style={{ marginTop: 12 }}>
                   <Icon name="alert" />数据来自 MIS 镜像（每 5 分钟增量）。管理处 01（一期）历史欠费与旧系统截图存在已知差异，
                   待补减免/签报镜像后同条件核对；本页不把差异伪造为 0。
@@ -344,17 +525,27 @@ export default function Statistics() {
         </div>
       )}
 
-      <HouseDetailSheet
-        open={detailOpen}
-        onClose={() => setDetailOpen(false)}
-        target={detailTarget}
-        type={applied?.type ?? annual?.type ?? reportType}
-        reportLabel={annualLabel}
-        feeCodes={applied?.feeCodes ?? []}
-        natures={applied?.natures ?? []}
-        asOfPeriod={applied?.asOfPeriod ?? ''}
-        paidDateFrom={applied?.paidDateFrom ?? ''}
-        paidDateTo={applied?.paidDateTo ?? ''}
+      {applied?.type === 'received' || applied?.type === 'arrears' ? (
+        <HouseDetailSheet
+          open={detailOpen}
+          onClose={() => setDetailOpen(false)}
+          target={detailTarget}
+          type={applied.type}
+          reportLabel={activeLabel}
+          feeCodes={applied.feeCodes}
+          natures={applied.natures}
+          asOfPeriod={applied.asOfPeriod}
+          paidDateFrom={applied.paidDateFrom}
+          paidDateTo={applied.paidDateTo}
+        />
+      ) : null}
+
+      <CollectionDetailSheet
+        open={collectionDetailOpen}
+        onClose={() => setCollectionDetailOpen(false)}
+        base={applied}
+        target={collectionTarget}
+        reportLabel={activeLabel}
       />
     </div>
   );

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import Icon from '@/components/Icon';
 import DateInput from '@/components/DateInput';
+import { dayjs } from '@/lib/format';
 import { groupFeeItems, type FeeCategoryGroup, type FilterDraft, type StatisticsFeeItem, type StatisticsOptions, type StatisticsReportType } from '@/lib/statistics';
 
 export interface StatisticsFiltersProps {
@@ -113,10 +114,17 @@ export default function StatisticsFilters({
       .filter((group) => group.items.length > 0);
   }, [feeGroups, feeQuery]);
 
-  const canSubmit = draft.officeCodes.length > 0 && draft.feeCodes.length > 0 && draft.natures.length > 0;
+  const canSubmit = draft.officeCodes.length > 0 && draft.feeCodes.length > 0 && draft.natures.length > 0
+    && (reportType !== 'fee-nature' || draft.paymentMethods.length > 0)
+    && (reportType !== 'fee-nature' && reportType !== 'daily' || (!!draft.paidDateFrom && !!draft.paidDateTo));
   const monthValue = draft.asOfPeriod && /^\d{6}$/.test(draft.asOfPeriod)
     ? `${draft.asOfPeriod.slice(0, 4)}-${draft.asOfPeriod.slice(4)}`
     : '';
+  const subjectYears = useMemo(() => {
+    const min = options.yearRange.min ?? dayjs().year() - 5;
+    const max = options.yearRange.max ?? dayjs().year();
+    return Array.from({ length: Math.max(0, max - min + 1) }, (_, index) => min + index);
+  }, [options.yearRange.min, options.yearRange.max]);
 
   const groupPatch = (group: 'offices' | 'fees' | 'natures', values: string[]): Partial<FilterDraft> => (
     group === 'offices' ? { officeCodes: values } : group === 'fees' ? { feeCodes: values } : { natures: values }
@@ -227,7 +235,16 @@ export default function StatisticsFilters({
         </CheckGroup>
 
         <div className="stats-filter-dates">
-          <div className="stats-date-range-label">收款日期范围 <span className="muted">（仅实收；年度按应收年月归年，此范围只做筛选）</span></div>
+          <div className="stats-date-range-label">
+            {reportType === 'fee-nature' || reportType === 'daily' ? '收款日期范围（必填）' : '收款日期范围'}
+            <span className="muted">
+              {reportType === 'received'
+                ? '（仅实收；年度按应收年月归年，此范围只做筛选）'
+                : reportType === 'arrears'
+                  ? '（欠费报表不使用收款日期）'
+                  : '（按收款日期统计收款/退款/调整）'}
+            </span>
+          </div>
           <div className="stats-date-range" data-date-from={draft.paidDateFrom} data-date-to={draft.paidDateTo}>
             <DateInput
               type="date"
@@ -245,7 +262,49 @@ export default function StatisticsFilters({
               onChange={(event) => onChange({ paidDateTo: event.target.value })}
             />
           </div>
-          {reportType === 'arrears' ? (
+          {reportType === 'fee-nature' ? (
+            <>
+              <CheckGroup title="收款方式" hint="来自收款方式字典；至少勾选一项">
+                <div className="stats-check-list" role="group" aria-label="收款方式">
+                  {(options.paymentMethods ?? []).map((method) => (
+                    <label key={method.id} className="stats-check">
+                      <input
+                        type="checkbox"
+                        data-payment-method={method.id}
+                        checked={draft.paymentMethods.includes(method.id)}
+                        onChange={() => onChange({ paymentMethods: toggle(draft.paymentMethods, method.id) })}
+                      />
+                      <span className="stats-check-name">{method.name}</span>
+                    </label>
+                  ))}
+                  {!(options.paymentMethods ?? []).length ? <div className="muted">收款方式字典为空</div> : null}
+                </div>
+              </CheckGroup>
+              <div className="stats-extra-fields">
+                <label>
+                  收款人
+                  <input className="in" type="text" data-testid="cashier-input" value={draft.cashier} placeholder="全部收款人" onChange={(event) => onChange({ cashier: event.target.value })} />
+                </label>
+                <label>
+                  所属年度
+                  <div className="stats-year-range">
+                    <select className="in" data-testid="subject-year-from" value={draft.subjectYearFrom} onChange={(event) => onChange({ subjectYearFrom: event.target.value })}>
+                      <option value="">不限</option>
+                      {subjectYears.map((year) => <option key={year} value={year}>{year}</option>)}
+                    </select>
+                    <span className="stats-date-sep">至</span>
+                    <select className="in" data-testid="subject-year-to" value={draft.subjectYearTo} onChange={(event) => onChange({ subjectYearTo: event.target.value })}>
+                      <option value="">不限</option>
+                      {subjectYears.map((year) => <option key={year} value={year}>{year}</option>)}
+                    </select>
+                  </div>
+                </label>
+              </div>
+              <div className="stats-filter-hint">所属年度按应收年月（period）筛选，不影响按收款日期统计。</div>
+            </>
+          ) : reportType === 'daily' ? (
+            <div className="stats-filter-hint" data-testid="daily-hint">按收款日期逐日统计；没有收款的日期不显示 0 行。</div>
+          ) : reportType === 'arrears' ? (
             <label data-testid="asof-period-field">
               应收截止年月
               <DateInput type="month" value={monthValue} onChange={(event) => onChange({ asOfPeriod: String(event.target.value || '').replace('-', '') })} />
@@ -264,7 +323,13 @@ export default function StatisticsFilters({
           <Icon name="download" size={17} />导出 Excel
         </button>
       </div>
-      {!canSubmit ? <div className="note2 stats-filter-note" role="status"><Icon name="alert" />请至少各选一个管理处、收费项目和房屋性质。</div> : null}
+      {!canSubmit ? (
+        <div className="note2 stats-filter-note" role="status"><Icon name="alert" />
+          {reportType === 'fee-nature' || reportType === 'daily'
+            ? '请至少各选一个管理处、收费项目、房屋性质，并填写收款日期范围；收费汇总还需至少一个收款方式。'
+            : '请至少各选一个管理处、收费项目和房屋性质。'}
+        </div>
+      ) : null}
     </aside>
   );
 }

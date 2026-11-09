@@ -299,7 +299,8 @@ SUM(amount_cents) FILTER (WHERE paid_date >= :from AND paid_date < :to AND refun
 块：收款块  = Σ amount_cents WHERE paid_date ∈ [起,止) AND refund_date IS NULL AND amount_cents > 0
     退款块  = Σ ABS(amount_cents) WHERE refund_date ∈ [起,止) AND amount_cents > 0
     调整块  = Σ amount_cents WHERE paid_date ∈ [起,止) AND refund_date IS NULL AND amount_cents < 0
-    净额    = 收款块 + 调整块 − 退款块
+     净额    = 收款块 + 调整块（= Σ amount WHERE paid_date∈区间 AND refund_date IS NULL）
+               ※ 退款块只作信息列，不从净额扣减：退款的原收款多在往期收款块中，再扣会重复（生产验收 02/2026-10 net=15,314,220）
 笔数：收款块 COUNT(*)、退款块 COUNT(*)（需截图确认笔数是否含负调整）
 筛选额外：所属年度 = substr(period,1,4) ∈ [年下限, 年上限]
 ```

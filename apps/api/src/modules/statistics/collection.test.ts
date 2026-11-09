@@ -7,6 +7,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { PERMISSION_KEY } from '../../common/require-permission.decorator';
 import { MisMirror1794500000000 } from '../../migrations/1794500000000-MisMirror';
 import { MisMirrorBillNature1795300000000 } from '../../migrations/1795300000000-MisMirrorBillNature';
+import { MisMirrorFeeItemCategory1795400000000 } from '../../migrations/1795400000000-MisMirrorFeeItemCategory';
 import { CollectionStatisticsService } from './collection.service';
 import {
   CollectionDailyQueryDto,
@@ -15,6 +16,7 @@ import {
   CollectionSummaryQueryDto,
 } from './dto';
 import { StatisticsController } from './statistics.controller';
+import { STATISTICS_NATURE_OPTIONS } from './statistics.util';
 
 const tenantId = 1;
 const user = { id: 7, tenantId } as never;
@@ -27,11 +29,17 @@ const communities = [
   { id: 16, name: '上海新家' },
 ];
 
-const FEE_ITEMS: Array<[string, string]> = [
-  ['01', '管理费'], ['02', '租金'], ['03', '保洁保安费'], ['04', '泊位费'],
-  ['05', '临时停车费'], ['06', '保安费'], ['07', '保洁费'], ['08', '保安保洁费'],
-  ['09', '网络费'], ['10', '青客租金'], ['11', '青客未签约租金'], ['12', '水费'],
-  ['13', '电费'], ['14', '停车管理费'], ['15', '空房租金'], ['16', '置业泊位费'],
+const FEE_ITEMS: Array<[string, string, string]> = [
+  ['01', '管理费', '日常收费'], ['02', '租金', '日常收费'], ['03', '保洁保安费', '日常收费'],
+  ['04', '泊位费', '停车收费'], ['05', '临时停车费', '停车收费'], ['06', '保安费', '日常收费'],
+  ['07', '保洁费', '日常收费'], ['08', '保安保洁费', '日常收费'], ['09', '网络费', '代收费'],
+  ['10', '青客租金', '其它'], ['11', '青客未签约租金', '其它'], ['12', '水费', '代收费'],
+  ['13', '电费', '代收费'], ['14', '停车管理费', '停车收费'], ['15', '空房租金', '其它'],
+  ['16', '置业泊位费', '停车收费'],
+];
+
+const PAYMENT_METHODS: Array<[number, string]> = [
+  [1, '现金'], [2, '微信'], [3, '支付宝'], [4, '转账'], [5, '其他'],
 ];
 
 async function makeDatabase() {
@@ -40,6 +48,8 @@ async function makeDatabase() {
   await migration.up({ query: (sql: string) => pg.query(sql) } as any);
   const nature = new MisMirrorBillNature1795300000000();
   await nature.up({ query: (sql: string) => pg.query(sql) } as any);
+  const feeCategory = new MisMirrorFeeItemCategory1795400000000();
+  await feeCategory.up({ query: (sql: string) => pg.query(sql) } as any);
   return pg;
 }
 
@@ -68,11 +78,9 @@ interface BillInput {
 }
 
 /**
- * P2-A 合成夹具（金额单位：整数分）。
- * 2026-03 全管理处：实收 5600、退款 700、净额 4900、命中 10 行；
- * 04 月另有一笔 2000；2025-12-31 有一笔 500（日期边界）。
- * 含：负数退款行、正金额退款行（refund_date 非空）、未缴行（不应进任何实收报表）、
- * 未知收款方式/收款人空值、行级房屋性质 01/04/05。
+ * P2-B 验收夹具（§6 A1/A2/A3，02 管理处 2026-10）：
+ * 收款块 15,374,220、退款块 15,000（成对负数行不重复计）、调整块 -60,000、净额 15,314,220。
+ * 泊位费收款/退款行为 nature 空（不落性质列），调整行为 nature 01。
  */
 async function seed(pg: PGlite) {
   await pg.query(
@@ -80,8 +88,11 @@ async function seed(pg: PGlite) {
      VALUES($1,'bill',$2,now())`,
     [tenantId, '2026-11-09T21:30:00+08:00'],
   );
-  for (const [code, name] of FEE_ITEMS) {
-    await pg.query(`INSERT INTO mis_mirror_fee_item(fee_code,fee_name) VALUES($1,$2)`, [code, name]);
+  for (const [code, name, category] of FEE_ITEMS) {
+    await pg.query(`INSERT INTO mis_mirror_fee_item(fee_code,fee_name,category) VALUES($1,$2,$3)`, [code, name, category]);
+  }
+  for (const [id, name] of PAYMENT_METHODS) {
+    await pg.query(`INSERT INTO mis_mirror_payment_method(method_id,method_name) VALUES($1,$2)`, [id, name]);
   }
   let nextZj = 1;
   const addBill = async (input: BillInput) => {
@@ -98,136 +109,275 @@ async function seed(pg: PGlite) {
     );
   };
 
-  // ── 02 管理处：收款/退款主场景 ──
-  await addBill({ officeCode: '02', sId: 501, feeCode: '01', feeName: '管理费', natureCode: '01', period: '202601', amountCents: 1000, paidDate: '2026-03-01', paymentMethod: '现金', cashier: '张三', address: '永德路228弄501号', ownerName: '二期业主501' });
-  await addBill({ officeCode: '02', sId: 501, feeCode: '02', feeName: '租金', natureCode: '01', period: '202601', amountCents: 400, paidDate: '2026-03-01', paymentMethod: '微信', cashier: '李四' });
-  await addBill({ officeCode: '02', sId: 502, feeCode: '01', feeName: '管理费', natureCode: '04', period: '202602', amountCents: 600, paidDate: '2026-03-02', paymentMethod: '现金', cashier: '张三' });
-  // 负数退款行：金额 -400，退款日期 = 收款日期。
-  await addBill({ officeCode: '02', sId: 501, feeCode: '01', feeName: '管理费', natureCode: '01', period: '202601', amountCents: -400, paidDate: '2026-03-02', refundDate: '2026-03-02', paymentMethod: '现金', cashier: '张三' });
-  // 正金额退款行：源系统退款/红冲行金额可能为正，但净额仍应扣减 300。
-  await addBill({ officeCode: '02', sId: 502, feeCode: '02', feeName: '租金', natureCode: '01', period: '202601', amountCents: 300, paidDate: '2026-03-05', refundDate: '2026-03-10', paymentMethod: '支付宝', cashier: '王五' });
-  await addBill({ officeCode: '02', sId: 501, feeCode: '01', feeName: '管理费', natureCode: '01', period: '202603', amountCents: 2000, paidDate: '2026-04-01', paymentMethod: '现金', cashier: '张三' });
-  // 未缴行：任何实收报表都不应包含。
-  await addBill({ officeCode: '02', sId: 501, feeCode: '01', feeName: '管理费', natureCode: '01', period: '202604', amountCents: 999999, paidDate: null });
-  // 日期边界：2025-12-31。
-  await addBill({ officeCode: '02', sId: 501, feeCode: '13', feeName: '电费', natureCode: '01', period: '202512', amountCents: 500, paidDate: '2025-12-31', paymentMethod: '现金', cashier: '张三' });
-  // 行级性质 05 + 收款人/方式齐全，用 03-20 区分日期。
-  await addBill({ officeCode: '02', sId: 502, feeCode: '01', feeName: '管理费', natureCode: '05', period: '202603', amountCents: 100, paidDate: '2026-03-20', paymentMethod: '转账', cashier: '赵六' });
-
-  // ── 01 管理处 ──
-  await addBill({ officeCode: '01', sId: 719, feeCode: '01', feeName: '管理费', natureCode: '01', period: '202601', amountCents: 2500, paidDate: '2026-03-01', paymentMethod: '现金', cashier: '张三', address: '宝秀路719号719', ownerName: '宝秀路业主' });
-  await addBill({ officeCode: '01', sId: 720, feeCode: '03', feeName: '保洁保安费', natureCode: '04', period: '202601', amountCents: 250, paidDate: '2026-03-01', paymentMethod: '转账', cashier: '赵六' });
-
-  // ── 03 管理处：验证范围过滤 + 空收款方式/收款人 ──
-  await addBill({ officeCode: '03', sId: 901, feeCode: '01', feeName: '管理费', natureCode: '01', period: '202601', amountCents: 700, paidDate: '2026-03-01', paymentMethod: '现金', cashier: '张三' });
-  await addBill({ officeCode: '03', sId: 901, feeCode: '02', feeName: '租金', natureCode: '01', period: '202601', amountCents: 50, paidDate: '2026-03-01', paymentMethod: null, cashier: null });
+  // ── 02 管理处 2026-10 验收数据 ──
+  await addBill({ officeCode: '02', sId: 501, feeCode: '01', feeName: '管理费', natureCode: '01', period: '202610', amountCents: 11_915_220, paidDate: '2026-10-05', paymentMethod: '微信', cashier: '赵丽萍', address: '永德路228弄501号', ownerName: '二期业主501' });
+  // 泊位费收款：nature 为空 → 不算任何性质，但计入收款块。
+  await addBill({ officeCode: '02', sId: 502, feeCode: '04', feeName: '泊位费', natureCode: null, period: '202610', amountCents: 3_105_000, paidDate: '2026-10-06', paymentMethod: '现金', cashier: '刘微微' });
+  // 负调整（真实负现金流，不是退款）。
+  await addBill({ officeCode: '02', sId: 502, feeCode: '04', feeName: '泊位费', natureCode: '01', period: '202610', amountCents: -60_000, paidDate: '2026-10-07', paymentMethod: '现金', cashier: '刘微微' });
+  // 成对退款：原收款正行 + 成对负数行（都不要重复计入退款块，只计正行 15,000）。
+  await addBill({ officeCode: '02', sId: 502, feeCode: '04', feeName: '泊位费', natureCode: null, period: '202609', amountCents: 15_000, paidDate: '2026-09-01', refundDate: '2026-10-19', paymentMethod: '微信', cashier: '刘微微' });
+  await addBill({ officeCode: '02', sId: 502, feeCode: '04', feeName: '泊位费', natureCode: null, period: '202609', amountCents: -15_000, paidDate: '2026-09-01', refundDate: '2026-10-19', paymentMethod: '微信', cashier: '刘微微' });
+  await addBill({ officeCode: '02', sId: 503, feeCode: '14', feeName: '停车管理费', natureCode: null, period: '202610', amountCents: 324_000, paidDate: '2026-10-08', paymentMethod: '支付宝', cashier: '伍庆中' });
+  await addBill({ officeCode: '02', sId: 504, feeCode: '16', feeName: '置业泊位费', natureCode: null, period: '202610', amountCents: 30_000, paidDate: '2026-10-09', paymentMethod: '转账', cashier: '伍庆中' });
+  // ── 区间边界与未缴行 ──
+  await addBill({ officeCode: '02', sId: 501, feeCode: '01', feeName: '管理费', natureCode: '01', period: '202609', amountCents: 9_900, paidDate: '2026-09-30', paymentMethod: '微信', cashier: '赵丽萍' });
+  await addBill({ officeCode: '02', sId: 501, feeCode: '01', feeName: '管理费', natureCode: '01', period: '202611', amountCents: 8_800, paidDate: '2026-11-01', paymentMethod: '微信', cashier: '赵丽萍' });
+  await addBill({ officeCode: '02', sId: 501, feeCode: '01', feeName: '管理费', natureCode: '01', period: '202610', amountCents: 123_456, paidDate: null });
+  // ── 12 月：付款方式/收款人空值 + 跨所属年度（period=202501）──
+  await addBill({ officeCode: '02', sId: 501, feeCode: '01', feeName: '管理费', natureCode: '01', period: '202501', amountCents: 7_000, paidDate: '2026-12-05', paymentMethod: '微信', cashier: '赵丽萍' });
+  await addBill({ officeCode: '02', sId: 501, feeCode: '01', feeName: '管理费', natureCode: '01', period: '202612', amountCents: 100, paidDate: '2026-12-10', paymentMethod: null, cashier: null });
+  // ── 其它管理处（范围测试）──
+  await addBill({ officeCode: '01', sId: 719, feeCode: '01', feeName: '管理费', natureCode: '01', period: '202610', amountCents: 2_500, paidDate: '2026-10-05', paymentMethod: '现金', cashier: '张三', address: '宝秀路719号719', ownerName: '宝秀路业主' });
+  await addBill({ officeCode: '03', sId: 901, feeCode: '01', feeName: '管理费', natureCode: '01', period: '202610', amountCents: 700, paidDate: '2026-10-05', paymentMethod: null, cashier: null });
 }
 
-const MARCH = { dateFrom: '2026-03-01', dateTo: '2026-03-31' };
+const OCTOBER = { dateFrom: '2026-10-01', dateTo: '2026-10-31' };
+/** 验收基准固定 02 管理处（全部管理处会把 01/03 的 3,200 分算进来）。 */
+const OCT_02 = { ...OCTOBER, officeCodes: ['02'] };
 
 function rowsOf(result: any, keys: string[]) {
   return result.rows.map((row: any) => keys.map((key) => row[key]));
 }
 
-test('collection/summary groupBy=fee：实收/退款拆分、行按金额降序、合计=分组之和', async () => {
+test('验收 A1/A2/A3：02 管理处 2026-10 收款/退款/调整四类拆分', async () => {
   const pg = await makeDatabase();
   try {
     await seed(pg);
     const service = serviceFor(pg);
-    const result: any = await service.collectionSummary(MARCH as never, user, scopeAll);
-    assert.equal(result.available, true);
-    assert.equal(result.groupBy, 'fee');
-    assert.match(result.dataAsOf, /^2026-11-09T13:30:00\.000Z$/);
-    assert.deepEqual(result.rows, [
-      { key: '01', label: '管理费', receivedCents: 4900, refundCents: 400, count: 6 },
-      { key: '02', label: '租金', receivedCents: 450, refundCents: 300, count: 3 },
-      { key: '03', label: '保洁保安费', receivedCents: 250, refundCents: 0, count: 1 },
-    ]);
-    assert.deepEqual(result.total, { receivedCents: 5600, refundCents: 700, count: 10 });
-    // 实收 - 退款 = 净额，且与逐笔明细合计一致。
-    assert.equal(result.total.receivedCents - result.total.refundCents, 4900);
-    assert.deepEqual(result.filters, {
-      groupBy: 'fee',
-      dateFrom: '2026-03-01',
-      dateTo: '2026-03-31',
-      officeCodes: ['01', '02', '03', '04', '05'],
-      feeCodes: null,
-      natures: null,
-      paidDateTo: null,
+    const summary: any = await service.collectionSummary(OCT_02 as never, user, scopeAll);
+    assert.equal(summary.available, true);
+    assert.equal(summary.groupBy, 'fee');
+    const fee01 = summary.rows.find((row: any) => row.key === '01');
+    const fee04 = summary.rows.find((row: any) => row.key === '04');
+    const fee14 = summary.rows.find((row: any) => row.key === '14');
+    const fee16 = summary.rows.find((row: any) => row.key === '16');
+    assert.deepEqual(
+      [fee01.receivedCents, fee01.refundCents, fee01.adjustCents, fee01.netCents],
+      [11_915_220, 0, 0, 11_915_220],
+    );
+    // 成对退款只计原收款正行 15,000，负数行不重复计（否则会是 30,000）。
+    assert.deepEqual(
+      [fee04.receivedCents, fee04.refundCents, fee04.adjustCents, fee04.netCents],
+      [3_105_000, 15_000, -60_000, 3_045_000],
+    );
+    assert.deepEqual([fee14.receivedCents, fee14.netCents], [324_000, 324_000]);
+    assert.deepEqual([fee16.receivedCents, fee16.netCents], [30_000, 30_000]);
+    assert.deepEqual(summary.total, {
+      receivedCents: 15_374_220,
+      refundCents: 15_000,
+      adjustCents: -60_000,
+      netCents: 15_314_220,
+      countReceived: 4,
+      countRefund: 1,
+      countAdjust: 1,
+      count: 6,
     });
-    // 不传 groupBy 默认按收费项目。
-    const byDefault: any = await service.collectionSummary(MARCH as never, user, scopeAll);
-    assert.equal(byDefault.groupBy, 'fee');
-    assert.deepEqual(byDefault.rows, result.rows);
+    assert.deepEqual(summary.rows.map((row: any) => row.key), ['01', '04', '14', '16']);
+    assert.deepEqual(summary.filters.paymentMethods, null);
+    assert.deepEqual(summary.filters.yearFrom, null);
+    // 02 单管理处条件（范围矩阵口径）：与合计一致。
+    const only02: any = await service.collectionSummary({ ...OCTOBER, officeCodes: ['02'] } as never, user, scopeAll);
+    assert.deepEqual(only02.total, summary.total);
   } finally {
     await pg.close();
   }
 });
 
-test('collection/summary groupBy=office|method|cashier：管理处名称/空值未填写/合计一致', async () => {
+test('summary 分组：office/method/cashier 名称与空值「未记录」，行按净额降序', async () => {
   const pg = await makeDatabase();
   try {
     await seed(pg);
     const service = serviceFor(pg);
-
-    const byOffice: any = await service.collectionSummary({ ...MARCH, groupBy: 'office' } as never, user, scopeAll);
-    assert.deepEqual(rowsOf(byOffice, ['key', 'label', 'receivedCents', 'refundCents', 'count']), [
-      ['01', '枫桦景苑一期', 2750, 0, 2],
-      ['02', '枫桦景苑二期A', 2100, 700, 6],
-      ['03', '枫桦景苑二期B', 750, 0, 2],
+    const byMethod: any = await service.collectionSummary({ ...OCT_02, groupBy: 'method' } as never, user, scopeAll);
+    assert.deepEqual(rowsOf(byMethod, ['key', 'label', 'receivedCents', 'refundCents', 'adjustCents', 'netCents']), [
+      ['微信', '微信', 11_915_220, 15_000, 0, 11_915_220],
+      ['现金', '现金', 3_105_000, 0, -60_000, 3_045_000],
+      ['支付宝', '支付宝', 324_000, 0, 0, 324_000],
+      ['转账', '转账', 30_000, 0, 0, 30_000],
     ]);
-    assert.deepEqual(byOffice.total, { receivedCents: 5600, refundCents: 700, count: 10 });
-
-    const byMethod: any = await service.collectionSummary({ ...MARCH, groupBy: 'method' } as never, user, scopeAll);
-    assert.deepEqual(rowsOf(byMethod, ['key', 'label', 'receivedCents', 'refundCents', 'count']), [
-      ['现金', '现金', 4800, 400, 5],
-      ['微信', '微信', 400, 0, 1],
-      ['转账', '转账', 350, 0, 2],
-      ['', '未填写', 50, 0, 1],
-      ['支付宝', '支付宝', 0, 300, 1],
-    ]);
-    assert.deepEqual(byMethod.total, { receivedCents: 5600, refundCents: 700, count: 10 });
-
-    const byCashier: any = await service.collectionSummary({ ...MARCH, groupBy: 'cashier' } as never, user, scopeAll);
-    assert.deepEqual(rowsOf(byCashier, ['key', 'label', 'receivedCents', 'refundCents', 'count']), [
-      ['张三', '张三', 4800, 400, 5],
-      ['李四', '李四', 400, 0, 1],
-      ['赵六', '赵六', 350, 0, 2],
-      ['', '未填写', 50, 0, 1],
-      ['王五', '王五', 0, 300, 1],
-    ]);
-    assert.deepEqual(byCashier.total, { receivedCents: 5600, refundCents: 700, count: 10 });
+    // 空收款方式/收款人只在 12 月数据里出现。
+    const december: any = await service.collectionSummary({ dateFrom: '2026-12-01', dateTo: '2026-12-31', groupBy: 'method' } as never, user, scopeAll);
+    assert.deepEqual(rowsOf(december, ['key', 'label']), [['微信', '微信'], ['', '未记录']]);
+    const byCashier: any = await service.collectionSummary({ dateFrom: '2026-12-01', dateTo: '2026-12-31', groupBy: 'cashier' } as never, user, scopeAll);
+    assert.deepEqual(rowsOf(byCashier, ['key', 'label']), [['赵丽萍', '赵丽萍'], ['', '未记录']]);
   } finally {
     await pg.close();
   }
 });
 
-test('日期边界：按事件日期（收款日/退款日）落在闭区间，退款日决定归属', async () => {
+test('日期左闭右开 & 年度筛选 & 付款方式/收款人筛选', async () => {
   const pg = await makeDatabase();
   try {
     await seed(pg);
     const service = serviceFor(pg);
-    const day = async (dateFrom: string, dateTo = dateFrom) =>
-      service.collectionSummary({ dateFrom, dateTo } as never, user, scopeAll) as Promise<any>;
+    const summary = (extra: Record<string, unknown> = {}) =>
+      service.collectionSummary({ ...OCT_02, ...extra } as never, user, scopeAll) as Promise<any>;
 
-    // 03-01 只有收款：1000+400+2500+250+700+50 = 4900。
-    const first: any = await day('2026-03-01');
-    assert.deepEqual(first.total, { receivedCents: 4900, refundCents: 0, count: 6 });
-    // 03-02：收款 600 + 负数退款 400。
-    const second: any = await day('2026-03-02');
-    assert.deepEqual(second.total, { receivedCents: 600, refundCents: 400, count: 2 });
-    // 03-10：正金额退款行按 refund_date 归属，实收 0、退款 300。
-    const refundDay: any = await day('2026-03-10');
-    assert.deepEqual(refundDay.total, { receivedCents: 0, refundCents: 300, count: 1 });
-    // 03-09 还不含 03-10 的退款。
-    const beforeRefund: any = await day('2026-03-01', '2026-03-09');
-    assert.deepEqual(beforeRefund.total, { receivedCents: 5500, refundCents: 400, count: 8 });
-    // 跨年边界 2025-12-31 必须包含（闭区间）。
-    const boundary: any = await day('2025-12-31', '2026-01-01');
-    assert.deepEqual(boundary.total, { receivedCents: 500, refundCents: 0, count: 1 });
-    // 未缴行永远不进实收报表。
-    const allMarch: any = await day('2026-03-01', '2026-03-31');
-    assert.equal(allMarch.rows.some((row: any) => row.receivedCents === 999999), false);
+    const singleDay: any = await summary({ dateFrom: '2026-10-05', dateTo: '2026-10-05' });
+    assert.equal(singleDay.total.receivedCents, 11_915_220);
+    const beforeStart: any = await summary({ dateFrom: '2026-10-01', dateTo: '2026-10-04' });
+    assert.equal(beforeStart.total.receivedCents, 0);
+    // 2026-11-01 的收款不在 10-31 区间（右开）。
+    const throughLastDay: any = await summary({ dateFrom: '2026-10-01', dateTo: '2026-10-31' });
+    assert.equal(throughLastDay.total.receivedCents, 15_374_220);
+
+    // 收款方式/收款人筛选（仅 02 管理处现金）。
+    const cashOnly: any = await summary({ paymentMethods: ['现金'] });
+    assert.deepEqual([cashOnly.total.receivedCents, cashOnly.total.adjustCents], [3_105_000, -60_000]);
+    const cashierOnly: any = await summary({ cashier: '伍庆中' });
+    assert.deepEqual([cashierOnly.total.receivedCents, cashierOnly.total.count], [354_000, 2]);
+
+    // 所属年度：12 月 7,000 分 period=202501；yearFrom=2026 排除它，yearTo=2025 只留它。
+    const dec = { dateFrom: '2026-12-01', dateTo: '2026-12-31' };
+    const decAll: any = await service.collectionSummary({ ...dec, officeCodes: ['02'] } as never, user, scopeAll);
+    assert.equal(decAll.total.receivedCents, 7_100);
+    const decCurrentYear: any = await service.collectionSummary({ ...dec, officeCodes: ['02'], yearFrom: 2026, yearTo: 2026 } as never, user, scopeAll);
+    assert.equal(decCurrentYear.total.receivedCents, 100);
+    const decOldYear: any = await service.collectionSummary({ ...dec, officeCodes: ['02'], yearTo: 2025 } as never, user, scopeAll);
+    assert.equal(decOldYear.total.receivedCents, 7_000);
+  } finally {
+    await pg.close();
+  }
+});
+
+test('collection/detail：四类行拆分、kind 过滤与 totals、原始金额、分页不影响合计', async () => {
+  const pg = await makeDatabase();
+  try {
+    await seed(pg);
+    const service = serviceFor(pg);
+    const detail: any = await service.collectionDetail(OCT_02 as never, user, scopeAll);
+    assert.equal(detail.available, true);
+    assert.equal(detail.count, 6);
+    assert.deepEqual(detail.totals, {
+      receivedCents: 15_374_220, refundCents: 15_000, adjustCents: -60_000, netCents: 15_314_220,
+    });
+    // 明细行合计 = 收款块 + 调整块 + 退款块（退款行金额为正、单列展示）。
+    assert.equal(
+      detail.rows.reduce((sum: number, row: any) => sum + row.amountCents, 0),
+      detail.totals.receivedCents + detail.totals.adjustCents + detail.totals.refundCents,
+    );
+    const refundRow = detail.rows.find((row: any) => row.rowKind === 'refund');
+    assert.equal(refundRow.amountCents, 15_000); // 退款行金额为正，由 rowKind 标识
+    assert.equal(refundRow.refundDate, '2026-10-19');
+    const adjustRow = detail.rows.find((row: any) => row.rowKind === 'adjust');
+    assert.equal(adjustRow.amountCents, -60_000);
+    assert.equal(adjustRow.natureCode, '01');
+    // 成对负数行不进入明细（避免双计）。
+    assert.equal(detail.rows.filter((row: any) => row.zjId === 5).length, 0);
+    assert.equal(detail.rows.some((row: any) => row.feeCode === '01' && row.amountCents === 123_456), false);
+
+    const receivedOnly: any = await service.collectionDetail({ ...OCT_02, kind: 'received' } as never, user, scopeAll);
+    assert.equal(receivedOnly.count, 4);
+    assert.deepEqual(receivedOnly.totals, {
+      receivedCents: 15_374_220, refundCents: 0, adjustCents: 0, netCents: 15_374_220,
+    });
+    const refundOnly: any = await service.collectionDetail({ ...OCT_02, kind: 'refund' } as never, user, scopeAll);
+    assert.equal(refundOnly.count, 1);
+    assert.deepEqual(refundOnly.totals, { receivedCents: 0, refundCents: 15_000, adjustCents: 0, netCents: -15_000 });
+    const adjustOnly: any = await service.collectionDetail({ ...OCT_02, kind: 'adjust' } as never, user, scopeAll);
+    assert.equal(adjustOnly.count, 1);
+    assert.deepEqual(adjustOnly.totals, { receivedCents: 0, refundCents: 0, adjustCents: -60_000, netCents: -60_000 });
+
+    const page: any = await service.collectionDetail({ ...OCT_02, limit: 2, offset: 0 } as never, user, scopeAll);
+    assert.equal(page.rows.length, 2);
+    assert.equal(page.count, 6);
+    assert.deepEqual(page.totals, detail.totals);
+    const beyond: any = await service.collectionDetail({ ...OCT_02, limit: 2, offset: 50 } as never, user, scopeAll);
+    assert.deepEqual(beyond.rows, []);
+    assert.equal(beyond.count, 6);
+  } finally {
+    await pg.close();
+  }
+});
+
+test('collection/fee-nature：费项×性质净额矩阵，空性质不落列但计入行块', async () => {
+  const pg = await makeDatabase();
+  try {
+    await seed(pg);
+    const service = serviceFor(pg);
+    const matrix: any = await service.collectionFeeNature(OCT_02 as never, user, scopeAll);
+    assert.equal(matrix.available, true);
+    assert.deepEqual(matrix.natures, STATISTICS_NATURE_OPTIONS);
+    assert.equal(matrix.natures.length, 13);
+    assert.deepEqual(matrix.columns.map((column: any) => column.code), FEE_ITEMS.map(([code]) => code));
+    const fee01 = matrix.rows.find((row: any) => row.feeCode === '01');
+    const fee04 = matrix.rows.find((row: any) => row.feeCode === '04');
+    assert.equal(fee01.cells['01'], 11_915_220);
+    assert.equal(fee01.netCents, 11_915_220);
+    // 泊位费：收款/退款 nature 为空 → 不进任何性质列；调整 nature 01 进「01 商品房」。
+    assert.equal(fee04.cells['01'], -60_000);
+    assert.equal(fee04.cells['04'], 0);
+    assert.deepEqual(
+      [fee04.receivedCents, fee04.refundCents, fee04.adjustCents, fee04.netCents],
+      [3_105_000, 15_000, -60_000, 3_045_000],
+    );
+    assert.deepEqual(matrix.subtotal.cells['01'], 11_855_220);
+    assert.deepEqual(
+      [matrix.subtotal.receivedCents, matrix.subtotal.refundCents, matrix.subtotal.adjustCents, matrix.subtotal.netCents],
+      [15_374_220, 15_000, -60_000, 15_314_220],
+    );
+
+    // 性质筛选：只保留 nature 01 行（空性质收款/退款被排除）。
+    const nature01: any = await service.collectionFeeNature({ ...OCT_02, natures: ['01'] } as never, user, scopeAll);
+    const fee04Nature01 = nature01.rows.find((row: any) => row.feeCode === '04');
+    assert.deepEqual(
+      [fee04Nature01.receivedCents, fee04Nature01.refundCents, fee04Nature01.adjustCents, fee04Nature01.netCents],
+      [0, 0, -60_000, -60_000],
+    );
+    assert.equal(nature01.subtotal.receivedCents, 11_915_220);
+    assert.equal(nature01.subtotal.netCents, 11_855_220);
+  } finally {
+    await pg.close();
+  }
+});
+
+test('daily：cells=收款块、退款/调整单列、只返回有收款日期', async () => {
+  const pg = await makeDatabase();
+  try {
+    await seed(pg);
+    const service = serviceFor(pg);
+    const daily: any = await service.daily(OCT_02 as never, user, scopeAll);
+    assert.equal(daily.available, true);
+    assert.equal(daily.columns.length, 16);
+    assert.deepEqual(daily.rows.map((row: any) => row.date), ['2026-10-05', '2026-10-06', '2026-10-08', '2026-10-09']);
+    assert.deepEqual(daily.rows.map((row: any) => row.totalCents), [11_915_220, 3_105_000, 324_000, 30_000]);
+    assert.equal(daily.subtotal.totalCents, 15_374_220);
+    // 10-07 只有负调整、10-19 只有退款：不虚构日期行，但计入总额。
+    assert.equal(daily.refundTotalCents, 15_000);
+    assert.equal(daily.adjustTotalCents, -60_000);
+    assert.equal(daily.rows.some((row: any) => row.date === '2026-10-07'), false);
+
+    const single: any = await service.daily({ dateFrom: '2026-10-05', dateTo: '2026-10-05', officeCodes: ['02'] } as never, user, scopeAll);
+    assert.equal(single.rows.length, 1);
+    assert.equal(single.subtotal.totalCents, 11_915_220);
+  } finally {
+    await pg.close();
+  }
+});
+
+test('权限范围：管理处按小区收敛；越权勾选空表；无租户 403', async () => {
+  const pg = await makeDatabase();
+  try {
+    await seed(pg);
+    const service = serviceFor(pg);
+    const summary: any = await service.collectionSummary(OCTOBER as never, user, scopeCommunityTwo);
+    assert.deepEqual(summary.filters.officeCodes, ['02', '03']);
+    assert.equal(summary.total.receivedCents, 15_374_220 + 700);
+    const outOfScope: any = await service.collectionSummary({ ...OCTOBER, officeCodes: ['01'] } as never, user, scopeCommunityTwo);
+    assert.deepEqual(outOfScope.rows, []);
+    assert.equal(outOfScope.total.receivedCents, 0);
+    const outDetail: any = await service.collectionDetail({ ...OCTOBER, officeCodes: ['01'] } as never, user, scopeCommunityTwo);
+    assert.deepEqual(outDetail.rows, []);
+    assert.equal(outDetail.totals.receivedCents, 0);
+    const emptyMatrix: any = await service.collectionFeeNature({ ...OCTOBER } as never, user, { scopeAll: false, communityIds: [] } as never);
+    assert.equal(emptyMatrix.available, true);
+    assert.equal(emptyMatrix.rows.length, 16);
+    assert.equal(emptyMatrix.subtotal.netCents, 0);
+    await assert.rejects(
+      service.collectionSummary(OCT_02 as never, { id: 7 } as never, scopeAll),
+      /tenant scope is required/,
+    );
   } finally {
     await pg.close();
   }
@@ -238,330 +388,17 @@ test('非法日期/跨度>366/from>to 直接调用 service 也 400', async () =>
   try {
     await seed(pg);
     const service = serviceFor(pg);
-    await assert.rejects(
-      service.collectionSummary({ dateTo: '2026-03-31' } as never, user, scopeAll),
-      (error: unknown) => error instanceof BadRequestException,
-    );
-    await assert.rejects(
-      service.collectionSummary({ dateFrom: '2026-02-30', dateTo: '2026-03-31' } as never, user, scopeAll),
-      (error: unknown) => error instanceof BadRequestException,
-    );
-    await assert.rejects(
-      service.collectionSummary({ dateFrom: '2026-04-01', dateTo: '2026-03-31' } as never, user, scopeAll),
-      (error: unknown) => error instanceof BadRequestException,
-    );
-    await assert.rejects(
-      service.collectionSummary({ dateFrom: '2024-01-01', dateTo: '2025-01-02' } as never, user, scopeAll),
-      (error: unknown) => error instanceof BadRequestException,
-    );
-    await assert.rejects(
-      service.monthly({ year: 2003 } as never, user, scopeAll),
-      (error: unknown) => error instanceof BadRequestException,
-    );
-  } finally {
-    await pg.close();
-  }
-});
-
-test('筛选组合：管理处/收费项目/房屋性质/收款截止日', async () => {
-  const pg = await makeDatabase();
-  try {
-    await seed(pg);
-    const service = serviceFor(pg);
-    const summary = (extra: Record<string, unknown>) =>
-      service.collectionSummary({ ...MARCH, ...extra } as never, user, scopeAll) as Promise<any>;
-
-    // 单管理处。
-    const office01: any = await summary({ officeCodes: ['01'] });
-    assert.deepEqual(office01.total, { receivedCents: 2750, refundCents: 0, count: 2 });
-    assert.deepEqual(office01.filters.officeCodes, ['01']);
-
-    // 单收费项目。
-    const fee01: any = await summary({ feeCodes: ['01'] });
-    assert.deepEqual(fee01.total, { receivedCents: 4900, refundCents: 400, count: 6 });
-    assert.deepEqual(fee01.rows.map((row: any) => row.key), ['01']);
-
-    // 行级房屋性质：04 商铺，仅 600+250 实收。
-    const nature04: any = await summary({ natures: ['04'] });
-    assert.deepEqual(nature04.total, { receivedCents: 850, refundCents: 0, count: 2 });
-
-    // 01 与 04 组合 = 剔除 05 性质行后的实收/退款（5600 - 100 = 5500）。
-    const combined: any = await summary({ natures: ['01', '04'] });
-    assert.deepEqual(combined.total, { receivedCents: 5500, refundCents: 700, count: 9 });
-
-    // 收款截止日：事件日期 <= paidDateTo。
-    const cutoff: any = await summary({ paidDateTo: '2026-03-01' });
-    assert.deepEqual(cutoff.total, { receivedCents: 4900, refundCents: 0, count: 6 });
-
-    // 多条件叠加：02 管理处 + fee01 + nature01（03 月内只有 1000 收款 + 400 退款）。
-    const mixed: any = await summary({ officeCodes: ['02'], feeCodes: ['01'], natures: ['01'], paidDateTo: '2026-03-31' });
-    assert.deepEqual(mixed.total, { receivedCents: 1000, refundCents: 400, count: 2 });
-    // 02 管理处 fee01 nature01：1000(03-01) + (-400 退款) + 2000(04-01，超出区间) ...
-    // 03 月内 = 1000 收款 + 400 退款；2000 在 04 月不计。
-    assert.deepEqual(mixed.rows, [{ key: '01', label: '管理费', receivedCents: 1000, refundCents: 400, count: 2 }]);
-
-    // 组合筛选同样作用于 daily（含 04 月前的 03 月矩阵）。
-    const daily: any = await service.daily({
-      ...MARCH, officeCodes: ['02'], feeCodes: ['01', '02'], natures: ['01'], paidDateTo: '2026-03-31',
-    } as never, user, scopeAll);
-    assert.deepEqual(daily.columns.map((column: any) => column.code), ['01', '02']);
-    assert.deepEqual(daily.rows.map((row: any) => [row.date, row.totalCents]), [
-      ['2026-03-01', 1400],
-      ['2026-03-02', -400],
-      ['2026-03-10', -300],
-    ]);
-    assert.equal(daily.subtotal.totalCents, 700);
-
-    const dailyDetail: any = await service.collectionDetail({
-      ...MARCH, officeCodes: ['02'], feeCodes: ['01', '02'], natures: ['01'], paidDateTo: '2026-03-31',
-    } as never, user, scopeAll);
-    assert.equal(dailyDetail.totalCents, 700);
-    assert.equal(dailyDetail.count, 4);
-  } finally {
-    await pg.close();
-  }
-});
-
-test('collection/detail：净额行、退款行金额取 -|金额|、合计/条数不受分页影响', async () => {
-  const pg = await makeDatabase();
-  try {
-    await seed(pg);
-    const service = serviceFor(pg);
-    const detail: any = await service.collectionDetail(MARCH as never, user, scopeAll);
-    assert.equal(detail.available, true);
-    assert.equal(detail.totalCents, 4900);
-    assert.equal(detail.count, 10);
-    assert.equal(detail.limit, 200);
-    assert.equal(detail.offset, 0);
-    assert.equal(detail.rows.length, 10);
-    // 明细之和 = 实收 - 退款（summary 同条件）。
-    const summary: any = await service.collectionSummary(MARCH as never, user, scopeAll);
-    assert.equal(
-      detail.rows.reduce((sum: number, row: any) => sum + row.amountCents, 0),
-      summary.total.receivedCents - summary.total.refundCents,
-    );
-
-    // 负数退款行保留退款日期；正金额退款行的净额输出为 -300。
-    const negative: any = detail.rows.find((row: any) => row.zjId === 4);
-    assert.deepEqual(
-      {
-        amountCents: negative.amountCents, paidDate: negative.paidDate, refundDate: negative.refundDate,
-        paymentMethod: negative.paymentMethod, cashier: negative.cashier, natureCode: negative.natureCode,
-      },
-      { amountCents: -400, paidDate: '2026-03-02', refundDate: '2026-03-02', paymentMethod: '现金', cashier: '张三', natureCode: '01' },
-    );
-    const positiveRefund: any = detail.rows.find((row: any) => row.zjId === 5);
-    assert.equal(positiveRefund.amountCents, -300);
-    assert.equal(positiveRefund.refundDate, '2026-03-10');
-
-    // 字段完整性：带出管理处中文名、地址/业主/房屋、收费项目名称。
-    const first: any = detail.rows.find((row: any) => row.zjId === 10);
-    assert.deepEqual(
-      {
-        officeCode: first.officeCode, officeName: first.officeName, address: first.address,
-        ownerName: first.ownerName, roomNo: first.roomNo, feeCode: first.feeCode,
-        feeName: first.feeName, period: first.period, natureCode: first.natureCode,
-      },
-      {
-        officeCode: '01', officeName: '枫桦景苑一期', address: '宝秀路719号719', ownerName: '宝秀路业主',
-        roomNo: '719', feeCode: '01', feeName: '管理费', period: '202601', natureCode: '01',
-      },
-    );
-
-    // 分页只影响 rows，不影响合计/条数；offset 超出也返回全量合计。
-    const page: any = await service.collectionDetail({ ...MARCH, limit: 3, offset: 0 } as never, user, scopeAll);
-    assert.equal(page.rows.length, 3);
-    assert.equal(page.totalCents, 4900);
-    assert.equal(page.count, 10);
-    const lastPage: any = await service.collectionDetail({ ...MARCH, limit: 3, offset: 8 } as never, user, scopeAll);
-    assert.equal(lastPage.rows.length, 2);
-    assert.equal(lastPage.totalCents, 4900);
-    const beyond: any = await service.collectionDetail({ ...MARCH, limit: 3, offset: 50 } as never, user, scopeAll);
-    assert.deepEqual(beyond.rows, []);
-    assert.equal(beyond.totalCents, 4900);
-    assert.equal(beyond.count, 10);
-  } finally {
-    await pg.close();
-  }
-});
-
-const daysInMonth = (year: number, month: number) => new Date(Date.UTC(year, month, 0)).getUTCDate();
-const pad = (value: number) => String(value).padStart(2, '0');
-
-test('daily：列=16 项收费项目，日期升序、成交净额矩阵，单元格可由 detail 同参复算', async () => {
-  const pg = await makeDatabase();
-  try {
-    await seed(pg);
-    const service = serviceFor(pg);
-    const daily: any = await service.daily(MARCH as never, user, scopeAll);
-    assert.equal(daily.available, true);
-    assert.equal(daily.columns.length, 16);
-    assert.deepEqual(daily.columns[0], { code: '01', name: '管理费' });
-    assert.deepEqual(daily.columns[15], { code: '16', name: '置业泊位费' });
-    assert.deepEqual(daily.rows.map((row: any) => row.date), ['2026-03-01', '2026-03-02', '2026-03-10', '2026-03-20']);
-    assert.deepEqual(daily.rows.map((row: any) => [row.totalCents, row.cells['01'], row.cells['02'], row.cells['03']]), [
-      [4900, 4200, 450, 250],
-      [200, 200, 0, 0],
-      [-300, 0, -300, 0],
-      [100, 100, 0, 0],
-    ]);
-    assert.equal(daily.subtotal.totalCents, 4900);
-    assert.equal(daily.subtotal.cells['01'], 4500);
-    assert.equal(daily.subtotal.cells['02'], 150);
-    assert.equal(daily.subtotal.cells['03'], 250);
-    assert.ok(Object.values(daily.subtotal.cells).every((cents) => Number.isInteger(cents)));
-
-    // 行合计 = detail 同日期区间的净额合计；单元格 = detail 同日期区间 + 同 feeCode。
-    for (const row of daily.rows) {
-      const perDate: any = await service.collectionDetail(
-        { dateFrom: row.date, dateTo: row.date } as never, user, scopeAll,
+    for (const query of [
+      { dateTo: '2026-10-31' },
+      { dateFrom: '2026-02-30', dateTo: '2026-10-31' },
+      { dateFrom: '2026-11-01', dateTo: '2026-10-01' },
+      { dateFrom: '2024-01-01', dateTo: '2025-01-02' },
+    ]) {
+      await assert.rejects(
+        service.collectionSummary(query as never, user, scopeAll),
+        (error: unknown) => error instanceof BadRequestException,
       );
-      assert.equal(perDate.totalCents, row.totalCents, `date ${row.date}`);
-      // 有金额的收费项目数不会超过命中行数（同一费用可能多笔）。
-      assert.ok(
-        perDate.count >= Object.values(row.cells).filter((cents) => cents !== 0).length,
-        `date ${row.date} count`,
-      );
-      for (const column of daily.columns) {
-        const perCell: any = await service.collectionDetail(
-          { dateFrom: row.date, dateTo: row.date, feeCodes: [column.code] } as never, user, scopeAll,
-        );
-        assert.equal(perCell.totalCents, row.cells[column.code], `date ${row.date} fee ${column.code}`);
-      }
     }
-
-    // feeCodes 过滤只保留勾选列。
-    const onlyFee01: any = await service.daily({ ...MARCH, feeCodes: ['01'] } as never, user, scopeAll);
-    assert.deepEqual(onlyFee01.columns, [{ code: '01', name: '管理费' }]);
-    assert.deepEqual(onlyFee01.rows.map((row: any) => [row.date, row.totalCents]), [
-      ['2026-03-01', 4200],
-      ['2026-03-02', 200],
-      ['2026-03-20', 100],
-    ]);
-    assert.equal(onlyFee01.subtotal.totalCents, 4500);
-
-    // 单日矩阵与全月合计一致。
-    const firstDay: any = await service.daily({ dateFrom: '2026-03-01', dateTo: '2026-03-01' } as never, user, scopeAll);
-    assert.equal(firstDay.rows.length, 1);
-    assert.equal(firstDay.subtotal.totalCents, 4900);
-  } finally {
-    await pg.close();
-  }
-});
-
-test('monthly：固定 12 行、年度内月份归属、月度单元格可与 detail 复算', async () => {
-  const pg = await makeDatabase();
-  try {
-    await seed(pg);
-    const service = serviceFor(pg);
-    const monthly: any = await service.monthly({ year: 2026 } as never, user, scopeAll);
-    assert.equal(monthly.available, true);
-    assert.equal(monthly.year, 2026);
-    assert.equal(monthly.rows.length, 12);
-    assert.deepEqual(monthly.rows.map((row: any) => row.month), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
-    assert.equal(monthly.rows[0].totalCents, 0);
-    assert.deepEqual(
-      [monthly.rows[2].totalCents, monthly.rows[2].cells['01'], monthly.rows[2].cells['02'], monthly.rows[2].cells['03']],
-      [4900, 4500, 150, 250],
-    );
-    assert.equal(monthly.rows[3].totalCents, 2000);
-    assert.equal(monthly.rows[3].cells['01'], 2000);
-    assert.equal(monthly.rows[11].totalCents, 0);
-    assert.equal(monthly.subtotal.totalCents, 6900);
-    assert.equal(monthly.subtotal.cells['01'], 6500);
-    assert.equal(monthly.subtotal.cells['02'], 150);
-    assert.equal(monthly.subtotal.cells['03'], 250);
-
-    // 2026 全年 detail 合计 = 月报表合计。
-    const yearDetail: any = await service.collectionDetail(
-      { dateFrom: '2026-01-01', dateTo: '2026-12-31' } as never, user, scopeAll,
-    );
-    assert.equal(yearDetail.totalCents, monthly.subtotal.totalCents);
-
-    // 每个月合计 = detail 该月区间；非零单元格 = detail 该月 + 收费项目。
-    for (const row of monthly.rows) {
-      const from = `2026-${pad(row.month)}-01`;
-      const to = `2026-${pad(row.month)}-${pad(daysInMonth(2026, row.month))}`;
-      const perMonth: any = await service.collectionDetail({ dateFrom: from, dateTo: to } as never, user, scopeAll);
-      assert.equal(perMonth.totalCents, row.totalCents, `month ${row.month}`);
-      for (const [feeCode, cents] of Object.entries(row.cells)) {
-        if (!cents) continue;
-        const perCell: any = await service.collectionDetail(
-          { dateFrom: from, dateTo: to, feeCodes: [feeCode] } as never, user, scopeAll,
-        );
-        assert.equal(perCell.totalCents, cents, `month ${row.month} fee ${feeCode}`);
-      }
-    }
-
-    // 年度边界：2025-12-31 的 500 分只出现在 2025 年 12 月，不串到 2026。
-    const previous: any = await service.monthly({ year: 2025 } as never, user, scopeAll);
-    assert.equal(previous.rows[11].cells['13'], 500);
-    assert.equal(previous.subtotal.totalCents, 500);
-    const currentDecember: any = await service.monthly({ year: 2026, feeCodes: ['13'] } as never, user, scopeAll);
-    assert.equal(currentDecember.subtotal.totalCents, 0);
-  } finally {
-    await pg.close();
-  }
-});
-
-test('daily 全区间合计 = monthly 全合计 = detail 全年合计', async () => {
-  const pg = await makeDatabase();
-  try {
-    await seed(pg);
-    const service = serviceFor(pg);
-    const daily: any = await service.daily({ dateFrom: '2026-01-01', dateTo: '2026-12-31' } as never, user, scopeAll);
-    const monthly: any = await service.monthly({ year: 2026 } as never, user, scopeAll);
-    const detail: any = await service.collectionDetail({ dateFrom: '2026-01-01', dateTo: '2026-12-31' } as never, user, scopeAll);
-    assert.equal(daily.subtotal.totalCents, 6900);
-    assert.equal(monthly.subtotal.totalCents, 6900);
-    assert.equal(detail.totalCents, 6900);
-    assert.equal(daily.rows.reduce((sum: number, row: any) => sum + row.totalCents, 0), 6900);
-    assert.equal(monthly.rows.reduce((sum: number, row: any) => sum + row.totalCents, 0), 6900);
-  } finally {
-    await pg.close();
-  }
-});
-
-test('权限范围：管理处按小区收敛；越权勾选收敛为空表；无租户 403', async () => {
-  const pg = await makeDatabase();
-  try {
-    await seed(pg);
-    const service = serviceFor(pg);
-    const summary: any = await service.collectionSummary(MARCH as never, user, scopeCommunityTwo);
-    assert.deepEqual(summary.filters.officeCodes, ['02', '03']);
-    assert.deepEqual(summary.total, { receivedCents: 2850, refundCents: 700, count: 8 });
-
-    const daily: any = await service.daily(MARCH as never, user, scopeCommunityTwo);
-    assert.equal(daily.filters.officeCodes.length, 2);
-    assert.equal(daily.subtotal.totalCents, 2150);
-
-    const monthly: any = await service.monthly({ year: 2026 } as never, user, scopeCommunityTwo);
-    assert.equal(monthly.subtotal.totalCents, 2150 + 2000);
-
-    // 显式勾选范围外管理处：空表，不泄露数据。
-    const outOfScope: any = await service.collectionSummary({ ...MARCH, officeCodes: ['01'] } as never, user, scopeCommunityTwo);
-    assert.deepEqual(outOfScope.rows, []);
-    assert.deepEqual(outOfScope.total, { receivedCents: 0, refundCents: 0, count: 0 });
-    const outOfScopeDetail: any = await service.collectionDetail({ ...MARCH, officeCodes: ['01'] } as never, user, scopeCommunityTwo);
-    assert.deepEqual(outOfScopeDetail.rows, []);
-    assert.equal(outOfScopeDetail.totalCents, 0);
-    assert.equal(outOfScopeDetail.count, 0);
-
-    // 一个小区都没授权的账号：报表结构完整但全 0，不查账单。
-    const noScope = { scopeAll: false, communityIds: [] } as never;
-    const emptyMonthly: any = await service.monthly({ year: 2026 } as never, user, noScope);
-    assert.equal(emptyMonthly.available, true);
-    assert.equal(emptyMonthly.rows.length, 12);
-    assert.equal(emptyMonthly.subtotal.totalCents, 0);
-    const emptyDaily: any = await service.daily(MARCH as never, user, noScope);
-    assert.deepEqual(emptyDaily.rows, []);
-    assert.equal(emptyDaily.subtotal.totalCents, 0);
-    assert.equal(emptyDaily.columns.length, 16);
-
-    await assert.rejects(
-      service.collectionSummary(MARCH as never, { id: 7 } as never, scopeAll),
-      /tenant scope is required/,
-    );
   } finally {
     await pg.close();
   }
@@ -571,38 +408,27 @@ test('镜像未同步：available:false + message，不伪造 0 金额', async (
   const pg = await makeDatabase();
   try {
     const service = serviceFor(pg);
-    const summary: any = await service.collectionSummary(MARCH as never, user, scopeAll);
+    const summary: any = await service.collectionSummary(OCT_02 as never, user, scopeAll);
     assert.equal(summary.available, false);
-    assert.equal(summary.dataAsOf, null);
-    assert.deepEqual(summary.rows, []);
     assert.equal(summary.total, null);
     assert.match(summary.message, /镜像/);
-
-    const detail: any = await service.collectionDetail(MARCH as never, user, scopeAll);
+    const fake: any = await service.collectionFeeNature(OCT_02 as never, user, scopeAll);
+    assert.equal(fake.available, false);
+    assert.equal(fake.subtotal, null);
+    assert.deepEqual(fake.rows, []);
+    const detail: any = await service.collectionDetail(OCT_02 as never, user, scopeAll);
     assert.equal(detail.available, false);
-    assert.deepEqual(detail.rows, []);
-    assert.equal(detail.totalCents, null);
-    assert.equal(detail.count, null);
-    assert.match(detail.message, /镜像/);
-
-    const daily: any = await service.daily(MARCH as never, user, scopeAll);
+    assert.equal(detail.totals, null);
+    const daily: any = await service.daily(OCT_02 as never, user, scopeAll);
     assert.equal(daily.available, false);
-    assert.deepEqual(daily.columns, []);
-    assert.deepEqual(daily.rows, []);
     assert.equal(daily.subtotal, null);
-    assert.match(daily.message, /镜像/);
-
-    const monthly: any = await service.monthly({ year: 2026 } as never, user, scopeAll);
-    assert.equal(monthly.available, false);
-    assert.deepEqual(monthly.rows, []);
-    assert.equal(monthly.subtotal, null);
-    assert.match(monthly.message, /镜像/);
+    assert.equal(daily.refundTotalCents, null);
   } finally {
     await pg.close();
   }
 });
 
-test('每张报表只用聚合 SQL：summary/daily/monthly 各 1 条账单 SQL，detail 1 条行查询 + 1 条合计，无 N+1', async () => {
+test('报表 SQL 参数化且各 1 条聚合：summary/fee-nature/daily/monthly 1 条，detail 2 条', async () => {
   const pg = await makeDatabase();
   try {
     await seed(pg);
@@ -616,107 +442,60 @@ test('每张报表只用聚合 SQL：summary/daily/monthly 各 1 条账单 SQL�
       } as any,
       { find: async () => communities } as any,
     );
-    const countBillSql = () => statements.filter((sql) => sql.includes('FROM mis_mirror_bill b')).length;
-
-    statements.length = 0;
-    await service.collectionSummary(MARCH as never, user, scopeAll);
-    assert.equal(countBillSql(), 1);
-
-    statements.length = 0;
-    await service.collectionDetail(MARCH as never, user, scopeAll);
-    assert.equal(countBillSql(), 2);
-
-    statements.length = 0;
-    await service.daily(MARCH as never, user, scopeAll);
-    assert.equal(countBillSql(), 1);
-
-    statements.length = 0;
-    await service.monthly({ year: 2026 } as never, user, scopeAll);
-    assert.equal(countBillSql(), 1);
-    // 账单聚合 SQL 全部参数化：不把日期/代码拼进 SQL 字面量（字典查询是常量 SQL）。
-    const billSql = statements.filter((sql) => sql.includes('FROM mis_mirror_bill b'));
-    assert.ok(billSql.length > 0);
-    assert.ok(billSql.every((sql) => /\$\d+/.test(sql)));
+    const countBillSql = () => statements.filter((sql) => sql.includes('mis_mirror_bill b')).length;
+    for (const [method, expected] of [
+      [() => service.collectionSummary(OCT_02 as never, user, scopeAll), 1],
+      [() => service.collectionFeeNature(OCT_02 as never, user, scopeAll), 1],
+      [() => service.collectionDetail(OCT_02 as never, user, scopeAll), 2],
+      [() => service.daily(OCT_02 as never, user, scopeAll), 1],
+      [() => service.monthly({ year: 2026 } as never, user, scopeAll), 1],
+    ] as Array<[() => Promise<unknown>, number]>) {
+      statements.length = 0;
+      await method();
+      assert.equal(countBillSql(), expected);
+      const billSql = statements.filter((sql) => sql.includes('mis_mirror_bill b'));
+      assert.ok(billSql.every((sql) => /\$\d+/.test(sql)));
+    }
   } finally {
     await pg.close();
   }
 });
 
-test('DTO：日期必填/格式、groupBy 枚举、limit<=500、year 2004–2100，数组参数归一', async () => {
+test('DTO：新筛选字段/kind 枚举/日期与年度校验', async () => {
   const pipe = new ValidationPipe({ whitelist: true, transform: true });
   const transform = (value: Record<string, unknown>, metatype: any) =>
     pipe.transform(value, { type: 'query', metatype });
-
-  await assert.rejects(
-    transform({ dateTo: '2026-03-31' }, CollectionSummaryQueryDto),
-    (error: unknown) => error instanceof BadRequestException,
-  );
-  await assert.rejects(
-    transform({ dateFrom: '2026/03/01', dateTo: '2026-03-31' }, CollectionSummaryQueryDto),
-    (error: unknown) => error instanceof BadRequestException,
-  );
-  await assert.rejects(
-    transform({ ...MARCH, groupBy: 'bogus' }, CollectionSummaryQueryDto),
-    (error: unknown) => error instanceof BadRequestException,
-  );
-  await assert.rejects(
-    transform({ ...MARCH, limit: '501' }, CollectionDetailQueryDto),
-    (error: unknown) => error instanceof BadRequestException,
-  );
-  await assert.rejects(
-    transform({ ...MARCH, limit: '0' }, CollectionDetailQueryDto),
-    (error: unknown) => error instanceof BadRequestException,
-  );
-  await assert.rejects(
-    transform({ ...MARCH, offset: '-1' }, CollectionDetailQueryDto),
-    (error: unknown) => error instanceof BadRequestException,
-  );
-  await assert.rejects(
-    transform({ year: '2003' }, CollectionMonthlyQueryDto),
-    (error: unknown) => error instanceof BadRequestException,
-  );
-  await assert.rejects(
-    transform({ year: '2101' }, CollectionMonthlyQueryDto),
-    (error: unknown) => error instanceof BadRequestException,
-  );
-  await assert.rejects(transform({}, CollectionMonthlyQueryDto), (error: unknown) => error instanceof BadRequestException);
-
-  const summary = (await transform(
-    { dateFrom: '2026-03-01', dateTo: '2026-03-31', officeCodes: '01,02', feeCodes: '01', natures: '01,04', groupBy: 'office', paidDateTo: '' },
-    CollectionSummaryQueryDto,
-  )) as CollectionSummaryQueryDto;
-  assert.deepEqual(summary.officeCodes, ['01', '02']);
-  assert.deepEqual(summary.feeCodes, ['01']);
-  assert.deepEqual(summary.natures, ['01', '04']);
-  assert.equal(summary.groupBy, 'office');
-  assert.equal(summary.paidDateTo, undefined);
-
-  const detail = (await transform({ ...MARCH, limit: '50', offset: '10' }, CollectionDetailQueryDto)) as CollectionDetailQueryDto;
+  await assert.rejects(transform({ dateTo: '2026-10-31' }, CollectionSummaryQueryDto), BadRequestException);
+  await assert.rejects(transform({ ...OCTOBER, groupBy: 'bogus' }, CollectionSummaryQueryDto), BadRequestException);
+  await assert.rejects(transform({ ...OCT_02, kind: 'bogus' }, CollectionDetailQueryDto), BadRequestException);
+  await assert.rejects(transform({ ...OCT_02, limit: '501' }, CollectionDetailQueryDto), BadRequestException);
+  await assert.rejects(transform({ ...OCTOBER, yearFrom: '2003' }, CollectionSummaryQueryDto), BadRequestException);
+  const parsed = (await transform({
+    ...OCTOBER, officeCodes: '01,02', feeCodes: '01', natures: '01,04',
+    paymentMethods: '现金,微信', cashier: '赵丽萍', yearFrom: '2025', yearTo: '2026', groupBy: 'office',
+  }, CollectionSummaryQueryDto)) as CollectionSummaryQueryDto;
+  assert.deepEqual(parsed.officeCodes, ['01', '02']);
+  assert.deepEqual(parsed.paymentMethods, ['现金', '微信']);
+  assert.equal(parsed.cashier, '赵丽萍');
+  assert.equal(parsed.yearFrom, 2025);
+  assert.equal(parsed.yearTo, 2026);
+  const detail = (await transform({ ...OCT_02, kind: 'refund', limit: '50', offset: '10' }, CollectionDetailQueryDto)) as CollectionDetailQueryDto;
+  assert.equal(detail.kind, 'refund');
   assert.equal(detail.limit, 50);
   assert.equal(detail.offset, 10);
-  const daily = (await transform(MARCH, CollectionDailyQueryDto)) as CollectionDailyQueryDto;
-  assert.equal(daily.dateFrom, '2026-03-01');
-  assert.equal((await transform({ year: '2026', feeCodes: '01,02' }, CollectionMonthlyQueryDto) as CollectionMonthlyQueryDto).year, 2026);
+  assert.equal((await transform(OCTOBER, CollectionDailyQueryDto) as CollectionDailyQueryDto).dateFrom, '2026-10-01');
+  assert.equal((await transform({ year: '2026' }, CollectionMonthlyQueryDto) as CollectionMonthlyQueryDto).year, 2026);
 });
 
-test('P2-A 接口复用 business:view 权限，路由为 GET statistics/*，不新增页面 key', () => {
+test('P2 接口复用 business:view，GET 路由含 collection/fee-nature', () => {
   const handlers = StatisticsController.prototype as unknown as Record<string, any>;
-  for (const key of ['collectionSummary', 'collectionDetail', 'daily', 'monthly']) {
+  for (const key of ['collectionSummary', 'collectionFeeNature', 'collectionDetail', 'daily', 'monthly']) {
     assert.deepEqual(Reflect.getMetadata(PERMISSION_KEY, handlers[key]), {
       items: [{ pageKey: 'business', action: 'view' }],
     });
     assert.equal(Reflect.getMetadata(METHOD_METADATA, handlers[key]), RequestMethod.GET, key);
   }
   assert.equal(Reflect.getMetadata(PATH_METADATA, handlers.collectionSummary), 'collection/summary');
+  assert.equal(Reflect.getMetadata(PATH_METADATA, handlers.collectionFeeNature), 'collection/fee-nature');
   assert.equal(Reflect.getMetadata(PATH_METADATA, handlers.collectionDetail), 'collection/detail');
-  assert.equal(Reflect.getMetadata(PATH_METADATA, handlers.daily), 'daily');
-  assert.equal(Reflect.getMetadata(PATH_METADATA, handlers.monthly), 'monthly');
-  // P1 接口仍保留（回归）：annual/annualDetail/annualDetailBills/options。
-  for (const key of ['options', 'annual', 'annualDetail', 'annualDetailBills']) {
-    assert.deepEqual(Reflect.getMetadata(PERMISSION_KEY, handlers[key]), {
-      items: [{ pageKey: 'business', action: 'view' }],
-    });
-  }
-  // 控制器注入两个 service（P1 + P2-A），P1 接口行为不变。
-  assert.equal(StatisticsController.length, 2);
 });

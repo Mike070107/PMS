@@ -77,6 +77,67 @@ test('统计汇总金额/CSV 纯函数：整数分格式化、UTF-8 BOM、筛选
   assert.equal(receivedDetail.paidDateFrom, '2026-01-01');
   assert.equal(receivedDetail.paidDateTo, '2026-03-31');
 
+  // P2：收费汇总请求参数（日期必填、收款方式多选、收款人、所属年度起止）。
+  const collectionQuery = {
+    type: 'fee-nature', officeCodes: ['02'], feeCodes: ['01', '04'], natures: ['01', '06'],
+    paymentMethods: ['现金', '微信'], cashier: ' 合成收费员 ', dateFrom: '2026-10-01', dateTo: '2026-10-31',
+    subjectYearFrom: '2025', subjectYearTo: '2026',
+  };
+  const collectionParams = lib.collectionQueryParams(collectionQuery);
+  assert.deepEqual(JSON.parse(JSON.stringify(collectionParams)), {
+    dateFrom: '2026-10-01', dateTo: '2026-10-31', officeCodes: '02', feeCodes: '01,04',
+    natures: '01,06', paymentMethods: '现金,微信', cashier: '合成收费员', yearFrom: '2025', yearTo: '2026',
+  });
+  const cellDetail = lib.collectionDetailParams(collectionQuery, { feeCode: '04', natureCode: '01', kind: 'all' });
+  assert.equal(cellDetail.feeCodes, '04');
+  assert.equal(cellDetail.natures, '01');
+  assert.equal(cellDetail.kind, 'all');
+  assert.equal(cellDetail.dateFrom, '2026-10-01');
+  assert.equal(cellDetail.limit, 200);
+  const rowDetail = lib.collectionDetailParams(collectionQuery, { feeCode: '04', kind: 'received' });
+  assert.equal(rowDetail.natures, '01,06', '行尾金额不限定房屋性质');
+  assert.equal(rowDetail.kind, 'received');
+  const dailyQuery = {
+    type: 'daily', officeCodes: ['02'], feeCodes: ['01', '04'], natures: ['01', '06'],
+    dateFrom: '2026-10-01', dateTo: '2026-10-10',
+  };
+  const dailyParams = lib.dailyQueryParams(dailyQuery);
+  assert.deepEqual(JSON.parse(JSON.stringify(dailyParams)), {
+    dateFrom: '2026-10-01', dateTo: '2026-10-10', officeCodes: '02', feeCodes: '01,04', natures: '01,06',
+  });
+  const dailyDetail = lib.collectionDetailParams(dailyQuery, { feeCode: '04', kind: 'received', date: '2026-10-09' });
+  assert.equal(dailyDetail.dateFrom, '2026-10-09');
+  assert.equal(dailyDetail.dateTo, '2026-10-09');
+  assert.equal(dailyDetail.feeCodes, '04');
+  assert.equal(dailyDetail.kind, 'received');
+
+  const feeNature = {
+    columns: [{ code: '01', name: '商品房' }, { code: '06', name: '空房' }],
+    natures: [{ code: '01', name: '商品房' }, { code: '06', name: '空房' }],
+    rows: [{ feeCode: '04', feeName: '泊位费', cells: { '01': -60000, '06': 3090000 }, receivedCents: 3105000, refundCents: 15000, adjustCents: -60000, netCents: 3030000 }],
+    subtotal: { feeCode: '', feeName: '总计', cells: { '01': -60000, '06': 3090000 }, receivedCents: 3105000, refundCents: 15000, adjustCents: -60000, netCents: 3030000 },
+    dataAsOf: '2026-11-09T21:00:00+08:00',
+  };
+  const feeCsv = lib.feeNatureCsv(feeNature, { ...collectionQuery, officeCodes: ['02'], feeCodes: ['04'], natures: ['01', '06'], paymentMethods: ['现金', '微信'] });
+  assert.equal(feeCsv.charCodeAt(0), 0xFEFF);
+  assert.ok(feeCsv.includes('收费汇总'));
+  assert.ok(feeCsv.includes('01 商品房,06 空房,收款,退款,调整,净额'));
+  assert.ok(feeCsv.includes('泊位费,-600.00,30900.00,31050.00,150.00,-600.00,30300.00'));
+  assert.ok(feeCsv.includes('总计,-600.00,30900.00,31050.00,150.00,-600.00,30300.00'));
+
+  const daily = {
+    columns: [{ code: '01', name: '管理费' }],
+    rows: [{ date: '2026-10-01', cells: { '01': 8000000 }, totalCents: 8000000 }],
+    subtotal: { cells: { '01': 8000000 }, totalCents: 8000000 },
+    dataAsOf: '2026-11-09T21:00:00+08:00',
+  };
+  const dailyCsvText = lib.dailyCsv(daily, dailyQuery);
+  assert.equal(dailyCsvText.charCodeAt(0), 0xFEFF);
+  assert.ok(dailyCsvText.includes('收款日报表'));
+  assert.ok(dailyCsvText.includes('日期,管理费,合计'));
+  assert.ok(dailyCsvText.includes('2026-10-01,80000.00,80000.00'));
+  assert.ok(dailyCsvText.includes('合计,80000.00,80000.00'));
+
   const annual = {
     type: 'arrears',
     columns: [2011, 2014],
@@ -218,11 +279,13 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     await waitFor("!!document.querySelector('.stats')", '统计页挂载', 25000);
     await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度汇总表', 25000);
 
-    // 报表目录：两张启用、其余灰字「待接入」，不是假按钮。
+    // 报表目录：四张启用、其余灰字「待接入」，不是假按钮；收费汇总/收款日报表已启用。
     assert.equal(await js("document.querySelector('[data-report-type=received]').classList.contains('on')"), true);
     assert.ok(await js("!!document.querySelector('[data-report-type=arrears]')"));
+    assert.ok(await js("!!document.querySelector('[data-report-type=\"fee-nature\"]')"), '收费汇总已启用');
+    assert.ok(await js("!!document.querySelector('[data-report-type=daily]')"), '收款日报表已启用');
     assert.ok(await js("document.querySelectorAll('.stats-report-pending').length >= 15"), '待接入报表要用灰字列出');
-    assert.equal(await js("[...document.querySelectorAll('button')].some((e) => e.textContent.includes('收费汇总'))"), false, '待接入报表不能是按钮');
+    assert.equal(await js("[...document.querySelectorAll('.stats-report-pending')].some((e) => ['收费汇总', '收款日报表'].includes(e.textContent.trim()))"), false, '已启用报表不能仍列在待接入');
     assert.ok(await js("[...document.querySelectorAll('.stats-report-pending')].every((e) => (e.title || '').includes('待接入'))"));
 
     // 默认实收年度表：年度表头 2004..2026 + 合计、4 个管理处行、合计/小计、数据截止。
@@ -670,6 +733,142 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     await pause(400);
     assert.equal(await js("window.__calls.filter((c) => c.url === '/statistics/annual').length"), beforeInvalid, '非法收款日期范围不应发请求');
     await screenshot('statistics-date-range-invalid-1440.png');
+  });
+});
+
+test('P2 收费汇总：费项×性质矩阵、行尾四块、总计、单元格下钻合计、筛选与导出、窄屏', { timeout: 180000 }, async () => {
+  await withPage(async ({ js, call, waitFor, screenshot }) => {
+    await waitFor("!!document.querySelector('.stats')", '统计页挂载', 25000);
+    await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度表', 25000);
+
+    // 启用收费汇总（目录按钮，不再灰字）。
+    await js("document.querySelector('[data-report-type=\"fee-nature\"]').click()");
+    await waitFor("!!document.querySelector('[data-testid=fee-nature-table]')", '收费汇总矩阵', 25000);
+    assert.equal(await js("document.querySelector('[data-report-type=\"fee-nature\"]').classList.contains('on')"), true);
+    assert.ok((await js('document.body.textContent')).includes('收费汇总'));
+
+    // 请求参数：日期必填默认本月、收款方式来自 options、所属年度/收款人默认不限。
+    const query = await js("window.__calls.filter((c) => c.url === '/statistics/collection/fee-nature').slice(-1)[0].query");
+    assert.ok(query.dateFrom && query.dateTo, '收费汇总日期必填且默认本月');
+    assert.equal(typeof query.dateFrom, 'string');
+    assert.equal(query.paymentMethods, '现金,微信,支付宝,银行,转账', '默认勾选全部收款方式');
+    assert.equal(query.cashier, undefined, '收款人默认不限');
+    assert.equal(query.yearFrom, undefined, '所属年度默认不限');
+    assert.equal(query.yearTo, undefined);
+
+    // 表头：收费项目 + 13 个房屋性质 + 收款/退款/调整/净额。
+    const headers = await js("[...document.querySelectorAll('[data-testid=fee-nature-table] thead th')].map((th) => th.textContent.trim())");
+    assert.equal(headers.length, 18, '收费汇总 18 列');
+    assert.equal(headers[0], '收费项目');
+    assert.ok(headers.includes('01 商品房') && headers.includes('06 空房'));
+    assert.deepEqual(headers.slice(-4), ['收款', '退款', '调整', '净额']);
+    assert.equal(await js("document.querySelectorAll('[data-testid=fee-nature-table] tbody tr[data-fee-row]').length"), 4);
+    assert.equal(await js("document.querySelector('[data-fee-row=\"01\"] [data-nature-code=\"01\"]').textContent.trim()"), '¥119,152.20');
+    assert.equal(await js("document.querySelector('[data-fee-row=\"04\"] [data-nature-code=\"01\"]').textContent.trim()"), '¥-600.00', '调整/净额可为负');
+    assert.equal(await js("document.querySelector('[data-fee-row=\"04\"] [data-nature-code=\"06\"]').textContent.trim()"), '¥30,900.00');
+    assert.ok((await js("document.querySelector('[data-testid=fee-nature-subtotal]').textContent")).includes('¥152,992.20'), '总计净额');
+    assert.ok((await js("document.querySelector('[data-testid=fee-nature-subtotal]').textContent")).includes('¥153,742.20'), '总计收款');
+    assert.ok((await js("document.querySelector('[data-testid=fee-nature-hint]').textContent")).includes('按收款日期统计收款/退款/调整'));
+    await screenshot('statistics-fee-nature-1440.png');
+
+    // 点房屋性质单元格：明细合计=单元格，kind=all、费项/性质/日期同源。
+    await js("document.querySelector('[data-fee-row=\"01\"] [data-nature-code=\"01\"]').click()");
+    await waitFor("!!document.querySelector('[data-testid=collection-detail-table]')", '收费汇总明细抽屉');
+    assert.ok((await js("document.querySelector('[data-testid=collection-detail-summary]').textContent")).includes('¥119,152.20'), '明细合计=单元格');
+    const cellQuery = await js("window.__calls.filter((c) => c.url === '/statistics/collection/detail').slice(-1)[0].query");
+    assert.equal(cellQuery.kind, 'all');
+    assert.equal(cellQuery.feeCodes, '01');
+    assert.equal(cellQuery.natures, '01');
+    assert.equal(cellQuery.dateFrom, query.dateFrom);
+    assert.equal(cellQuery.dateTo, query.dateTo);
+    await screenshot('statistics-fee-nature-detail-1440.png');
+
+    // kind 过滤：切换「收款」请求参数与合计跟着单元格口径走。
+    await js("document.querySelector('.sheet [data-kind=\"received\"]').click()");
+    await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/collection/detail'); const last = list[list.length - 1]; return last && last.query.kind === 'received'; })()", '明细 kind=received 请求');
+    await waitFor("(document.querySelector('[data-testid=collection-detail-summary]')?.textContent || '').includes('¥119,152.20')", '收款筛选合计');
+    await js("document.querySelector('.sheet .x').click()");
+    await waitFor("!document.querySelector('.sheet')", '关闭明细抽屉');
+
+    // 筛选：取消一个收款方式后提交，请求带 paymentMethods（不含微信），且不自动请求。
+    const beforeFilterSubmit = await js("window.__calls.filter((c) => c.url === '/statistics/collection/fee-nature').length");
+    await js("document.querySelector('[data-payment-method=\"微信\"]').click()");
+    await pause(200);
+    assert.equal(await js("window.__calls.filter((c) => c.url === '/statistics/collection/fee-nature').length"), beforeFilterSubmit, '改筛选不自动请求');
+    await js("document.querySelector('[data-testid=stats-submit]').click()");
+    await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/collection/fee-nature'); const last = list[list.length - 1]; return last && last.query.paymentMethods === '现金,支付宝,银行,转账'; })()", '收费汇总筛选请求');
+    await waitFor("!!document.querySelector('[data-testid=fee-nature-table]')", '筛选后矩阵');
+
+    // 导出：当前报表 CSV、BOM、含房屋性质表头/四块列/总计。
+    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
+    await js("document.querySelector('[data-testid=stats-export]').click()");
+    await waitFor("window.__blobs.length >= 1", '收费汇总 CSV Blob');
+    const exported = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], report: text.includes('收费汇总'), header: text.includes('01 商品房') && text.includes('净额'), row: text.includes('泊位费') && text.includes('30300.00'), total: text.includes('总计') }; })()");
+    assert.deepEqual(exported.bom, [0xEF, 0xBB, 0xBF]);
+    assert.ok(exported.report && exported.header && exported.row && exported.total, '收费汇总 CSV 内容');
+    await pause(2600);
+
+    // 窄屏：页面不横向溢出，宽表在内部滚动。
+    await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
+    await pause(500);
+    if (await js("!!document.querySelector('.stats-filter-float')")) {
+      await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
+      await pause(300);
+    }
+    assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '收费汇总 390 页面横向溢出');
+    assert.ok(await js("(() => { const el = document.querySelector('.stats-matrix-scroll'); return el && el.scrollWidth > el.clientWidth; })()"), '宽表应在内部横向滚动');
+    await screenshot('statistics-fee-nature-390.png');
+    await call('Emulation.setDeviceMetricsOverride', { width: 320, height: 900, deviceScaleFactor: 1, mobile: false });
+    await pause(400);
+    assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '收费汇总 320 页面横向溢出');
+    await screenshot('statistics-fee-nature-320.png');
+  });
+});
+
+test('P2 收款日报表：日期×收费项目矩阵、合计行列、单元格收款明细下钻、导出', { timeout: 180000 }, async () => {
+  await withPage(async ({ js, call, waitFor, screenshot }) => {
+    await waitFor("!!document.querySelector('.stats')", '统计页挂载', 25000);
+    await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度表', 25000);
+    await js("document.querySelector('[data-report-type=daily]').click()");
+    await waitFor("!!document.querySelector('[data-testid=daily-table]')", '收款日报表矩阵', 25000);
+    assert.equal(await js("document.querySelector('[data-report-type=daily]').classList.contains('on')"), true);
+    assert.ok((await js('document.body.textContent')).includes('收款日报表'));
+
+    const query = await js("window.__calls.filter((c) => c.url === '/statistics/daily').slice(-1)[0].query");
+    assert.ok(query.dateFrom && query.dateTo, '日报表日期必填且默认本月');
+    const headers = await js("[...document.querySelectorAll('[data-testid=daily-table] thead th')].map((th) => th.textContent.trim())");
+    assert.equal(headers[0], '日期');
+    assert.equal(headers[headers.length - 1], '合计');
+    assert.ok(headers.includes('管理费') && headers.includes('泊位费'), '日报表列=选中的收费项目：' + JSON.stringify(headers));
+    const month = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    const rows = await js("[...document.querySelectorAll('[data-testid=daily-table] tbody tr[data-daily-date]')].map((row) => row.getAttribute('data-daily-date'))");
+    assert.deepEqual(rows, [`${month}-01`, `${month}-03`, `${month}-09`, `${month}-14`, `${month}-20`], '无收款日期不显示 0 行');
+    assert.equal(await js(`document.querySelector('[data-daily-date="${month}-01"] button').textContent.trim()`), '¥80,000.00');
+    assert.ok((await js("document.querySelector('[data-testid=daily-subtotal]').textContent")).includes('¥153,742.20'), '日报表合计');
+    assert.ok((await js("document.querySelector('[data-testid=daily-report-hint]').textContent")).includes('没有收款的日期不显示 0 行'));
+    await screenshot('statistics-daily-1440.png');
+
+    // 点单元格：当日+费项收款明细（kind=received、dateFrom=dateTo=当天）。
+    await js(`document.querySelector('[data-daily-date="${month}-01"] button').click()`);
+    await waitFor("!!document.querySelector('[data-testid=collection-detail-table]')", '日报表明细抽屉');
+    assert.ok((await js("document.querySelector('[data-testid=collection-detail-summary]').textContent")).includes('¥80,000.00'), '明细合计=单元格');
+    const detailQuery = await js("window.__calls.filter((c) => c.url === '/statistics/collection/detail').slice(-1)[0].query");
+    assert.equal(detailQuery.kind, 'received');
+    assert.equal(detailQuery.feeCodes, '01');
+    assert.equal(detailQuery.dateFrom, `${month}-01`);
+    assert.equal(detailQuery.dateTo, `${month}-01`);
+    assert.equal(await js("document.querySelectorAll('[data-testid=collection-detail-table] tbody tr[data-row-kind=\"received\"]').length"), 1);
+    await screenshot('statistics-daily-detail-1440.png');
+    await js("document.querySelector('.sheet .x').click()");
+    await waitFor("!document.querySelector('.sheet')", '关闭日报表明细');
+
+    // 导出当前日报表 CSV。
+    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
+    await js("document.querySelector('[data-testid=stats-export]').click()");
+    await waitFor("window.__blobs.length >= 1", '日报表 CSV Blob');
+    const exported = await js(`(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], report: text.includes('收款日报表'), header: text.includes('日期,'), row: text.includes('${month}-01'), total: text.includes('合计,') }; })()`);
+    assert.deepEqual(exported.bom, [0xEF, 0xBB, 0xBF]);
+    assert.ok(exported.report && exported.header && exported.row && exported.total, '收款日报表 CSV 内容');
   });
 });
 
