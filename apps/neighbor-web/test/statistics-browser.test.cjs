@@ -58,6 +58,8 @@ test('统计汇总金额/CSV 纯函数：整数分格式化、UTF-8 BOM、筛选
   assert.equal(lib.annualQueryParams({ ...filters, type: 'arrears' }).paidDateFrom, undefined);
   assert.equal(lib.annualQueryParams({ ...filters, type: 'received' }).paidDateFrom, '2026-01-01');
   assert.equal(lib.annualQueryParams({ ...filters, type: 'received' }).paidDateTo, '2026-03-31');
+  assert.equal(lib.annualQueryParams({ ...filters, type: 'received' }).asOfPeriod, undefined, '实收年度不带应收截止年月');
+  assert.equal(lib.annualQueryParams({ ...filters, type: 'arrears' }).asOfPeriod, '202611', '欠费年度仍带应收截止年月');
   const detailParams = lib.detailQueryParams({
     type: 'arrears', officeCode: '02', year: 2014, feeCodes: ['01'], natures: ['01', '04'],
     asOfPeriod: '202612', paidDateFrom: '2026-01-01', paidDateTo: '2026-03-31',
@@ -69,6 +71,7 @@ test('统计汇总金额/CSV 纯函数：整数分格式化、UTF-8 BOM、筛选
     type: 'received', officeCode: '02', year: 2014, feeCodes: ['01'], natures: ['01'],
     asOfPeriod: '202612', paidDateFrom: '2026-01-01', paidDateTo: '2026-03-31',
   });
+  assert.equal(receivedDetail.asOfPeriod, undefined, '实收明细不带应收截止年月');
   assert.equal(receivedDetail.paidDateFrom, '2026-01-01');
   assert.equal(receivedDetail.paidDateTo, '2026-03-31');
 
@@ -222,7 +225,7 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
 
     // 默认实收年度表：年度表头 2004..2026 + 合计、4 个管理处行、合计/小计、数据截止。
     const headers = await js("[...document.querySelectorAll('.stats-annual-table thead th')].map((e) => e.textContent.trim())");
-    assert.ok(headers.includes('2004') && headers.includes('2026') && headers.includes('合计'), '年度表头缺失：' + JSON.stringify(headers.slice(0, 6)));
+    assert.ok(headers.includes('2004') && headers.includes('2027') && headers.includes('合计'), '年度表头缺失：' + JSON.stringify(headers.slice(0, 6)));
     assert.equal(await js("document.querySelectorAll('.stats-annual-table tbody tr[data-office-row]').length"), 4);
     assert.ok(await js("!!document.querySelector('[data-testid=stats-subtotal-row]')"));
     assert.ok((await js("document.querySelector('[data-office-row=\"02\"]').textContent")).includes('¥7,435,962.00'), '实收 02 合计应按后端返回');
@@ -241,14 +244,59 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     assert.equal(await js("document.querySelector('[data-nature-code=\"13\"]').checked"), true);
     const receivedQuery = await js("window.__calls.filter((c) => c.url === '/statistics/annual').slice(-1)[0].query");
     assert.equal(receivedQuery.type, 'received');
-    assert.equal(receivedQuery.asOfPeriod, expectedAsOfPeriod, '应收截止默认当前年份 12 月');
+    assert.equal(receivedQuery.asOfPeriod, undefined, '实收报表不能带应收截止年月，否则 2027/2028 列被截断');
     assert.equal(receivedQuery.paidDateTo, undefined, '收款日期默认留空，不限制实收');
     assert.equal(receivedQuery.paidDateFrom, undefined, '收款日期默认留空，不限制实收');
     assert.equal(receivedQuery.natures, expectedDefaultNatures, '默认房屋性质 = 全字典排除 06 空房');
     assert.ok(!receivedQuery.natures.split(',').includes('06'), '默认请求不能带 06 空房');
     assert.ok(receivedQuery.natures.split(',').includes('05') && receivedQuery.natures.split(',').includes('07'), '默认请求要含 05/07 等非空房性质');
     assert.equal(receivedQuery.feeCodes.split(',').length, 16, '默认收费项目仍是 16 项扁平 feeCodes');
+    assert.ok(bodyText.includes('实收年度按「应收年月」归年'), '实收报表要说明按应收年月归年');
+    assert.equal(await js("!!document.querySelector('[data-testid=asof-period-field]')"), false, '实收报表不展示应收截止年月');
+    assert.ok(await js("!!document.querySelector('[data-testid=asof-period-hint]')"), '实收报表要提示应收截止年月仅欠费使用');
+    assert.equal(await js("document.querySelector('[data-office-code=\"01\"][data-year=\"2004\"]').textContent.trim()"), '¥882.40');
+    assert.equal(await js("document.querySelector('[data-office-code=\"01\"][data-year=\"2027\"]').textContent.trim()"), '¥1,600.00', '实收 2027 列不能被应收截止年月截断');
+    assert.ok((await js("document.querySelector('[data-office-row=\"01\"]').textContent")).includes('¥2,482.40'));
+    await js("(() => { const el = document.querySelector('.stats-table-scroll'); el.scrollLeft = el.scrollWidth; })()");
+    await pause(250);
+    await screenshot('statistics-received-2027-1440.png');
+    await js("(() => { const el = document.querySelector('.stats-table-scroll'); el.scrollLeft = 0; })()");
     await screenshot('statistics-received-1440.png');
+
+    // P1.3：实收点单元格直接是逐笔清单（detailKind=received），合计=单元格，不可再下钻。
+    await js("document.querySelector('[data-office-code=\"01\"][data-year=\"2004\"]').click()");
+    await waitFor("!!document.querySelector('.sheet')", '实收逐笔清单抽屉');
+    await waitFor("!!document.querySelector('[data-testid=stats-received-total]')", '实收逐笔合计');
+    assert.ok((await js("document.querySelector('.sheet .sh-h').textContent")).includes('项目实收年度汇总 · 管理处 01 · 2004 年度'), '实收下钻标题');
+    assert.equal(await js("document.querySelector('[data-testid=stats-received-count]').textContent.trim()"), '23 笔');
+    assert.deepEqual(
+      await js("[...document.querySelectorAll('.stats-received-table thead th')].map((e) => e.textContent.trim())"),
+      ['序号', '地址', '业主姓名', '建筑面积', '应收年月', '实收金额', '收款日期', '入库单编号', '票据编号'],
+      '实收逐笔清单列名/顺序',
+    );
+    assert.equal(await js("document.querySelectorAll('.stats-received-table tbody tr').length"), 23, '实收逐笔清单 23 行');
+    assert.equal(await js("document.querySelector('.stats-received-table tbody tr td:first-child').textContent.trim()"), '1', '序号列存在');
+    assert.equal(await js("document.querySelector('[data-testid=stats-received-total]').textContent.trim()"), '¥882.40', '实收合计=单元格');
+    assert.equal(await js("document.querySelector('[data-testid=stats-detail-cell-amount]').textContent.trim()"), '¥882.40');
+    assert.equal(await js("[...document.querySelectorAll('.stats-received-table tbody tr')].every((row) => row.children[7].textContent.trim() === '—' && row.children[8].textContent.trim() === '—')"), true, '入库单/票据编号缺镜像显示—');
+    const receivedDetailQuery = await js("window.__calls.filter((c) => c.url === '/statistics/annual/detail').slice(-1)[0].query");
+    assert.equal(receivedDetailQuery.type, 'received');
+    assert.equal(receivedDetailQuery.officeCode, '01');
+    assert.equal(receivedDetailQuery.year, 2004);
+    assert.equal(receivedDetailQuery.asOfPeriod, undefined, '实收明细不能带应收截止年月');
+    assert.equal(receivedDetailQuery.paidDateFrom, undefined);
+    assert.equal(receivedDetailQuery.paidDateTo, undefined);
+    const billsBeforeReceivedClick = await js("window.__calls.filter((c) => c.url === '/statistics/annual/detail/bills').length");
+    await js("document.querySelector('.stats-received-table tbody tr').click()");
+    await pause(300);
+    assert.equal(await js("window.__calls.filter((c) => c.url === '/statistics/annual/detail/bills').length"), billsBeforeReceivedClick, '实收逐笔清单行不可再下钻请求 bills');
+    assert.equal(await js("!!document.querySelector('.stats-bills-table')"), false);
+    await screenshot('statistics-received-detail-1440.png');
+    await js("document.querySelector('[data-testid=stats-received-total]').scrollIntoView({ block: 'center' })");
+    await pause(250);
+    await screenshot('statistics-received-detail-total-1440.png');
+    await js("document.querySelector('.sheet .x').click()");
+    await waitFor("!document.querySelector('.sheet')", '关闭实收逐笔抽屉');
 
     // 悬浮筛选可收纳：收起后数据区变宽、面板消失；localStorage 记住状态。
     assert.ok(await js("!!document.querySelector('.stats-filter-float')"), '桌面默认展开筛选浮层');
@@ -348,6 +396,8 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     // 切到项目欠费年度汇总：02×2014=¥477.90，02 合计 ¥745,182.10（生产验收基准）。
     await js("document.querySelector('[data-report-type=arrears]').click()");
     await waitFor("document.querySelector('[data-office-code=\"02\"][data-year=\"2014\"]')?.textContent.includes('¥477.90')", '欠费 02×2014 单元格');
+    assert.ok(await js("!!document.querySelector('[data-testid=asof-period-field]')"), '欠费报表展示应收截止年月');
+    assert.equal(await js("!!document.querySelector('[data-testid=asof-period-hint]')"), false);
     assert.ok((await js("document.querySelector('[data-office-row=\"02\"]').textContent")).includes('¥745,182.10'));
     assert.ok((await js('document.body.textContent')).includes('项目欠费年度汇总'));
     assert.ok((await js('document.body.textContent')).includes('已知差异'), '01 管理处差异要在页面标注');
@@ -373,7 +423,7 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     assert.equal(annualQuery.natures, expectedDefaultNatures, '筛选后仍默认排除 06 空房');
     assert.ok(!annualQuery.natures.split(',').includes('06'));
     assert.equal(annualQuery.yearFrom, 2004);
-    assert.equal(annualQuery.yearTo, 2026);
+    assert.equal(annualQuery.yearTo, 2027);
     assert.equal(annualQuery.asOfPeriod, expectedAsOfPeriod);
     assert.equal(annualQuery.paidDateTo, undefined, '欠费报表不传收款截止日期');
     await waitFor("document.querySelectorAll('.stats-annual-table tbody tr[data-office-row]').length === 1", '筛选后只剩 02');
@@ -521,12 +571,25 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
 
     // 收款日期范围：实收请求带 paidDateFrom/paidDateTo；欠费不带；from>to 时 toast 且不发请求。
     const typeRangeDate = async (index, text) => {
-      await js(`(() => { const el = document.querySelectorAll('.stats-date-range input')[${index}]; el.focus(); el.select(); })()`);
-      await call('Input.insertText', { text });
-      for (const type of ['keyDown', 'keyUp']) {
-        await call('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+      const stateKey = index === 0 ? 'dateFrom' : 'dateTo';
+      const keyEvent = (type, params) => call('Input.dispatchKeyEvent', { type, ...params });
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await js(`document.querySelectorAll('.stats-date-range input')[${index}].focus()`);
+        // 先清空输入（Ctrl+A / Backspace），再整段插入日期并回车，避免和上一次值拼接。
+        await keyEvent('keyDown', { key: 'a', code: 'KeyA', modifiers: 2, windowsVirtualKeyCode: 65 });
+        await keyEvent('keyUp', { key: 'a', code: 'KeyA', modifiers: 2, windowsVirtualKeyCode: 65 });
+        await keyEvent('keyDown', { key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
+        await keyEvent('keyUp', { key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
+        await call('Input.insertText', { text });
+        await pause(150);
+        await keyEvent('keyDown', { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+        await keyEvent('keyUp', { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+        await pause(350);
+        // 以 React 草稿状态（data-date-*）为准，避免只改到 DOM input 但提交时状态还没跟上。
+        const committed = await js(`document.querySelector('.stats-date-range').dataset.${stateKey}`);
+        if (committed === text) return;
       }
-      await pause(350);
+      assert.fail(`收款日期输入未生效：${text}`);
     };
     await js("document.querySelector('[data-report-type=received]').click()");
     await waitFor("document.querySelector('[data-report-type=received]').classList.contains('on')", '切回实收报表');
@@ -543,12 +606,28 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
       '实收请求带收款日期范围',
     );
     await screenshot('statistics-date-range-1440.png');
+    // 收款日期范围只做筛选：实收逐笔清单请求带 from/to，年度列仍按应收年月归年。
+    assert.equal(await js("document.querySelector('[data-office-code=\"01\"][data-year=\"2004\"]').textContent.trim()"), '¥882.40', '年度列仍按应收年度');
+    await js("document.querySelector('[data-office-code=\"01\"][data-year=\"2004\"]').click()");
+    await waitFor("!!document.querySelector('.stats-received-table')", '带日期范围的实收逐笔清单');
+    const rangedDetailQuery = await js("window.__calls.filter((c) => c.url === '/statistics/annual/detail').slice(-1)[0].query");
+    assert.equal(rangedDetailQuery.type, 'received');
+    assert.equal(rangedDetailQuery.asOfPeriod, undefined, '实收明细不能带应收截止年月');
+    assert.equal(rangedDetailQuery.paidDateFrom, '2026-01-01');
+    assert.equal(rangedDetailQuery.paidDateTo, '2026-03-31');
+    await js("document.querySelector('.sheet .x').click()");
+    await waitFor("!document.querySelector('.sheet')", '关闭实收逐笔抽屉（日期范围）');
     await js("document.querySelector('[data-report-type=arrears]').click()");
     await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/annual'); const last = list[list.length - 1]; return last && last.query.type === 'arrears'; })()", '切换欠费报表');
     const arrearsQuery = await js("window.__calls.filter((c) => c.url === '/statistics/annual').slice(-1)[0].query");
     assert.equal(arrearsQuery.paidDateFrom, undefined, '欠费报表不带收款日期起');
     assert.equal(arrearsQuery.paidDateTo, undefined, '欠费报表不带收款日期止');
     await typeRangeDate(0, '2026-06-01');
+    assert.equal(
+      await js("document.querySelector('.stats-date-range').dataset.dateFrom"),
+      '2026-06-01',
+      '非法范围输入应写入筛选状态',
+    );
     const beforeInvalid = await js("window.__calls.filter((c) => c.url === '/statistics/annual').length");
     await js("document.querySelector('[data-testid=stats-submit]').click()");
     await waitFor("document.body.textContent.includes('收款日期起不能晚于收款日期至')", '收款日期范围错误提示');

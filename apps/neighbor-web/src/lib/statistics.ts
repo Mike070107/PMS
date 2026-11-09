@@ -83,10 +83,33 @@ export interface AnnualDetailRow {
   periodRange: string | null;
   amountCents: number;
 }
+/** 实收报表下钻的行：逐笔已收流水（旧系统「项目实收年度汇总」点单元格即逐笔清单）。 */
+export interface AnnualReceivedDetailRow {
+  zjId: string | number;
+  sId?: number | null;
+  address: string | null;
+  ownerName: string | null;
+  areaSqm: number | string | null;
+  /** 应收年月 YYYYMM（年度列按它的年份归年） */
+  period: string | null;
+  amountCents: number;
+  paidDate: string | null;
+  refundDate: string | null;
+  paymentMethod: string | null;
+  cashier: string | null;
+  /** 旧系统/MIS 镜像暂无：null 显示「—」 */
+  receiptNo?: string | null;
+  invoiceNo?: string | null;
+}
+
 export interface AnnualDetailResponse {
-  rows: AnnualDetailRow[];
+  /** 实收=逐笔清单；欠费=按房屋聚合（兼容后端不带该字段的旧响应）。 */
+  detailKind?: 'received' | 'arrears';
+  rows: Array<AnnualDetailRow | AnnualReceivedDetailRow>;
   /** 未镜像时后端返回 null，不伪造 0。 */
   totalCents: number | null;
+  /** 实收逐笔条数（后端可选返回）。 */
+  count?: number | null;
   available?: boolean;
   message?: string | null;
 }
@@ -196,7 +219,9 @@ export function annualQueryParams(query: AnnualQuery) {
     natures: query.natures.join(','),
     yearFrom: query.yearFrom ?? undefined,
     yearTo: query.yearTo ?? undefined,
-    asOfPeriod: query.asOfPeriod || undefined,
+    // 实收报表列按应收年度展示、不受截止年月截断（旧系统 2027/2028 列仍有金额）；
+    // 应收截止年月仅欠费报表生效。
+    asOfPeriod: query.type === 'arrears' ? (query.asOfPeriod || undefined) : undefined,
     // 收款日期范围只对实收报表有意义；欠费报表不传，避免后端按收款日期过滤掉欠费行。
     paidDateFrom: query.type === 'received' ? (query.paidDateFrom || undefined) : undefined,
     paidDateTo: query.type === 'received' ? (query.paidDateTo || undefined) : undefined,
@@ -220,7 +245,7 @@ export function detailQueryParams(base: {
     year: base.year,
     feeCodes: base.feeCodes.join(','),
     natures: base.natures.join(','),
-    asOfPeriod: base.asOfPeriod || undefined,
+    asOfPeriod: base.type === 'arrears' ? (base.asOfPeriod || undefined) : undefined,
     paidDateFrom: base.type === 'received' ? (base.paidDateFrom || undefined) : undefined,
     paidDateTo: base.type === 'received' ? (base.paidDateTo || undefined) : undefined,
   };
@@ -265,7 +290,7 @@ export function annualCsv(annual: AnnualSummaryResponse, context: CsvContext): s
     ['管理处', officeText],
     ['收费项目', feeText],
     ['房屋性质', natureText],
-    ['应收截止年月', filters.asOfPeriod || ''],
+    ['应收截止年月', annual.type === 'arrears' ? (filters.asOfPeriod || '') : '（仅欠费报表使用）'],
     ['收款日期范围', [filters.paidDateFrom, filters.paidDateTo].filter(Boolean).join('~')],
     [],
     ['管理处', ...annual.columns.map(String), '合计'],

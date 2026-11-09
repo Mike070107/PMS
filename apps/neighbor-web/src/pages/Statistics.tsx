@@ -231,6 +231,7 @@ export default function Statistics() {
                   onReset={resetDraft}
                   onExport={exportCurrent}
                   onCollapse={toggleFilters}
+                  reportType={reportType}
                   canExport={!!annual && !!applied}
                   loading={annualLoading}
                 />
@@ -277,6 +278,12 @@ export default function Statistics() {
                 {annual?.columns?.length ? <span className="muted stats-range">{annual.columns[0]}–{annual.columns[annual.columns.length - 1]} 年度</span> : null}
                 <span className="muted stats-as-of">{dataAsOf ? `数据截止 ${dataAsOf}` : ''}</span>
               </div>
+
+              {(annual?.type ?? applied?.type ?? reportType) === 'received' && annual?.available !== false ? (
+                <div className="note2 stats-received-hint">
+                  <Icon name="alert" />实收年度按「应收年月」归年（收款日期可跨年）；收款日期范围只用于筛选已收流水，不改变年度归属。点单元格查逐笔清单。
+                </div>
+              ) : null}
 
               {annualLoading ? <Loading text="统计中…" /> : annualError ? (
                 <div className="note2" role="alert" style={{ background: 'var(--dang-w)', color: 'var(--dang)' }}>

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import Icon from '@/components/Icon';
 import DateInput from '@/components/DateInput';
-import { groupFeeItems, type FeeCategoryGroup, type FilterDraft, type StatisticsFeeItem, type StatisticsOptions } from '@/lib/statistics';
+import { groupFeeItems, type FeeCategoryGroup, type FilterDraft, type StatisticsFeeItem, type StatisticsOptions, type StatisticsReportType } from '@/lib/statistics';
 
 export interface StatisticsFiltersProps {
   options: StatisticsOptions;
@@ -13,6 +13,8 @@ export interface StatisticsFiltersProps {
   onExport: () => void;
   /** 收起悬浮筛选面板，把宽度还给数据区。 */
   onCollapse: () => void;
+  /** 当前报表：应收截止年月只对欠费报表展示/生效。 */
+  reportType: StatisticsReportType;
   canExport: boolean;
   loading: boolean;
 }
@@ -91,7 +93,7 @@ function FeeCategoryRow({
 
 /** 左侧悬浮筛选：管理处/小区、收费项目分类树、房屋性质、收款日期范围；只在点「统计」时生效。 */
 export default function StatisticsFilters({
-  options, draft, onChange, onSubmit, onReset, onExport, onCollapse, canExport, loading,
+  options, draft, onChange, onSubmit, onReset, onExport, onCollapse, reportType, canExport, loading,
 }: StatisticsFiltersProps) {
   const [officeQuery, setOfficeQuery] = useState('');
   const [feeQuery, setFeeQuery] = useState('');
@@ -225,8 +227,8 @@ export default function StatisticsFilters({
         </CheckGroup>
 
         <div className="stats-filter-dates">
-          <div className="stats-date-range-label">收款日期范围 <span className="muted">（仅实收，可留空）</span></div>
-          <div className="stats-date-range">
+          <div className="stats-date-range-label">收款日期范围 <span className="muted">（仅实收；年度按应收年月归年，此范围只做筛选）</span></div>
+          <div className="stats-date-range" data-date-from={draft.paidDateFrom} data-date-to={draft.paidDateTo}>
             <DateInput
               type="date"
               value={draft.paidDateFrom}
@@ -243,10 +245,14 @@ export default function StatisticsFilters({
               onChange={(event) => onChange({ paidDateTo: event.target.value })}
             />
           </div>
-          <label>
-            应收截止年月
-            <DateInput type="month" value={monthValue} onChange={(event) => onChange({ asOfPeriod: String(event.target.value || '').replace('-', '') })} />
-          </label>
+          {reportType === 'arrears' ? (
+            <label data-testid="asof-period-field">
+              应收截止年月
+              <DateInput type="month" value={monthValue} onChange={(event) => onChange({ asOfPeriod: String(event.target.value || '').replace('-', '') })} />
+            </label>
+          ) : (
+            <div className="stats-filter-hint" data-testid="asof-period-hint">应收截止年月仅欠费报表使用；实收报表列按应收年度展示，不受截止年月截断。</div>
+          )}
         </div>
       </div>
 

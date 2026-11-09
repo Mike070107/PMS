@@ -48,7 +48,7 @@ const OPTIONS = {
   offices: OFFICES,
   feeItems: FEE_ITEMS,
   natures: NATURES,
-  yearRange: { min: 2004, max: 2026 },
+  yearRange: { min: 2004, max: 2027 },
   dataAsOf: '2026-11-09T21:00:00+08:00',
   sourceMode: 'mirror',
   available: true,
@@ -62,8 +62,41 @@ const ARREARS_CELLS: Record<string, Record<number, number>> = {
   '04': { 2020: 5000 },
 };
 const RECEIVED_CELLS: Record<string, Record<number, number>> = {
+  // P1.3：实收按「应收年月」归年；01 管理处 2004 应收年度 ¥882.40（收款项在 2006/2009/2013 收回，验证跨年）。
+  // 旧系统实收报表不按应收截止年月截断：2027 列仍有金额（¥1,600.00）。
+  '01': { 2004: 88240, 2027: 160000 },
   '02': { 2014: 120000, 2025: 16595000, 2026: 726881200 },
 };
+
+/** 实收 01×2004 的 23 条逐笔已收流水，合计 88240 分（与单元格一致）。 */
+function received2004Rows() {
+  const count = 23;
+  const total = 88240;
+  const base = 3600;
+  return Array.from({ length: count }, (_, index) => {
+    const last = index === count - 1;
+    const paidYears = ['2006-03-15', '2009-07-01', '2013-11-20'];
+    return {
+      zjId: 2004000 + index + 1,
+      sId: 800 + index,
+      address: `宝秀路${719 + index}号${101 + index}室`,
+      ownerName: `合成业主${index + 1}`,
+      areaSqm: 79.67,
+      period: `2004${String((index % 12) + 1).padStart(2, '0')}`,
+      amountCents: last ? total - base * (count - 1) : base,
+      paidDate: paidYears[index % paidYears.length],
+      refundDate: null,
+      paymentMethod: index % 2 ? '银行' : '现金',
+      cashier: '合成收费员',
+      receiptNo: null,
+      invoiceNo: null,
+    };
+  });
+}
+
+function receivedCellCents(officeCode: string, year: number): number {
+  return RECEIVED_CELLS[officeCode]?.[year] ?? 0;
+}
 
 function annualResponse(type: string, officeCodes: string[], yearFrom: number, yearTo: number) {
   const columns: number[] = [];
@@ -116,18 +149,31 @@ export async function request<T>(options: any): Promise<T> {
     const officeCode = String(options.query?.officeCode ?? '');
     const year = Number(options.query?.year ?? 0);
     const type = options.query?.type === 'arrears' ? 'arrears' : 'received';
+    if (type === 'received') {
+      // P1.3：实收下钻直接是逐笔清单（detailKind:'received'），合计必须等于单元格。
+      const rows = officeCode === '01' && year === 2004
+        ? received2004Rows()
+        : [{
+          zjId: 9000 + year, sId: 900, address: `合成地址 ${officeCode} ${year}`, ownerName: '合成业主',
+          areaSqm: 88.8, period: `${year}06`, amountCents: receivedCellCents(officeCode, year) || 10000,
+          paidDate: `${year}-06-15`, refundDate: null, paymentMethod: '现金', cashier: '合成收费员',
+          receiptNo: null, invoiceNo: null,
+        }];
+      const totalCents = rows.reduce((sum, row) => sum + row.amountCents, 0);
+      return { detailKind: 'received', rows, totalCents, count: rows.length, available: true, message: null } as T;
+    }
     const rows = officeCode === '02' && year === 2014
       ? [{
         sId: 719, address: '宝秀路719号719', ownerName: '合成业主', areaSqm: 79.67,
-        periodRange: type === 'arrears' ? '201410-201412' : '202401-202412',
-        amountCents: type === 'arrears' ? 47790 : 120000,
+        periodRange: '201410-201412',
+        amountCents: 47790,
       }]
       : [{
         sId: Number(`${officeCode || 9}${year}`), address: `合成地址 ${officeCode} ${year}`, ownerName: '合成业主',
         areaSqm: 88.8, periodRange: `${year}01-${year}12`, amountCents: 10000,
       }];
     const totalCents = rows.reduce((sum, row) => sum + row.amountCents, 0);
-    return { rows, totalCents } as T;
+    return { detailKind: 'arrears', rows, totalCents, available: true, message: null } as T;
   }
 
   if (options.url === '/statistics/annual/detail/bills') {

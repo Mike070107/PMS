@@ -562,6 +562,13 @@
 
 .stats-bills-table { min-width: 720px; }
 
+/* 实收逐笔清单：只读、列多，横向滚动；缺镜像列显示「—」 */
+.stats-received-hint { margin-bottom: 10px; font-size: 12.5px; }
+
+.stats-received-table { min-width: 980px; }
+
+.stats-received-table tbody tr:hover td { background: var(--sunken); }
+
 /* ---------- 响应式 ---------- */
 @media (max-width: 900px) {
   .stats-body:not(.filters-collapsed) .stats-main { margin-left: 0; }
