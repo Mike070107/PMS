@@ -6912,3 +6912,11 @@
   - d5e5e0ea feat(statistics-ui): 统计汇总改版——编号独立列、表头/数值对齐、表格线、筛选悬浮收纳；菜单合并「统计分析」
   - 05aebeab fix(staff): correct warehouse and work order flows
 
+## 2026-11-09 23:50 · api · d90dc314
+
+- 包：`pms-api-fast-20261109-234923.tar.gz`
+- 提交：d90dc314 feat(statistics-ui): 收费项目分类树筛选 + 收款日期范围 + 导出 Excel 文案
+- 自上次（05aebeab）以来上线的相关提交：
+  - f586bd9c feat(statistics): 收费项目分类（源 SETUPSFXM.收费类别）+ 实收报表收款日期范围
+  - 4ce953ba feat(statistics-api): P2-A 收费汇总类只读报表接口（收费汇总/实收明细/日常日报表/月报表）
+
