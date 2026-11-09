@@ -6,6 +6,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { PERMISSION_KEY } from '../../common/require-permission.decorator';
 import { MisMirror1794500000000 } from '../../migrations/1794500000000-MisMirror';
 import { MisMirrorBillNature1795300000000 } from '../../migrations/1795300000000-MisMirrorBillNature';
+import { MisMirrorFeeItemCategory1795400000000 } from '../../migrations/1795400000000-MisMirrorFeeItemCategory';
 import { StatisticsAnnualDetailQueryDto, StatisticsAnnualQueryDto } from './dto';
 import { StatisticsController } from './statistics.controller';
 import { StatisticsService } from './statistics.service';
@@ -25,12 +26,18 @@ const communities = [
   { id: 16, name: '上海新家' },
 ];
 
-const FEE_ITEMS: Array<[string, string]> = [
-  ['01', '管理费'], ['02', '租金'], ['03', '保洁保安费'], ['04', '泊位费'],
-  ['05', '临时停车费'], ['06', '保安费'], ['07', '保洁费'], ['08', '保安保洁费'],
-  ['09', '网络费'], ['10', '青客租金'], ['11', '青客未签约租金'], ['12', '水费'],
-  ['13', '电费'], ['14', '停车管理费'], ['15', '空房租金'], ['16', '置业泊位费'],
+/** SETUPSFXM 16 项收费项目 + 旧系统分类（09 网络费故意置空，验证空分类归「其它」）。 */
+const FEE_ITEMS: Array<[string, string, string | null]> = [
+  ['01', '管理费', '日常收费'], ['02', '租金', '日常收费'], ['03', '保洁保安费', '日常收费'],
+  ['04', '泊位费', '停车收费'], ['05', '临时停车费', '停车收费'], ['06', '保安费', '日常收费'],
+  ['07', '保洁费', '日常收费'], ['08', '保安保洁费', '日常收费'], ['09', '网络费', null],
+  ['10', '青客租金', '其它'], ['11', '青客未签约租金', '其它'], ['12', '水费', '代收费'],
+  ['13', '电费', '代收费'], ['14', '停车管理费', '停车收费'], ['15', '空房租金', '其它'],
+  ['16', '置业泊位费', '停车收费'],
 ];
+
+/** 旧系统分类顺序：代收费、其它、日常收费、停车收费；同分类按 code。 */
+const FEE_ITEM_ORDER = ['12', '13', '09', '10', '11', '15', '01', '02', '03', '06', '07', '08', '04', '05', '14', '16'];
 
 /** 室表当前性质故意全部镜像为 06 空房：统计必须用 bill.nature_code，不能回退室表性质。 */
 const ROOMS: Array<[number, string, number]> = [
@@ -52,6 +59,8 @@ async function makeDatabase() {
   await migration.up({ query: (sql: string) => pg.query(sql) } as any);
   const nature = new MisMirrorBillNature1795300000000();
   await nature.up({ query: (sql: string) => pg.query(sql) } as any);
+  const feeCategory = new MisMirrorFeeItemCategory1795400000000();
+  await feeCategory.up({ query: (sql: string) => pg.query(sql) } as any);
   return pg;
 }
 
@@ -92,8 +101,8 @@ async function seed(pg: PGlite) {
      VALUES($1,'bill',$2,now())`,
     [tenantId, '2026-11-09T21:30:00+08:00'],
   );
-  for (const [code, name] of FEE_ITEMS) {
-    await pg.query(`INSERT INTO mis_mirror_fee_item(fee_code,fee_name) VALUES($1,$2)`, [code, name]);
+  for (const [code, name, category] of FEE_ITEMS) {
+    await pg.query(`INSERT INTO mis_mirror_fee_item(fee_code,fee_name,category) VALUES($1,$2,$3)`, [code, name, category]);
   }
   for (const [sId, nature, area] of ROOMS) {
     await pg.query(
@@ -186,7 +195,11 @@ test('options：管理处/收费项目/FWXZK 字典/年度范围/镜像水位', 
       officeCode: '05', name: '馨香北桥-二期', communityId: null, communityName: null,
     });
     assert.equal(result.feeItems.length, 16);
-    assert.deepEqual(result.feeItems[0], { code: '01', name: '管理费' });
+    assert.deepEqual(result.feeItems.map((item: any) => item.code), FEE_ITEM_ORDER);
+    assert.deepEqual(result.feeItems[0], { code: '12', name: '水费', category: '代收费' });
+    // category 为空归「其它」，排序在代收费之后。
+    assert.deepEqual(result.feeItems.find((item: any) => item.code === '09'), { code: '09', name: '网络费', category: '其它' });
+    assert.deepEqual(result.feeItems.find((item: any) => item.code === '04'), { code: '04', name: '泊位费', category: '停车收费' });
     // FWXZK 字典按 code 排序全量返回；04=商铺、06=空房（旧口径曾把 06 算成商铺）。
     assert.deepEqual(result.natures, STATISTICS_NATURE_OPTIONS);
     assert.deepEqual(result.natures.find((item: any) => item.code === '04'), { code: '04', name: '商铺' });
@@ -557,6 +570,54 @@ test('paidDateTo 收款截止日期只影响实收口径，且明细/账单同�
   }
 });
 
+test('paidDateFrom 收款起始日期与 paidDateTo 组合过滤（仅实收）', async () => {
+  const pg = await makeDatabase();
+  try {
+    await seed(pg);
+    const service = serviceFor(pg);
+    const fromOnly: any = await service.annual({
+      type: 'received', officeCodes: ['02'], feeCodes: ['01'], yearFrom: 2026, yearTo: 2026,
+      paidDateFrom: '2026-03-02',
+    } as never, user, scopeAll);
+    assert.equal(annualOf(fromOnly.rows, '02').cells['2026'], -400);
+
+    const sameDay: any = await service.annual({
+      type: 'received', officeCodes: ['02'], feeCodes: ['01'], yearFrom: 2026, yearTo: 2026,
+      paidDateFrom: '2026-03-01', paidDateTo: '2026-03-01',
+    } as never, user, scopeAll);
+    assert.equal(annualOf(sameDay.rows, '02').cells['2026'], 1000);
+
+    const range: any = await service.annual({
+      type: 'received', officeCodes: ['02'], feeCodes: ['01'], yearFrom: 2026, yearTo: 2026,
+      paidDateFrom: '2026-03-02', paidDateTo: '2026-03-02',
+    } as never, user, scopeAll);
+    assert.equal(annualOf(range.rows, '02').cells['2026'], -400);
+
+    // 下钻带上同一范围时合计仍等于单元格。
+    const detail: any = await service.annualDetail({
+      type: 'received', officeCode: '02', year: 2026, feeCodes: ['01'],
+      paidDateFrom: '2026-03-02', paidDateTo: '2026-03-02',
+    } as never, user, scopeAll);
+    assert.equal(detail.totalCents, annualOf(range.rows, '02').cells['2026']);
+    const bills: any = await service.annualDetailBills({
+      type: 'received', officeCode: '02', sId: 501, year: 2026, feeCodes: ['01'],
+      paidDateFrom: '2026-03-02', paidDateTo: '2026-03-02',
+    } as never, user, scopeAll);
+    assert.equal(bills.totalCents, detail.totalCents);
+    assert.equal(bills.rows.length, 1);
+    assert.equal(bills.rows[0].amountCents, -400);
+
+    // 欠费口径忽略收款日期范围。
+    const arrears: any = await service.annual({
+      type: 'arrears', officeCodes: ['02'], feeCodes: ['01'], yearFrom: 2026, yearTo: 2026,
+      paidDateFrom: '2026-03-02', paidDateTo: '2026-03-02',
+    } as never, user, scopeAll);
+    assert.equal(annualOf(arrears.rows, '02').cells['2026'], 72688120);
+  } finally {
+    await pg.close();
+  }
+});
+
 test('权限范围：管理处按小区映射过滤，越权明细 403', async () => {
   const pg = await makeDatabase();
   try {
@@ -638,10 +699,18 @@ test('镜像未同步时明确的空数组+message，不伪造 0', async () => {
   }
 });
 
-test('type 非法 400，列表参数解析为数组', async () => {
+test('type/日期非法 400，列表参数解析为数组', async () => {
   const pipe = new ValidationPipe({ whitelist: true, transform: true });
   await assert.rejects(
     pipe.transform({ type: 'bogus' }, { type: 'query', metatype: StatisticsAnnualQueryDto }),
+    (error: unknown) => error instanceof BadRequestException,
+  );
+  await assert.rejects(
+    pipe.transform({ type: 'received', paidDateFrom: '2026/03/01' }, { type: 'query', metatype: StatisticsAnnualQueryDto }),
+    (error: unknown) => error instanceof BadRequestException,
+  );
+  await assert.rejects(
+    pipe.transform({ type: 'received', paidDateTo: '2026-13-01' }, { type: 'query', metatype: StatisticsAnnualQueryDto }),
     (error: unknown) => error instanceof BadRequestException,
   );
   await assert.rejects(
@@ -649,7 +718,10 @@ test('type 非法 400，列表参数解析为数组', async () => {
     (error: unknown) => error instanceof BadRequestException,
   );
   const parsed = await pipe.transform(
-    { type: 'arrears', officeCodes: '01,02', natures: '01,04', yearFrom: '2004', yearTo: '2026', asOfPeriod: '202612' },
+    {
+      type: 'arrears', officeCodes: '01,02', natures: '01,04', yearFrom: '2004', yearTo: '2026',
+      asOfPeriod: '202612', paidDateFrom: '2026-03-01', paidDateTo: '2026-03-31',
+    },
     { type: 'query', metatype: StatisticsAnnualQueryDto },
   ) as StatisticsAnnualQueryDto;
   assert.deepEqual(parsed.officeCodes, ['01', '02']);
@@ -657,6 +729,8 @@ test('type 非法 400，列表参数解析为数组', async () => {
   assert.equal(parsed.yearFrom, 2004);
   assert.equal(parsed.yearTo, 2026);
   assert.equal(parsed.asOfPeriod, '202612');
+  assert.equal(parsed.paidDateFrom, '2026-03-01');
+  assert.equal(parsed.paidDateTo, '2026-03-31');
 });
 
 test('报表接口复用 business:view 权限，不新增页面 key', () => {

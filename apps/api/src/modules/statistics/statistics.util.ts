@@ -45,6 +45,33 @@ export function statisticsNatureName(code: string): string {
   return STATISTICS_NATURE_LABELS[code] ?? `性质${code}`;
 }
 
+/** 旧系统筛选面板的收费项目分类顺序（MIS SETUPSFXM.收费类别）。 */
+export const STATISTICS_FEE_CATEGORY_ORDER = ['代收费', '其它', '日常收费', '停车收费'] as const;
+export type StatisticsFeeCategory = (typeof STATISTICS_FEE_CATEGORY_ORDER)[number];
+
+export interface StatisticsFeeItem {
+  code: string;
+  name: string;
+  category: string;
+}
+
+/** 分类为空归「其它」；未知分类原样保留，排序放到已知分类之后。 */
+export function normalizeStatisticsFeeCategory(value?: string | null): string {
+  return (value ?? '').trim() || '其它';
+}
+
+function statisticsFeeCategoryRank(category: string): number {
+  const index = STATISTICS_FEE_CATEGORY_ORDER.indexOf(category as StatisticsFeeCategory);
+  return index >= 0 ? index : STATISTICS_FEE_CATEGORY_ORDER.length;
+}
+
+/** 收费项目先按旧系统分类顺序（代收费/其它/日常收费/停车收费），同分类再按 code 排序。 */
+export function sortStatisticsFeeItems(items: StatisticsFeeItem[]): StatisticsFeeItem[] {
+  return [...items].sort((left, right) =>
+    statisticsFeeCategoryRank(left.category) - statisticsFeeCategoryRank(right.category)
+    || left.code.localeCompare(right.code));
+}
+
 export interface StatisticsCommunityRef {
   id: number;
   name: string;

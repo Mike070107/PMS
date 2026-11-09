@@ -250,7 +250,11 @@ export class MisMirrorService {
 
   private async syncSmallDimensions() {
     const [fees, methods, offices] = await Promise.all([
-      this.misFees.mirrorRead('SELECT DH AS feeCode,XM AS feeName FROM dbo.SETUPSFXM', {}, MIS_TIMEOUT),
+      this.misFees.mirrorRead(
+        `SELECT DH AS feeCode,COALESCE(NULLIF(显示名称,N''),XM) AS feeName,收费类别 AS category FROM dbo.SETUPSFXM`,
+        {},
+        MIS_TIMEOUT,
+      ),
       this.misFees.mirrorRead('SELECT id AS methodId,收款方式 AS methodName FROM dbo.收款方式列表', {}, MIS_TIMEOUT),
       this.misFees.mirrorRead('SELECT DISTINCT 管理处 AS officeCode FROM dbo.楼表', {}, MIS_TIMEOUT),
     ]);
@@ -259,9 +263,9 @@ export class MisMirrorService {
     const officeRows = (offices?.recordsets?.[0] ?? []) as any[];
     for (const row of feeRows) {
       await this.dataSource.query(
-        `INSERT INTO mis_mirror_fee_item(fee_code,fee_name,synced_at) VALUES($1,$2,now())
-         ON CONFLICT (fee_code) DO UPDATE SET fee_name=EXCLUDED.fee_name,synced_at=now()`,
-        [String(row.feeCode), String(row.feeName ?? '')],
+        `INSERT INTO mis_mirror_fee_item(fee_code,fee_name,category,synced_at) VALUES($1,$2,$3,now())
+         ON CONFLICT (fee_code) DO UPDATE SET fee_name=EXCLUDED.fee_name,category=EXCLUDED.category,synced_at=now()`,
+        [String(row.feeCode), String(row.feeName ?? ''), row.category == null ? null : String(row.category)],
       );
     }
     for (const row of methodRows) {

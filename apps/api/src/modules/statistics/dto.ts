@@ -12,7 +12,7 @@ import { STATISTICS_TYPES, type StatisticsType } from './statistics.util';
 const CODE_RE = /^[0-9A-Za-z]{1,20}$/;
 const OFFICE_CODE_RE = /^\d{2}$/;
 const PERIOD_RE = /^\d{4}(0[1-9]|1[0-2])$/;
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
 /** 逗号分隔或重复 query 参数都归一为字符串数组；空串视为未传（=全部）。 */
 function toCodeList(value: unknown): string[] | undefined {
@@ -70,6 +70,12 @@ export class StatisticsAnnualQueryDto {
   @Transform(({ value }) => (value === '' || value == null ? undefined : value))
   @Matches(DATE_RE, { message: 'paidDateTo 必须是 YYYY-MM-DD' })
   paidDateTo?: string;
+
+  /** 收款起始日期（仅 received 生效）：paid_date >= paidDateFrom。 */
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value == null ? undefined : value))
+  @Matches(DATE_RE, { message: 'paidDateFrom 必须是 YYYY-MM-DD' })
+  paidDateFrom?: string;
 }
 
 export class StatisticsAnnualDetailQueryDto {
@@ -109,6 +115,12 @@ export class StatisticsAnnualDetailQueryDto {
   @Transform(({ value }) => (value === '' || value == null ? undefined : value))
   @Matches(DATE_RE, { message: 'paidDateTo 必须是 YYYY-MM-DD' })
   paidDateTo?: string;
+
+  /** 收款起始日期（仅 received 生效）：paid_date >= paidDateFrom。 */
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value == null ? undefined : value))
+  @Matches(DATE_RE, { message: 'paidDateFrom 必须是 YYYY-MM-DD' })
+  paidDateFrom?: string;
 }
 
 export class StatisticsBillsQueryDto extends StatisticsAnnualDetailQueryDto {

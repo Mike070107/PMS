@@ -14,9 +14,12 @@ import {
   buildAnnualTable,
   filterRequestedOffices,
   formatPeriodRange,
+  normalizeStatisticsFeeCategory,
   resolveStatisticsOffices,
+  sortStatisticsFeeItems,
   STATISTICS_NATURE_OPTIONS,
   statisticsColumns,
+  type StatisticsFeeItem,
   type StatisticsType,
 } from './statistics.util';
 
@@ -92,6 +95,7 @@ export class StatisticsService {
       yearTo,
       asOfPeriod: query.asOfPeriod ?? null,
       paidDateTo: query.paidDateTo ?? null,
+      paidDateFrom: query.paidDateFrom ?? null,
     };
     const state = await this.mirrorState(tenantId);
     if (state.billCount === 0) {
@@ -117,6 +121,7 @@ export class StatisticsService {
         yearTo,
         query.asOfPeriod,
         query.paidDateTo,
+        query.paidDateFrom,
       );
       raw = await this.dataSource.query(built.sql, built.params);
     }
@@ -145,6 +150,7 @@ export class StatisticsService {
       natures: query.natures ?? null,
       asOfPeriod: query.asOfPeriod ?? null,
       paidDateTo: query.paidDateTo ?? null,
+      paidDateFrom: query.paidDateFrom ?? null,
     };
     const state = await this.mirrorState(tenantId);
     if (state.billCount === 0) {
@@ -166,6 +172,7 @@ export class StatisticsService {
       query.natures,
       query.asOfPeriod,
       query.paidDateTo,
+      query.paidDateFrom,
     );
     const raw: any[] = await this.dataSource.query(built.sql, built.params);
     const rows = raw.map((row) => ({
@@ -202,6 +209,7 @@ export class StatisticsService {
       natures: query.natures ?? null,
       asOfPeriod: query.asOfPeriod ?? null,
       paidDateTo: query.paidDateTo ?? null,
+      paidDateFrom: query.paidDateFrom ?? null,
     };
     const state = await this.mirrorState(tenantId);
     if (state.billCount === 0) {
@@ -224,6 +232,7 @@ export class StatisticsService {
       query.natures,
       query.asOfPeriod,
       query.paidDateTo,
+      query.paidDateFrom,
     );
     const raw: any[] = await this.dataSource.query(built.sql, built.params);
     const rows = raw.map((row) => ({
@@ -271,11 +280,16 @@ export class StatisticsService {
     return office;
   }
 
-  private async loadFeeItems(): Promise<Array<{ code: string; name: string }>> {
+  /** 收费项目带旧系统分类；分类顺序 代收费/其它/日常收费/停车收费，同分类按 code。 */
+  private async loadFeeItems(): Promise<StatisticsFeeItem[]> {
     const rows: any[] = await this.dataSource
-      .query('SELECT fee_code AS "code", fee_name AS "name" FROM mis_mirror_fee_item ORDER BY fee_code')
+      .query('SELECT fee_code AS "code", fee_name AS "name", category FROM mis_mirror_fee_item ORDER BY fee_code')
       .catch(() => []);
-    return rows.map((row) => ({ code: String(row.code), name: String(row.name ?? '') }));
+    return sortStatisticsFeeItems(rows.map((row) => ({
+      code: String(row.code),
+      name: String(row.name ?? ''),
+      category: normalizeStatisticsFeeCategory(row.category == null ? null : String(row.category)),
+    })));
   }
 
   private async loadYearRange(): Promise<{ min: number | null; max: number | null }> {
@@ -321,6 +335,7 @@ export class StatisticsService {
     yearTo: number,
     asOfPeriod?: string,
     paidDateTo?: string,
+    paidDateFrom?: string,
   ): BuiltSql {
     const params: unknown[] = [];
     const add = (value: unknown) => {
@@ -344,6 +359,7 @@ export class StatisticsService {
     if (feeCodes?.length) where.push(`b.fee_code IN (${feeCodes.map(add).join(',')})`);
     if (asOfPeriod) where.push(`b.period <= ${add(asOfPeriod)}`);
     if (type === 'received' && paidDateTo) where.push(`b.paid_date <= ${add(paidDateTo)}`);
+    if (type === 'received' && paidDateFrom) where.push(`b.paid_date >= ${add(paidDateFrom)}`);
     const sql = `SELECT b.office_code AS "officeCode", ${yearExpr} AS "year",
         COALESCE(SUM(b.amount_cents),0)::bigint AS "amountCents"
       FROM mis_mirror_bill b
@@ -361,6 +377,7 @@ export class StatisticsService {
     natures: string[] | undefined,
     asOfPeriod?: string,
     paidDateTo?: string,
+    paidDateFrom?: string,
   ): BuiltSql {
     const params: unknown[] = [];
     const add = (value: unknown) => {
@@ -380,6 +397,7 @@ export class StatisticsService {
     if (feeCodes?.length) where.push(`b.fee_code IN (${feeCodes.map(add).join(',')})`);
     if (asOfPeriod) where.push(`b.period <= ${add(asOfPeriod)}`);
     if (type === 'received' && paidDateTo) where.push(`b.paid_date <= ${add(paidDateTo)}`);
+    if (type === 'received' && paidDateFrom) where.push(`b.paid_date >= ${add(paidDateFrom)}`);
     const sql = `SELECT b.office_code AS "officeCode", b.s_id AS "sId",
         MAX(b.address) AS "address", MAX(b.owner_name) AS "ownerName",
         MAX(r.area_sqm)::float8 AS "areaSqm",
@@ -403,6 +421,7 @@ export class StatisticsService {
     natures: string[] | undefined,
     asOfPeriod?: string,
     paidDateTo?: string,
+    paidDateFrom?: string,
   ): BuiltSql {
     const params: unknown[] = [];
     const add = (value: unknown) => {
@@ -422,6 +441,7 @@ export class StatisticsService {
     if (feeCodes?.length) where.push(`b.fee_code IN (${feeCodes.map(add).join(',')})`);
     if (asOfPeriod) where.push(`b.period <= ${add(asOfPeriod)}`);
     if (type === 'received' && paidDateTo) where.push(`b.paid_date <= ${add(paidDateTo)}`);
+    if (type === 'received' && paidDateFrom) where.push(`b.paid_date >= ${add(paidDateFrom)}`);
     const sql = `SELECT b.zj_id AS "zjId", b.fee_code AS "feeCode", b.fee_name AS "feeName",
         b.period AS "period", b.amount_cents::bigint AS "amountCents",
         to_char(b.paid_date,'YYYY-MM-DD') AS "paidDate",

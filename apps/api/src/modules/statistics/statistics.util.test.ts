@@ -6,7 +6,9 @@ import {
   buildAnnualTable,
   filterRequestedOffices,
   formatPeriodRange,
+  normalizeStatisticsFeeCategory,
   resolveStatisticsOffices,
+  sortStatisticsFeeItems,
   STATISTICS_NATURE_OPTIONS,
   statisticsColumns,
   statisticsNatureName,
@@ -106,4 +108,23 @@ test('FWXZK 房屋性质字典按收费时点性质返回全量 code+中文名',
   assert.equal(formatPeriodRange('201410', null), '201410');
   assert.equal(formatPeriodRange(null, '201412'), '201412');
   assert.equal(formatPeriodRange(null, null), null);
+});
+
+test('收费项目分类排序：代收费→其它→日常收费→停车收费，同分类按 code，空分类归其它', () => {
+  const items = [
+    { code: '01', name: '管理费', category: '日常收费' },
+    { code: '12', name: '水费', category: '代收费' },
+    { code: '09', name: '网络费', category: normalizeStatisticsFeeCategory(null) },
+    { code: '04', name: '泊位费', category: '停车收费' },
+    { code: '10', name: '青客租金', category: '其它' },
+    { code: '13', name: '电费', category: '代收费' },
+  ];
+  assert.deepEqual(sortStatisticsFeeItems(items).map((item) => item.code), ['12', '13', '09', '10', '01', '04']);
+  assert.equal(normalizeStatisticsFeeCategory('  '), '其它');
+  assert.equal(normalizeStatisticsFeeCategory(' 日常收费 '), '日常收费');
+  // 未知分类排在已知分类之后，不丢数据。
+  assert.deepEqual(
+    sortStatisticsFeeItems([{ code: '02', name: 'x', category: '新分类' }, { code: '01', name: 'y', category: '停车收费' }]).map((item) => item.code),
+    ['01', '02'],
+  );
 });
