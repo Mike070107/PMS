@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { accessCardIssuance, address, request } from '@pms/api-client';
 import type { AccessCardIssueBatch, AccessCardIssueItem } from '@pms/api-client/src/endpoints/access-card-issuance';
 import type { AddressCommunity } from '@pms/shared-types';
@@ -6,16 +6,29 @@ import { useSession } from '@/lib/auth';
 import { can } from '@/lib/perm';
 import { dayjs } from '@/lib/format';
 import Icon from '@/components/Icon';
-import { Loading, toast } from '@/components/ui';
+import { Loading, Sheet, toast } from '@/components/ui';
 import HousePicker, { type PickedHouse } from '@/components/HousePicker';
 import { accessStatusLabel, legacyStatusLabel, rawTitle } from '@/lib/access-card-status';
 import '@/styles/access-door.css';
 import ToneIcon from '@/components/ToneIcon';
 
 interface CardRow { id: number; cardNo: string; houseId: number; status?: string }
-interface HistRow {
-  id: number; sequence: number; roomLabel: string; icCardNo: string | null; wgCardNo: string | null;
-  issuedAt: string | null; accessStatus: string; legacySyncStatus: string;
+interface CardHistoryRow {
+  id: number; personNo?: string | null; sequence: number; roomLabel: string; hidden?: boolean; status?: string | null;
+  personCreatedAt?: string | null; icCardNo?: string | null; wgCardNo?: string | null;
+  issuedAt?: string | null; lastSwipeAt?: string | null; lastDevice?: string | null;
+}
+interface CardHistoryResp { status: 'ready' | 'pending'; rows: CardHistoryRow[]; refreshedAt?: string; fieldsIncomplete?: boolean }
+type CardRecent = {
+  id: number; personNo?: string | null; sequence?: number; roomLabel: string; icCardNo?: string | null; wgCardNo?: string | null;
+  issuedAt?: string | null; hidden?: boolean; status?: string | null;
+  communityId?: number | null; communityName?: string | null; lane?: string | null; buildingId?: number | null;
+  buildingNo?: string | null; buildingText?: string | null; houseId?: number | null; roomNo?: string | null;
+  ownerName?: string | null; ownerPhone?: string | null; ownerId?: number | null;
+};
+interface CardDetail {
+  id: number; appliedSystems?: string[]; grantedBuildings?: string[]; latestTasks?: unknown[];
+  icCardNo?: string | null; wgCardNo?: string | null; roomLabel?: string | null; status?: string | null;
 }
 
 const CARD_STATUS: Record<string, { text: string; tone: string }> = {
@@ -24,6 +37,31 @@ const CARD_STATUS: Record<string, { text: string; tone: string }> = {
   card_failed: { text: '写卡失败', tone: 'dang' },
 };
 const cardStatusLabel = (v?: string | null) => CARD_STATUS[v || ''] ?? { text: v ? '处理中' : '—', tone: 'mute' };
+
+const fmtCardTime = (value?: string | null) => value && dayjs(value).isValid() ? dayjs(value).format('YYYY-MM-DD HH:mm') : '—';
+const actionText = (value: unknown) => typeof value === 'string' ? value : value == null ? '' : JSON.stringify(value);
+const cardActionResults = (raw: any): Array<{ name: string; ok: boolean; detail: string }> => {
+  const source = raw?.systems ?? raw?.results ?? raw;
+  const entries: Array<[string, any]> = Array.isArray(source)
+    ? source.map((item: any) => [String(item?.system ?? item?.name ?? item?.key ?? 'system'), item])
+    : source && typeof source === 'object' ? Object.entries(source) : [];
+  return entries.map(([name, item]) => {
+    const ok = item?.success === true || item?.ok === true || item?.status === 'succeeded' || item?.status === 'success' || item?.result === 'success';
+    return { name, ok, detail: actionText(item?.message ?? item?.error ?? item?.reason ?? item?.detail ?? item?.result) || (ok ? '成功' : '失败') };
+  });
+};
+const grantResultRows = (raw: any): Array<{ buildingNo: string; status: string; ok: boolean; detail: string }> => {
+  const source = raw?.results ?? raw?.buildings ?? raw;
+  const entries: Array<[string, any]> = Array.isArray(source)
+    ? source.map((item: any, index: number) => [String(item?.buildingNo ?? item?.building ?? item?.no ?? index + 1), item])
+    : source && typeof source === 'object' ? Object.entries(source) : [];
+  return entries.map(([buildingNo, item]) => {
+    const status = String(item?.status ?? item?.result ?? (item?.offline ? 'offline' : item?.success === false ? 'failed' : item?.success === true ? 'succeeded' : ''));
+    const ok = item?.success === true || status === 'succeeded' || status === 'success' || status === 'ok';
+    const label = ['offline', '待连', '未连接', 'unreachable'].includes(status) ? '离线' : ok ? '成功' : status === 'failed' || status === 'error' ? '失败' : status ? status : (ok ? '成功' : '失败');
+    return { buildingNo, status: label, ok, detail: actionText(item?.message ?? item?.error ?? item?.reason ?? item?.detail) || (ok ? '成功' : label) };
+  });
+};
 
 /**
  * 门禁管理：按户发卡 + 查卡 + 发卡历史，全部在本页完成（不再跳旧发卡台）。
@@ -36,14 +74,29 @@ export default function AccessCards() {
   const [tree, setTree] = useState<AddressCommunity[]>([]);
   const [picked, setPicked] = useState<PickedHouse | null>(null);
   const [cards, setCards] = useState<CardRow[] | null>(null);
-  const [history, setHistory] = useState<HistRow[] | null>(null);
+  const [history, setHistory] = useState<CardHistoryResp | null>(null);
   const [err, setErr] = useState('');
-
   const [issuer, setIssuer] = useState<{ id: string; name: string } | null>(null);
   const [qty, setQty] = useState(1);
   const [batch, setBatch] = useState<AccessCardIssueBatch | null>(null);
   const [busy, setBusy] = useState('');
   const timer = useRef<number | null>(null);
+  const [historyError, setHistoryError] = useState('');
+  const [historyRetrying, setHistoryRetrying] = useState(false);
+  const [historyRetry, setHistoryRetry] = useState(0);
+  const [recent, setRecent] = useState<CardRecent[] | null>(null);
+  const [recentError, setRecentError] = useState('');
+  const [recentRetry, setRecentRetry] = useState(0);
+  const [applyCard, setApplyCard] = useState<CardHistoryRow | null>(null);
+  const [applyBusy, setApplyBusy] = useState(false);
+  const [applyResults, setApplyResults] = useState<Array<{ name: string; ok: boolean; detail: string }> | null>(null);
+  const [grantCard, setGrantCard] = useState<CardHistoryRow | null>(null);
+  const [grantMode, setGrantMode] = useState<'add' | 'remove'>('add');
+  const [grantSearch, setGrantSearch] = useState('');
+  const [grantSelected, setGrantSelected] = useState<string[]>([]);
+  const [grantBusy, setGrantBusy] = useState(false);
+  const [grantResults, setGrantResults] = useState<Array<{ buildingNo: string; status: string; ok: boolean; detail: string }> | null>(null);
+  const [cardDetails, setCardDetails] = useState<Record<number, CardDetail>>({});
 
   useEffect(() => { address.tree().then(setTree).catch(() => setTree([])); }, []);
   useEffect(() => {
@@ -65,19 +118,102 @@ export default function AccessCards() {
   }, [tree, session.access]);
 
   const loadHouse = useCallback((houseId: number) => {
-    setCards(null); setHistory(null); setErr('');
+    setCards(null); setErr('');
     request<{ accessCards: CardRow[] }>({ url: '/business/search', query: { q: '', serviceType: 'access_card' } })
       .then((r) => setCards((r?.accessCards ?? []).filter((c) => c.houseId === houseId)))
       .catch(() => setCards([]));
-    accessCardIssuance.houseContext(houseId)
-      .then((c) => setHistory((c?.history ?? []) as never))
-      .catch(() => setHistory([]));
   }, []);
 
+  const historyKey = JSON.stringify([picked?.communityId, picked?.lane, picked?.buildingNo, picked?.roomNo]);
   useEffect(() => {
-    if (!picked?.houseId) { setCards(null); setHistory(null); setBatch(null); return; }
+    if (!picked?.houseId) { setCards(null); setHistory(null); setBatch(null); setHistoryError(''); setHistoryRetrying(false); return undefined; }
     loadHouse(picked.houseId);
-  }, [picked?.houseId, loadHouse]);
+    let cancelled = false;
+    let attempts = 0;
+    let retryTimer = 0;
+    setHistory(null); setHistoryError(''); setHistoryRetrying(false);
+    const addressText = [picked.lane, picked.buildingNo, picked.roomNo].filter(Boolean).join('/');
+    const runHistory = async () => {
+      try {
+        const res = await request<CardHistoryResp>({ url: '/access-card-issuance/cards/history', query: { communityId: picked.communityId, address: addressText } });
+        if (cancelled) return;
+        if (res?.status === 'pending' && attempts < 3) {
+          attempts += 1;
+          setHistoryRetrying(true);
+          retryTimer = window.setTimeout(() => void runHistory(), 3000);
+          return;
+        }
+        setHistory(res);
+        setHistoryRetrying(false);
+      } catch (e) {
+        if (cancelled) return;
+        setHistoryError(e instanceof Error && e.message ? e.message : '发卡历史读取失败');
+        setHistoryRetrying(false);
+      }
+    };
+    void runHistory();
+    return () => { cancelled = true; if (retryTimer) window.clearTimeout(retryTimer); };
+  }, [historyKey, historyRetry, loadHouse, picked]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRecent(null); setRecentError('');
+    request<CardRecent[]>({ url: '/access-card-issuance/cards/recent', query: { limit: 30 } })
+      .then((rows) => { if (!cancelled) setRecent(Array.isArray(rows) ? rows : []); })
+      .catch((e) => { if (!cancelled) setRecentError(e instanceof Error && e.message ? e.message : '最近做卡记录读取失败'); });
+    return () => { cancelled = true; };
+  }, [recentRetry]);
+
+  const refreshCardDetail = useCallback(async (cardId: number) => {
+    const detail = await request<CardDetail>({ url: '/cards/' + cardId });
+    setCardDetails((prev) => ({ ...prev, [cardId]: detail }));
+    return detail;
+  }, []);
+
+  const openGrant = (card: CardHistoryRow) => {
+    setGrantCard(card); setGrantMode('add'); setGrantSearch(''); setGrantSelected([]); setGrantResults(null);
+    void refreshCardDetail(card.id)
+      .then((detail) => setGrantSelected(Array.isArray(detail.grantedBuildings) ? detail.grantedBuildings.map(String) : []))
+      .catch(() => undefined);
+  };
+  const submitApply = async () => {
+    if (!applyCard || applyBusy) return;
+    setApplyBusy(true);
+    try {
+      const raw = await request<unknown>({ method: 'POST', url: '/cards/' + applyCard.id + '/apply-mdb', data: { systems: ['iccard'] } });
+      setApplyResults(cardActionResults(raw));
+      await refreshCardDetail(applyCard.id);
+    } catch (e) {
+      setApplyResults([{ name: 'iccard', ok: false, detail: e instanceof Error && e.message ? e.message : '写入失败' }]);
+    } finally { setApplyBusy(false); }
+  };
+  const openApply = (card: CardHistoryRow) => { setApplyCard(card); setApplyResults(null); };
+  const submitGrant = async () => {
+    if (!grantCard || grantBusy) return;
+    if (!grantSelected.length) { setGrantResults([{ buildingNo: '—', status: '失败', ok: false, detail: '请至少选择一栋楼' }]); return; }
+    setGrantBusy(true);
+    try {
+      const raw = await request<unknown>({ method: 'POST', url: '/cards/' + grantCard.id + '/grant-boards', data: { buildingNos: grantSelected, mode: grantMode } });
+      setGrantResults(grantResultRows(raw));
+      await refreshCardDetail(grantCard.id);
+    } catch (e) {
+      setGrantResults([{ buildingNo: '—', status: '失败', ok: false, detail: e instanceof Error && e.message ? e.message : '楼栋授权失败' }]);
+    } finally { setGrantBusy(false); }
+  };
+  const pickRecentHouse = (row: CardRecent) => {
+    if (!row.communityId || !row.houseId || !row.buildingNo || !row.roomNo) { toast('该记录缺少房号信息，无法跳转'); return; }
+    const lane = row.lane ?? null;
+    const buildingText = row.buildingText || [row.communityName, lane ? lane + '弄' : '', row.buildingNo + '号'].filter(Boolean).join('');
+    const shortText = row.roomLabel || [row.communityName, lane ? lane + '弄' : '', row.buildingNo + '号', row.roomNo].filter(Boolean).join('/');
+    setPicked({
+      communityId: row.communityId, communityName: row.communityName || '', lane, buildingId: row.buildingId || 0,
+      buildingNo: row.buildingNo, buildingText, houseId: row.houseId, roomNo: row.roomNo,
+      ownerName: row.ownerName || null, ownerPhone: row.ownerPhone || null, ownerId: row.ownerId || null,
+      text: [buildingText, row.roomNo + '室'].filter(Boolean).join(''), shortText,
+    });
+    setBatch(null);
+    setHistoryRetry((value) => value + 1);
+  };
 
   useEffect(() => {
     if (!batch) return undefined;
@@ -118,6 +254,16 @@ export default function AccessCards() {
   };
 
   const cur = batch?.items.find((i) => i.cardStatus !== 'card_completed');
+
+  const historyRows = history?.rows ?? [];
+  const fieldsIncomplete = !!history?.fieldsIncomplete || historyRows.some((row) => !row.personNo || !row.personCreatedAt || !row.icCardNo || !row.wgCardNo || !row.lastSwipeAt || !row.lastDevice);
+  const buildingOptions = useMemo(() => {
+    const community = tree.find((item) => item.id === picked?.communityId);
+    const list = (community?.buildings ?? []).map((building) => ({ no: building.buildingNo, label: (building.lane ? building.lane + '弄' : '') + building.buildingNo + '号' }));
+    for (const no of grantSelected) if (!list.some((item) => item.no === no)) list.push({ no, label: no + '号' });
+    return list;
+  }, [tree, picked?.communityId, grantSelected]);
+  const visibleBuildings = buildingOptions.filter((item) => !grantSearch.trim() || item.label.includes(grantSearch.trim()) || item.no.includes(grantSearch.trim()));
 
   return (
     <>
@@ -224,29 +370,66 @@ export default function AccessCards() {
             ))}
           </div>
 
-          <div className="card" style={{ padding: '14px 16px' }}>
+          <div className="card" style={{ padding: '14px 16px', marginBottom: 14 }}>
             <div className="panelHd" style={{ marginBottom: 10 }}>
               <b>发卡历史</b>
-              {history?.length ? <span className="tag mute" style={{ marginLeft: 8 }}>{history.length} 张</span> : null}
+              {historyRows.length ? <span className="tag mute" style={{ marginLeft: 8 }}>{historyRows.length} 张</span> : null}
+              {historyRetrying ? <span className="tag warn" style={{ marginLeft: 8 }}>助手回传中，3 秒后重试…</span> : null}
+              {history?.refreshedAt ? <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>更新于 {fmtCardTime(history.refreshedAt)}</span> : null}
             </div>
-            {history === null ? <Loading text="读发卡记录…" /> : history.length === 0 ? (
-              <div className="muted">这一户还没有发卡记录</div>
+            <div className="note2" style={{ marginBottom: 10 }}>
+              <Icon name="alert" />数据来自捷顺系统；字段由现场助手回传。
+              {fieldsIncomplete ? <span className="ac-field-hint">部分字段需升级现场助手后显示</span> : null}
+            </div>
+            {historyError ? (
+              <div className="note2" role="alert" style={{ color: 'var(--dang)' }}>
+                <Icon name="alert" />{historyError}
+                <button className="btn sm" style={{ marginLeft: 10 }} onClick={() => setHistoryRetry((value) => value + 1)}>重试</button>
+              </div>
+            ) : history === null ? <Loading text="读发卡记录…" /> : historyRows.length === 0 ? (
+              <div className="muted">该户在捷顺系统里没有发卡记录</div>
             ) : (
               <div className="t-scroll">
-                <table className="t" style={{ minWidth: 720 }}>
-                  <thead><tr><th style={{ width: 70 }}>序号</th><th>卡号</th><th>发卡时间</th><th>门禁授权</th><th>旧库同步</th></tr></thead>
+                <table className="t ac-history-table">
+                  <thead><tr><th>序号</th><th>编号</th><th>房号</th><th>人事资料添加时间</th><th>IC卡号</th><th>WG卡号</th><th>发卡时间</th><th>最后刷卡时间</th><th>出入口</th><th>状态</th><th>操作</th></tr></thead>
                   <tbody>
-                    {history.map((h) => {
-                      const as = accessStatusLabel(h.accessStatus);
-                      const ls = legacyStatusLabel(h.legacySyncStatus);
+                    {historyRows.map((row) => {
+                      const detail = cardDetails[row.id];
+                      const hidden = !!row.hidden;
+                      const room = String(row.roomLabel || '').replace(/已隐藏/g, '').replace(/^[\s·\-]+/, '') || '—';
+                      const statusText = hidden ? '已隐藏' : (row.status || '—');
                       return (
-                        <tr key={h.id}>
-                          <td className="nw muted">{h.sequence}</td>
-                          <td className="nw"><b>{h.icCardNo || h.wgCardNo || '—'}</b>{h.icCardNo && h.wgCardNo ? <span className="muted"> · WG {h.wgCardNo}</span> : null}</td>
-                          <td className="nw">{h.issuedAt ? dayjs(h.issuedAt).format('YYYY-MM-DD HH:mm') : '—'}</td>
-                          <td className="nw"><span className={`tag ${as.tone}`} title={rawTitle(h.accessStatus)}>{as.text}</span></td>
-                          <td className="nw"><span className={`tag ${ls.tone}`} title={rawTitle(h.legacySyncStatus)}>{ls.text}</span></td>
-                        </tr>
+                        <Fragment key={row.id}>
+                          <tr className={hidden ? 'ac-hidden-row' : undefined}>
+                            <td className="nw muted">{row.sequence ?? '—'}</td>
+                            <td className="nw">{row.personNo || '—'}</td>
+                            <td className="nw"><b>{room}</b>{hidden ? <span className="tag mute" style={{ marginLeft: 6 }}>已隐藏</span> : null}</td>
+                            <td className="nw">{fmtCardTime(row.personCreatedAt)}</td>
+                            <td className="nw">{row.icCardNo || '—'}</td>
+                            <td className="nw">{row.wgCardNo || '—'}</td>
+                            <td className="nw">{fmtCardTime(row.issuedAt)}</td>
+                            <td className="nw">{fmtCardTime(row.lastSwipeAt)}</td>
+                            <td className="nw">{row.lastDevice || '—'}</td>
+                            <td className="nw"><span className={'tag ' + (hidden ? 'mute' : 'ok')}>{statusText}</span></td>
+                            <td className="nw ac-actions">
+                              {canEdit ? <>
+                                <button className="btn sm" onClick={() => openApply(row)}>写入 Access</button>
+                                <button className="btn sm" onClick={() => openGrant(row)}>授权楼栋</button>
+                              </> : '—'}
+                            </td>
+                          </tr>
+                          {detail ? (
+                            <tr className="ac-detail-row">
+                              <td colSpan={11}>
+                                <div className="ac-card-detail">
+                                  <span><b>已应用系统：</b>{(detail.appliedSystems ?? []).length ? (detail.appliedSystems ?? []).join('、') : '—'}</span>
+                                  <span><b>已授权楼栋：</b>{(detail.grantedBuildings ?? []).length ? (detail.grantedBuildings ?? []).join('、') : '—'}</span>
+                                  <span><b>最新任务：</b>{(detail.latestTasks ?? []).length ? (detail.latestTasks as any[]).map((task) => task?.status ?? task?.type ?? '—').join('、') : '—'}</span>
+                                </div>
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
                       );
                     })}
                   </tbody>
@@ -254,6 +437,84 @@ export default function AccessCards() {
               </div>
             )}
           </div>
+
+          <div className="card" style={{ padding: '14px 16px', marginBottom: 14 }}>
+            <div className="panelHd" style={{ marginBottom: 10 }}>
+              <b>最近 30 笔做卡记录</b>
+              {recent?.length ? <span className="tag mute" style={{ marginLeft: 8 }}>{recent.length} 笔</span> : null}
+            </div>
+            {recentError ? (
+              <div className="note2" role="alert" style={{ color: 'var(--dang)' }}><Icon name="alert" />{recentError}<button className="btn sm" style={{ marginLeft: 10 }} onClick={() => setRecentRetry((value) => value + 1)}>重试</button></div>
+            ) : recent === null ? <Loading text="读最近做卡记录…" /> : recent.length === 0 ? (
+              <div className="muted">暂无最近做卡记录</div>
+            ) : (
+              <div className="t-scroll">
+                <table className="t ac-recent-table">
+                  <thead><tr><th>卡号(IC/WG)</th><th>房号</th><th>发卡时间</th><th>操作</th></tr></thead>
+                  <tbody>
+                    {recent.map((row) => (
+                      <tr key={row.id} className="ac-recent-row" onClick={() => pickRecentHouse(row)}>
+                        <td className="nw"><b>{row.icCardNo || '—'}</b>{row.wgCardNo ? <span className="muted"> / WG {row.wgCardNo}</span> : null}</td>
+                        <td className="nw">{String(row.roomLabel || '').replace(/已隐藏/g, '').trim() || '—'}</td>
+                        <td className="nw">{fmtCardTime(row.issuedAt)}</td>
+                        <td className="nw"><button className="btn sm" onClick={(event) => { event.stopPropagation(); pickRecentHouse(row); }}>查看该户历史</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+      <Sheet open={!!applyCard} onClose={() => { if (!applyBusy) setApplyCard(null); }} width={560} title="写入 Access 系统" subtitle={applyCard ? '卡 ' + (applyCard.icCardNo || applyCard.wgCardNo || '—') + ' · ' + (applyCard.roomLabel || '') : ''}>
+        {applyCard ? (
+          <>
+            <div className="note2" style={{ marginBottom: 12 }}>将把 IC 卡写入现场 .88 Access 系统，确认后执行。</div>
+            {applyResults ? (
+              <div className="ac-results">
+                {applyResults.map((result) => <div key={result.name} className={result.ok ? 'ok' : 'dang'}><b>{result.name}</b><span>{result.ok ? '成功' : '失败'} · {result.detail}</span></div>)}
+              </div>
+            ) : null}
+            <div className="ac-dialog-foot">
+              <button className="btn" disabled={applyBusy} onClick={() => setApplyCard(null)}>取消</button>
+              <button className="btn p" disabled={applyBusy} onClick={() => void submitApply()}>{applyBusy ? '写入中…' : applyResults ? '再次写入' : '确认写入'}</button>
+            </div>
+          </>
+        ) : null}
+      </Sheet>
+
+      <Sheet open={!!grantCard} onClose={() => { if (!grantBusy) setGrantCard(null); }} width={640} title="授权楼栋" subtitle={grantCard ? '卡 ' + (grantCard.icCardNo || grantCard.wgCardNo || '—') + ' · ' + (grantCard.roomLabel || '') : ''}>
+        {grantCard ? (
+          <>
+            <div className="ac-grant-tools">
+              <input className="in" placeholder="搜索楼栋" value={grantSearch} onChange={(event) => setGrantSearch(event.target.value)} />
+              <div className="chips">
+                <button className={'chip ' + (grantMode === 'add' ? 'on' : '')} onClick={() => setGrantMode('add')}>添加权限</button>
+                <button className={'chip ' + (grantMode === 'remove' ? 'on' : '')} onClick={() => setGrantMode('remove')}>撤销权限</button>
+              </div>
+            </div>
+            <div className="ac-building-list">
+              {visibleBuildings.map((building) => (
+                <label key={building.no} className="ac-building-item">
+                  <input type="checkbox" checked={grantSelected.includes(building.no)} onChange={(event) => setGrantSelected((prev) => event.target.checked ? [...prev, building.no] : prev.filter((no) => no !== building.no))} />
+                  <span>{building.label}</span>
+                </label>
+              ))}
+              {!visibleBuildings.length ? <div className="muted">没有匹配楼栋</div> : null}
+            </div>
+            {grantResults ? (
+              <div className="ac-results">
+                {grantResults.map((result, index) => <div key={result.buildingNo + index} className={result.ok ? 'ok' : result.status === '离线' ? 'warn' : 'dang'}><b>{result.buildingNo} 号</b><span>{result.status}{result.detail && result.detail !== result.status ? ' · ' + result.detail : ''}</span></div>)}
+              </div>
+            ) : null}
+            <div className="ac-dialog-foot">
+              <button className="btn" disabled={grantBusy} onClick={() => setGrantCard(null)}>取消</button>
+              <button className="btn p" disabled={grantBusy} onClick={() => void submitGrant()}>{grantBusy ? '提交中…' : (grantMode === 'add' ? '确认授权' : '确认撤销')}</button>
+            </div>
+          </>
+        ) : null}
+      </Sheet>
+
         </>
       )}
     </>

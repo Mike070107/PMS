@@ -248,3 +248,32 @@
 }
 
 
+
+/* 门禁发卡历史 / 最近做卡 / 授权楼栋 */
+.ac-history-table { min-width: 1420px; font-size: 12.5px; }
+.ac-history-table th, .ac-history-table td { padding-top: 9px; padding-bottom: 9px; }
+.ac-recent-table { min-width: 620px; }
+.ac-hidden-row td { background: #f2f4f7 !important; color: var(--ink3); }
+.ac-hidden-row td b { color: var(--ink2); }
+.ac-field-hint { margin-left: 8px; color: var(--warn); }
+.ac-actions { white-space: nowrap; }
+.ac-actions .btn { margin-right: 6px; }
+.ac-detail-row td { background: var(--sunken); }
+.ac-card-detail { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink2); }
+.ac-card-detail b { color: var(--ink); font-weight: 600; }
+.ac-recent-row { cursor: pointer; }
+.ac-recent-row:hover td { background: #f7f9fc; }
+.ac-grant-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.ac-grant-tools .in { flex: 1; min-width: 180px; }
+.ac-building-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 12px; max-height: 260px; overflow: auto; padding: 10px 12px; border: 1px solid var(--line2); border-radius: 9px; background: var(--sunken); }
+.ac-building-item { display: flex; align-items: center; gap: 7px; padding: 5px 4px; font-size: 13px; color: var(--ink2); border-radius: 6px; cursor: pointer; }
+.ac-building-item:hover { background: #fff; }
+.ac-building-item input { width: 15px; height: 15px; accent-color: var(--acc); }
+.ac-results { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+.ac-results > div { display: flex; align-items: baseline; gap: 8px; padding: 7px 10px; border-radius: 7px; font-size: 12.5px; background: var(--sunken); }
+.ac-results > div b { min-width: 54px; }
+.ac-results > div.ok { background: var(--ok-w); color: var(--ok); }
+.ac-results > div.warn { background: var(--warn-w); color: var(--warn); }
+.ac-results > div.dang { background: var(--dang-w); color: var(--dang); }
+.ac-dialog-foot { display: flex; justify-content: flex-end; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line2); margin-top: 12px; }
+@media (max-width: 760px) { .ac-building-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
