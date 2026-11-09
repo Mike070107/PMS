@@ -147,6 +147,17 @@ type HouseContext = {
   legacyStorageRoomKey: string;
 };
 
+/** 最近 30 笔捷顺发卡记录的固定 room_key；.80 助手按此读取快照。 */
+const RECENT_LEGACY_ROOM_KEY = '__recent_js_cards__';
+/** 快照新鲜期：过期才允许 GET 入队刷新，避免每次打开页面都重置 ready 快照。 */
+const RECENT_LEGACY_STALE_MS = 60_000;
+/** error 状态的重试节流：30s 内 GET 直接返回错误，不重复入队并白等 8s。 */
+const RECENT_LEGACY_ERROR_RETRY_MS = 30_000;
+/** GET 等待助手回传的上限；超时返回 pending + 上一次 rows。 */
+const RECENT_LEGACY_WAIT_TIMEOUT_MS = 8_000;
+/** 等待期间轮询快照的间隔。 */
+const RECENT_LEGACY_POLL_MS = 300;
+
 @Injectable()
 export class AccessCardIssuanceService {
   constructor(
@@ -320,20 +331,26 @@ export class AccessCardIssuanceService {
     const agents = await this.agentRepo.find({ where: { tenantId, kind: 'legacy_sync', enabled: true } });
     if (!agents.some((agent) => effectiveAgentStatus(agent) === 'online' && supportsLegacyRecentCards(agent.version)))
       throw new ServiceUnavailableException('捷顺最近 30 笔查询需要在线的 2.5.28 或更新版本 .80 数据同步助手');
-    const snapshot = await this.requestRecentLegacySnapshot(tenantId, user.id);
+    // 显式刷新一次就等到助手回传，避免前端自己再轮询多轮。
+    const snapshot = await this.waitLegacyRecent(
+      await this.requestRecentLegacySnapshot(tenantId, user.id),
+      tenantId,
+    );
     return this.recentLegacyCardResponse(snapshot, tenantId);
   }
 
+  /** 轮询端点：只在无快照或超过 60s 时入队，不等待回传。 */
   async getRecentLegacyCards(user: AuthUser, access: ResolvedAccess) {
     if (!access.scopeAll) throw new ForbiddenException('捷顺全库最近发卡记录仅对全公司数据范围开放');
     const tenantId = this.requireTenant(user);
-    const snapshot = await this.legacySnapshotRepo.findOne({ where: { tenantId, roomKey: '__recent_js_cards__' } });
-    if (!snapshot) throw new NotFoundException('请先刷新捷顺最近发卡记录');
+    const snapshot = await this.ensureRecentLegacySnapshot(tenantId, user.id);
     return this.recentLegacyCardResponse(snapshot, tenantId);
   }
 
   private async recentLegacyCardResponse(snapshot: AccessCardLegacySnapshot, tenantId: number) {
-    const sourceRows = snapshot.status === 'ready' ? snapshot.history : [];
+    // pending/error 时 history 保留上一次成功回传的数据：刷新期间仍返回旧 rows，
+    // 而不是把页面清空；助手成功回传时 reportLegacyHistory 会整体替换 history。
+    const sourceRows = snapshot.history ?? [];
     const buildings = sourceRows.length ? await this.buildingRepo.find({ where: { tenantId } }) : [];
     const buildingIds = buildings.map((building) => building.id);
     const houses = buildingIds.length ? await this.houseRepo.find({ where: { tenantId, buildingId: In(buildingIds) } }) : [];
@@ -354,7 +371,9 @@ export class AccessCardIssuanceService {
       const trimmed = (value ?? '').trim();
       return /^\d+$/.test(trimmed) ? String(Number(trimmed)) : trimmed;
     };
-    const rows = sourceRows.map((row) => {
+    // 行映射只做一次：mapLegacyCardRow 负责 roomLabel/hidden/status/person* 等公共字段，
+    // 这里再补 PMS 匹配出的社区/楼栋/房产字段（供页面“查看该户历史”直接跳转）。
+    const rows = sourceRows.map((row, index) => {
       const wgCardNo = row.icCardNo && /^[0-9A-F]{8}$/.test(row.icCardNo) ? icToWg(row.icCardNo) : null;
       const parsed = parseLegacyAccessCardRoomName(row.personName);
       const building = parsed ? buildings.find((candidate) =>
@@ -374,24 +393,37 @@ export class AccessCardIssuanceService {
             : !system ? '该楼栋门禁路由尚未配置'
               : !wgCardNo ? 'IC 卡号无法换算 WG 卡号'
                 : null;
+      const roomKey = house && building ? legacyRoomKey(building.lane, building.buildingNo, house.roomNo) : null;
+      const mapped = mapLegacyCardRow(row, index + 1, roomKey);
       return {
-        ...row,
-        wgCardNo,
+        ...mapped,
+        wgCardNo: mapped.wgCardNo ?? wgCardNo,
         communityId: community?.id ?? null,
+        communityName: community?.name ?? null,
+        buildingId: building?.id ?? null,
+        lane: building?.lane ?? null,
+        roomNo: house?.roomNo ?? null,
+        buildingNo: building?.buildingNo ?? null,
         houseId: house?.id ?? null,
-        roomKey: house && building ? legacyRoomKey(building.lane, building.buildingNo, house.roomNo) : null,
+        roomKey,
         projectPhase: phase,
-        buildingNo: building?.buildingNo ?? parsed?.buildingNo ?? null,
         canManageAccess,
         actionMessage,
         accessDatabaseTask: wgCardNo ? this.historyAuthorizationResponse(latestTask.get(`${wgCardNo}:access_database_only`) ?? null) : null,
         controllerTask: wgCardNo ? this.historyAuthorizationResponse(latestTask.get(`${wgCardNo}:controller_upload`) ?? null) : null,
       };
     });
-    return { status: snapshot.status, rows,
-      error: snapshot.status === 'error' ? snapshot.lastError : null, refreshedAt: snapshot.refreshedAt,
-      permissionStatus: snapshot.permissionStatus, permissions: snapshot.permissionStatus === 'ready' ? snapshot.permissions : [],
-      permissionError: snapshot.permissionStatus === 'error' ? snapshot.permissionLastError : null };
+    return {
+      status: snapshot.status,
+      rows,
+      fieldsIncomplete: rows.length > 0 && rows.every((row) => row.fieldsIncomplete),
+      refreshing: snapshot.status === 'pending',
+      error: snapshot.status === 'error' ? snapshot.lastError : null,
+      refreshedAt: snapshot.refreshedAt,
+      permissionStatus: snapshot.permissionStatus,
+      permissions: snapshot.permissionStatus === 'ready' ? snapshot.permissions : [],
+      permissionError: snapshot.permissionStatus === 'error' ? snapshot.permissionLastError : null,
+    };
   }
 
   /** 按户查询捷顺发卡历史；地址支持 228/50/202、228/50/202/4、已隐藏前缀。 */
@@ -436,18 +468,35 @@ export class AccessCardIssuanceService {
     if (!agents.some((agent) => effectiveAgentStatus(agent) === 'online' && supportsLegacyRecentCards(agent.version))) {
       throw new ServiceUnavailableException('捷顺最近发卡查询需要在线的 2.5.28 或更新版本 .80 数据同步助手');
     }
-    const snapshot = await this.requestRecentLegacySnapshot(tenantId, user.id);
+    const snapshot = await this.legacySnapshotRepo.findOne({ where: { tenantId, roomKey: RECENT_LEGACY_ROOM_KEY } });
+    // error 30s 内直接返回错误：避免每次打开页面都重新入队并等满 8s。
+    if (snapshot && !this.recentSnapshotNeedsRefresh(snapshot) && snapshot.status === 'error') {
+      return this.legacyCardRecentPayload(snapshot, tenantId, scope, max);
+    }
+    let current = snapshot;
+    if (!current || this.recentSnapshotNeedsRefresh(current)) {
+      current = await this.requestRecentLegacySnapshot(tenantId, user.id);
+    }
+    // pending 说明助手正在回传（或刚入队）；有界等待后返回，ready 快照无需等待。
+    current = await this.waitLegacyRecent(current, tenantId);
+    return this.legacyCardRecentPayload(current, tenantId, scope, max);
+  }
+
+  /** GET cards/recent 的最终响应：按数据范围过滤、截断，再据实际返回行计算 fieldsIncomplete。 */
+  private async legacyCardRecentPayload(
+    snapshot: AccessCardLegacySnapshot,
+    tenantId: number,
+    scope: number[] | null,
+    max: number,
+  ) {
     const recent = await this.recentLegacyCardResponse(snapshot, tenantId);
-    let rows = recent.rows.map((row, index) => ({
-      ...row,
-      ...mapLegacyCardRow(row as Parameters<typeof mapLegacyCardRow>[0], index + 1,
-        typeof row.roomKey === 'string' ? row.roomKey : null),
-    }));
+    let rows = recent.rows;
     if (scope) rows = rows.filter((row) => row.communityId != null && scope.includes(row.communityId));
     const limited = rows.slice(0, max);
     return {
       ...recent,
       fieldsIncomplete: limited.length > 0 && limited.every((row) => row.fieldsIncomplete),
+      refreshing: recent.status === 'pending',
       rows: limited,
     };
   }
@@ -1025,27 +1074,46 @@ export class AccessCardIssuanceService {
   async listDoorControllers(user: AuthUser, access?: ResolvedAccess, communityId?: number) {
     const tenantId = this.requireTenant(user);
     const scope = scopeCommunityIds(access);
+    // 网关在线判定与「所选小区是否二期」解耦：先看真实 access_gateway，
+    // 再看有哪些二期小区可远程控制，避免一期小区被误报成助手离线。
     const communities = (await this.communityRepo.find({ where: { tenantId, enabled: true } }))
-      .filter((community) => projectPhaseOf(community.name) === 'phase2')
-      .filter((community) => !scope || scope.includes(community.id))
-      .filter((community) => communityId == null || community.id === communityId);
-    if (!communities.length) {
-      return { agentOnline: false, gatewayVersion: null as string | null, checkedAt: new Date().toISOString(), controllers: [] };
+      .filter((community) => !scope || scope.includes(community.id));
+    const phase2Communities = communities.filter((community) => projectPhaseOf(community.name) === 'phase2');
+    const gatewayAgents = await this.agentRepo.find({ where: { tenantId, kind: 'access_gateway', enabled: true } });
+    const gateway = orderAgentsByAvailability(gatewayAgents).find((agent) =>
+      effectiveAgentStatus(agent) === 'online'
+      && agent.capabilities?.remoteDoorControl === true
+      && supportsRemoteDoorControl(agent.version));
+    const gatewayInfo = {
+      agentOnline: Boolean(gateway),
+      gatewayVersion: gateway?.version ?? null,
+      checkedAt: new Date().toISOString(),
+    };
+    const selectedPhase2 = communityId == null
+      ? phase2Communities
+      : phase2Communities.filter((community) => community.id === communityId);
+    if (!selectedPhase2.length) {
+      // 一期/不存在的小区确实没有二期控制器，但网关状态必须反映真实心跳。
+      const doorControlNames = phase2Communities.map((community) => community.name).join('、');
+      const selectedCommunity = communityId == null
+        ? null
+        : communities.find((community) => community.id === communityId);
+      const message = communityId == null
+        ? '当前没有可远程控制的二期联网门禁小区'
+        : selectedCommunity
+          ? `所选小区「${selectedCommunity.name}」不属于二期联网门禁，可远程控制的是：${doorControlNames || '（暂无二期小区）'}`
+          : '所选小区不存在或不在你的管理范围内';
+      return { ...gatewayInfo, message, controllers: [] };
     }
-    const communityIds = communities.map((community) => community.id);
-    const [buildings, agents, tasks] = await Promise.all([
+    const communityIds = selectedPhase2.map((community) => community.id);
+    const [buildings, tasks] = await Promise.all([
       this.buildingRepo.find({ where: { tenantId, communityId: In(communityIds) } }),
-      this.agentRepo.find({ where: { tenantId, kind: 'access_gateway', enabled: true } }),
       this.authorizationRepo.find({
         where: { tenantId, operation: In(['controller_detect', 'remote_open', 'temporary_open']) },
         order: { createdAt: 'DESC' },
         take: 300,
       }),
     ]);
-    const gateway = orderAgentsByAvailability(agents).find((agent) =>
-      effectiveAgentStatus(agent) === 'online'
-      && agent.capabilities?.remoteDoorControl === true
-      && supportsRemoteDoorControl(agent.version));
     const controllers = buildings
       .filter((building) => accessSystemOf('phase2', building.buildingNo) !== null)
       .map((building) => {
@@ -1063,7 +1131,7 @@ export class AccessCardIssuanceService {
         else if (lastTask && ['pending', 'running'].includes(lastTask.status)) controllerStatus = 'pending';
         return {
           communityId: building.communityId,
-          communityName: communities.find((community) => community.id === building.communityId)?.name ?? null,
+          communityName: selectedPhase2.find((community) => community.id === building.communityId)?.name ?? null,
           controllerId: building.id,
           buildingNo: building.buildingNo,
           doorNo: this.logicalDoorNo(building.buildingNo),
@@ -1082,9 +1150,8 @@ export class AccessCardIssuanceService {
       })
       .sort((left, right) => left.buildingNo.localeCompare(right.buildingNo, 'zh-CN', { numeric: true }));
     return {
-      agentOnline: Boolean(gateway),
-      gatewayVersion: gateway?.version ?? null,
-      checkedAt: new Date().toISOString(),
+      ...gatewayInfo,
+      message: null as string | null,
       controllers,
     };
   }
@@ -1253,10 +1320,13 @@ export class AccessCardIssuanceService {
       this.communityRepo.find({ where: { tenantId, enabled: true } }),
     ]);
     const scope = scopeCommunityIds(access);
-    const phase2CommunityIds = communities
+    // 前端据此渲染小区下拉并默认选中二期，避免按地址树顺序猜（communities[0] 常是一期）。
+    const doorControlCommunities = communities
       .filter((community) => projectPhaseOf(community.name) === 'phase2')
       .filter((community) => !scope || scope.includes(community.id))
-      .map((community) => community.id);
+      .map((community) => ({ id: community.id, name: community.name }))
+      .sort((left, right) => left.id - right.id);
+    const phase2CommunityIds = doorControlCommunities.map((community) => community.id);
     const doorBuildings = phase2CommunityIds.length
       ? await this.buildingRepo.find({ where: { tenantId, communityId: In(phase2CommunityIds) } })
       : [];
@@ -1321,6 +1391,7 @@ export class AccessCardIssuanceService {
         }))
         .filter((building) => building.routeReady)
         .sort((left, right) => left.buildingNo.localeCompare(right.buildingNo, 'zh-CN', { numeric: true })),
+      doorControlCommunities,
       deliyun,
     };
   }
@@ -3705,23 +3776,81 @@ export class AccessCardIssuanceService {
       .reverse();
   }
 
+  /**
+   * 入队一次最近 30 笔刷新。
+   * - 已在 pending（含已分配租约）不重复重置，避免把正在回传的任务顶掉或刷新 requestedAt；
+   * - 刷新期间保留上一次 history（状态置 pending），助手成功回传时整体替换。
+   */
   private async requestRecentLegacySnapshot(tenantId: number, userId: number) {
-    let snapshot = await this.legacySnapshotRepo.findOne({ where: { tenantId, roomKey: '__recent_js_cards__' } });
+    const snapshot = await this.legacySnapshotRepo.findOne({ where: { tenantId, roomKey: RECENT_LEGACY_ROOM_KEY } });
     if (!snapshot) {
-      snapshot = this.legacySnapshotRepo.create({
-        tenantId, roomKey: '__recent_js_cards__', status: 'pending',
+      return this.legacySnapshotRepo.save(this.legacySnapshotRepo.create({
+        tenantId, roomKey: RECENT_LEGACY_ROOM_KEY, status: 'pending',
         history: [], issuedCount: 0, nextSequence: 1, requestedAt: new Date(), refreshedAt: null,
         leaseAgentKey: null, leaseExpiresAt: null, lastError: null, permissionStatus: 'idle',
         permissionSubjects: [], permissions: [], permissionRequestedAt: null, permissionRefreshedAt: null,
         permissionLeaseAgentKey: null, permissionLeaseExpiresAt: null, permissionLastError: null,
         createdBy: userId, updatedBy: userId,
-      });
-    } else if (snapshot.status !== 'pending' || !snapshot.leaseExpiresAt || snapshot.leaseExpiresAt < new Date()) {
-      snapshot.status = 'pending'; snapshot.history = []; snapshot.requestedAt = new Date();
-      snapshot.leaseAgentKey = null; snapshot.leaseExpiresAt = null; snapshot.lastError = null;
-      snapshot.updatedBy = userId;
+      }));
     }
+    if (snapshot.status === 'pending') return snapshot;
+    snapshot.status = 'pending';
+    snapshot.requestedAt = new Date();
+    snapshot.leaseAgentKey = null;
+    snapshot.leaseExpiresAt = null;
+    snapshot.lastError = null;
+    snapshot.updatedBy = userId;
     return this.legacySnapshotRepo.save(snapshot);
+  }
+
+  /** 快照是否需要入队刷新：无快照/ready 过期/error 超过重试节流。 */
+  private recentSnapshotNeedsRefresh(
+    snapshot: AccessCardLegacySnapshot,
+    errorRetryMs = RECENT_LEGACY_ERROR_RETRY_MS,
+  ) {
+    if (snapshot.status === 'pending') return false;
+    if (snapshot.status === 'error') {
+      const failedAt = snapshot.requestedAt?.getTime() ?? 0;
+      return !failedAt || Date.now() - failedAt > errorRetryMs;
+    }
+    const refreshedAt = snapshot.refreshedAt?.getTime() ?? 0;
+    return !refreshedAt || Date.now() - refreshedAt > RECENT_LEGACY_STALE_MS;
+  }
+
+  /** 轮询端点：只在无快照或超过 60s 时入队刷新，ready 快照绝不无条件重置。 */
+  private async ensureRecentLegacySnapshot(tenantId: number, userId: number) {
+    const snapshot = await this.legacySnapshotRepo.findOne({ where: { tenantId, roomKey: RECENT_LEGACY_ROOM_KEY } });
+    if (!snapshot || this.recentSnapshotNeedsRefresh(snapshot, RECENT_LEGACY_STALE_MS)) {
+      return this.requestRecentLegacySnapshot(tenantId, userId);
+    }
+    return snapshot;
+  }
+
+  /**
+   * 有界等待 .80 助手回传最近 30 笔。
+   * poll 间隔与总超时做成可覆盖的 private helper，测试里覆盖 sleepLegacyRecentPoll
+   * 或直接覆盖本方法，避免真实等待 8 秒拖慢测试。
+   */
+  private async waitLegacyRecent(
+    snapshot: AccessCardLegacySnapshot,
+    tenantId: number,
+    timeoutMs = RECENT_LEGACY_WAIT_TIMEOUT_MS,
+  ) {
+    if (snapshot.status !== 'pending') return snapshot;
+    const deadline = Date.now() + timeoutMs;
+    let current = snapshot;
+    while (current.status === 'pending' && Date.now() < deadline) {
+      await this.sleepLegacyRecentPoll();
+      if (current.status !== 'pending') break;
+      const next = await this.legacySnapshotRepo.findOne({ where: { id: current.id, tenantId } });
+      if (!next) break;
+      current = next;
+    }
+    return current;
+  }
+
+  private async sleepLegacyRecentPoll() {
+    await new Promise((resolve) => setTimeout(resolve, RECENT_LEGACY_POLL_MS));
   }
 
   /** 房号地址 → PMS 楼栋/房产（支持 228/50/202、已隐藏前缀、省略弄号）。 */

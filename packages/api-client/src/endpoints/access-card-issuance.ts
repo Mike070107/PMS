@@ -168,6 +168,11 @@ export interface AccessCardReadiness {
     accessSystem: Exclude<AccessSystem, null>;
     routeReady: boolean;
   }>;
+  /** 当前账号有权限的二期联网门禁小区；远程门禁面板只在这里选小区。 */
+  doorControlCommunities?: Array<{
+    id: number;
+    name: string;
+  }>;
   deliyun?: {
     configured: boolean;
     connected: boolean;

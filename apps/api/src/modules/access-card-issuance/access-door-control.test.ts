@@ -6,7 +6,9 @@ import { AccessCardIssuanceService } from './access-card-issuance.service';
 
 const user = { id: 7, tenantId: 3 } as never;
 const scopeAll = { scopeAll: true } as never;
+const phase1Community = { id: 1, name: '枫桦景苑一期', enabled: true } as never;
 const community = { id: 228, name: '枫桦景苑二期', enabled: true } as never;
+const allCommunities = [phase1Community, community];
 const iccardBuilding = { id: 11, communityId: 228, buildingNo: '11' } as never;
 const mjsystemBuilding = { id: 26, communityId: 228, buildingNo: '26' } as never;
 
@@ -22,8 +24,9 @@ function makeService() {
     find: async () => [iccardBuilding, mjsystemBuilding],
   };
   state.communityRepo = {
-    findOne: async ({ where }: { where: { id: number } }) => (where.id === 228 ? community : null),
-    find: async () => [community],
+    findOne: async ({ where }: { where: { id: number } }) =>
+      allCommunities.find((item: any) => item.id === where.id) ?? null,
+    find: async () => allCommunities,
   };
   state.agentRepo = {
     find: async () => [{
@@ -239,6 +242,65 @@ test('门禁控制器在线状态由心跳 + 最近一次 agent 回执推导', a
   assert.equal(mjsystem.status, 'offline');
   assert.equal(mjsystem.supportTemporaryOpen, false);
   assert.equal(mjsystem.lastError, '控制器未确认');
+});
+
+test('门禁控制器：选一期小区时 agentOnline 仍反映真实网关，controllers 为空并提示二期', async () => {
+  const { service } = makeService();
+  const result = await service.listDoorControllers(user, scopeAll, 1);
+  assert.equal((result as any).agentOnline, true);
+  assert.equal((result as any).gatewayVersion, '2.5.48');
+  assert.deepEqual((result as any).controllers, []);
+  assert.match((result as any).message, /不属于二期/);
+  assert.match((result as any).message, /枫桦景苑二期/);
+});
+
+test('门禁控制器：网关离线才 agentOnline=false，二期控制器全标 offline', async () => {
+  const { service, state } = makeService();
+  state.agentRepo.find = async () => [];
+  const phase1 = await service.listDoorControllers(user, scopeAll, 1);
+  assert.equal((phase1 as any).agentOnline, false);
+  assert.equal((phase1 as any).gatewayVersion, null);
+  assert.deepEqual((phase1 as any).controllers, []);
+  assert.match((phase1 as any).message, /不属于二期/);
+
+  const phase2 = await service.listDoorControllers(user, scopeAll, 228);
+  assert.equal((phase2 as any).agentOnline, false);
+  assert.deepEqual((phase2 as any).controllers.map((row: any) => row.status), ['offline', 'offline']);
+});
+
+test('门禁控制器：不传 communityId 返回全部二期控制器', async () => {
+  const { service } = makeService();
+  const result = await service.listDoorControllers(user, scopeAll);
+  assert.equal((result as any).agentOnline, true);
+  assert.equal((result as any).message, null);
+  assert.deepEqual((result as any).controllers.map((row: any) => row.controllerId), [11, 26]);
+});
+
+test('门禁控制器：没有二期小区时也不谎报 agentOnline=false', async () => {
+  const { service, state } = makeService();
+  state.communityRepo.find = async () => [phase1Community];
+  state.buildingRepo.find = async () => [];
+  const result = await service.listDoorControllers(user, scopeAll, 1);
+  assert.equal((result as any).agentOnline, true);
+  assert.equal((result as any).gatewayVersion, '2.5.48');
+  assert.deepEqual((result as any).controllers, []);
+  assert.match((result as any).message, /不属于二期/);
+});
+
+test('readiness.doorControlCommunities 只含二期小区，供前端下拉/默认值', async () => {
+  const { service, state } = makeService();
+  state.simulationEnabled = () => false;
+  state.deliyun = { status: async () => ({}) };
+  const result = await service.readiness(user, scopeAll);
+  assert.deepEqual((result as any).doorControlCommunities, [{ id: 228, name: '枫桦景苑二期' }]);
+  // additive：原有字段保留
+  assert.deepEqual((result as any).doorControlBuildings.map((row: any) => row.id), [11, 26]);
+  assert.ok((result as any).features);
+  assert.ok(Array.isArray((result as any).agents));
+
+  const scoped = { scopeAll: false, communityIds: [228] } as never;
+  const filtered = await service.readiness(user, scoped);
+  assert.deepEqual((filtered as any).doorControlCommunities, [{ id: 228, name: '枫桦景苑二期' }]);
 });
 
 test('审计回写包含结果、控制器回执和错误', async () => {

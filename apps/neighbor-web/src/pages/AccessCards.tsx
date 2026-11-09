@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { accessCardIssuance, address, request } from '@pms/api-client';
-import type { AccessCardIssueBatch, AccessCardIssueItem } from '@pms/api-client/src/endpoints/access-card-issuance';
+import type { AccessCardIssueBatch, AccessCardIssueItem, AccessCardReadiness } from '@pms/api-client/src/endpoints/access-card-issuance';
 import type { AddressCommunity } from '@pms/shared-types';
 import { useSession } from '@/lib/auth';
 import { can } from '@/lib/perm';
@@ -24,8 +24,70 @@ type CardRecent = {
   issuedAt?: string | null; hidden?: boolean; status?: string | null;
   communityId?: number | null; communityName?: string | null; lane?: string | null; buildingId?: number | null;
   buildingNo?: string | null; buildingText?: string | null; houseId?: number | null; roomNo?: string | null;
-  ownerName?: string | null; ownerPhone?: string | null; ownerId?: number | null;
+  roomKey?: string | null; projectPhase?: 'phase1' | 'phase2' | null;
+  ownerName?: string | null; ownerPhone?: string | null; ownerId?: number | null; fieldsIncomplete?: boolean;
 };
+/**
+ * /access-card-issuance/cards/recent 返回的是刷新状态对象，不是数组：
+ * 首次请求可能是 status='pending' + 上次的旧行，后台刷新完成才变 ready。
+ */
+interface CardRecentResp {
+  status: 'ready' | 'pending' | 'error';
+  rows: CardRecent[];
+  error?: string | null;
+  refreshedAt?: string | null;
+  fieldsIncomplete?: boolean;
+  refreshing?: boolean;
+  permissionStatus?: string;
+  permissions?: unknown[];
+}
+const RECENT_POLL_MS = 1500;
+const RECENT_POLL_MAX = 5;
+
+interface CapabilityTag { key: string; ok: boolean; text: string; title: string }
+/**
+ * 顶部门禁能力标签：按 readiness.features 分项显示，不再用一句「发卡工作站离线」概括整页。
+ * 生产现场 readiness 里没有 issuer 类 agent（只有 access_gateway/legacy_sync/parking_gateway），
+ * 写卡工作站是否接入要看 features.cardWrite，而不是找 agent.kind==='issuer'。
+ */
+function readinessCapabilityTags(readiness: AccessCardReadiness | null): CapabilityTag[] {
+  const f = readiness?.features;
+  if (!f) return [];
+  const doorWritable = !!f.accessDbWrite && !!f.controllerUpload;
+  const missing = [!f.accessDbWrite ? '.88 门禁库写入' : '', !f.controllerUpload ? '楼栋控制器下发' : ''].filter(Boolean).join('、');
+  return [
+    {
+      key: 'cardWrite',
+      ok: !!f.cardWrite,
+      text: f.cardWrite ? '写卡工作站已接入' : '写卡工作站未接入',
+      title: f.cardWrite
+        ? '写卡工作站已接入，新卡可写到读卡器'
+        : '当前没有写卡工作站接入，新卡暂不能写到读卡器；查发卡历史、写入 .88 门禁库、远程开门不受影响',
+    },
+    {
+      key: 'legacyDbWrite',
+      ok: !!f.legacyDbWrite,
+      text: f.legacyDbWrite ? '.80 捷顺库在线' : '.80 捷顺库未接入',
+      title: f.legacyDbWrite ? '.80 捷顺旧库读写能力在线' : '.80 捷顺旧库助手未接入，旧库同步与捷顺发卡历史不可用',
+    },
+    {
+      key: 'accessDbWrite',
+      ok: doorWritable,
+      text: doorWritable ? '.88 门禁网关在线' : (f.accessDbWrite || f.controllerUpload ? '.88 门禁网关部分可用' : '.88 门禁网关未接入'),
+      title: doorWritable ? '.88 门禁库写入与楼栋控制器下发能力均在线' : `缺少能力：${missing}`,
+    },
+  ];
+}
+
+/** 从 roomKey/roomLabel 反推弄/楼/室，兼容旧助手只回传 roomLabel 的记录。 */
+function recentRoomParts(row: CardRecent) {
+  const raw = String(row.roomKey || row.roomLabel || '').replace(/已隐藏/g, '').trim();
+  const parts = raw.split('/').map((part) => part.trim()).filter(Boolean);
+  if (parts.length >= 3) return { lane: parts[0], buildingNo: parts[1], roomNo: parts[2] };
+  if (parts.length === 2) return { lane: null, buildingNo: parts[0], roomNo: parts[1] };
+  return { lane: null, buildingNo: null, roomNo: null };
+}
+
 interface CardDetail {
   id: number; appliedSystems?: string[]; grantedBuildings?: string[]; latestTasks?: unknown[];
   icCardNo?: string | null; wgCardNo?: string | null; roomLabel?: string | null; status?: string | null;
@@ -84,7 +146,7 @@ export default function AccessCards() {
   const [historyError, setHistoryError] = useState('');
   const [historyRetrying, setHistoryRetrying] = useState(false);
   const [historyRetry, setHistoryRetry] = useState(0);
-  const [recent, setRecent] = useState<CardRecent[] | null>(null);
+  const [recent, setRecent] = useState<CardRecentResp | null>(null);
   const [recentError, setRecentError] = useState('');
   const [recentRetry, setRecentRetry] = useState(0);
   const [applyCard, setApplyCard] = useState<CardHistoryRow | null>(null);
@@ -97,17 +159,35 @@ export default function AccessCards() {
   const [grantBusy, setGrantBusy] = useState(false);
   const [grantResults, setGrantResults] = useState<Array<{ buildingNo: string; status: string; ok: boolean; detail: string }> | null>(null);
   const [cardDetails, setCardDetails] = useState<Record<number, CardDetail>>({});
+  // 新增状态一律追加在末尾：现有 VM harness 用例按 useState 下标固定注入状态，不能插到中间。
+  const [readiness, setReadiness] = useState<AccessCardReadiness | null>(null);
+  const [readinessError, setReadinessError] = useState('');
+  const [readinessRetry, setReadinessRetry] = useState(0);
+  // 最近做卡自动轮询用尽后置 true：仍 pending 时页面给一个「重试」入口，不能无声卡住。
+  const [recentStalled, setRecentStalled] = useState(false);
 
   useEffect(() => { address.tree().then(setTree).catch(() => setTree([])); }, []);
   useEffect(() => {
+    let cancelled = false;
+    setReadinessError('');
     accessCardIssuance.readiness()
       .then((r) => {
+        if (cancelled) return;
+        setReadiness(r ?? null);
+        setReadinessError('');
+        // 写卡工作站（issuer）只用于创建批次时指定工作站；是否存在看 features.cardWrite。
         const list = (r?.agents ?? []) as Array<{ id: string; kind: string; name?: string; status: string }>;
         const iss = list.find((a) => a.kind === 'issuer' && a.status === 'online') ?? null;
         setIssuer(iss ? { id: iss.id, name: iss.name || '发卡工作站' } : null);
       })
-      .catch(() => setIssuer(null));
-  }, []);
+      .catch((e) => {
+        if (cancelled) return;
+        setReadiness(null);
+        setIssuer(null);
+        setReadinessError(e instanceof Error && e.message ? e.message : '门禁能力状态读取失败');
+      });
+    return () => { cancelled = true; };
+  }, [readinessRetry]);
 
   const communities = useMemo(() => {
     const list = tree.filter((c) => !c.isGroup);
@@ -157,11 +237,37 @@ export default function AccessCards() {
 
   useEffect(() => {
     let cancelled = false;
-    setRecent(null); setRecentError('');
-    request<CardRecent[]>({ url: '/access-card-issuance/cards/recent', query: { limit: 30 } })
-      .then((rows) => { if (!cancelled) setRecent(Array.isArray(rows) ? rows : []); })
-      .catch((e) => { if (!cancelled) setRecentError(e instanceof Error && e.message ? e.message : '最近做卡记录读取失败'); });
-    return () => { cancelled = true; };
+    let retryTimer = 0;
+    let attempts = 0;
+    setRecent(null); setRecentError(''); setRecentStalled(false);
+    const run = async () => {
+      try {
+        const res = await request<CardRecentResp | CardRecent[]>({ url: '/access-card-issuance/cards/recent', query: { limit: 30 } });
+        if (cancelled) return;
+        // 旧后端可能直接返回数组；新后端返回 {status, rows, ...}，pending 时要轮询等助手回传。
+        if (!res || Array.isArray(res) || typeof res !== 'object') {
+          setRecent({ status: 'ready', rows: Array.isArray(res) ? res : [] });
+          setRecentStalled(false);
+          return;
+        }
+        setRecent(res);
+        if (res.status === 'pending') {
+          // 最多自动重试 5 次（1.5s/次）；用尽仍 pending 时保留旧行并露出「重试」，避免页面无声卡住。
+          if (attempts < RECENT_POLL_MAX) {
+            attempts += 1;
+            retryTimer = window.setTimeout(() => void run(), RECENT_POLL_MS);
+          } else {
+            setRecentStalled(true);
+          }
+        } else {
+          setRecentStalled(false);
+        }
+      } catch (e) {
+        if (!cancelled) setRecentError(e instanceof Error && e.message ? e.message : '最近做卡记录读取失败');
+      }
+    };
+    void run();
+    return () => { cancelled = true; if (retryTimer) window.clearTimeout(retryTimer); };
   }, [recentRetry]);
 
   const refreshCardDetail = useCallback(async (cardId: number) => {
@@ -201,15 +307,29 @@ export default function AccessCards() {
     } finally { setGrantBusy(false); }
   };
   const pickRecentHouse = (row: CardRecent) => {
-    if (!row.communityId || !row.houseId || !row.buildingNo || !row.roomNo) { toast('该记录缺少房号信息，无法跳转'); return; }
-    const lane = row.lane ?? null;
-    const buildingText = row.buildingText || [row.communityName, lane ? lane + '弄' : '', row.buildingNo + '号'].filter(Boolean).join('');
-    const shortText = row.roomLabel || [row.communityName, lane ? lane + '弄' : '', row.buildingNo + '号', row.roomNo].filter(Boolean).join('/');
+    // 新后端行里带 communityId/buildingId/houseId/lane/buildingNo/roomNo/roomKey；
+    // 旧行只有 roomLabel，从 roomKey/roomLabel 反推房间信息后再到地址树里补齐 id。
+    const parts = recentRoomParts(row);
+    const communityId = row.communityId ?? null;
+    const buildingNo = row.buildingNo ?? parts.buildingNo;
+    const roomNo = row.roomNo ?? parts.roomNo;
+    const lane = row.lane ?? parts.lane;
+    const community = tree.find((c) => c.id === communityId);
+    const building = community?.buildings.find((b) => b.buildingNo === buildingNo && (!lane || !b.lane || b.lane === lane))
+      ?? community?.buildings.find((b) => b.buildingNo === buildingNo);
+    const buildingId = row.buildingId ?? building?.id ?? 0;
+    const houseId = row.houseId ?? building?.houses.find((h) => h.roomNo === roomNo)?.id ?? null;
+    if (communityId == null || houseId == null || !buildingNo || !roomNo) {
+      toast('该记录缺少房屋信息，无法跳转到户历史');
+      return;
+    }
+    const communityName = row.communityName || community?.name || '';
+    const buildingText = row.buildingText || [communityName, lane ? lane + '弄' : '', buildingNo + '号'].filter(Boolean).join('');
+    const shortText = [communityName, lane ? lane + '弄' : '', buildingNo + '号', roomNo].filter(Boolean).join('/');
     setPicked({
-      communityId: row.communityId, communityName: row.communityName || '', lane, buildingId: row.buildingId || 0,
-      buildingNo: row.buildingNo, buildingText, houseId: row.houseId, roomNo: row.roomNo,
-      ownerName: row.ownerName || null, ownerPhone: row.ownerPhone || null, ownerId: row.ownerId || null,
-      text: [buildingText, row.roomNo + '室'].filter(Boolean).join(''), shortText,
+      communityId, communityName, lane, buildingId, buildingNo, buildingText, houseId, roomNo,
+      ownerName: row.ownerName ?? null, ownerPhone: row.ownerPhone ?? null, ownerId: row.ownerId ?? null,
+      text: [buildingText, roomNo + '室'].filter(Boolean).join(''), shortText,
     });
     setBatch(null);
     setHistoryRetry((value) => value + 1);
@@ -256,6 +376,8 @@ export default function AccessCards() {
   const cur = batch?.items.find((i) => i.cardStatus !== 'card_completed');
 
   const historyRows = history?.rows ?? [];
+  const recentRows = recent?.rows ?? [];
+  const recentErrorText = recentError || (recent?.status === 'error' ? (recent.error || '最近做卡记录读取失败') : '');
   const fieldsIncomplete = !!history?.fieldsIncomplete || historyRows.some((row) => !row.personNo || !row.personCreatedAt || !row.icCardNo || !row.wgCardNo || !row.lastSwipeAt || !row.lastDevice);
   const buildingOptions = useMemo(() => {
     const community = tree.find((item) => item.id === picked?.communityId);
@@ -264,6 +386,8 @@ export default function AccessCards() {
     return list;
   }, [tree, picked?.communityId, grantSelected]);
   const visibleBuildings = buildingOptions.filter((item) => !grantSearch.trim() || item.label.includes(grantSearch.trim()) || item.no.includes(grantSearch.trim()));
+  const capabilityTags = readinessCapabilityTags(readiness);
+  const doorControlCommunities = readiness?.doorControlCommunities ?? [];
 
   return (
     <>
@@ -272,12 +396,21 @@ export default function AccessCards() {
           <div className="h1row"><ToneIcon kind="cards" /><h1 style={{ fontSize: 22 }}>门禁卡管理</h1></div>
           <p>按户发卡、查卡与发卡历史；写卡由装了读卡器的工作站自动完成</p>
         </div>
-        <div className="act">
-          <span className={`tag ${issuer ? 'ok' : 'warn'}`}><Icon name={issuer ? 'check' : 'alert'} />{issuer ? '发卡工作站在线' : '发卡工作站离线'}</span>
+        <div className="act ac-cap-abilities">
+          {capabilityTags.length ? capabilityTags.map((tag) => (
+            <span key={tag.key} className={`tag ${tag.ok ? 'ok' : 'warn'}`} title={tag.title}>
+              <Icon name={tag.ok ? 'check' : 'alert'} />{tag.text}
+            </span>
+          )) : readinessError ? (
+            <span className="tag warn" title={readinessError}><Icon name="alert" />门禁能力状态未知</span>
+          ) : (
+            <span className="tag mute"><Icon name="refresh" />门禁能力读取中…</span>
+          )}
         </div>
       </div>
 
-      <DoorControlPanel communities={communities} canEdit={canEdit} />
+      <DoorControlPanel communities={doorControlCommunities} loaded={readiness !== null} loadError={readinessError}
+        onReloadScope={() => setReadinessRetry((value) => value + 1)} canEdit={canEdit} />
 
       <div className="findBar" style={{ marginBottom: 14 }}>
         <HousePicker communities={communities} value={picked}
@@ -350,7 +483,11 @@ export default function AccessCards() {
               </>
             )}
             <div className="note2" style={{ marginTop: 10 }}>
-              <Icon name="alert" />写卡要读卡器，由{issuer ? `在线工作站「${issuer.name}」` : '工作站'}自动完成；本页负责建任务、看进度、下发失败单张重试。
+              <Icon name="alert" />{readiness === null
+                ? (readinessError ? '门禁能力状态暂时读取失败，请刷新页面后重试。' : '正在读取门禁能力状态…')
+                : readiness.features?.cardWrite
+                  ? `写卡要读卡器，由${issuer ? `在线工作站「${issuer.name}」` : '工作站'}自动完成；本页负责建任务、看进度、下发失败单张重试。`
+                  : '写卡工作站未接入，新卡暂不能写到读卡器；查发卡历史、写入 .88 门禁库和远程开门不受影响，等写卡工作站上线后再写卡。'}
             </div>
           </div>
 
@@ -441,18 +578,28 @@ export default function AccessCards() {
           <div className="card" style={{ padding: '14px 16px', marginBottom: 14 }}>
             <div className="panelHd" style={{ marginBottom: 10 }}>
               <b>最近 30 笔做卡记录</b>
-              {recent?.length ? <span className="tag mute" style={{ marginLeft: 8 }}>{recent.length} 笔</span> : null}
+              {recentRows.length ? <span className="tag mute" style={{ marginLeft: 8 }}>{recentRows.length} 笔</span> : null}
+              {recent?.status === 'pending' ? <span className="tag warn" style={{ marginLeft: 8 }}><Icon name="refresh" size={14} />助手回传中…</span> : null}
+              {recent?.status === 'pending' && recentStalled ? (
+                <button type="button" className="btn sm ac-recent-retry" style={{ marginLeft: 8 }} onClick={() => setRecentRetry((value) => value + 1)}>
+                  <Icon name="refresh" size={14} />重试
+                </button>
+              ) : null}
+              {recent?.status === 'ready' && recent.refreshedAt ? <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>更新于 {dayjs(recent.refreshedAt).format('HH:mm')}</span> : null}
+              {recent?.fieldsIncomplete ? <span className="ac-field-hint">部分字段需升级现场助手后显示</span> : null}
             </div>
-            {recentError ? (
-              <div className="note2" role="alert" style={{ color: 'var(--dang)' }}><Icon name="alert" />{recentError}<button className="btn sm" style={{ marginLeft: 10 }} onClick={() => setRecentRetry((value) => value + 1)}>重试</button></div>
-            ) : recent === null ? <Loading text="读最近做卡记录…" /> : recent.length === 0 ? (
-              <div className="muted">暂无最近做卡记录</div>
-            ) : (
+            {recentErrorText ? (
+              <div className="note2" role="alert" style={{ color: 'var(--dang)' }}><Icon name="alert" />{recentErrorText}<button className="btn sm" style={{ marginLeft: 10 }} onClick={() => setRecentRetry((value) => value + 1)}>重试</button></div>
+            ) : recent === null ? <Loading text="读最近做卡记录…" /> : null}
+            {recent?.status === 'pending' && recentStalled && !recentErrorText ? (
+              <div className="note2" style={{ marginBottom: 10 }}><Icon name="refresh" size={14} />助手回传较慢，已暂停自动刷新，可点「重试」继续查询。</div>
+            ) : null}
+            {recent && recentRows.length ? (
               <div className="t-scroll">
                 <table className="t ac-recent-table">
                   <thead><tr><th>卡号(IC/WG)</th><th>房号</th><th>发卡时间</th><th>操作</th></tr></thead>
                   <tbody>
-                    {recent.map((row) => (
+                    {recentRows.map((row) => (
                       <tr key={row.id} className="ac-recent-row" onClick={() => pickRecentHouse(row)}>
                         <td className="nw"><b>{row.icCardNo || '—'}</b>{row.wgCardNo ? <span className="muted"> / WG {row.wgCardNo}</span> : null}</td>
                         <td className="nw">{String(row.roomLabel || '').replace(/已隐藏/g, '').trim() || '—'}</td>
@@ -463,7 +610,11 @@ export default function AccessCards() {
                   </tbody>
                 </table>
               </div>
-            )}
+            ) : recent && !recentErrorText && recent.status === 'ready' ? (
+              <div className="muted">暂无最近做卡记录</div>
+            ) : recent && !recentErrorText && recent.status === 'pending' && !recentStalled ? (
+              <div className="muted"><Icon name="refresh" size={14} /> 助手回传中，稍后自动刷新…</div>
+            ) : null}
           </div>
 
       <Sheet open={!!applyCard} onClose={() => { if (!applyBusy) setApplyCard(null); }} width={560} title="写入 Access 系统" subtitle={applyCard ? '卡 ' + (applyCard.icCardNo || applyCard.wgCardNo || '—') + ' · ' + (applyCard.roomLabel || '') : ''}>
@@ -533,7 +684,14 @@ interface DoorController {
   status: DoorStatus; supportRemoteOpen: boolean; supportTemporaryOpen: boolean;
   lastOperation?: string | null; lastCheckedAt: string | null; lastError: string | null;
 }
-interface DoorControllers { agentOnline: boolean; gatewayVersion: string | null; checkedAt: string; controllers: DoorController[] }
+interface DoorControllers {
+  agentOnline: boolean;
+  gatewayVersion: string | null;
+  checkedAt: string;
+  controllers: DoorController[];
+  /** 后端说明（例如所选小区不在二期联网门禁范围），只作说明，不阻断助手状态判断。 */
+  message?: string | null;
+}
 interface DoorTask {
   taskId: number; operation: string; status: 'pending' | 'sent' | 'succeeded' | 'failed'; rawStatus?: string;
   controllerId?: number | null; doorNo?: number | null; buildingNo?: string | null;
@@ -572,7 +730,16 @@ function newIdempotencyKey() {
 }
 const fmtDoorTime = (value: string | null | undefined) => (value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '—');
 
-function DoorControlPanel({ communities, canEdit }: { communities: AddressCommunity[]; canEdit: boolean }) {
+function DoorControlPanel({ communities, loaded, loadError, onReloadScope, canEdit }: {
+  communities: Array<{ id: number; name: string }>;
+  /** readiness 是否已返回：未返回前不显示「没有二期小区」。 */
+  loaded: boolean;
+  /** readiness 读取失败的原因；失败时不能再谎报「没有二期小区」或「助手离线」。 */
+  loadError: string;
+  /** 重新读取 readiness（门禁范围），不是重新读控制器。 */
+  onReloadScope?: () => void;
+  canEdit: boolean;
+}) {
   const [communityId, setCommunityId] = useState<number | null>(communities[0]?.id ?? null);
   const [data, setData] = useState<DoorControllers | null>(null);
   const [error, setError] = useState('');
@@ -612,14 +779,16 @@ function DoorControlPanel({ communities, canEdit }: { communities: AddressCommun
   };
 
   useEffect(() => {
-    if (communityId == null) { setData({ agentOnline: false, gatewayVersion: null, checkedAt: new Date().toISOString(), controllers: [] }); return undefined; }
+    // 没有二期联网门禁小区时不要伪造 agentOnline:false，否则又变成误报「助手离线」。
+    if (!loaded) return undefined;
+    if (communityId == null) { setData(null); setError(''); return undefined; }
     let alive = true;
     setData(null); setError('');
     request<DoorControllers>({ url: '/access-card-issuance/door/controllers', query: { communityId } })
       .then((r) => { if (alive) setData(r); })
       .catch((e) => { if (alive) { setData(null); setError(e instanceof Error ? e.message : '控制器列表读取失败'); } });
     return () => { alive = false; };
-  }, [communityId, reload]);
+  }, [communityId, reload, loaded]);
 
   // 任务轮询：pending/sent 时每 1.2s 查一次，成功后停止。
   useEffect(() => {
@@ -743,14 +912,16 @@ function DoorControlPanel({ communities, canEdit }: { communities: AddressCommun
           ) : null}
           {!collapsed && data?.gatewayVersion ? <span className="tag mute">网关 {data.gatewayVersion}</span> : null}
           {!collapsed && data?.checkedAt ? <span className="muted" style={{ fontSize: 12.5 }}>检测 {fmtDoorTime(data.checkedAt)}</span> : null}
-          {!collapsed ? (
+          {!collapsed && communities.length ? (
             <select className="in" style={{ width: 180 }} value={communityId ?? ''} onChange={(e) => setCommunityId(e.target.value ? Number(e.target.value) : null)} aria-label="远程门禁小区">
               {communities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           ) : null}
-          <button className="btn sm door-check" disabled={checking || !data?.agentOnline} title={!data?.agentOnline ? '门禁助手离线，无法检查' : '重新检查控制器在线状态'} onClick={() => void checkOnline()}>
-            {checking ? <><Icon name="refresh" size={15} />检查中…</> : '重新检查在线状态'}
-          </button>
+          {communities.length ? (
+            <button className="btn sm door-check" disabled={checking || !data?.agentOnline} title={!data?.agentOnline ? '门禁助手离线，无法检查' : '重新检查控制器在线状态'} onClick={() => void checkOnline()}>
+              {checking ? <><Icon name="refresh" size={15} />检查中…</> : '重新检查在线状态'}
+            </button>
+          ) : null}
           {!collapsed ? <button className="btn sm" onClick={() => setReload((v) => v + 1)}><Icon name="refresh" size={15} />刷新</button> : null}
         </div>
       </div>
@@ -758,6 +929,16 @@ function DoorControlPanel({ communities, canEdit }: { communities: AddressCommun
       {!collapsed ? (
       <div className="door-body">
       {!canEdit ? <div className="note2" style={{ marginTop: 8 }}><Icon name="alert" />当前账号只有「业务查看」权限，远程开门按钮不可用。</div> : null}
+      {!loaded ? (
+        loadError
+          ? <div className="note2" role="alert" style={{ background: 'var(--dang-w)', color: 'var(--dang)', marginTop: 10 }}><Icon name="alert" />远程门禁范围读取失败：{loadError}<button className="btn sm" style={{ marginLeft: 10 }} onClick={() => onReloadScope?.()}>重试</button></div>
+          : <Loading text="读取远程门禁范围…" />
+      ) : !communities.length ? (
+        <div className="note2" style={{ marginTop: 10 }}><Icon name="alert" />当前范围内没有二期联网门禁小区，远程开门不可用。</div>
+      ) : null}
+      {loaded && communities.length && data?.message ? (
+        <div className="note2" style={{ marginTop: 10 }}><Icon name="alert" />{data.message}</div>
+      ) : null}
       {error ? <div className="note2" style={{ background: 'var(--dang-w)', color: 'var(--dang)', marginTop: 10 }}><Icon name="alert" />{error}<button className="btn sm" style={{ marginLeft: 10 }} onClick={() => setReload((v) => v + 1)}>重试</button></div> : null}
       {data && !gatewayReady ? (
         <div className="note2 door-disabled" style={{ marginTop: 10 }}>
@@ -765,7 +946,7 @@ function DoorControlPanel({ communities, canEdit }: { communities: AddressCommun
         </div>
       ) : null}
 
-      {data === null && !error ? <Loading text="读取门禁控制器…" /> : data && controllers.length === 0 ? (
+      {!loaded || !communities.length ? null : data === null && !error ? <Loading text="读取门禁控制器…" /> : data && controllers.length === 0 ? (
         <div className="muted" style={{ padding: '18px 4px' }}>当前小区没有可远程控制的门禁控制器（仅二期联网门禁支持）。</div>
       ) : data ? (
         <div className="t-scroll door-table">

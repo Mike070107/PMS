@@ -249,6 +249,15 @@
 
 
 
+/* 顶部门禁能力标签：写卡工作站 / .80 捷顺库 / .88 门禁网关 分项显示，窄屏换行不挤 */
+.ac-cap-abilities {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.ac-cap-abilities .tag {
+  white-space: nowrap;
+}
+
 /* 门禁发卡历史 / 最近做卡 / 授权楼栋 */
 .ac-history-table { min-width: 1420px; font-size: 12.5px; }
 .ac-history-table th, .ac-history-table td { padding-top: 9px; padding-bottom: 9px; }
