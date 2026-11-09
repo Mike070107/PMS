@@ -407,6 +407,8 @@ export class AccessCardIssuanceService {
         houseId: house?.id ?? null,
         roomKey,
         projectPhase: phase,
+        accessSystem: system,
+        homeBuildingNo: building?.buildingNo ?? null,
         canManageAccess,
         actionMessage,
         accessDatabaseTask: wgCardNo ? this.historyAuthorizationResponse(latestTask.get(`${wgCardNo}:access_database_only`) ?? null) : null,
@@ -444,8 +446,14 @@ export class AccessCardIssuanceService {
       await this.requestLegacyHistory(tenantId, context.legacyStorageRoomKey, user.id),
       tenantId,
     );
+    const phase = projectPhaseOf(context.community.name);
+    // 该户所属楼栋在 .88 二期联网门禁里的系统；一期/未配置路由为 null。
+    const accessSystem = phase ? accessSystemOf(phase, context.building.buildingNo) : null;
     const rows = snapshot.status === 'ready'
-      ? snapshot.history.map((row, index) => mapLegacyCardRow(row, index + 1, context.roomKey))
+      ? snapshot.history.map((row, index) => ({
+        ...mapLegacyCardRow(row, index + 1, context.roomKey),
+        accessSystem,
+      }))
       : [];
     return {
       communityId,
@@ -549,20 +557,63 @@ export class AccessCardIssuanceService {
     };
   }
 
+  /**
+   * 发卡页「授权楼栋」：返回该卡所在小区的二期联网门禁门栋（复用设备管理的 phase2 路由），
+   * 同时给出本楼栋号/本楼栋系统，默认值由前端使用 homeBuildingNo。
+   */
+  async getLegacyCardGrantOptions(id: number, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const found = await this.findLegacyCardById(tenantId, id);
+    if (!found) throw new NotFoundException('捷顺发卡记录不存在或已过期，请先刷新发卡历史');
+    const context = await this.resolveLegacyCardRoom(tenantId, found.row, access);
+    if (!context) throw new BadRequestException('未能在 PMS 精确匹配这张卡的房号，无法选择授权楼栋');
+    const phase = projectPhaseOf(context.community.name);
+    const homeBuildingNo = context.building.buildingNo;
+    const accessSystem = phase ? accessSystemOf(phase, homeBuildingNo) : null;
+    // 复用 listDoorControllers 的 phase2 路由（只含 accessSystemOf('phase2', buildingNo) !== null 的楼栋），
+    // 一期/未联网小区返回空门栋列表，不伪造选项。
+    const controllers = phase === 'phase2'
+      ? (await this.listDoorControllers(user, access, context.community.id)).controllers
+      : [];
+    const seen = new Set<string>();
+    const options = controllers
+      .filter((controller) => {
+        const key = normalizeBuildingNo(controller.buildingNo);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map((controller) => ({
+        buildingNo: controller.buildingNo,
+        doorName: controller.doorName,
+        accessSystem: controller.accessSystem,
+      }))
+      .sort((left, right) => left.buildingNo.localeCompare(right.buildingNo, 'zh-CN', { numeric: true }));
+    return {
+      communityId: context.community.id,
+      houseId: context.house.id,
+      homeBuildingNo,
+      accessSystem,
+      options,
+    };
+  }
+
   /** 把捷顺卡写入 .88 Access 库（iCCard / MjSystem），复用历史卡授权任务通道。 */
   async applyLegacyCardMdb(id: number, dto: ApplyLegacyCardMdbDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
     const found = await this.findLegacyCardById(tenantId, id);
     if (!found) throw new NotFoundException('捷顺发卡记录不存在或已过期，请先刷新发卡历史');
-    if (!dto.systems?.length) throw new BadRequestException('请至少选择一个 Access 库');
     const context = await this.resolveLegacyCardRoom(tenantId, found.row, access, true);
     if (!context) throw new BadRequestException('未能在 PMS 精确匹配这张卡的房号，无法写入 Access 库');
     const mapped = mapLegacyCardRow(found.row, 1, context.roomKey);
     if (!mapped.wgCardNo) throw new BadRequestException('IC 卡号无法换算 WG 卡号，无法写入 Access 库');
     const homeSystem = accessSystemOf('phase2', context.building.buildingNo);
+    // systems 可选：不传/空数组时默认写这张卡所属楼栋的系统，前端无需先猜 iccard/mjsystem。
+    const systems = dto.systems?.length ? dto.systems : (homeSystem ? [homeSystem] : []);
+    if (!systems.length) throw new BadRequestException('该楼栋门禁路由尚未配置，无法写入 Access 库');
     const results: Array<{ system: 'iccard' | 'mjsystem'; status: 'queued' | 'failed'; taskId?: number; error?: string }> = [];
     const taskIds: number[] = [];
-    for (const system of Array.from(new Set(dto.systems))) {
+    for (const system of Array.from(new Set(systems))) {
       if (homeSystem !== system) {
         results.push({
           system,
@@ -597,7 +648,7 @@ export class AccessCardIssuanceService {
       }
     }
     await this.writeLegacyCardAudit(tenantId, id, 'access_card_apply_mdb', {
-      systems: dto.systems,
+      systems: Array.from(new Set(systems)),
       taskIds,
       results,
     }, user.id);

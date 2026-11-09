@@ -212,6 +212,9 @@ test('cards/recent：行补齐 communityName/lane/roomNo/houseId，roomLabel 不
   assert.equal(row.houseId, 1435);
   assert.equal(row.roomKey, '228/50/202');
   assert.equal(row.projectPhase, 'phase2');
+  // 发卡页「添加到二期门禁系统」按行就能拿到本楼栋系统/楼栋号，不用再猜。
+  assert.equal(row.accessSystem, 'iccard');
+  assert.equal(row.homeBuildingNo, '50');
   assert.equal(row.wgCardNo, icToWg('B9F7D800'));
   assert.equal(row.canManageAccess, true);
   // 既有前端字段不能丢。

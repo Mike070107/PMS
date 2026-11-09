@@ -414,11 +414,13 @@ export class CheckDoorOnlineDto {
 }
 
 export class ApplyLegacyCardMdbDto {
+  /** 可选；不传时按这张卡所属楼栋的门禁系统写入（iccard/mjsystem）。 */
+  @IsOptional()
   @IsArray()
   @ArrayMaxSize(2)
   @ArrayUnique()
   @IsIn(['iccard', 'mjsystem'], { each: true })
-  systems: Array<'iccard' | 'mjsystem'>;
+  systems?: Array<'iccard' | 'mjsystem'>;
 }
 
 export class GrantLegacyCardBoardsDto {

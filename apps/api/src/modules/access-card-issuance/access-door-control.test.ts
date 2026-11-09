@@ -338,6 +338,12 @@ test('门禁接口沿用 access-cards 的 business edit/view 权限，不新增�
   assert.deepEqual(checkOnline, { items: [{ pageKey: 'business', action: 'edit' }] });
 });
 
+test('发卡页新增的 grant-options 只读接口沿用 business view 权限', () => {
+  const handlers = AccessCardIssuanceController.prototype as unknown as Record<string, object>;
+  const grantOptions = Reflect.getMetadata(PERMISSION_KEY, handlers.legacyCardGrantOptions!);
+  assert.deepEqual(grantOptions, { items: [{ pageKey: 'business', action: 'view' }] });
+});
+
 function makeCheckService() {
   const context = makeService();
   const checkAudits: Array<Record<string, unknown>> = [];

@@ -328,6 +328,17 @@ export class AccessCardIssuanceController {
     return this.service.getLegacyCard(id, user, access);
   }
 
+  /** 发卡页「授权楼栋」候选：该卡所在小区的二期联网门禁门栋 + 默认本楼栋。 */
+  @Get('cards/:id/grant-options')
+  @RequirePermission('business', 'view')
+  legacyCardGrantOptions(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.getLegacyCardGrantOptions(id, user, access);
+  }
+
   @Post('cards/:id/apply-mdb')
   @RequirePermission('business', 'edit')
   applyLegacyCardMdb(
