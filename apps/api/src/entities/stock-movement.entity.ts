@@ -35,6 +35,10 @@ export class StockMovement extends TenantEntity {
   @Column({ name: 'ref_id', type: 'int', nullable: true })
   refId: number | null;
 
+  /** 流水发生时的库位；出库沿用库存当前库位，入库用本次指定/默认库位。 */
+  @Column({ name: 'location_id', type: 'int', nullable: true })
+  locationId: number | null;
+
   @Column({ type: 'text', nullable: true })
   note: string | null;
 

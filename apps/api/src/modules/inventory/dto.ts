@@ -2,6 +2,7 @@ import {
   IsArray,
   ArrayMinSize,
   IsBoolean,
+  IsIn,
   IsInt,
   IsOptional,
   IsPositive,
@@ -13,7 +14,7 @@ import {
   ValidateNested,
   ArrayMaxSize,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { WarehouseType } from '../../common/enums';
 
 export class TenantQueryDto {
@@ -332,6 +333,37 @@ export class StockQueryDto extends TenantQueryDto {
   @Type(() => Number)
   @IsInt()
   materialId?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  q?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true' || value === 1 || value === '1')
+  @IsBoolean()
+  lowOnly?: boolean;
+
+  @IsOptional()
+  @IsIn(['materialName', 'qty', 'unitCost', 'amount', 'safetyStock', 'updatedAt'])
+  sort?: 'materialName' | 'qty' | 'unitCost' | 'amount' | 'safetyStock' | 'updatedAt';
+
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  dir?: 'asc' | 'desc';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(500)
+  pageSize?: number;
 }
 
 export class UpdateStockDto {
@@ -677,6 +709,11 @@ export class CreateWarehouseLocationDto {
   @IsOptional()
   @IsBoolean()
   enabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  label?: string;
 }
 
 export class UpdateWarehouseLocationDto {
@@ -698,6 +735,11 @@ export class UpdateWarehouseLocationDto {
   @IsOptional()
   @IsBoolean()
   enabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  label?: string;
 }
 
 export class WarehouseLocationQueryDto extends TenantQueryDto {
@@ -705,6 +747,11 @@ export class WarehouseLocationQueryDto extends TenantQueryDto {
   @Type(() => Number)
   @IsInt()
   warehouseId?: number;
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true' || value === 1 || value === '1')
+  @IsBoolean()
+  enabled?: boolean;
 }
 
 export class TransferItemDto {
@@ -772,4 +819,32 @@ export class ReceiveTransferOrderDto {
   @Type(() => Number)
   @IsInt()
   locationId?: number | null;
+}
+
+
+/** 新增库位（挂在 /warehouses/:id/locations 下，warehouseId 由路径提供）。 */
+export class WarehouseLocationBodyDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  zone?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  shelf?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  bin?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  label?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
 }

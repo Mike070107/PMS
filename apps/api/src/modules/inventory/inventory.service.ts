@@ -85,6 +85,8 @@ import {
 import { nextPurchaseRequestNo } from './purchase-request-no.util';
 import { SettingsService } from '../settings/settings.service';
 import { nextPurchaseStatus, nextStepLabel, pendingStepFor, purchaseSteps } from './purchase-flow';
+import { buildReportWorkbook } from '../../common/report-excel';
+import { buildLocationBreakdown } from './stock-locations.util';
 
 interface NotifyInput {
   eventKey: string;
@@ -1022,8 +1024,27 @@ export class InventoryService {
       : [];
     const defaultCostById = new Map(materials.map((m) => [m.id, m.defaultCostCents]));
     const materialNameById = new Map(materials.map((m) => [m.id, m.name]));
-    // 库位名一起带出来，清单直接显示「东西放在哪一格」，不用点进批次去猜
-    const locationIds = [...new Set(rows.map((r) => r.locationId).filter((id): id is number => !!id))];
+    // 库位名、按库位的当前数量：优先从流水汇总（入库/出库/冲销都写入 location_id）
+    const warehouseIds = [...new Set(rows.map((r) => r.warehouseId))];
+    const movementRows: any[] = warehouseIds.length
+      ? await this.dataSource.query(
+          `SELECT warehouse_id, material_id, location_id, SUM(qty)::numeric AS qty
+             FROM stock_movements WHERE tenant_id=$1 AND warehouse_id = ANY($2::int[])
+            GROUP BY warehouse_id, material_id, location_id`,
+          [tenantId, warehouseIds],
+        )
+      : [];
+    const locatedByStock = new Map<string, Map<number | null, number>>();
+    for (const movement of movementRows) {
+      const key = `${movement.warehouse_id}:${movement.material_id}`;
+      const byLocation = locatedByStock.get(key) || new Map<number | null, number>();
+      byLocation.set(movement.location_id ? Number(movement.location_id) : null, Number(movement.qty || 0));
+      locatedByStock.set(key, byLocation);
+    }
+    const locationIds = [...new Set([
+      ...rows.map((r) => r.locationId).filter((id): id is number => !!id),
+      ...movementRows.map((m) => m.location_id).filter((id: unknown): id is number => !!id),
+    ])];
     const locations = locationIds.length
       ? await this.dataSource.getRepository(WarehouseLocation).find({
           where: { tenantId, id: In(locationIds) },
@@ -1031,41 +1052,93 @@ export class InventoryService {
         })
       : [];
     const locationLabel = new Map(locations.map((l) => [l.id, l.label]));
-    return rows.map((row) => {
+    let mapped = rows.map((row) => {
       const lot = lotMap.get(`${row.warehouseId}:${row.materialId}`);
       const lotQty = lot?.lotQty ?? 0;
       const lotValueCents = lot?.lotValueCents ?? 0;
       const unitCostCents = resolveUnitCost(lotQty, lotValueCents, defaultCostById.get(row.materialId) ?? 0);
+      const qty = Number(row.qty);
+      const byLocation = locatedByStock.get(`${row.warehouseId}:${row.materialId}`) || new Map<number | null, number>();
+      const locationRows = buildLocationBreakdown(qty, byLocation, locationLabel, row.locationId);
+      const material = materials.find((item) => item.id === row.materialId);
       return {
         ...row,
+        materialName: material?.name ?? materialNameById.get(row.materialId) ?? '',
+        materialCode: material?.code ?? '',
+        spec: material?.spec ?? null,
+        unit: material?.unit ?? '',
+        safetyStock: Number(row.safetyQty),
         lotQty,
         lotValueCents,
         unitCostCents,
         costSource: lotQty > 0 ? 'lot' : 'default',
-        // 金额从批次原值加总，别用均价乘回去（见 resolveStockValue 注释）
-        amountCents: resolveStockValue(Number(row.qty), lotQty, lotValueCents, defaultCostById.get(row.materialId) ?? 0),
+        amountCents: resolveStockValue(qty, lotQty, lotValueCents, defaultCostById.get(row.materialId) ?? 0),
         locationLabel: row.locationId ? locationLabel.get(row.locationId) ?? null : null,
+        locations: locationRows,
+        locationCount: locationRows.length,
+        low: Number(row.safetyQty) > 0 && qty <= Number(row.safetyQty),
       };
-    }).sort(
-      (a, b) =>
-        compareNameAlphabetically(
-          materialNameById.get(a.materialId),
-          materialNameById.get(b.materialId),
-        ) || a.warehouseId - b.warehouseId || a.id - b.id,
-    );
+    });
+    if (query.q?.trim()) {
+      const needle = query.q.trim().toLowerCase();
+      mapped = mapped.filter((row) => [row.materialName, row.materialCode, row.spec, row.locationLabel].some((value) => String(value ?? '').toLowerCase().includes(needle)));
+    }
+    if (query.lowOnly) mapped = mapped.filter((row) => row.low);
+    const sort = query.sort ?? 'updatedAt';
+    const direction = query.dir === 'asc' ? 1 : -1;
+    const sortField = sort === 'unitCost' ? 'unitCostCents' : sort === 'amount' ? 'amountCents' : sort;
+    const valueOf = (row: any) => sort === 'materialName' ? String(row.materialName || '') : sort === 'updatedAt' ? Date.parse(String(row.updatedAt || '')) || 0 : Number(row[sortField] ?? 0);
+    mapped.sort((a: any, b: any) => {
+      const av = valueOf(a), bv = valueOf(b);
+      const result = typeof av === 'string' ? av.localeCompare(bv as string, 'zh-CN') : (av as number) - (bv as number);
+      return (result || a.warehouseId - b.warehouseId || a.id - b.id) * direction;
+    });
+    if (query.page || query.pageSize) {
+      const page = query.page ?? 1, pageSize = query.pageSize ?? 50;
+      mapped = mapped.slice((page - 1) * pageSize, page * pageSize);
+    }
+    return mapped;
   }
 
   /** 某条库存的批次明细（含已耗尽的），先进先出的顺序 */
+  /** 库存 xlsx：列与页面当前筛选一致，金额/成本列按分转元。 */
+  async exportStocks(query: StockQueryDto, user: AuthUser, access?: ResolvedAccess) {
+    const rows: any[] = await this.listStocks({ ...query, page: undefined, pageSize: undefined }, user, access);
+    const warehouseIds = [...new Set(rows.map((row) => row.warehouseId))];
+    const warehouses = warehouseIds.length ? await this.warehouseRepo.find({ where: { tenantId: this.resolveTenantId(user), id: In(warehouseIds) } }) : [];
+    const warehouseName = new Map(warehouses.map((row) => [row.id, row.name]));
+    const data = rows.map((row) => ({
+      warehouseName: warehouseName.get(row.warehouseId) ?? String(row.warehouseId),
+      materialName: row.materialName,
+      spec: row.spec,
+      unit: row.unit,
+      stockQty: Number(row.qty),
+      safetyQty: Number(row.safetyStock),
+      unitCostCents: Number(row.unitCostCents),
+      stockAmountCents: Number(row.amountCents),
+      locationsText: (row.locations || []).map((item: any) => `${item.label}×${Number(item.qty)}`).join(' / '),
+      updatedAt: row.updatedAt ? new Date(row.updatedAt).toISOString() : '',
+    }));
+    return buildReportWorkbook([{ name: '库存', rows: data }]);
+  }
+
   async listStockLots(stockId: number, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user);
     const stock = await this.stockRepo.findOne({ where: { id: stockId, tenantId } });
     if (!stock) throw new NotFoundException('stock not found');
     await this.assertWarehouseVisible(tenantId, user, stock.warehouseId, access);
-    return this.dataSource.getRepository(StockLot).find({
+    const lots = await this.dataSource.getRepository(StockLot).find({
       where: { tenantId, warehouseId: stock.warehouseId, materialId: stock.materialId },
       order: { receivedAt: 'ASC', id: 'ASC' },
       take: 200,
     });
+    // “批次与流水”抽屉一次拿全：流水走 stock_movements，避免前端再猜入库单是否写入。
+    const movements = await this.listStockMovements(
+      { tenantId, warehouseId: stock.warehouseId, materialId: stock.materialId, limit: 100 } as StockMovementQueryDto,
+      user,
+      access,
+    );
+    return { lots, movements };
   }
 
   /**
@@ -1136,7 +1209,7 @@ export class InventoryService {
              FROM work_orders w
              LEFT JOIN repair_requests rr ON rr.id = w.request_id AND rr.tenant_id = w.tenant_id
              LEFT JOIN communities c ON c.id = w.community_id AND c.tenant_id = w.tenant_id
-             LEFT JOIN offices o ON o.id = c.office_id AND o.tenant_id = w.tenant_id
+             LEFT JOIN management_offices o ON o.id = c.office_id AND o.tenant_id = w.tenant_id
              WHERE w.tenant_id = $1 AND w.deleted_at IS NULL AND w.id = ANY($2::int[])`,
             [tenantId, workOrderIds],
           )
@@ -1144,6 +1217,11 @@ export class InventoryService {
     ]);
     const receiptNo = new Map(receipts.map((r) => [r.id, r.receiptNo]));
     const transferNo = new Map(transfers.map((t) => [t.id, t.transferNo]));
+    const locationIds = [...new Set(rows.map((row) => row.locationId).filter((id): id is number => !!id))];
+    const locations = locationIds.length
+      ? await this.dataSource.getRepository(WarehouseLocation).find({ where: { tenantId, id: In(locationIds) }, select: ['id', 'label'] })
+      : [];
+    const locationLabel = new Map(locations.map((row) => [row.id, row.label]));
     const orderNo = new Map<number, string>(
       (workOrders as Array<{ id: number; order_no: string }>).map((w) => [w.id, w.order_no]),
     );
@@ -1162,7 +1240,7 @@ export class InventoryService {
           refNo = orderNo.get(row.refId) ?? null;
         }
       }
-      return { ...row, refNo };
+      return { ...row, refNo, amountCents: Math.round(Number(row.qty) * Number(row.unitCostCents || 0)), locationLabel: row.locationId ? locationLabel.get(row.locationId) ?? null : '未分配' };
     });
   }
 
@@ -2488,6 +2566,7 @@ export class InventoryService {
       if (!visible.length) return [];
       where.warehouseId = In(visible);
     }
+    if (query.enabled !== undefined) where.enabled = query.enabled;
     return this.dataSource.getRepository(WarehouseLocation).find({
       where,
       order: { id: 'ASC' },
@@ -2502,8 +2581,10 @@ export class InventoryService {
     const tenantId = this.resolveTenantId(user, dto.tenantId);
     await this.assertWarehouseVisible(tenantId, user, dto.warehouseId, access);
     await this.ensureWarehouse(this.dataSource.manager, tenantId, dto.warehouseId);
-    const label = this.buildLocationLabel(dto.zone, dto.shelf, dto.bin);
-    if (!label) throw new BadRequestException('请至少填写库区、货架或货位之一');
+    const label = dto.label?.trim() || this.buildLocationLabel(dto.zone, dto.shelf, dto.bin);
+    if (!label) throw new BadRequestException('请至少填写库区、货架、货位或库位名称之一');
+    const duplicate = await this.dataSource.getRepository(WarehouseLocation).findOne({ where: { tenantId, warehouseId: dto.warehouseId, label } });
+    if (duplicate) throw new BadRequestException('同一仓库内库位名称不能重复');
     return this.dataSource.getRepository(WarehouseLocation).save(
       this.dataSource.getRepository(WarehouseLocation).create({
         tenantId,
@@ -2534,10 +2615,24 @@ export class InventoryService {
     if (dto.shelf !== undefined) location.shelf = dto.shelf?.trim() || null;
     if (dto.bin !== undefined) location.bin = dto.bin?.trim() || null;
     if (dto.enabled !== undefined) location.enabled = dto.enabled;
-    location.label = this.buildLocationLabel(location.zone, location.shelf, location.bin);
-    if (!location.label) throw new BadRequestException('请至少填写库区、货架或货位之一');
+    location.label = dto.label?.trim() || this.buildLocationLabel(location.zone, location.shelf, location.bin);
+    if (!location.label) throw new BadRequestException('请至少填写库区、货架、货位或库位名称之一');
+    const duplicate = await repo.findOne({ where: { tenantId, warehouseId: location.warehouseId, label: location.label } });
+    if (duplicate && duplicate.id !== location.id) throw new BadRequestException('同一仓库内库位名称不能重复');
     location.updatedBy = user.id;
     return repo.save(location);
+  }
+
+  async deleteWarehouseLocation(id: number, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.resolveTenantId(user);
+    const repo = this.dataSource.getRepository(WarehouseLocation);
+    const location = await repo.findOne({ where: { id, tenantId } });
+    if (!location) throw new NotFoundException('库位不存在');
+    await this.assertWarehouseVisible(tenantId, user, location.warehouseId, access);
+    const references = await this.stockRepo.count({ where: { tenantId, locationId: id } });
+    if (references > 0) throw new BadRequestException('该库位仍有库存，请先移库或清空库存后再删除');
+    await repo.delete({ id, tenantId });
+    return { deleted: 1 };
   }
 
   private buildLocationLabel(

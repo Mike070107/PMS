@@ -242,12 +242,14 @@ test('applyStockDelta：改数量并落带成本快照的流水；扣成负数�
     refType: 'goods_receipt',
     refId: 7,
     operatorId: 1,
+    locationId: 9,
   });
   assert.equal(Number(stock.qty), 3);
   const movements = manager.tables.get(StockMovement)!;
   assert.equal(movements.length, 1);
   assert.equal(movements[0].unitCostCents, 150);
   assert.equal(movements[0].refId, 7);
+  assert.equal(movements[0].locationId, 9, '入库流水必须记录库位');
 
   await assert.rejects(
     applyStockDelta(manager, {

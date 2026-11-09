@@ -138,6 +138,7 @@ export async function applyStockDelta(
       unitCostCents: input.unitCostCents,
       refType: input.refType,
       refId: input.refId,
+      locationId: input.locationId ?? stock.locationId ?? null,
       note: input.note ?? null,
       reversalOfMovementId: input.reversalOfMovementId ?? null,
       createdBy: input.operatorId,

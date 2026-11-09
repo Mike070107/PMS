@@ -20,9 +20,9 @@ const LABELS: Record<string, string> = {
   communityId: '小区ID', communityName: '小区', cashier: '收费员',
   userId: '员工ID', name: '姓名', phone: '电话', accountStatus: '账号状态', onDuty: '在岗', skills: '技能',
   skillLabels: '技能(中文)', canTakeOrders: '可接单', completedInRange: '区间完成', activeNow: '当前进行',
-  warehouseId: '仓库ID', warehouseName: '仓库', warehouseType: '仓库类型', officeId: '管理处ID',
+  warehouseId: '仓库ID', warehouseName: '仓库', materialName: '材料', stockQty: '当前库存', locationsText: '库位明细', updatedAt: '更新时间', warehouseType: '仓库类型', officeId: '管理处ID',
   materialId: '物料ID', code: '编码', spec: '规格', category: '分类', unit: '单位', enabled: '启用',
-  safetyQty: '安全库存', low: '低于安全', unitCostCents: '单位成本', costSource: '成本来源', stockId: '库存行ID',
+  safetyQty: '安全库存', low: '低于安全', unitCostCents: '单位成本', stockAmountCents: '库存金额', costSource: '成本来源', stockId: '库存行ID',
   usedAt: '领用时间', workOrderId: '工单ID', orderNo: '工单号', status: '状态', statusLabel: '状态说明',
   assigneeId: '责任人ID', assigneeName: '责任人', amountCents: '金额', truncated: '是否截断',
 };

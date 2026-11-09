@@ -3,11 +3,13 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Param,
   ParseIntPipe,
   Patch,
   Post,
   Query,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
@@ -44,6 +46,7 @@ import {
   UpdateWarehouseDto,
   UpdateWarehouseLocationDto,
   WarehouseLocationQueryDto,
+  WarehouseLocationBodyDto,
 } from './dto';
 import { InventoryService } from './inventory.service';
 import { NotificationsService, type NotificationRef } from '../notifications/notifications.service';
@@ -251,6 +254,18 @@ export class InventoryController {
   }
 
   /** 某条库存的批次明细：哪批、什么价、还剩多少 */
+  @Get('stocks/export')
+  @RequirePermission(['inventory', 'app:inventory'], 'view')
+  @Header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  @Header('Content-Disposition', 'attachment; filename="stock-export.xlsx"')
+  async exportStocks(
+    @Query() query: StockQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return new StreamableFile(await this.inventoryService.exportStocks(query, user, access));
+  }
+
   @Get('stocks/:id/lots')
   @RequirePermission(['inventory', 'app:inventory'], 'view')
   listStockLots(
@@ -505,6 +520,45 @@ export class InventoryController {
   // ---------------- 库位/货架 ----------------
 
   // 员工端「新增材料并入库」也要挑库位，所以带上 app:inventory
+  @Get('warehouses/:id/locations')
+  @RequirePermission(['inventory', 'app:inventory'], 'view')
+  listWarehouseLocationsByWarehouse(
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: WarehouseLocationQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.inventoryService.listWarehouseLocations({ ...query, warehouseId: id }, user, access);
+  }
+
+  @Post('warehouses/:id/locations')
+  @RequirePermission('inventory', 'edit')
+  createWarehouseLocationByWarehouse(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: WarehouseLocationBodyDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.inventoryService.createWarehouseLocation({ ...body, warehouseId: id }, user, access);
+  }
+
+  @Patch('locations/:id')
+  @RequirePermission('inventory', 'edit')
+  updateWarehouseLocationAlias(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateWarehouseLocationDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.inventoryService.updateWarehouseLocation(id, dto, user, access);
+  }
+
+  @Delete('locations/:id')
+  @RequirePermission('inventory', 'edit')
+  deleteWarehouseLocationAlias(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.inventoryService.deleteWarehouseLocation(id, user, access);
+  }
+
   @Get('warehouse-locations')
   @RequirePermission(['inventory', 'app:inventory'], 'view')
   listWarehouseLocations(
