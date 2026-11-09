@@ -6848,3 +6848,10 @@
 - 自上次（d1dad125）以来上线的相关提交：
   - bf1cf128 fix(access): 发卡历史房号兜底、fieldsIncomplete 标记、hidden 不伪造 false
 
+## 2026-11-09 16:07 · web · 1ef792a7
+
+- 包：`pms-web-20261109-160649.tar.gz`
+- 提交：1ef792a7 feat(access): 发卡历史表（捷顺真实数据11列）、写入Access与多楼栋授权操作、最近30笔做卡记录
+- 自上次（e39a223a）以来上线的相关提交：
+  - 1ef792a7 feat(access): 发卡历史表（捷顺真实数据11列）、写入Access与多楼栋授权操作、最近30笔做卡记录
+
