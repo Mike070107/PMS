@@ -11,6 +11,8 @@ export const PAGE_ACCESS = [
   { paths: ['/meters'], keys: ['meters'] },
   // 新版收费报表调用 /fees/reports/summary，沿用费用模块权限，不是旧版统计报表。
   { paths: ['/fees', '/reports'], keys: ['fees'] },
+  // 统计汇总（旧「一通软件」统计菜单复刻）先复用 business 查看权限，不新增页面 key。
+  { paths: ['/statistics'], keys: ['business'] },
   // 「账单与待缴」已从物业费里独立成可授权页面：只看 fees 不再自动能进 /bills。
   { paths: ['/bills'], keys: ['bills'] },
   { paths: ['/work-orders'], keys: ['work-orders'] },

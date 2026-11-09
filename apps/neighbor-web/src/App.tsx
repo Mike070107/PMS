@@ -32,6 +32,7 @@ const MigratedMeters = lazy(() => import('@/pages/MigratedMeters'));
 const Fees = lazy(() => import('@/pages/Fees'));
 const ParkingSpaces = lazy(() => import('@/pages/ParkingSpaces'));
 const Reports = lazy(() => import('@/pages/Reports'));
+const Statistics = lazy(() => import('@/pages/Statistics'));
 const Materials = lazy(() => import('@/pages/Materials'));
 const Stocktakes = lazy(() => import('@/pages/Stocktakes'));
 const Staff = lazy(() => import('@/pages/Staff'));
@@ -226,6 +227,7 @@ export default function App() {
             <Route path="/parking/main" element={<ParkingSpaces garage="main" />} />
             <Route path="/parking/civil" element={<ParkingSpaces garage="civil" />} />
             <Route path="/reports" element={<Reports />} />
+            <Route path="/statistics" element={<Statistics />} />
             <Route path="/materials" element={<Materials />} />
             <Route path="/stocktakes" element={<Stocktakes />} />
             <Route path="/staff" element={<Staff />} />

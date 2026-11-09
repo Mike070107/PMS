@@ -1,0 +1,442 @@
+/* 统计汇总：左侧多选筛选 + 年度汇总表（管理处固定列/年度横向滚动/合计高亮）+ 三级下钻 */
+.stats { min-width: 0; }
+
+.stats-head-actions { flex-wrap: wrap; justify-content: flex-end; }
+
+.stats-layout {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+
+.stats-main { min-width: 0; }
+
+/* 桌面上筛选面板直接作为网格第一列；窄屏由页面折叠按钮控制 */
+.stats-filter-wrap { display: contents; }
+
+.stats-filter-toggle { display: none; }
+
+/* ---------- 左侧筛选 ---------- */
+.stats-filters {
+  padding: 14px 16px;
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 110px);
+  overflow: auto;
+}
+
+.stats-filter-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.stats-filter-head b {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+}
+
+.stats-filter-head .btn { margin-left: auto; }
+
+.stats-filter-group {
+  border-top: 1px solid var(--line2);
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.stats-filter-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.stats-filter-group-head b { font-size: 13.5px; }
+
+.stats-filter-group-actions { display: flex; gap: 2px; }
+
+.stats-link {
+  font-size: 12.5px;
+  color: var(--acc-b);
+  padding: 2px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  background: transparent;
+}
+
+.stats-link:hover { background: var(--acc-w); }
+
+.stats-filter-hint { color: var(--ink3); font-size: 12px; margin-top: 2px; }
+
+.stats-office-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--surface);
+}
+
+.stats-office-search .in {
+  border: 0;
+  height: 34px;
+  padding: 0;
+  background: transparent;
+  outline: none;
+}
+
+.stats-check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 190px;
+  overflow: auto;
+}
+
+.stats-check-list--grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.stats-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 7px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--ink2);
+  min-width: 0;
+}
+
+.stats-check:hover { background: var(--sunken); }
+
+.stats-check input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--acc);
+  flex: none;
+  cursor: pointer;
+}
+
+.stats-check-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-check small { margin-left: auto; font-size: 11.5px; flex: none; }
+
+.stats-filter-dates {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--line2);
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.stats-filter-dates label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--ink2);
+}
+
+.stats-filter-dates .ant-picker { width: 100%; }
+
+.stats-filter-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.stats-filter-actions .btn { flex: 1; justify-content: center; }
+
+/* ---------- 报表目录 ---------- */
+.stats-catalog {
+  padding: 10px 14px;
+  margin-bottom: 14px;
+}
+
+.stats-catalog-main {
+  display: flex;
+  align-items: center;
+  gap: 6px 10px;
+  flex-wrap: wrap;
+}
+
+.stats-report-tab {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink2);
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+}
+
+.stats-report-tab:hover { border-color: var(--ink4); background: var(--sunken); }
+
+.stats-report-tab.on {
+  background: var(--acc);
+  border-color: var(--acc);
+  color: #fff;
+}
+
+.stats-catalog-sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
+
+.stats-pending-title {
+  font-size: 12px;
+  color: var(--ink3);
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+
+.stats-report-pending {
+  font-size: 12.5px;
+  color: var(--ink4);
+  padding: 2px 8px;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  cursor: not-allowed;
+  background: var(--sunken);
+}
+
+/* ---------- 年度汇总表 ---------- */
+.stats-result { padding: 14px 16px; }
+
+.stats-result-head { flex-wrap: wrap; gap: 8px; }
+
+.stats-range { font-size: 12px; }
+
+.stats-as-of { margin-left: auto; font-size: 12px; }
+
+.stats-table-scroll {
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.stats-annual-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 100%;
+}
+
+.stats-annual-table th,
+.stats-annual-table td {
+  white-space: nowrap;
+}
+
+.stats-annual-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--sunken);
+}
+
+.stats-office-col {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  min-width: 160px;
+  background: var(--surface);
+  box-shadow: 1px 0 0 var(--line2);
+}
+
+.stats-annual-table thead .stats-office-col { z-index: 3; background: var(--sunken); }
+
+.stats-annual-table tbody .stats-office-col b { display: block; font-size: 13px; }
+.stats-annual-table tbody .stats-office-col small { font-size: 11.5px; }
+
+.stats-year-col {
+  min-width: 96px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.stats-total-col {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  min-width: 130px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  background: var(--acc-w);
+  box-shadow: -1px 0 0 var(--line2);
+}
+
+.stats-annual-table thead .stats-total-col { z-index: 3; background: var(--acc-w); }
+
+.stats-cell {
+  display: block;
+  width: 100%;
+  padding: 2px 0;
+  text-align: right;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--acc-b);
+  border-radius: 6px;
+  cursor: pointer;
+  background: transparent;
+}
+
+.stats-cell:hover { background: var(--acc-w); }
+.stats-cell:focus-visible { outline: 2px solid var(--acc); outline-offset: 1px; }
+
+.stats-year-col.is-zero .stats-cell,
+.stats-card-year.is-zero { color: var(--ink3); }
+
+.stats-subtotal-row td {
+  background: var(--sunken);
+  border-top: 2px solid var(--line);
+}
+
+.stats-subtotal-row .stats-office-col,
+.stats-subtotal-row .stats-total-col { background: var(--sunken); }
+
+.stats-annual-table .stats-total-col b { color: var(--acc-t); }
+
+.stats-known-gap { font-size: 12.5px; }
+
+/* 窄屏卡片（默认隐藏，≤760px 时替代表格） */
+.stats-annual-cards { display: none; }
+
+.stats-office-card { padding: 12px 14px; }
+
+.stats-office-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.stats-card-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
+
+.stats-card-total b { font-size: 18px; font-variant-numeric: tabular-nums; color: var(--acc-t); }
+
+.stats-card-years {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.stats-card-year {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  background: var(--sunken);
+  font-size: 12.5px;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.stats-card-year span { color: var(--ink3); }
+.stats-card-year b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.stats-subtotal-card {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 12px 14px;
+  font-weight: 700;
+}
+
+.stats-subtotal-card b { font-variant-numeric: tabular-nums; color: var(--acc-t); }
+
+/* ---------- 下钻抽屉 ---------- */
+.stats-drawer-summary {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: var(--sunken);
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.stats-drawer-summary > div { display: flex; flex-direction: column; gap: 3px; min-width: 120px; }
+.stats-drawer-summary span { color: var(--ink3); font-size: 12px; }
+.stats-drawer-summary b { font-size: 15px; font-variant-numeric: tabular-nums; }
+
+.stats-drawer-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.stats-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.stats-detail-table { min-width: 640px; }
+.stats-detail-table tbody tr { cursor: pointer; }
+.stats-detail-table tbody tr:hover td { background: var(--sunken); }
+
+.stats-bills-table { min-width: 720px; }
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 1180px) {
+  .stats-layout { grid-template-columns: minmax(0, 1fr); }
+  .stats-filters { position: static; max-height: none; overflow: visible; }
+  .stats-filter-wrap { display: block; }
+  .stats-filter-wrap.collapsed { display: none; }
+  .stats-filter-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    justify-self: start;
+    height: 34px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--ink2);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .stats-filter-toggle:hover { background: var(--sunken); }
+}
+
+@media (max-width: 760px) {
+  .stats-table-scroll { display: none; }
+  .stats-annual-cards { display: flex; flex-direction: column; gap: 10px; }
+  .stats-filters { padding: 12px; }
+  .stats-result { padding: 12px; }
+  .stats-head-actions { justify-content: flex-start; }
+  .stats-as-of { margin-left: 0; }
+  .stats-filter-actions .btn { min-height: 42px; }
+}
+
+@media (max-width: 360px) {
+  .stats-card-years { grid-template-columns: 1fr; }
+  .stats-catalog-main { gap: 6px; }
+}

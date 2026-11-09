@@ -169,3 +169,18 @@ function loadAdminRegistry(){
  vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{module,exports:module.exports});
  return module.exports;
 }
+test('统计汇总菜单：/statistics 复用 business 权限并归入「统计」分组',()=>{
+ const map=load('lib/page-access.ts',{});
+ assert.equal(map.canViewPath('/statistics',{pages:{business:{view:true}}}),true);
+ assert.equal(map.canViewPath('/statistics',{pages:{fees:{view:true}}}),false);
+ const nav=load('components/Shell.tsx',{pages:{}}).NAV;
+ const item=nav.find(n=>n.key==='statistics');
+ assert.equal(item.to,'/statistics');assert.equal(item.group,'统计');assert.equal(item.permissionKey,undefined);
+ const ui=load('components/Shell.tsx',{pages:{business:{view:true}}},'/statistics').default();
+ const link=nodes(ui).find(n=>n.type==='a'&&n.props&&n.props.title==='统计汇总');
+ assert.ok(link,'有 business 权限时菜单应出现统计汇总');assert.equal(link.props['aria-current'],'page');
+ const group=nodes(ui).find(n=>n.type==='button'&&n.props&&n.props.title==='统计');
+ assert.ok(group,'侧栏应出现「统计」分组');assert.equal(group.props['aria-expanded'],true);
+ const denied=load('components/Shell.tsx',{pages:{fees:{view:true}}},'/statistics').default();
+ assert.equal(nodes(denied).filter(n=>n.type==='a'&&n.props&&n.props.title==='统计汇总').length,0,'只有 fees 不显示统计汇总');
+});

@@ -67,10 +67,19 @@ async function withPage(run, query = '') {
   const child = spawn(chrome, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--disable-gpu', url], { stdio: 'ignore' });
   let socket;
   try {
-    for (let attempt = 0; attempt < 150 && !fs.existsSync(path.join(profile, 'DevToolsActivePort')); attempt += 1) await pause(100);
-    const port = Number(fs.readFileSync(path.join(profile, 'DevToolsActivePort'), 'utf8').split('\n')[0]);
+    // Chrome 刚写出 DevToolsActivePort 时文件可能仍被占用（EBUSY），重试到能读出端口为止。
+    const portFile = path.join(profile, 'DevToolsActivePort');
+    let port = 0;
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      try {
+        const parsed = Number(fs.readFileSync(portFile, 'utf8').split('\n')[0].trim());
+        if (Number.isInteger(parsed) && parsed > 0) { port = parsed; break; }
+      } catch { /* 文件还没写完/被锁，稍后重试 */ }
+      await pause(100);
+    }
+    assert.ok(port > 0, 'Chrome 没有暴露 DevTools 端口');
     let tabs;
-    for (let attempt = 0; attempt < 80; attempt += 1) {
+    for (let attempt = 0; attempt < 150; attempt += 1) {
       tabs = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
       if (tabs.find((tab) => tab.url === url)) break;
       await pause(100);
@@ -103,7 +112,7 @@ async function withPage(run, query = '') {
       assert.ok(!result.exceptionDetails, JSON.stringify(result.exceptionDetails));
       return result.result.value;
     };
-    const waitFor = async (expression, label, timeout = 8000) => {
+    const waitFor = async (expression, label, timeout = 15000) => {
       const deadline = Date.now() + timeout;
       while (Date.now() < deadline) {
         if (await js(expression)) return;

@@ -1,0 +1,267 @@
+/**
+ * 统计汇总（旧「一通软件」统计菜单）前端共用类型与纯函数。
+ * 金额一律是整数分；页面显示统一 ¥x,xxx.xx，CSV 用纯数字便于 Excel 计算。
+ */
+
+export type StatisticsReportType = 'received' | 'arrears';
+
+export interface StatisticsOfficeOption {
+  officeCode: string;
+  name: string;
+  communityId: number | null;
+  communityName: string | null;
+}
+export interface StatisticsFeeItem { code: string; name: string }
+export interface StatisticsNatureOption { code: string; name: string }
+export interface StatisticsOptions {
+  offices: StatisticsOfficeOption[];
+  feeItems: StatisticsFeeItem[];
+  natures: StatisticsNatureOption[];
+  yearRange: { min: number | null; max: number | null };
+  dataAsOf: string | null;
+  sourceMode: string;
+  /** MIS 镜像是否可用；不可用时页面优先显示 message，而不是「暂无数据」。 */
+  available?: boolean;
+  message?: string | null;
+}
+
+/** 年度 -> 分 */
+export type AnnualCells = Record<string, number>;
+export interface AnnualSummaryRow {
+  officeCode: string;
+  officeName: string;
+  cells: AnnualCells;
+  totalCents: number;
+}
+export interface AnnualSummaryResponse {
+  type: StatisticsReportType;
+  columns: number[];
+  rows: AnnualSummaryRow[];
+  /** 未镜像时后端返回 null，不伪造 0。 */
+  subtotal: { cells: AnnualCells; totalCents: number } | null;
+  dataAsOf?: string | null;
+  available?: boolean;
+  message?: string | null;
+}
+
+export interface AnnualDetailRow {
+  /** 后端房屋 id 是数字（数据库为空时可能为 null，此时不能下钻逐笔）。 */
+  sId: number | null;
+  address: string | null;
+  ownerName: string | null;
+  areaSqm: number | string | null;
+  periodRange: string | null;
+  amountCents: number;
+}
+export interface AnnualDetailResponse {
+  rows: AnnualDetailRow[];
+  /** 未镜像时后端返回 null，不伪造 0。 */
+  totalCents: number | null;
+  available?: boolean;
+  message?: string | null;
+}
+
+export interface AnnualBillRow {
+  zjId: string | number;
+  feeCode?: string | null;
+  feeName: string | null;
+  period: string | null;
+  amountCents: number;
+  paidDate: string | null;
+  refundDate: string | null;
+  paymentMethod: string | null;
+  cashier: string | null;
+}
+export interface AnnualBillsResponse {
+  rows: AnnualBillRow[];
+  totalCents: number | null;
+  available?: boolean;
+  message?: string | null;
+}
+
+/** 点「统计」时定格的筛选快照；下钻与导出都必须用它，不能读草稿。 */
+export interface AnnualQuery {
+  type: StatisticsReportType;
+  officeCodes: string[];
+  feeCodes: string[];
+  natures: string[];
+  /** 后端 yearRange 可能为 null：为 null 时不传，交给服务端默认。 */
+  yearFrom: number | null;
+  yearTo: number | null;
+  /** 应收截止年月 YYYYMM（年度/明细/逐笔必须同一值，否则明细合计与单元格对不上） */
+  asOfPeriod: string;
+  /** 收款截止日期 YYYY-MM-DD，仅实收报表使用；空串 = 不限制 */
+  paidDateTo: string;
+}
+
+export interface FilterDraft {
+  officeCodes: string[];
+  feeCodes: string[];
+  natures: string[];
+  paidDateTo: string;
+  asOfPeriod: string;
+}
+
+export const REPORTS: Array<{ type: StatisticsReportType; name: string; hint: string }> = [
+  { type: 'received', name: '项目实收年度汇总', hint: '按收款日期年度汇总实收金额（含退款红冲负数）' },
+  { type: 'arrears', name: '项目欠费年度汇总', hint: '按所属年度汇总未缴金额（收款日期为空）' },
+];
+
+/** 旧系统里尚未接入的报表：只列灰字，不做假按钮，不伪造数据。 */
+export const PENDING_REPORTS = [
+  '收费汇总',
+  '收款汇总表',
+  '收款日报表',
+  '月报表',
+  '综合月报表 B/C',
+  '分等综合月报表',
+  '收款分析',
+  '日常收费项目收款日报表',
+  '欠收与溢收汇总',
+  '收缴考核',
+  '房产汇总',
+  '住户台账',
+  '楼房台账',
+  '空房情况统计',
+  '开票数据统计',
+  '住户票据查询',
+  '票据使用数量统计',
+  '签报情况统计',
+  '减免情况统计',
+  '线上收费查询',
+];
+
+export function reportName(type: StatisticsReportType): string {
+  return REPORTS.find((report) => report.type === type)?.name ?? '统计汇总';
+}
+
+/** 整数分 -> ¥745,182.10；空/非法一律按 0 显示，不显示空白。 */
+export function fmtCents(cents?: number | null): string {
+  const value = Number(cents);
+  const amount = Number.isFinite(value) ? value : 0;
+  return '¥' + (amount / 100).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** 建筑面积：79.67 ㎡；缺失不编造。 */
+export function fmtArea(area?: number | string | null): string {
+  if (area === null || area === undefined || area === '') return '—';
+  const value = Number(area);
+  return Number.isFinite(value) ? `${value.toFixed(2)} ㎡` : String(area);
+}
+
+/** YYYYMM -> YYYY-MM */
+export function fmtPeriod(period?: string | null): string {
+  const text = String(period ?? '').trim();
+  return /^\d{6}$/.test(text) ? `${text.slice(0, 4)}-${text.slice(4)}` : (text || '—');
+}
+
+/** 年度汇总表请求参数（数组用逗号连接；空值交给 request 过滤）。 */
+export function annualQueryParams(query: AnnualQuery) {
+  return {
+    type: query.type,
+    officeCodes: query.officeCodes.join(','),
+    feeCodes: query.feeCodes.join(','),
+    natures: query.natures.join(','),
+    yearFrom: query.yearFrom ?? undefined,
+    yearTo: query.yearTo ?? undefined,
+    asOfPeriod: query.asOfPeriod || undefined,
+    // 收款截止日期只对实收报表有意义；欠费报表不传，避免后端按收款日期过滤掉欠费行。
+    paidDateTo: query.type === 'received' ? (query.paidDateTo || undefined) : undefined,
+  };
+}
+
+/** 明细/逐笔参数：必须和年度请求带同一组 asOfPeriod / paidDateTo，否则合计对不上。 */
+export function detailQueryParams(base: {
+  type: StatisticsReportType;
+  officeCode: string;
+  year: number;
+  feeCodes: string[];
+  natures: string[];
+  asOfPeriod: string;
+  paidDateTo: string;
+}) {
+  return {
+    type: base.type,
+    officeCode: base.officeCode,
+    year: base.year,
+    feeCodes: base.feeCodes.join(','),
+    natures: base.natures.join(','),
+    asOfPeriod: base.asOfPeriod || undefined,
+    paidDateTo: base.type === 'received' ? (base.paidDateTo || undefined) : undefined,
+  };
+}
+
+/** 年度单元格金额（分），缺失按 0。 */
+export function cellCents(row: { cells?: AnnualCells | null }, year: number | string): number {
+  const value = Number(row.cells?.[String(year)] ?? 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function csvCell(value: string | number): string {
+  const text = String(value ?? '');
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function centsForCsv(cents: number | undefined | null): string {
+  const value = Number(cents);
+  return ((Number.isFinite(value) ? value : 0) / 100).toFixed(2);
+}
+
+export interface CsvContext {
+  dataAsOf?: string | null;
+  filters: AnnualQuery;
+  offices?: StatisticsOfficeOption[];
+  feeItems?: StatisticsFeeItem[];
+  natures?: StatisticsNatureOption[];
+}
+
+/** 年度汇总 -> CSV 文本（带 UTF-8 BOM，Excel 直接打开不乱码）。 */
+export function annualCsv(annual: AnnualSummaryResponse, context: CsvContext): string {
+  const { filters } = context;
+  const officeText = filters.officeCodes.map((code) => {
+    const office = context.offices?.find((item) => item.officeCode === code);
+    return office?.name || code;
+  }).join('/') || '全部';
+  const feeText = filters.feeCodes.map((code) => context.feeItems?.find((item) => item.code === code)?.name || code).join('/') || '全部';
+  const natureText = filters.natures.map((code) => context.natures?.find((item) => item.code === code)?.name || code).join('/') || '全部';
+  const lines: string[][] = [
+    ['统计汇总', reportName(annual.type)],
+    ['数据截止', String(context.dataAsOf || annual.dataAsOf || '')],
+    ['管理处', officeText],
+    ['收费项目', feeText],
+    ['房屋性质', natureText],
+    ['应收截止年月', filters.asOfPeriod || ''],
+    ['收款截止日期', filters.paidDateTo || ''],
+    [],
+    ['管理处', ...annual.columns.map(String), '合计'],
+  ];
+  for (const row of annual.rows) {
+    lines.push([row.officeName || row.officeCode, ...annual.columns.map((year) => centsForCsv(cellCents(row, year))), centsForCsv(row.totalCents)]);
+  }
+  const subtotal = annual.subtotal ?? { cells: {}, totalCents: 0 };
+  lines.push(['小计', ...annual.columns.map((year) => centsForCsv(cellCents(subtotal, year))), centsForCsv(subtotal.totalCents)]);
+  return '\uFEFF' + lines.map((line) => line.map(csvCell).join(',')).join('\r\n');
+}
+
+function safeFilename(name: string): string {
+  return name.replace(/[\\/:*?"<>|\s]+/g, '-').replace(/^-+|-+$/g, '') || '统计汇总';
+}
+
+/** 触发浏览器下载；返回是否成功发起。 */
+export function downloadCsv(filename: string, csv: string): boolean {
+  try {
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = safeFilename(filename.endsWith('.csv') ? filename : `${filename}.csv`);
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    return true;
+  } catch {
+    return false;
+  }
+}
