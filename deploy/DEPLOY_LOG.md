@@ -6827,3 +6827,10 @@
 - 自上次（1b553adf）以来上线的相关提交：
   - e39a223a feat(stock): 当前库存列与排序、库位明细列、Excel 导出、仓库/库位管理、流水字段补全
 
+## 2026-11-09 15:14 · api · a1e933e9
+
+- 包：`pms-api-fast-20261109-151352.tar.gz`
+- 提交：a1e933e9 fix(stock): 流水接口500（offices→management_offices）、库位CRUD、按货架聚合、排序与Excel导出
+- 自上次（fe4340bc）以来上线的相关提交：
+  - a1e933e9 fix(stock): 流水接口500（offices→management_offices）、库位CRUD、按货架聚合、排序与Excel导出
+
