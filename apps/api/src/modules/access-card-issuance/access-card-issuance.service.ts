@@ -413,13 +413,14 @@ export class AccessCardIssuanceService {
       tenantId,
     );
     const rows = snapshot.status === 'ready'
-      ? snapshot.history.map((row, index) => mapLegacyCardRow(row, index + 1))
+      ? snapshot.history.map((row, index) => mapLegacyCardRow(row, index + 1, context.roomKey))
       : [];
     return {
       communityId,
       address: address || roomKey || context.roomKey,
       roomKey: context.roomKey,
       status: snapshot.status,
+      fieldsIncomplete: rows.length > 0 && rows.every((row) => row.fieldsIncomplete),
       rows,
       error: snapshot.status === 'error' ? snapshot.lastError : null,
       refreshedAt: snapshot.refreshedAt,
@@ -439,10 +440,16 @@ export class AccessCardIssuanceService {
     const recent = await this.recentLegacyCardResponse(snapshot, tenantId);
     let rows = recent.rows.map((row, index) => ({
       ...row,
-      ...mapLegacyCardRow(row as Parameters<typeof mapLegacyCardRow>[0], index + 1),
+      ...mapLegacyCardRow(row as Parameters<typeof mapLegacyCardRow>[0], index + 1,
+        typeof row.roomKey === 'string' ? row.roomKey : null),
     }));
     if (scope) rows = rows.filter((row) => row.communityId != null && scope.includes(row.communityId));
-    return { ...recent, rows: rows.slice(0, max) };
+    const limited = rows.slice(0, max);
+    return {
+      ...recent,
+      fieldsIncomplete: limited.length > 0 && limited.every((row) => row.fieldsIncomplete),
+      rows: limited,
+    };
   }
 
   /** 单卡详情 + 已写入 Access 库/已授权楼栋聚合。 */
@@ -451,7 +458,7 @@ export class AccessCardIssuanceService {
     const found = await this.findLegacyCardById(tenantId, id);
     if (!found) throw new NotFoundException('捷顺发卡记录不存在或已过期，请先刷新发卡历史');
     const context = await this.resolveLegacyCardRoom(tenantId, found.row, access);
-    const mapped = mapLegacyCardRow(found.row);
+    const mapped = mapLegacyCardRow(found.row, 1, context?.roomKey ?? null);
     const tasks = mapped.wgCardNo
       ? await this.authorizationRepo.find({
         where: { tenantId, wgCardNo: mapped.wgCardNo },
@@ -501,7 +508,7 @@ export class AccessCardIssuanceService {
     if (!dto.systems?.length) throw new BadRequestException('请至少选择一个 Access 库');
     const context = await this.resolveLegacyCardRoom(tenantId, found.row, access, true);
     if (!context) throw new BadRequestException('未能在 PMS 精确匹配这张卡的房号，无法写入 Access 库');
-    const mapped = mapLegacyCardRow(found.row);
+    const mapped = mapLegacyCardRow(found.row, 1, context.roomKey);
     if (!mapped.wgCardNo) throw new BadRequestException('IC 卡号无法换算 WG 卡号，无法写入 Access 库');
     const homeSystem = accessSystemOf('phase2', context.building.buildingNo);
     const results: Array<{ system: 'iccard' | 'mjsystem'; status: 'queued' | 'failed'; taskId?: number; error?: string }> = [];
@@ -559,7 +566,7 @@ export class AccessCardIssuanceService {
     if (!dto.buildingNos?.length) throw new BadRequestException('请至少选择一栋楼');
     const context = await this.resolveLegacyCardRoom(tenantId, found.row, access, true);
     if (!context) throw new BadRequestException('未能在 PMS 精确匹配这张卡的房号，无法授权楼栋主板');
-    const mapped = mapLegacyCardRow(found.row);
+    const mapped = mapLegacyCardRow(found.row, 1, context.roomKey);
     const buildings = await this.buildingRepo.find({ where: { tenantId, communityId: context.community.id } });
     const gatewayAgents = await this.agentRepo.find({ where: { tenantId, kind: 'access_gateway', enabled: true } });
     const gateway = orderAgentsByAvailability(gatewayAgents).find((agent) =>

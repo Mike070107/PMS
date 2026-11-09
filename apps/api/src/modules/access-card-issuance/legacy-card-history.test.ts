@@ -127,6 +127,7 @@ test('mapLegacyCardRow 解析已隐藏前缀，不把整串当房号', () => {
   assert.equal(visible.status, '在用');
   assert.equal(visible.id, 12026);
   assert.equal(visible.wgCardNo, icToWg('B9F7D803'));
+  assert.equal(visible.fieldsIncomplete, false);
 
   const hidden = mapLegacyCardRow(rawRows[4] as never);
   assert.equal(hidden.roomLabel, '228/50/202');
@@ -134,6 +135,53 @@ test('mapLegacyCardRow 解析已隐藏前缀，不把整串当房号', () => {
   assert.equal(hidden.status, '已隐藏');
   assert.equal(hidden.sequence, 4);
   assert.equal(hidden.id, 5633);
+});
+
+test('旧助手缺 personName/时间字段：房号兜底、hidden=null、fieldsIncomplete=true', () => {
+  const oldRow = mapLegacyCardRow({
+    personId: 26412,
+    personNo: '11296',
+    sequence: 8,
+    icCardNo: 'B9F7D803',
+    issuedAt: '2026-11-09T14:58:19',
+    personName: null,
+    cardInfoId: null,
+    personCreatedAt: null,
+    lastSwipeAt: null,
+    lastDevice: null,
+  } as never, 1, '228/50/202');
+  assert.equal(oldRow.roomLabel, '228/50/202');
+  assert.equal(oldRow.hidden, null);
+  assert.equal(oldRow.status, '在用');
+  assert.equal(oldRow.fieldsIncomplete, true);
+  assert.equal(oldRow.wgCardNo, '21663417');
+});
+
+test('cards/history 旧助手返回时用请求地址兜底 roomLabel', async () => {
+  const { service, state } = makeService();
+  const oldSnapshot = {
+    ...snapshot,
+    history: [{
+      personId: 26412,
+      personNo: '11296',
+      sequence: 8,
+      icCardNo: 'B9F7D803',
+      issuedAt: '2026-11-09T14:58:19',
+      personName: null,
+      cardInfoId: null,
+      personCreatedAt: null,
+      lastSwipeAt: null,
+      lastDevice: null,
+    }],
+  };
+  state.legacySnapshotRepo.findOne = async () => oldSnapshot;
+  state.requestLegacyHistory = async () => oldSnapshot;
+  state.waitLegacyHistory = async () => oldSnapshot;
+  const result = await service.getLegacyCardHistory(2, '228/50/202', undefined, user, scopeAll);
+  assert.equal((result as any).fieldsIncomplete, true);
+  assert.equal((result as any).rows[0].roomLabel, '228/50/202');
+  assert.equal((result as any).rows[0].hidden, null);
+  assert.equal((result as any).rows[0].status, '在用');
 });
 
 test('cards/history 返回 228/50/202 的 8 条捷顺发卡记录', async () => {

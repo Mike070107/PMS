@@ -9,12 +9,15 @@ export interface LegacyCardRow extends AccessCardLegacyHistoryEntry {
   personNo: string;
   sequence: number;
   roomLabel: string;
-  hidden: boolean;
+  /** 旧助手没有 personName 时无法判断隐藏，返回 null 而不是默认 false。 */
+  hidden: boolean | null;
   status: '在用' | '已隐藏';
   wgCardNo: string | null;
   personCreatedAt: string | null;
   lastSwipeAt: string | null;
   lastDevice: string | null;
+  /** 旧助手缺少人事资料添加时间/最后刷卡时间时提示前端。 */
+  fieldsIncomplete: boolean;
 }
 
 /**
@@ -25,19 +28,25 @@ export interface LegacyCardRow extends AccessCardLegacyHistoryEntry {
 export function mapLegacyCardRow(
   row: AccessCardLegacyHistoryEntry,
   fallbackSequence = 1,
+  fallbackRoomLabel?: string | null,
 ): LegacyCardRow {
   const rawName = (row.personName ?? '').trim();
-  const hidden = /^\s*已隐藏/.test(rawName);
-  const parsed = parseLegacyAccessCardRoomName(rawName);
-  const roomLabel = parsed
+  const hasName = rawName.length > 0;
+  // 旧 .80 助手不上报 personName 时，无法判断是否“已隐藏”，不能默认 false。
+  const hidden = hasName ? /^\s*已隐藏/.test(rawName) : null;
+  const parsed = hasName ? parseLegacyAccessCardRoomName(rawName) : null;
+  const parsedLabel = parsed
     ? legacyRoomKey(parsed.lane, parsed.buildingNo, parsed.roomNo)
     : rawName.replace(/^\s*已隐藏\s*/, '');
+  const roomLabel = parsedLabel || (fallbackRoomLabel ?? '').trim();
   const icCardNo = row.icCardNo?.trim().toUpperCase() || null;
   let wgCardNo: string | null = null;
   if (icCardNo && /^[0-9A-F]{6,}$/.test(icCardNo)) {
     try { wgCardNo = icToWg(icCardNo); } catch { wgCardNo = null; }
   }
   const cardInfoId = typeof row.cardInfoId === 'number' ? row.cardInfoId : null;
+  const personCreatedAt = row.personCreatedAt ?? null;
+  const lastSwipeAt = row.lastSwipeAt ?? null;
   return {
     ...row,
     id: cardInfoId ?? row.personId,
@@ -47,11 +56,12 @@ export function mapLegacyCardRow(
     sequence: row.sequence ?? parsed?.sequence ?? fallbackSequence,
     roomLabel,
     hidden,
-    status: hidden ? '已隐藏' : '在用',
+    status: hidden === true ? '已隐藏' : '在用',
     wgCardNo,
-    personCreatedAt: row.personCreatedAt ?? null,
-    lastSwipeAt: row.lastSwipeAt ?? null,
+    personCreatedAt,
+    lastSwipeAt,
     lastDevice: row.lastDevice ?? null,
+    fieldsIncomplete: personCreatedAt == null && lastSwipeAt == null,
   };
 }
 
