@@ -3,7 +3,7 @@
  * 金额一律是整数分；页面显示统一 ¥x,xxx.xx，CSV 用纯数字便于 Excel 计算。
  */
 
-export type StatisticsReportType = 'received' | 'arrears' | 'fee-nature' | 'daily' | 'arrears-prepaid' | 'assessment';
+export type StatisticsReportType = 'received' | 'arrears' | 'fee-nature' | 'daily' | 'arrears-prepaid' | 'assessment' | 'collection-analysis' | 'monthly-report';
 /** P1 年度报表：共用应收截止年月/收款日期等筛选。 */
 export type AnnualReportType = 'received' | 'arrears';
 
@@ -197,7 +197,28 @@ export interface AssessmentQuery {
   paidDateTo: string;
 }
 
-export type ReportQuery = AnnualQuery | CollectionQuery | DailyQuery | ArrearsPrepaidQuery | AssessmentQuery;
+/** P2-D 收款分析（按户）：统计年月 + 收款日期区间 + 排序。 */
+export interface CollectionAnalysisQuery {
+  type: 'collection-analysis';
+  officeCodes: string[];
+  feeCodes: string[];
+  natures: string[];
+  asOfPeriod: string;
+  dateFrom: string;
+  dateTo: string;
+  sort: 'currentArrears' | 'historyArrears' | 'address';
+}
+
+/** P2-D 收费月报表（核心指标版）：统计年月。 */
+export interface MonthlyReportQuery {
+  type: 'monthly-report';
+  officeCodes: string[];
+  feeCodes: string[];
+  natures: string[];
+  asOfPeriod: string;
+}
+
+export type ReportQuery = AnnualQuery | CollectionQuery | DailyQuery | ArrearsPrepaidQuery | AssessmentQuery | CollectionAnalysisQuery | MonthlyReportQuery;
 
 export interface FilterDraft {
   officeCodes: string[];
@@ -215,6 +236,8 @@ export interface FilterDraft {
   subjectYearTo: string;
   /** P2-C 收缴考核统计年份（默认今年） */
   assessmentYear: string;
+  /** P2-D 收款分析排序（默认当年欠收降序） */
+  analysisSort: 'currentArrears' | 'historyArrears' | 'address';
 }
 
 export const REPORTS: Array<{ type: StatisticsReportType; name: string; hint: string }> = [
@@ -224,6 +247,8 @@ export const REPORTS: Array<{ type: StatisticsReportType; name: string; hint: st
   { type: 'daily', name: '收款日报表', hint: '按收款日期逐日统计各收费项目收款；点单元格查当日收款明细' },
   { type: 'arrears-prepaid', name: '欠收与溢收汇总', hint: '按统计年月区分欠收/溢收（预收）明细；查看逐笔、可按管理处小计' },
   { type: 'assessment', name: '收缴考核', hint: '按年份 1–12 月应收/收款考核房屋收缴率；含按金额/按户数指标' },
+  { type: 'collection-analysis', name: '收款分析', hint: '按户查看历年欠收/当年欠收/当月应收/预缴/区间实收；点行看逐笔' },
+  { type: 'monthly-report', name: '收费月报表（核心指标）', hint: '按管理处 11 项核心指标（月应收/实收/欠收/预收/回收率）；其余列待旧系统截图确认' },
 ];
 
 /** 旧系统里尚未接入的报表：只列灰字，不做假按钮，不伪造数据。 */
@@ -232,7 +257,6 @@ export const PENDING_REPORTS = [
   '月报表',
   '综合月报表 B/C',
   '分等综合月报表',
-  '收款分析',
   '日常收费项目收款日报表',
   '房产汇总',
   '住户台账',
@@ -692,6 +716,158 @@ export function assessmentCsv(report: AssessmentResponse, query: AssessmentQuery
     line.push(centsForCsv(report.summary.receivableCents), centsForCsv(report.summary.receivedCents), `${(Number(report.summary.ratePct) || 0).toFixed(2)}%`);
     lines.push(line);
   }
+  return '\uFEFF' + lines.map((line) => line.map(csvCell).join(',')).join('\r\n');
+}
+
+// ───────────────────────── P2-D：收款分析（按户） / 收费月报表（核心指标） ─────────────────────────
+
+export interface CollectionAnalysisRow {
+  sId: number | null;
+  officeCode: string;
+  officeName?: string | null;
+  address: string | null;
+  ownerName: string | null;
+  areaSqm: number | string | null;
+  historyArrearsCents: number;
+  currentYearArrearsCents: number;
+  currentMonthReceivableCents: number;
+  prepaidCents: number;
+  periodReceivedCents: number;
+}
+export type CollectionAnalysisTotals = Omit<CollectionAnalysisRow, 'sId' | 'officeCode' | 'officeName' | 'address' | 'ownerName' | 'areaSqm'>;
+export interface CollectionAnalysisResponse {
+  rows: CollectionAnalysisRow[];
+  totals: CollectionAnalysisTotals | null;
+  count?: number | null;
+  dataAsOf?: string | null;
+  available?: boolean;
+  message?: string | null;
+}
+export interface CollectionAnalysisDetailRow {
+  zjId: string | number;
+  period: string | null;
+  amountCents: number;
+  paidDate: string | null;
+  refundDate: string | null;
+  paymentMethod: string | null;
+  cashier: string | null;
+  feeCode?: string | null;
+  feeName: string | null;
+  natureCode?: string | null;
+  rowKind: 'received' | 'refund' | 'adjust' | 'unpaid';
+}
+export interface CollectionAnalysisDetailResponse {
+  rows: CollectionAnalysisDetailRow[];
+  totals: { receivedCents?: number; refundCents?: number; adjustCents?: number; unpaidCents?: number; amountCents?: number; rows?: number } | null;
+  count?: number | null;
+  available?: boolean;
+  message?: string | null;
+}
+
+export interface MonthlyReportRow {
+  key: string;
+  label: string;
+  monthReceivableCents: number;
+  monthAdjustCents: number;
+  cumulativeReceivableCents: number;
+  oldArrearsReceivableCents: number;
+  totalReceivableCents: number;
+  monthReceivedCents: number;
+  prepaidInCents: number;
+  prepaidBalanceCents: number;
+  monthArrearsCents: number;
+  cumulativeArrearsCents: number;
+  recoveryRatePct: number;
+}
+export type MonthlyReportTotals = Omit<MonthlyReportRow, 'key' | 'label'>;
+export interface MonthlyReportResponse {
+  rows: MonthlyReportRow[];
+  totals: MonthlyReportTotals | null;
+  pendingColumns?: string[];
+  dataAsOf?: string | null;
+  available?: boolean;
+  message?: string | null;
+}
+
+export function collectionAnalysisParams(query: CollectionAnalysisQuery, offset = 0, limit = 200) {
+  return {
+    asOfPeriod: query.asOfPeriod || undefined,
+    dateFrom: query.dateFrom || undefined,
+    dateTo: query.dateTo || undefined,
+    officeCodes: query.officeCodes.join(','),
+    feeCodes: query.feeCodes.join(','),
+    natures: query.natures.join(','),
+    sort: query.sort,
+    limit,
+    offset,
+  };
+}
+
+export function collectionAnalysisDetailParams(query: CollectionAnalysisQuery, sId: number | null) {
+  return {
+    asOfPeriod: query.asOfPeriod || undefined,
+    dateFrom: query.dateFrom || undefined,
+    dateTo: query.dateTo || undefined,
+    officeCodes: query.officeCodes.join(','),
+    feeCodes: query.feeCodes.join(','),
+    natures: query.natures.join(','),
+    sId: sId ?? undefined,
+    limit: 200,
+    offset: 0,
+  };
+}
+
+export function monthlyReportParams(query: MonthlyReportQuery) {
+  return {
+    asOfPeriod: query.asOfPeriod || undefined,
+    officeCodes: query.officeCodes.join(','),
+    feeCodes: query.feeCodes.join(','),
+    natures: query.natures.join(','),
+    groupBy: 'office',
+  };
+}
+
+/** 收款分析 -> CSV。 */
+export function collectionAnalysisCsv(report: CollectionAnalysisResponse, query: CollectionAnalysisQuery): string {
+  const lines: string[][] = [
+    ['统计汇总', '收款分析（按户）'],
+    ['统计年月', query.asOfPeriod],
+    ['收款日期范围', [query.dateFrom, query.dateTo].filter(Boolean).join('~')],
+    ['管理处', query.officeCodes.join('/') || '全部'],
+    ['收费项目', query.feeCodes.join('/') || '全部'],
+    [],
+    ['序号', '地址', '业主', '建筑面积', '历年欠收', '当年欠收', '当月应收', '预缴', '区间实收'],
+  ];
+  report.rows.forEach((row, index) => {
+    lines.push([
+      String(index + 1), row.address || '', row.ownerName || '', row.areaSqm === null ? '' : String(row.areaSqm),
+      centsForCsv(row.historyArrearsCents), centsForCsv(row.currentYearArrearsCents), centsForCsv(row.currentMonthReceivableCents),
+      centsForCsv(row.prepaidCents), centsForCsv(row.periodReceivedCents),
+    ]);
+  });
+  if (report.totals) lines.push(['合计', '', '', '', centsForCsv(report.totals.historyArrearsCents), centsForCsv(report.totals.currentYearArrearsCents), centsForCsv(report.totals.currentMonthReceivableCents), centsForCsv(report.totals.prepaidCents), centsForCsv(report.totals.periodReceivedCents)]);
+  return '\uFEFF' + lines.map((line) => line.map(csvCell).join(',')).join('\r\n');
+}
+
+/** 收费月报表（核心指标） -> CSV。 */
+export function monthlyReportCsv(report: MonthlyReportResponse, query: MonthlyReportQuery): string {
+  const lines: string[][] = [
+    ['统计汇总', '收费月报表（核心指标）'],
+    ['统计年月', query.asOfPeriod],
+    ['管理处', query.officeCodes.join('/') || '全部'],
+    ['收费项目', query.feeCodes.join('/') || '全部'],
+    ['说明', '核心指标版：另有本期实收分项/累计实收/账面累计实收等列待旧系统截图确认，暂不显示'],
+    [],
+    ['管理处', '月应收', '月调整', '累计应收', '旧欠应收', '合计应收', '本期实收', '预收转入', '预收余额', '当月欠收', '累计欠收', '本期回收率'],
+  ];
+  const part = (row: MonthlyReportTotals) => [
+    centsForCsv(row.monthReceivableCents), centsForCsv(row.monthAdjustCents), centsForCsv(row.cumulativeReceivableCents),
+    centsForCsv(row.oldArrearsReceivableCents), centsForCsv(row.totalReceivableCents), centsForCsv(row.monthReceivedCents),
+    centsForCsv(row.prepaidInCents), centsForCsv(row.prepaidBalanceCents), centsForCsv(row.monthArrearsCents),
+    centsForCsv(row.cumulativeArrearsCents), `${(Number(row.recoveryRatePct) || 0).toFixed(2)}%`,
+  ];
+  for (const row of report.rows) lines.push([row.label || row.key, ...part(row)]);
+  if (report.totals) lines.push(['合计', ...part(report.totals)]);
   return '\uFEFF' + lines.map((line) => line.map(csvCell).join(',')).join('\r\n');
 }
 

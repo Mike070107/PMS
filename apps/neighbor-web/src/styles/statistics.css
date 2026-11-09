@@ -631,6 +631,23 @@
 .stats-assessment-table .stats-month-sub { font-size: 11.5px; color: var(--ink3); }
 .stats-assessment-table tbody tr:hover td { background: #f7f9fc; }
 
+/* P2-D：收款分析 / 收费月报表（核心指标） */
+.stats-analysis-scroll { max-height: 62vh; }
+.stats-analysis-table { min-width: 1120px; }
+.stats-analysis-table th, .stats-analysis-table td { white-space: nowrap; }
+.stats-analysis-table td.num, .stats-analysis-table th.num { text-align: right; }
+.stats-click-row { cursor: pointer; }
+.stats-analysis-table tbody tr:not(.stats-subtotal-row):hover td { background: #f7f9fc; }
+.stats-analysis-detail-table { min-width: 900px; }
+.stats-analysis-detail-table th, .stats-analysis-detail-table td { white-space: nowrap; }
+.stats-analysis-detail-table td.num { text-align: right; }
+.stats-monthly-report-scroll { max-height: 58vh; }
+.stats-monthly-report-table { min-width: 1440px; }
+.stats-monthly-report-table th, .stats-monthly-report-table td { white-space: nowrap; }
+.stats-monthly-report-table td.num, .stats-monthly-report-table th.num { text-align: right; }
+.stats-monthly-report-table .stats-sticky-name { position: sticky; left: 0; z-index: 3; min-width: 150px; background: #fff; box-shadow: 1px 0 0 var(--line); }
+.stats-monthly-report-table thead .stats-sticky-name { background: var(--sunken, #f4f7fb); z-index: 4; }
+
 .stats-received-table { min-width: 980px; }
 
 .stats-received-table tbody tr:hover td { background: var(--sunken); }

@@ -322,6 +322,62 @@ function assessmentResponse() {
   };
 }
 
+// P2-D 收款分析（按户）：数值取自 docs §4.8 实测样例。
+const ANALYSIS_ROWS = [
+  { sId: 201, officeCode: '02', officeName: '枫桦景苑二期A', address: '宝秀路701号701', ownerName: '陆乾一', areaSqm: 630.98, historyArrearsCents: 0, currentYearArrearsCents: 1514300, currentMonthReceivableCents: 166430, prepaidCents: 90000, periodReceivedCents: 15000 },
+  { sId: 202, officeCode: '02', officeName: '枫桦景苑二期A', address: '宝秀路723-725号723-725', ownerName: '杨凤林', areaSqm: 344.37, historyArrearsCents: 0, currentYearArrearsCents: 826400, currentMonthReceivableCents: 82640, prepaidCents: 0, periodReceivedCents: 0 },
+  { sId: 203, officeCode: '02', officeName: '枫桦景苑二期A', address: '永德路228弄31号1101', ownerName: '邱解平', areaSqm: 120.4, historyArrearsCents: 250000, currentYearArrearsCents: 374000, currentMonthReceivableCents: 44150, prepaidCents: 13500, periodReceivedCents: 0 },
+];
+
+function collectionAnalysisResponse(query: any) {
+  const sort = String(query?.sort ?? 'currentArrears');
+  const rows = [...ANALYSIS_ROWS];
+  if (sort === 'historyArrears') rows.sort((a, b) => b.historyArrearsCents - a.historyArrearsCents);
+  else if (sort === 'address') rows.sort((a, b) => String(a.address).localeCompare(String(b.address), 'zh-CN'));
+  else rows.sort((a, b) => b.currentYearArrearsCents - a.currentYearArrearsCents);
+  const totals = rows.reduce((sum, row) => ({
+    historyArrearsCents: sum.historyArrearsCents + row.historyArrearsCents,
+    currentYearArrearsCents: sum.currentYearArrearsCents + row.currentYearArrearsCents,
+    currentMonthReceivableCents: sum.currentMonthReceivableCents + row.currentMonthReceivableCents,
+    prepaidCents: sum.prepaidCents + row.prepaidCents,
+    periodReceivedCents: sum.periodReceivedCents + row.periodReceivedCents,
+  }), { historyArrearsCents: 0, currentYearArrearsCents: 0, currentMonthReceivableCents: 0, prepaidCents: 0, periodReceivedCents: 0 });
+  return { rows, totals, count: rows.length, dataAsOf: OPTIONS.dataAsOf, available: true, message: null };
+}
+
+function collectionAnalysisDetailResponse(query: any) {
+  const sId = Number(query?.sId ?? 201);
+  const rows = [
+    { zjId: sId * 10 + 1, period: '202601', amountCents: 1514300, paidDate: null, refundDate: null, paymentMethod: null, cashier: null, feeCode: '01', feeName: '管理费', natureCode: '04', rowKind: 'unpaid' },
+    { zjId: sId * 10 + 2, period: '202611', amountCents: 90000, paidDate: '2026-11-02', refundDate: null, paymentMethod: '微信', cashier: '合成收费员', feeCode: '01', feeName: '管理费', natureCode: '04', rowKind: 'received' },
+    { zjId: sId * 10 + 3, period: '202611', amountCents: 15000, paidDate: null, refundDate: '2026-11-03', paymentMethod: '现金', cashier: '合成收费员', feeCode: '04', feeName: '泊位费', natureCode: '06', rowKind: 'refund' },
+  ];
+  const totals = {
+    receivedCents: 90000, refundCents: 15000, adjustCents: -5000, unpaidCents: 1514300, amountCents: 1584300, rows: rows.length,
+  };
+  return { rows, totals, count: rows.length, available: true, message: null };
+}
+
+// P2-D 收费月报表（核心指标）：11 项核心指标 + 合计，其余列 pendingColumns。
+const MONTHLY_ROWS = [
+  { key: '01', label: '枫桦景苑一期', monthReceivableCents: 14590330, monthAdjustCents: -75000, cumulativeReceivableCents: 2478340466, oldArrearsReceivableCents: 33865830, totalReceivableCents: 2512206296, monthReceivedCents: 15246910, prepaidInCents: 7210960, prepaidBalanceCents: 33437560, monthArrearsCents: 5560990, cumulativeArrearsCents: 87340540, recoveryRatePct: 0.61 },
+  { key: '02', label: '枫桦景苑二期A', monthReceivableCents: 15213860, monthAdjustCents: -110000, cumulativeReceivableCents: 2899940950, oldArrearsReceivableCents: 9921090, totalReceivableCents: 2909862040, monthReceivedCents: 15314220, prepaidInCents: 7054720, prepaidBalanceCents: 29882290, monthArrearsCents: 6202090, cumulativeArrearsCents: 70235030, recoveryRatePct: 0.53 },
+  { key: '03', label: '枫桦景苑二期B', monthReceivableCents: 18547350, monthAdjustCents: -47770, cumulativeReceivableCents: 3559990790, oldArrearsReceivableCents: 7424950, totalReceivableCents: 3567415740, monthReceivedCents: 16243810, prepaidInCents: 7390860, prepaidBalanceCents: 29562020, monthArrearsCents: 8973510, cumulativeArrearsCents: 95436170, recoveryRatePct: 0.46 },
+  { key: '04', label: '上海新家', monthReceivableCents: 63820600, monthAdjustCents: -598600, cumulativeReceivableCents: 6733135600, oldArrearsReceivableCents: 3093000, totalReceivableCents: 6736228600, monthReceivedCents: 46508500, prepaidInCents: 11168600, prepaidBalanceCents: 48066200, monthArrearsCents: 32251900, cumulativeArrearsCents: 35608500, recoveryRatePct: 0.69 },
+];
+
+function monthlyReportResponse() {
+  const fields = ['monthReceivableCents', 'monthAdjustCents', 'cumulativeReceivableCents', 'oldArrearsReceivableCents', 'totalReceivableCents', 'monthReceivedCents', 'prepaidInCents', 'prepaidBalanceCents', 'monthArrearsCents', 'cumulativeArrearsCents'] as const;
+  const totals: Record<string, number> = {};
+  for (const field of fields) totals[field] = MONTHLY_ROWS.reduce((sum, row) => sum + Number(row[field]), 0);
+  totals.recoveryRatePct = Number(((Number(totals.monthReceivedCents) / Number(totals.totalReceivableCents)) * 100).toFixed(2));
+  return {
+    rows: MONTHLY_ROWS, totals,
+    pendingColumns: ['本期实收分项', '累计实收', '账面累计实收'],
+    dataAsOf: OPTIONS.dataAsOf, available: true, message: null,
+  };
+}
+
 export async function request<T>(options: any): Promise<T> {
   w.__calls.push({ url: options.url, method: options.method ?? 'GET', query: options.query ?? null, at: Date.now() });
   await pause(20);
@@ -415,6 +471,18 @@ export async function request<T>(options: any): Promise<T> {
 
   if (options.url === '/statistics/collection-assessment') {
     return assessmentResponse() as T;
+  }
+
+  if (options.url === '/statistics/collection-analysis') {
+    return collectionAnalysisResponse(options.query) as T;
+  }
+
+  if (options.url === '/statistics/collection-analysis/detail') {
+    return collectionAnalysisDetailResponse(options.query) as T;
+  }
+
+  if (options.url === '/statistics/monthly-report') {
+    return monthlyReportResponse() as T;
   }
 
   throw Error('Unhandled synthetic request ' + String(options.url));

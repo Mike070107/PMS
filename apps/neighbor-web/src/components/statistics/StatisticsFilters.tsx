@@ -115,9 +115,10 @@ export default function StatisticsFilters({
   }, [feeGroups, feeQuery]);
 
   const canSubmit = draft.officeCodes.length > 0 && draft.feeCodes.length > 0 && draft.natures.length > 0
-    && (reportType !== 'fee-nature' && reportType !== 'daily' || (!!draft.paidDateFrom && !!draft.paidDateTo))
+    && (reportType !== 'fee-nature' && reportType !== 'daily' && reportType !== 'collection-analysis' || (!!draft.paidDateFrom && !!draft.paidDateTo))
     && (reportType !== 'arrears-prepaid' || (!!draft.asOfPeriod && !!draft.paidDateTo))
     && (reportType !== 'assessment' || !!draft.assessmentYear)
+    && (reportType !== 'monthly-report' || !!draft.asOfPeriod)
     && (reportType !== 'fee-nature' || draft.paymentMethods.length > 0);
   const monthValue = draft.asOfPeriod && /^\d{6}$/.test(draft.asOfPeriod)
     ? `${draft.asOfPeriod.slice(0, 4)}-${draft.asOfPeriod.slice(4)}`
@@ -237,7 +238,7 @@ export default function StatisticsFilters({
         </CheckGroup>
 
         <div className="stats-filter-dates">
-          {reportType !== 'arrears-prepaid' && reportType !== 'assessment' ? (
+          {reportType !== 'arrears-prepaid' && reportType !== 'assessment' && reportType !== 'monthly-report' ? (
             <>
           <div className="stats-date-range-label">
             {reportType === 'fee-nature' || reportType === 'daily' ? '收款日期范围（必填）' : '收款日期范围'}
@@ -351,6 +352,35 @@ export default function StatisticsFilters({
             </label>
           ) : reportType === 'received' ? (
             <div className="stats-filter-hint" data-testid="asof-period-hint">应收截止年月仅欠费报表使用；实收报表列按应收年度展示，不受截止年月截断。</div>
+          ) : reportType === 'collection-analysis' ? (
+            <>
+              <div className="stats-extra-fields">
+                <label>
+                  统计年月
+                  <DateInput type="month" value={monthValue} onChange={(event) => onChange({ asOfPeriod: String(event.target.value || '').replace('-', '') })} />
+                </label>
+                <label>
+                  排序
+                  <select className="in" data-testid="analysis-sort" value={draft.analysisSort} onChange={(event) => onChange({ analysisSort: event.target.value as FilterDraft['analysisSort'] })}>
+                    <option value="currentArrears">当年欠收降序</option>
+                    <option value="historyArrears">历年欠收降序</option>
+                    <option value="address">地址序</option>
+                  </select>
+                </label>
+              </div>
+              <div className="stats-filter-hint">收款日期范围用于「区间实收」列；统计年月决定历年/当年欠收与当月应收。</div>
+            </>
+          ) : reportType === 'monthly-report' ? (
+            <>
+              <div className="stats-date-range-label">统计条件</div>
+              <div className="stats-extra-fields">
+                <label>
+                  统计年月
+                  <DateInput type="month" value={monthValue} onChange={(event) => onChange({ asOfPeriod: String(event.target.value || '').replace('-', '') })} />
+                </label>
+              </div>
+              <div className="stats-filter-hint">按月输出核心指标；其他分项列等旧系统截图确认后补。</div>
+            </>
           ) : null}
         </div>
       </div>
@@ -371,7 +401,11 @@ export default function StatisticsFilters({
               ? '请至少各选一个管理处、收费项目和房屋性质，并填写统计年月与收款截止日期。'
               : reportType === 'assessment'
                 ? '请至少各选一个管理处、收费项目和房屋性质，并选择统计年份。'
-                : '请至少各选一个管理处、收费项目和房屋性质。'}
+                : reportType === 'collection-analysis'
+                  ? '请至少各选一个管理处、收费项目、房屋性质，并填写统计年月与收款日期范围。'
+                  : reportType === 'monthly-report'
+                    ? '请至少各选一个管理处、收费项目和房屋性质，并选择统计年月。'
+                    : '请至少各选一个管理处、收费项目和房屋性质。'}
         </div>
       ) : null}
     </aside>

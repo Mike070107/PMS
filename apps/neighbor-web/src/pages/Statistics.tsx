@@ -11,17 +11,21 @@ import CollectionDetailSheet, { type CollectionDetailTarget } from '@/components
 import ArrearsPrepaidTable from '@/components/statistics/ArrearsPrepaidTable';
 import ArrearsBillsSheet, { type ArrearsBillsTarget } from '@/components/statistics/ArrearsBillsSheet';
 import AssessmentTable from '@/components/statistics/AssessmentTable';
+import CollectionAnalysisTable from '@/components/statistics/CollectionAnalysisTable';
+import CollectionAnalysisDetailSheet, { type AnalysisDetailTarget } from '@/components/statistics/CollectionAnalysisDetailSheet';
+import MonthlyReportTable from '@/components/statistics/MonthlyReportTable';
 import StatisticsFilters from '@/components/statistics/StatisticsFilters';
 import { dayjs } from '@/lib/format';
 import {
   PENDING_REPORTS, REPORTS,
   annualCsv, annualQueryParams, arrearsPrepaidCsv, arrearsPrepaidDetailParams, arrearsPrepaidSummaryParams,
-  assessmentCsv, assessmentQueryParams, collectionQueryParams, dailyCsv, dailyQueryParams, downloadCsv,
-  feeNatureCsv, fmtCents, reportName,
+  assessmentCsv, assessmentQueryParams, collectionAnalysisCsv, collectionAnalysisParams,
+  collectionQueryParams, dailyCsv, dailyQueryParams, downloadCsv, feeNatureCsv, fmtCents, monthlyReportCsv, monthlyReportParams, reportName,
   type AnnualQuery, type AnnualReportType, type AnnualSummaryResponse, type ArrearsPrepaidDetailResponse,
   type ArrearsPrepaidQuery, type ArrearsPrepaidSummaryResponse, type ArrearsPrepaidDetailRow,
-  type AssessmentQuery, type AssessmentResponse, type CollectionQuery, type DailyQuery, type DailyResponse,
-  type FeeNatureResponse, type FilterDraft, type ReportQuery, type StatisticsOptions, type StatisticsReportType,
+  type AssessmentQuery, type AssessmentResponse, type CollectionAnalysisQuery, type CollectionAnalysisResponse,
+  type CollectionQuery, type DailyQuery, type DailyResponse, type FeeNatureResponse, type FilterDraft,
+  type MonthlyReportQuery, type MonthlyReportResponse, type ReportQuery, type StatisticsOptions, type StatisticsReportType,
 } from '@/lib/statistics';
 import '@/styles/statistics.css';
 
@@ -38,11 +42,13 @@ const DEFAULT_EXCLUDED_NATURE_BY_REPORT: Record<StatisticsReportType, Set<string
   daily: new Set(),
   'arrears-prepaid': new Set(),
   assessment: new Set(),
+  'collection-analysis': new Set(),
+  'monthly-report': new Set(),
 };
 
 /** P2 报表日期区间必填，默认本月 1 日~今天；P1 报表保留原行为（日期可选）。 */
 function isDateRequired(type: StatisticsReportType): boolean {
-  return type === 'fee-nature' || type === 'daily';
+  return type === 'fee-nature' || type === 'daily' || type === 'collection-analysis';
 }
 
 function defaultDateRange(type: StatisticsReportType): { from: string; to: string } {
@@ -91,7 +97,7 @@ function defaultDraft(options: StatisticsOptions, reportType: StatisticsReportTy
     natures: defaultNatures(options, reportType),
     paidDateFrom: range.from,
     paidDateTo: reportType === 'arrears-prepaid' || reportType === 'assessment' ? today.format('YYYY-MM-DD') : range.to,
-    asOfPeriod: reportType === 'arrears-prepaid'
+    asOfPeriod: reportType === 'arrears-prepaid' || reportType === 'collection-analysis' || reportType === 'monthly-report'
       ? `${today.year()}${String(today.month() + 1).padStart(2, '0')}`
       : `${dayjs().year()}12`,
     paymentMethods: (options.paymentMethods ?? []).map((method) => method.id),
@@ -99,6 +105,7 @@ function defaultDraft(options: StatisticsOptions, reportType: StatisticsReportTy
     subjectYearFrom: '',
     subjectYearTo: '',
     assessmentYear: String(today.year()),
+    analysisSort: 'currentArrears',
   };
 }
 
@@ -156,6 +163,29 @@ function buildQuery(type: StatisticsReportType, draft: FilterDraft, options: Sta
     };
     return query;
   }
+  if (type === 'collection-analysis') {
+    const query: CollectionAnalysisQuery = {
+      type: 'collection-analysis',
+      officeCodes: draft.officeCodes,
+      feeCodes: draft.feeCodes,
+      natures: draft.natures,
+      asOfPeriod: draft.asOfPeriod,
+      dateFrom: draft.paidDateFrom,
+      dateTo: draft.paidDateTo,
+      sort: draft.analysisSort,
+    };
+    return query;
+  }
+  if (type === 'monthly-report') {
+    const query: MonthlyReportQuery = {
+      type: 'monthly-report',
+      officeCodes: draft.officeCodes,
+      feeCodes: draft.feeCodes,
+      natures: draft.natures,
+      asOfPeriod: draft.asOfPeriod,
+    };
+    return query;
+  }
   const query: DailyQuery = {
     type: 'daily',
     officeCodes: draft.officeCodes,
@@ -185,6 +215,7 @@ export default function Statistics() {
   const [draft, setDraft] = useState<FilterDraft>({
     officeCodes: [], feeCodes: [], natures: [], paidDateFrom: '', paidDateTo: '', asOfPeriod: '',
     paymentMethods: [], cashier: '', subjectYearFrom: '', subjectYearTo: '', assessmentYear: String(dayjs().year()),
+    analysisSort: 'currentArrears',
   });
   const [reportType, setReportType] = useState<StatisticsReportType>('received');
   const reportTypeRef = useRef<StatisticsReportType>('received');
@@ -207,6 +238,14 @@ export default function Statistics() {
   const [assessment, setAssessment] = useState<AssessmentResponse | null>(null);
   const [assessmentLoading, setAssessmentLoading] = useState(false);
   const [assessmentError, setAssessmentError] = useState('');
+  const [analysis, setAnalysis] = useState<CollectionAnalysisResponse | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState('');
+  const [analysisTarget, setAnalysisTarget] = useState<AnalysisDetailTarget | null>(null);
+  const [analysisDetailOpen, setAnalysisDetailOpen] = useState(false);
+  const [monthlyReport, setMonthlyReport] = useState<MonthlyReportResponse | null>(null);
+  const [monthlyLoading, setMonthlyLoading] = useState(false);
+  const [monthlyError, setMonthlyError] = useState('');
   const [reportRetry, setReportRetry] = useState(0);
   const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -279,12 +318,24 @@ export default function Statistics() {
         })
         .catch((error) => { if (!cancelled) setArrearsError(error instanceof Error && error.message ? error.message : '欠收与溢收读取失败'); })
         .finally(() => { if (!cancelled) setArrearsLoading(false); });
-    } else {
+    } else if (applied.type === 'assessment') {
       setAssessmentLoading(true); setAssessmentError('');
       request<AssessmentResponse>({ url: '/statistics/collection-assessment', query: assessmentQueryParams(applied as AssessmentQuery) })
         .then((response) => { if (!cancelled) setAssessment(response); })
         .catch((error) => { if (!cancelled) setAssessmentError(error instanceof Error && error.message ? error.message : '收缴考核读取失败'); })
         .finally(() => { if (!cancelled) setAssessmentLoading(false); });
+    } else if (applied.type === 'collection-analysis') {
+      setAnalysisLoading(true); setAnalysisError('');
+      request<CollectionAnalysisResponse>({ url: '/statistics/collection-analysis', query: collectionAnalysisParams(applied) })
+        .then((response) => { if (!cancelled) setAnalysis(response); })
+        .catch((error) => { if (!cancelled) setAnalysisError(error instanceof Error && error.message ? error.message : '收款分析读取失败'); })
+        .finally(() => { if (!cancelled) setAnalysisLoading(false); });
+    } else {
+      setMonthlyLoading(true); setMonthlyError('');
+      request<MonthlyReportResponse>({ url: '/statistics/monthly-report', query: monthlyReportParams(applied as MonthlyReportQuery) })
+        .then((response) => { if (!cancelled) setMonthlyReport(response); })
+        .catch((error) => { if (!cancelled) setMonthlyError(error instanceof Error && error.message ? error.message : '收费月报表读取失败'); })
+        .finally(() => { if (!cancelled) setMonthlyLoading(false); });
     }
     return () => { cancelled = true; };
   }, [applied, reportRetry]);
@@ -295,6 +346,7 @@ export default function Statistics() {
     && (reportType !== 'fee-nature' && reportType !== 'daily' || datesFilled)
     && (reportType !== 'arrears-prepaid' || (!!draft.asOfPeriod && !!draft.paidDateTo))
     && (reportType !== 'assessment' || !!draft.assessmentYear)
+    && (reportType !== 'monthly-report' || !!draft.asOfPeriod)
     && (reportType !== 'fee-nature' || draft.paymentMethods.length > 0);
 
   const resetDraft = () => {
@@ -356,6 +408,21 @@ export default function Statistics() {
     if (type === 'assessment') {
       if (!nextDraft.assessmentYear) nextDraft.assessmentYear = String(dayjs().year());
       if (!nextDraft.paidDateTo) nextDraft.paidDateTo = dayjs().format('YYYY-MM-DD');
+    }
+    if (type === 'collection-analysis' || type === 'monthly-report') {
+      const today = dayjs();
+      const previousDefaultPeriod = defaultDraft(options, reportType).asOfPeriod;
+      if (!nextDraft.asOfPeriod || nextDraft.asOfPeriod === previousDefaultPeriod) {
+        nextDraft.asOfPeriod = `${today.year()}${String(today.month() + 1).padStart(2, '0')}`;
+      }
+      if (type === 'collection-analysis') {
+        if (!nextDraft.paidDateFrom || !nextDraft.paidDateTo) {
+          const range = defaultDateRange('collection-analysis');
+          nextDraft.paidDateFrom = range.from;
+          nextDraft.paidDateTo = range.to;
+        }
+        if (!nextDraft.analysisSort) nextDraft.analysisSort = 'currentArrears';
+      }
     }
     setReportType(type);
     setDraft(nextDraft);
@@ -434,6 +501,26 @@ export default function Statistics() {
     }
   };
 
+  const openAnalysisDetail = (row: CollectionAnalysisResponse['rows'][number]) => {
+    setAnalysisTarget({ sId: row.sId, address: row.address, ownerName: row.ownerName });
+    setAnalysisDetailOpen(true);
+  };
+
+  const loadMoreAnalysis = async () => {
+    if (!applied || applied.type !== 'collection-analysis' || !analysis) return;
+    try {
+      const response = await request<CollectionAnalysisResponse>({
+        url: '/statistics/collection-analysis',
+        query: collectionAnalysisParams(applied, analysis.rows.length),
+      });
+      setAnalysis((previous) => (previous
+        ? { ...previous, rows: [...previous.rows, ...(response.rows ?? [])], totals: response.totals ?? previous.totals, count: response.count ?? previous.count }
+        : response));
+    } catch (e) {
+      toast(e instanceof Error && e.message ? e.message : '加载更多失败');
+    }
+  };
+
   const exportCurrent = () => {
     if (!applied) return;
     const stamp = dayjs().format('YYYYMMDD');
@@ -472,10 +559,26 @@ export default function Statistics() {
       else toast('导出失败，请重试');
       return;
     }
-    if (!assessment) return;
-    const name = `统计汇总-收缴考核-${stamp}.csv`;
-    if (downloadCsv(name, assessmentCsv(assessment, applied as AssessmentQuery))) toast('已导出收缴考核 CSV');
-    else toast('导出失败，请重试');
+    if (applied.type === 'collection-analysis') {
+      if (!analysis) return;
+      const name = `统计汇总-收款分析-${stamp}.csv`;
+      if (downloadCsv(name, collectionAnalysisCsv(analysis, applied))) toast('已导出收款分析 CSV');
+      else toast('导出失败，请重试');
+      return;
+    }
+    if (applied.type === 'monthly-report') {
+      if (!monthlyReport) return;
+      const name = `统计汇总-收费月报表（核心指标）-${stamp}.csv`;
+      if (downloadCsv(name, monthlyReportCsv(monthlyReport, applied as MonthlyReportQuery))) toast('已导出收费月报表 CSV');
+      else toast('导出失败，请重试');
+      return;
+    }
+    if (applied.type === 'assessment') {
+      if (!assessment) return;
+      const name = `统计汇总-收缴考核-${stamp}.csv`;
+      if (downloadCsv(name, assessmentCsv(assessment, applied as AssessmentQuery))) toast('已导出收缴考核 CSV');
+      else toast('导出失败，请重试');
+    }
   };
 
   const activeLabel = reportName(applied?.type ?? reportType);
@@ -487,7 +590,11 @@ export default function Statistics() {
         ? arrearsLoading
         : applied?.type === 'assessment'
           ? assessmentLoading
-          : annualLoading;
+          : applied?.type === 'collection-analysis'
+            ? analysisLoading
+            : applied?.type === 'monthly-report'
+              ? monthlyLoading
+              : annualLoading;
   const activeError = applied?.type === 'fee-nature'
     ? collectionError
     : applied?.type === 'daily'
@@ -496,7 +603,11 @@ export default function Statistics() {
         ? arrearsError
         : applied?.type === 'assessment'
           ? assessmentError
-          : annualError;
+          : applied?.type === 'collection-analysis'
+            ? analysisError
+            : applied?.type === 'monthly-report'
+              ? monthlyError
+              : annualError;
   const activeDataAsOf = applied?.type === 'fee-nature'
     ? collection?.dataAsOf
     : applied?.type === 'daily'
@@ -505,7 +616,11 @@ export default function Statistics() {
         ? (arrearsSummary?.dataAsOf ?? arrearsDetail?.dataAsOf)
         : applied?.type === 'assessment'
           ? assessment?.dataAsOf
-          : annual?.dataAsOf;
+          : applied?.type === 'collection-analysis'
+            ? analysis?.dataAsOf
+            : applied?.type === 'monthly-report'
+              ? monthlyReport?.dataAsOf
+              : annual?.dataAsOf;
   const dataAsOf = timeText(activeDataAsOf || options?.dataAsOf);
   const sourceLabel = options?.sourceMode === 'mirror' ? 'MIS 镜像' : (options?.sourceMode || '');
   const activeAvailable = applied?.type === 'fee-nature'
@@ -516,7 +631,11 @@ export default function Statistics() {
         ? (arrearsDetail?.available ?? arrearsSummary?.available)
         : applied?.type === 'assessment'
           ? assessment?.available
-          : annual?.available;
+          : applied?.type === 'collection-analysis'
+            ? analysis?.available
+            : applied?.type === 'monthly-report'
+              ? monthlyReport?.available
+              : annual?.available;
   const activeMessage = applied?.type === 'fee-nature'
     ? collection?.message
     : applied?.type === 'daily'
@@ -525,15 +644,23 @@ export default function Statistics() {
         ? (arrearsDetail?.message ?? arrearsSummary?.message)
         : applied?.type === 'assessment'
           ? assessment?.message
-          : annual?.message;
+          : applied?.type === 'collection-analysis'
+            ? analysis?.message
+            : applied?.type === 'monthly-report'
+              ? monthlyReport?.message
+              : annual?.message;
 
-  const dateRangeText = applied && 'dateFrom' in applied
-    ? [applied.dateFrom, applied.dateTo].filter(Boolean).join(' 至 ')
-    : applied?.type === 'arrears-prepaid'
-      ? `统计年月 ${applied.asOfPeriod} · 收款截止 ${applied.paidDateTo}`
-      : applied?.type === 'assessment'
-        ? `统计年份 ${applied.year}${applied.paidDateTo ? ` · 收款截止 ${applied.paidDateTo}` : ''}`
-        : '';
+  const dateRangeText = applied?.type === 'arrears-prepaid'
+    ? `统计年月 ${applied.asOfPeriod} · 收款截止 ${applied.paidDateTo}`
+    : applied?.type === 'assessment'
+      ? `统计年份 ${applied.year}${applied.paidDateTo ? ` · 收款截止 ${applied.paidDateTo}` : ''}`
+      : applied?.type === 'collection-analysis'
+        ? `统计年月 ${applied.asOfPeriod} · 收款日期 ${[applied.dateFrom, applied.dateTo].filter(Boolean).join(' 至 ')}`
+        : applied?.type === 'monthly-report'
+          ? `统计年月 ${applied.asOfPeriod}`
+          : applied && 'dateFrom' in applied
+            ? [applied.dateFrom, applied.dateTo].filter(Boolean).join(' 至 ')
+            : '';
 
   return (
     <div className="stats">
@@ -639,6 +766,12 @@ export default function Statistics() {
                 {activeAvailable !== false && applied?.type === 'assessment' && assessment?.summary ? (
                   <span className="tag acc">收缴率 {Number(assessment.summary.ratePct || 0).toFixed(2)}%</span>
                 ) : null}
+                {activeAvailable !== false && applied?.type === 'collection-analysis' && analysis ? (
+                  <span className="tag mute">{analysis.rows.length} 户</span>
+                ) : null}
+                {activeAvailable !== false && applied?.type === 'monthly-report' && monthlyReport?.totals ? (
+                  <span className="tag acc">本期回收率 {Number(monthlyReport.totals.recoveryRatePct || 0).toFixed(2)}%</span>
+                ) : null}
                 {applied?.type === 'received' || applied?.type === 'arrears' ? (
                   annual?.columns?.length ? <span className="muted stats-range">{annual.columns[0]}–{annual.columns[annual.columns.length - 1]} 年度</span> : null
                 ) : dateRangeText ? <span className="muted stats-range">{dateRangeText}</span> : null}
@@ -658,6 +791,17 @@ export default function Statistics() {
               {applied?.type === 'daily' && daily?.available !== false ? (
                 <div className="note2 stats-received-hint" data-testid="daily-report-hint">
                   <Icon name="alert" />按收款日期逐日统计；没有收款的日期不显示 0 行。点单元格查当日收款明细。
+                </div>
+              ) : null}
+              {applied?.type === 'collection-analysis' && analysis?.available !== false ? (
+                <div className="note2 stats-received-hint" data-testid="collection-analysis-hint">
+                  <Icon name="alert" />按户汇总：历年欠收/当年欠收/当月应收/预缴/区间实收；点行查该户逐笔明细，默认按当年欠收降序。
+                </div>
+              ) : null}
+              {applied?.type === 'monthly-report' && monthlyReport?.available !== false ? (
+                <div className="note2 stats-received-hint" data-testid="monthly-report-hint">
+                  <Icon name="alert" />核心指标版：另有本期实收分项/累计实收/账面累计实收等列待旧系统截图确认，暂不显示。
+                  {monthlyReport?.pendingColumns?.length ? `（待确认：${monthlyReport.pendingColumns.join('、')}）` : ''}
                 </div>
               ) : null}
 
@@ -757,6 +901,31 @@ export default function Statistics() {
                     </>
                   )
                 ) : null
+              ) : applied?.type === 'collection-analysis' ? (
+                analysis ? (
+                  analysis.available === false ? (
+                    <div className="note2" role="status"><Icon name="alert" />{analysis.message || '收款分析数据尚未就绪；请稍后再试。'}</div>
+                  ) : analysis.rows.length ? (
+                    <>
+                      <CollectionAnalysisTable report={analysis} onRowClick={openAnalysisDetail} />
+                      {analysis.count != null && analysis.rows.length < analysis.count ? (
+                        <div className="stats-load-more">
+                          <button type="button" className="btn sm" onClick={() => void loadMoreAnalysis()}>
+                            加载更多（已显示 {analysis.rows.length}/{analysis.count}）
+                          </button>
+                        </div>
+                      ) : null}
+                    </>
+                  ) : <div className="empty">{analysis.message || '当前筛选没有收款分析数据'}</div>
+                ) : null
+              ) : applied?.type === 'monthly-report' ? (
+                monthlyReport ? (
+                  monthlyReport.available === false ? (
+                    <div className="note2" role="status"><Icon name="alert" />{monthlyReport.message || '收费月报表数据尚未就绪；请稍后再试。'}</div>
+                  ) : monthlyReport.rows.length ? (
+                    <MonthlyReportTable report={monthlyReport} />
+                  ) : <div className="empty">{monthlyReport.message || '当前筛选没有收费月报表数据'}</div>
+                ) : null
               ) : annual ? (
                 annual.available === false ? (
                   <div className="note2" role="status">
@@ -808,6 +977,13 @@ export default function Statistics() {
         onClose={() => setArrearsBillsOpen(false)}
         base={applied?.type === 'arrears-prepaid' ? applied : null}
         target={arrearsBillsTarget}
+      />
+
+      <CollectionAnalysisDetailSheet
+        open={analysisDetailOpen}
+        onClose={() => setAnalysisDetailOpen(false)}
+        base={applied?.type === 'collection-analysis' ? applied : null}
+        target={analysisTarget}
       />
     </div>
   );
