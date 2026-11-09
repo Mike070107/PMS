@@ -6841,3 +6841,10 @@
 - 自上次（a1e933e9）以来上线的相关提交：
   - d1dad125 feat(access): 捷顺发卡历史与最近30笔查询、单卡状态聚合、写入Access与多楼栋授权（独立失败）
 
+## 2026-11-09 15:58 · api · bf1cf128
+
+- 包：`pms-api-fast-20261109-155644.tar.gz`
+- 提交：bf1cf128 fix(access): 发卡历史房号兜底、fieldsIncomplete 标记、hidden 不伪造 false
+- 自上次（d1dad125）以来上线的相关提交：
+  - bf1cf128 fix(access): 发卡历史房号兜底、fieldsIncomplete 标记、hidden 不伪造 false
+
