@@ -6948,3 +6948,10 @@
 - 自上次（41ff6693）以来上线的相关提交：
   - 2345364c fix(statistics-ui): 房屋性质默认按报表类型——实收含 06 空房(13项)、欠费排除 06(12项)
 
+## 2026-11-10 00:54 · api · f1675aea
+
+- 包：`pms-api-fast-20261110-005350.tar.gz`
+- 提交：f1675aea feat(access-ui): 门禁发卡改版——设备管理独立页、最近30笔默认展示+分页、历史分页全量序号、添加到二期门禁系统、授权楼栋收敛
+- 自上次（556ecdc7）以来上线的相关提交：
+  - 182b7504 feat(access): recent/history 行带 accessSystem+homeBuildingNo；apply-mdb 默认本楼栋系统；新增 grant-options
+
