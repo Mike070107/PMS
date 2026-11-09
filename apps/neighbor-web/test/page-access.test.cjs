@@ -126,7 +126,9 @@ test('页面分组是权限界面与首页菜单的单一事实来源',()=>{
  assert.deepEqual([...grouped].sort(),[...shared.ADMIN_PAGE_KEYS].sort(),'每个后台页面都必须有且仅有一个分组');
  assert.equal(new Set(grouped).size,grouped.length,'同一页面不能重复分组');
  const shell=load('components/Shell.tsx',{});
- assert.deepEqual([...shell.GROUPS.map(g=>g.title)],shared.PAGE_GROUPS.map(g=>g.title),'Shell 分组标题/顺序必须与 PAGE_GROUPS 一致');
+ // 用户要求把「分析」「统计」合并成「统计分析」菜单分组；权限注册表仍按「分析」分组（shared 未改）。
+ const expectedTitles=shared.PAGE_GROUPS.map(g=>g.title==='分析'?'统计分析':g.title);
+ assert.deepEqual([...shell.GROUPS.map(g=>g.title)],expectedTitles,'Shell 菜单分组为「统计分析」（合并原分析/统计）');
  assert.deepEqual(shared.PAGE_GROUPS.map(g=>g.title),['总览','收费办理','车辆管理','门禁管理','报修养护','库存与盘点','分析','档案','系统']);
 });
 test('账单与待缴：独立页面权限，fees 不再放行 /bills，菜单按 bills 过滤',()=>{
@@ -169,18 +171,24 @@ function loadAdminRegistry(){
  vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{module,exports:module.exports});
  return module.exports;
 }
-test('统计汇总菜单：/statistics 复用 business 权限并归入「统计」分组',()=>{
+test('统计汇总菜单：/statistics 复用 business 权限并并入「统计分析」分组',()=>{
  const map=load('lib/page-access.ts',{});
  assert.equal(map.canViewPath('/statistics',{pages:{business:{view:true}}}),true);
  assert.equal(map.canViewPath('/statistics',{pages:{fees:{view:true}}}),false);
  const nav=load('components/Shell.tsx',{pages:{}}).NAV;
  const item=nav.find(n=>n.key==='statistics');
- assert.equal(item.to,'/statistics');assert.equal(item.group,'统计');assert.equal(item.permissionKey,undefined);
- const ui=load('components/Shell.tsx',{pages:{business:{view:true}}},'/statistics').default();
+ assert.equal(item.to,'/statistics');assert.equal(item.group,'统计分析');assert.equal(item.permissionKey,undefined);
+ for(const key of ['reports','screen','screen-settings'])assert.equal(nav.find(n=>n.key===key).group,'统计分析',key+' 也应并入统计分析分组');
+ const access={pages:{business:{view:true},fees:{view:true}}};
+ const ui=load('components/Shell.tsx',access,'/statistics').default();
  const link=nodes(ui).find(n=>n.type==='a'&&n.props&&n.props.title==='统计汇总');
  assert.ok(link,'有 business 权限时菜单应出现统计汇总');assert.equal(link.props['aria-current'],'page');
- const group=nodes(ui).find(n=>n.type==='button'&&n.props&&n.props.title==='统计');
- assert.ok(group,'侧栏应出现「统计」分组');assert.equal(group.props['aria-expanded'],true);
+ assert.ok(nodes(ui).some(n=>n.type==='a'&&n.props&&n.props.title==='收费报表'),'统计分析分组应同时包含收费报表');
+ const groupTitles=nodes(ui).filter(n=>n.type==='button'&&n.props&&typeof n.props.title==='string'&&String(n.props.className||'').includes('navGroupTitle')).map(n=>n.props.title);
+ assert.deepEqual(groupTitles.filter(t=>t==='统计分析').length,1,'侧栏只应有一个「统计分析」分组');
+ assert.equal(groupTitles.includes('分析'),false,'不应再有独立的「分析」分组');
+ assert.equal(groupTitles.includes('统计'),false,'不应再有独立的「统计」分组');
+ assert.equal(groupTitles.includes('统计分析'),true);
  const denied=load('components/Shell.tsx',{pages:{fees:{view:true}}},'/statistics').default();
  assert.equal(nodes(denied).filter(n=>n.type==='a'&&n.props&&n.props.title==='统计汇总').length,0,'只有 fees 不显示统计汇总');
 });

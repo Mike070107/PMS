@@ -55,10 +55,10 @@ export const NAV: NavItem[] = [
   { key: 'count', name: '盘点', rail: '盘点', icon: 'clipboard', to: '/stocktakes', group: '库存与盘点' },
   { key: 'sku', name: '材料SKU', rail: 'SKU', icon: 'layers', to: '/materials', group: '库存与盘点' },
   { key: 'devices', name: '系统与设备', rail: '系统设备', icon: 'cpu', to: '/devices', group: '系统' },
-  { key: 'reports', name: '收费报表', rail: '报表', icon: 'chart', to: '/reports', group: '分析' },
-  { key: 'statistics', name: '统计汇总', rail: '统计', icon: 'chart', to: '/statistics', group: '统计' },
-  { key: 'screen', permissionKey: 'fees', name: '收费大屏', rail: '大屏', icon: 'chart', to: '/screen', newTab: '/screen', group: '分析' },
-  { key: 'screen-settings', permissionKey: 'fees', name: '大屏设置', rail: '大屏设置', icon: 'gear', to: '/screen-settings', group: '分析' },
+  { key: 'reports', name: '收费报表', rail: '报表', icon: 'chart', to: '/reports', group: '统计分析' },
+  { key: 'statistics', name: '统计汇总', rail: '统计', icon: 'chart', to: '/statistics', group: '统计分析' },
+  { key: 'screen', permissionKey: 'fees', name: '收费大屏', rail: '大屏', icon: 'chart', to: '/screen', newTab: '/screen', group: '统计分析' },
+  { key: 'screen-settings', permissionKey: 'fees', name: '大屏设置', rail: '大屏设置', icon: 'gear', to: '/screen-settings', group: '统计分析' },
   { key: 'standards', name: '收费标准', rail: '收费标准', icon: 'wallet', to: '/standards', group: '收费' },
   { key: 'houses', name: '房产', rail: '房产', icon: 'home', to: '/houses', group: '档案' },
   { key: 'owners', name: '业主', rail: '业主', icon: 'users', to: '/owners', group: '档案' },
@@ -71,7 +71,8 @@ export const NAV: NavItem[] = [
 ];
 
 /** 分类分组：每组一个标题 + 图标文字一行的菜单项。
- *  分组标题/顺序与权限界面共用 @pms/shared-types 的 PAGE_GROUPS，一致性由 page-access 回归测试锁住。 */
+ *  分组标题/顺序与权限界面共用 @pms/shared-types 的 PAGE_GROUPS，一致性由 page-access 回归测试锁住；
+ *  例外：用户要求把「分析」「统计」合并成「统计分析」菜单分组（纯前端菜单展示，权限分组仍为「分析」）。 */
 export const GROUPS: Array<{ title: string; keys: string[]; icon: IconName; tone: string }> = [
   { title: '总览', keys: ['today'], icon: 'today', tone: 'green' },
   { title: '收费办理', keys: ['cashier', 'meters', 'apartment', 'bills', 'records', 'pending', 'standards'], icon: 'wallet', tone: 'blue' },
@@ -79,23 +80,10 @@ export const GROUPS: Array<{ title: string; keys: string[]; icon: IconName; tone
   { title: '门禁管理', keys: ['access-cards'], icon: 'key', tone: 'blue' },
   { title: '报修养护', keys: ['work-orders', 'maint', 'notes'], icon: 'wrench', tone: 'orange' },
   { title: '库存与盘点', keys: ['purchase', 'stock', 'count', 'sku'], icon: 'box', tone: 'green' },
-  { title: '分析', keys: ['reports', 'screen', 'screen-settings'], icon: 'chart', tone: 'violet' },
+  { title: '统计分析', keys: ['reports', 'screen', 'screen-settings', 'statistics'], icon: 'chart', tone: 'violet' },
   { title: '档案', keys: ['houses', 'owners', 'people', 'offices'], icon: 'home', tone: 'brown' },
   { title: '系统', keys: ['devices', 'settings', 'qr', 'intranet', 'logs'], icon: 'cpu', tone: 'slate' },
 ];
-
-/**
- * 侧栏实际渲染的分组 = GROUPS + 仅前端菜单分组。
- * 「统计汇总」复用 business 页面权限、不是独立可授权页面，所以不登记进 shared 的 PAGE_GROUPS；
- * 这里只补一个菜单分组，权限矩阵与 GROUPS 的单一事实来源不受影响。
- */
-const NAV_GROUPS = (() => {
-  const list = [...GROUPS];
-  const afterAnalysis = list.findIndex((group) => group.title === '分析');
-  list.splice(afterAnalysis >= 0 ? afterAnalysis + 1 : list.length, 0,
-    { title: '统计', keys: ['statistics'], icon: 'chart' as IconName, tone: 'violet' });
-  return list;
-})();
 
 const PAGE_OF = (pathname: string) => pathname.split('/').filter(Boolean)[0] || 'today';
 
@@ -112,12 +100,12 @@ export default function Shell() {
   const page = (NAV.find((n) => n.to && (loc.pathname === n.to || loc.pathname.startsWith(`${n.to}/`)))?.key) || PAGE_OF(loc.pathname);
   // 层级菜单：默认全部折叠，只展开当前页所在分组
   const [openGroups, setOpenGroups] = useState<string[]>(() => {
-    const hit = NAV_GROUPS.find((g) => g.keys.includes(page));
-    return [hit ? hit.title : NAV_GROUPS[0].title];
+    const hit = GROUPS.find((g) => g.keys.includes(page));
+    return [hit ? hit.title : GROUPS[0].title];
   });
   const toggleGroup = (t: string) => setOpenGroups((l) => (l.includes(t) ? l.filter((x) => x !== t) : [...l, t]));
   // 当前页所在分组始终展开（首次进站时 pathname 可能还是 /，靠这个补上）
-  const activeGroup = NAV_GROUPS.find((g) => g.keys.includes(page))?.title;
+  const activeGroup = GROUPS.find((g) => g.keys.includes(page))?.title;
   useEffect(() => {
     if (!activeGroup) return;
     setOpenGroups((l) => (l.includes(activeGroup) ? l : [...l, activeGroup]));
@@ -213,7 +201,7 @@ export default function Shell() {
 
         <div className="navToolbar"><span>功能导航</span><button type="button" title="收起所有分组" aria-label="收起所有分组" onClick={()=>setOpenGroups([])}><Icon name="chev" size={14}/></button></div>
         <nav className="nav" aria-label="业务功能">
-          {NAV_GROUPS.filter(g=>g.keys.some(k=>{const item=NAV.find(n=>n.key===k);return item&&!!item.to&&canViewPath(item.to,session.access)&&(!item.permissionKey||can(item.permissionKey,'view'))})).map((g) => (
+          {GROUPS.filter(g=>g.keys.some(k=>{const item=NAV.find(n=>n.key===k);return item&&!!item.to&&canViewPath(item.to,session.access)&&(!item.permissionKey||can(item.permissionKey,'view'))})).map((g) => (
             <div key={g.title}>
               <button className={`navGroupTitle ${openGroups.includes(g.title) ? 'open' : ''} ${g.title===activeGroup?'active-group':''}`} title={g.title} aria-expanded={openGroups.includes(g.title)} aria-controls={`nav-group-${g.title}`} onClick={() => toggleGroup(g.title)}>
                 <span className={"ic-tile navGroupTile t-" + g.tone}><Icon name={g.icon} size={22} /></span>

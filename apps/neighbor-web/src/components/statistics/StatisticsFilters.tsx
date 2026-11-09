@@ -11,6 +11,8 @@ export interface StatisticsFiltersProps {
   onSubmit: () => void;
   onReset: () => void;
   onExport: () => void;
+  /** 收起悬浮筛选面板，把宽度还给数据区。 */
+  onCollapse: () => void;
   canExport: boolean;
   loading: boolean;
 }
@@ -41,7 +43,7 @@ function CheckGroup({
 
 /** 左侧筛选：管理处/小区、收费项目、房屋性质勾选多选 + 截止日期；只在点「统计」时生效。 */
 export default function StatisticsFilters({
-  options, draft, onChange, onSubmit, onReset, onExport, canExport, loading,
+  options, draft, onChange, onSubmit, onReset, onExport, onCollapse, canExport, loading,
 }: StatisticsFiltersProps) {
   const [officeQuery, setOfficeQuery] = useState('');
   const filteredOffices = useMemo(() => {
@@ -70,7 +72,12 @@ export default function StatisticsFilters({
     <aside className="card stats-filters" aria-label="统计筛选">
       <div className="stats-filter-head">
         <b><Icon name="search" size={17} />筛选条件</b>
-        <button type="button" className="btn sm g" data-action="filters-reset" onClick={onReset}>重置</button>
+        <div className="stats-filter-head-actions">
+          <button type="button" className="btn sm g" data-action="filters-collapse" title="收起筛选，给数据区更多宽度" onClick={onCollapse}>
+            <Icon name="chev" size={15} />收起
+          </button>
+          <button type="button" className="btn sm g" data-action="filters-reset" onClick={onReset}>重置</button>
+        </div>
       </div>
 
       <CheckGroup title="管理处 / 小区" hint="按旧系统管理处勾选，小区跟随管理处" actions={groupActions('offices', options.offices.map((office) => office.officeCode))}>

@@ -17,6 +17,23 @@ import '@/styles/statistics.css';
 /** 旧系统截图口径：房屋性质用「收费发生时点性质」（MIS WYZJ.FWXZ_DH），默认不勾选 06 空房。 */
 const DEFAULT_EXCLUDED_NATURE_CODES = new Set(['06']);
 
+/** 筛选悬浮面板收纳状态（用户要求记住上次状态；窄屏默认收起）。 */
+const FILTERS_COLLAPSED_KEY = 'statistics.filters.collapsed';
+
+function initialFiltersCollapsed(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const stored = window.localStorage.getItem(FILTERS_COLLAPSED_KEY);
+    if (stored === '1') return true;
+    if (stored === '0') return false;
+  } catch { /* 隐私模式读不到本地存储时按视口判断 */ }
+  return window.innerWidth <= 900;
+}
+
+function rememberFiltersCollapsed(collapsed: boolean) {
+  try { window.localStorage.setItem(FILTERS_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch { /* 忽略存储失败 */ }
+}
+
 /** 筛选草稿的默认值：管理处/收费项目全选；房屋性质除 06 空房外全选；应收到当年 12 月，收款截止留空。 */
 function defaultDraft(options: StatisticsOptions): FilterDraft {
   return {
@@ -53,7 +70,15 @@ export default function Statistics() {
   const [annualRetry, setAnnualRetry] = useState(0);
   const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [filtersCollapsed, setFiltersCollapsed] = useState<boolean>(initialFiltersCollapsed);
+
+  const toggleFilters = () => {
+    setFiltersCollapsed((collapsed) => {
+      const next = !collapsed;
+      rememberFiltersCollapsed(next);
+      return next;
+    });
+  };
 
   useEffect(() => { reportTypeRef.current = reportType; }, [reportType]);
 
@@ -185,28 +210,25 @@ export default function Statistics() {
           </div>
         </div>
       ) : (
-        <div className="stats-layout">
-          <button
-            type="button"
-            className="stats-filter-toggle"
-            data-testid="stats-filter-toggle"
-            aria-expanded={filtersOpen}
-            onClick={() => setFiltersOpen((open) => !open)}
-          >
-            <Icon name="search" size={16} />{filtersOpen ? '收起筛选条件' : '展开筛选条件'}
-          </button>
-          <div className={`stats-filter-wrap${filtersOpen ? '' : ' collapsed'}`}>
-            <StatisticsFilters
-              options={options}
-              draft={draft}
-              onChange={(patch) => setDraft((previous) => ({ ...previous, ...patch }))}
-              onSubmit={submit}
-              onReset={resetDraft}
-              onExport={exportCurrent}
-              canExport={!!annual && !!applied}
-              loading={annualLoading}
-            />
-          </div>
+        <div className={`stats-body${filtersCollapsed ? ' filters-collapsed' : ''}`}>
+          {!filtersCollapsed ? (
+            <>
+              <div className="stats-filter-mask" aria-hidden="true" onClick={toggleFilters} />
+              <div className="stats-filter-float" role="dialog" aria-label="统计筛选">
+                <StatisticsFilters
+                  options={options}
+                  draft={draft}
+                  onChange={(patch) => setDraft((previous) => ({ ...previous, ...patch }))}
+                  onSubmit={submit}
+                  onReset={resetDraft}
+                  onExport={exportCurrent}
+                  onCollapse={toggleFilters}
+                  canExport={!!annual && !!applied}
+                  loading={annualLoading}
+                />
+              </div>
+            </>
+          ) : null}
 
           <section className="stats-main">
             <div className="card stats-catalog">
@@ -231,6 +253,16 @@ export default function Statistics() {
 
             <div className="card stats-result">
               <div className="panelHd stats-result-head">
+                <button
+                  type="button"
+                  className={`btn sm stats-filter-toggle${filtersCollapsed ? '' : ' on'}`}
+                  data-testid="stats-filter-toggle"
+                  aria-expanded={!filtersCollapsed}
+                  title={filtersCollapsed ? '展开筛选条件' : '收起筛选条件，给数据区更多宽度'}
+                  onClick={toggleFilters}
+                >
+                  <Icon name="search" size={15} />{filtersCollapsed ? '筛选' : '收起筛选'}
+                </button>
                 <b>{annualLabel}</b>
                 {annual && annual.available !== false ? <span className="tag mute">{annual.rows.length} 个管理处</span> : null}
                 {annual && annual.available !== false && annual.subtotal ? <span className="tag acc">合计 {fmtCents(annual.subtotal.totalCents)}</span> : null}

@@ -9,7 +9,8 @@ export interface AnnualCellTarget {
 }
 
 /**
- * 年度汇总表：左列管理处固定、年度列横向滚动、合计列高亮、底部小计。
+ * 年度汇总表：编号列 + 管理处列固定左侧、年度列横向滚动、合计列固定右侧并高亮、底部小计。
+ * 数值列表头/单元格统一右对齐，文本列统一左对齐（编号列居中），单元格加表格线。
  * 窄屏（≤760px）由 CSS 切换成卡片列表，桌面表格隐藏，避免横向溢出。
  */
 export default function AnnualSummaryTable({
@@ -25,6 +26,7 @@ export default function AnnualSummaryTable({
         <table className="t stats-annual-table">
           <thead>
             <tr>
+              <th className="stats-index-col">编号</th>
               <th className="stats-office-col">管理处</th>
               {annual.columns.map((year) => <th key={year} className="stats-year-col">{year}</th>)}
               <th className="stats-total-col">合计</th>
@@ -33,10 +35,8 @@ export default function AnnualSummaryTable({
           <tbody>
             {annual.rows.map((row) => (
               <tr key={row.officeCode} data-office-row={row.officeCode}>
-                <td className="stats-office-col">
-                  <b>{row.officeName || row.officeCode}</b>
-                  <small className="muted">{row.officeCode}</small>
-                </td>
+                <td className="stats-index-col">{row.officeCode}</td>
+                <td className="stats-office-col"><b>{row.officeName || row.officeCode}</b></td>
                 {annual.columns.map((year) => {
                   const cents = cellCents(row, year);
                   return (
@@ -56,6 +56,7 @@ export default function AnnualSummaryTable({
               </tr>
             ))}
             <tr className="stats-subtotal-row" data-testid="stats-subtotal-row">
+              <td className="stats-index-col" />
               <td className="stats-office-col"><b>小计</b></td>
               {annual.columns.map((year) => (
                 <td key={year} className="stats-year-col"><b>{fmtCents(cellCents(subtotal, year))}</b></td>

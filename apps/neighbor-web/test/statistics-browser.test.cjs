@@ -231,6 +231,64 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     assert.ok(receivedQuery.natures.split(',').includes('05') && receivedQuery.natures.split(',').includes('07'), '默认请求要含 05/07 等非空房性质');
     await screenshot('statistics-received-1440.png');
 
+    // 悬浮筛选可收纳：收起后数据区变宽、面板消失；localStorage 记住状态。
+    assert.ok(await js("!!document.querySelector('.stats-filter-float')"), '桌面默认展开筛选浮层');
+    assert.equal(await js("localStorage.getItem('statistics.filters.collapsed')"), null);
+    const widthExpanded = await js("document.querySelector('.stats-main').clientWidth");
+    await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
+    await pause(300);
+    assert.equal(await js("!!document.querySelector('.stats-filters')"), false, '收起后筛选面板应隐藏');
+    assert.equal(await js("localStorage.getItem('statistics.filters.collapsed')"), '1', '收起状态应写入 localStorage');
+    const widthCollapsed = await js("document.querySelector('.stats-main').clientWidth");
+    assert.ok(widthCollapsed > widthExpanded, `收起后数据区应变宽（${widthExpanded} → ${widthCollapsed}）`);
+    assert.ok((await js("document.querySelector('[data-testid=stats-filter-toggle]').textContent")).includes('筛选'));
+    await screenshot('statistics-filters-collapsed-1440.png');
+    await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
+    await pause(300);
+    assert.ok(await js("!!document.querySelector('.stats-filters')"), '再次点击应展开筛选');
+    assert.equal(await js("localStorage.getItem('statistics.filters.collapsed')"), '0');
+
+    // 编号独立列 + 管理处名称分列；表头/单元格对齐一致；表格线；左两列 sticky。
+    const headTexts = await js("[...document.querySelectorAll('.stats-annual-table thead th')].map((e) => e.textContent.trim())");
+    assert.deepEqual(headTexts.slice(0, 2), ['编号', '管理处'], '首列应为编号、第二列管理处');
+    assert.equal(await js("document.querySelector('.stats-annual-table tbody td.stats-index-col').textContent.trim()"), '01');
+    const officeCell = await js("document.querySelector('.stats-annual-table tbody td.stats-office-col').textContent");
+    assert.ok(officeCell.includes('枫桦景苑一期'));
+    assert.equal(officeCell.includes('01'), false, '管理处名称列不再混排编号');
+    const align = await js(`(() => {
+      const th = [...document.querySelectorAll('.stats-annual-table thead th')].find((e) => e.textContent.trim() === '2004');
+      const totalTh = [...document.querySelectorAll('.stats-annual-table thead th')].pop();
+      return {
+        yearTh: getComputedStyle(th).textAlign,
+        yearTd: getComputedStyle(document.querySelector('.stats-annual-table tbody td.stats-year-col')).textAlign,
+        totalTh: getComputedStyle(totalTh).textAlign,
+        totalTd: getComputedStyle(document.querySelector('.stats-annual-table tbody td.stats-total-col')).textAlign,
+        indexTh: getComputedStyle(document.querySelector('.stats-annual-table thead th.stats-index-col')).textAlign,
+        indexTd: getComputedStyle(document.querySelector('.stats-annual-table tbody td.stats-index-col')).textAlign,
+        officeTh: getComputedStyle(document.querySelector('.stats-annual-table thead th.stats-office-col')).textAlign,
+        officeTd: getComputedStyle(document.querySelector('.stats-annual-table tbody td.stats-office-col')).textAlign,
+      };
+    })()`);
+    assert.equal(align.yearTh, 'right', '年度表头应右对齐');
+    assert.equal(align.yearTd, 'right', '年度单元格应右对齐');
+    assert.equal(align.totalTh, 'right', '合计表头应右对齐');
+    assert.equal(align.totalTd, 'right', '合计单元格应右对齐');
+    assert.equal(align.indexTh, align.indexTd, '编号表头与单元格对齐一致');
+    assert.equal(align.officeTh, 'left', '管理处表头应左对齐');
+    assert.equal(align.officeTd, 'left', '管理处单元格应左对齐');
+    const borders = await js(`(() => {
+      const td = document.querySelector('.stats-annual-table tbody td');
+      const th = document.querySelector('.stats-annual-table thead th');
+      return {
+        td: parseFloat(getComputedStyle(td).borderBottomWidth) + parseFloat(getComputedStyle(td).borderRightWidth),
+        th: parseFloat(getComputedStyle(th).borderBottomWidth),
+      };
+    })()`);
+    assert.ok(borders.td > 0 && borders.th > 0, '表头/单元格应有表格线');
+    assert.equal(await js("getComputedStyle(document.querySelector('.stats-annual-table tbody td.stats-index-col')).position"), 'sticky');
+    assert.equal(await js("getComputedStyle(document.querySelector('.stats-annual-table tbody td.stats-office-col')).position"), 'sticky');
+    assert.equal(await js("getComputedStyle(document.querySelector('.stats-annual-table tbody td.stats-office-col')).left"), '56px', '管理处列应紧贴编号列左侧固定');
+
     // 切到项目欠费年度汇总：02×2014=¥477.90，02 合计 ¥745,182.10（生产验收基准）。
     await js("document.querySelector('[data-report-type=arrears]').click()");
     await waitFor("document.querySelector('[data-office-code=\"02\"][data-year=\"2014\"]')?.textContent.includes('¥477.90')", '欠费 02×2014 单元格');
@@ -272,6 +330,12 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     await waitFor("!!document.querySelector('[data-testid=stats-detail-total]')", '明细合计');
     assert.equal(await js("document.querySelector('[data-testid=stats-detail-cell-amount]').textContent.trim()"), '¥477.90');
     assert.equal(await js("document.querySelector('[data-testid=stats-detail-total]').textContent.trim()"), '¥477.90', '明细合计必须等于单元格');
+    assert.equal(
+      await js("getComputedStyle([...document.querySelectorAll('.stats-detail-table thead th')].find((e) => e.classList.contains('stats-num'))).textAlign"),
+      'right',
+      '明细表头金额列应右对齐',
+    );
+    assert.equal(await js("getComputedStyle(document.querySelector('.stats-detail-table tbody td.stats-num')).textAlign"), 'right', '明细金额单元格应右对齐');
     const sheetText = await js("document.querySelector('.sheet').textContent");
     assert.ok(sheetText.includes('宝秀路719号719'));
     assert.ok(sheetText.includes('79.67 ㎡'));
@@ -342,16 +406,29 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     // 等导出 toast 消失再截窄屏图，避免浮层遮住表格表头。
     await pause(2600);
 
-    // 窄屏卡片化且不横向溢出。
+    // 窄屏（≤900）：清理记忆后重载，筛选应默认收起为顶部「筛选」按钮；点开为浮层抽屉，卡片模式保持。
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
-    await pause(350);
+    await js("localStorage.removeItem('statistics.filters.collapsed')");
+    await call('Page.reload', { ignoreCache: true });
+    await pause(900);
+    await waitFor("!!document.querySelector('.stats')", '窄屏重载统计页', 25000);
+    await waitFor("document.querySelectorAll('.stats-office-card').length >= 1", '窄屏卡片', 25000);
+    assert.equal(await js("!!document.querySelector('.stats-filters')"), false, '窄屏默认收起筛选面板');
+    assert.ok((await js("document.querySelector('[data-testid=stats-filter-toggle]').textContent")).includes('筛选'));
     assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '390 窄屏出现横向溢出');
     assert.equal(await js("getComputedStyle(document.querySelector('.stats-table-scroll')).display"), 'none');
     assert.notEqual(await js("getComputedStyle(document.querySelector('.stats-annual-cards')).display"), 'none');
-    assert.ok(await js("document.querySelectorAll('.stats-office-card').length >= 1"));
     await js("document.querySelector('.stats-annual-cards').scrollIntoView({ block: 'center' })");
     await pause(200);
-    await screenshot('statistics-390.png');
+    await screenshot('statistics-390-collapsed.png');
+    await js('window.scrollTo(0, 0)');
+    await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
+    await waitFor("!!document.querySelector('.stats-filters')", '窄屏筛选浮层', 8000);
+    assert.equal(await js("getComputedStyle(document.querySelector('.stats-filter-mask')).display"), 'block', '窄屏筛选浮层应有遮罩');
+    await screenshot('statistics-390-filters-open.png');
+    await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
+    await pause(300);
+    assert.equal(await js("!!document.querySelector('.stats-filters')"), false, '窄屏再次点击应收起筛选');
 
     await call('Emulation.setDeviceMetricsOverride', { width: 320, height: 900, deviceScaleFactor: 1, mobile: false });
     await pause(350);
@@ -361,7 +438,11 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
 
     // 重置回到默认：房屋性质仍排除 06 空房，管理处/收费项目恢复全选；重置本身不自动请求。
     await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
-    await pause(300);
+    await pause(400);
+    if (!(await js("!!document.querySelector('.stats-filters')"))) {
+      await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
+      await waitFor("!!document.querySelector('.stats-filters')", '桌面筛选面板恢复', 8000);
+    }
     const callsBeforeReset = await js("window.__calls.filter((c) => c.url === '/statistics/annual').length");
     await js("document.querySelector('[data-action=filters-reset]').click()");
     await pause(250);

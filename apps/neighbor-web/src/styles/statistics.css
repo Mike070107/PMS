@@ -1,32 +1,57 @@
-/* 统计汇总：左侧多选筛选 + 年度汇总表（管理处固定列/年度横向滚动/合计高亮）+ 三级下钻 */
+/* 统计汇总：悬浮可收纳筛选 + 年度汇总表（编号/管理处固定列、年度横向滚动、合计高亮、表格线）+ 三级下钻 */
 .stats { min-width: 0; }
 
 .stats-head-actions { flex-wrap: wrap; justify-content: flex-end; }
 
-.stats-layout {
-  display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
+/* ---------- 悬浮筛选（不占表格横向空间） ---------- */
+/* 悬浮面板贴着左侧导航右边；紧凑侧栏时左偏移自动收窄。 */
+#web { --stats-sidebar-width: 252px; }
+#web.sidebar-compact { --stats-sidebar-width: 76px; }
+
+.stats-body { position: relative; min-width: 0; }
+
+.stats-main {
   min-width: 0;
+  margin-left: 0;
+  transition: margin-left .18s ease;
 }
 
-.stats-main { min-width: 0; }
+/* 展开时为浮动面板留出左侧空间；收起后数据区立即占满。 */
+.stats-body:not(.filters-collapsed) .stats-main { margin-left: 324px; }
 
-/* 桌面上筛选面板直接作为网格第一列；窄屏由页面折叠按钮控制 */
-.stats-filter-wrap { display: contents; }
+.stats-filter-float {
+  position: fixed;
+  left: calc(var(--stats-sidebar-width, 252px) + 12px);
+  top: 86px;
+  width: 308px;
+  max-height: calc(100vh - 116px);
+  z-index: 35;
+  display: flex;
+}
 
-.stats-filter-toggle { display: none; }
-
-/* ---------- 左侧筛选 ---------- */
-.stats-filters {
-  padding: 14px 16px;
-  position: sticky;
-  top: 0;
-  max-height: calc(100vh - 110px);
+.stats-filter-float .stats-filters {
+  width: 100%;
+  max-height: calc(100vh - 116px);
   overflow: auto;
+  padding: 14px 16px;
+  border-radius: 14px;
+  box-shadow: 0 22px 60px -28px rgba(23, 32, 51, .45), 0 2px 10px rgba(23, 32, 51, .08);
 }
 
+.stats-filter-mask { display: none; }
+
+.stats-filter-toggle {
+  height: 32px;
+  flex: none;
+}
+
+.stats-filter-toggle.on {
+  background: var(--acc-w);
+  border-color: var(--acc-w);
+  color: var(--acc-t);
+}
+
+/* ---------- 筛选内容 ---------- */
 .stats-filter-head {
   display: flex;
   align-items: center;
@@ -41,7 +66,14 @@
   font-size: 15px;
 }
 
-.stats-filter-head .btn { margin-left: auto; }
+.stats-filter-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.stats-filter-head-actions .btn { height: 30px; padding: 0 8px; }
 
 .stats-filter-group {
   border-top: 1px solid var(--line2);
@@ -96,7 +128,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 190px;
+  max-height: 178px;
   overflow: auto;
 }
 
@@ -226,45 +258,88 @@
 
 .stats-table-scroll {
   max-width: 100%;
+  max-height: calc(100vh - 248px);
+  overflow: auto;
   border: 1px solid var(--line);
   border-radius: 10px;
+  background: var(--surface);
 }
 
 .stats-annual-table {
   border-collapse: separate;
   border-spacing: 0;
   min-width: 100%;
+  font-variant-numeric: tabular-nums;
 }
 
 .stats-annual-table th,
 .stats-annual-table td {
   white-space: nowrap;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line);
+  border-right: 1px solid var(--line2);
 }
+
+.stats-annual-table tr > *:last-child { border-right: 0; }
 
 .stats-annual-table thead th {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 3;
   background: var(--sunken);
+  color: var(--ink2);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.stats-annual-table tbody td { font-size: 12.5px; }
+
+.stats-annual-table tbody tr:hover td { background: #f7f9fc; }
+
+/* 对齐：表头与单元格同一规则，数值列右对齐，文本列左对齐，编号列居中 */
+.stats-annual-table th.stats-year-col,
+.stats-annual-table td.stats-year-col,
+.stats-annual-table th.stats-total-col,
+.stats-annual-table td.stats-total-col { text-align: right; }
+
+.stats-annual-table th.stats-office-col,
+.stats-annual-table td.stats-office-col { text-align: left; }
+
+.stats-annual-table th.stats-index-col,
+.stats-annual-table td.stats-index-col { text-align: center; }
+
+/* 编号列 + 管理处列都固定左侧；合计列固定右侧高亮 */
+.stats-index-col {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  width: 56px;
+  min-width: 56px;
+  max-width: 56px;
+  background: var(--surface);
+  color: var(--ink2);
+  font-variant-numeric: tabular-nums;
 }
 
 .stats-office-col {
   position: sticky;
-  left: 0;
+  left: 56px;
   z-index: 2;
-  min-width: 160px;
+  min-width: 148px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   background: var(--surface);
-  box-shadow: 1px 0 0 var(--line2);
 }
 
-.stats-annual-table thead .stats-office-col { z-index: 3; background: var(--sunken); }
+.stats-annual-table thead .stats-index-col,
+.stats-annual-table thead .stats-office-col { z-index: 4; background: var(--sunken); }
 
-.stats-annual-table tbody .stats-office-col b { display: block; font-size: 13px; }
-.stats-annual-table tbody .stats-office-col small { font-size: 11.5px; }
+.stats-annual-table tbody tr:hover .stats-index-col,
+.stats-annual-table tbody tr:hover .stats-office-col { background: #f7f9fc; }
 
 .stats-year-col {
-  min-width: 96px;
-  text-align: right;
+  min-width: 76px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -272,24 +347,24 @@
   position: sticky;
   right: 0;
   z-index: 2;
-  min-width: 130px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
+  min-width: 118px;
   background: var(--acc-w);
-  box-shadow: -1px 0 0 var(--line2);
+  font-variant-numeric: tabular-nums;
 }
 
-.stats-annual-table thead .stats-total-col { z-index: 3; background: var(--acc-w); }
+.stats-annual-table thead .stats-total-col { z-index: 4; background: var(--acc-w); }
+
+.stats-annual-table tbody tr:hover .stats-total-col { background: #e3ecf6; }
 
 .stats-cell {
   display: block;
   width: 100%;
-  padding: 2px 0;
+  padding: 1px 0;
   text-align: right;
   font: inherit;
   font-variant-numeric: tabular-nums;
   color: var(--acc-b);
-  border-radius: 6px;
+  border-radius: 5px;
   cursor: pointer;
   background: transparent;
 }
@@ -303,10 +378,13 @@
 .stats-subtotal-row td {
   background: var(--sunken);
   border-top: 2px solid var(--line);
+  font-weight: 700;
 }
 
-.stats-subtotal-row .stats-office-col,
-.stats-subtotal-row .stats-total-col { background: var(--sunken); }
+.stats-subtotal-row .stats-index-col,
+.stats-subtotal-row .stats-office-col { background: var(--sunken); }
+
+.stats-subtotal-row .stats-total-col { background: var(--acc-w); }
 
 .stats-annual-table .stats-total-col b { color: var(--acc-t); }
 
@@ -394,8 +472,18 @@
   margin-bottom: 10px;
 }
 
+/* 抽屉数值列：表头与单元格都右对齐 */
+.t th.stats-num,
+.t td.stats-num { text-align: right; }
+
 .stats-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
+.stats-detail-table,
+.stats-bills-table { border: 1px solid var(--line); border-radius: 8px; }
+.stats-detail-table th,
+.stats-detail-table td,
+.stats-bills-table th,
+.stats-bills-table td { border-bottom: 1px solid var(--line2); }
 .stats-detail-table { min-width: 640px; }
 .stats-detail-table tbody tr { cursor: pointer; }
 .stats-detail-table tbody tr:hover td { background: var(--sunken); }
@@ -403,33 +491,28 @@
 .stats-bills-table { min-width: 720px; }
 
 /* ---------- 响应式 ---------- */
-@media (max-width: 1180px) {
-  .stats-layout { grid-template-columns: minmax(0, 1fr); }
-  .stats-filters { position: static; max-height: none; overflow: visible; }
-  .stats-filter-wrap { display: block; }
-  .stats-filter-wrap.collapsed { display: none; }
-  .stats-filter-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    justify-self: start;
-    height: 34px;
-    padding: 0 12px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--surface);
-    color: var(--ink2);
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
+@media (max-width: 900px) {
+  .stats-body:not(.filters-collapsed) .stats-main { margin-left: 0; }
+  .stats-filter-float {
+    left: 12px;
+    right: 12px;
+    top: 76px;
+    width: auto;
+    max-height: 72vh;
   }
-  .stats-filter-toggle:hover { background: var(--sunken); }
+  .stats-filter-float .stats-filters { max-height: 72vh; }
+  .stats-filter-mask {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 34;
+    background: rgba(20, 30, 25, .28);
+  }
 }
 
 @media (max-width: 760px) {
   .stats-table-scroll { display: none; }
   .stats-annual-cards { display: flex; flex-direction: column; gap: 10px; }
-  .stats-filters { padding: 12px; }
   .stats-result { padding: 12px; }
   .stats-head-actions { justify-content: flex-start; }
   .stats-as-of { margin-left: 0; }
@@ -439,4 +522,8 @@
 @media (max-width: 360px) {
   .stats-card-years { grid-template-columns: 1fr; }
   .stats-catalog-main { gap: 6px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stats-main { transition: none; }
 }

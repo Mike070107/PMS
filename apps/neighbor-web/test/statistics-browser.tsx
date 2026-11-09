@@ -19,7 +19,12 @@ if (typeof location !== 'undefined' && location.search.includes('options-unavail
 
 function Fixture() {
   return (
-    <div style={{ padding: '24px 28px 60px', background: 'var(--bg)', minHeight: '100vh' }}>
+    // 用 padding-left 模拟真实后台左侧导航宽度，保证悬浮筛选面板与内容区的相对位置和线上一致。
+    <div className="stats-fixture">
+      <style>{`
+        .stats-fixture { padding: 24px 28px 60px 280px; background: var(--bg); min-height: 100vh; }
+        @media (max-width: 900px) { .stats-fixture { padding: 18px 16px 60px; } }
+      `}</style>
       <IconSprite />
       <Statistics />
       <Toaster />
