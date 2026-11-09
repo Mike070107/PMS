@@ -9,6 +9,12 @@ import {
   type CollectionDetailKind,
   type CollectionGroupBy,
 } from './collection.util';
+import {
+  ARREARS_PREPAID_GROUP_BYS,
+  ARREARS_PREPAID_TABS,
+  type ArrearsPrepaidGroupBy,
+  type ArrearsPrepaidTab,
+} from './arrears.util';
 import { STATISTICS_TYPES, type StatisticsType } from './statistics.util';
 
 const CODE_RE = /^[0-9A-Za-z]{1,20}$/;
@@ -240,4 +246,131 @@ export class CollectionMonthlyQueryDto extends CollectionFiltersQueryDto {
   @Min(COLLECTION_YEAR_MIN, { message: `year 必须在 ${COLLECTION_YEAR_MIN}–${COLLECTION_YEAR_MAX} 之间` })
   @Max(COLLECTION_YEAR_MAX, { message: `year 必须在 ${COLLECTION_YEAR_MIN}–${COLLECTION_YEAR_MAX} 之间` })
   year!: number;
+}
+
+/** P2-C 欠收/溢收公共筛选：统计年月 + 收款截止日 + 管理处/收费项目/房屋性质。 */
+export class ArrearsPrepaidFiltersQueryDto {
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(OFFICE_CODE_RE, { each: true, message: 'officeCodes 必须是两位管理处代码' })
+  officeCodes?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(CODE_RE, { each: true, message: 'feeCodes 不合法' })
+  feeCodes?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(CODE_RE, { each: true, message: 'natures 不合法' })
+  natures?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value == null ? undefined : value))
+  @Matches(DATE_RE, { message: 'paidDateTo 必须是 YYYY-MM-DD' })
+  paidDateTo?: string;
+}
+
+export class ArrearsPrepaidSummaryQueryDto extends ArrearsPrepaidFiltersQueryDto {
+  @IsString({ message: 'asOfPeriod 必填' })
+  @Matches(PERIOD_RE, { message: 'asOfPeriod 必须是 YYYYMM' })
+  asOfPeriod!: string;
+
+  @IsOptional()
+  @IsIn(ARREARS_PREPAID_GROUP_BYS, { message: 'groupBy 必须是 office/fee' })
+  groupBy?: ArrearsPrepaidGroupBy;
+}
+
+export class ArrearsPrepaidDetailQueryDto extends ArrearsPrepaidFiltersQueryDto {
+  @IsString({ message: 'asOfPeriod 必填' })
+  @Matches(PERIOD_RE, { message: 'asOfPeriod 必须是 YYYYMM' })
+  asOfPeriod!: string;
+
+  @IsOptional()
+  @IsIn(ARREARS_PREPAID_TABS, { message: 'tab 必须是 arrears/prepaid' })
+  tab?: ArrearsPrepaidTab;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'limit 必须是整数' })
+  @Min(1)
+  @Max(COLLECTION_MAX_DETAIL_LIMIT, { message: `limit 不能超过 ${COLLECTION_MAX_DETAIL_LIMIT}` })
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'offset 必须是整数' })
+  @Min(0)
+  offset?: number;
+}
+
+export class ArrearsPrepaidBillsQueryDto extends ArrearsPrepaidFiltersQueryDto {
+  @IsString({ message: 'asOfPeriod 必填' })
+  @Matches(PERIOD_RE, { message: 'asOfPeriod 必须是 YYYYMM' })
+  asOfPeriod!: string;
+
+  @IsOptional()
+  @IsIn(ARREARS_PREPAID_TABS, { message: 'tab 必须是 arrears/prepaid' })
+  tab?: ArrearsPrepaidTab;
+
+  @Type(() => Number)
+  @IsInt({ message: 'sId 必须是房屋 id' })
+  @Min(1)
+  sId!: number;
+
+  @Matches(CODE_RE, { message: 'feeCode 不合法' })
+  feeCode!: string;
+}
+
+export class CollectionAssessmentQueryDto {
+  @Type(() => Number)
+  @IsInt({ message: 'year 必须是四位年度' })
+  @Min(COLLECTION_YEAR_MIN, { message: `year 必须在 ${COLLECTION_YEAR_MIN}–${COLLECTION_YEAR_MAX} 之间` })
+  @Max(COLLECTION_YEAR_MAX, { message: `year 必须在 ${COLLECTION_YEAR_MIN}–${COLLECTION_YEAR_MAX} 之间` })
+  year!: number;
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(OFFICE_CODE_RE, { each: true, message: 'officeCodes 必须是两位管理处代码' })
+  officeCodes?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(CODE_RE, { each: true, message: 'feeCodes 不合法' })
+  feeCodes?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(CODE_RE, { each: true, message: 'natures 不合法' })
+  natures?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value == null ? undefined : value))
+  @Matches(DATE_RE, { message: 'paidDateTo 必须是 YYYY-MM-DD' })
+  paidDateTo?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'limit 必须是整数' })
+  @Min(1)
+  @Max(COLLECTION_MAX_DETAIL_LIMIT, { message: `limit 不能超过 ${COLLECTION_MAX_DETAIL_LIMIT}` })
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'offset 必须是整数' })
+  @Min(0)
+  offset?: number;
 }

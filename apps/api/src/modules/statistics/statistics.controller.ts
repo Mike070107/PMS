@@ -5,8 +5,13 @@ import { ResolvedAccess } from '../access/access.service';
 import { CurrentAccess } from '../access/current-access.decorator';
 import { PermissionsGuard } from '../access/permissions.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ArrearsStatisticsService } from './arrears.service';
 import { CollectionStatisticsService } from './collection.service';
 import {
+  ArrearsPrepaidBillsQueryDto,
+  ArrearsPrepaidDetailQueryDto,
+  ArrearsPrepaidSummaryQueryDto,
+  CollectionAssessmentQueryDto,
   CollectionDailyQueryDto,
   CollectionDetailQueryDto,
   CollectionFeeNatureQueryDto,
@@ -25,6 +30,7 @@ export class StatisticsController {
   constructor(
     private readonly statisticsService: StatisticsService,
     private readonly collectionService: CollectionStatisticsService,
+    private readonly arrearsService: ArrearsStatisticsService,
   ) {}
 
   @Get('options')
@@ -96,6 +102,48 @@ export class StatisticsController {
   }
 
   /** P2-A 日常收费项目收款日报表。 */
+  /** 欠收与溢收汇总：按管理处/收费项目汇总 + 房屋明细 + 逐笔。 */
+  @Get('arrears-prepaid/summary')
+  @RequirePermission('business', 'view')
+  arrearsPrepaidSummary(
+    @Query() query: ArrearsPrepaidSummaryQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.arrearsService.arrearsPrepaidSummary(query, user, access);
+  }
+
+  @Get('arrears-prepaid/detail')
+  @RequirePermission('business', 'view')
+  arrearsPrepaidDetail(
+    @Query() query: ArrearsPrepaidDetailQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.arrearsService.arrearsPrepaidDetail(query, user, access);
+  }
+
+  @Get('arrears-prepaid/detail/bills')
+  @RequirePermission('business', 'view')
+  arrearsPrepaidBills(
+    @Query() query: ArrearsPrepaidBillsQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.arrearsService.arrearsPrepaidBills(query, user, access);
+  }
+
+  /** 收缴考核：房屋 × 12 个月应收/已收 + 金额/户数收缴率。 */
+  @Get('collection-assessment')
+  @RequirePermission('business', 'view')
+  collectionAssessment(
+    @Query() query: CollectionAssessmentQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.arrearsService.collectionAssessment(query, user, access);
+  }
+
   @Get('daily')
   @RequirePermission('business', 'view')
   daily(
