@@ -239,6 +239,7 @@ export default function App() {
             <Route path="/maint" element={<Maintenance />} />
             <Route path="/vehicles" element={<Vehicles />} />
             <Route path="/access-cards" element={<AccessCards />} />
+            <Route path="/access-devices" element={<AccessDevices />} />
             <Route path="/devices" element={<Devices />} />
             <Route path="/purchase" element={<Purchase />} />
             <Route path="/stock" element={<Stock />} />
@@ -258,3 +259,4 @@ export default function App() {
   );
 }
 import AccessCards from './pages/AccessCards';
+import AccessDevices from './pages/AccessDevices';

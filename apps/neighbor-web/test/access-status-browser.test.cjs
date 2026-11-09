@@ -160,6 +160,7 @@ async function withPage(run, query = '') {
   }
 }
 
+/** 通过真实 Cascader 选一户：一期 198 弄 6 号 502；选完后发卡历史才会渲染。 */
 async function pickHouse({ click, clickText, waitFor }) {
   await waitFor("!!document.querySelector('.findBar .ant-select-selector')", '房号选择器');
   await click('.findBar .ant-select-selector');
@@ -169,114 +170,170 @@ async function pickHouse({ click, clickText, waitFor }) {
   await clickText('.ant-cascader-menu:nth-child(2) .ant-cascader-menu-item', '6号楼');
   await waitFor("document.querySelectorAll('.ant-cascader-menu').length >= 3", '室号列');
   await clickText('.ant-cascader-menu:nth-child(3) .ant-cascader-menu-item', '502');
-  await waitFor("document.body.textContent.includes('最近 30 笔做卡记录') && document.querySelectorAll('.ac-recent-row').length >= 1", '最近做卡区块');
+  await waitFor("!!document.querySelector('[data-testid=history-block] .ac-history-table') && document.querySelectorAll('[data-testid=history-block] tbody tr[data-card-id]').length >= 1", '发卡历史');
 }
 
-test('readiness 三个在线 agent 但没有 issuer 时，顶部按能力分项显示且二期远程门禁不误报离线', { timeout: 120000 }, async () => {
-  await withPage(async ({ js, click, clickText, waitFor, screenshot }) => {
-    await waitFor("!!document.querySelector('.findBar')", '门禁页挂载');
+test('门禁发卡页能力分项 + 设备管理独立页（控制器/在线/无二期小区不误报离线）', { timeout: 120000 }, async () => {
+  await withPage(async ({ js, call, click, waitFor, screenshot }) => {
+    await waitFor("!!document.querySelector('.findBar')", '门禁发卡页挂载');
+    assert.equal(await js("document.querySelector('h1')?.textContent.trim()"), '门禁发卡');
     await waitFor("document.querySelectorAll('.ph .act .tag').length >= 3", 'readiness 能力标签');
     const tags = await js("[...document.querySelectorAll('.ph .act .tag')].map((item) => item.textContent.trim())");
     assert.ok(tags.includes(LABELS.cardWrite), '缺少写卡工作站未接入：' + JSON.stringify(tags));
     assert.ok(tags.includes(LABELS.legacy), '缺少 .80 捷顺库在线：' + JSON.stringify(tags));
     assert.ok(tags.includes(LABELS.access), '缺少 .88 门禁网关在线：' + JSON.stringify(tags));
+    assert.equal(await js("!!document.querySelector('.door-panel')"), false, '门禁发卡页不再包含远程门禁/设备面板');
+    await screenshot('access-cards-1280.png');
 
-    let bodyText = await js('document.body.textContent');
-    assert.ok(!bodyText.includes('发卡工作站离线'), '有 agent 在线时不得显示发卡工作站离线');
-    assert.ok(!bodyText.includes('发卡工作站在线'), '不再用一块「发卡工作站在线」概括整页');
-
-    // 远程门禁默认小区必须来自 readiness.doorControlCommunities（二期），不是地址树第一个一期。
-    await waitFor("document.querySelector('.door-panel select')?.value === '2'", '远程门禁默认二期小区');
+    // 设备管理独立页：默认二期小区、助手在线、控制器列表与开门按钮。
+    await js("document.getElementById('show-devices').click()");
+    await waitFor("!!document.querySelector('.door-panel')", '设备管理页挂载');
+    assert.equal(await js("document.querySelector('h1')?.textContent.trim()"), '设备管理');
+    await waitFor("document.querySelector('.door-panel select')?.value === '2'", '设备默认二期小区');
     assert.equal(await js("document.querySelector('.door-panel select')?.selectedOptions?.[0]?.textContent"), '枫桦景苑二期');
-    await waitFor("document.querySelector('.door-panel')?.textContent.includes('助手在线')", '远程门禁助手在线');
+    await waitFor("document.querySelector('.door-panel')?.textContent.includes('助手在线')", '设备助手在线');
     const doorText = await js("document.querySelector('.door-panel').textContent");
     assert.ok(!doorText.includes('助手离线'), 'agentOnline:true 时不得显示助手离线');
     assert.ok(doorText.includes(DOOR_MESSAGE), 'data.message 应作为说明显示');
-    assert.ok(!doorText.includes('远程开门已禁用'), '网关在线时不得禁用远程开门');
+    i18n: {
+      // 控制器列表与操作按钮来自设备管理
+      assert.equal(await js("document.querySelectorAll('.door-table tbody tr').length"), 2);
+      assert.ok(doorText.includes('6号大门') && doorText.includes('7号大门'));
+      assert.ok(doorText.includes('立即开门') && doorText.includes('常开'));
+    }
     const calls = await js('window.__calls');
     const doorCalls = calls.filter((item) => item.url === '/access-card-issuance/door/controllers');
-    assert.equal(doorCalls.length > 0, true, '没有请求远程门禁控制器');
-    assert.equal(Number(doorCalls[0].query?.communityId), 2, '远程门禁首次请求必须用二期小区 communityId=2');
-    assert.ok(!doorCalls.some((item) => Number(item.query?.communityId) === 1), '不得再用一期小区请求控制器');
-    bodyText = await js('document.body.textContent');
-    assert.ok(!bodyText.includes('发卡工作站离线'), '整页不得出现发卡工作站离线');
-    assert.ok(!bodyText.includes('助手离线'), '整页不得出现助手离线');
-    await screenshot('access-status-normal.png');
+    assert.ok(doorCalls.length > 0);
+    assert.equal(Number(doorCalls[0].query?.communityId), 2, '设备管理首次请求必须用二期小区 communityId=2');
+    await screenshot('access-devices-1280.png');
+    await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
+    await pause(400);
+    assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '设备管理 390 出现横向溢出');
+    await screenshot('access-devices-390.png');
+    await call('Emulation.setDeviceMetricsOverride', { width: 1280, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await pause(300);
 
-    // 没有二期小区时：明确提示范围内没有二期联网门禁小区，且不渲染助手离线。
-    const doorCallCount = calls.filter((item) => item.url === '/access-card-issuance/door/controllers').length;
+    // 没有二期小区：明确提示，不渲染助手离线，也不再请求控制器列表。
+    const doorCallCount = doorCalls.length;
     await js("document.getElementById('scenario-nodoor').click()");
     await waitFor("document.body.textContent.includes('当前范围内没有二期联网门禁小区')", '无二期小区提示');
     await pause(400);
-    bodyText = await js('document.body.textContent');
+    const bodyText = await js('document.body.textContent');
     assert.ok(!bodyText.includes('助手离线'), '没有二期小区时不得显示助手离线');
-    assert.ok(!bodyText.includes('发卡工作站离线'));
-    const afterCalls = await js('window.__calls');
     assert.equal(
-      afterCalls.filter((item) => item.url === '/access-card-issuance/door/controllers').length,
+      (await js('window.__calls')).filter((item) => item.url === '/access-card-issuance/door/controllers').length,
       doorCallCount,
       '没有二期小区时不应再请求控制器列表',
     );
-    await screenshot('access-status-no-door-scope.png');
+    await screenshot('access-devices-no-door-scope.png');
   });
 });
 
-test('最近 30 笔收发对象响应：pending 先显示旧行并轮询，ready 后渲染新行且能跳到该户历史', { timeout: 120000 }, async () => {
-  await withPage(async ({ js, click, clickText, waitFor, screenshot }) => {
-    await waitFor("!!document.querySelector('.findBar')", '门禁页挂载');
-    // 通过真实 Cascader 选一户：一期 198 弄 6 号 502，选完后最近做卡区块才渲染。
-    await pickHouse({ click, clickText, waitFor });
-    // 选定房屋后，发卡说明应按 features.cardWrite 区分（写卡工作站未接入，不阻断查历史/写门禁库）。
-    assert.ok((await js('document.body.textContent')).includes('写卡工作站未接入，新卡暂不能写到读卡器'), 'line 353 应按 cardWrite 区分提示');
-
-    // 首次 pending：先显示旧行 + 助手回传中…，不能是「暂无最近做卡记录」。
-    await waitFor("document.body.textContent.includes('助手回传中…')", 'pending 提示', 4000);
+test('最近 30 笔：进页即显示、10 条/页、添加到二期门禁系统无需确认、授权楼栋来自 grant-options', { timeout: 120000 }, async () => {
+  await withPage(async ({ js, call, click, waitFor, screenshot }) => {
+    await waitFor("!!document.querySelector('.findBar')", '门禁发卡页挂载');
+    // 不选房也应显示最近 30 笔区块。
+    assert.ok(await js("!!document.querySelector('[data-testid=recent-block]')"), '最近 30 笔不做选房前置');
+    await waitFor("document.body.textContent.includes('助手回传中…')", 'pending 提示', 5000);
     let bodyText = await js('document.body.textContent');
     assert.ok(bodyText.includes('OLD00001'), 'pending 时应先显示旧行');
     assert.ok(!bodyText.includes('暂无最近做卡记录'), 'pending 时不得显示暂无记录');
-    await screenshot('access-status-recent-pending.png');
+    await screenshot('access-recent-pending.png');
 
-    // 1.5s 后轮询到 ready：渲染 2 行新记录，旧行被替换，显示更新于 hh:mm。
-    await waitFor("document.querySelectorAll('.ac-recent-row').length === 2", 'ready 两行记录', 8000);
+    // ready 30 条：第 1 页 10 条、序号 1..10；分页到第 2/3 页。
+    await waitFor("document.querySelectorAll('[data-testid=recent-block] tbody tr[data-card-id]').length === 10", 'ready 第 1 页 10 行', 9000);
     bodyText = await js('document.body.textContent');
-    assert.ok(bodyText.includes('NEWA0001') && bodyText.includes('NEWA0002'), 'ready 后应渲染两行新记录');
+    assert.ok(bodyText.includes('NEWA0001') && bodyText.includes('NEWA0010'), '第 1 页应显示最新 10 条');
     assert.ok(!bodyText.includes('OLD00001'), 'ready 后旧行应被替换');
-    assert.ok(!bodyText.includes('暂无最近做卡记录'), 'ready 后不得显示暂无记录');
-    assert.ok(/更新于 12:30/.test(bodyText), 'ready 应显示更新于 hh:mm');
-    const recentCalls = (await js('window.__calls')).filter((item) => item.url === '/access-card-issuance/cards/recent');
-    assert.ok(recentCalls.length >= 2, 'pending 后应自动轮询');
-    assert.ok(recentCalls.every((item) => Number(item.query?.limit) === 30), '最近做卡必须 limit=30');
-    const pollGap = recentCalls[1].at - recentCalls[0].at;
-    assert.ok(pollGap >= 1400, 'pending 轮询间隔应约 1.5s，实际 ' + pollGap + 'ms');
-    await screenshot('access-status-recent-ready.png');
-
-    // 点「查看该户历史」应带上新行里的 communityId/lane/buildingNo/roomNo 跳到该户，而不是 toast 缺房号。
-    await clickText('.ac-recent-row .btn', '查看该户历史');
-    await waitFor(
-      "window.__calls.some((item) => item.url === '/access-card-issuance/cards/history' && Number(item.query?.communityId) === 2 && item.query?.address === '228/3/502')",
-      '跳转二期 228/3/502 户历史请求',
+    assert.ok(!bodyText.includes('暂无最近做卡记录'));
+    assert.deepEqual(
+      await js("[...document.querySelectorAll('[data-testid=recent-block] tbody tr[data-card-id]')].map((row) => row.children[0].textContent.trim())"),
+      ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'],
+      '最近记录第 1 页序号 1..10',
     );
-    assert.ok(!(await js('document.body.textContent')).includes('缺少房屋信息'), '有完整房号字段时不应提示缺房号');
+    assert.ok((await js("document.querySelector('[data-testid=recent-pager]').textContent")).includes('共 30 条'));
+    assert.deepEqual(
+      await js("[...document.querySelectorAll('[data-testid=recent-block] thead th')].map((th) => th.textContent.trim())"),
+      ['序号', '编号', '房号', '人事资料添加时间', 'IC卡号', 'WG卡号', '发卡时间', '最后刷卡时间', '出入口', '状态', '操作'],
+      '最近记录 11 列与发卡历史一致',
+    );
+    await js("(() => { const buttons = [...document.querySelectorAll('[data-testid=recent-pager] button')]; buttons.find((b) => b.textContent.trim() === '2').click(); })()");
+    await waitFor("document.querySelector('[data-testid=recent-block] tbody tr[data-card-id] td')?.textContent.trim() === '11'", '最近记录第 2 页');
+    assert.ok((await js('document.body.textContent')).includes('NEWA0011'));
+    await screenshot('access-recent-page2.png');
+    await js("(() => { const buttons = [...document.querySelectorAll('[data-testid=recent-pager] button')]; buttons.find((b) => b.textContent.trim() === '1').click(); })()");
+    await waitFor("document.querySelector('[data-testid=recent-block] tbody tr[data-card-id] td')?.textContent.trim() === '1'", '回到最近记录第 1 页');
+
+    // 添加到二期门禁系统：无二次确认、直接 POST 正确 URL、成功行内绿色状态。
+    const beforeApply = (await js('window.__calls')).filter((item) => item.method === 'POST').length;
+    await js("document.querySelector('[data-card-id=\"1\"] .ac-apply-btn').click()");
+    await waitFor("window.__calls.some((item) => item.method === 'POST' && item.url === '/access-card-issuance/cards/1/apply-mdb')", 'apply-mdb 请求');
+    await waitFor("document.querySelector('[data-card-id=\"1\"]')?.textContent.includes('已添加二期门禁系统')", '成功行内绿色状态');
+    assert.equal(await js("!!document.querySelector('.sheet')"), false, '添加到二期门禁系统不应弹二次确认');
+    assert.equal((await js('window.__calls')).filter((item) => item.method === 'POST').length, beforeApply + 1);
+    const applyCall = (await js('window.__calls')).find((item) => item.url === '/access-card-issuance/cards/1/apply-mdb');
+    assert.deepEqual(applyCall.data.systems, ['iccard']);
+    assert.ok((await js("document.querySelector('[data-card-id=\"1\"]').textContent")).includes('已添加二期门禁系统'));
+    await screenshot('access-recent-applied.png');
+
+    // 授权楼栋：来自 grant-options，默认勾选本房楼栋 6。
+    await click('[data-card-id="1"] .ac-grant-btn');
+    await waitFor("!!document.querySelector('.sheet')", '授权楼栋抽屉');
+    await waitFor("document.querySelectorAll('[data-grant-building]').length === 3", '二期门禁门栋选项');
+    assert.deepEqual(
+      await js("[...document.querySelectorAll('[data-grant-building]')].map((el) => el.getAttribute('data-grant-building'))"),
+      ['6', '7', '8'],
+    );
+    assert.equal(await js("document.querySelector('[data-grant-building=\"6\"]').checked"), true, '默认勾选本房所在楼栋 6');
+    assert.equal(await js("document.querySelector('[data-grant-building=\"7\"]').checked"), false);
+    assert.ok((await js("document.querySelector('.sheet').textContent")).includes('本房所在楼栋'));
+    assert.ok((await js('window.__calls')).some((item) => item.url === '/access-card-issuance/cards/1/grant-options'));
+    await screenshot('access-grant-options.png');
+    await js("document.querySelector('.sheet .x').click()");
+    await waitFor("!document.querySelector('.sheet')", '关闭授权抽屉');
+
+    // 旧后端没有 grant-options 时回退设备管理控制器列表：按 buildingNo 去重、默认本楼栋。
+    await js("window.__grantFallback = true");
+    const beforeFallback = (await js('window.__calls')).length;
+    await click('[data-card-id="1"] .ac-grant-btn');
+    await waitFor("!!document.querySelector('.sheet')", '授权楼栋抽屉（回退）');
+    await waitFor("document.querySelectorAll('[data-grant-building]').length === 2", '回退控制器门栋');
+    assert.deepEqual(
+      await js("[...document.querySelectorAll('[data-grant-building]')].map((el) => el.getAttribute('data-grant-building'))"),
+      ['6', '7'],
+      '回退时从 /door/controllers 取 buildingNo 去重',
+    );
+    assert.equal(await js("document.querySelector('[data-grant-building=\"6\"]').checked"), true, '回退时也默认勾选本楼栋');
+    const fallbackCalls = (await js('window.__calls')).slice(beforeFallback);
+    assert.ok(fallbackCalls.some((item) => item.url === '/access-card-issuance/door/controllers' && Number(item.query?.communityId) === 2), '回退必须请求门禁控制器列表');
+    await js("document.querySelector('.sheet .x').click()");
+    await waitFor("!document.querySelector('.sheet')", '关闭授权抽屉（回退）');
+
+    // 390/320 不横向溢出。
+    await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
+    await pause(400);
+    assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '390 出现横向溢出');
+    await screenshot('access-cards-390.png');
+    await call('Emulation.setDeviceMetricsOverride', { width: 320, height: 900, deviceScaleFactor: 1, mobile: false });
+    await pause(400);
+    assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '320 出现横向溢出');
+    await screenshot('access-cards-320.png');
   });
 });
 
 test('最近 30 笔一直 pending：自动重试 5 次后出现可点的重试入口，不会卡死在助手回传中', { timeout: 120000 }, async () => {
-  await withPage(async ({ js, click, clickText, waitFor, screenshot }) => {
-    await waitFor("!!document.querySelector('.findBar')", '门禁页挂载');
-    await pickHouse({ click, clickText, waitFor });
-
+  await withPage(async ({ js, click, waitFor, screenshot }) => {
+    await waitFor("!!document.querySelector('.findBar')", '门禁发卡页挂载');
     // 用尽 5 次自动重试仍 pending：必须露出「重试」入口，并说明已暂停自动刷新。
     await waitFor("!!document.querySelector('.ac-recent-retry')", '自动重试耗尽后的重试入口', 15000);
-    let bodyText = await js('document.body.textContent');
+    const bodyText = await js('document.body.textContent');
     assert.ok(bodyText.includes('助手回传中'), '仍应显示助手回传中');
     assert.ok(bodyText.includes('助手回传较慢，已暂停自动刷新'), '应说明已暂停自动刷新');
     assert.ok(bodyText.includes('OLD00001'), 'pending 期间保留旧行');
     assert.ok(!bodyText.includes('暂无最近做卡记录'), 'pending 时不得显示暂无记录');
     const beforeCalls = (await js('window.__calls')).filter((item) => item.url === '/access-card-issuance/cards/recent');
     assert.equal(beforeCalls.length, 6, '首次 + 最多 5 次自动重试，实际 ' + beforeCalls.length);
-    await screenshot('access-status-recent-stalled.png');
-
-    // 重试入口可点：重新发起查询，按钮随新一轮轮询复位。
+    await screenshot('access-recent-stalled.png');
     await click('.ac-recent-retry');
     await waitFor(
       `window.__calls.filter((item) => item.url === '/access-card-issuance/cards/recent').length > ${beforeCalls.length}`,
@@ -285,4 +342,34 @@ test('最近 30 笔一直 pending：自动重试 5 次后出现可点的重试�
     );
     await waitFor("!document.querySelector('.ac-recent-retry')", '重试后重试入口复位', 4000);
   }, '?recent-stall');
+});
+
+test('发卡历史：personCreatedAt 倒序、全量倒序序号 30..21/20..11、字段升级提示与列头 title', { timeout: 120000 }, async () => {
+  await withPage(async ({ js, click, clickText, waitFor, screenshot }) => {
+    await waitFor("!!document.querySelector('.findBar')", '门禁发卡页挂载');
+    await pickHouse({ click, clickText, waitFor });
+    await waitFor("document.querySelectorAll('[data-testid=history-block] tbody tr[data-card-id]').length === 10", '发卡历史第 1 页 10 行');
+    assert.deepEqual(
+      await js("[...document.querySelectorAll('[data-testid=history-block] tbody tr[data-card-id]')].map((row) => row.children[0].textContent.trim())"),
+      ['30', '29', '28', '27', '26', '25', '24', '23', '22', '21'],
+      '第 1 页序号按全量倒序 30..21',
+    );
+    assert.ok((await js("document.querySelector('[data-testid=history-block] .ac-history-table').textContent")).includes('10930'), '最新（personCreatedAt 最大）的行在第一页');
+    const headers = await js("[...document.querySelectorAll('[data-testid=history-block] thead th')].map((th) => ({ text: th.textContent.trim(), title: th.getAttribute('title') || '' }))");
+    assert.equal(headers.length, 11);
+    for (const name of ['人事资料添加时间', '最后刷卡时间', '出入口']) {
+      const header = headers.find((item) => item.text === name);
+      assert.ok(header && header.title.includes('需升级现场助手'), name + ' 列头应有升级说明 title');
+    }
+    assert.ok((await js("document.querySelector('[data-testid=history-block] .ac-history-table').textContent")).includes('需升级现场助手（.80）'), '空字段显示升级提示');
+    await screenshot('access-history-page1.png');
+    await js("(() => { const buttons = [...document.querySelectorAll('[data-testid=history-pager] button')]; buttons.find((b) => b.textContent.trim() === '2').click(); })()");
+    await waitFor("document.querySelector('[data-testid=history-block] tbody tr[data-card-id] td')?.textContent.trim() === '20'", '发卡历史第 2 页');
+    assert.deepEqual(
+      await js("[...document.querySelectorAll('[data-testid=history-block] tbody tr[data-card-id]')].map((row) => row.children[0].textContent.trim())"),
+      ['20', '19', '18', '17', '16', '15', '14', '13', '12', '11'],
+      '第 2 页序号 20..11',
+    );
+    await screenshot('access-history-page2.png');
+  });
 });

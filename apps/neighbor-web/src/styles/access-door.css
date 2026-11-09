@@ -272,6 +272,12 @@
 .ac-card-detail b { color: var(--ink); font-weight: 600; }
 .ac-recent-row { cursor: pointer; }
 .ac-recent-row:hover td { background: #f7f9fc; }
+/* 现场助手未上报字段：明确提示升级，不伪造数据 */
+.ac-upgrade-hint { color: var(--warn); font-size: 11.5px; white-space: normal; }
+.ac-applied-tag { white-space: nowrap; }
+.ac-apply-error { display: block; color: var(--dang); font-size: 11.5px; margin-top: 3px; max-width: 200px; white-space: normal; overflow-wrap: anywhere; }
+.ac-pager { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.ac-pager .muted { margin-right: 4px; font-size: 12px; }
 .ac-grant-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
 .ac-grant-tools .in { flex: 1; min-width: 180px; }
 .ac-building-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 12px; max-height: 260px; overflow: auto; padding: 10px 12px; border: 1px solid var(--line2); border-radius: 9px; background: var(--sunken); }

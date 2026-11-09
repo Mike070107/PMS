@@ -42,20 +42,27 @@ function harness(access, pathname = '/access-cards', states = {}) {
 function nodes(n) { if (Array.isArray(n)) return n.flatMap(nodes); if (!n || typeof n !== 'object') return []; return [n, ...nodes(n.props?.children), ...nodes(n.props?.element)]; }
 function text(n) { if (Array.isArray(n)) return n.map(text).join(''); if (n == null || typeof n === 'boolean') return ''; return typeof n === 'object' ? text(n.props?.children) : String(n); }
 
-test('access cards has its own main group and card-management child, active and searchable at existing route', () => {
+test('access cards menu uses 门禁发卡 and a separate 设备管理 child at its own route', () => {
   const h = harness(grants(), '/access-cards', { Shell: [false, true, '门禁'] });
   const nav = h.load('components/Shell.tsx').NAV.find(n => n.key === 'access-cards');
-  assert.equal(nav.name, '门禁卡管理'); assert.equal(nav.group, '门禁管理'); assert.equal(nav.to, '/access-cards');
+  assert.equal(nav.name, '门禁发卡'); assert.equal(nav.group, '门禁管理');
+  assert.equal(nav.to, '/access-cards');
+  const devices = h.load('components/Shell.tsx').NAV.find(n => n.key === 'access-devices');
+  assert.equal(devices.name, '设备管理'); assert.equal(devices.group, '门禁管理');
+  assert.equal(devices.to, '/access-devices');
   const shell = h.render('components/Shell.tsx');
   const menu = nodes(shell).find(n => n.type === 'nav');
   const group = nodes(menu).find(n => n.type === 'button' && text(n) === '门禁管理');
   assert.ok(group); assert.equal(group.props['aria-expanded'], true);
   const link = nodes(menu).find(n => n.type === 'a' && n.props.href === '/access-cards');
-  assert.equal(text(link), '门禁卡管理'); assert.equal(link.props['aria-current'], 'page');
-  const command = nodes(shell).find(n => n.props?.className === 'it' && text(n).includes('门禁卡管理'));
+  assert.equal(text(link), '门禁发卡'); assert.equal(link.props['aria-current'], 'page');
+  const devicesLink = nodes(menu).find(n => n.type === 'a' && n.props.href === '/access-devices');
+  assert.equal(text(devicesLink), '设备管理');
+  const command = nodes(shell).find(n => n.props?.className === 'it' && text(n).includes('门禁发卡'));
   assert.ok(command); command.props.onClick(); assert.deepEqual(h.navigations, ['/access-cards']);
   const app = harness(grants(), '/access-cards', { App: [{ token: 'synthetic', generation: 1 }, false, 0] }).render('App.tsx');
   assert.ok(nodes(app).some(n => n.type === 'Route' && n.props.path === '/access-cards'));
+  assert.ok(nodes(app).some(n => n.type === 'Route' && n.props.path === '/access-devices'));
 });
 
 test('existing business view permission is identical for direct route, sidebar and command search; edit or role name alone never grants view', () => {
@@ -65,7 +72,7 @@ test('existing business view permission is identical for direct route, sidebar a
     assert.equal(h.load('lib/page-access.ts').canViewPath('/access-cards', access), allowed);
     const shell = h.render('components/Shell.tsx');
     assert.equal(nodes(shell).some(n => n.type === 'a' && n.props.href === '/access-cards'), allowed);
-    assert.equal(nodes(shell).some(n => n.props?.className === 'it' && text(n).includes('门禁卡管理')), allowed);
+    assert.equal(nodes(shell).some(n => n.props?.className === 'it' && text(n).includes('门禁发卡')), allowed);
     const app = harness(access, '/access-cards', { App: [{ token: 'synthetic', generation: 1 }, false, 0] }).render('App.tsx');
     assert.equal(nodes(app).some(n => n.type === 'Route' && n.props.path === '/access-cards'), allowed);
   }
@@ -75,7 +82,7 @@ test('existing card page keeps scoped house selection and business edit guards f
   for (const edit of [false, true]) {
     const h = harness(grants(true, edit), '/access-cards', { AccessCards: [[{ id: 22 }, { id: 99 }], { houseId: 3, communityName: '合成小区' }, [], []] });
     const ui = h.render('pages/AccessCards.tsx');
-    assert.match(text(ui), /门禁卡管理/);
+    assert.match(text(ui), /门禁发卡/);
     const picker = nodes(ui).find(n => n.type === '@/components/HousePicker');
     assert.deepEqual(Array.from(picker.props.communities, c => c.id), [22]);
     const start = nodes(ui).find(n => n.type === 'button' && text(n).includes('开始发卡'));

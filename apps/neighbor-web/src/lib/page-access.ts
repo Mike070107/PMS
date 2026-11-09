@@ -3,7 +3,7 @@ import type { AdminAccess } from '@pms/shared-types';
 /** 页面与服务端权限键的映射。新路由必须登记；未登记默认不可进入。 */
 export const PAGE_ACCESS = [
   { paths: ['/today'], keys: ['dashboard'] },
-  { paths: ['/cashier', '/vehicles', '/access-cards', '/parking/main', '/parking/civil', '/records', '/standards', '/devices'], keys: ['business'] },
+  { paths: ['/cashier', '/vehicles', '/access-cards', '/access-devices', '/parking/main', '/parking/civil', '/records', '/standards', '/devices'], keys: ['business'] },
   { paths: ['/plates'], keys: ['business', 'family-cars', 'app:approve-business-manager', 'app:approve-manager'] },
   { paths: ['/family-cars'], keys: ['family-cars', 'family-cars-approve', 'app:family-car-approve', 'app:approve-business-manager'] },
   { paths: ['/pending'], keys: ['business', 'app:approve-business-manager', 'app:approve-manager'] },
