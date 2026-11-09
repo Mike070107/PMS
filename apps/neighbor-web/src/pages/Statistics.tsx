@@ -34,12 +34,13 @@ function rememberFiltersCollapsed(collapsed: boolean) {
   try { window.localStorage.setItem(FILTERS_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch { /* 忽略存储失败 */ }
 }
 
-/** 筛选草稿的默认值：管理处/收费项目全选；房屋性质除 06 空房外全选；应收到当年 12 月，收款截止留空。 */
+/** 筛选草稿的默认值：管理处/收费项目全选；房屋性质除 06 空房外全选；应收到当年 12 月，收款日期范围留空。 */
 function defaultDraft(options: StatisticsOptions): FilterDraft {
   return {
     officeCodes: options.offices.map((office) => office.officeCode),
     feeCodes: options.feeItems.map((fee) => fee.code),
     natures: options.natures.map((nature) => nature.code).filter((code) => !DEFAULT_EXCLUDED_NATURE_CODES.has(code)),
+    paidDateFrom: '',
     paidDateTo: '',
     asOfPeriod: `${dayjs().year()}12`,
   };
@@ -60,7 +61,7 @@ export default function Statistics() {
   const [options, setOptions] = useState<StatisticsOptions | null>(null);
   const [optionsError, setOptionsError] = useState('');
   const [optionsRetry, setOptionsRetry] = useState(0);
-  const [draft, setDraft] = useState<FilterDraft>({ officeCodes: [], feeCodes: [], natures: [], paidDateTo: '', asOfPeriod: '' });
+  const [draft, setDraft] = useState<FilterDraft>({ officeCodes: [], feeCodes: [], natures: [], paidDateFrom: '', paidDateTo: '', asOfPeriod: '' });
   const [reportType, setReportType] = useState<StatisticsReportType>('received');
   const reportTypeRef = useRef<StatisticsReportType>('received');
   const [applied, setApplied] = useState<AnnualQuery | null>(null);
@@ -100,6 +101,7 @@ export default function Statistics() {
           yearFrom: response.yearRange.min,
           yearTo: response.yearRange.max,
           asOfPeriod: nextDraft.asOfPeriod,
+          paidDateFrom: nextDraft.paidDateFrom,
           paidDateTo: nextDraft.paidDateTo,
         });
       })
@@ -132,6 +134,11 @@ export default function Statistics() {
 
   const submit = () => {
     if (!options || !canSubmit) return;
+    // 收款日期范围校验：只允许「从 ≤ 至」；不合法时提示且不发请求。
+    if (draft.paidDateFrom && draft.paidDateTo && draft.paidDateFrom > draft.paidDateTo) {
+      toast('收款日期起不能晚于收款日期至');
+      return;
+    }
     setDetailOpen(false);
     setDetailTarget(null);
     setApplied({
@@ -142,6 +149,7 @@ export default function Statistics() {
       yearFrom: options.yearRange.min,
       yearTo: options.yearRange.max,
       asOfPeriod: draft.asOfPeriod,
+      paidDateFrom: draft.paidDateFrom,
       paidDateTo: draft.paidDateTo,
     });
   };
@@ -307,6 +315,7 @@ export default function Statistics() {
         feeCodes={applied?.feeCodes ?? []}
         natures={applied?.natures ?? []}
         asOfPeriod={applied?.asOfPeriod ?? ''}
+        paidDateFrom={applied?.paidDateFrom ?? ''}
         paidDateTo={applied?.paidDateTo ?? ''}
       />
     </div>

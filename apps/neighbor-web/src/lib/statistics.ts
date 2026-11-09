@@ -11,7 +11,37 @@ export interface StatisticsOfficeOption {
   communityId: number | null;
   communityName: string | null;
 }
-export interface StatisticsFeeItem { code: string; name: string }
+/** 收费项目分类（旧 MIS 分类树顺序）；后端 P1.2 起 feeItems 自带 category。 */
+export const FEE_CATEGORY_ORDER = ['代收费', '其它', '日常收费', '停车收费'] as const;
+
+/** 后端旧数据没有 category 时按收费项目 code 兜底归类（与旧 MIS 分类树一致）。 */
+const FEE_CATEGORY_BY_CODE: Record<string, string> = {
+  '12': '代收费', '13': '代收费',
+  '09': '其它', '10': '其它', '11': '其它',
+  '01': '日常收费', '02': '日常收费', '03': '日常收费', '06': '日常收费',
+  '07': '日常收费', '08': '日常收费', '15': '日常收费',
+  '04': '停车收费', '05': '停车收费', '14': '停车收费', '16': '停车收费',
+};
+
+export interface StatisticsFeeItem { code: string; name: string; category?: string | null }
+
+export interface FeeCategoryGroup { category: string; items: StatisticsFeeItem[] }
+
+/** 收费项目按分类树分组：按 FEE_CATEGORY_ORDER 排序，未知分类附在最后。 */
+export function groupFeeItems(feeItems: StatisticsFeeItem[]): FeeCategoryGroup[] {
+  const buckets = new Map<string, StatisticsFeeItem[]>();
+  for (const item of feeItems) {
+    const category = item.category || FEE_CATEGORY_BY_CODE[item.code] || '其它';
+    const list = buckets.get(category);
+    if (list) list.push(item);
+    else buckets.set(category, [item]);
+  }
+  const extra = [...buckets.keys()].filter((category) => !(FEE_CATEGORY_ORDER as readonly string[]).includes(category));
+  return [...FEE_CATEGORY_ORDER, ...extra]
+    .filter((category) => buckets.has(category))
+    .map((category) => ({ category, items: buckets.get(category) ?? [] }));
+}
+
 export interface StatisticsNatureOption { code: string; name: string }
 export interface StatisticsOptions {
   offices: StatisticsOfficeOption[];
@@ -90,7 +120,8 @@ export interface AnnualQuery {
   yearTo: number | null;
   /** 应收截止年月 YYYYMM（年度/明细/逐笔必须同一值，否则明细合计与单元格对不上） */
   asOfPeriod: string;
-  /** 收款截止日期 YYYY-MM-DD，仅实收报表使用；空串 = 不限制 */
+  /** 收款日期范围 YYYY-MM-DD，仅实收报表使用；空串 = 不限制 */
+  paidDateFrom: string;
   paidDateTo: string;
 }
 
@@ -98,6 +129,7 @@ export interface FilterDraft {
   officeCodes: string[];
   feeCodes: string[];
   natures: string[];
+  paidDateFrom: string;
   paidDateTo: string;
   asOfPeriod: string;
 }
@@ -165,12 +197,13 @@ export function annualQueryParams(query: AnnualQuery) {
     yearFrom: query.yearFrom ?? undefined,
     yearTo: query.yearTo ?? undefined,
     asOfPeriod: query.asOfPeriod || undefined,
-    // 收款截止日期只对实收报表有意义；欠费报表不传，避免后端按收款日期过滤掉欠费行。
+    // 收款日期范围只对实收报表有意义；欠费报表不传，避免后端按收款日期过滤掉欠费行。
+    paidDateFrom: query.type === 'received' ? (query.paidDateFrom || undefined) : undefined,
     paidDateTo: query.type === 'received' ? (query.paidDateTo || undefined) : undefined,
   };
 }
 
-/** 明细/逐笔参数：必须和年度请求带同一组 asOfPeriod / paidDateTo，否则合计对不上。 */
+/** 明细/逐笔参数：必须和年度请求带同一组 asOfPeriod / 收款日期范围，否则合计对不上。 */
 export function detailQueryParams(base: {
   type: StatisticsReportType;
   officeCode: string;
@@ -178,6 +211,7 @@ export function detailQueryParams(base: {
   feeCodes: string[];
   natures: string[];
   asOfPeriod: string;
+  paidDateFrom: string;
   paidDateTo: string;
 }) {
   return {
@@ -187,6 +221,7 @@ export function detailQueryParams(base: {
     feeCodes: base.feeCodes.join(','),
     natures: base.natures.join(','),
     asOfPeriod: base.asOfPeriod || undefined,
+    paidDateFrom: base.type === 'received' ? (base.paidDateFrom || undefined) : undefined,
     paidDateTo: base.type === 'received' ? (base.paidDateTo || undefined) : undefined,
   };
 }
@@ -231,7 +266,7 @@ export function annualCsv(annual: AnnualSummaryResponse, context: CsvContext): s
     ['收费项目', feeText],
     ['房屋性质', natureText],
     ['应收截止年月', filters.asOfPeriod || ''],
-    ['收款截止日期', filters.paidDateTo || ''],
+    ['收款日期范围', [filters.paidDateFrom, filters.paidDateTo].filter(Boolean).join('~')],
     [],
     ['管理处', ...annual.columns.map(String), '合计'],
   ];

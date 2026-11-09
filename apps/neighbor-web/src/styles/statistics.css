@@ -32,10 +32,20 @@
 .stats-filter-float .stats-filters {
   width: 100%;
   max-height: calc(100vh - 116px);
-  overflow: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   padding: 14px 16px;
   border-radius: 14px;
   box-shadow: 0 22px 60px -28px rgba(23, 32, 51, .45), 0 2px 10px rgba(23, 32, 51, .08);
+}
+
+/* 面板内容多时只在中间滚动，「统计」「导出」固定在底部 */
+.stats-filter-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .stats-filter-mask { display: none; }
@@ -167,6 +177,47 @@
 
 .stats-check small { margin-left: auto; font-size: 11.5px; flex: none; }
 
+/* 收费项目分类树：组级复选框 + 已选/总数 + 组内项目 */
+.stats-fee-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.stats-fee-group {
+  border: 1px solid var(--line2);
+  border-radius: 9px;
+  padding: 6px 8px;
+  background: var(--sunken);
+}
+
+.stats-fee-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink2);
+}
+
+.stats-fee-group-head b { font-weight: 650; color: var(--ink); }
+
+.stats-fee-group-head small { margin-left: auto; font-size: 11.5px; flex: none; }
+
+.stats-fee-group-head input,
+.stats-fee-items input { width: 15px; height: 15px; accent-color: var(--acc); cursor: pointer; flex: none; }
+
+.stats-fee-items {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 6px;
+  margin-top: 2px;
+  padding-left: 23px;
+}
+
+.stats-fee-items .stats-check { padding: 3px 4px; font-size: 12.5px; }
+
 .stats-filter-dates {
   display: flex;
   flex-direction: column;
@@ -186,13 +237,34 @@
 
 .stats-filter-dates .ant-picker { width: 100%; }
 
+.stats-date-range-label {
+  font-size: 12.5px;
+  color: var(--ink2);
+}
+
+.stats-date-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stats-date-range .ant-picker { flex: 1; min-width: 0; }
+
+.stats-date-sep { color: var(--ink3); font-size: 12px; flex: none; }
+
 .stats-filter-actions {
   display: flex;
   gap: 8px;
   margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line2);
+  flex: none;
+  background: var(--surface);
 }
 
 .stats-filter-actions .btn { flex: 1; justify-content: center; }
+
+.stats-filter-note { flex: none; margin-top: 8px; font-size: 12px; }
 
 /* ---------- 报表目录 ---------- */
 .stats-catalog {

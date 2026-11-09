@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import Icon from '@/components/Icon';
 import DateInput from '@/components/DateInput';
-import type { FilterDraft, StatisticsOptions } from '@/lib/statistics';
+import { groupFeeItems, type FeeCategoryGroup, type FilterDraft, type StatisticsFeeItem, type StatisticsOptions } from '@/lib/statistics';
 
 export interface StatisticsFiltersProps {
   options: StatisticsOptions;
@@ -41,16 +41,75 @@ function CheckGroup({
   );
 }
 
-/** 左侧筛选：管理处/小区、收费项目、房屋性质勾选多选 + 截止日期；只在点「统计」时生效。 */
+/** 收费项目分组：组级复选框全选/取消，部分选中显示 indeterminate，并显示已选/总数。 */
+function FeeCategoryRow({
+  group, selectedCodes, onToggleGroup, onToggleItem,
+}: {
+  group: FeeCategoryGroup;
+  selectedCodes: string[];
+  onToggleGroup: (items: StatisticsFeeItem[]) => void;
+  onToggleItem: (code: string) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const selected = group.items.filter((item) => selectedCodes.includes(item.code)).length;
+  const allSelected = group.items.length > 0 && selected === group.items.length;
+  const partiallySelected = selected > 0 && !allSelected;
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = partiallySelected;
+  }, [partiallySelected]);
+  return (
+    <div className="stats-fee-group" data-fee-category={group.category} role="group" aria-label={group.category}>
+      <label className="stats-fee-group-head">
+        <input
+          ref={ref}
+          type="checkbox"
+          data-fee-group-checkbox={group.category}
+          checked={allSelected}
+          aria-checked={partiallySelected ? 'mixed' : allSelected}
+          onChange={() => onToggleGroup(group.items)}
+        />
+        <b>{group.category}</b>
+        <small className="muted">{selected}/{group.items.length}</small>
+      </label>
+      <div className="stats-fee-items">
+        {group.items.map((fee) => (
+          <label key={fee.code} className="stats-check">
+            <input
+              type="checkbox"
+              data-fee-code={fee.code}
+              checked={selectedCodes.includes(fee.code)}
+              onChange={() => onToggleItem(fee.code)}
+            />
+            <span className="stats-check-name">{fee.name}</span>
+            <small className="muted">{fee.code}</small>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** 左侧悬浮筛选：管理处/小区、收费项目分类树、房屋性质、收款日期范围；只在点「统计」时生效。 */
 export default function StatisticsFilters({
   options, draft, onChange, onSubmit, onReset, onExport, onCollapse, canExport, loading,
 }: StatisticsFiltersProps) {
   const [officeQuery, setOfficeQuery] = useState('');
+  const [feeQuery, setFeeQuery] = useState('');
   const filteredOffices = useMemo(() => {
     const keyword = officeQuery.trim();
     if (!keyword) return options.offices;
     return options.offices.filter((office) => `${office.name}${office.communityName || ''}${office.officeCode}`.includes(keyword));
   }, [officeQuery, options.offices]);
+  const feeGroups = useMemo(() => groupFeeItems(options.feeItems), [options.feeItems]);
+  // 房屋性质按 code 顺序展示（旧 MIS 13 项：01 商品房…13 私房）。
+  const natures = useMemo(() => [...options.natures].sort((a, b) => a.code.localeCompare(b.code, 'zh-CN', { numeric: true })), [options.natures]);
+  const visibleFeeGroups = useMemo(() => {
+    const keyword = feeQuery.trim();
+    if (!keyword) return feeGroups;
+    return feeGroups
+      .map((group) => ({ ...group, items: group.items.filter((fee) => `${fee.name}${fee.code}`.includes(keyword)) }))
+      .filter((group) => group.items.length > 0);
+  }, [feeGroups, feeQuery]);
 
   const canSubmit = draft.officeCodes.length > 0 && draft.feeCodes.length > 0 && draft.natures.length > 0;
   const monthValue = draft.asOfPeriod && /^\d{6}$/.test(draft.asOfPeriod)
@@ -68,6 +127,16 @@ export default function StatisticsFilters({
     </>
   );
 
+  const toggleFeeGroup = (items: StatisticsFeeItem[]) => {
+    const codes = items.map((item) => item.code);
+    const allSelected = items.every((item) => draft.feeCodes.includes(item.code));
+    onChange({
+      feeCodes: allSelected
+        ? draft.feeCodes.filter((code) => !codes.includes(code))
+        : Array.from(new Set([...draft.feeCodes, ...codes])),
+    });
+  };
+
   return (
     <aside className="card stats-filters" aria-label="统计筛选">
       <div className="stats-filter-head">
@@ -80,81 +149,105 @@ export default function StatisticsFilters({
         </div>
       </div>
 
-      <CheckGroup title="管理处 / 小区" hint="按旧系统管理处勾选，小区跟随管理处" actions={groupActions('offices', options.offices.map((office) => office.officeCode))}>
-        <div className="stats-office-search">
-          <Icon name="search" size={15} />
-          <input
-            className="in"
-            data-testid="office-search"
-            placeholder="搜索管理处 / 小区"
-            value={officeQuery}
-            onChange={(event) => setOfficeQuery(event.target.value)}
-          />
-        </div>
-        <div className="stats-check-list stats-check-list--offices" role="group" aria-label="管理处">
-          {filteredOffices.map((office) => (
-            <label key={office.officeCode} className="stats-check">
-              <input
-                type="checkbox"
-                data-office-code={office.officeCode}
-                checked={draft.officeCodes.includes(office.officeCode)}
-                onChange={() => onChange({ officeCodes: toggle(draft.officeCodes, office.officeCode) })}
-              />
-              <span className="stats-check-name">{office.name}</span>
-              <small className="muted">{office.communityName || office.officeCode}</small>
-            </label>
-          ))}
-          {!filteredOffices.length ? <div className="muted">没有匹配的管理处</div> : null}
-        </div>
-      </CheckGroup>
+      <div className="stats-filter-body">
+        <CheckGroup title="管理处 / 小区" hint="按旧系统管理处勾选，小区跟随管理处" actions={groupActions('offices', options.offices.map((office) => office.officeCode))}>
+          <div className="stats-office-search">
+            <Icon name="search" size={15} />
+            <input
+              className="in"
+              data-testid="office-search"
+              placeholder="搜索管理处 / 小区"
+              value={officeQuery}
+              onChange={(event) => setOfficeQuery(event.target.value)}
+            />
+          </div>
+          <div className="stats-check-list stats-check-list--offices" role="group" aria-label="管理处">
+            {filteredOffices.map((office) => (
+              <label key={office.officeCode} className="stats-check">
+                <input
+                  type="checkbox"
+                  data-office-code={office.officeCode}
+                  checked={draft.officeCodes.includes(office.officeCode)}
+                  onChange={() => onChange({ officeCodes: toggle(draft.officeCodes, office.officeCode) })}
+                />
+                <span className="stats-check-name">{office.name}</span>
+                <small className="muted">{office.communityName || office.officeCode}</small>
+              </label>
+            ))}
+            {!filteredOffices.length ? <div className="muted">没有匹配的管理处</div> : null}
+          </div>
+        </CheckGroup>
 
-      <CheckGroup title="收费项目" hint="旧系统 16 个收费项目" actions={groupActions('fees', options.feeItems.map((fee) => fee.code))}>
-        <div className="stats-check-list stats-check-list--grid" role="group" aria-label="收费项目">
-          {options.feeItems.map((fee) => (
-            <label key={fee.code} className="stats-check">
-              <input
-                type="checkbox"
-                data-fee-code={fee.code}
-                checked={draft.feeCodes.includes(fee.code)}
-                onChange={() => onChange({ feeCodes: toggle(draft.feeCodes, fee.code) })}
+        <CheckGroup title="收费项目" hint="按旧 MIS 分类树；勾选后统计仍传扁平 feeCodes" actions={groupActions('fees', options.feeItems.map((fee) => fee.code))}>
+          <div className="stats-office-search">
+            <Icon name="search" size={15} />
+            <input
+              className="in"
+              data-testid="fee-search"
+              placeholder="搜索收费项目"
+              value={feeQuery}
+              onChange={(event) => setFeeQuery(event.target.value)}
+            />
+          </div>
+          <div className="stats-fee-groups">
+            {visibleFeeGroups.map((group) => (
+              <FeeCategoryRow
+                key={group.category}
+                group={group}
+                selectedCodes={draft.feeCodes}
+                onToggleGroup={toggleFeeGroup}
+                onToggleItem={(code) => onChange({ feeCodes: toggle(draft.feeCodes, code) })}
               />
-              <span className="stats-check-name">{fee.name}</span>
-              <small className="muted">{fee.code}</small>
-            </label>
-          ))}
-        </div>
-      </CheckGroup>
+            ))}
+            {!visibleFeeGroups.length ? <div className="muted">没有匹配的收费项目</div> : null}
+          </div>
+        </CheckGroup>
 
-      <CheckGroup
-        title="房屋性质"
-        hint="按收费发生时点性质统计；空房（06）默认不勾选，可手动勾选"
-        actions={groupActions('natures', options.natures.map((nature) => nature.code))}
-      >
-        <div className="stats-check-list" role="group" aria-label="房屋性质">
-          {options.natures.map((nature) => (
-            <label key={nature.code} className="stats-check">
-              <input
-                type="checkbox"
-                data-nature-code={nature.code}
-                checked={draft.natures.includes(nature.code)}
-                onChange={() => onChange({ natures: toggle(draft.natures, nature.code) })}
-              />
-              <span className="stats-check-name">{nature.name}</span>
-              <small className="muted">{nature.code}</small>
-            </label>
-          ))}
-        </div>
-      </CheckGroup>
+        <CheckGroup
+          title="房屋性质"
+          hint="按收费发生时点性质统计；空房（06）默认不勾选，可手动勾选"
+          actions={groupActions('natures', natures.map((nature) => nature.code))}
+        >
+          <div className="stats-check-list" role="group" aria-label="房屋性质">
+            {natures.map((nature) => (
+              <label key={nature.code} className="stats-check">
+                <input
+                  type="checkbox"
+                  data-nature-code={nature.code}
+                  checked={draft.natures.includes(nature.code)}
+                  onChange={() => onChange({ natures: toggle(draft.natures, nature.code) })}
+                />
+                <span className="stats-check-name">{nature.name}</span>
+                <small className="muted">{nature.code}</small>
+              </label>
+            ))}
+          </div>
+        </CheckGroup>
 
-      <div className="stats-filter-dates">
-        <label>
-          收款截止日期
-          <DateInput type="date" value={draft.paidDateTo} onChange={(event) => onChange({ paidDateTo: event.target.value })} />
-        </label>
-        <label>
-          应收截止年月
-          <DateInput type="month" value={monthValue} onChange={(event) => onChange({ asOfPeriod: String(event.target.value || '').replace('-', '') })} />
-        </label>
+        <div className="stats-filter-dates">
+          <div className="stats-date-range-label">收款日期范围 <span className="muted">（仅实收，可留空）</span></div>
+          <div className="stats-date-range">
+            <DateInput
+              type="date"
+              value={draft.paidDateFrom}
+              aria-label="收款日期从"
+              placeholder="从"
+              onChange={(event) => onChange({ paidDateFrom: event.target.value })}
+            />
+            <span className="stats-date-sep">至</span>
+            <DateInput
+              type="date"
+              value={draft.paidDateTo}
+              aria-label="收款日期至"
+              placeholder="至"
+              onChange={(event) => onChange({ paidDateTo: event.target.value })}
+            />
+          </div>
+          <label>
+            应收截止年月
+            <DateInput type="month" value={monthValue} onChange={(event) => onChange({ asOfPeriod: String(event.target.value || '').replace('-', '') })} />
+          </label>
+        </div>
       </div>
 
       <div className="stats-filter-actions">
@@ -162,10 +255,10 @@ export default function StatisticsFilters({
           <Icon name="chart" size={17} />{loading ? '统计中…' : '统计'}
         </button>
         <button type="button" className="btn stats-export" data-testid="stats-export" disabled={!canExport || loading} onClick={onExport}>
-          <Icon name="download" size={17} />导出 CSV
+          <Icon name="download" size={17} />导出 Excel
         </button>
       </div>
-      {!canSubmit ? <div className="note2" role="status"><Icon name="alert" />请至少各选一个管理处、收费项目和房屋性质。</div> : null}
+      {!canSubmit ? <div className="note2 stats-filter-note" role="status"><Icon name="alert" />请至少各选一个管理处、收费项目和房屋性质。</div> : null}
     </aside>
   );
 }

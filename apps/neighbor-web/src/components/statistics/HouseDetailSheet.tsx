@@ -20,7 +20,7 @@ export interface DetailTarget {
  * 明细合计与逐笔合计都由后端返回，不在前端自算，避免与年度表口径不一致。
  */
 export default function HouseDetailSheet({
-  open, onClose, target, type, reportLabel, feeCodes, natures, asOfPeriod, paidDateTo,
+  open, onClose, target, type, reportLabel, feeCodes, natures, asOfPeriod, paidDateFrom, paidDateTo,
 }: {
   open: boolean;
   onClose: () => void;
@@ -31,6 +31,7 @@ export default function HouseDetailSheet({
   natures: string[];
   /** 与年度表同一组截止参数：明细/逐笔合计必须能和单元格对上。 */
   asOfPeriod: string;
+  paidDateFrom: string;
   paidDateTo: string;
 }) {
   const [detail, setDetail] = useState<AnnualDetailResponse | null>(null);
@@ -57,13 +58,13 @@ export default function HouseDetailSheet({
     setBillsTarget(null); setBills(null); setBillsError('');
     request<AnnualDetailResponse>({
       url: '/statistics/annual/detail',
-      query: detailQueryParams({ type, officeCode, year, feeCodes, natures, asOfPeriod, paidDateTo }),
+      query: detailQueryParams({ type, officeCode, year, feeCodes, natures, asOfPeriod, paidDateFrom, paidDateTo }),
     })
       .then((response) => { if (!cancelled) setDetail(response); })
       .catch((error) => { if (!cancelled) setDetailError(error instanceof Error && error.message ? error.message : '房屋明细读取失败'); })
       .finally(() => { if (!cancelled) setDetailLoading(false); });
     return () => { cancelled = true; };
-  }, [opened, type, officeCode, year, feeKey, natureKey, asOfPeriod, paidDateTo, detailRetry]);
+  }, [opened, type, officeCode, year, feeKey, natureKey, asOfPeriod, paidDateFrom, paidDateTo, detailRetry]);
 
   useEffect(() => {
     if (!opened || !billsTarget) return undefined;
@@ -72,7 +73,7 @@ export default function HouseDetailSheet({
     request<AnnualBillsResponse>({
       url: '/statistics/annual/detail/bills',
       query: {
-        ...detailQueryParams({ type, officeCode, year, feeCodes, natures, asOfPeriod, paidDateTo }),
+        ...detailQueryParams({ type, officeCode, year, feeCodes, natures, asOfPeriod, paidDateFrom, paidDateTo }),
         sId: billsTarget.sId ?? undefined,
       },
     })
@@ -80,7 +81,7 @@ export default function HouseDetailSheet({
       .catch((error) => { if (!cancelled) setBillsError(error instanceof Error && error.message ? error.message : '逐笔账单读取失败'); })
       .finally(() => { if (!cancelled) setBillsLoading(false); });
     return () => { cancelled = true; };
-  }, [opened, type, officeCode, year, feeKey, natureKey, asOfPeriod, paidDateTo, billsTarget, billsRetry]);
+  }, [opened, type, officeCode, year, feeKey, natureKey, asOfPeriod, paidDateFrom, paidDateTo, billsTarget, billsRetry]);
 
   const detailRows = detail?.rows ?? [];
   const billRows = bills?.rows ?? [];

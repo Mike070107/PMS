@@ -17,13 +17,24 @@ const OFFICES = [
   { officeCode: '03', name: '枫桦景苑二期B', communityId: 2, communityName: '枫桦景苑二期' },
   { officeCode: '04', name: '上海新家', communityId: 16, communityName: '上海新家' },
 ];
+// 旧 MIS 收费项目分类树：代收费 / 其它 / 日常收费 / 停车收费（后端 P1.2 在 feeItems 里带 category）。
 const FEE_ITEMS = [
-  { code: '01', name: '管理费' }, { code: '02', name: '租金' }, { code: '03', name: '保洁保安费' },
-  { code: '04', name: '泊位费' }, { code: '05', name: '临时停车费' }, { code: '06', name: '保安费' },
-  { code: '07', name: '保洁费' }, { code: '08', name: '保安保洁费' }, { code: '09', name: '网络费' },
-  { code: '10', name: '青客租金' }, { code: '11', name: '青客未签约租金' }, { code: '12', name: '水费' },
-  { code: '13', name: '电费' }, { code: '14', name: '停车管理费' }, { code: '15', name: '空房租金' },
-  { code: '16', name: '置业泊位费' },
+  { code: '01', name: '管理费', category: '日常收费' },
+  { code: '02', name: '租金', category: '日常收费' },
+  { code: '03', name: '保洁保安费', category: '日常收费' },
+  { code: '04', name: '泊位费', category: '停车收费' },
+  { code: '05', name: '临时停车费', category: '停车收费' },
+  { code: '06', name: '保安费', category: '日常收费' },
+  { code: '07', name: '保洁费', category: '日常收费' },
+  { code: '08', name: '保安保洁费', category: '日常收费' },
+  { code: '09', name: '网络费', category: '其它' },
+  { code: '10', name: '青客租金', category: '其它' },
+  { code: '11', name: '青客未签约租金', category: '其它' },
+  { code: '12', name: '水费', category: '代收费' },
+  { code: '13', name: '电费', category: '代收费' },
+  { code: '14', name: '停车管理费', category: '停车收费' },
+  { code: '15', name: '空房租金', category: '日常收费' },
+  { code: '16', name: '置业泊位费', category: '停车收费' },
 ];
 // MIS FWXZK 房屋性质字典（outputs/mis-db-sync-20261106/data/0043_dbo.FWXZK.csv，01–13 共 13 项）。
 const NATURES = [

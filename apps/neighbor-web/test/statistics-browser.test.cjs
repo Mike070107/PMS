@@ -38,7 +38,7 @@ test('统计汇总金额/CSV 纯函数：整数分格式化、UTF-8 BOM、筛选
 
   const filters = {
     type: 'arrears', officeCodes: ['02'], feeCodes: ['01'], natures: ['01', '04'],
-    yearFrom: 2004, yearTo: 2026, asOfPeriod: '202611', paidDateTo: '2026-11-09',
+    yearFrom: 2004, yearTo: 2026, asOfPeriod: '202611', paidDateFrom: '2026-01-01', paidDateTo: '2026-03-31',
   };
   const query = lib.annualQueryParams(filters);
   assert.deepEqual(JSON.parse(JSON.stringify(query)), {
@@ -46,19 +46,31 @@ test('统计汇总金额/CSV 纯函数：整数分格式化、UTF-8 BOM、筛选
     yearFrom: 2004, yearTo: 2026, asOfPeriod: '202611',
   });
 
-  // 欠费报表不传收款截止；实收才传；明细与年度使用同一组截止参数。
-  assert.equal(lib.annualQueryParams({ ...filters, type: 'arrears', paidDateTo: '2026-11-09' }).paidDateTo, undefined);
-  assert.equal(lib.annualQueryParams({ ...filters, type: 'received', paidDateTo: '2026-11-09' }).paidDateTo, '2026-11-09');
+  // 收费项目分类树：顺序 代收费/其它/日常收费/停车收费；旧数据缺 category 时按 code 兜底。
+  const grouped = lib.groupFeeItems([
+    { code: '01', name: '管理费' }, { code: '12', name: '水费' }, { code: '04', name: '泊位费' },
+    { code: '13', name: '电费' }, { code: '09', name: '网络费' }, { code: '15', name: '空房租金' },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(grouped.map((group) => group.category))), ['代收费', '其它', '日常收费', '停车收费']);
+  assert.deepEqual(JSON.parse(JSON.stringify(grouped.map((group) => group.items.map((item) => item.code)))), [['12', '13'], ['09'], ['01', '15'], ['04']]);
+
+  // 收款日期范围：欠费不传；实收才传；明细与年度使用同一组参数。
+  assert.equal(lib.annualQueryParams({ ...filters, type: 'arrears' }).paidDateFrom, undefined);
+  assert.equal(lib.annualQueryParams({ ...filters, type: 'received' }).paidDateFrom, '2026-01-01');
+  assert.equal(lib.annualQueryParams({ ...filters, type: 'received' }).paidDateTo, '2026-03-31');
   const detailParams = lib.detailQueryParams({
     type: 'arrears', officeCode: '02', year: 2014, feeCodes: ['01'], natures: ['01', '04'],
-    asOfPeriod: '202612', paidDateTo: '2026-11-09',
+    asOfPeriod: '202612', paidDateFrom: '2026-01-01', paidDateTo: '2026-03-31',
   });
   assert.equal(detailParams.asOfPeriod, '202612');
+  assert.equal(detailParams.paidDateFrom, undefined);
   assert.equal(detailParams.paidDateTo, undefined);
-  assert.equal(lib.detailQueryParams({
+  const receivedDetail = lib.detailQueryParams({
     type: 'received', officeCode: '02', year: 2014, feeCodes: ['01'], natures: ['01'],
-    asOfPeriod: '202612', paidDateTo: '2026-11-09',
-  }).paidDateTo, '2026-11-09');
+    asOfPeriod: '202612', paidDateFrom: '2026-01-01', paidDateTo: '2026-03-31',
+  });
+  assert.equal(receivedDetail.paidDateFrom, '2026-01-01');
+  assert.equal(receivedDetail.paidDateTo, '2026-03-31');
 
   const annual = {
     type: 'arrears',
@@ -219,16 +231,23 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     assert.ok(bodyText.includes('项目实收年度汇总'));
     assert.ok(bodyText.includes('按收费发生时点性质统计'), '筛选面板要说明房屋性质按收费时点统计');
     assert.equal(await js("document.querySelectorAll('[data-nature-code]').length"), 13, '房屋性质应渲染 FWXZK 全字典 01–13');
+    assert.deepEqual(
+      await js("[...document.querySelectorAll('[data-nature-code]')].map((el) => el.getAttribute('data-nature-code'))"),
+      ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13'],
+      '房屋性质按 code 顺序展示',
+    );
     assert.equal(await js("document.querySelector('[data-nature-code=\"06\"]').checked"), false, '空房 06 默认不勾选');
     assert.equal(await js("document.querySelector('[data-nature-code=\"05\"]').checked"), true);
     assert.equal(await js("document.querySelector('[data-nature-code=\"13\"]').checked"), true);
     const receivedQuery = await js("window.__calls.filter((c) => c.url === '/statistics/annual').slice(-1)[0].query");
     assert.equal(receivedQuery.type, 'received');
     assert.equal(receivedQuery.asOfPeriod, expectedAsOfPeriod, '应收截止默认当前年份 12 月');
-    assert.equal(receivedQuery.paidDateTo, undefined, '收款截止默认留空，不限制实收');
+    assert.equal(receivedQuery.paidDateTo, undefined, '收款日期默认留空，不限制实收');
+    assert.equal(receivedQuery.paidDateFrom, undefined, '收款日期默认留空，不限制实收');
     assert.equal(receivedQuery.natures, expectedDefaultNatures, '默认房屋性质 = 全字典排除 06 空房');
     assert.ok(!receivedQuery.natures.split(',').includes('06'), '默认请求不能带 06 空房');
     assert.ok(receivedQuery.natures.split(',').includes('05') && receivedQuery.natures.split(',').includes('07'), '默认请求要含 05/07 等非空房性质');
+    assert.equal(receivedQuery.feeCodes.split(',').length, 16, '默认收费项目仍是 16 项扁平 feeCodes');
     await screenshot('statistics-received-1440.png');
 
     // 悬浮筛选可收纳：收起后数据区变宽、面板消失；localStorage 记住状态。
@@ -247,6 +266,43 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     await pause(300);
     assert.ok(await js("!!document.querySelector('.stats-filters')"), '再次点击应展开筛选');
     assert.equal(await js("localStorage.getItem('statistics.filters.collapsed')"), '0');
+
+    // 收费项目分类树：4 组按旧 MIS 顺序；组级全选/半选；搜索保留分组结构。
+    const feeGroupOrder = await js("[...document.querySelectorAll('[data-fee-category]')].map((e) => e.getAttribute('data-fee-category'))");
+    assert.deepEqual(feeGroupOrder, ['代收费', '其它', '日常收费', '停车收费']);
+    assert.ok((await js("document.querySelector('[data-fee-category=\"代收费\"]').textContent")).includes('水费'));
+    assert.ok((await js("document.querySelector('[data-fee-category=\"代收费\"]').textContent")).includes('电费'));
+    assert.ok((await js("document.querySelector('[data-fee-category=\"日常收费\"]').textContent")).includes('空房租金'));
+    assert.ok((await js("document.querySelector('[data-fee-category=\"停车收费\"]').textContent")).includes('置业泊位费'));
+    assert.equal(await js("document.querySelector('[data-fee-group-checkbox=\"日常收费\"]').checked"), true);
+    await js("document.querySelector('[data-fee-group-checkbox=\"日常收费\"]').click()");
+    await pause(200);
+    assert.equal(await js("document.querySelector('[data-fee-group-checkbox=\"日常收费\"]').checked"), false, '组级取消后该组不全选');
+    assert.equal(await js("document.querySelector('[data-fee-group-checkbox=\"日常收费\"]').indeterminate"), false);
+    assert.ok((await js("document.querySelector('[data-fee-category=\"日常收费\"]').textContent")).includes('0/7'));
+    await js("document.querySelector('[data-fee-code=\"01\"]').click()");
+    await pause(200);
+    assert.equal(await js("document.querySelector('[data-fee-group-checkbox=\"日常收费\"]').indeterminate"), true, '组内部分选中应为半选态');
+    assert.equal(await js("document.querySelector('[data-fee-group-checkbox=\"日常收费\"]').checked"), false);
+    assert.ok((await js("document.querySelector('[data-fee-category=\"日常收费\"]').textContent")).includes('1/7'), '组头显示已选/总数');
+    await js("document.querySelector('[data-fee-group-checkbox=\"日常收费\"]').click()");
+    await pause(200);
+    assert.equal(await js("document.querySelector('[data-fee-group-checkbox=\"日常收费\"]').checked"), true, '再点组级复选框应全选该组');
+    assert.equal(await js("document.querySelector('[data-fee-group-checkbox=\"日常收费\"]').indeterminate"), false);
+    const setInputValue = (selector, value) => js(`(() => {
+      const el = document.querySelector(${JSON.stringify(selector)});
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      setter.call(el, ${JSON.stringify(value)});
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    })()`);
+    await setInputValue('[data-testid=fee-search]', '水费');
+    await pause(250);
+    assert.deepEqual(await js("[...document.querySelectorAll('[data-fee-category]')].map((e) => e.getAttribute('data-fee-category'))"), ['代收费'], '搜索只保留命中的分组');
+    assert.equal(await js("document.querySelectorAll('[data-fee-code=\"01\"]').length"), 0, '搜索时隐藏未命中项目');
+    await setInputValue('[data-testid=fee-search]', '');
+    await pause(250);
+    assert.equal(await js("document.querySelectorAll('[data-fee-category]').length"), 4, '清空搜索恢复 4 个分组');
+    await screenshot('statistics-fee-groups-1440.png');
 
     // 编号独立列 + 管理处名称分列；表头/单元格对齐一致；表格线；左两列 sticky。
     const headTexts = await js("[...document.querySelectorAll('.stats-annual-table thead th')].map((e) => e.textContent.trim())");
@@ -462,6 +518,43 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     await js('window.scrollTo(0, 0)');
     await pause(200);
     await screenshot('statistics-reset-default-1440.png');
+
+    // 收款日期范围：实收请求带 paidDateFrom/paidDateTo；欠费不带；from>to 时 toast 且不发请求。
+    const typeRangeDate = async (index, text) => {
+      await js(`(() => { const el = document.querySelectorAll('.stats-date-range input')[${index}]; el.focus(); el.select(); })()`);
+      await call('Input.insertText', { text });
+      for (const type of ['keyDown', 'keyUp']) {
+        await call('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+      }
+      await pause(350);
+    };
+    await js("document.querySelector('[data-report-type=received]').click()");
+    await waitFor("document.querySelector('[data-report-type=received]').classList.contains('on')", '切回实收报表');
+    await typeRangeDate(0, '2026-01-01');
+    await typeRangeDate(1, '2026-03-31');
+    assert.deepEqual(
+      await js("[...document.querySelectorAll('.stats-date-range input')].map((el) => el.value)"),
+      ['2026-01-01', '2026-03-31'],
+      '收款日期范围（从/至）应可输入',
+    );
+    await js("document.querySelector('[data-testid=stats-submit]').click()");
+    await waitFor(
+      "(() => { const list = window.__calls.filter((c) => c.url === '/statistics/annual'); const last = list[list.length - 1]; return last && last.query.type === 'received' && last.query.paidDateFrom === '2026-01-01' && last.query.paidDateTo === '2026-03-31'; })()",
+      '实收请求带收款日期范围',
+    );
+    await screenshot('statistics-date-range-1440.png');
+    await js("document.querySelector('[data-report-type=arrears]').click()");
+    await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/annual'); const last = list[list.length - 1]; return last && last.query.type === 'arrears'; })()", '切换欠费报表');
+    const arrearsQuery = await js("window.__calls.filter((c) => c.url === '/statistics/annual').slice(-1)[0].query");
+    assert.equal(arrearsQuery.paidDateFrom, undefined, '欠费报表不带收款日期起');
+    assert.equal(arrearsQuery.paidDateTo, undefined, '欠费报表不带收款日期止');
+    await typeRangeDate(0, '2026-06-01');
+    const beforeInvalid = await js("window.__calls.filter((c) => c.url === '/statistics/annual').length");
+    await js("document.querySelector('[data-testid=stats-submit]').click()");
+    await waitFor("document.body.textContent.includes('收款日期起不能晚于收款日期至')", '收款日期范围错误提示');
+    await pause(400);
+    assert.equal(await js("window.__calls.filter((c) => c.url === '/statistics/annual').length"), beforeInvalid, '非法收款日期范围不应发请求');
+    await screenshot('statistics-date-range-invalid-1440.png');
   });
 });
 
