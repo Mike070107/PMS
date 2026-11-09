@@ -8,6 +8,14 @@ export interface AccessCardLegacyHistoryEntry {
   icCardNo: string | null;
   issuedAt: string | null;
   personName?: string | null;
+  /** 捷顺 MC.CardInfo.ID；/cards/:id 用它定位。 */
+  cardInfoId?: number | null;
+  /** 捷顺 HR.Person.OptDate。 */
+  personCreatedAt?: string | null;
+  /** 捷顺 MC.LastBrushInfo.LastBrushCardTime。 */
+  lastSwipeAt?: string | null;
+  /** 捷顺 MC.Device.Name。 */
+  lastDevice?: string | null;
 }
 
 export interface AccessCardPermissionEntry {

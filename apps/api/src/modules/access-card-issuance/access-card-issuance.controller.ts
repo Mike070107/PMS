@@ -34,6 +34,8 @@ import {
   CreateAccessDoorOperationDto,
   OpenAccessDoorDto,
   CheckDoorOnlineDto,
+  ApplyLegacyCardMdbDto,
+  GrantLegacyCardBoardsDto,
   CreateAccessCardLifecycleDto,
   EnrollAccessCardAgentDto,
   LegacyCardCheckReportDto,
@@ -284,10 +286,68 @@ export class AccessCardIssuanceController {
     return this.service.create(dto, user, access);
   }
 
+  @Get('cards/history')
+  @RequirePermission('business', 'view')
+  legacyCardHistory(
+    @Query('communityId') communityId: string | undefined,
+    @Query('address') address: string | undefined,
+    @Query('roomKey') roomKey: string | undefined,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    if (!communityId || !/^\d+$/.test(communityId)) throw new BadRequestException('communityId 不合法');
+    if (!address && !roomKey) throw new BadRequestException('请提供 address 或 roomKey');
+    return this.service.getLegacyCardHistory(Number(communityId), address, roomKey, user, access);
+  }
+
+  @Get('cards/recent')
+  @RequirePermission('business', 'view')
+  legacyCardRecent(
+    @Query('limit') limit: string | undefined,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    if (limit != null && limit !== '' && !/^\d+$/.test(limit)) throw new BadRequestException('limit 不合法');
+    return this.service.getLegacyCardRecent(user, access,
+      limit == null || limit === '' ? 30 : Number(limit));
+  }
+
   @Post('cards/lifecycle')
   @RequirePermission('business', 'edit')
   requestCardLifecycle(@Body() dto: CreateAccessCardLifecycleDto, @CurrentUser() user: AuthUser) {
     return this.service.requestCardLifecycle(dto, user);
+  }
+
+  @Get('cards/:id')
+  @RequirePermission('business', 'view')
+  legacyCard(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.getLegacyCard(id, user, access);
+  }
+
+  @Post('cards/:id/apply-mdb')
+  @RequirePermission('business', 'edit')
+  applyLegacyCardMdb(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ApplyLegacyCardMdbDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.applyLegacyCardMdb(id, dto, user, access);
+  }
+
+  @Post('cards/:id/grant-boards')
+  @RequirePermission('business', 'edit')
+  grantLegacyCardBoards(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: GrantLegacyCardBoardsDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.grantLegacyCardBoards(id, dto, user, access);
   }
 
   @Post('houses/:houseId/history/:historyId/authorizations')

@@ -198,6 +198,26 @@ export class LegacyHistoryEntryDto {
   @IsString()
   @MaxLength(160)
   personName?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  cardInfoId?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  personCreatedAt?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  lastSwipeAt?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  lastDevice?: string;
 }
 
 export class LegacyHistoryReportDto {
@@ -391,6 +411,33 @@ export class CheckDoorOnlineDto {
   @Type(() => Number)
   @IsInt({ each: true })
   controllerIds?: number[];
+}
+
+export class ApplyLegacyCardMdbDto {
+  @IsArray()
+  @ArrayMaxSize(2)
+  @ArrayUnique()
+  @IsIn(['iccard', 'mjsystem'], { each: true })
+  systems: Array<'iccard' | 'mjsystem'>;
+}
+
+export class GrantLegacyCardBoardsDto {
+  /** 预留主板键；当前门禁路由以 buildingNos 为准，传了也只做校验。 */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @IsString({ each: true })
+  boardKeys?: string[];
+
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @IsString({ each: true })
+  buildingNos: string[];
+
+  @IsIn(['add', 'remove'])
+  mode: 'add' | 'remove';
 }
 
 export class CreateAccessCardLifecycleDto {

@@ -80,6 +80,8 @@ import {
   CreateAccessCardLifecycleDto,
   OpenAccessDoorDto,
   CheckDoorOnlineDto,
+  ApplyLegacyCardMdbDto,
+  GrantLegacyCardBoardsDto,
 } from './dto';
 import { agentTokenMatches, issueAgentSecret } from './agent-auth';
 import { prepareFamilyRegistration, validateRegistrationGarageNumbers, supportsFamilyActivation } from './parking-family';
@@ -98,6 +100,12 @@ import type {
 import type { ParkingHistoryChange, ParkingHistoryEventType } from '../../entities/parking-history.entity';
 import type { AccessPermissionReportDto } from './dto';
 import { sortAccessCardHistoryNewestFirst, verifiedHistoryAccessStatus } from './access-card-history.util';
+import {
+  mapLegacyCardRow,
+  normalizeLegacyNumber,
+  parseLegacyCardRoomInput,
+  type LegacyCardRow,
+} from './legacy-card-history.util';
 import {
   parkingLegacyRoomFromName,
   parkingPmsBuildingKey,
@@ -312,19 +320,7 @@ export class AccessCardIssuanceService {
     const agents = await this.agentRepo.find({ where: { tenantId, kind: 'legacy_sync', enabled: true } });
     if (!agents.some((agent) => effectiveAgentStatus(agent) === 'online' && supportsLegacyRecentCards(agent.version)))
       throw new ServiceUnavailableException('捷顺最近 30 笔查询需要在线的 2.5.28 或更新版本 .80 数据同步助手');
-    let snapshot = await this.legacySnapshotRepo.findOne({ where: { tenantId, roomKey: '__recent_js_cards__' } });
-    if (!snapshot) {
-      snapshot = this.legacySnapshotRepo.create({ tenantId, roomKey: '__recent_js_cards__', status: 'pending',
-        history: [], issuedCount: 0, nextSequence: 1, requestedAt: new Date(), refreshedAt: null,
-        leaseAgentKey: null, leaseExpiresAt: null, lastError: null, permissionStatus: 'idle',
-        permissionSubjects: [], permissions: [], permissionRequestedAt: null, permissionRefreshedAt: null,
-        permissionLeaseAgentKey: null, permissionLeaseExpiresAt: null, permissionLastError: null,
-        createdBy: user.id, updatedBy: user.id });
-    } else if (snapshot.status !== 'pending' || !snapshot.leaseExpiresAt || snapshot.leaseExpiresAt < new Date()) {
-      snapshot.status = 'pending'; snapshot.history = []; snapshot.requestedAt = new Date();
-      snapshot.leaseAgentKey = null; snapshot.leaseExpiresAt = null; snapshot.lastError = null;
-    }
-    await this.legacySnapshotRepo.save(snapshot);
+    const snapshot = await this.requestRecentLegacySnapshot(tenantId, user.id);
     return this.recentLegacyCardResponse(snapshot, tenantId);
   }
 
@@ -381,6 +377,7 @@ export class AccessCardIssuanceService {
       return {
         ...row,
         wgCardNo,
+        communityId: community?.id ?? null,
         houseId: house?.id ?? null,
         roomKey: house && building ? legacyRoomKey(building.lane, building.buildingNo, house.roomNo) : null,
         projectPhase: phase,
@@ -395,6 +392,234 @@ export class AccessCardIssuanceService {
       error: snapshot.status === 'error' ? snapshot.lastError : null, refreshedAt: snapshot.refreshedAt,
       permissionStatus: snapshot.permissionStatus, permissions: snapshot.permissionStatus === 'ready' ? snapshot.permissions : [],
       permissionError: snapshot.permissionStatus === 'error' ? snapshot.permissionLastError : null };
+  }
+
+  /** 按户查询捷顺发卡历史；地址支持 228/50/202、228/50/202/4、已隐藏前缀。 */
+  async getLegacyCardHistory(
+    communityId: number,
+    address: string | undefined,
+    roomKey: string | undefined,
+    user: AuthUser,
+    access?: ResolvedAccess,
+  ) {
+    const tenantId = this.requireTenant(user);
+    const context = await this.resolveLegacyRoomByInput(tenantId, communityId, address || roomKey || '', access);
+    const legacyAgents = await this.agentRepo.find({ where: { tenantId, kind: 'legacy_sync', enabled: true } });
+    if (!legacyAgents.some((agent) => effectiveAgentStatus(agent) === 'online')) {
+      throw new ServiceUnavailableException('捷顺发卡历史查询需要在线的 .80 旧库同步助手');
+    }
+    const snapshot = await this.waitLegacyHistory(
+      await this.requestLegacyHistory(tenantId, context.legacyStorageRoomKey, user.id),
+      tenantId,
+    );
+    const rows = snapshot.status === 'ready'
+      ? snapshot.history.map((row, index) => mapLegacyCardRow(row, index + 1))
+      : [];
+    return {
+      communityId,
+      address: address || roomKey || context.roomKey,
+      roomKey: context.roomKey,
+      status: snapshot.status,
+      rows,
+      error: snapshot.status === 'error' ? snapshot.lastError : null,
+      refreshedAt: snapshot.refreshedAt,
+    };
+  }
+
+  /** 最近 30 笔捷顺发卡记录；全公司或当前管理处范围。 */
+  async getLegacyCardRecent(user: AuthUser, access?: ResolvedAccess, limit = 30) {
+    const tenantId = this.requireTenant(user);
+    const scope = scopeCommunityIds(access);
+    const max = Math.min(Math.max(Number.isFinite(limit) ? Math.trunc(limit) : 30, 1), 30);
+    const agents = await this.agentRepo.find({ where: { tenantId, kind: 'legacy_sync', enabled: true } });
+    if (!agents.some((agent) => effectiveAgentStatus(agent) === 'online' && supportsLegacyRecentCards(agent.version))) {
+      throw new ServiceUnavailableException('捷顺最近发卡查询需要在线的 2.5.28 或更新版本 .80 数据同步助手');
+    }
+    const snapshot = await this.requestRecentLegacySnapshot(tenantId, user.id);
+    const recent = await this.recentLegacyCardResponse(snapshot, tenantId);
+    let rows = recent.rows.map((row, index) => ({
+      ...row,
+      ...mapLegacyCardRow(row as Parameters<typeof mapLegacyCardRow>[0], index + 1),
+    }));
+    if (scope) rows = rows.filter((row) => row.communityId != null && scope.includes(row.communityId));
+    return { ...recent, rows: rows.slice(0, max) };
+  }
+
+  /** 单卡详情 + 已写入 Access 库/已授权楼栋聚合。 */
+  async getLegacyCard(id: number, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const found = await this.findLegacyCardById(tenantId, id);
+    if (!found) throw new NotFoundException('捷顺发卡记录不存在或已过期，请先刷新发卡历史');
+    const context = await this.resolveLegacyCardRoom(tenantId, found.row, access);
+    const mapped = mapLegacyCardRow(found.row);
+    const tasks = mapped.wgCardNo
+      ? await this.authorizationRepo.find({
+        where: { tenantId, wgCardNo: mapped.wgCardNo },
+        order: { createdAt: 'DESC' },
+        take: 100,
+      })
+      : [];
+    const appliedSystems = new Set<string>();
+    const grantedBuildings = new Set<string>();
+    if (found.snapshot.permissionStatus === 'ready' && mapped.wgCardNo) {
+      for (const permission of found.snapshot.permissions) {
+        if (permission.wgCardNo !== mapped.wgCardNo) continue;
+        appliedSystems.add(permission.accessSystem);
+        if (permission.buildingNo) grantedBuildings.add(normalizeBuildingNo(permission.buildingNo));
+      }
+    }
+    for (const task of [...tasks].reverse()) {
+      if (task.status !== 'completed') continue;
+      if (task.operation === 'access_database_only') {
+        for (const target of task.targetBuildings ?? []) appliedSystems.add(target.accessSystem);
+      } else if (task.operation === 'controller_upload') {
+        for (const target of task.targetBuildings ?? []) {
+          appliedSystems.add(target.accessSystem);
+          grantedBuildings.add(normalizeBuildingNo(target.buildingNo));
+        }
+      } else if (task.operation === 'controller_revoke') {
+        for (const target of task.targetBuildings ?? []) grantedBuildings.delete(normalizeBuildingNo(target.buildingNo));
+      }
+    }
+    return {
+      ...mapped,
+      communityId: context?.community.id ?? null,
+      buildingNo: context?.building.buildingNo ?? null,
+      roomKey: context?.roomKey ?? null,
+      houseId: context?.house.id ?? null,
+      appliedSystems: [...appliedSystems].sort(),
+      grantedBuildings: [...grantedBuildings].sort(),
+      latestTasks: tasks.slice(0, 10).map((task) => this.historyAuthorizationResponse(task)),
+    };
+  }
+
+  /** 把捷顺卡写入 .88 Access 库（iCCard / MjSystem），复用历史卡授权任务通道。 */
+  async applyLegacyCardMdb(id: number, dto: ApplyLegacyCardMdbDto, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const found = await this.findLegacyCardById(tenantId, id);
+    if (!found) throw new NotFoundException('捷顺发卡记录不存在或已过期，请先刷新发卡历史');
+    if (!dto.systems?.length) throw new BadRequestException('请至少选择一个 Access 库');
+    const context = await this.resolveLegacyCardRoom(tenantId, found.row, access, true);
+    if (!context) throw new BadRequestException('未能在 PMS 精确匹配这张卡的房号，无法写入 Access 库');
+    const mapped = mapLegacyCardRow(found.row);
+    if (!mapped.wgCardNo) throw new BadRequestException('IC 卡号无法换算 WG 卡号，无法写入 Access 库');
+    const homeSystem = accessSystemOf('phase2', context.building.buildingNo);
+    const results: Array<{ system: 'iccard' | 'mjsystem'; status: 'queued' | 'failed'; taskId?: number; error?: string }> = [];
+    const taskIds: number[] = [];
+    for (const system of Array.from(new Set(dto.systems))) {
+      if (homeSystem !== system) {
+        results.push({
+          system,
+          status: 'failed',
+          error: `这张卡属于 ${homeSystem ?? '未配置'} 门禁系统，不能直接写入 ${system}；请先授权对应楼栋主板`,
+        });
+        continue;
+      }
+      try {
+        const task = await this.enqueueHistoryAuthorization({
+          tenantId,
+          houseId: context.house.id,
+          historyId: 0,
+          roomKey: context.roomKey,
+          cardSequence: mapped.sequence,
+          operation: 'access_database_only',
+          icCardNo: mapped.icCardNo,
+          wgCardNo: mapped.wgCardNo,
+          targetBuildings: [{
+            id: context.building.id,
+            buildingNo: context.building.buildingNo,
+            accessSystem: system,
+          }],
+          idempotencyKey: `card-apply-${id}-${system}-${Date.now()}`,
+          userId: user.id,
+        });
+        if (!task) throw new ServiceUnavailableException('Access 库写入任务创建失败');
+        taskIds.push(task.id);
+        results.push({ system, status: 'queued', taskId: task.id });
+      } catch (error) {
+        results.push({ system, status: 'failed', error: error instanceof Error ? error.message : '写入任务创建失败' });
+      }
+    }
+    await this.writeLegacyCardAudit(tenantId, id, 'access_card_apply_mdb', {
+      systems: dto.systems,
+      taskIds,
+      results,
+    }, user.id);
+    return { taskIds, results };
+  }
+
+  /**
+   * 授权/撤销到多栋楼主板：每栋一条任务，单栋入队失败不影响其他楼栋。
+   * 返回的 ok 是“任务已入队”，最终控制器回执看 GET /cards/:id 或任务详情。
+   */
+  async grantLegacyCardBoards(id: number, dto: GrantLegacyCardBoardsDto, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const found = await this.findLegacyCardById(tenantId, id);
+    if (!found) throw new NotFoundException('捷顺发卡记录不存在或已过期，请先刷新发卡历史');
+    if (!dto.buildingNos?.length) throw new BadRequestException('请至少选择一栋楼');
+    const context = await this.resolveLegacyCardRoom(tenantId, found.row, access, true);
+    if (!context) throw new BadRequestException('未能在 PMS 精确匹配这张卡的房号，无法授权楼栋主板');
+    const mapped = mapLegacyCardRow(found.row);
+    const buildings = await this.buildingRepo.find({ where: { tenantId, communityId: context.community.id } });
+    const gatewayAgents = await this.agentRepo.find({ where: { tenantId, kind: 'access_gateway', enabled: true } });
+    const gateway = orderAgentsByAvailability(gatewayAgents).find((agent) =>
+      effectiveAgentStatus(agent) === 'online'
+      && agent.capabilities?.remoteDoorControl === true
+      && supportsRemoteDoorControl(agent.version));
+    const results: Array<{ buildingNo: string; status: 'ok' | 'offline' | 'failed'; taskId?: number; error?: string }> = [];
+    const taskIds: number[] = [];
+    for (const rawBuildingNo of Array.from(new Set(dto.buildingNos))) {
+      const buildingNo = normalizeBuildingNo(rawBuildingNo);
+      const building = buildings.find((item) => normalizeBuildingNo(item.buildingNo) === buildingNo);
+      if (!building) {
+        results.push({ buildingNo: rawBuildingNo, status: 'failed', error: '楼栋不属于这张卡所在小区' });
+        continue;
+      }
+      if (!mapped.wgCardNo) {
+        results.push({ buildingNo: rawBuildingNo, status: 'failed', error: 'IC 卡号无法换算 WG 卡号' });
+        continue;
+      }
+      const system = accessSystemOf('phase2', building.buildingNo);
+      if (!system) {
+        results.push({ buildingNo: rawBuildingNo, status: 'failed', error: '该楼栋门禁路由尚未配置' });
+        continue;
+      }
+      if (!gateway) {
+        results.push({ buildingNo: rawBuildingNo, status: 'offline', error: '门禁网关离线或版本低于 2.5.46' });
+        continue;
+      }
+      try {
+        const task = await this.enqueueHistoryAuthorization({
+          tenantId,
+          houseId: context.house.id,
+          historyId: 0,
+          roomKey: context.roomKey,
+          cardSequence: mapped.sequence,
+          operation: dto.mode === 'add' ? 'controller_upload' : 'controller_revoke',
+          icCardNo: mapped.icCardNo,
+          wgCardNo: mapped.wgCardNo,
+          targetBuildings: [{
+            id: building.id,
+            buildingNo: building.buildingNo,
+            accessSystem: system,
+          }],
+          idempotencyKey: `card-grant-${id}-${buildingNo}-${dto.mode}-${Date.now()}-${taskIds.length}`,
+          userId: user.id,
+        });
+        if (!task) throw new ServiceUnavailableException('门禁任务创建失败');
+        taskIds.push(task.id);
+        results.push({ buildingNo: rawBuildingNo, status: 'ok', taskId: task.id });
+      } catch (error) {
+        results.push({ buildingNo: rawBuildingNo, status: 'failed', error: error instanceof Error ? error.message : '门禁任务创建失败' });
+      }
+    }
+    await this.writeLegacyCardAudit(tenantId, id, `access_card_grant_boards_${dto.mode}`, {
+      buildingNos: dto.buildingNos,
+      boardKeys: dto.boardKeys ?? null,
+      taskIds,
+      results,
+    }, user.id);
+    return { taskIds, results };
   }
 
   async operateRecentLegacyCard(
@@ -2941,6 +3166,10 @@ export class AccessCardIssuanceService {
         icCardNo: row.icCardNo?.toUpperCase() || null,
         issuedAt: row.issuedAt || null,
         personName: row.personName?.trim() || null,
+        cardInfoId: row.cardInfoId ?? null,
+        personCreatedAt: row.personCreatedAt || null,
+        lastSwipeAt: row.lastSwipeAt || null,
+        lastDevice: row.lastDevice?.trim() || null,
       }));
       snapshot.issuedCount = dto.issuedCount ?? history.length;
       snapshot.nextSequence = dto.nextSequence ?? Math.max(0, ...history.map((row) => row.sequence)) + 1;
@@ -3467,6 +3696,171 @@ export class AccessCardIssuanceService {
         roomLabel: null,
       }))
       .reverse();
+  }
+
+  private async requestRecentLegacySnapshot(tenantId: number, userId: number) {
+    let snapshot = await this.legacySnapshotRepo.findOne({ where: { tenantId, roomKey: '__recent_js_cards__' } });
+    if (!snapshot) {
+      snapshot = this.legacySnapshotRepo.create({
+        tenantId, roomKey: '__recent_js_cards__', status: 'pending',
+        history: [], issuedCount: 0, nextSequence: 1, requestedAt: new Date(), refreshedAt: null,
+        leaseAgentKey: null, leaseExpiresAt: null, lastError: null, permissionStatus: 'idle',
+        permissionSubjects: [], permissions: [], permissionRequestedAt: null, permissionRefreshedAt: null,
+        permissionLeaseAgentKey: null, permissionLeaseExpiresAt: null, permissionLastError: null,
+        createdBy: userId, updatedBy: userId,
+      });
+    } else if (snapshot.status !== 'pending' || !snapshot.leaseExpiresAt || snapshot.leaseExpiresAt < new Date()) {
+      snapshot.status = 'pending'; snapshot.history = []; snapshot.requestedAt = new Date();
+      snapshot.leaseAgentKey = null; snapshot.leaseExpiresAt = null; snapshot.lastError = null;
+      snapshot.updatedBy = userId;
+    }
+    return this.legacySnapshotRepo.save(snapshot);
+  }
+
+  /** 房号地址 → PMS 楼栋/房产（支持 228/50/202、已隐藏前缀、省略弄号）。 */
+  private async resolveLegacyRoomByInput(
+    tenantId: number,
+    communityId: number,
+    input: string,
+    access?: ResolvedAccess,
+  ): Promise<{
+    community: Community;
+    building: Building;
+    house: House;
+    roomKey: string;
+    legacyStorageRoomKey: string;
+  }> {
+    const community = await this.communityRepo.findOne({ where: { id: communityId, tenantId } });
+    if (!community) throw new NotFoundException('小区不存在');
+    const scope = scopeCommunityIds(access);
+    if (scope && !scope.includes(community.id)) throw new ForbiddenException('该小区不在你的管理范围内');
+    const trimmed = (input ?? '').trim();
+    if (!trimmed) throw new BadRequestException('请输入房号，如 228/50/202');
+    const parsed = parseLegacyCardRoomInput(trimmed);
+    const buildings = await this.buildingRepo.find({ where: { tenantId, communityId: community.id } });
+    let building: Building | undefined;
+    let house: House | undefined;
+    if (parsed) {
+      building = buildings.find((item) =>
+        (parsed.lane == null || normalizeLegacyNumber(item.lane) === normalizeLegacyNumber(parsed.lane))
+        && normalizeLegacyNumber(item.buildingNo) === normalizeLegacyNumber(parsed.buildingNo));
+      if (building) {
+        house = await this.houseRepo.findOne({ where: { tenantId, buildingId: building.id, roomNo: parsed.roomNo } }) ?? undefined;
+        if (!house) {
+          const houses = await this.houseRepo.find({ where: { tenantId, buildingId: building.id } });
+          house = houses.find((item) => normalizeLegacyNumber(item.roomNo) === normalizeLegacyNumber(parsed.roomNo));
+        }
+      }
+    }
+    if (!building || !house) {
+      const hit = await resolveAddressForTenant(this.houseRepo.manager.connection, tenantId, trimmed).catch(() => null);
+      const candidateIds = hit?.allHouseIds ?? [];
+      if (candidateIds.length) {
+        const houses = await this.houseRepo.find({ where: { tenantId, id: In(candidateIds) } });
+        for (const candidate of houses) {
+          const candidateBuilding = buildings.find((item) => item.id === candidate.buildingId);
+          if (candidateBuilding) { building = candidateBuilding; house = candidate; break; }
+        }
+      }
+    }
+    if (!building || !house) throw new NotFoundException('PMS 中没有找到这个房号');
+    return {
+      community,
+      building,
+      house,
+      roomKey: legacyRoomKey(building.lane, building.buildingNo, house.roomNo),
+      legacyStorageRoomKey: legacyDatabaseRoomKey(building.lane, building.buildingNo, house.roomNo),
+    };
+  }
+
+  /** 捷顺卡记录的房号 → PMS 楼栋/房产；写入类接口要求 phase2。 */
+  private async resolveLegacyCardRoom(
+    tenantId: number,
+    row: { personName?: string | null },
+    access?: ResolvedAccess,
+    requireWritable = false,
+  ): Promise<{
+    community: Community;
+    building: Building;
+    house: House;
+    roomKey: string;
+    legacyStorageRoomKey: string;
+  } | null> {
+    const parsed = parseLegacyAccessCardRoomName(row.personName)
+      ?? parseLegacyCardRoomInput((row.personName ?? '').replace(/^\s*已隐藏\s*/, ''));
+    if (!parsed) return null;
+    const buildings = await this.buildingRepo.find({ where: { tenantId } });
+    const matches = buildings.filter((item) =>
+      (parsed.lane == null || normalizeLegacyNumber(item.lane) === normalizeLegacyNumber(parsed.lane))
+      && normalizeLegacyNumber(item.buildingNo) === normalizeLegacyNumber(parsed.buildingNo));
+    if (matches.length !== 1) return null;
+    const building = matches[0];
+    const community = await this.communityRepo.findOne({ where: { id: building.communityId, tenantId } });
+    if (!community) return null;
+    const scope = scopeCommunityIds(access);
+    if (scope && !scope.includes(community.id)) throw new ForbiddenException('这张卡不在你的管理范围内');
+    if (requireWritable && projectPhaseOf(community.name) !== 'phase2') {
+      throw new BadRequestException('一期门禁卡不需要写入 .88 楼栋门禁系统');
+    }
+    const houses = await this.houseRepo.find({ where: { tenantId, buildingId: building.id } });
+    const house = houses.find((item) => normalizeLegacyNumber(item.roomNo) === normalizeLegacyNumber(parsed.roomNo));
+    if (!house) return null;
+    return {
+      community,
+      building,
+      house,
+      roomKey: legacyRoomKey(building.lane, building.buildingNo, house.roomNo),
+      legacyStorageRoomKey: legacyDatabaseRoomKey(building.lane, building.buildingNo, house.roomNo),
+    };
+  }
+
+  private async waitLegacyHistory(snapshot: AccessCardLegacySnapshot, tenantId: number) {
+    let current = snapshot;
+    for (let attempt = 0; attempt < 10 && current.status === 'pending'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const next = await this.legacySnapshotRepo.findOne({ where: { id: current.id, tenantId } });
+      if (!next) break;
+      current = next;
+    }
+    return current;
+  }
+
+  private async findLegacyCardById(tenantId: number, id: number) {
+    const snapshots = await this.legacySnapshotRepo.find({
+      where: { tenantId },
+      order: { refreshedAt: 'DESC' },
+      take: 200,
+    });
+    for (const snapshot of snapshots) {
+      const row = snapshot.history.find((entry) =>
+        (typeof entry.cardInfoId === 'number' ? entry.cardInfoId : null) === id
+        || (entry.cardInfoId == null && entry.personId === id));
+      if (row) return { row, snapshot };
+    }
+    return null;
+  }
+
+  private async writeLegacyCardAudit(
+    tenantId: number,
+    cardId: number,
+    action: string,
+    detail: Record<string, unknown>,
+    userId: number,
+  ): Promise<void> {
+    const repo = this.authorizationRepo.manager.getRepository(BusinessLog);
+    await repo.save(repo.create({
+      tenantId,
+      transactionId: null,
+      action,
+      detail: {
+        cardId,
+        ...detail,
+        triggeredBy: userId,
+        triggeredAt: new Date().toISOString(),
+      },
+      createdBy: userId,
+      updatedBy: userId,
+    }));
   }
 
   private async requestLegacyHistory(tenantId: number, roomKey: string, userId: number) {
