@@ -1253,7 +1253,9 @@ export class RepairsService implements OnModuleInit {
       // 企业管理员等更宽权限，只要请求 scope=mine，就只能返回 assignee_id=本人。
       // 这档必须放在其它角色/权限分流之前，避免宽权限把“我的”解释成“我能管理的”。
       where.assigneeId = user.id;
-      if (!query.status) {
+      if (query.activeOnly === '1') {
+        where.status = In([WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL]);
+      } else if (!query.status) {
         where.status = Not(In([WorkOrderStatus.CREATED, WorkOrderStatus.DISPATCHED, WorkOrderStatus.VOIDED]));
       }
     } else if (query.scope === 'done') {
@@ -1367,7 +1369,7 @@ export class RepairsService implements OnModuleInit {
     // 单测里的轻量仓库桩只有 find；生产仓库走带报修表联查的完整排序。
     // 「已完结」是终态清单，最近结束的排前面 —— 沿用「先报先修」的升序会让 100 条截断
     // 只剩最老的那批，最近修完的一张都看不到。
-    const fetchOrders = (workOrderWhere: FindOptionsWhere<WorkOrder> | FindOptionsWhere<WorkOrder>[], finishedFirst: boolean, take = 100) => typeof (this.workOrderRepo as any).createQueryBuilder === 'function'
+    const fetchOrders = (workOrderWhere: FindOptionsWhere<WorkOrder> | FindOptionsWhere<WorkOrder>[], finishedFirst: boolean, take: number | null = 100) => typeof (this.workOrderRepo as any).createQueryBuilder === 'function'
       ? (() => {
           const qb = this.workOrderRepo
             .createQueryBuilder('wo')
@@ -1387,12 +1389,13 @@ export class RepairsService implements OnModuleInit {
               .addOrderBy('request.createdAt', 'ASC')
               .addOrderBy('wo.id', 'ASC');
           }
-          return qb.take(take).getMany();
+          if (take !== null) qb.take(take);
+          return qb.getMany();
         })()
       : this.workOrderRepo.find({
           where: workOrderWhere,
           order: { id: finishedFirst ? 'DESC' : 'ASC' },
-          take,
+          take: take ?? undefined,
         });
     // 不限状态的列表（工单调度「进行中 / 全部」、小程序「全部」）：先取全部没结束的单，
     // 剩下的名额给最近结束的单。原来混在一起按「先报先修」取前 100，单子总数过 100 后
@@ -1408,7 +1411,7 @@ export class RepairsService implements OnModuleInit {
         wheres.map((w) => ({ ...w, status: In([WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED]) })), true, 100 - open.length);
       workOrders = [...open, ...rest];
     } else {
-      workOrders = await fetchOrders(workOrderWhere, query.scope === 'done');
+      workOrders = await fetchOrders(workOrderWhere, query.scope === 'done', query.scope === 'mine' && query.activeOnly === '1' && user.role !== UserRole.OWNER ? null : 100);
     }
     const requestIds = workOrders.map((item) => item.requestId);
     if (!requestIds.length) return workOrders;

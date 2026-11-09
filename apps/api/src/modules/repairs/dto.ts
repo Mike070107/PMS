@@ -342,6 +342,10 @@ export class WorkOrdersQueryDto {
   @IsIn(['mine', 'pool', 'dispatch', 'reported', 'all', 'done'])
   scope?: 'mine' | 'pool' | 'dispatch' | 'reported' | 'all' | 'done';
 
+  @IsOptional()
+  @IsIn(['1'])
+  activeOnly?: '1';
+
   /**
    * 关键词：单号 / 报修地址 / 故障描述。
    * 办公室在派单台上查「上次那单谁修的」，只能靠这几样想起来，

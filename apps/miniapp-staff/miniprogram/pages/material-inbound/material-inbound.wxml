@@ -60,9 +60,9 @@
         <view class="card">
           <view class="field">
             <view class="label">入库仓库 <text class="required">*</text><text class="label__opt">总仓或小区仓都可以</text></view>
-            <picker mode="selector" range="{{warehouseNames}}" value="{{warehouseIndex}}" bindchange="onPickWarehouse" disabled="{{!warehouseNames.length}}">
+            <view role="button" aria-label="入库仓库" bindtap="onOpenWarehousePicker">
               <view class="picker warehouse-picker {{warehouseError ? 'warehouse-picker--error' : ''}}" aria-invalid="{{!!warehouseError}}" aria-describedby="warehouse-error-po">{{warehouseIndex >= 0 ? warehouseNames[warehouseIndex] : '请选择入库仓库'}}</view>
-            </picker>
+            </view>
             <view id="warehouse-error-po" class="field-error" wx:if="{{warehouseError}}">{{warehouseError}}</view>
           </view>
           <view class="field">
@@ -304,9 +304,9 @@
       <view class="card">
         <view class="field">
           <view class="label">入库仓库 <text class="required">*</text></view>
-          <picker mode="selector" range="{{warehouseNames}}" value="{{warehouseIndex}}" bindchange="onPickWarehouse" disabled="{{!warehouseNames.length}}">
+          <view role="button" aria-label="入库仓库" bindtap="onOpenWarehousePicker">
             <view class="picker warehouse-picker {{warehouseError ? 'warehouse-picker--error' : ''}}" aria-invalid="{{!!warehouseError}}" aria-describedby="warehouse-error">{{warehouseIndex >= 0 ? warehouseNames[warehouseIndex] : '请选择入库仓库'}}</view>
-          </picker>
+          </view>
           <view id="warehouse-error" class="field-error" wx:if="{{warehouseError}}">{{warehouseError}}</view>
         </view>
 
@@ -389,4 +389,19 @@
       </button>
     </view>
   </block>
+</view>
+
+<view wx:if="{{warehousePickerOpen}}" class="sheet-mask" bindtap="onCloseWarehousePicker"></view>
+<view wx:if="{{warehousePickerOpen}}" class="sheet warehouse-sheet" role="dialog" aria-label="选择入库仓库">
+  <view class="warehouse-sheet__head">
+    <text>选择入库仓库</text>
+    <button class="warehouse-sheet__close" bindtap="onCloseWarehousePicker">关闭</button>
+  </view>
+  <scroll-view scroll-y class="warehouse-sheet__list">
+    <view wx:for="{{warehouseNames}}" wx:key="index" role="radio" aria-checked="{{warehouseIndex === index}}"
+      class="warehouse-option {{warehouseIndex === index ? 'warehouse-option--selected' : ''}}"
+      data-index="{{index}}" bindtap="onPickWarehouse">
+      <text>{{item}}</text><text wx:if="{{warehouseIndex === index}}" class="warehouse-option__check">✓ 已选择</text>
+    </view>
+  </scroll-view>
 </view>

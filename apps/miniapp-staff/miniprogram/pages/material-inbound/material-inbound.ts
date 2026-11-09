@@ -148,6 +148,7 @@ Page({
     warehouseNames: [] as string[],
     warehouseIndex: -1,
     warehouseError: '',
+    warehousePickerOpen: false,
     noWarehouseHint: '',
     locations: [] as WarehouseLocationView[],
     /** 第 0 项固定是「不指定库位」，其余错一位对应 locations */
@@ -244,6 +245,7 @@ Page({
       const list = (await inventory.listWarehouseLocations({ warehouseId: warehouse.id })).filter(
         (item) => item.enabled,
       );
+      if (this.data.warehouses[this.data.warehouseIndex]?.id !== warehouse.id) return;
       // 仓库配了默认库位就替他选上，省得每次入库都从头挑
       const defaultIndex = warehouse.defaultLocationId
         ? list.findIndex((item) => item.id === warehouse.defaultLocationId)
@@ -254,6 +256,7 @@ Page({
         locationIndex: defaultIndex >= 0 ? defaultIndex + 1 : 0,
       });
     } catch {
+      if (this.data.warehouses[this.data.warehouseIndex]?.id !== warehouse.id) return;
       // 没配库位不影响入库，静默退回「不指定库位」，别弹一个红条吓人
       this.setData({ locations: [], locationNames: ['不指定库位'], locationIndex: 0 });
     }
@@ -687,8 +690,22 @@ Page({
 
   // ---------------- 第三步：填入库 ----------------
 
-  onPickWarehouse(e: WechatMiniprogram.PickerChange) {
-    this.setData({ warehouseIndex: Number(e.detail.value), warehouseError: '' }, () => {
+  onOpenWarehousePicker() {
+    if (this.data.warehouses.length) this.setData({ warehousePickerOpen: true });
+  },
+
+  onCloseWarehousePicker() {
+    this.setData({ warehousePickerOpen: false });
+  },
+
+  onPickWarehouse(e: WechatMiniprogram.BaseEvent) {
+    const index = Number(e.currentTarget.dataset.index);
+    if (!Number.isInteger(index) || !this.data.warehouses[index]) return;
+    if (index === this.data.warehouseIndex) {
+      this.setData({ warehousePickerOpen: false, warehouseError: '' });
+      return;
+    }
+    this.setData({ warehouseIndex: index, warehouseError: '', warehousePickerOpen: false, locations: [], locationNames: ['不指定库位'], locationIndex: 0 }, () => {
       this.loadLocations();
       // 换仓之后「本仓存量」这句就变了，重算一遍
       const selected = this.data.selected;

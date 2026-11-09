@@ -2054,15 +2054,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       });
       this.setData({ panel: '', materialNote: '' });
       this.setMaterialRows([]);
-      const orderNo = this.data.detail?.workOrder.orderNo || '';
-      wx.setStorageSync('pms.staff.open_order', JSON.stringify({ mainTab: 'pool', status: 'waiting', orderNo }));
-      wx.showModal({
-        title: '已转等待材料',
-        content: `${orderNo || '该工单'}${used.length ? '的有库存用料已扣减，' : ''}申购的 ${shortage.length} 项已生成采购申请，办公室汇总后进入审批。可在工单池的「等待材料」中找到。`,
-        showCancel: false,
-        confirmText: '去看工单',
-        success: () => wx.switchTab({ url: '/pages/pool/pool' }),
-      });
+      wx.showToast({ title: '已登记缺料', icon: 'success' });
+      wx.switchTab({ url: '/pages/my-orders/my-orders' });
     } catch (e: any) {
       this.setData({ materialError: e?.message || '提报失败' });
     } finally {

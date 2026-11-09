@@ -166,3 +166,11 @@
 .warehouse-picker { display: flex; align-items: center; justify-content: space-between; }
 .warehouse-picker--error { border: 2rpx solid #c83434; }
 .required { color: #c83434; }
+
+.warehouse-sheet { padding: 28rpx 28rpx calc(28rpx + env(safe-area-inset-bottom)); box-sizing: border-box; }
+.warehouse-sheet__head { display: flex; align-items: center; justify-content: space-between; font-size: 34rpx; font-weight: 600; padding-bottom: 20rpx; }
+.warehouse-sheet__close { min-height: 72rpx; padding: 0 20rpx; color: #31558a; background: transparent; font-size: 28rpx; }
+.warehouse-sheet__list { max-height: 60vh; }
+.warehouse-option { display: flex; align-items: center; justify-content: space-between; min-height: 96rpx; padding: 16rpx 20rpx; box-sizing: border-box; border: 2rpx solid #d8e3ec; border-radius: 16rpx; margin-bottom: 12rpx; font-size: 32rpx; }
+.warehouse-option--selected { border-color: #31558a; color: #173b63; background: #e5edf5; font-weight: 600; }
+.warehouse-option__check { flex-shrink: 0; margin-left: 16rpx; color: #173b63; font-size: 26rpx; }

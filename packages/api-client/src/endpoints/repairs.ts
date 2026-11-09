@@ -223,6 +223,7 @@ export interface ListQuery {
    * done=已完结（办公室看管理处范围内全部，维修工看自己类别的：类型规则里有他 / 派给他 / 候选有他）
    */
   scope?: 'mine' | 'pool' | 'dispatch' | 'reported' | 'all' | 'done';
+  activeOnly?: '1';
   /** 关键词：单号 / 报修地址 / 故障描述 */
   q?: string;
 }

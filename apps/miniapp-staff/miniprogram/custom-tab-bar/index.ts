@@ -152,7 +152,7 @@ Component({
 
       // 原生 tab 页最多五个；收费页复用同一底栏组件，不占原生名额。
       // 「审批」已经没有原生 tab 名额，和收费页一样走 navigateTo；否则 switchTab 会失败。
-      if (tab.key === 'cashier' || tab.key === 'approvals') wx.navigateTo({ url: target });
+      if (tab.key === 'cashier' || tab.key === 'approvals' || tab.key === 'maintenance') wx.navigateTo({ url: target });
       else wx.switchTab({ url: target });
     },
 

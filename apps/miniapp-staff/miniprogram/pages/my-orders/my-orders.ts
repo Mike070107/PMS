@@ -89,7 +89,7 @@ Page({
   async load() {
     try {
       const [list, session] = await Promise.all([
-        repairs.list({ scope: 'mine' }),
+        repairs.list({ scope: 'mine', activeOnly: '1' }),
         getSession(this),
       ]);
       const myUserId = session.me?.id;

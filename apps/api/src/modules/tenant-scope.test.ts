@@ -711,6 +711,23 @@ test('在手工单排除尚未确认接单的定向派单', async () => {
   ]);
 });
 
+test('在手工单仅查询本人未完成状态且不被历史记录截断', async () => {
+  const service = Object.create(RepairsService.prototype) as any;
+  let captured: any;
+  service.resolveTenantId = () => 1;
+  service.autoCompleteExpiredReviews = async () => {};
+  service.scopeIds = () => [10];
+  service.keywordWheres = async (_tenantId: number, where: any) => [where];
+  service.workOrderRepo = { async find(options: any) { captured = options; return []; } };
+  const user = { id: 7, role: UserRole.STAFF, tenantId: 1 } as any;
+  const access = appAccess({ 'app:my-orders': { view: true } });
+  await service.listWorkOrders({ scope: 'mine', activeOnly: '1' }, user, access);
+  assert.equal(captured.where.assigneeId, 7);
+  assert.equal(captured.where.status._type, 'in');
+  assert.deepEqual(captured.where.status._value, [WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL]);
+  assert.equal(captured.take, undefined);
+});
+
 test('同时拥有派单和后台管理权限，scope=mine 仍只返回本人在手工单', async () => {
   const service = Object.create(RepairsService.prototype) as any;
   let capturedWhere: any;
