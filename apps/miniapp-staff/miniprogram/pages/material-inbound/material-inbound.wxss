@@ -162,3 +162,7 @@
 .po-line__inputs { display: flex; gap: 16rpx; margin-top: 12rpx; }
 .po-line__field { flex: 1; min-width: 0; }
 .po-line__label { display: block; margin-bottom: 6rpx; color: var(--color-text-secondary); font-size: var(--font-sm); }
+
+.warehouse-picker { display: flex; align-items: center; justify-content: space-between; }
+.warehouse-picker--error { border: 2rpx solid #c83434; }
+.required { color: #c83434; }

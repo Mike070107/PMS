@@ -7,7 +7,7 @@ import {
   type WarehouseLocationView,
   type WarehouseView,
 } from '@pms/shared-types';
-import { getSession, type StaffSession } from '../../utils/session';
+import { getSession } from '../../utils/session';
 import { guideHandlers } from '../../utils/guide';
 import { formatDateTimeCn } from '@pms/miniapp-ui';
 
@@ -64,11 +64,6 @@ function photoList(item: { photoUrl?: string | null; photoUrls?: string[] | null
   return item.photoUrl ? [item.photoUrl] : [];
 }
 
-/**
- * 默认入库到哪个仓：本人角色范围对应的管理处那个仓。
- * 判据和库存页 defaultWarehouseIndex 一致（列表已由服务端按范围排好，
- * 第一个挂了管理处的就是自己的仓）；对不上就落到第一个仓，入库必须有个具体的仓。
- */
 /** 采购单列表行：金额、状态、明细摘要都在端上算好，wxml 直接用 */
 type PoRow = inventory.PurchaseOrderView & {
   statusLabel: string;
@@ -95,16 +90,6 @@ function toPoRow(row: inventory.PurchaseOrderView): PoRow {
     createdAtText: formatDateTimeCn(row.createdAt),
   };
 }
-function defaultWarehouseIndex(session: StaffSession, warehouses: WarehouseView[]): number {
-  if (!warehouses.length) return -1;
-  const access = session.me?.access;
-  if (access && !access.scopeAll) {
-    const index = warehouses.findIndex((w) => w.enabled && !!w.officeId);
-    if (index >= 0) return index;
-  }
-  return 0;
-}
-
 Page({
   onShow() { this.syncGuide(); },
   ...guideHandlers(),
@@ -162,6 +147,7 @@ Page({
     warehouses: [] as WarehouseView[],
     warehouseNames: [] as string[],
     warehouseIndex: -1,
+    warehouseError: '',
     noWarehouseHint: '',
     locations: [] as WarehouseLocationView[],
     /** 第 0 项固定是「不指定库位」，其余错一位对应 locations */
@@ -227,14 +213,13 @@ Page({
       this.materials = materials;
       this.stocks = stocks;
       const enabled = warehouses.filter((item) => item.enabled);
-      const warehouseIndex = defaultWarehouseIndex(session, enabled);
       this.setData(
         {
           canEdit: true,
           categories: categories.filter((item) => item.enabled).map((item) => item.label),
           warehouses: enabled,
           warehouseNames: enabled.map((item) => item.name),
-          warehouseIndex,
+          warehouseIndex: -1,
           noWarehouseHint: enabled.length
             ? ''
             : '你所属的管理处还没有仓库，入库没有去处。请办公室在管理后台「库存与采购 → 基础资料 → 仓库档案」里给管理处建仓（新建管理处会自动带一个同名仓）。',
@@ -669,7 +654,7 @@ Page({
     const order = this.data.poOrder;
     const warehouse = this.data.warehouses[this.data.warehouseIndex];
     if (!order) return;
-    if (!warehouse) return this.setData({ poError: '请先选择入库仓库（总仓或小区仓）' });
+    if (!warehouse) return this.setData({ warehouseError: '请选择入库仓库' });
     const items: Array<{ materialId: number; qty: number; unitCostCents: number; locationId?: number }> = [];
     for (const row of this.data.poRows) {
       const qty = Number(row.qty);
@@ -702,8 +687,8 @@ Page({
 
   // ---------------- 第三步：填入库 ----------------
 
-  onPickWarehouse(e: WechatMiniprogram.BaseEvent) {
-    this.setData({ warehouseIndex: Number(e.currentTarget.dataset.index) }, () => {
+  onPickWarehouse(e: WechatMiniprogram.PickerChange) {
+    this.setData({ warehouseIndex: Number(e.detail.value), warehouseError: '' }, () => {
       this.loadLocations();
       // 换仓之后「本仓存量」这句就变了，重算一遍
       const selected = this.data.selected;
@@ -798,7 +783,8 @@ Page({
     const warehouse = this.data.warehouses[this.data.warehouseIndex];
     if (!selected) return;
     if (!warehouse) {
-      return wx.showToast({ icon: 'none', title: '请先选择入库仓库', duration: 3000 });
+      this.setData({ warehouseError: '请选择入库仓库' });
+      return wx.showToast({ icon: 'none', title: '请选择入库仓库', duration: 3000 });
     }
     const qty = Number(this.data.inboundForm.qty);
     const price = Number(this.data.inboundForm.priceYuan);

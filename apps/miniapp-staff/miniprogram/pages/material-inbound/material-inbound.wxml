@@ -59,17 +59,11 @@
 
         <view class="card">
           <view class="field">
-            <view class="label">入库仓库<text class="label__opt">总仓或小区仓都可以</text></view>
-            <scroll-view class="chips chips--field" scroll-x enable-flex>
-              <view
-                wx:for="{{warehouseNames}}"
-                wx:key="index"
-                class="chip {{warehouseIndex === index ? 'chip--on' : ''}}"
-                data-index="{{index}}"
-                bindtap="onPickWarehouse"
-              >{{item}}</view>
-            </scroll-view>
-            <view wx:if="{{warehouseIndex < 0}}" class="muted mt-sm">先选一个入库仓库</view>
+            <view class="label">入库仓库 <text class="required">*</text><text class="label__opt">总仓或小区仓都可以</text></view>
+            <picker mode="selector" range="{{warehouseNames}}" value="{{warehouseIndex}}" bindchange="onPickWarehouse" disabled="{{!warehouseNames.length}}">
+              <view class="picker warehouse-picker {{warehouseError ? 'warehouse-picker--error' : ''}}" aria-invalid="{{!!warehouseError}}" aria-describedby="warehouse-error-po">{{warehouseIndex >= 0 ? warehouseNames[warehouseIndex] : '请选择入库仓库'}}</view>
+            </picker>
+            <view id="warehouse-error-po" class="field-error" wx:if="{{warehouseError}}">{{warehouseError}}</view>
           </view>
           <view class="field">
             <view class="label">入库库位<text class="label__opt">选填，整单放同一格</text></view>
@@ -309,19 +303,21 @@
 
       <view class="card">
         <view class="field">
-          <view class="label">入库仓库</view>
-          <!-- 和库存页同一套 chip：原生 picker 的滚轮在户外分不出选中项（系统 UI 改不了样式），
-               而入错仓是要盘点才发现的错。选中的实底品牌色，一直摆在眼前 -->
-          <scroll-view class="chips chips--field" scroll-x enable-flex>
-            <view
-              wx:for="{{warehouseNames}}"
-              wx:key="index"
-              class="chip {{warehouseIndex === index ? 'chip--on' : ''}}"
-              data-index="{{index}}"
-              bindtap="onPickWarehouse"
-            >{{item}}</view>
-          </scroll-view>
-          <view wx:if="{{warehouseIndex < 0}}" class="muted mt-sm">先选一个入库仓库</view>
+          <view class="label">入库仓库 <text class="required">*</text></view>
+          <picker mode="selector" range="{{warehouseNames}}" value="{{warehouseIndex}}" bindchange="onPickWarehouse" disabled="{{!warehouseNames.length}}">
+            <view class="picker warehouse-picker {{warehouseError ? 'warehouse-picker--error' : ''}}" aria-invalid="{{!!warehouseError}}" aria-describedby="warehouse-error">{{warehouseIndex >= 0 ? warehouseNames[warehouseIndex] : '请选择入库仓库'}}</view>
+          </picker>
+          <view id="warehouse-error" class="field-error" wx:if="{{warehouseError}}">{{warehouseError}}</view>
+        </view>
+
+        <view class="field">
+          <view class="label">入库库位<text class="label__opt">选填，东西放在哪一格</text></view>
+          <picker mode="selector" range="{{locationNames}}" value="{{locationIndex}}" bindchange="onPickLocation">
+            <view class="picker">{{locationNames[locationIndex] || '不指定库位'}}</view>
+          </picker>
+          <view wx:if="{{warehouseIndex >= 0 && locations.length === 0}}" class="muted mt-sm">
+            这个仓还没配库位，可以先不指定；要用货架编号，请办公室在后台「仓库档案 → 库位」里加。
+          </view>
         </view>
 
         <view class="field">
@@ -343,15 +339,7 @@
           <view class="field-error" wx:if="{{inboundErrors.sourceText}}">{{inboundErrors.sourceText}}</view>
         </view>
 
-        <view class="field">
-          <view class="label">入库库位<text class="label__opt">选填，东西放在哪一格</text></view>
-          <picker mode="selector" range="{{locationNames}}" value="{{locationIndex}}" bindchange="onPickLocation">
-            <view class="picker">{{locationNames[locationIndex] || '不指定库位'}}</view>
-          </picker>
-          <view wx:if="{{locations.length === 0}}" class="muted mt-sm">
-            这个仓还没配库位，可以先不指定；要用货架编号，请办公室在后台「仓库档案 → 库位」里加。
-          </view>
-        </view>
+
 
         <!--
           这一步不再有「实物照片」。它原来写进的是**入库单**（goods_receipts.items[].photoUrls），
