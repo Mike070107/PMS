@@ -6976,3 +6976,10 @@
   - 7ce66f6d feat: 全站地址搜索统一(账单/车辆/工单走 common/address-lookup，现场停车库查询先落到唯一一户)；工单用料仓库按数据授权范围；亲情车从旧停车库拉取(助手 2.5.49 新增只读 identity_list，导入带旧库实际车库与有效期、过期记已过期)
   - 3c064af7 docs(access-cards): record production release and field verification gaps
 
+## 2026-11-10 01:22 · api · ab36b1f7
+
+- 包：`pms-api-fast-20261110-012154.tar.gz`
+- 提交：ab36b1f7 feat(statistics): 收费汇总 + 收款日报表（收款/退款/调整四类拆分、费项×性质矩阵、逐笔下钻、CSV）
+- 自上次（f1675aea）以来上线的相关提交：
+  - ab36b1f7 feat(statistics): 收费汇总 + 收款日报表（收款/退款/调整四类拆分、费项×性质矩阵、逐笔下钻、CSV）
+
