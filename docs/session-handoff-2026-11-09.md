@@ -32,12 +32,14 @@ ALTER TABLE mis_sync_state ADD COLUMN IF NOT EXISTS consecutive_failures int NOT
 ALTER TABLE mis_sync_state ADD COLUMN IF NOT EXISTS last_failure_at timestamptz;
 ```
 
-## 二、线上版本（2026-11-09 21:30）
+## 二、线上版本（2026-11-09 22:11）
 
 ```
-Web = 2.0.20261109-1606
-API = api-bf1cf128（db up）
+Web = 2.0.20261109-2211
+API = api-bcf058a（db up）
 ```
+
+> 22:11 上线：P0-4 最近30笔不再 pending、P0-5 门禁页助手状态按真实网关+能力分项显示（详见「待办」P0 4/5）。
 
 ## 三、已完成并上线（不要重复做）
 
@@ -63,10 +65,16 @@ API = api-bf1cf128（db up）
 1. **上海新家未设指标** → 大屏选三个小区时显示「部分口径」。需要用户给指标，或确认不考核。
 2. **指标月度分解**：目前月度目标 = 年度/12（标「按年度均摊」）。要精确需 12 个月数字。
 3. **今日页与收费报表的「其他」分类**：今日实收 ¥12,240 落在 other，需确认是什么费项（可能是置业泊位费）。
-4. **发卡历史「最近 30 笔」返回 pending/rows=0**：助手首次查询超时，需加重试/超时等待，或改为后台任务+轮询。
-5. **门禁页「助手离线」误判**：三个 agent readiness 都是 online，但页面显示助手离线/发卡工作站离线（可能按最近门禁回执时间判断）。
+4. ~~**发卡历史「最近 30 笔」返回 pending/rows=0**~~ ✅ 已修复并上线（api-bcf058a / web 2.0.20261109-2211）：根因是 GET `/cards/recent` 每次无条件重置快照为 pending 并清空 history 后立即返回；现改为仅无快照/ready 超 60s 才入队，poll 最长 8s，超时保留旧 rows，error 30s 内不重复入队；行补齐 communityName/buildingId/lane/roomNo/houseId 供跳转。
+5. ~~**门禁页「助手离线」误判**~~ ✅ 已修复并上线（同上）：根因是门禁页默认选中地址树第一个小区「枫桦景苑一期」(phase1)，`GET /door/controllers?communityId=1` 提前返回 agentOnline:false；现网关在线判定与所选小区解耦（一期返回真实在线 + controllers[] + message），readiness 新增 `doorControlCommunities`，页面默认二期并按能力分项显示（写卡工作站/`.80` 捷顺库/`.88` 门禁网关），不再谎报「发卡工作站离线」。生产已验证。
 
-### P1 功能缺口
+### P1 功能缺口（新增 2026-11-09 夜：统计汇总报表）
+
+> 用户 2026-11-09 夜提出：旧「一通软件」的统计汇总菜单（约 30 张报表）要复刻，数字必须可向下穿透明细，筛选按管理处/收费项目/房屋性质勾选多选。
+> 口径与数据盘点见 **`docs/statistics-reports-spec.md`**（已核对：项目欠费年度汇总 02 管理处合计 ¥745,182.10、2026 年度 ¥726,881.20、明细 宝秀路719号719 201410-201412 ¥477.90 与旧系统截图逐格一致）。
+> 计划：P1 先做「统计汇总」页面 + 项目实收年度汇总 / 项目欠费年度汇总 + 三级下钻 + 勾选筛选 + 导出；P2 收费汇总/月报/日报/收款分析等；P4 补镜像（票据、减免/签报、能耗抄表、空置状态）后做对应报表并对齐一期历史欠费差异（差 ¥232,344.20 疑为核销/减免未镜像）。
+
+
 6. **MIS 镜像 Phase 3**：断线收款 + 核销（`pms_mis_receipts`、差异清单 `pms_mis_collection_differences`、页面放「账单与待缴 → 收款差异」页签）。设计稿 `docs/mis-mirror-design.md`。
 7. **收费报表**：MIS 口径接入（方案已出，见 turn 日志：`source=auto|pms|mis`，byCashier MIS 显示 —）。当前报表只统计 PMS 收款，MIS 小区无数据。
 8. **大屏**：目标达成口径已修（物业费），但需用户确认；另「上海新家」排行灰条。
