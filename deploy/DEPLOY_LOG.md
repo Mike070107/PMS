@@ -6820,3 +6820,10 @@
 - 自上次（a40b8619）以来上线的相关提交：
   - 1b553adf feat(screen): inspect monthly receipts across all twelve months
 
+## 2026-11-09 15:09 · web · e39a223a
+
+- 包：`pms-web-20261109-150844.tar.gz`
+- 提交：e39a223a feat(stock): 当前库存列与排序、库位明细列、Excel 导出、仓库/库位管理、流水字段补全
+- 自上次（1b553adf）以来上线的相关提交：
+  - e39a223a feat(stock): 当前库存列与排序、库位明细列、Excel 导出、仓库/库位管理、流水字段补全
+
