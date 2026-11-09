@@ -156,12 +156,52 @@ export class StatisticsService {
     if (state.billCount === 0) {
       return {
         ...filters,
+        detailKind: query.type,
         officeName: office.officeName,
         rows: [],
         totalCents: null,
         dataAsOf: state.dataAsOf,
         available: false,
         message: MIRROR_UNAVAILABLE_MESSAGE,
+      };
+    }
+    // 实收：旧系统下钻按「房屋 × 应收年月」聚合（成对冲抵行合并显示 0.00）。
+    if (query.type === 'received') {
+      const built = this.buildReceivedDetailSql(
+        office.officeCode,
+        query.year,
+        query.feeCodes,
+        query.natures,
+        query.paidDateTo,
+        query.paidDateFrom,
+      );
+      const raw: any[] = await this.dataSource.query(built.sql, built.params);
+      const rows = raw.map((row) => ({
+        // 聚合后单笔标识/收银信息无意义；收据/发票号镜像缺，一并返回 null。
+        zjId: null as number | null,
+        sId: row.sId == null ? null : Number(row.sId),
+        address: row.address == null ? null : String(row.address),
+        ownerName: row.ownerName == null ? null : String(row.ownerName),
+        areaSqm: row.areaSqm == null ? null : Number(row.areaSqm),
+        period: row.period == null ? null : String(row.period),
+        amountCents: Number(row.amountCents || 0),
+        paidDate: row.paidDate == null ? null : String(row.paidDate),
+        refundDate: row.refundDate == null ? null : String(row.refundDate),
+        paymentMethod: null as string | null,
+        cashier: null as string | null,
+        receiptNo: null as string | null,
+        invoiceNo: null as string | null,
+      }));
+      const totalCents = rows.reduce((sum, row) => sum + row.amountCents, 0);
+      return {
+        ...filters,
+        detailKind: 'received' as const,
+        officeName: office.officeName,
+        rows,
+        totalCents,
+        dataAsOf: state.dataAsOf,
+        available: true,
+        message: null,
       };
     }
     const built = this.buildDetailSql(
@@ -187,6 +227,7 @@ export class StatisticsService {
     const totalCents = rows.reduce((sum, row) => sum + row.amountCents, 0);
     return {
       ...filters,
+      detailKind: 'arrears' as const,
       officeName: office.officeName,
       rows,
       totalCents,
@@ -344,20 +385,19 @@ export class StatisticsService {
     };
     const where: string[] = [];
     where.push(`b.office_code IN (${officeCodes.map(add).join(',')})`);
+    // 旧系统两张年度汇总都以「应收年月 period」归年：arrears 取未缴，received 取收款流水。
+    where.push(`b.period ~ '^[0-9]{6}$'`);
+    const yearExpr = 'substr(b.period,1,4)::int';
     if (type === 'arrears') {
       where.push('b.paid_date IS NULL');
-      where.push(`b.period ~ '^[0-9]{6}$'`);
-      where.push(`substr(b.period,1,4)::int BETWEEN ${add(yearFrom)} AND ${add(yearTo)}`);
     } else {
       where.push('b.paid_date IS NOT NULL');
-      where.push(`EXTRACT(YEAR FROM b.paid_date)::int BETWEEN ${add(yearFrom)} AND ${add(yearTo)}`);
     }
-    const yearExpr = type === 'arrears'
-      ? 'substr(b.period,1,4)::int'
-      : 'EXTRACT(YEAR FROM b.paid_date)::int';
+    where.push(`${yearExpr} BETWEEN ${add(yearFrom)} AND ${add(yearTo)}`);
     if (natures?.length) where.push(`TRIM(b.nature_code) IN (${natures.map(add).join(',')})`);
     if (feeCodes?.length) where.push(`b.fee_code IN (${feeCodes.map(add).join(',')})`);
-    if (asOfPeriod) where.push(`b.period <= ${add(asOfPeriod)}`);
+    // 旧系统实收报表列到 2027/2028 且不按应收截止年月截断：asOfPeriod 只约束欠费口径。
+    if (type === 'arrears' && asOfPeriod) where.push(`b.period <= ${add(asOfPeriod)}`);
     if (type === 'received' && paidDateTo) where.push(`b.paid_date <= ${add(paidDateTo)}`);
     if (type === 'received' && paidDateFrom) where.push(`b.paid_date >= ${add(paidDateFrom)}`);
     const sql = `SELECT b.office_code AS "officeCode", ${yearExpr} AS "year",
@@ -368,7 +408,7 @@ export class StatisticsService {
     return { sql, params };
   }
 
-  /** 明细按房屋聚合一条 SQL；LEFT JOIN room 取面积并支持性质过滤。 */
+  /** 欠费明细按房屋聚合一条 SQL（received 走 buildReceivedDetailSql 逐笔清单）；LEFT JOIN room 取面积。 */
   private buildDetailSql(
     type: StatisticsType,
     officeCode: string,
@@ -390,12 +430,15 @@ export class StatisticsService {
       where.push(`b.period ~ '^[0-9]{6}$'`);
       where.push(`substr(b.period,1,4)::int = ${add(year)}`);
     } else {
+      // 兜底：若将来复用本方法，received 也按应收年月归年。
       where.push('b.paid_date IS NOT NULL');
-      where.push(`EXTRACT(YEAR FROM b.paid_date)::int = ${add(year)}`);
+      where.push(`b.period ~ '^[0-9]{6}$'`);
+      where.push(`substr(b.period,1,4)::int = ${add(year)}`);
     }
     if (natures?.length) where.push(`TRIM(b.nature_code) IN (${natures.map(add).join(',')})`);
     if (feeCodes?.length) where.push(`b.fee_code IN (${feeCodes.map(add).join(',')})`);
-    if (asOfPeriod) where.push(`b.period <= ${add(asOfPeriod)}`);
+    // 旧系统实收报表列到 2027/2028 且不按应收截止年月截断：asOfPeriod 只约束欠费口径。
+    if (type === 'arrears' && asOfPeriod) where.push(`b.period <= ${add(asOfPeriod)}`);
     if (type === 'received' && paidDateTo) where.push(`b.paid_date <= ${add(paidDateTo)}`);
     if (type === 'received' && paidDateFrom) where.push(`b.paid_date >= ${add(paidDateFrom)}`);
     const sql = `SELECT b.office_code AS "officeCode", b.s_id AS "sId",
@@ -408,6 +451,49 @@ export class StatisticsService {
       WHERE ${where.join(' AND ')}
       GROUP BY b.office_code, b.s_id
       ORDER BY MAX(b.address) NULLS LAST, b.s_id`;
+    return { sql, params };
+  }
+
+  /**
+   * 实收下钻：与单元格同一筛选条件下按「房屋 × 应收年月」聚合。
+   * 旧系统把同户同月的成对「+126.50 / -126.50」冲抵行合并成一行显示 0.00；
+   * zjId/收款方式/收款人/收据号/发票号聚合后无意义，统一返回 null。
+   */
+  private buildReceivedDetailSql(
+    officeCode: string,
+    year: number,
+    feeCodes: string[] | undefined,
+    natures: string[] | undefined,
+    paidDateTo?: string,
+    paidDateFrom?: string,
+  ): BuiltSql {
+    const params: unknown[] = [];
+    const add = (value: unknown) => {
+      params.push(value);
+      return `$${params.length}`;
+    };
+    const where: string[] = [
+      `b.office_code = ${add(officeCode)}`,
+      'b.paid_date IS NOT NULL',
+      `b.period ~ '^[0-9]{6}$'`,
+      `substr(b.period,1,4)::int = ${add(year)}`,
+    ];
+    if (natures?.length) where.push(`TRIM(b.nature_code) IN (${natures.map(add).join(',')})`);
+    if (feeCodes?.length) where.push(`b.fee_code IN (${feeCodes.map(add).join(',')})`);
+    // 实收报表不按应收截止年月截断（旧系统列到 2027/2028）；asOfPeriod 收到也忽略。
+    if (paidDateTo) where.push(`b.paid_date <= ${add(paidDateTo)}`);
+    if (paidDateFrom) where.push(`b.paid_date >= ${add(paidDateFrom)}`);
+    const sql = `SELECT b.s_id AS "sId",
+        MAX(b.address) AS "address", MAX(b.owner_name) AS "ownerName",
+        MAX(r.area_sqm)::float8 AS "areaSqm", b.period AS "period",
+        COALESCE(SUM(b.amount_cents),0)::bigint AS "amountCents",
+        to_char(MAX(b.paid_date),'YYYY-MM-DD') AS "paidDate",
+        to_char(MAX(b.refund_date),'YYYY-MM-DD') AS "refundDate"
+      FROM mis_mirror_bill b
+      LEFT JOIN mis_mirror_room r ON r.s_id = b.s_id
+      WHERE ${where.join(' AND ')}
+      GROUP BY b.s_id, b.period
+      ORDER BY MAX(b.address) NULLS LAST, b.period`;
     return { sql, params };
   }
 
@@ -435,11 +521,13 @@ export class StatisticsService {
       where.push(`substr(b.period,1,4)::int = ${add(year)}`);
     } else {
       where.push('b.paid_date IS NOT NULL');
-      where.push(`EXTRACT(YEAR FROM b.paid_date)::int = ${add(year)}`);
+      where.push(`b.period ~ '^[0-9]{6}$'`);
+      where.push(`substr(b.period,1,4)::int = ${add(year)}`);
     }
     if (natures?.length) where.push(`TRIM(b.nature_code) IN (${natures.map(add).join(',')})`);
     if (feeCodes?.length) where.push(`b.fee_code IN (${feeCodes.map(add).join(',')})`);
-    if (asOfPeriod) where.push(`b.period <= ${add(asOfPeriod)}`);
+    // 旧系统实收报表列到 2027/2028 且不按应收截止年月截断：asOfPeriod 只约束欠费口径。
+    if (type === 'arrears' && asOfPeriod) where.push(`b.period <= ${add(asOfPeriod)}`);
     if (type === 'received' && paidDateTo) where.push(`b.paid_date <= ${add(paidDateTo)}`);
     if (type === 'received' && paidDateFrom) where.push(`b.paid_date >= ${add(paidDateFrom)}`);
     const sql = `SELECT b.zj_id AS "zjId", b.fee_code AS "feeCode", b.fee_name AS "feeName",

@@ -170,6 +170,99 @@ async function seed(pg: PGlite) {
   await addBill({ officeCode: '04', sId: 1002, natureCode: null, period: '202701', amountCents: 999900 });
 }
 
+/**
+ * P1.3 实收验收夹具（离群大额，避免干扰欠费夹具）：
+ * 列按 period 年度归年；默认房屋性质（13 项除 06）下 01–04 合计 =
+ * 2,364,387,516 / 2,817,727,390 / 3,448,229,110 / 6,673,943,800；
+ * 06 与 nature_code=NULL 行默认被 IN 语义排除（NULL 合计 176,230,750 对照生产 12,609 行）。
+ */
+async function seedReceived(pg: PGlite) {
+  await pg.query(
+    `INSERT INTO mis_sync_state(tenant_id,source_table,last_success_at,initialized_at)
+     VALUES($1,'bill',$2,now())`,
+    [tenantId, '2026-11-09T21:30:00+08:00'],
+  );
+  await pg.query(`INSERT INTO mis_mirror_fee_item(fee_code,fee_name,category) VALUES('01','管理费','日常收费')`);
+  const rooms: Array<[number, string, number]> = [
+    [2001, '01', 88.5],
+    [2002, '01', 120],
+    [2003, '06', 60],
+    [2004, '01', 90],
+    [2005, '01', 91],
+    [2018, '01', 100.5],
+  ];
+  for (const [sId, nature, area] of rooms) {
+    await pg.query(
+      `INSERT INTO mis_mirror_room(s_id,room_no,nature,area_sqm) VALUES($1,$2,$3,$4)`,
+      [sId, String(sId), nature, area],
+    );
+  }
+  let nextZj = 900001;
+  const addReceived = async (input: BillInput) => {
+    await pg.query(
+      `INSERT INTO mis_mirror_bill(zj_id,office_code,s_id,owner_name,room_no,address,fee_code,fee_name,period,amount_cents,paid_date,refund_date,payment_method,cashier,source_updated_at,nature_code)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now(),$15)`,
+      [
+        nextZj++, input.officeCode, input.sId, input.ownerName ?? '实收业主', String(input.sId),
+        input.address ?? `应收路${input.sId}号`, input.feeCode ?? '01', input.feeName ?? '管理费',
+        input.period, input.amountCents, input.paidDate ?? null, input.refundDate ?? null,
+        input.paymentMethod ?? '现金', input.cashier ?? '收款员',
+        input.natureCode,
+      ],
+    );
+  };
+
+  // 01 × 2004：17 户应收行合计 88,240；另 剑川路198弄25号201 金惠丽 200407–200412
+  // 每月「+126.50 / -126.50」成对两行，旧系统按房屋×应收年月合并成一行显示 0.00
+  // （MIS 29 行 → 旧系统下钻 23 行）。
+  await addReceived({
+    officeCode: '01', sId: 2001, natureCode: '01', period: '200401', amountCents: 3240,
+    paidDate: '2020-05-01', address: '剑川路198弄1号101', ownerName: '一期2004业主',
+    paymentMethod: '现金', cashier: '李四',
+  });
+  for (let index = 0; index < 11; index += 1) {
+    await addReceived({
+      officeCode: '01', sId: 2101 + index, natureCode: '01', period: '200402', amountCents: 5000,
+      paidDate: '2004-02-01',
+    });
+  }
+  for (let index = 0; index < 5; index += 1) {
+    await addReceived({
+      officeCode: '01', sId: 2112 + index, natureCode: '01', period: '200403', amountCents: 6000,
+      paidDate: '2004-03-01',
+    });
+  }
+  for (let month = 7; month <= 12; month += 1) {
+    const period = `2004${String(month).padStart(2, '0')}`;
+    await addReceived({
+      officeCode: '01', sId: 2018, natureCode: '01', period, amountCents: 12650,
+      paidDate: `${period.slice(0, 4)}-${period.slice(4)}-15`, address: '剑川路198弄25号201', ownerName: '金惠丽',
+    });
+    await addReceived({
+      officeCode: '01', sId: 2018, natureCode: '01', period, amountCents: -12650,
+      paidDate: `${period.slice(0, 4)}-${period.slice(4)}-20`, refundDate: `${period.slice(0, 4)}-${period.slice(4)}-20`,
+      address: '剑川路198弄25号201', ownerName: '金惠丽',
+    });
+  }
+  await addReceived({ officeCode: '01', sId: 2001, natureCode: '01', period: '200501', amountCents: 4170, paidDate: '2004-06-01' });
+  await addReceived({ officeCode: '01', sId: 2002, natureCode: '01', period: '202701', amountCents: 2364295106, paidDate: '2026-01-15' });
+  await addReceived({ officeCode: '01', sId: 2003, natureCode: null, period: '202702', amountCents: 176230750, paidDate: '2026-02-01' });
+  await addReceived({ officeCode: '01', sId: 2003, natureCode: '06', period: '202703', amountCents: 12345, paidDate: '2026-02-02' });
+  // 02：含负数退款调整行（refund_date 非空、金额为负），净额仍计入实收。
+  await addReceived({ officeCode: '02', sId: 2004, natureCode: '01', period: '202501', amountCents: 2817727790, paidDate: '2026-01-01' });
+  await addReceived({
+    officeCode: '02', sId: 2004, natureCode: '01', period: '202512', amountCents: -400,
+    paidDate: '2026-03-02', refundDate: '2026-03-02',
+  });
+  await addReceived({ officeCode: '02', sId: 2003, natureCode: '06', period: '202502', amountCents: 5000, paidDate: '2026-01-02' });
+  await addReceived({ officeCode: '02', sId: 2003, natureCode: null, period: '202503', amountCents: 7000, paidDate: '2026-01-03' });
+  // 03 / 04：验收基准里其它两个管理处。
+  await addReceived({ officeCode: '03', sId: 2005, natureCode: '01', period: '202601', amountCents: 3448229110, paidDate: '2026-05-01' });
+  await addReceived({ officeCode: '04', sId: 2001, natureCode: '01', period: '202401', amountCents: 6673943800, paidDate: '2026-06-01' });
+  // 欠费行（paid_date 为空）：只用于验证 received 忽略 asOfPeriod 时 arrears 仍截断。
+  await addReceived({ officeCode: '04', sId: 2001, natureCode: '01', period: '202701', amountCents: 500000 });
+}
+
 function annualOf(rows: any[], officeCode: string) {
   const row = rows.find((item) => item.officeCode === officeCode);
   assert.ok(row, `缺少管理处 ${officeCode} 行`);
@@ -379,6 +472,7 @@ test('明细合计=单元格：02×2014 含宝秀路719号719（79.67㎡，20141
       type: 'arrears', officeCode: '02', year: 2014, feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT,
     } as never, user, scopeAll);
     assert.equal(detail.available, true);
+    assert.equal(detail.detailKind, 'arrears');
     assert.equal(detail.totalCents, cell);
     assert.equal(detail.rows.length, 1);
     assert.deepEqual(detail.rows[0], {
@@ -455,16 +549,18 @@ test('逐笔账单合计=房屋明细：02×2014 三笔各 15930', async () => {
   }
 });
 
-test('实收年度汇总按付款年度分组，含负数退款行净额', async () => {
+test('实收年度汇总按应收年月 period 归年（不是收款日期年度），含负数退款净额', async () => {
   const pg = await makeDatabase();
   try {
     await seed(pg);
     const service = serviceFor(pg);
     const result: any = await service.annual({
-      type: 'received', officeCodes: ['02'], feeCodes: ['01'], yearFrom: 2025, yearTo: 2026,
+      type: 'received', officeCodes: ['02'], feeCodes: ['01'], yearFrom: 2024, yearTo: 2026,
     } as never, user, scopeAll);
     const office02 = annualOf(result.rows, '02');
-    assert.equal(office02.cells['2025'], 200);
+    // period=202401 但 2025-05-01 才收款：列按应收年月归 2024，不是按收款年度归 2025。
+    assert.equal(office02.cells['2024'], 200);
+    assert.equal(office02.cells['2025'], 0);
     assert.equal(office02.cells['2026'], 600);
     // 欠费口径不把已收/退款行算进来。
     const arrears: any = await service.annual({
@@ -490,6 +586,200 @@ test('实收下钻保留收款日期/收款方式/收款人，负退款行也列
     assert.equal(bills.rows[1].refundDate, '2026-03-02');
     assert.equal(bills.rows[0].paymentMethod, '现金');
     assert.equal(bills.rows[0].cashier, '张三');
+  } finally {
+    await pg.close();
+  }
+});
+
+test('实收年度汇总按应收年月归年：01 2004=88240，默认性质各管理处合计对齐旧系统', async () => {
+  const pg = await makeDatabase();
+  try {
+    await seedReceived(pg);
+    const service = serviceFor(pg);
+    const result: any = await service.annual({
+      type: 'received', feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT, yearFrom: 2004, yearTo: 2027,
+    } as never, user, scopeAll);
+    const office01 = annualOf(result.rows, '01');
+    // period=200401 的 882.40 归 2004；旧实现按收款年度 2020 归年时 2004 只有 41.70。
+    assert.equal(office01.cells['2004'], 88240);
+    assert.equal(office01.cells['2005'], 4170);
+    assert.equal(office01.cells['2020'], 0);
+    assert.equal(office01.cells['2027'], 2364295106);
+    assert.equal(office01.totalCents, 2364387516);
+    assert.equal(annualOf(result.rows, '02').totalCents, 2817727390);
+    assert.equal(annualOf(result.rows, '03').totalCents, 3448229110);
+    assert.equal(annualOf(result.rows, '04').totalCents, 6673943800);
+    assert.equal(annualOf(result.rows, '05').totalCents, 0);
+    // 小计 = 01–04 四项之和（与旧截图 ¥153,042,878.16 一致）。
+    assert.equal(result.subtotal.totalCents, 15304287816);
+    assert.equal(result.subtotal.cells['2004'], 88240);
+
+    // 不传 natures：06 空房与 nature_code=NULL 行按 IN 关掉后的口径计入。
+    const allNatures: any = await service.annual({
+      type: 'received', feeCodes: ['01'], yearFrom: 2004, yearTo: 2027,
+    } as never, user, scopeAll);
+    const office01All = annualOf(allNatures.rows, '01');
+    assert.equal(office01All.cells['2027'], 2364295106 + 176230750 + 12345);
+    assert.equal(office01All.totalCents, 2364387516 + 176230750 + 12345);
+  } finally {
+    await pg.close();
+  }
+});
+
+test('实收下钻按房屋×应收年月聚合：01×2004 共 23 行，金惠丽成对冲抵合并为 0.00', async () => {
+  const pg = await makeDatabase();
+  try {
+    await seedReceived(pg);
+    const service = serviceFor(pg);
+    const annual: any = await service.annual({
+      type: 'received', officeCodes: ['01'], feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT,
+      yearFrom: 2004, yearTo: 2004,
+    } as never, user, scopeAll);
+    const cell = annualOf(annual.rows, '01').cells['2004'];
+    const detail: any = await service.annualDetail({
+      type: 'received', officeCode: '01', year: 2004, feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT,
+    } as never, user, scopeAll);
+    assert.equal(detail.detailKind, 'received');
+    assert.equal(detail.totalCents, cell);
+    // MIS 29 行 → 每户每应收年月一行 = 23 行（6 组成对冲抵行合并后各 1 行）。
+    assert.equal(detail.rows.length, 23);
+    assert.equal(detail.rows.reduce((sum: number, row: any) => sum + row.amountCents, 0), 88240);
+
+    const houseRow = detail.rows.find((row: any) => row.address === '剑川路198弄1号101' && row.period === '200401');
+    assert.deepEqual(houseRow, {
+      zjId: null,
+      sId: 2001,
+      address: '剑川路198弄1号101',
+      ownerName: '一期2004业主',
+      areaSqm: 88.5,
+      period: '200401',
+      amountCents: 3240,
+      paidDate: '2020-05-01',
+      refundDate: null,
+      paymentMethod: null,
+      cashier: null,
+      receiptNo: null,
+      invoiceNo: null,
+    });
+
+    // 剑川路198弄25号201 金惠丽：200407–200412 每月「+126.50 / -126.50」合并为一行 0.00。
+    const goldRows = detail.rows.filter((row: any) => row.address === '剑川路198弄25号201');
+    assert.deepEqual(goldRows.map((row: any) => row.period), ['200407', '200408', '200409', '200410', '200411', '200412']);
+    assert.deepEqual(goldRows.map((row: any) => row.amountCents), [0, 0, 0, 0, 0, 0]);
+    assert.ok(goldRows.every((row: any) => row.sId === 2018 && row.ownerName === '金惠丽' && row.areaSqm === 100.5));
+
+    // 退款/红冲行（负数、refund_date 非空）聚合后仍在清单里，净额合计=单元格。
+    const annual02: any = await service.annual({
+      type: 'received', officeCodes: ['02'], feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT,
+      yearFrom: 2025, yearTo: 2025,
+    } as never, user, scopeAll);
+    const detail02: any = await service.annualDetail({
+      type: 'received', officeCode: '02', year: 2025, feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT,
+    } as never, user, scopeAll);
+    assert.equal(detail02.totalCents, annualOf(annual02.rows, '02').cells['2025']);
+    assert.equal(detail02.rows.length, 2);
+    assert.deepEqual(detail02.rows.map((row: any) => row.amountCents), [2817727790, -400]);
+    assert.equal(detail02.rows[1].refundDate, '2026-03-02');
+    assert.ok(detail02.rows.every((row: any) => row.zjId === null && row.paymentMethod === null && row.cashier === null));
+
+    // nature_code=NULL / 06 行：默认性质过滤排除；不传 natures 时进入清单。
+    const detailFiltered: any = await service.annualDetail({
+      type: 'received', officeCode: '01', year: 2027, feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT,
+    } as never, user, scopeAll);
+    assert.equal(detailFiltered.rows.length, 1);
+    const detailAll: any = await service.annualDetail({
+      type: 'received', officeCode: '01', year: 2027, feeCodes: ['01'],
+    } as never, user, scopeAll);
+    assert.equal(detailAll.rows.length, 3);
+    assert.equal(detailAll.totalCents, detailFiltered.totalCents + 176230750 + 12345);
+  } finally {
+    await pg.close();
+  }
+});
+
+test('received 忽略 asOfPeriod（列到 2027 不截断），arrears 仍按应收截止年月截断', async () => {
+  const pg = await makeDatabase();
+  try {
+    await seedReceived(pg);
+    const service = serviceFor(pg);
+    const base = {
+      type: 'received', officeCodes: ['01'], feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT,
+      yearFrom: 2004, yearTo: 2027,
+    } as const;
+    const noCutoff: any = await service.annual({ ...base } as never, user, scopeAll);
+    const withCutoff: any = await service.annual({ ...base, asOfPeriod: '202612' } as never, user, scopeAll);
+    assert.deepEqual(withCutoff.rows, noCutoff.rows);
+    assert.deepEqual(withCutoff.subtotal, noCutoff.subtotal);
+    // 旧系统实收报表列到 2027 且有金额：period 202701 的已收行不能被 202612 截断。
+    assert.equal(annualOf(withCutoff.rows, '01').cells['2027'], 2364295106);
+    assert.equal(withCutoff.subtotal.cells['2027'], 2364295106);
+
+    const detail: any = await service.annualDetail({
+      type: 'received', officeCode: '01', year: 2027, feeCodes: ['01'],
+      natures: NATURES_WITHOUT_VACANT, asOfPeriod: '202612',
+    } as never, user, scopeAll);
+    assert.equal(detail.rows.length, 1);
+    assert.equal(detail.rows[0].period, '202701');
+    assert.equal(detail.totalCents, 2364295106);
+
+    const bills: any = await service.annualDetailBills({
+      type: 'received', officeCode: '01', sId: 2002, year: 2027, feeCodes: ['01'],
+      natures: NATURES_WITHOUT_VACANT, asOfPeriod: '202612',
+    } as never, user, scopeAll);
+    assert.equal(bills.totalCents, 2364295106);
+
+    // arrears 仍受 asOfPeriod 影响：202701 的欠费行会被 202611 截止年月排除。
+    const arrears = { type: 'arrears', officeCodes: ['04'], feeCodes: ['01'], yearFrom: 2026, yearTo: 2027 } as const;
+    const arrearsOpen: any = await service.annual({ ...arrears } as never, user, scopeAll);
+    const arrearsCut: any = await service.annual({ ...arrears, asOfPeriod: '202611' } as never, user, scopeAll);
+    assert.equal(annualOf(arrearsOpen.rows, '04').cells['2027'], 500000);
+    assert.equal(annualOf(arrearsCut.rows, '04').cells['2027'], 0);
+  } finally {
+    await pg.close();
+  }
+});
+
+test('paidDateFrom/paidDateTo 只过滤收款行，不改变按 period 归年', async () => {
+  const pg = await makeDatabase();
+  try {
+    await seedReceived(pg);
+    const service = serviceFor(pg);
+    const noRange: any = await service.annual({
+      type: 'received', officeCodes: ['01'], feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT,
+      yearFrom: 2004, yearTo: 2005,
+    } as never, user, scopeAll);
+    assert.equal(annualOf(noRange.rows, '01').cells['2004'], 88240);
+    assert.equal(annualOf(noRange.rows, '01').cells['2005'], 4170);
+
+    // 收款起始 2021：2004-period 那笔（2020 收款）被行过滤掉，列归年不变。
+    const from2021: any = await service.annual({
+      type: 'received', officeCodes: ['01'], feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT,
+      yearFrom: 2004, yearTo: 2005, paidDateFrom: '2021-01-01',
+    } as never, user, scopeAll);
+    assert.equal(annualOf(from2021.rows, '01').cells['2004'], 0);
+    assert.equal(annualOf(from2021.rows, '01').cells['2005'], 0);
+
+    // 收款截止 2020-12-31：2004-period 与 2005-period 的 2004 年收款都保留。
+    const to2020: any = await service.annual({
+      type: 'received', officeCodes: ['01'], feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT,
+      yearFrom: 2004, yearTo: 2005, paidDateTo: '2020-12-31',
+    } as never, user, scopeAll);
+    assert.equal(annualOf(to2020.rows, '01').cells['2004'], 88240);
+    assert.equal(annualOf(to2020.rows, '01').cells['2005'], 4170);
+
+    const detailFiltered: any = await service.annualDetail({
+      type: 'received', officeCode: '01', year: 2004, feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT,
+      paidDateFrom: '2021-01-01',
+    } as never, user, scopeAll);
+    assert.deepEqual(detailFiltered.rows, []);
+    assert.equal(detailFiltered.totalCents, annualOf(from2021.rows, '01').cells['2004']);
+    const detailKept: any = await service.annualDetail({
+      type: 'received', officeCode: '01', year: 2004, feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT,
+      paidDateTo: '2020-12-31',
+    } as never, user, scopeAll);
+    assert.equal(detailKept.totalCents, annualOf(to2020.rows, '01').cells['2004']);
+    // 2004 全部 23 组收款行（17 户 + 金惠丽 6 个月）都在 2020-12-31 前收款。
+    assert.equal(detailKept.rows.length, 23);
   } finally {
     await pg.close();
   }
