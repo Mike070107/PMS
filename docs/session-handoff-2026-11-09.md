@@ -32,15 +32,16 @@ ALTER TABLE mis_sync_state ADD COLUMN IF NOT EXISTS consecutive_failures int NOT
 ALTER TABLE mis_sync_state ADD COLUMN IF NOT EXISTS last_failure_at timestamptz;
 ```
 
-## 二、线上版本（2026-11-09 22:50）
+## 二、线上版本（2026-11-09 23:05）
 
 ```
-Web = 2.0.20261109-2249
-API = api-55e7e96（db up）
+Web = 2.0.20261109-2305
+API = api-b3be3a0（db up）
 ```
 
 > 22:11 上线：P0-4 最近30笔不再 pending、P0-5 门禁页助手状态按真实网关+能力分项显示（详见「待办」P0 4/5）。
 > 22:50 上线：统计汇总 P1（`/statistics`：项目实收/欠费年度汇总 + 三级下钻 + 勾选筛选 + CSV），口径见 `docs/statistics-reports-spec.md`。
+> 23:05 上线 P1.1：`mis_mirror_bill.nature_code` 行级房屋性质 + 镜像回填；统计按「收费时点性质」过滤，前端默认排除 06 空房。生产实测 01 管理处 ¥662,269.00、02 管理处 ¥745,182.10，与旧系统截图逐格一致（spec §8）。
 
 ## 三、已完成并上线（不要重复做）
 
