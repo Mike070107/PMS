@@ -5,7 +5,12 @@ import { ResolvedAccess } from '../access/access.service';
 import { CurrentAccess } from '../access/current-access.decorator';
 import { PermissionsGuard } from '../access/permissions.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { CollectionStatisticsService } from './collection.service';
 import {
+  CollectionDailyQueryDto,
+  CollectionDetailQueryDto,
+  CollectionMonthlyQueryDto,
+  CollectionSummaryQueryDto,
   StatisticsAnnualDetailQueryDto,
   StatisticsAnnualQueryDto,
   StatisticsBillsQueryDto,
@@ -16,7 +21,10 @@ import { StatisticsService } from './statistics.service';
 @Controller('statistics')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class StatisticsController {
-  constructor(private readonly statisticsService: StatisticsService) {}
+  constructor(
+    private readonly statisticsService: StatisticsService,
+    private readonly collectionService: CollectionStatisticsService,
+  ) {}
 
   @Get('options')
   @RequirePermission('business', 'view')
@@ -52,5 +60,49 @@ export class StatisticsController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.statisticsService.annualDetailBills(query, user, access);
+  }
+
+  /** P2-A 收费汇总：实收/退款按收费项目/管理处/收款方式/收款人分组。 */
+  @Get('collection/summary')
+  @RequirePermission('business', 'view')
+  collectionSummary(
+    @Query() query: CollectionSummaryQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.collectionService.collectionSummary(query, user, access);
+  }
+
+  /** P2-A 实收明细：逐笔账单，合计 = 实收 - 退款。 */
+  @Get('collection/detail')
+  @RequirePermission('business', 'view')
+  collectionDetail(
+    @Query() query: CollectionDetailQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.collectionService.collectionDetail(query, user, access);
+  }
+
+  /** P2-A 日常收费项目收款日报表。 */
+  @Get('daily')
+  @RequirePermission('business', 'view')
+  daily(
+    @Query() query: CollectionDailyQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.collectionService.daily(query, user, access);
+  }
+
+  /** P2-A 月报表。 */
+  @Get('monthly')
+  @RequirePermission('business', 'view')
+  monthly(
+    @Query() query: CollectionMonthlyQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.collectionService.monthly(query, user, access);
   }
 }
