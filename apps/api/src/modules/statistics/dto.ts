@@ -10,6 +10,12 @@ import {
   type CollectionGroupBy,
 } from './collection.util';
 import {
+  ANALYSIS_SORTS,
+  MONTHLY_REPORT_GROUP_BYS,
+  type CollectionAnalysisSort,
+  type MonthlyReportGroupBy,
+} from './analysis.util';
+import {
   ARREARS_PREPAID_GROUP_BYS,
   ARREARS_PREPAID_TABS,
   type ArrearsPrepaidGroupBy,
@@ -373,4 +379,128 @@ export class CollectionAssessmentQueryDto {
   @IsInt({ message: 'offset 必须是整数' })
   @Min(0)
   offset?: number;
+}
+/** P2-D 收款分析（按户）。 */
+export class CollectionAnalysisQueryDto {
+  @IsString({ message: 'asOfPeriod 必填' })
+  @Matches(PERIOD_RE, { message: 'asOfPeriod 必须是 YYYYMM' })
+  asOfPeriod!: string;
+
+  @IsString({ message: 'dateFrom 必填' })
+  @Matches(DATE_RE, { message: 'dateFrom 必须是 YYYY-MM-DD' })
+  dateFrom!: string;
+
+  @IsString({ message: 'dateTo 必填' })
+  @Matches(DATE_RE, { message: 'dateTo 必须是 YYYY-MM-DD' })
+  dateTo!: string;
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(OFFICE_CODE_RE, { each: true, message: 'officeCodes 必须是两位管理处代码' })
+  officeCodes?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(CODE_RE, { each: true, message: 'feeCodes 不合法' })
+  feeCodes?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(CODE_RE, { each: true, message: 'natures 不合法' })
+  natures?: string[];
+
+  @IsOptional()
+  @IsIn(ANALYSIS_SORTS, { message: 'sort 必须是 currentArrears/historyArrears/address' })
+  sort?: CollectionAnalysisSort;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'limit 必须是整数' })
+  @Min(1)
+  @Max(COLLECTION_MAX_DETAIL_LIMIT, { message: `limit 不能超过 ${COLLECTION_MAX_DETAIL_LIMIT}` })
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'offset 必须是整数' })
+  @Min(0)
+  offset?: number;
+}
+
+export class CollectionAnalysisDetailQueryDto {
+  @IsString({ message: 'asOfPeriod 必填' })
+  @Matches(PERIOD_RE, { message: 'asOfPeriod 必须是 YYYYMM' })
+  asOfPeriod!: string;
+
+  @IsString({ message: 'dateFrom 必填' })
+  @Matches(DATE_RE, { message: 'dateFrom 必须是 YYYY-MM-DD' })
+  dateFrom!: string;
+
+  @IsString({ message: 'dateTo 必填' })
+  @Matches(DATE_RE, { message: 'dateTo 必须是 YYYY-MM-DD' })
+  dateTo!: string;
+
+  @Type(() => Number)
+  @IsInt({ message: 'sId 必须是房屋 id' })
+  @Min(1)
+  sId!: number;
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(OFFICE_CODE_RE, { each: true, message: 'officeCodes 必须是两位管理处代码' })
+  officeCodes?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(CODE_RE, { each: true, message: 'feeCodes 不合法' })
+  feeCodes?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(CODE_RE, { each: true, message: 'natures 不合法' })
+  natures?: string[];
+}
+
+/** P2-D 收费月报表（核心 9 指标版）。 */
+export class MonthlyReportQueryDto {
+  @IsString({ message: 'asOfPeriod 必填' })
+  @Matches(PERIOD_RE, { message: 'asOfPeriod 必须是 YYYYMM' })
+  asOfPeriod!: string;
+
+  @IsOptional()
+  @IsIn(MONTHLY_REPORT_GROUP_BYS, { message: 'groupBy 必须是 office' })
+  groupBy?: MonthlyReportGroupBy;
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(OFFICE_CODE_RE, { each: true, message: 'officeCodes 必须是两位管理处代码' })
+  officeCodes?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(CODE_RE, { each: true, message: 'feeCodes 不合法' })
+  feeCodes?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(CODE_RE, { each: true, message: 'natures 不合法' })
+  natures?: string[];
 }

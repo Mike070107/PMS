@@ -5,10 +5,13 @@ import { ResolvedAccess } from '../access/access.service';
 import { CurrentAccess } from '../access/current-access.decorator';
 import { PermissionsGuard } from '../access/permissions.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AnalysisStatisticsService } from './analysis.service';
 import { ArrearsStatisticsService } from './arrears.service';
 import { CollectionStatisticsService } from './collection.service';
 import {
   ArrearsPrepaidBillsQueryDto,
+  CollectionAnalysisDetailQueryDto,
+  CollectionAnalysisQueryDto,
   ArrearsPrepaidDetailQueryDto,
   ArrearsPrepaidSummaryQueryDto,
   CollectionAssessmentQueryDto,
@@ -17,6 +20,7 @@ import {
   CollectionFeeNatureQueryDto,
   CollectionMonthlyQueryDto,
   CollectionSummaryQueryDto,
+  MonthlyReportQueryDto,
   StatisticsAnnualDetailQueryDto,
   StatisticsAnnualQueryDto,
   StatisticsBillsQueryDto,
@@ -31,6 +35,7 @@ export class StatisticsController {
     private readonly statisticsService: StatisticsService,
     private readonly collectionService: CollectionStatisticsService,
     private readonly arrearsService: ArrearsStatisticsService,
+    private readonly analysisService: AnalysisStatisticsService,
   ) {}
 
   @Get('options')
@@ -142,6 +147,38 @@ export class StatisticsController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.arrearsService.collectionAssessment(query, user, access);
+  }
+
+  /** 收款分析（按户 5 指标）+ 该户逐笔。 */
+  @Get('collection-analysis')
+  @RequirePermission('business', 'view')
+  collectionAnalysis(
+    @Query() query: CollectionAnalysisQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.analysisService.collectionAnalysis(query, user, access);
+  }
+
+  @Get('collection-analysis/detail')
+  @RequirePermission('business', 'view')
+  collectionAnalysisDetail(
+    @Query() query: CollectionAnalysisDetailQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.analysisService.collectionAnalysisDetail(query, user, access);
+  }
+
+  /** 收费月报表（核心 9 指标；其余列 pendingColumns 标待截图）。 */
+  @Get('monthly-report')
+  @RequirePermission('business', 'view')
+  monthlyReport(
+    @Query() query: MonthlyReportQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.analysisService.monthlyReport(query, user, access);
   }
 
   @Get('daily')
