@@ -114,7 +114,9 @@ export default function StatisticsFilters({
       .filter((group) => group.items.length > 0);
   }, [feeGroups, feeQuery]);
 
-  const canSubmit = draft.officeCodes.length > 0 && draft.feeCodes.length > 0 && draft.natures.length > 0
+  const isLedger = reportType === 'property-summary' || reportType === 'owner-ledger' || reportType === 'building-ledger';
+  const canSubmit = draft.officeCodes.length > 0
+    && (isLedger || (draft.feeCodes.length > 0 && draft.natures.length > 0))
     && (reportType !== 'fee-nature' && reportType !== 'daily' && reportType !== 'collection-analysis' || (!!draft.paidDateFrom && !!draft.paidDateTo))
     && (reportType !== 'arrears-prepaid' || (!!draft.asOfPeriod && !!draft.paidDateTo))
     && (reportType !== 'assessment' || !!draft.assessmentYear)
@@ -191,6 +193,22 @@ export default function StatisticsFilters({
           </div>
         </CheckGroup>
 
+        {reportType === 'owner-ledger' || reportType === 'building-ledger' ? (
+          <CheckGroup title="关键词" hint="匹配地址/房号/业主/手机/电话（楼房台账匹配路/弄/楼号）">
+            <div className="stats-office-search">
+              <Icon name="search" size={15} />
+              <input
+                className="in"
+                data-testid="ledger-keyword"
+                placeholder="输入关键词"
+                value={draft.ledgerKeyword}
+                onChange={(event) => onChange({ ledgerKeyword: event.target.value })}
+              />
+            </div>
+          </CheckGroup>
+        ) : null}
+
+        {reportType !== 'property-summary' && reportType !== 'owner-ledger' && reportType !== 'building-ledger' ? (
         <CheckGroup title="收费项目" hint="按旧 MIS 分类树；勾选后统计仍传扁平 feeCodes" actions={groupActions('fees', options.feeItems.map((fee) => fee.code))}>
           <div className="stats-office-search">
             <Icon name="search" size={15} />
@@ -215,7 +233,9 @@ export default function StatisticsFilters({
             {!visibleFeeGroups.length ? <div className="muted">没有匹配的收费项目</div> : null}
           </div>
         </CheckGroup>
+        ) : null}
 
+        {reportType !== 'property-summary' && reportType !== 'building-ledger' ? (
         <CheckGroup
           title="房屋性质"
           hint="按收费发生时点性质统计；空房（06）默认不勾选，可手动勾选"
@@ -236,9 +256,11 @@ export default function StatisticsFilters({
             ))}
           </div>
         </CheckGroup>
+        ) : null}
 
         <div className="stats-filter-dates">
-          {reportType !== 'arrears-prepaid' && reportType !== 'assessment' && reportType !== 'monthly-report' ? (
+          {reportType !== 'arrears-prepaid' && reportType !== 'assessment' && reportType !== 'monthly-report'
+            && reportType !== 'property-summary' && reportType !== 'owner-ledger' && reportType !== 'building-ledger' ? (
             <>
           <div className="stats-date-range-label">
             {reportType === 'fee-nature' || reportType === 'daily' ? '收款日期范围（必填）' : '收款日期范围'}
@@ -381,6 +403,12 @@ export default function StatisticsFilters({
               </div>
               <div className="stats-filter-hint">按月输出核心指标；其他分项列等旧系统截图确认后补。</div>
             </>
+          ) : reportType === 'property-summary' ? (
+            <div className="stats-filter-hint" data-testid="property-summary-filter-hint">房产汇总只按管理处统计，无需收费项目/房屋性质/日期条件。</div>
+          ) : reportType === 'owner-ledger' ? (
+            <div className="stats-filter-hint" data-testid="owner-ledger-filter-hint">按管理处/房屋性质筛选，关键词匹配地址/房号/业主/手机/电话。</div>
+          ) : reportType === 'building-ledger' ? (
+            <div className="stats-filter-hint" data-testid="building-ledger-filter-hint">按管理处筛选，关键词匹配路/弄/楼号。</div>
           ) : null}
         </div>
       </div>
@@ -405,7 +433,9 @@ export default function StatisticsFilters({
                   ? '请至少各选一个管理处、收费项目、房屋性质，并填写统计年月与收款日期范围。'
                   : reportType === 'monthly-report'
                     ? '请至少各选一个管理处、收费项目和房屋性质，并选择统计年月。'
-                    : '请至少各选一个管理处、收费项目和房屋性质。'}
+                    : isLedger
+                      ? '请至少选择一个管理处。'
+                      : '请至少各选一个管理处、收费项目和房屋性质。'}
         </div>
       ) : null}
     </aside>

@@ -648,6 +648,19 @@
 .stats-monthly-report-table .stats-sticky-name { position: sticky; left: 0; z-index: 3; min-width: 150px; background: #fff; box-shadow: 1px 0 0 var(--line); }
 .stats-monthly-report-table thead .stats-sticky-name { background: var(--sunken, #f4f7fb); z-index: 4; }
 
+/* P3-A：房产汇总 / 住户台账 / 楼房台账 */
+.stats-property-scroll, .stats-ledger-scroll { max-height: 62vh; }
+.stats-property-table { min-width: 1380px; }
+.stats-owner-ledger-table { min-width: 1080px; }
+.stats-building-ledger-table { min-width: 980px; }
+.stats-property-table th, .stats-property-table td,
+.stats-owner-ledger-table th, .stats-owner-ledger-table td,
+.stats-building-ledger-table th, .stats-building-ledger-table td { white-space: nowrap; }
+.stats-property-table td.num, .stats-property-table th.num,
+.stats-owner-ledger-table td.num, .stats-owner-ledger-table th.num,
+.stats-building-ledger-table td.num, .stats-building-ledger-table th.num { text-align: right; }
+.stats-property-table .num:first-child, .stats-property-table th:first-child { text-align: left; }
+
 .stats-received-table { min-width: 980px; }
 
 .stats-received-table tbody tr:hover td { background: var(--sunken); }

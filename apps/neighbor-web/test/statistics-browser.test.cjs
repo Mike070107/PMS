@@ -233,6 +233,39 @@ test('统计汇总金额/CSV 纯函数：整数分格式化、UTF-8 BOM、筛选
   assert.ok(monthlyCsvText.includes('0.53%'));
   assert.ok(monthlyCsvText.includes('合计'));
 
+  // P3-A：房产汇总 / 住户台账 / 楼房台账参数与 CSV。
+  assert.deepEqual(JSON.parse(JSON.stringify(lib.propertySummaryParams({ type: 'property-summary', officeCodes: ['01', '02'] }))), { officeCodes: '01,02' });
+  const ownerQuery = { type: 'owner-ledger', officeCodes: ['01'], natures: ['01', '06'], keyword: ' 宝秀路 ' };
+  const ownerParams = lib.ownerLedgerParams(ownerQuery, 0, 200);
+  assert.equal(ownerParams.keyword, '宝秀路');
+  assert.equal(ownerParams.natures, '01,06');
+  assert.equal(ownerParams.limit, 200);
+  const buildingQuery = { type: 'building-ledger', officeCodes: ['01'], keyword: '228弄' };
+  const buildingParams = lib.buildingLedgerParams(buildingQuery, 200, 200);
+  assert.equal(buildingParams.keyword, '228弄');
+  assert.equal(buildingParams.offset, 200);
+  const propertyReport = {
+    rows: [{ officeCode: '01', officeName: '一期', buildingCount: 12, roomCount: 480, ownerCount: 456, totalAreaSqm: 52340.5, natureCounts: { '01': '300' } }],
+    total: { buildingCount: 12, roomCount: 480, ownerCount: 456, totalAreaSqm: 52340.5, natureCounts: { '01': 300 } },
+    natures: [{ code: '01', name: '商品房' }],
+  };
+  const propertyCsvText = lib.propertySummaryCsv(propertyReport, { type: 'property-summary', officeCodes: ['01'] });
+  assert.equal(propertyCsvText.charCodeAt(0), 0xFEFF);
+  assert.ok(propertyCsvText.includes('房产汇总'));
+  assert.ok(propertyCsvText.includes('01 商品房'));
+  assert.ok(propertyCsvText.includes('合计,12,480,456,52340.5,300'));
+  const ownerReport = { rows: [{ sId: 1, officeCode: '01', officeName: '一期', address: '宝秀路701号701', ownerName: null, mobile: null, phone2: null, areaSqm: 90, natureCode: '01', natureName: '商品房', roomNo: '701' }], count: 1 };
+  const ownerCsvText = lib.ownerLedgerCsv(ownerReport, ownerQuery);
+  assert.equal(ownerCsvText.charCodeAt(0), 0xFEFF);
+  assert.ok(ownerCsvText.includes('住户台账'));
+  assert.ok(ownerCsvText.includes('宝秀路701号701'));
+  const buildingReport = { rows: [{ lId: 1, officeCode: '01', officeName: '一期', road: '宝秀路', lane: '228弄', buildingNo: '6', roomCount: 48, ownerCount: 45, areaSqm: 4800.5 }], count: 1, totals: { buildingCount: 1, roomCount: 48, ownerCount: 45, areaSqm: 4800.5 } };
+  const buildingCsvText = lib.buildingLedgerCsv(buildingReport, buildingQuery);
+  assert.equal(buildingCsvText.charCodeAt(0), 0xFEFF);
+  assert.ok(buildingCsvText.includes('楼房台账'));
+  assert.ok(buildingCsvText.includes('228弄'));
+  assert.ok(buildingCsvText.includes('合计,,,,1,48,45,4800.5'));
+
   const annual = {
     type: 'arrears',
     columns: [2011, 2014],
@@ -383,9 +416,12 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     assert.ok(await js("!!document.querySelector('[data-report-type=assessment]')"), '收缴考核已启用');
     assert.ok(await js("!!document.querySelector('[data-report-type=\"collection-analysis\"]')"), '收款分析已启用');
     assert.ok(await js("!!document.querySelector('[data-report-type=\"monthly-report\"]')"), '收费月报表（核心指标）已启用');
-    assert.ok(await js("document.querySelectorAll('.stats-report-pending').length >= 15"), '待接入报表要用灰字列出');
+    assert.ok(await js("!!document.querySelector('[data-report-type=\"property-summary\"]')"), '房产汇总已启用');
+    assert.ok(await js("!!document.querySelector('[data-report-type=\"owner-ledger\"]')"), '住户台账已启用');
+    assert.ok(await js("!!document.querySelector('[data-report-type=\"building-ledger\"]')"), '楼房台账已启用');
+    assert.ok(await js("document.querySelectorAll('.stats-report-pending').length >= 12"), '待接入报表要用灰字列出');
     assert.equal(
-      await js("[...document.querySelectorAll('.stats-report-pending')].some((e) => ['收费汇总', '收款日报表', '欠收与溢收汇总', '收缴考核', '收款分析', '收费月报表（核心指标）'].includes(e.textContent.trim()))"),
+      await js("[...document.querySelectorAll('.stats-report-pending')].some((e) => ['收费汇总', '收款日报表', '欠收与溢收汇总', '收缴考核', '收款分析', '收费月报表（核心指标）', '房产汇总', '住户台账', '楼房台账'].includes(e.textContent.trim()))"),
       false,
       '已启用报表不能仍列在待接入',
     );
@@ -1200,6 +1236,124 @@ test('P2-D 收费月报表（核心指标）：11 列/合计行/回收率/提示
     await call('Emulation.setDeviceMetricsOverride', { width: 320, height: 900, deviceScaleFactor: 1, mobile: false });
     await pause(400);
     assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '收费月报表 320 页面横向溢出');
+  });
+});
+
+test('P3-A 房产汇总：管理处行/合计/性质房屋数列/CSV/窄屏内部滚动', { timeout: 180000 }, async () => {
+  await withPage(async ({ js, call, waitFor, screenshot }) => {
+    await waitFor("!!document.querySelector('.stats')", '统计页挂载', 25000);
+    await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度表', 25000);
+    await js("document.querySelector('[data-report-type=\"property-summary\"]').click()");
+    await waitFor("!!document.querySelector('[data-testid=property-summary-table]')", '房产汇总表', 25000);
+    const query = await js("window.__calls.filter((c) => c.url === '/statistics/property-summary').slice(-1)[0].query");
+    assert.equal(query.officeCodes, '01,02,03,04');
+    const headers = await js("[...document.querySelectorAll('[data-testid=property-summary-table] thead th')].map((th) => th.textContent.trim())");
+    assert.equal(headers.length, 18, '房产汇总 5 个固定列 + 13 个性质列');
+    assert.ok(headers.includes('01 商品房') && headers.includes('13 私房'));
+    assert.equal(await js("document.querySelectorAll('[data-testid=property-summary-table] tbody tr[data-office-row]').length"), 4);
+    const total = await js("document.querySelector('[data-testid=property-summary-total]').textContent");
+    assert.ok(total.includes('30'), '楼栋数合计');
+    assert.ok(total.includes('1,220'), '房屋数合计');
+    assert.ok(total.includes('1,161'), '业主数合计');
+    assert.ok(total.includes('150460.75'), '建筑面积合计');
+    assert.ok(total.includes('165'), '空房 06 合计');
+    await screenshot('statistics-property-summary-1440.png');
+
+    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
+    await js("document.querySelector('[data-testid=stats-export]').click()");
+    await waitFor("window.__blobs.length >= 1", '房产汇总 CSV Blob');
+    const exported = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], title: text.includes('房产汇总'), nature: text.includes('01 商品房'), total: text.includes('合计') }; })()");
+    assert.deepEqual(exported.bom, [0xEF, 0xBB, 0xBF]);
+    assert.ok(exported.title && exported.nature && exported.total, '房产汇总 CSV 内容');
+    await pause(2600);
+
+    await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
+    await pause(500);
+    if (await js("!!document.querySelector('.stats-filter-float')")) {
+      await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
+      await pause(300);
+    }
+    assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '房产汇总 390 页面横向溢出');
+    assert.ok(await js("(() => { const el = document.querySelector('.stats-property-scroll'); return el && el.scrollWidth > el.clientWidth; })()"), '房产汇总宽表应内部滚动');
+    await screenshot('statistics-property-summary-390.png');
+  });
+});
+
+test('P3-A 住户台账/楼房台账：关键词/分页/空值/合计/CSV/窄屏', { timeout: 180000 }, async () => {
+  await withPage(async ({ js, call, waitFor, screenshot }) => {
+    const setKeyword = async (value) => {
+      await js(`(() => { const el = document.querySelector('[data-testid=ledger-keyword]'); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+      await pause(150);
+    };
+    await waitFor("!!document.querySelector('.stats')", '统计页挂载', 25000);
+    await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度表', 25000);
+
+    // 住户台账：默认 200 户 + 总数 201；空手机/电话显示「—」。
+    await js("document.querySelector('[data-report-type=\"owner-ledger\"]').click()");
+    await waitFor("!!document.querySelector('[data-testid=owner-ledger-table]')", '住户台账表', 25000);
+    const ownerQuery = await js("window.__calls.filter((c) => c.url === '/statistics/owner-ledger').slice(-1)[0].query");
+    assert.equal(ownerQuery.limit, 200);
+    assert.equal(ownerQuery.offset, 0);
+    assert.ok(ownerQuery.natures.length > 0);
+    assert.equal(await js("document.querySelectorAll('[data-testid=owner-ledger-table] tbody tr[data-s-id]').length"), 200);
+    assert.ok((await js('document.body.textContent')).includes('201 户'), '显示总条数');
+    const firstRow = await js("document.querySelector('[data-testid=owner-ledger-table] tbody tr[data-s-id]').textContent");
+    assert.ok((firstRow.match(/—/g) || []).length >= 3, '手机/电话/业主空值显示 —');
+    await screenshot('statistics-owner-ledger-1440.png');
+
+    // 加载更多：offset=200，追加第 201 行。
+    await js("document.querySelector('.stats-load-more button').click()");
+    await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/owner-ledger'); const last = list[list.length - 1]; return last && last.query.offset === 200; })()", '住户台账加载更多 offset=200');
+    await waitFor("document.querySelectorAll('[data-testid=owner-ledger-table] tbody tr[data-s-id]').length === 201", '住户台账 201 行');
+
+    // 关键词：提交后请求带 keyword，列表收窄。
+    await setKeyword('合成业主199');
+    await js("document.querySelector('[data-testid=stats-submit]').click()");
+    await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/owner-ledger'); const last = list[list.length - 1]; return last && last.query.keyword === '合成业主199'; })()", '住户台账关键词请求');
+    await waitFor("document.querySelectorAll('[data-testid=owner-ledger-table] tbody tr[data-s-id]').length === 1", '住户台账关键词结果');
+
+    // CSV：BOM、住户台账列头。
+    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
+    await js("document.querySelector('[data-testid=stats-export]').click()");
+    await waitFor("window.__blobs.length >= 1", '住户台账 CSV Blob');
+    const ownerCsv = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], title: text.includes('住户台账'), header: text.includes('序号,管理处,地址,房号,业主,手机,电话,建筑面积,房屋性质') }; })()");
+    assert.deepEqual(ownerCsv.bom, [0xEF, 0xBB, 0xBF]);
+    assert.ok(ownerCsv.title && ownerCsv.header, '住户台账 CSV 内容');
+    await pause(2600);
+
+    // 楼房台账：行/合计/关键词。
+    await setKeyword('');
+    await js("document.querySelector('[data-report-type=\"building-ledger\"]').click()");
+    await waitFor("!!document.querySelector('[data-testid=building-ledger-table]')", '楼房台账表', 25000);
+    assert.equal(await js("document.querySelectorAll('[data-testid=building-ledger-table] tbody tr[data-l-id]').length"), 3);
+    const buildingTotal = await js("document.querySelector('[data-testid=building-ledger-total]').textContent");
+    assert.ok(buildingTotal.includes('140'), '房屋数合计');
+    assert.ok(buildingTotal.includes('133'), '业主数合计');
+    assert.ok(buildingTotal.includes('14000.75'), '建筑面积合计');
+    await screenshot('statistics-building-ledger-1440.png');
+    await setKeyword('229弄');
+    await js("document.querySelector('[data-testid=stats-submit]').click()");
+    await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/building-ledger'); const last = list[list.length - 1]; return last && last.query.keyword === '229弄'; })()", '楼房台账关键词请求');
+    await waitFor("document.querySelectorAll('[data-testid=building-ledger-table] tbody tr[data-l-id]').length === 1", '楼房台账关键词结果');
+    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
+    await js("document.querySelector('[data-testid=stats-export]').click()");
+    await waitFor("window.__blobs.length >= 1", '楼房台账 CSV Blob');
+    const buildingCsv = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], title: text.includes('楼房台账'), header: text.includes('序号,管理处,路,弄/号,楼号,房屋数,业主数,建筑面积') }; })()");
+    assert.deepEqual(buildingCsv.bom, [0xEF, 0xBB, 0xBF]);
+    assert.ok(buildingCsv.title && buildingCsv.header, '楼房台账 CSV 内容');
+    await pause(2600);
+
+    await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
+    await pause(500);
+    if (await js("!!document.querySelector('.stats-filter-float')")) {
+      await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
+      await pause(300);
+    }
+    assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '台账 390 页面横向溢出');
+    await screenshot('statistics-building-ledger-390.png');
+    await call('Emulation.setDeviceMetricsOverride', { width: 320, height: 900, deviceScaleFactor: 1, mobile: false });
+    await pause(400);
+    assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '台账 320 页面横向溢出');
   });
 });
 

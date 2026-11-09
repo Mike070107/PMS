@@ -3,7 +3,7 @@
  * 金额一律是整数分；页面显示统一 ¥x,xxx.xx，CSV 用纯数字便于 Excel 计算。
  */
 
-export type StatisticsReportType = 'received' | 'arrears' | 'fee-nature' | 'daily' | 'arrears-prepaid' | 'assessment' | 'collection-analysis' | 'monthly-report';
+export type StatisticsReportType = 'received' | 'arrears' | 'fee-nature' | 'daily' | 'arrears-prepaid' | 'assessment' | 'collection-analysis' | 'monthly-report' | 'property-summary' | 'owner-ledger' | 'building-ledger';
 /** P1 年度报表：共用应收截止年月/收款日期等筛选。 */
 export type AnnualReportType = 'received' | 'arrears';
 
@@ -218,7 +218,26 @@ export interface MonthlyReportQuery {
   asOfPeriod: string;
 }
 
-export type ReportQuery = AnnualQuery | CollectionQuery | DailyQuery | ArrearsPrepaidQuery | AssessmentQuery | CollectionAnalysisQuery | MonthlyReportQuery;
+/** P3-A 房产汇总：按管理处统计楼栋/房屋/业主/面积与各房屋性质房屋数。 */
+export interface PropertySummaryQuery {
+  type: 'property-summary';
+  officeCodes: string[];
+}
+/** P3-A 住户台账：管理处 + 房屋性质 + 关键词分页。 */
+export interface OwnerLedgerQuery {
+  type: 'owner-ledger';
+  officeCodes: string[];
+  natures: string[];
+  keyword: string;
+}
+/** P3-A 楼房台账：管理处 + 关键词分页。 */
+export interface BuildingLedgerQuery {
+  type: 'building-ledger';
+  officeCodes: string[];
+  keyword: string;
+}
+
+export type ReportQuery = AnnualQuery | CollectionQuery | DailyQuery | ArrearsPrepaidQuery | AssessmentQuery | CollectionAnalysisQuery | MonthlyReportQuery | PropertySummaryQuery | OwnerLedgerQuery | BuildingLedgerQuery;
 
 export interface FilterDraft {
   officeCodes: string[];
@@ -238,6 +257,8 @@ export interface FilterDraft {
   assessmentYear: string;
   /** P2-D 收款分析排序（默认当年欠收降序） */
   analysisSort: 'currentArrears' | 'historyArrears' | 'address';
+  /** P3-A 住户/楼房台账关键词 */
+  ledgerKeyword: string;
 }
 
 export const REPORTS: Array<{ type: StatisticsReportType; name: string; hint: string }> = [
@@ -249,6 +270,9 @@ export const REPORTS: Array<{ type: StatisticsReportType; name: string; hint: st
   { type: 'assessment', name: '收缴考核', hint: '按年份 1–12 月应收/收款考核房屋收缴率；含按金额/按户数指标' },
   { type: 'collection-analysis', name: '收款分析', hint: '按户查看历年欠收/当年欠收/当月应收/预缴/区间实收；点行看逐笔' },
   { type: 'monthly-report', name: '收费月报表（核心指标）', hint: '按管理处 11 项核心指标（月应收/实收/欠收/预收/回收率）；其余列待旧系统截图确认' },
+  { type: 'property-summary', name: '房产汇总', hint: '按管理处统计楼栋/房屋/业主/建筑面积及各房屋性质房屋数' },
+  { type: 'owner-ledger', name: '住户台账', hint: '按管理处/房屋性质与关键词查住户（地址/房号/业主/电话）；分页导出' },
+  { type: 'building-ledger', name: '楼房台账', hint: '按管理处与关键词查楼栋（房屋数/业主数/面积）；分页导出' },
 ];
 
 /** 旧系统里尚未接入的报表：只列灰字，不做假按钮，不伪造数据。 */
@@ -258,9 +282,6 @@ export const PENDING_REPORTS = [
   '综合月报表 B/C',
   '分等综合月报表',
   '日常收费项目收款日报表',
-  '房产汇总',
-  '住户台账',
-  '楼房台账',
   '空房情况统计',
   '开票数据统计',
   '住户票据查询',
@@ -868,6 +889,149 @@ export function monthlyReportCsv(report: MonthlyReportResponse, query: MonthlyRe
   ];
   for (const row of report.rows) lines.push([row.label || row.key, ...part(row)]);
   if (report.totals) lines.push(['合计', ...part(report.totals)]);
+  return '\uFEFF' + lines.map((line) => line.map(csvCell).join(',')).join('\r\n');
+}
+
+// ───────────────────────── P3-A：房产汇总 / 住户台账 / 楼房台账 ─────────────────────────
+
+export interface PropertySummaryCounts {
+  buildingCount: number;
+  roomCount: number;
+  ownerCount: number;
+  totalAreaSqm: number | string;
+  natureCounts: Record<string, number>;
+}
+export interface PropertySummaryRow extends PropertySummaryCounts {
+  officeCode: string;
+  officeName?: string | null;
+}
+export interface PropertySummaryResponse {
+  rows: PropertySummaryRow[];
+  total: PropertySummaryCounts | null;
+  natures: P2Column[];
+  dataAsOf?: string | null;
+  available?: boolean;
+  message?: string | null;
+}
+export interface OwnerLedgerRow {
+  sId: number | null;
+  officeCode: string;
+  officeName?: string | null;
+  address: string | null;
+  road?: string | null;
+  lane?: string | null;
+  buildingNo?: string | null;
+  roomNo?: string | null;
+  natureCode?: string | null;
+  natureName?: string | null;
+  areaSqm: number | string | null;
+  ownerName: string | null;
+  mobile?: string | null;
+  phone2?: string | null;
+}
+export interface OwnerLedgerResponse {
+  rows: OwnerLedgerRow[];
+  count?: number | null;
+  totals?: { roomCount?: number; areaSqm?: number | string } | null;
+  dataAsOf?: string | null;
+  available?: boolean;
+  message?: string | null;
+}
+export interface BuildingLedgerRow {
+  lId: number | null;
+  officeCode: string;
+  officeName?: string | null;
+  road?: string | null;
+  lane?: string | null;
+  buildingNo?: string | null;
+  roomCount: number;
+  areaSqm: number | string;
+  ownerCount: number;
+}
+export interface BuildingLedgerResponse {
+  rows: BuildingLedgerRow[];
+  count?: number | null;
+  totals?: { buildingCount?: number; roomCount?: number; ownerCount?: number; areaSqm?: number | string } | null;
+  dataAsOf?: string | null;
+  available?: boolean;
+  message?: string | null;
+}
+
+export function propertySummaryParams(query: PropertySummaryQuery) {
+  return { officeCodes: query.officeCodes.join(',') };
+}
+export function ownerLedgerParams(query: OwnerLedgerQuery, offset = 0, limit = 200) {
+  return {
+    officeCodes: query.officeCodes.join(','),
+    natures: query.natures.join(','),
+    keyword: query.keyword.trim() || undefined,
+    limit,
+    offset,
+  };
+}
+export function buildingLedgerParams(query: BuildingLedgerQuery, offset = 0, limit = 200) {
+  return {
+    officeCodes: query.officeCodes.join(','),
+    keyword: query.keyword.trim() || undefined,
+    limit,
+    offset,
+  };
+}
+
+/** 房产汇总 -> CSV。 */
+export function propertySummaryCsv(report: PropertySummaryResponse, query: PropertySummaryQuery): string {
+  const lines: string[][] = [
+    ['统计汇总', '房产汇总'],
+    ['管理处', query.officeCodes.join('/') || '全部'],
+    [],
+    ['管理处', '楼栋数', '房屋数', '业主数', '建筑面积', ...report.natures.map((nature) => `${nature.code} ${nature.name}`)],
+  ];
+  const part = (row: PropertySummaryCounts) => [
+    String(row.buildingCount), String(row.roomCount), String(row.ownerCount), String(row.totalAreaSqm ?? 0),
+    ...report.natures.map((nature) => String(row.natureCounts?.[nature.code] ?? 0)),
+  ];
+  for (const row of report.rows) lines.push([row.officeName || row.officeCode, ...part(row)]);
+  if (report.total) lines.push(['合计', ...part(report.total)]);
+  return '\uFEFF' + lines.map((line) => line.map(csvCell).join(',')).join('\r\n');
+}
+
+/** 住户台账 -> CSV。 */
+export function ownerLedgerCsv(report: OwnerLedgerResponse, query: OwnerLedgerQuery): string {
+  const lines: string[][] = [
+    ['统计汇总', '住户台账'],
+    ['管理处', query.officeCodes.join('/') || '全部'],
+    ['房屋性质', query.natures.join('/') || '全部'],
+    ['关键词', query.keyword.trim() || ''],
+    [],
+    ['序号', '管理处', '地址', '房号', '业主', '手机', '电话', '建筑面积', '房屋性质'],
+  ];
+  report.rows.forEach((row, index) => {
+    lines.push([
+      String(index + 1), row.officeName || row.officeCode, row.address || '', row.roomNo || '', row.ownerName || '',
+      row.mobile || '', row.phone2 || '', row.areaSqm === null ? '' : String(row.areaSqm), row.natureName || row.natureCode || '',
+    ]);
+  });
+  return '\uFEFF' + lines.map((line) => line.map(csvCell).join(',')).join('\r\n');
+}
+
+/** 楼房台账 -> CSV。 */
+export function buildingLedgerCsv(report: BuildingLedgerResponse, query: BuildingLedgerQuery): string {
+  const lines: string[][] = [
+    ['统计汇总', '楼房台账'],
+    ['管理处', query.officeCodes.join('/') || '全部'],
+    ['关键词', query.keyword.trim() || ''],
+    [],
+    ['序号', '管理处', '路', '弄/号', '楼号', '房屋数', '业主数', '建筑面积'],
+  ];
+  report.rows.forEach((row, index) => {
+    lines.push([
+      String(index + 1), row.officeName || row.officeCode, row.road || '', row.lane || '',
+      row.buildingNo || '', String(row.roomCount), String(row.ownerCount), String(row.areaSqm ?? 0),
+    ]);
+  });
+  if (report.totals) {
+    lines.push(['合计', '', '', '', String(report.totals.buildingCount ?? report.rows.length), String(report.totals.roomCount ?? 0), String(report.totals.ownerCount ?? 0), String(report.totals.areaSqm ?? 0)]);
+  }
   return '\uFEFF' + lines.map((line) => line.map(csvCell).join(',')).join('\r\n');
 }
 

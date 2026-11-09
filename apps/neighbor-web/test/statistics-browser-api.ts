@@ -378,6 +378,87 @@ function monthlyReportResponse() {
   };
 }
 
+// P3-A 房产汇总 / 住户台账 / 楼房台账。
+const PROPERTY_ROWS = [
+  { officeCode: '01', officeName: '枫桦景苑一期', buildingCount: 12, roomCount: 480, ownerCount: 456, totalAreaSqm: 52340.5, natureCounts: { '01': 300, '06': 40, '07': 140 } },
+  { officeCode: '02', officeName: '枫桦景苑二期A', buildingCount: 8, roomCount: 320, ownerCount: 300, totalAreaSqm: 40120.25, natureCounts: { '01': 220, '06': 60, '07': 40 } },
+  { officeCode: '03', officeName: '枫桦景苑二期B', buildingCount: 6, roomCount: 240, ownerCount: 230, totalAreaSqm: 31200, natureCounts: { '01': 180, '06': 30, '07': 30 } },
+  { officeCode: '04', officeName: '上海新家', buildingCount: 4, roomCount: 180, ownerCount: 175, totalAreaSqm: 26800, natureCounts: { '01': 120, '06': 35, '07': 25 } },
+];
+
+function propertySummaryResponse() {
+  const total = PROPERTY_ROWS.reduce((sum, row) => ({
+    buildingCount: sum.buildingCount + row.buildingCount,
+    roomCount: sum.roomCount + row.roomCount,
+    ownerCount: sum.ownerCount + row.ownerCount,
+    totalAreaSqm: sum.totalAreaSqm + row.totalAreaSqm,
+    natureCounts: Object.fromEntries(NATURES.map((nature) => [nature.code, (sum.natureCounts[nature.code] ?? 0) + (row.natureCounts[nature.code] ?? 0)])),
+  }), { buildingCount: 0, roomCount: 0, ownerCount: 0, totalAreaSqm: 0, natureCounts: {} as Record<string, number> });
+  return { rows: PROPERTY_ROWS, total, natures: NATURES, dataAsOf: OPTIONS.dataAsOf, available: true, message: null };
+}
+
+function ownerLedgerRows() {
+  // 201 户：第一行手机/电话为空，用于断言「—」；第 201 行用于加载更多。
+  return Array.from({ length: 201 }, (_, index) => ({
+    sId: 9001 + index,
+    officeCode: index % 2 === 0 ? '01' : '02',
+    officeName: index % 2 === 0 ? '枫桦景苑一期' : '枫桦景苑二期A',
+    address: `宝秀路${700 + index}号${101 + index}室`,
+    road: '宝秀路',
+    lane: '228弄',
+    buildingNo: String((index % 6) + 1),
+    roomNo: `${101 + index}`,
+    natureCode: index % 3 === 0 ? '06' : '01',
+    natureName: index % 3 === 0 ? '空房' : '商品房',
+    areaSqm: 60 + (index % 80),
+    ownerName: index === 0 ? null : `合成业主${index + 1}`,
+    mobile: index === 0 ? null : `1380000${String(index).padStart(4, '0')}`,
+    phone2: index === 0 ? null : `021-6000${String(index).padStart(4, '0')}`,
+  }));
+}
+const OWNER_LEDGER_ALL = ownerLedgerRows();
+
+function ownerLedgerResponse(query: any) {
+  const keyword = String(query?.keyword ?? '').trim();
+  const filtered = keyword
+    ? OWNER_LEDGER_ALL.filter((row) => [row.address, row.roomNo, row.ownerName, row.mobile, row.phone2].some((value) => String(value ?? '').includes(keyword)))
+    : OWNER_LEDGER_ALL;
+  const offset = Number(query?.offset ?? 0);
+  const limit = Number(query?.limit ?? 200);
+  return {
+    rows: filtered.slice(offset, offset + limit),
+    count: filtered.length,
+    totals: { roomCount: filtered.length, areaSqm: filtered.reduce((sum, row) => sum + Number(row.areaSqm), 0) },
+    dataAsOf: OPTIONS.dataAsOf, available: true, message: null,
+  };
+}
+
+const BUILDING_ROWS = [
+  { lId: 101, officeCode: '01', officeName: '枫桦景苑一期', road: '宝秀路', lane: '228弄', buildingNo: '6', roomCount: 48, ownerCount: 45, areaSqm: 4800.5 },
+  { lId: 102, officeCode: '01', officeName: '枫桦景苑一期', road: '宝秀路', lane: '228弄', buildingNo: '7', roomCount: 40, ownerCount: 38, areaSqm: 4000 },
+  { lId: 103, officeCode: '02', officeName: '枫桦景苑二期A', road: '永德路', lane: '229弄', buildingNo: '3', roomCount: 52, ownerCount: 50, areaSqm: 5200.25 },
+];
+
+function buildingLedgerResponse(query: any) {
+  const keyword = String(query?.keyword ?? '').trim();
+  const filtered = keyword
+    ? BUILDING_ROWS.filter((row) => [row.road, row.lane, row.buildingNo].some((value) => String(value ?? '').includes(keyword)))
+    : BUILDING_ROWS;
+  const offset = Number(query?.offset ?? 0);
+  const limit = Number(query?.limit ?? 200);
+  return {
+    rows: filtered.slice(offset, offset + limit),
+    count: filtered.length,
+    totals: {
+      buildingCount: filtered.length,
+      roomCount: filtered.reduce((sum, row) => sum + row.roomCount, 0),
+      ownerCount: filtered.reduce((sum, row) => sum + row.ownerCount, 0),
+      areaSqm: filtered.reduce((sum, row) => sum + row.areaSqm, 0),
+    },
+    dataAsOf: OPTIONS.dataAsOf, available: true, message: null,
+  };
+}
+
 export async function request<T>(options: any): Promise<T> {
   w.__calls.push({ url: options.url, method: options.method ?? 'GET', query: options.query ?? null, at: Date.now() });
   await pause(20);
@@ -483,6 +564,18 @@ export async function request<T>(options: any): Promise<T> {
 
   if (options.url === '/statistics/monthly-report') {
     return monthlyReportResponse() as T;
+  }
+
+  if (options.url === '/statistics/property-summary') {
+    return propertySummaryResponse() as T;
+  }
+
+  if (options.url === '/statistics/owner-ledger') {
+    return ownerLedgerResponse(options.query) as T;
+  }
+
+  if (options.url === '/statistics/building-ledger') {
+    return buildingLedgerResponse(options.query) as T;
   }
 
   throw Error('Unhandled synthetic request ' + String(options.url));
