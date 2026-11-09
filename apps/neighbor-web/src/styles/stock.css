@@ -1,0 +1,84 @@
+/* 库存：排序表头 / 库位 / 仓库与库位管理 */
+.stock-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.stock-sort i {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--ink3);
+  opacity: .75;
+}
+.stock-sort:hover { color: var(--acc-t); }
+.stock-sort.on { color: var(--acc-t); font-weight: 600; }
+.stock-sort.on i { opacity: 1; }
+
+.stock-locations {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink2);
+  font-size: 12.5px;
+}
+
+.stock-lots { min-width: 760px; }
+.stock-lots td { white-space: nowrap; }
+
+/* 仓库管理 */
+.wm-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+  flex-wrap: wrap;
+}
+.wm-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: var(--sunken);
+}
+.wm-form .in { width: 150px; }
+.wm-form .in:first-child { width: 180px; }
+.wm-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--ink2);
+  white-space: nowrap;
+}
+.wm-check input { width: 15px; height: 15px; accent-color: var(--acc); }
+.wm-table { min-width: 620px; }
+.wm-row { cursor: pointer; }
+.wm-row:hover td { background: #f7f9fc; }
+.wm-actions { white-space: nowrap; text-align: right; }
+.wm-actions .btn { margin-left: 5px; }
+.wm-actions .btn.d { color: var(--dang); }
+.wm-actions .muted { margin-left: 8px; font-size: 12px; }
+.wm-confirm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--dang-w);
+  color: var(--dang);
+  font-size: 13px;
+}
