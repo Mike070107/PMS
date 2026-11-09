@@ -1,0 +1,148 @@
+# 会话交接（2026-11-09 夜）
+
+> 给新会话用：读完这份直接接着干，不要从头问需求。
+> 用户偏好：直接做、少问、做完就发版；发现问题自己派子智能体修；数据必须真实，不许显示假的 0。
+
+## 一、环境与发布
+
+| 项 | 值 |
+|---|---|
+| 仓库 | `D:\00项目开发\PMS`，主线 `main`，直接提交推送 |
+| 生产 | `ubuntu@124.223.179.214`（私网 10.0.4.8），密钥 `~/.ssh/pms_repair_key.pem` |
+| API 部署目录 | `/opt/pms-repair/apps/api`（pm2 进程名 `pms-api`，pm2 属 ubuntu 用户） |
+| 发布 | `powershell.exe -NoProfile -ExecutionPolicy Bypass -File deploy/publish-production.ps1 -Target api\|web` |
+| 部署状态 | `node deploy/mark-deployed.mjs status`（会告诉你线上落后几个提交） |
+| 发布注意 | 常卡在「有未提交改动」；先 `git status --short -- apps/api apps/neighbor-web` 清干净再发 |
+| 构建注意 | vite 必须设 `TEMP=D:\00项目开发\PMS\.tmp\build-temp`，否则 esbuild EACCES |
+| 迁移 | 生产 `DB_SYNCHRONIZE` 未生效，**新列必须手工跑 SQL**（见下方「手工迁移」） |
+| 数据库 | `sudo docker exec pms-postgres psql -U pms -d pms_repair` |
+
+### 手工迁移 SQL（已执行过的，记下来备用）
+
+```sql
+-- page_views.source
+ALTER TABLE page_views ADD COLUMN IF NOT EXISTS source varchar(20) NOT NULL DEFAULT 'web';
+-- stock_movements.location_id
+ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS location_id int;
+-- collection_targets 小区组 + 费项
+ALTER TABLE collection_targets ADD COLUMN IF NOT EXISTS community_ids int[];
+ALTER TABLE collection_targets ADD COLUMN IF NOT EXISTS fee_code varchar(20) NOT NULL DEFAULT 'property';
+-- mis_sync_state 失败计数
+ALTER TABLE mis_sync_state ADD COLUMN IF NOT EXISTS consecutive_failures int NOT NULL DEFAULT 0;
+ALTER TABLE mis_sync_state ADD COLUMN IF NOT EXISTS last_failure_at timestamptz;
+```
+
+## 二、线上版本（2026-11-09 21:30）
+
+```
+Web = 2.0.20261109-1606
+API = api-bf1cf128（db up）
+```
+
+## 三、已完成并上线（不要重复做）
+
+1. **账单与待缴页**：四段式、指标带、通知状态、表头排序、H5 卡片化、A5 通知单（12期/页、二维码 24mm、模板可配、预览）
+2. **跟进提醒**：待办队列、搜索/筛选/排序/加载更多、电话列（权限控制明文）
+3. **待跟进 Top10**：按户、金额降序、同业主标「另有 N 套」
+4. **催收**：批次、短信（演练/真发/回执/规则）、T+30 效果、收款差异设计稿
+5. **收费大屏 `/screen`**：三板块（年度/月度达成、今日实收）、累计 vs 指标（时间进度差额）、月度柱（仅当月判达标）、小区下拉多选、欠费结构、实时播报、Three.js 安静星空背景、5 分钟刷新
+6. **收费指标**：`collection_targets` 支持小区组 + fee_code（默认物业费）；枫桦景苑一期+二期 2026 年度指标 ¥3,982,772.40（=2026 管理费应收，已用 MIS 账单核对一致）
+7. **MIS 镜像**：8 张 `mis_mirror_*` 表 + `mis_sync_state`；5 分钟增量（ZJ_ID keyset + updatedate 15 分钟补漏）；mirror 支持 residential(含 trend/amount-brackets/detail)/today/recent-payments/options；设置页可切 mis/mirror、手工重灌、对账；当前 mode=mirror
+8. **今日工作**：今日实收/退款/笔数/分项收入（环形图+中文分类+点击看登记时间明细）、今日收款清单（分页、登记时间）、最近收款
+9. **办理记录**：行内展开业务明细（车牌/续期前后/操作人/收款方式/extra）
+10. **系统日志**：使用统计（访问趋势/页面Top20/用户Top20/来源分布/登录统计/下钻明细）、用户反馈 tab（含标记已处理/批量）、顶部「意见与建议」入口（composer 内嵌缩略图、灯箱预览、20MB 校验、微信通知管理员）
+11. **权限**：`bills`、`intranet` 页 key；PAGE_GROUPS 与菜单分组一致；导航→权限一致性回归测试
+12. **门禁**：远程开门/常开、控制器在线、`check-online`、发卡历史（捷顺真实 8 条）、最近 30 笔、写入 .88 Access、多楼栋授权（独立失败）
+13. **库存**：当前库存列/排序/库位明细/Excel 导出/仓库与库位管理/流水字段补全
+14. **管理处页**：新建/编辑/划分/删除小区（真实可操作）
+15. **登录安全**：密码入口仅 `?login=password` 可见、5 次失败锁 15 分钟、管理员微信告警
+
+## 四、待办（按优先级）
+
+### P0 数据正确性
+1. **上海新家未设指标** → 大屏选三个小区时显示「部分口径」。需要用户给指标，或确认不考核。
+2. **指标月度分解**：目前月度目标 = 年度/12（标「按年度均摊」）。要精确需 12 个月数字。
+3. **今日页与收费报表的「其他」分类**：今日实收 ¥12,240 落在 other，需确认是什么费项（可能是置业泊位费）。
+4. **发卡历史「最近 30 笔」返回 pending/rows=0**：助手首次查询超时，需加重试/超时等待，或改为后台任务+轮询。
+5. **门禁页「助手离线」误判**：三个 agent readiness 都是 online，但页面显示助手离线/发卡工作站离线（可能按最近门禁回执时间判断）。
+
+### P1 功能缺口
+6. **MIS 镜像 Phase 3**：断线收款 + 核销（`pms_mis_receipts`、差异清单 `pms_mis_collection_differences`、页面放「账单与待缴 → 收款差异」页签）。设计稿 `docs/mis-mirror-design.md`。
+7. **收费报表**：MIS 口径接入（方案已出，见 turn 日志：`source=auto|pms|mis`，byCashier MIS 显示 —）。当前报表只统计 PMS 收款，MIS 小区无数据。
+8. **大屏**：目标达成口径已修（物业费），但需用户确认；另「上海新家」排行灰条。
+9. **库存**：历史入库单库位全为「未分配」，需移库/指定功能；同材料多货架展示已验证。
+10. **通知单**：A5「已打印」是否改「已登记」待用户定。
+
+### P2 现场/授权
+11. **`.88` 助手升级**：现有 2.5.50 不含发卡历史新增字段（人事资料时间/最后刷卡/出入口）与门禁远程写卡细节；新版源码已在仓库（tools/access-card-agent + v2），需现场安装。
+12. **`.80` 捷顺**：发卡历史查询依赖 .80 助手新版字段。
+13. **小程序体验版**：员工端 1.0.20261108b / 业主端 1.0.20261108a 已上传开发版，需在公众平台「选为体验版」+ 手机清缓存；页面访问埋点靠它生效。
+14. **微信开发者工具登录**：上传前需扫码登录（`node tools/miniapp-ship.mjs staff --upload`），否则 CLI 报「需要重新登录」（脚本已能正确报错）。
+
+### P3 清理
+15. 并行 WIP：`.tmp/parallel-screen-wip/` 里有另一任务的「决策大屏」文件（Screen 重写版），未合入；如要保留该功能需单独评估。
+16. `business-action-coverage.test.ts` 在 main 上仍红（9 条写路由未登记业务动作），需各模块补登记。
+
+## 五、关键文件地图
+
+| 功能 | 文件 |
+|---|---|
+| 待缴页 | `apps/neighbor-web/src/pages/ResidentialBills.tsx`、`styles/residential-bills.css` |
+| 通知单渲染 | `apps/neighbor-web/src/lib/residential-bills.ts` |
+| 跟进队列 | `apps/neighbor-web/src/components/CollectionFollowups.tsx` |
+| 大屏 | `apps/neighbor-web/src/pages/Screen.tsx`、`components/ThreeBackdrop.tsx` |
+| 今日 | `apps/neighbor-web/src/pages/Today.tsx` |
+| 日志/反馈 | `apps/neighbor-web/src/pages/Logs.tsx`、`components/FeedbackDialog.tsx` |
+| 门禁 | `apps/neighbor-web/src/pages/AccessCards.tsx` |
+| 库存 | `apps/neighbor-web/src/pages/Stock.tsx`、`components/stock/WarehouseManager.tsx` |
+| MIS 查询 | `apps/api/src/modules/fees/mis-fees.{service,query,dto}.ts`、`mis-fee-category.ts` |
+| MIS 镜像 | `apps/api/src/modules/fees/mis-mirror.service.ts`、`entities/mis-mirror*.ts` |
+| 大屏聚合 | `apps/api/src/modules/fees/screen-summary.util.ts` |
+| 指标 | `apps/api/src/modules/fees/collection-targets.*` |
+| 门禁后端 | `apps/api/src/modules/access-card-issuance/`（`legacy-card-history.util.ts`） |
+| 库存后端 | `apps/api/src/modules/inventory/` |
+| 权限注册表 | `apps/api/src/common/pages.ts` + `packages/shared-types/src/pages.ts` + `apps/neighbor-web/src/lib/page-access.ts` |
+
+## 六、恢复 MIS 镜像 / 指标的操作
+
+```bash
+# 手工重灌镜像（低峰执行，65 万行，约 2 分钟）
+curl -X POST https://prsznh.cn/api/v1/fees/mis/mirror/reload -H "Authorization: Bearer <admin token>"
+# 手工增量补齐
+curl -X POST https://prsznh.cn/api/v1/fees/mis/mirror/sync -H ...
+# 对账
+curl https://prsznh.cn/api/v1/fees/mis/mirror/reconcile -H ...
+```
+
+指标（物业费、一期+二期）当前值：
+```json
+{"communityIds":[1,2],"year":2026,"annualCents":398277240,"monthCents":null,"feeCode":"property"}
+```
+
+## 七、新会话如何继续用团队
+
+1. 新会话读本文件：`docs/session-handoff-2026-11-09.md`
+2. 队友是会话级的，**新会话不会自动继承**，需要重新 `spawn_teammate`。建议角色：
+   - `api-backend`：NestJS/API/DB/迁移/镜像/报表接口
+   - `web-ui`：React 页面/样式/交互
+   - `access-desk`：门禁与现场助手
+   - `qa-review`：独立验收（tsc/测试/build/线上验证）
+3. 派活模板（直接粘）：
+
+```
+你是 api-backend，负责 apps/api。先读 docs/session-handoff-2026-11-09.md，然后做 P0-4：
+发卡历史「最近 30 笔」返回 pending/rows=0，需改为后台任务+轮询或加长等待。
+约束：不 commit/push（Lead 发版）、api tsc 0、相关测试通过。
+```
+
+```
+你是 web-ui，负责 apps/neighbor-web。先读 docs/session-handoff-2026-11-09.md，然后修门禁页「助手离线」误判：
+readiness 三个 agent 均 online，但页面显示离线；改为按 readiness 接口判断。
+```
+
+## 八、用户沟通要点
+
+- 用户会截图直接指问题，回复要短、先给结论再给原因
+- 不要用「大概」「可能」，要么实测要么说不确定
+- 改完直接发版并给版本号；线上没验证过的不要说「已解决」
+- 数据口径问题必须先核对（如物业费 vs 全费项、收款日 vs 登记日）
