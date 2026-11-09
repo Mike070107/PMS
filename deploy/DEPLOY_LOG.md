@@ -6897,3 +6897,10 @@
 - 自上次（913fa83f）以来上线的相关提交：
   - b3be3a01 fix(statistics): 房屋性质按收费时点行级性质统计，01 管理处对齐旧系统 662,269.00
 
+## 2026-11-09 23:35 · api · 05aebeab
+
+- 包：`pms-api-fast-20261109-233428.tar.gz`
+- 提交：05aebeab fix(staff): correct warehouse and work order flows
+- 自上次（b3be3a01）以来上线的相关提交：
+  - 05aebeab fix(staff): correct warehouse and work order flows
+
