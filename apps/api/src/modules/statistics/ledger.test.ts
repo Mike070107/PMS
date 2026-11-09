@@ -6,7 +6,7 @@ import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { PGlite } from '@electric-sql/pglite';
 import { PERMISSION_KEY } from '../../common/require-permission.decorator';
 import { MisMirror1794500000000 } from '../../migrations/1794500000000-MisMirror';
-import { LedgerStatisticsService } from './ledger.service';
+import { LedgerStatisticsService, ledgerKeywordPatterns } from './ledger.service';
 import {
   BuildingLedgerQueryDto,
   OwnerLedgerQueryDto,
@@ -215,9 +215,10 @@ test('住户台账：keyword / 房屋性质过滤，totals 随之收敛', async 
   try {
     await seed(pg);
     const service = serviceFor(pg);
-    const byName: any = await service.ownerLedger({ keyword: '业主01-0001' } as never, user, scopeAll);
-    assert.equal(byName.count, 1);
-    assert.equal(byName.rows[0].ownerName, '业主01-0001');
+    // 姓名（单 token，无分隔符）保持整串模糊匹配：01 管理处共 539 条业主记录。
+    const byName: any = await service.ownerLedger({ keyword: '业主01' } as never, user, scopeAll);
+    assert.equal(byName.count, 539);
+    assert.ok(byName.rows.every((row: any) => row.ownerName.startsWith('业主01-')));
     const byMobile: any = await service.ownerLedger({ keyword: '13800000001' } as never, user, scopeAll);
     assert.equal(byMobile.count, 1);
     // 房屋性质 07：04 管理处 5 间 + 05 无业主 → 5 条。
@@ -225,10 +226,12 @@ test('住户台账：keyword / 房屋性质过滤，totals 随之收敛', async 
     assert.equal(nature07.count, 5);
     assert.ok(nature07.rows.every((row: any) => row.natureCode === '07'));
     assert.equal(nature07.totals.roomCount, 5);
-    // 地址 keyword（道路+弄+楼+室）。
-    const byAddress: any = await service.ownerLedger({ keyword: '剑川路198弄1号' } as never, user, scopeAll);
-    assert.ok(byAddress.count > 0);
-    assert.ok(byAddress.rows.every((row: any) => row.officeCode === '01' && row.buildingNo === '1'));
+    // 地址 keyword（道路+弄+楼+室）：按 /、号、弄 切 token，每个 token 都命中。
+    const byAddress: any = await service.ownerLedger({ keyword: '剑川路198弄1号101' } as never, user, scopeAll);
+    assert.ok(byAddress.count >= 1);
+    assert.equal(byAddress.rows[0].buildingNo, '1');
+    assert.equal(byAddress.rows[0].roomNo, '101');
+    assert.equal(byAddress.rows[0].address, '剑川路198弄1号101');
   } finally {
     await pg.close();
   }
@@ -343,6 +346,61 @@ test('未镜像：三张台账 available:false + message，不伪造 0', async (
     assert.equal(owners.totals, null);
     const buildings: any = await service.buildingLedger({} as never, user, scopeAll);
     assert.equal(buildings.totals, null);
+  } finally {
+    await pg.close();
+  }
+});
+
+async function seedKeywordSample(pg: PGlite) {
+  await pg.query(
+    `INSERT INTO mis_sync_state(tenant_id,source_table,last_success_at,initialized_at)
+     VALUES($1,'bill',$2,now())`,
+    [tenantId, '2026-11-10T01:00:00+08:00'],
+  );
+  await pg.query(`INSERT INTO mis_mirror_building(l_id,office_code,road,lane,building_no) VALUES(1,'02','永德路','228','50')`);
+  await pg.query(`INSERT INTO mis_mirror_room(s_id,l_id,room_no,nature,area_sqm) VALUES(1,1,'202','01',88.5)`);
+  await pg.query(`INSERT INTO mis_mirror_owner(zh_id,s_id,name,mobile,phone2) VALUES(1,1,'王测试','13900001111','02112345678')`);
+}
+
+test('住户台账 keyword 地址 token：228/50/202 命中、228/50/999 为空，单 token 行为不变', async () => {
+  const pg = await makeDatabase();
+  try {
+    await seedKeywordSample(pg);
+    const service = serviceFor(pg);
+    // 切分规则：/、-、空白、号/弄/楼/室；单 token 保留整串。
+    assert.deepEqual(ledgerKeywordPatterns('228/50/202'), ['228', '50', '202']);
+    assert.deepEqual(ledgerKeywordPatterns('228-50-202'), ['228', '50', '202']);
+    assert.deepEqual(ledgerKeywordPatterns('228 50 202'), ['228', '50', '202']);
+    assert.deepEqual(ledgerKeywordPatterns('永德路228弄50号202'), ['永德路228', '50', '202']);
+    assert.deepEqual(ledgerKeywordPatterns('王测试'), ['王测试']);
+    assert.deepEqual(ledgerKeywordPatterns('13900001111'), ['13900001111']);
+
+    const hit: any = await service.ownerLedger({ keyword: '228/50/202' } as never, user, scopeAll);
+    assert.ok(hit.count >= 1);
+    assert.equal(hit.count, 1);
+    assert.equal(hit.rows[0].address, '永德路228弄50号202');
+    assert.equal(hit.rows[0].road, '永德路');
+    assert.equal(hit.rows[0].lane, '228');
+    assert.equal(hit.rows[0].buildingNo, '50');
+    assert.equal(hit.rows[0].roomNo, '202');
+    // 中文分隔符/空格/连字符同样命中。
+    assert.equal((await service.ownerLedger({ keyword: '228 50 202' } as never, user, scopeAll)).count, 1);
+    assert.equal((await service.ownerLedger({ keyword: '228-50-202' } as never, user, scopeAll)).count, 1);
+    assert.equal((await service.ownerLedger({ keyword: '永德路228弄50号202' } as never, user, scopeAll)).count, 1);
+    // 不存在的房号 → 0（token AND 语义）。
+    assert.equal((await service.ownerLedger({ keyword: '228/50/999' } as never, user, scopeAll)).count, 0);
+    // 单 token：姓名 / 手机 / 电话前缀保持整串模糊匹配。
+    assert.equal((await service.ownerLedger({ keyword: '王测试' } as never, user, scopeAll)).count, 1);
+    assert.equal((await service.ownerLedger({ keyword: '13900001111' } as never, user, scopeAll)).count, 1);
+    assert.equal((await service.ownerLedger({ keyword: '021123' } as never, user, scopeAll)).count, 1);
+    assert.equal((await service.ownerLedger({ keyword: '228/50' } as never, user, scopeAll)).count, 1);
+    // 楼房台账同样 token 化：228/50 命中，228/999 为空。
+    const buildingHit: any = await service.buildingLedger({ keyword: '228/50' } as never, user, scopeAll);
+    assert.equal(buildingHit.count, 1);
+    assert.equal(buildingHit.rows[0].buildingNo, '50');
+    assert.equal(buildingHit.rows[0].lane, '228');
+    assert.equal((await service.buildingLedger({ keyword: '228/999' } as never, user, scopeAll)).count, 0);
+    assert.equal((await service.buildingLedger({ keyword: '永德路' } as never, user, scopeAll)).count, 1);
   } finally {
     await pg.close();
   }

@@ -174,17 +174,19 @@ export class LedgerStatisticsService {
       : `b.office_code IN (${officeCodesSql})`);
     if (query.natures?.length) where.push(`TRIM(r.nature) IN (${query.natures.map(add).join(',')})`);
     if (query.keyword) {
-      const pattern = `%${escapeLikePattern(query.keyword.trim())}%`;
-      const keywordParam = add(pattern);
-      where.push(`(
-        CONCAT(COALESCE(b.road,''), CASE WHEN COALESCE(b.lane,'') <> '' THEN CONCAT(b.lane,'弄') ELSE '' END,
-               CASE WHEN COALESCE(b.building_no,'') <> '' THEN CONCAT(b.building_no,'号') ELSE '' END,
-               COALESCE(r.room_no,'')) ILIKE ${keywordParam} ${LIKE_ESCAPE_SQL}
-        OR COALESCE(r.room_no,'') ILIKE ${keywordParam} ${LIKE_ESCAPE_SQL}
-        OR COALESCE(o.name,'') ILIKE ${keywordParam} ${LIKE_ESCAPE_SQL}
-        OR COALESCE(o.mobile,'') ILIKE ${keywordParam} ${LIKE_ESCAPE_SQL}
-        OR COALESCE(o.phone2,'') ILIKE ${keywordParam} ${LIKE_ESCAPE_SQL}
-      )`);
+      // 地址 token 化：'228/50/202' → 228 全部 AND 命中；单 token 保持整串 ILIKE（姓名/手机/完整地址）。
+      for (const token of ledgerKeywordPatterns(query.keyword)) {
+        const keywordParam = add(`%${escapeLikePattern(token)}%`);
+        where.push(`(
+          CONCAT(COALESCE(b.road,''), CASE WHEN COALESCE(b.lane,'') <> '' THEN CONCAT(b.lane,'弄') ELSE '' END,
+                 CASE WHEN COALESCE(b.building_no,'') <> '' THEN CONCAT(b.building_no,'号') ELSE '' END,
+                 COALESCE(r.room_no,'')) ILIKE ${keywordParam} ${LIKE_ESCAPE_SQL}
+          OR COALESCE(r.room_no,'') ILIKE ${keywordParam} ${LIKE_ESCAPE_SQL}
+          OR COALESCE(o.name,'') ILIKE ${keywordParam} ${LIKE_ESCAPE_SQL}
+          OR COALESCE(o.mobile,'') ILIKE ${keywordParam} ${LIKE_ESCAPE_SQL}
+          OR COALESCE(o.phone2,'') ILIKE ${keywordParam} ${LIKE_ESCAPE_SQL}
+        )`);
+      }
     }
     const raw: any[] = await this.dataSource.query(
       `SELECT o.zh_id AS "zhId", o.s_id AS "sId", o.name AS "ownerName", o.mobile, o.phone2,
@@ -272,13 +274,15 @@ export class LedgerStatisticsService {
     };
     const where: string[] = [`b.office_code IN (${selected.map((office) => add(office.officeCode)).join(',')})`];
     if (query.keyword) {
-      const pattern = `%${escapeLikePattern(query.keyword.trim())}%`;
-      const keywordParam = add(pattern);
-      where.push(`(
-        COALESCE(b.road,'') ILIKE ${keywordParam} ${LIKE_ESCAPE_SQL}
-        OR COALESCE(b.lane,'') ILIKE ${keywordParam} ${LIKE_ESCAPE_SQL}
-        OR COALESCE(b.building_no,'') ILIKE ${keywordParam} ${LIKE_ESCAPE_SQL}
-      )`);
+      // 楼栋 keyword 也 token 化：'198/1' → lane 198 且楼号 1（单 token 保持整串 ILIKE）。
+      for (const token of ledgerKeywordPatterns(query.keyword)) {
+        const keywordParam = add(`%${escapeLikePattern(token)}%`);
+        where.push(`(
+          COALESCE(b.road,'') ILIKE ${keywordParam} ${LIKE_ESCAPE_SQL}
+          OR COALESCE(b.lane,'') ILIKE ${keywordParam} ${LIKE_ESCAPE_SQL}
+          OR COALESCE(b.building_no,'') ILIKE ${keywordParam} ${LIKE_ESCAPE_SQL}
+        )`);
+      }
     }
     const raw: any[] = await this.dataSource.query(
       `SELECT b.l_id AS "lId", b.office_code AS "officeCode", b.road, b.lane, b.building_no AS "buildingNo",
@@ -369,4 +373,16 @@ export class LedgerStatisticsService {
       dataAsOf: syncedAt ? new Date(syncedAt).toISOString() : null,
     };
   }
+}
+
+/**
+ * 台账 keyword 切分：把 PMS 习惯输入（228/50/202、228-50-202、228 50 202、228弄50号202）
+ * 拆成数字/字母 token，各 token 必须全部命中（AND）；单 token 时用原整串，兼容姓名/手机/完整地址。
+ */
+const LEDGER_KEYWORD_SPLIT_RE = /[\/\-\s号弄楼室]+/;
+export function ledgerKeywordPatterns(keyword: string): string[] {
+  const trimmed = keyword.trim();
+  if (!trimmed) return [];
+  const tokens = trimmed.split(LEDGER_KEYWORD_SPLIT_RE).map((token) => token.trim()).filter(Boolean);
+  return tokens.length <= 1 ? [trimmed] : tokens;
 }
