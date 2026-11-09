@@ -15,8 +15,8 @@ import {
   filterRequestedOffices,
   formatPeriodRange,
   resolveStatisticsOffices,
+  STATISTICS_NATURE_OPTIONS,
   statisticsColumns,
-  statisticsNatureName,
   type StatisticsType,
 } from './statistics.util';
 
@@ -50,10 +50,9 @@ export class StatisticsService {
   /** GET /statistics/options：管理处、收费项目、房屋性质、年度范围、镜像水位。 */
   async options(user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
-    const [communities, feeItems, natures, yearRange, state] = await Promise.all([
+    const [communities, feeItems, yearRange, state] = await Promise.all([
       this.loadCommunities(tenantId),
       this.loadFeeItems(),
-      this.loadNatures(),
       this.loadYearRange(),
       this.mirrorState(tenantId),
     ]);
@@ -67,7 +66,7 @@ export class StatisticsService {
     return {
       offices,
       feeItems,
-      natures,
+      natures: STATISTICS_NATURE_OPTIONS,
       yearRange,
       dataAsOf: state.dataAsOf,
       sourceMode: 'mirror' as const,
@@ -279,17 +278,6 @@ export class StatisticsService {
     return rows.map((row) => ({ code: String(row.code), name: String(row.name ?? '') }));
   }
 
-  /** 房屋性质字典未镜像：只返回镜像 room 表里实际出现的 code，未知 code 用「性质xx」兜底。 */
-  private async loadNatures(): Promise<Array<{ code: string; name: string }>> {
-    const rows: any[] = await this.dataSource
-      .query(`SELECT DISTINCT TRIM(nature) AS "code" FROM mis_mirror_room WHERE nature IS NOT NULL AND TRIM(nature) <> '' ORDER BY 1`)
-      .catch(() => []);
-    return rows.map((row) => {
-      const code = String(row.code);
-      return { code, name: statisticsNatureName(code) };
-    });
-  }
-
   private async loadYearRange(): Promise<{ min: number | null; max: number | null }> {
     const rows: any[] = await this.dataSource
       .query(
@@ -352,14 +340,13 @@ export class StatisticsService {
     const yearExpr = type === 'arrears'
       ? 'substr(b.period,1,4)::int'
       : 'EXTRACT(YEAR FROM b.paid_date)::int';
-    const roomJoin = natures?.length ? 'JOIN mis_mirror_room r ON r.s_id = b.s_id' : '';
-    if (natures?.length) where.push(`TRIM(r.nature) IN (${natures.map(add).join(',')})`);
+    if (natures?.length) where.push(`TRIM(b.nature_code) IN (${natures.map(add).join(',')})`);
     if (feeCodes?.length) where.push(`b.fee_code IN (${feeCodes.map(add).join(',')})`);
     if (asOfPeriod) where.push(`b.period <= ${add(asOfPeriod)}`);
     if (type === 'received' && paidDateTo) where.push(`b.paid_date <= ${add(paidDateTo)}`);
     const sql = `SELECT b.office_code AS "officeCode", ${yearExpr} AS "year",
         COALESCE(SUM(b.amount_cents),0)::bigint AS "amountCents"
-      FROM mis_mirror_bill b ${roomJoin}
+      FROM mis_mirror_bill b
       WHERE ${where.join(' AND ')}
       GROUP BY b.office_code, ${yearExpr}`;
     return { sql, params };
@@ -389,7 +376,7 @@ export class StatisticsService {
       where.push('b.paid_date IS NOT NULL');
       where.push(`EXTRACT(YEAR FROM b.paid_date)::int = ${add(year)}`);
     }
-    if (natures?.length) where.push(`TRIM(r.nature) IN (${natures.map(add).join(',')})`);
+    if (natures?.length) where.push(`TRIM(b.nature_code) IN (${natures.map(add).join(',')})`);
     if (feeCodes?.length) where.push(`b.fee_code IN (${feeCodes.map(add).join(',')})`);
     if (asOfPeriod) where.push(`b.period <= ${add(asOfPeriod)}`);
     if (type === 'received' && paidDateTo) where.push(`b.paid_date <= ${add(paidDateTo)}`);
@@ -431,8 +418,7 @@ export class StatisticsService {
       where.push('b.paid_date IS NOT NULL');
       where.push(`EXTRACT(YEAR FROM b.paid_date)::int = ${add(year)}`);
     }
-    const roomJoin = natures?.length ? 'JOIN mis_mirror_room r ON r.s_id = b.s_id' : '';
-    if (natures?.length) where.push(`TRIM(r.nature) IN (${natures.map(add).join(',')})`);
+    if (natures?.length) where.push(`TRIM(b.nature_code) IN (${natures.map(add).join(',')})`);
     if (feeCodes?.length) where.push(`b.fee_code IN (${feeCodes.map(add).join(',')})`);
     if (asOfPeriod) where.push(`b.period <= ${add(asOfPeriod)}`);
     if (type === 'received' && paidDateTo) where.push(`b.paid_date <= ${add(paidDateTo)}`);
@@ -441,7 +427,7 @@ export class StatisticsService {
         to_char(b.paid_date,'YYYY-MM-DD') AS "paidDate",
         to_char(b.refund_date,'YYYY-MM-DD') AS "refundDate",
         b.payment_method AS "paymentMethod", b.cashier AS "cashier"
-      FROM mis_mirror_bill b ${roomJoin}
+      FROM mis_mirror_bill b
       WHERE ${where.join(' AND ')}
       ORDER BY b.period, b.zj_id`;
     return { sql, params };

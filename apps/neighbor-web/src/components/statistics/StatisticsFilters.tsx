@@ -118,7 +118,11 @@ export default function StatisticsFilters({
         </div>
       </CheckGroup>
 
-      <CheckGroup title="房屋性质" actions={groupActions('natures', options.natures.map((nature) => nature.code))}>
+      <CheckGroup
+        title="房屋性质"
+        hint="按收费发生时点性质统计；空房（06）默认不勾选，可手动勾选"
+        actions={groupActions('natures', options.natures.map((nature) => nature.code))}
+      >
         <div className="stats-check-list" role="group" aria-label="房屋性质">
           {options.natures.map((nature) => (
             <label key={nature.code} className="stats-check">

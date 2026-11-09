@@ -14,6 +14,8 @@ const chrome = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const evidenceDir = path.resolve(app, '../../../..', 'pms-statistics-evidence');
 // 应收截止默认「当前年份 12 月」，与旧系统截图口径一致（镜像同步月份不能当截止月）。
 const expectedAsOfPeriod = `${new Date().getFullYear()}12`;
+// MIS FWXZK 全字典 01–13；旧系统截图口径默认排除 06 空房。
+const expectedDefaultNatures = '01,02,03,04,05,07,08,09,10,11,12,13';
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function loadStatisticsLib() {
@@ -215,10 +217,18 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     const bodyText = await js('document.body.textContent');
     assert.ok(bodyText.includes('数据截止'), '要显示数据截止时间');
     assert.ok(bodyText.includes('项目实收年度汇总'));
+    assert.ok(bodyText.includes('按收费发生时点性质统计'), '筛选面板要说明房屋性质按收费时点统计');
+    assert.equal(await js("document.querySelectorAll('[data-nature-code]').length"), 13, '房屋性质应渲染 FWXZK 全字典 01–13');
+    assert.equal(await js("document.querySelector('[data-nature-code=\"06\"]').checked"), false, '空房 06 默认不勾选');
+    assert.equal(await js("document.querySelector('[data-nature-code=\"05\"]').checked"), true);
+    assert.equal(await js("document.querySelector('[data-nature-code=\"13\"]').checked"), true);
     const receivedQuery = await js("window.__calls.filter((c) => c.url === '/statistics/annual').slice(-1)[0].query");
     assert.equal(receivedQuery.type, 'received');
     assert.equal(receivedQuery.asOfPeriod, expectedAsOfPeriod, '应收截止默认当前年份 12 月');
     assert.equal(receivedQuery.paidDateTo, undefined, '收款截止默认留空，不限制实收');
+    assert.equal(receivedQuery.natures, expectedDefaultNatures, '默认房屋性质 = 全字典排除 06 空房');
+    assert.ok(!receivedQuery.natures.split(',').includes('06'), '默认请求不能带 06 空房');
+    assert.ok(receivedQuery.natures.split(',').includes('05') && receivedQuery.natures.split(',').includes('07'), '默认请求要含 05/07 等非空房性质');
     await screenshot('statistics-received-1440.png');
 
     // 切到项目欠费年度汇总：02×2014=¥477.90，02 合计 ¥745,182.10（生产验收基准）。
@@ -246,7 +256,8 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     assert.equal(annualQuery.type, 'arrears');
     assert.equal(annualQuery.officeCodes, '02');
     assert.equal(annualQuery.feeCodes, '01');
-    assert.equal(annualQuery.natures, '01,04,05,06,07,08');
+    assert.equal(annualQuery.natures, expectedDefaultNatures, '筛选后仍默认排除 06 空房');
+    assert.ok(!annualQuery.natures.split(',').includes('06'));
     assert.equal(annualQuery.yearFrom, 2004);
     assert.equal(annualQuery.yearTo, 2026);
     assert.equal(annualQuery.asOfPeriod, expectedAsOfPeriod);
@@ -273,6 +284,8 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     assert.equal(detailQuery.feeCodes, '01');
     assert.equal(detailQuery.asOfPeriod, expectedAsOfPeriod, '明细必须带与年度表相同的应收截止');
     assert.equal(detailQuery.paidDateTo, undefined, '欠费明细不传收款截止日期');
+    assert.equal(detailQuery.natures, expectedDefaultNatures, '明细与年度表用同一组房屋性质（默认排除 06）');
+    assert.ok(!detailQuery.natures.split(',').includes('06'));
     await screenshot('statistics-detail-1440.png');
 
     await js("document.querySelector('.stats-detail-table tbody tr').click()");
@@ -345,6 +358,29 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '320 窄屏出现横向溢出');
     assert.ok(await js("!!document.querySelector('.stats-card-year')"));
     await screenshot('statistics-320.png');
+
+    // 重置回到默认：房屋性质仍排除 06 空房，管理处/收费项目恢复全选；重置本身不自动请求。
+    await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await pause(300);
+    const callsBeforeReset = await js("window.__calls.filter((c) => c.url === '/statistics/annual').length");
+    await js("document.querySelector('[data-action=filters-reset]').click()");
+    await pause(250);
+    assert.equal(await js("window.__calls.filter((c) => c.url === '/statistics/annual').length"), callsBeforeReset, '重置不自动请求');
+    assert.equal(await js("document.querySelector('[data-nature-code=\"06\"]').checked"), false, '重置后空房 06 仍不勾选');
+    assert.equal(await js("document.querySelector('[data-nature-code=\"05\"]').checked"), true);
+    assert.equal(await js("document.querySelector('[data-fee-code=\"01\"]').checked"), true);
+    assert.equal(await js("document.querySelector('[data-office-code=\"02\"]').checked"), true, '重置后管理处恢复全选');
+    await js("document.querySelector('[data-testid=stats-submit]').click()");
+    const resetQueryExpr = `(() => {
+      const list = window.__calls.filter((c) => c.url === '/statistics/annual');
+      const last = list[list.length - 1];
+      return last && last.query.natures === '${expectedDefaultNatures}' && last.query.officeCodes.includes('02') && last.query.feeCodes.includes('01');
+    })()`;
+    await waitFor(resetQueryExpr, '重置后的年度请求');
+    await waitFor("!!document.querySelector('.stats-annual-table')", '重置后年度表');
+    await js('window.scrollTo(0, 0)');
+    await pause(200);
+    await screenshot('statistics-reset-default-1440.png');
   });
 });
 

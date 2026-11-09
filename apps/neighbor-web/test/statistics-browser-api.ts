@@ -25,9 +25,13 @@ const FEE_ITEMS = [
   { code: '13', name: '电费' }, { code: '14', name: '停车管理费' }, { code: '15', name: '空房租金' },
   { code: '16', name: '置业泊位费' },
 ];
+// MIS FWXZK 房屋性质字典（outputs/mis-db-sync-20261106/data/0043_dbo.FWXZK.csv，01–13 共 13 项）。
 const NATURES = [
-  { code: '01', name: '商品房' }, { code: '04', name: '配套用房' }, { code: '05', name: '商住' },
-  { code: '06', name: '商铺' }, { code: '07', name: '居住' }, { code: '08', name: '非居住' },
+  { code: '01', name: '商品房' }, { code: '02', name: '售后公房' }, { code: '03', name: '使用权房' },
+  { code: '04', name: '商铺' }, { code: '05', name: '配套用房' }, { code: '06', name: '空房' },
+  { code: '07', name: '居住' }, { code: '08', name: '非居住' }, { code: '09', name: '系统' },
+  { code: '10', name: '非系统' }, { code: '11', name: '代管' }, { code: '12', name: '非代管' },
+  { code: '13', name: '私房' },
 ];
 const OPTIONS = {
   offices: OFFICES,

@@ -14,12 +14,15 @@ import {
 } from '@/lib/statistics';
 import '@/styles/statistics.css';
 
-/** 筛选草稿的默认值：全选；应收截止默认「当前年份 12 月」（旧系统口径含 12 月应收），收款截止留空不限制。 */
+/** 旧系统截图口径：房屋性质用「收费发生时点性质」（MIS WYZJ.FWXZ_DH），默认不勾选 06 空房。 */
+const DEFAULT_EXCLUDED_NATURE_CODES = new Set(['06']);
+
+/** 筛选草稿的默认值：管理处/收费项目全选；房屋性质除 06 空房外全选；应收到当年 12 月，收款截止留空。 */
 function defaultDraft(options: StatisticsOptions): FilterDraft {
   return {
     officeCodes: options.offices.map((office) => office.officeCode),
     feeCodes: options.feeItems.map((fee) => fee.code),
-    natures: options.natures.map((nature) => nature.code),
+    natures: options.natures.map((nature) => nature.code).filter((code) => !DEFAULT_EXCLUDED_NATURE_CODES.has(code)),
     paidDateTo: '',
     asOfPeriod: `${dayjs().year()}12`,
   };

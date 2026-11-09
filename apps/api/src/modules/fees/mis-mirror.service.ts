@@ -191,7 +191,7 @@ export class MisMirrorService {
         ISNULL(l.地址1,N'')+ISNULL(l.字1,N'')+ISNULL(l.地址2,N'')+ISNULL(l.字2,N'')+
         ISNULL(l.地址3,N'')+ISNULL(l.字3,N'')+ISNULL(l.地址4,N'')+ISNULL(l.字4,N'')+
         ISNULL(s.室,N'')+ISNULL(s.字,N'') AS address,
-        w.ZJ_LX AS feeCode, f.XM AS feeName, w.ZJ_CNY AS period,
+        w.ZJ_LX AS feeCode, f.XM AS feeName, w.FWXZ_DH AS natureCode, w.ZJ_CNY AS period,
         CAST(ROUND(w.ZJ_JE * 100, 0) AS bigint) AS amountCents,
         CONVERT(varchar(10),w.ZJ_SKRQ,23) AS paidDate,
         CONVERT(varchar(10),w.ZJ_TKRQ,23) AS refundDate,
@@ -224,7 +224,7 @@ export class MisMirrorService {
 
   private async upsertBills(rows: any[]) {
     if (!rows.length) return;
-    const fields = ['zjId', 'officeCode', 'lId', 'sId', 'zhId', 'ownerName', 'roomNo', 'address', 'feeCode', 'feeName', 'period', 'amountCents', 'paidDate', 'refundDate', 'paymentMethod', 'cashier', 'sourceUpdatedAt'];
+    const fields = ['zjId', 'officeCode', 'lId', 'sId', 'zhId', 'ownerName', 'roomNo', 'address', 'feeCode', 'feeName', 'natureCode', 'period', 'amountCents', 'paidDate', 'refundDate', 'paymentMethod', 'cashier', 'sourceUpdatedAt'];
     const values: unknown[] = [];
     const tuples: string[] = [];
     for (const row of rows) {
@@ -235,12 +235,12 @@ export class MisMirrorService {
       tuples.push(`(${placeholders.join(',')})`);
     }
     await this.dataSource.query(
-      `INSERT INTO mis_mirror_bill(zj_id,office_code,l_id,s_id,zh_id,owner_name,room_no,address,fee_code,fee_name,period,amount_cents,paid_date,refund_date,payment_method,cashier,source_updated_at)
+      `INSERT INTO mis_mirror_bill(zj_id,office_code,l_id,s_id,zh_id,owner_name,room_no,address,fee_code,fee_name,nature_code,period,amount_cents,paid_date,refund_date,payment_method,cashier,source_updated_at)
        VALUES ${tuples.join(',')}
        ON CONFLICT (zj_id) DO UPDATE SET
          office_code=EXCLUDED.office_code,l_id=EXCLUDED.l_id,s_id=EXCLUDED.s_id,zh_id=EXCLUDED.zh_id,
          owner_name=EXCLUDED.owner_name,room_no=EXCLUDED.room_no,address=EXCLUDED.address,
-         fee_code=EXCLUDED.fee_code,fee_name=EXCLUDED.fee_name,period=EXCLUDED.period,
+         fee_code=EXCLUDED.fee_code,fee_name=EXCLUDED.fee_name,nature_code=EXCLUDED.nature_code,period=EXCLUDED.period,
          amount_cents=EXCLUDED.amount_cents,paid_date=EXCLUDED.paid_date,refund_date=EXCLUDED.refund_date,
          payment_method=EXCLUDED.payment_method,cashier=EXCLUDED.cashier,
          source_updated_at=EXCLUDED.source_updated_at,synced_at=now()`,
@@ -322,7 +322,7 @@ export class MisMirrorService {
           `SELECT TOP (@take) w.ZJ_ID AS zjId, l.管理处 AS officeCode, l.L_ID AS lId, s.S_ID AS sId, z.ZH_ID AS zhId,
              z.姓名 AS ownerName, s.室 AS roomNo,
              ISNULL(l.地址1,N'')+ISNULL(l.字1,N'')+ISNULL(l.地址2,N'')+ISNULL(l.字2,N'')+ISNULL(l.地址3,N'')+ISNULL(l.字3,N'')+ISNULL(l.地址4,N'')+ISNULL(l.字4,N'')+ISNULL(s.室,N'')+ISNULL(s.字,N'') AS address,
-             w.ZJ_LX AS feeCode, f.XM AS feeName, w.ZJ_CNY AS period, CAST(ROUND(w.ZJ_JE*100,0) AS bigint) AS amountCents,
+             w.ZJ_LX AS feeCode, f.XM AS feeName, w.FWXZ_DH AS natureCode, w.ZJ_CNY AS period, CAST(ROUND(w.ZJ_JE*100,0) AS bigint) AS amountCents,
              CONVERT(varchar(10),w.ZJ_SKRQ,23) AS paidDate, CONVERT(varchar(10),w.ZJ_TKRQ,23) AS refundDate,
              COALESCE(NULLIF(w.收款方式,N''),m.收款方式) AS paymentMethod, w.收款人 AS cashier,
              CONVERT(varchar(19),w.updatedate,126) AS sourceUpdatedAt           FROM dbo.WYZJ w

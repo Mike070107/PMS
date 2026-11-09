@@ -5,28 +5,41 @@ import { MIS_PROPERTY_OFFICES } from '../fees/mis-fees.service';
 export const STATISTICS_TYPES = ['arrears', 'received'] as const;
 export type StatisticsType = (typeof STATISTICS_TYPES)[number];
 
-/** 旧系统管理处名称（生产已核对：01–05）。 */
+/** 旧系统管理处名称（生产已核对：01–05；05 为 MIS 精确值，无收费流水）。 */
 export const STATISTICS_OFFICE_NAMES: Record<string, string> = {
   '01': '枫桦景苑一期',
   '02': '枫桦景苑二期A',
   '03': '枫桦景苑二期B',
   '04': '上海新家',
-  '05': '馨香北桥二期',
+  '05': '馨香北桥-二期',
 };
 
 /**
- * 旧系统房屋性质中文名。
- * MIS 的「房屋性质字典」尚未镜像，01/04/06/07/08 来自旧系统报表截图；
- * 05 的中文名现场尚未取证，先用「其他房屋」占位，接口按镜像里实际出现的 code 输出。
+ * MIS 房屋性质字典 FWXZK（来源：MIS 只读实测，2026-11-09）。
+ * 旧报表「房屋性质」按收费明细行 WYZJ.FWXZ_DH（收费时点性质）过滤，
+ * 不是室表当前性质；06「空房」需要能单独勾选/排除。
  */
 export const STATISTICS_NATURE_LABELS: Record<string, string> = {
   '01': '商品房',
-  '04': '配套用房',
-  '05': '其他房屋',
-  '06': '商铺',
+  '02': '售后公房',
+  '03': '使用权房',
+  '04': '商铺',
+  '05': '配套用房',
+  '06': '空房',
   '07': '居住',
   '08': '非居住',
+  '09': '系统',
+  '10': '非系统',
+  '11': '代管',
+  '12': '非代管',
+  '13': '私房',
 };
+
+/** options.natures 固定返回 FWXZK 全量字典（按 code 排序），与镜像里实际出现的值无关。 */
+export const STATISTICS_NATURE_OPTIONS: Array<{ code: string; name: string }> =
+  Object.keys(STATISTICS_NATURE_LABELS)
+    .sort()
+    .map((code) => ({ code, name: STATISTICS_NATURE_LABELS[code] }));
 
 export function statisticsNatureName(code: string): string {
   return STATISTICS_NATURE_LABELS[code] ?? `性质${code}`;

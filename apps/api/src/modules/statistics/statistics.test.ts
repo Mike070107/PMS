@@ -5,14 +5,19 @@ import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import { PGlite } from '@electric-sql/pglite';
 import { PERMISSION_KEY } from '../../common/require-permission.decorator';
 import { MisMirror1794500000000 } from '../../migrations/1794500000000-MisMirror';
+import { MisMirrorBillNature1795300000000 } from '../../migrations/1795300000000-MisMirrorBillNature';
 import { StatisticsAnnualDetailQueryDto, StatisticsAnnualQueryDto } from './dto';
 import { StatisticsController } from './statistics.controller';
 import { StatisticsService } from './statistics.service';
+import { STATISTICS_NATURE_OPTIONS } from './statistics.util';
 
 const tenantId = 1;
 const user = { id: 7, tenantId } as never;
 const scopeAll = { scopeAll: true } as never;
 const scopeCommunityTwo = { scopeAll: false, communityIds: [2] } as never;
+
+/** 旧系统默认勾选：FWXZK 除「06 空房」外全部。 */
+const NATURES_WITHOUT_VACANT = ['01', '02', '03', '04', '05', '07', '08', '09', '10', '11', '12', '13'];
 
 const communities = [
   { id: 1, name: '枫桦景苑一期' },
@@ -27,23 +32,26 @@ const FEE_ITEMS: Array<[string, string]> = [
   ['13', '电费'], ['14', '停车管理费'], ['15', '空房租金'], ['16', '置业泊位费'],
 ];
 
+/** 室表当前性质故意全部镜像为 06 空房：统计必须用 bill.nature_code，不能回退室表性质。 */
 const ROOMS: Array<[number, string, number]> = [
-  [501, '01', 88.5],
-  [719, '01', 79.67],
-  [720, '01', 90],
-  [721, '01', 100],
-  [722, '04', 60],
-  [801, '01', 80],
-  [901, '01', 81],
-  [1001, '01', 82],
-  [1002, '04', 50],
-  [1101, '01', 83],
+  [501, '06', 88.5],
+  [719, '06', 79.67],
+  [720, '06', 90],
+  [721, '06', 100],
+  [722, '06', 60],
+  [801, '06', 80],
+  [802, '06', 81],
+  [901, '06', 82],
+  [1001, '06', 83],
+  [1002, '06', 50],
 ];
 
 async function makeDatabase() {
   const pg = new PGlite();
   const migration = new MisMirror1794500000000();
   await migration.up({ query: (sql: string) => pg.query(sql) } as any);
+  const nature = new MisMirrorBillNature1795300000000();
+  await nature.up({ query: (sql: string) => pg.query(sql) } as any);
   return pg;
 }
 
@@ -59,6 +67,8 @@ function serviceFor(pg: PGlite) {
 interface BillInput {
   officeCode: string;
   sId: number;
+  /** 收费明细行发生时的房屋性质 WYZJ.FWXZ_DH；null 表示旧数据/源缺失。 */
+  natureCode: string | null;
   period: string;
   amountCents: number;
   feeCode?: string;
@@ -72,9 +82,9 @@ interface BillInput {
 }
 
 /**
- * 生产验收基准的合成夹具：
- * 02 管理处管理费欠费 = 2011 92100 + 2012 30700 + 2014 47790 + 2025 1659500 + 2026 72688120
- *                   = 74518210 分，与旧系统截图逐格一致；2026 = nature01 68303800 + nature04 4384320。
+ * 生产验收基准的合成夹具（金额单位：分）。
+ * 01（一期）按行级 FWXZ_DH：剔除 06 空房后 = 66226900，含 06 = 89461320；
+ * 02（二期A）管理费欠费 = 74518210，2026 = 68303800(01) + 4384320(04)。
  */
 async function seed(pg: PGlite) {
   await pg.query(
@@ -94,45 +104,61 @@ async function seed(pg: PGlite) {
   let nextZj = 1;
   const addBill = async (input: BillInput) => {
     await pg.query(
-      `INSERT INTO mis_mirror_bill(zj_id,office_code,s_id,owner_name,room_no,address,fee_code,fee_name,period,amount_cents,paid_date,refund_date,payment_method,cashier,source_updated_at)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now())`,
+      `INSERT INTO mis_mirror_bill(zj_id,office_code,s_id,owner_name,room_no,address,fee_code,fee_name,period,amount_cents,paid_date,refund_date,payment_method,cashier,source_updated_at,nature_code)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now(),$15)`,
       [
         nextZj++, input.officeCode, input.sId, input.ownerName ?? '合成业主', String(input.sId),
         input.address ?? `合成路${input.sId}号`, input.feeCode ?? '01', input.feeName ?? '管理费',
         input.period, input.amountCents, input.paidDate ?? null, input.refundDate ?? null,
-        input.paymentMethod ?? null, input.cashier ?? null,
+        input.paymentMethod ?? null, input.cashier ?? null, input.natureCode,
       ],
     );
   };
 
-  // 02 管理处：管理费欠费验收基准（全部性质）。
-  await addBill({ officeCode: '02', sId: 501, period: '201101', amountCents: 92100 });
-  await addBill({ officeCode: '02', sId: 501, period: '201205', amountCents: 30700 });
-  await addBill({ officeCode: '02', sId: 719, period: '201410', amountCents: 15930, address: '宝秀路719号719', ownerName: '宝秀路业主' });
-  await addBill({ officeCode: '02', sId: 719, period: '201411', amountCents: 15930, address: '宝秀路719号719', ownerName: '宝秀路业主' });
-  await addBill({ officeCode: '02', sId: 719, period: '201412', amountCents: 15930, address: '宝秀路719号719', ownerName: '宝秀路业主' });
-  await addBill({ officeCode: '02', sId: 720, period: '202501', amountCents: 1659500 });
-  await addBill({ officeCode: '02', sId: 721, period: '202601', amountCents: 68303800, address: '永德路228弄21号', ownerName: '二期业主' });
-  await addBill({ officeCode: '02', sId: 722, period: '202602', amountCents: 4384320, address: '永德路228弄22号', ownerName: '配套用房' });
+  // ── 02 管理处（二期A）：验收基准与旧系统截图逐格一致 ──
+  await addBill({ officeCode: '02', sId: 501, natureCode: '01', period: '201101', amountCents: 92100 });
+  await addBill({ officeCode: '02', sId: 501, natureCode: '01', period: '201205', amountCents: 30700 });
+  await addBill({ officeCode: '02', sId: 719, natureCode: '01', period: '201410', amountCents: 15930, address: '宝秀路719号719', ownerName: '宝秀路业主' });
+  await addBill({ officeCode: '02', sId: 719, natureCode: '01', period: '201411', amountCents: 15930, address: '宝秀路719号719', ownerName: '宝秀路业主' });
+  await addBill({ officeCode: '02', sId: 719, natureCode: '01', period: '201412', amountCents: 15930, address: '宝秀路719号719', ownerName: '宝秀路业主' });
+  await addBill({ officeCode: '02', sId: 720, natureCode: '01', period: '202501', amountCents: 1659500 });
+  await addBill({ officeCode: '02', sId: 721, natureCode: '01', period: '202601', amountCents: 68303800, address: '永德路228弄21号', ownerName: '二期业主' });
+  await addBill({ officeCode: '02', sId: 722, natureCode: '04', period: '202602', amountCents: 4384320, address: '永德路228弄22号', ownerName: '沿街商铺' });
   // 其它收费项目：验证收费项目筛选。
-  await addBill({ officeCode: '02', sId: 501, period: '202603', amountCents: 1234, feeCode: '02', feeName: '租金' });
+  await addBill({ officeCode: '02', sId: 501, natureCode: '01', period: '202603', amountCents: 1234, feeCode: '02', feeName: '租金' });
   // 实收：正常收款 + 负数退款行（净额 600），另有 2025 年一笔。
   await addBill({
-    officeCode: '02', sId: 501, period: '202601', amountCents: 1000, paidDate: '2026-03-01',
-    paymentMethod: '现金', cashier: '张三',
+    officeCode: '02', sId: 501, natureCode: '01', period: '202601', amountCents: 1000,
+    paidDate: '2026-03-01', paymentMethod: '现金', cashier: '张三',
   });
   await addBill({
-    officeCode: '02', sId: 501, period: '202601', amountCents: -400, paidDate: '2026-03-02',
-    refundDate: '2026-03-02', paymentMethod: '现金', cashier: '张三',
+    officeCode: '02', sId: 501, natureCode: '01', period: '202601', amountCents: -400,
+    paidDate: '2026-03-02', refundDate: '2026-03-02', paymentMethod: '现金', cashier: '张三',
   });
-  await addBill({ officeCode: '02', sId: 501, period: '202401', amountCents: 200, paidDate: '2025-05-01' });
-  // 其它管理处：验证管理处筛选/范围/小计。
-  await addBill({ officeCode: '01', sId: 801, period: '202601', amountCents: 10000 });
-  await addBill({ officeCode: '03', sId: 901, period: '202601', amountCents: 5000 });
-  await addBill({ officeCode: '04', sId: 1001, period: '202601', amountCents: 7000 });
-  await addBill({ officeCode: '04', sId: 1001, period: '202612', amountCents: 888 });
-  await addBill({ officeCode: '04', sId: 1002, period: '202701', amountCents: 999900 });
-  await addBill({ officeCode: '05', sId: 1101, period: '202601', amountCents: 3000 });
+  await addBill({ officeCode: '02', sId: 501, natureCode: '01', period: '202401', amountCents: 200, paidDate: '2025-05-01' });
+
+  // ── 01 管理处（一期）：旧系统截图 ¥662,269.00（不含 06 空房） ──
+  await addBill({ officeCode: '01', sId: 801, natureCode: '01', period: '200401', amountCents: 44440 });
+  await addBill({ officeCode: '01', sId: 801, natureCode: '01', period: '200502', amountCents: 48030 });
+  // 2007–2018 收费时点性质为 06 空房：旧报表不计入「房屋性质」勾选口径。
+  await addBill({ officeCode: '01', sId: 801, natureCode: '06', period: '200701', amountCents: 5432180 });
+  for (let year = 2008; year <= 2015; year += 1) {
+    await addBill({ officeCode: '01', sId: 801, natureCode: '06', period: `${year}01`, amountCents: 2122680 });
+  }
+  for (let year = 2016; year <= 2018; year += 1) {
+    await addBill({ officeCode: '01', sId: 801, natureCode: '06', period: `${year}01`, amountCents: 273600 });
+  }
+  await addBill({ officeCode: '01', sId: 801, natureCode: '01', period: '202401', amountCents: 466920 });
+  await addBill({ officeCode: '01', sId: 801, natureCode: '01', period: '202501', amountCents: 1088520 });
+  await addBill({ officeCode: '01', sId: 801, natureCode: '01', period: '202601', amountCents: 48186870 });
+  await addBill({ officeCode: '01', sId: 802, natureCode: '04', period: '202602', amountCents: 16392120 });
+
+  // ── 其它管理处：范围/小计/截止过滤 ──
+  await addBill({ officeCode: '03', sId: 901, natureCode: '01', period: '202601', amountCents: 5000 });
+  await addBill({ officeCode: '04', sId: 1001, natureCode: '01', period: '202601', amountCents: 7000 });
+  await addBill({ officeCode: '04', sId: 1001, natureCode: '01', period: '202612', amountCents: 888 });
+  // 行级性质缺失（历史/源 NULL）：不传 natures 时计入，传 natures 时排除。
+  await addBill({ officeCode: '04', sId: 1002, natureCode: null, period: '202701', amountCents: 999900 });
 }
 
 function annualOf(rows: any[], officeCode: string) {
@@ -141,7 +167,7 @@ function annualOf(rows: any[], officeCode: string) {
   return row;
 }
 
-test('options：管理处/收费项目/房屋性质/年度范围/镜像水位', async () => {
+test('options：管理处/收费项目/FWXZK 字典/年度范围/镜像水位', async () => {
   const pg = await makeDatabase();
   try {
     await seed(pg);
@@ -155,61 +181,101 @@ test('options：管理处/收费项目/房屋性质/年度范围/镜像水位', 
     assert.deepEqual(result.offices[1], {
       officeCode: '02', name: '枫桦景苑二期A', communityId: 2, communityName: '枫桦景苑二期',
     });
-    // 05 馨香北桥二期在 PMS 无同名小区，只展示、不映射。
+    // 05 名称改为 MIS 精确值；PMS 无同名小区，只展示、不映射。
     assert.deepEqual(result.offices[4], {
-      officeCode: '05', name: '馨香北桥二期', communityId: null, communityName: null,
+      officeCode: '05', name: '馨香北桥-二期', communityId: null, communityName: null,
     });
     assert.equal(result.feeItems.length, 16);
     assert.deepEqual(result.feeItems[0], { code: '01', name: '管理费' });
-    assert.deepEqual(result.natures, [
-      { code: '01', name: '商品房' },
-      { code: '04', name: '配套用房' },
-    ]);
-    assert.deepEqual(result.yearRange, { min: 2011, max: 2027 });
+    // FWXZK 字典按 code 排序全量返回；04=商铺、06=空房（旧口径曾把 06 算成商铺）。
+    assert.deepEqual(result.natures, STATISTICS_NATURE_OPTIONS);
+    assert.deepEqual(result.natures.find((item: any) => item.code === '04'), { code: '04', name: '商铺' });
+    assert.deepEqual(result.natures.find((item: any) => item.code === '06'), { code: '06', name: '空房' });
+    assert.deepEqual(result.yearRange, { min: 2004, max: 2027 });
   } finally {
     await pg.close();
   }
 });
 
-test('年度欠费汇总命中生产验收基准（02=74518210、2026=72688120、明细 2014=47790）', async () => {
+test('行级房屋性质口径：01 剔除 06 空房后 = 66226900，与旧系统截图一致', async () => {
   const pg = await makeDatabase();
   try {
     await seed(pg);
     const service = serviceFor(pg);
-    const result: any = await service.annual({
-      type: 'arrears', feeCodes: ['01'], yearFrom: 2004, yearTo: 2026,
+    const office01: any = await service.annual({
+      type: 'arrears', officeCodes: ['01'], feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT,
+      yearFrom: 2004, yearTo: 2026,
     } as never, user, scopeAll);
-    assert.equal(result.available, true);
-    assert.equal(result.columns[0], 2004);
-    assert.equal(result.columns[result.columns.length - 1], 2026);
-    assert.equal(result.columns.length, 23);
-    const office02 = annualOf(result.rows, '02');
-    assert.equal(office02.officeName, '枫桦景苑二期A');
-    assert.equal(office02.totalCents, 74518210);
-    assert.equal(office02.cells['2011'], 92100);
-    assert.equal(office02.cells['2012'], 30700);
-    assert.equal(office02.cells['2014'], 47790);
-    assert.equal(office02.cells['2025'], 1659500);
-    assert.equal(office02.cells['2026'], 72688120);
-    assert.equal(office02.cells['2020'], 0);
-    // 小计 = 各管理处同年之和：2026 = 72688120 + 10000 + 5000 + 7000 + 888 + 3000。
-    assert.equal(result.subtotal.cells['2026'], 72714008);
-    assert.equal(result.subtotal.cells['2014'], 47790);
-    assert.equal(result.filters.type, 'arrears');
-    assert.deepEqual(result.filters.officeCodes, ['01', '02', '03', '04', '05']);
-    assert.equal(result.filters.feeCodes[0], '01');
+    const row01 = annualOf(office01.rows, '01');
+    assert.equal(row01.totalCents, 66226900);
+    assert.equal(row01.cells['2004'], 44440);
+    assert.equal(row01.cells['2005'], 48030);
+    // 2007 只有 06 空房行：剔除后为 0，不能把 06 算成商铺。
+    assert.equal(row01.cells['2007'], 0);
+    assert.equal(row01.cells['2014'], 0);
+    assert.equal(row01.cells['2024'], 466920);
+    assert.equal(row01.cells['2025'], 1088520);
+    assert.equal(row01.cells['2026'], 64578990);
+
+    const office02: any = await service.annual({
+      type: 'arrears', officeCodes: ['02'], feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT,
+      yearFrom: 2004, yearTo: 2026,
+    } as never, user, scopeAll);
+    const row02 = annualOf(office02.rows, '02');
+    assert.equal(row02.totalCents, 74518210);
+    assert.equal(row02.cells['2011'], 92100);
+    assert.equal(row02.cells['2012'], 30700);
+    assert.equal(row02.cells['2014'], 47790);
+    assert.equal(row02.cells['2025'], 1659500);
+    assert.equal(row02.cells['2026'], 72688120);
+    assert.equal(row02.cells['2020'], 0);
+
+    const both: any = await service.annual({
+      type: 'arrears', officeCodes: ['01', '02'], feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT,
+      yearFrom: 2004, yearTo: 2026,
+    } as never, user, scopeAll);
+    assert.equal(both.subtotal.totalCents, 140745110);
+    // 2014：01 只有被剔除的 06 空房，小计 = 02 的 47790。
+    assert.equal(both.subtotal.cells['2014'], 47790);
+    // 2026：01=64578990 + 02=72688120。
+    assert.equal(both.subtotal.cells['2026'], 137267110);
   } finally {
     await pg.close();
   }
 });
 
-test('收费项目/房屋性质过滤：管理费 72688120 = 商品房 68303800 + 配套用房 4384320', async () => {
+test('含 06 空房时 01 = 89461320（对照旧系统差异 23234420）', async () => {
+  const pg = await makeDatabase();
+  try {
+    await seed(pg);
+    const service = serviceFor(pg);
+    const withoutFilter: any = await service.annual({
+      type: 'arrears', officeCodes: ['01'], feeCodes: ['01'], yearFrom: 2004, yearTo: 2026,
+    } as never, user, scopeAll);
+    const row01 = annualOf(withoutFilter.rows, '01');
+    assert.equal(row01.totalCents, 89461320);
+    assert.equal(row01.cells['2007'], 5432180);
+    assert.equal(row01.cells['2008'], 2122680);
+    assert.equal(row01.cells['2016'], 273600);
+
+    const withVacant: any = await service.annual({
+      type: 'arrears', officeCodes: ['01'], feeCodes: ['01'],
+      natures: [...NATURES_WITHOUT_VACANT, '06'], yearFrom: 2004, yearTo: 2026,
+    } as never, user, scopeAll);
+    assert.equal(annualOf(withVacant.rows, '01').totalCents, 89461320);
+  } finally {
+    await pg.close();
+  }
+});
+
+test('收费项目/房屋性质过滤按收费明细行：2026 = 商品房 + 商铺', async () => {
   const pg = await makeDatabase();
   try {
     await seed(pg);
     const service = serviceFor(pg);
     const allNatures: any = await service.annual({
-      type: 'arrears', officeCodes: ['02'], feeCodes: ['01'], yearFrom: 2026, yearTo: 2026,
+      type: 'arrears', officeCodes: ['02'], feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT,
+      yearFrom: 2026, yearTo: 2026,
     } as never, user, scopeAll);
     assert.equal(annualOf(allNatures.rows, '02').cells['2026'], 72688120);
 
@@ -218,10 +284,10 @@ test('收费项目/房屋性质过滤：管理费 72688120 = 商品房 68303800 
     } as never, user, scopeAll);
     assert.equal(annualOf(commodity.rows, '02').cells['2026'], 68303800);
 
-    const supporting: any = await service.annual({
+    const shop: any = await service.annual({
       type: 'arrears', officeCodes: ['02'], feeCodes: ['01'], natures: ['04'], yearFrom: 2026, yearTo: 2026,
     } as never, user, scopeAll);
-    assert.equal(annualOf(supporting.rows, '02').cells['2026'], 4384320);
+    assert.equal(annualOf(shop.rows, '02').cells['2026'], 4384320);
 
     const combined: any = await service.annual({
       type: 'arrears', officeCodes: ['02'], feeCodes: ['01'], natures: ['01', '04'], yearFrom: 2026, yearTo: 2026,
@@ -232,27 +298,55 @@ test('收费项目/房屋性质过滤：管理费 72688120 = 商品房 68303800 
       type: 'arrears', officeCodes: ['02'], feeCodes: ['02'], yearFrom: 2026, yearTo: 2026,
     } as never, user, scopeAll);
     assert.equal(annualOf(rent.rows, '02').cells['2026'], 1234);
+
+    // 一期 2026 = 01 商品房 48186870 + 04 商铺 16392120。
+    const office01: any = await service.annual({
+      type: 'arrears', officeCodes: ['01'], feeCodes: ['01'], natures: ['01'], yearFrom: 2026, yearTo: 2026,
+    } as never, user, scopeAll);
+    assert.equal(annualOf(office01.rows, '01').cells['2026'], 48186870);
+    const office01Shop: any = await service.annual({
+      type: 'arrears', officeCodes: ['01'], feeCodes: ['01'], natures: ['04'], yearFrom: 2026, yearTo: 2026,
+    } as never, user, scopeAll);
+    assert.equal(annualOf(office01Shop.rows, '01').cells['2026'], 16392120);
   } finally {
     await pg.close();
   }
 });
 
-test('实收年度汇总按付款年度分组，含负数退款行净额', async () => {
+test('nature_code 为 NULL 的行：不传 natures 计入，传 natures 排除', async () => {
   const pg = await makeDatabase();
   try {
     await seed(pg);
     const service = serviceFor(pg);
-    const result: any = await service.annual({
-      type: 'received', officeCodes: ['02'], feeCodes: ['01'], yearFrom: 2025, yearTo: 2026,
+    const included: any = await service.annual({
+      type: 'arrears', officeCodes: ['04'], feeCodes: ['01'], yearFrom: 2027, yearTo: 2027,
     } as never, user, scopeAll);
-    const office02 = annualOf(result.rows, '02');
-    assert.equal(office02.cells['2025'], 200);
-    assert.equal(office02.cells['2026'], 600);
-    // 欠费口径不把已收/退款行算进来。
-    const arrears: any = await service.annual({
-      type: 'arrears', officeCodes: ['02'], feeCodes: ['01'], yearFrom: 2025, yearTo: 2026,
+    assert.equal(annualOf(included.rows, '04').cells['2027'], 999900);
+
+    const excluded: any = await service.annual({
+      type: 'arrears', officeCodes: ['04'], feeCodes: ['01'], natures: ['01'], yearFrom: 2027, yearTo: 2027,
     } as never, user, scopeAll);
-    assert.equal(annualOf(arrears.rows, '02').cells['2026'], 72688120);
+    assert.equal(annualOf(excluded.rows, '04').cells['2027'], 0);
+
+    const detailIncluded: any = await service.annualDetail({
+      type: 'arrears', officeCode: '04', year: 2027, feeCodes: ['01'],
+    } as never, user, scopeAll);
+    assert.equal(detailIncluded.totalCents, 999900);
+    const detailExcluded: any = await service.annualDetail({
+      type: 'arrears', officeCode: '04', year: 2027, feeCodes: ['01'], natures: ['01'],
+    } as never, user, scopeAll);
+    assert.deepEqual(detailExcluded.rows, []);
+    assert.equal(detailExcluded.totalCents, 0);
+
+    const billsIncluded: any = await service.annualDetailBills({
+      type: 'arrears', officeCode: '04', sId: 1002, year: 2027, feeCodes: ['01'],
+    } as never, user, scopeAll);
+    assert.equal(billsIncluded.totalCents, 999900);
+    const billsExcluded: any = await service.annualDetailBills({
+      type: 'arrears', officeCode: '04', sId: 1002, year: 2027, feeCodes: ['01'], natures: ['01'],
+    } as never, user, scopeAll);
+    assert.equal(billsExcluded.rows.length, 0);
+    assert.equal(billsExcluded.totalCents, 0);
   } finally {
     await pg.close();
   }
@@ -264,11 +358,12 @@ test('明细合计=单元格：02×2014 含宝秀路719号719（79.67㎡，20141
     await seed(pg);
     const service = serviceFor(pg);
     const annual: any = await service.annual({
-      type: 'arrears', officeCodes: ['02'], feeCodes: ['01'], yearFrom: 2004, yearTo: 2026,
+      type: 'arrears', officeCodes: ['02'], feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT,
+      yearFrom: 2004, yearTo: 2026,
     } as never, user, scopeAll);
     const cell = annualOf(annual.rows, '02').cells['2014'];
     const detail: any = await service.annualDetail({
-      type: 'arrears', officeCode: '02', year: 2014, feeCodes: ['01'],
+      type: 'arrears', officeCode: '02', year: 2014, feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT,
     } as never, user, scopeAll);
     assert.equal(detail.available, true);
     assert.equal(detail.totalCents, cell);
@@ -281,6 +376,33 @@ test('明细合计=单元格：02×2014 含宝秀路719号719（79.67㎡，20141
       periodRange: '201410-201412',
       amountCents: 47790,
     });
+  } finally {
+    await pg.close();
+  }
+});
+
+test('明细按行级性质过滤：01×2026 商品房/商铺合计等于单元格', async () => {
+  const pg = await makeDatabase();
+  try {
+    await seed(pg);
+    const service = serviceFor(pg);
+    const annual: any = await service.annual({
+      type: 'arrears', officeCodes: ['01'], feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT,
+      yearFrom: 2026, yearTo: 2026,
+    } as never, user, scopeAll);
+    const cell = annualOf(annual.rows, '01').cells['2026'];
+    const detail: any = await service.annualDetail({
+      type: 'arrears', officeCode: '01', year: 2026, feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT,
+    } as never, user, scopeAll);
+    assert.equal(detail.totalCents, cell);
+    assert.deepEqual(detail.rows.map((row: any) => [row.sId, row.amountCents]), [[801, 48186870], [802, 16392120]]);
+    assert.equal(detail.rows.reduce((sum: number, row: any) => sum + row.amountCents, 0), cell);
+
+    const bills: any = await service.annualDetailBills({
+      type: 'arrears', officeCode: '01', sId: 802, year: 2026, feeCodes: ['01'],
+    } as never, user, scopeAll);
+    assert.equal(bills.totalCents, 16392120);
+    assert.equal(bills.rows.length, 1);
   } finally {
     await pg.close();
   }
@@ -304,6 +426,38 @@ test('逐笔账单合计=房屋明细：02×2014 三笔各 15930', async () => {
     assert.equal(bills.rows[0].paidDate, null);
     assert.equal(bills.rows[0].refundDate, null);
     assert.ok(bills.rows[0].zjId > 0);
+
+    // 06 空房行在传 natures 时不能出现在明细/逐笔里。
+    const vacantDetail: any = await service.annualDetail({
+      type: 'arrears', officeCode: '01', year: 2007, feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT,
+    } as never, user, scopeAll);
+    assert.deepEqual(vacantDetail.rows, []);
+    const vacantBills: any = await service.annualDetailBills({
+      type: 'arrears', officeCode: '01', sId: 801, year: 2007, feeCodes: ['01'], natures: ['06'],
+    } as never, user, scopeAll);
+    assert.equal(vacantBills.rows.length, 1);
+    assert.equal(vacantBills.totalCents, 5432180);
+  } finally {
+    await pg.close();
+  }
+});
+
+test('实收年度汇总按付款年度分组，含负数退款行净额', async () => {
+  const pg = await makeDatabase();
+  try {
+    await seed(pg);
+    const service = serviceFor(pg);
+    const result: any = await service.annual({
+      type: 'received', officeCodes: ['02'], feeCodes: ['01'], yearFrom: 2025, yearTo: 2026,
+    } as never, user, scopeAll);
+    const office02 = annualOf(result.rows, '02');
+    assert.equal(office02.cells['2025'], 200);
+    assert.equal(office02.cells['2026'], 600);
+    // 欠费口径不把已收/退款行算进来。
+    const arrears: any = await service.annual({
+      type: 'arrears', officeCodes: ['02'], feeCodes: ['01'], yearFrom: 2025, yearTo: 2026,
+    } as never, user, scopeAll);
+    assert.equal(annualOf(arrears.rows, '02').cells['2026'], 72688120);
   } finally {
     await pg.close();
   }
@@ -464,7 +618,8 @@ test('镜像未同步时明确的空数组+message，不伪造 0', async () => {
     assert.equal(options.available, false);
     assert.equal(options.dataAsOf, null);
     assert.deepEqual(options.feeItems, []);
-    assert.deepEqual(options.natures, []);
+    // 房屋性质字典是 FWXZK 常量，与镜像是否有数据无关。
+    assert.deepEqual(options.natures, STATISTICS_NATURE_OPTIONS);
     assert.deepEqual(options.yearRange, { min: null, max: null });
     assert.match(options.message, /镜像/);
 

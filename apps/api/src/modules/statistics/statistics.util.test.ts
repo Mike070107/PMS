@@ -7,6 +7,7 @@ import {
   filterRequestedOffices,
   formatPeriodRange,
   resolveStatisticsOffices,
+  STATISTICS_NATURE_OPTIONS,
   statisticsColumns,
   statisticsNatureName,
 } from './statistics.util';
@@ -33,7 +34,7 @@ test('管理处→PMS 小区映射：02/03 同属二期，05 无 PMS 小区', ()
     officeCode: '04', officeName: '上海新家', communityId: 16, communityName: '上海新家',
   });
   assert.deepEqual(offices[4], {
-    officeCode: '05', officeName: '馨香北桥二期', communityId: null, communityName: null,
+    officeCode: '05', officeName: '馨香北桥-二期', communityId: null, communityName: null,
   });
 });
 
@@ -85,10 +86,17 @@ test('年度列生成与范围校验', () => {
   assert.throws(() => statisticsColumns(2004, 2060), BadRequestException);
 });
 
-test('房屋性质中文名兜底与欠费年月范围', () => {
+test('FWXZK 房屋性质字典按收费时点性质返回全量 code+中文名', () => {
+  assert.equal(STATISTICS_NATURE_OPTIONS.length, 13);
+  assert.deepEqual(STATISTICS_NATURE_OPTIONS.map((item) => item.code), [
+    '01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13',
+  ]);
+  assert.deepEqual(STATISTICS_NATURE_OPTIONS.find((item) => item.code === '04'), { code: '04', name: '商铺' });
+  assert.deepEqual(STATISTICS_NATURE_OPTIONS.find((item) => item.code === '05'), { code: '05', name: '配套用房' });
+  assert.deepEqual(STATISTICS_NATURE_OPTIONS.find((item) => item.code === '06'), { code: '06', name: '空房' });
   assert.equal(statisticsNatureName('01'), '商品房');
-  assert.equal(statisticsNatureName('04'), '配套用房');
-  assert.equal(statisticsNatureName('06'), '商铺');
+  assert.equal(statisticsNatureName('02'), '售后公房');
+  assert.equal(statisticsNatureName('03'), '使用权房');
   assert.equal(statisticsNatureName('07'), '居住');
   assert.equal(statisticsNatureName('08'), '非居住');
   assert.equal(statisticsNatureName('99'), '性质99');
