@@ -14,7 +14,9 @@ const chrome = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const evidenceDir = path.resolve(app, '../../../..', 'pms-statistics-evidence');
 // 应收截止默认「当前年份 12 月」，与旧系统截图口径一致（镜像同步月份不能当截止月）。
 const expectedAsOfPeriod = `${new Date().getFullYear()}12`;
-// MIS FWXZK 全字典 01–13；旧系统截图口径默认排除 06 空房。
+// MIS FWXZK 全字典 01–13。实收报表默认 13 项（含 06 空房）；欠费报表默认 12 项（排除 06）。
+const allNatures = '01,02,03,04,05,06,07,08,09,10,11,12,13';
+const receivedDefaultNatures = allNatures;
 const expectedDefaultNatures = '01,02,03,04,05,07,08,09,10,11,12,13';
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -239,7 +241,7 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
       ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12', '13'],
       '房屋性质按 code 顺序展示',
     );
-    assert.equal(await js("document.querySelector('[data-nature-code=\"06\"]').checked"), false, '空房 06 默认不勾选');
+    assert.equal(await js("document.querySelector('[data-nature-code=\"06\"]').checked"), true, '实收报表默认勾选 06 空房（13 项全选）');
     assert.equal(await js("document.querySelector('[data-nature-code=\"05\"]').checked"), true);
     assert.equal(await js("document.querySelector('[data-nature-code=\"13\"]').checked"), true);
     const receivedQuery = await js("window.__calls.filter((c) => c.url === '/statistics/annual').slice(-1)[0].query");
@@ -247,16 +249,21 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     assert.equal(receivedQuery.asOfPeriod, undefined, '实收报表不能带应收截止年月，否则 2027/2028 列被截断');
     assert.equal(receivedQuery.paidDateTo, undefined, '收款日期默认留空，不限制实收');
     assert.equal(receivedQuery.paidDateFrom, undefined, '收款日期默认留空，不限制实收');
-    assert.equal(receivedQuery.natures, expectedDefaultNatures, '默认房屋性质 = 全字典排除 06 空房');
-    assert.ok(!receivedQuery.natures.split(',').includes('06'), '默认请求不能带 06 空房');
-    assert.ok(receivedQuery.natures.split(',').includes('05') && receivedQuery.natures.split(',').includes('07'), '默认请求要含 05/07 等非空房性质');
+    assert.equal(receivedQuery.natures, receivedDefaultNatures, '实收默认房屋性质 = 全部 13 项（含 06 空房）');
+    assert.ok(receivedQuery.natures.split(',').includes('06'), '实收默认请求必须带 06 空房');
+    assert.ok(receivedQuery.natures.split(',').includes('05') && receivedQuery.natures.split(',').includes('07'), '默认请求要含 05/07 等性质');
     assert.equal(receivedQuery.feeCodes.split(',').length, 16, '默认收费项目仍是 16 项扁平 feeCodes');
     assert.ok(bodyText.includes('实收年度按「应收年月」归年'), '实收报表要说明按应收年月归年');
     assert.equal(await js("!!document.querySelector('[data-testid=asof-period-field]')"), false, '实收报表不展示应收截止年月');
     assert.ok(await js("!!document.querySelector('[data-testid=asof-period-hint]')"), '实收报表要提示应收截止年月仅欠费使用');
-    assert.equal(await js("document.querySelector('[data-office-code=\"01\"][data-year=\"2004\"]').textContent.trim()"), '¥882.40');
+    await js("document.querySelector('[data-nature-code=\"06\"]').scrollIntoView({ block: 'center' })");
+    await pause(200);
+    await screenshot('statistics-received-natures-1440.png');
+    await js("document.querySelector('.stats-filter-body').scrollTop = 0");
+    assert.equal(await js("document.querySelector('[data-office-code=\"01\"][data-year=\"2004\"]').textContent.trim()"), '¥982.40', '实收 2004 单元格含 06 空房 ¥100.00');
     assert.equal(await js("document.querySelector('[data-office-code=\"01\"][data-year=\"2027\"]').textContent.trim()"), '¥1,600.00', '实收 2027 列不能被应收截止年月截断');
-    assert.ok((await js("document.querySelector('[data-office-row=\"01\"]').textContent")).includes('¥2,482.40'));
+    assert.ok((await js("document.querySelector('[data-office-row=\"01\"]').textContent")).includes('¥2,582.40'));
+    assert.ok((await js("document.querySelector('[data-testid=stats-subtotal-row]').textContent")).includes('¥982.40'), '实收小计含 06 空房金额');
     await js("(() => { const el = document.querySelector('.stats-table-scroll'); el.scrollLeft = el.scrollWidth; })()");
     await pause(250);
     await screenshot('statistics-received-2027-1440.png');
@@ -276,8 +283,8 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     );
     assert.equal(await js("document.querySelectorAll('.stats-received-table tbody tr').length"), 23, '实收逐笔清单 23 行');
     assert.equal(await js("document.querySelector('.stats-received-table tbody tr td:first-child').textContent.trim()"), '1', '序号列存在');
-    assert.equal(await js("document.querySelector('[data-testid=stats-received-total]').textContent.trim()"), '¥882.40', '实收合计=单元格');
-    assert.equal(await js("document.querySelector('[data-testid=stats-detail-cell-amount]').textContent.trim()"), '¥882.40');
+    assert.equal(await js("document.querySelector('[data-testid=stats-received-total]').textContent.trim()"), '¥982.40', '实收合计=单元格（含 06 空房）');
+    assert.equal(await js("document.querySelector('[data-testid=stats-detail-cell-amount]').textContent.trim()"), '¥982.40');
     assert.equal(await js("[...document.querySelectorAll('.stats-received-table tbody tr')].every((row) => row.children[7].textContent.trim() === '—' && row.children[8].textContent.trim() === '—')"), true, '入库单/票据编号缺镜像显示—');
     const receivedDetailQuery = await js("window.__calls.filter((c) => c.url === '/statistics/annual/detail').slice(-1)[0].query");
     assert.equal(receivedDetailQuery.type, 'received');
@@ -405,6 +412,34 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
       assert.equal(await js(`document.querySelector('[data-office-code="02"][data-year="${year}"]').textContent.trim()`), amount, `02×${year} 年度金额应对上生产验收基准`);
     }
     await screenshot('statistics-arrears-1440.png');
+    // 报表默认房屋性质自动切换：实收 13 项（含 06）→ 欠费 12 项（排除 06）。
+    await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/annual'); const last = list[list.length - 1]; return last && last.query.type === 'arrears' && last.query.natures === '" + expectedDefaultNatures + "'; })()", '欠费默认房屋性质自动排除 06');
+    assert.equal(await js("document.querySelector('[data-nature-code=\"06\"]').checked"), false, '切到欠费后 06 空房不勾选');
+    assert.equal(await js("[...document.querySelectorAll('[data-nature-code]')].filter((el) => el.checked).length"), 12);
+    await js("document.querySelector('[data-nature-code=\"06\"]').scrollIntoView({ block: 'center' })");
+    await pause(200);
+    await screenshot('statistics-arrears-natures-1440.png');
+    await js("document.querySelector('.stats-filter-body').scrollTop = 0");
+    // 再切回实收：默认值自动恢复 13 项（含 06）。
+    await js("document.querySelector('[data-report-type=received]').click()");
+    await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/annual'); const last = list[list.length - 1]; return last && last.query.type === 'received' && last.query.natures === '" + receivedDefaultNatures + "'; })()", '实收默认房屋性质自动包含 06');
+    assert.equal(await js("document.querySelector('[data-nature-code=\"06\"]').checked"), true, '切回实收后 06 空房恢复勾选');
+    // 用户手动改过房屋性质后切换报表：保留用户选择，不强制套默认值。
+    await js("document.querySelector('[data-action=natures-clear]').click()");
+    await pause(200);
+    await js("document.querySelector('[data-nature-code=\"01\"]').click()");
+    await pause(200);
+    await js("document.querySelector('[data-report-type=arrears]').click()");
+    await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/annual'); const last = list[list.length - 1]; return last && last.query.type === 'arrears' && last.query.natures === '01'; })()", '手动房屋性质在切换报表后保留');
+    assert.equal(await js("document.querySelector('[data-nature-code=\"01\"]').checked"), true, '手动选择 01 保留');
+    assert.equal(await js("[...document.querySelectorAll('[data-nature-code]')].filter((el) => el.checked).length"), 1);
+    // 重置按当前报表类型（欠费）恢复默认：12 项、06 不勾。
+    await js("document.querySelector('[data-action=filters-reset]').click()");
+    await pause(250);
+    assert.equal(await js("document.querySelector('[data-nature-code=\"06\"]').checked"), false, '欠费重置后 06 不勾');
+    assert.equal(await js("[...document.querySelectorAll('[data-nature-code]')].filter((el) => el.checked).length"), 12, '欠费重置恢复 12 项');
+    await js("document.querySelector('[data-testid=stats-submit]').click()");
+    await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/annual'); const last = list[list.length - 1]; return last && last.query.natures === '" + expectedDefaultNatures + "'; })()", '欠费重置后请求恢复默认房屋性质');
 
     // 筛选变更不自动请求；勾 02 管理处 + 管理费后点「统计」，请求参数正确。
     const beforeCalls = await js("window.__calls.filter((c) => c.url === '/statistics/annual').length");
@@ -542,7 +577,7 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     assert.ok(await js("!!document.querySelector('.stats-card-year')"));
     await screenshot('statistics-320.png');
 
-    // 重置回到默认：房屋性质仍排除 06 空房，管理处/收费项目恢复全选；重置本身不自动请求。
+    // 重置按当前报表类型恢复默认：窄屏重载后是实收报表 → 房屋性质 13 项（含 06 空房）；重置自身不自动请求。
     await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
     await pause(400);
     if (!(await js("!!document.querySelector('.stats-filters')"))) {
@@ -553,17 +588,18 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     await js("document.querySelector('[data-action=filters-reset]').click()");
     await pause(250);
     assert.equal(await js("window.__calls.filter((c) => c.url === '/statistics/annual').length"), callsBeforeReset, '重置不自动请求');
-    assert.equal(await js("document.querySelector('[data-nature-code=\"06\"]').checked"), false, '重置后空房 06 仍不勾选');
+    assert.equal(await js("document.querySelector('[data-nature-code=\"06\"]').checked"), true, '实收重置后 06 空房勾选（13 项）');
     assert.equal(await js("document.querySelector('[data-nature-code=\"05\"]').checked"), true);
+    assert.equal(await js("[...document.querySelectorAll('[data-nature-code]')].filter((el) => el.checked).length"), 13);
     assert.equal(await js("document.querySelector('[data-fee-code=\"01\"]').checked"), true);
     assert.equal(await js("document.querySelector('[data-office-code=\"02\"]').checked"), true, '重置后管理处恢复全选');
     await js("document.querySelector('[data-testid=stats-submit]').click()");
     const resetQueryExpr = `(() => {
       const list = window.__calls.filter((c) => c.url === '/statistics/annual');
       const last = list[list.length - 1];
-      return last && last.query.natures === '${expectedDefaultNatures}' && last.query.officeCodes.includes('02') && last.query.feeCodes.includes('01');
+      return last && last.query.natures === '${receivedDefaultNatures}' && last.query.officeCodes.includes('02') && last.query.feeCodes.includes('01');
     })()`;
-    await waitFor(resetQueryExpr, '重置后的年度请求');
+    await waitFor(resetQueryExpr, '重置后的实收年度请求');
     await waitFor("!!document.querySelector('.stats-annual-table')", '重置后年度表');
     await js('window.scrollTo(0, 0)');
     await pause(200);
@@ -607,7 +643,7 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     );
     await screenshot('statistics-date-range-1440.png');
     // 收款日期范围只做筛选：实收逐笔清单请求带 from/to，年度列仍按应收年月归年。
-    assert.equal(await js("document.querySelector('[data-office-code=\"01\"][data-year=\"2004\"]').textContent.trim()"), '¥882.40', '年度列仍按应收年度');
+    assert.equal(await js("document.querySelector('[data-office-code=\"01\"][data-year=\"2004\"]').textContent.trim()"), '¥982.40', '年度列仍按应收年度');
     await js("document.querySelector('[data-office-code=\"01\"][data-year=\"2004\"]').click()");
     await waitFor("!!document.querySelector('.stats-received-table')", '带日期范围的实收逐笔清单');
     const rangedDetailQuery = await js("window.__calls.filter((c) => c.url === '/statistics/annual/detail').slice(-1)[0].query");

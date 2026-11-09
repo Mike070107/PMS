@@ -14,8 +14,16 @@ import {
 } from '@/lib/statistics';
 import '@/styles/statistics.css';
 
-/** 旧系统截图口径：房屋性质用「收费发生时点性质」（MIS WYZJ.FWXZ_DH），默认不勾选 06 空房。 */
-const DEFAULT_EXCLUDED_NATURE_CODES = new Set(['06']);
+/**
+ * 两张报表默认房屋性质不同（旧系统截图口径）：
+ * - 实收年度汇总：包含 06 空房（13 项全选）；
+ * - 欠费年度汇总：排除 06 空房（12 项），与旧系统截图 01=662,269.00 一致。
+ * 房屋性质本身按「收费发生时点性质」（MIS WYZJ.FWXZ_DH）。
+ */
+const DEFAULT_EXCLUDED_NATURE_BY_REPORT: Record<StatisticsReportType, Set<string>> = {
+  received: new Set(),
+  arrears: new Set(['06']),
+};
 
 /** 筛选悬浮面板收纳状态（用户要求记住上次状态；窄屏默认收起）。 */
 const FILTERS_COLLAPSED_KEY = 'statistics.filters.collapsed';
@@ -34,12 +42,25 @@ function rememberFiltersCollapsed(collapsed: boolean) {
   try { window.localStorage.setItem(FILTERS_COLLAPSED_KEY, collapsed ? '1' : '0'); } catch { /* 忽略存储失败 */ }
 }
 
-/** 筛选草稿的默认值：管理处/收费项目全选；房屋性质除 06 空房外全选；应收到当年 12 月，收款日期范围留空。 */
-function defaultDraft(options: StatisticsOptions): FilterDraft {
+/** 指定报表类型的默认房屋性质（实收含 06；欠费排除 06）。 */
+function defaultNatures(options: StatisticsOptions, reportType: StatisticsReportType): string[] {
+  const excluded = DEFAULT_EXCLUDED_NATURE_BY_REPORT[reportType];
+  return options.natures.map((nature) => nature.code).filter((code) => !excluded.has(code));
+}
+
+/** 两个房屋性质勾选集合是否相同（用于判断用户是否手动改过）。 */
+function sameNatureSelection(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false;
+  const expected = new Set(right);
+  return left.every((code) => expected.has(code));
+}
+
+/** 筛选草稿的默认值：管理处/收费项目全选；房屋性质按报表类型默认；应收到当年 12 月，收款日期范围留空。 */
+function defaultDraft(options: StatisticsOptions, reportType: StatisticsReportType): FilterDraft {
   return {
     officeCodes: options.offices.map((office) => office.officeCode),
     feeCodes: options.feeItems.map((fee) => fee.code),
-    natures: options.natures.map((nature) => nature.code).filter((code) => !DEFAULT_EXCLUDED_NATURE_CODES.has(code)),
+    natures: defaultNatures(options, reportType),
     paidDateFrom: '',
     paidDateTo: '',
     asOfPeriod: `${dayjs().year()}12`,
@@ -91,7 +112,7 @@ export default function Statistics() {
       .then((response) => {
         if (cancelled) return;
         setOptions(response);
-        const nextDraft = defaultDraft(response);
+        const nextDraft = defaultDraft(response, reportTypeRef.current);
         setDraft(nextDraft);
         setApplied({
           type: reportTypeRef.current,
@@ -129,7 +150,7 @@ export default function Statistics() {
 
   const resetDraft = () => {
     if (!options) return;
-    setDraft(defaultDraft(options));
+    setDraft(defaultDraft(options, reportType));
   };
 
   const submit = () => {
@@ -155,10 +176,20 @@ export default function Statistics() {
   };
 
   const switchReport = (type: StatisticsReportType) => {
-    setReportType(type);
     setDetailOpen(false);
     setDetailTarget(null);
-    setApplied((previous) => (previous ? { ...previous, type } : previous));
+    if (!options) {
+      setReportType(type);
+      setApplied((previous) => (previous ? { ...previous, type } : previous));
+      return;
+    }
+    // 只有当前房屋性质仍等于「切换前报表的默认值」时才自动换成新报表默认；
+    // 用户手动改过就保留（两张报表默认差在 06 空房）。
+    const followsPreviousDefault = sameNatureSelection(draft.natures, defaultNatures(options, reportType));
+    const nextNatures = followsPreviousDefault ? defaultNatures(options, type) : draft.natures;
+    setReportType(type);
+    if (followsPreviousDefault) setDraft((previous) => ({ ...previous, natures: nextNatures }));
+    setApplied((previous) => (previous ? { ...previous, type, natures: nextNatures } : previous));
   };
 
   const openCell = (target: AnnualCellTarget) => {
