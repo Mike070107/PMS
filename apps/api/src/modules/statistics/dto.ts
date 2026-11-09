@@ -10,6 +10,10 @@ import {
   type CollectionGroupBy,
 } from './collection.util';
 import {
+  SIGNOFF_STATUSES,
+  type SignoffStatus,
+} from './misc-report.util';
+import {
   ANALYSIS_SORTS,
   MONTHLY_REPORT_GROUP_BYS,
   type CollectionAnalysisSort,
@@ -558,6 +562,101 @@ export class BuildingLedgerQueryDto {
   @IsString({ each: true })
   @Matches(OFFICE_CODE_RE, { each: true, message: 'officeCodes 必须是两位管理处代码' })
   officeCodes?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value == null ? undefined : String(value).trim()))
+  @IsString()
+  @MaxLength(50, { message: 'keyword 不能超过 50 个字符' })
+  keyword?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'limit 必须是整数' })
+  @Min(1)
+  @Max(COLLECTION_MAX_DETAIL_LIMIT, { message: `limit 不能超过 ${COLLECTION_MAX_DETAIL_LIMIT}` })
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'offset 必须是整数' })
+  @Min(0)
+  offset?: number;
+}
+/** P4-A 减免情况统计。 */
+export class ReliefQueryDto {
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value == null ? undefined : value))
+  @Matches(DATE_RE, { message: 'dateFrom 必须是 YYYY-MM-DD' })
+  dateFrom?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value == null ? undefined : value))
+  @Matches(DATE_RE, { message: 'dateTo 必须是 YYYY-MM-DD' })
+  dateTo?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(OFFICE_CODE_RE, { each: true, message: 'officeCodes 必须是两位管理处代码' })
+  officeCodes?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(CODE_RE, { each: true, message: 'feeCodes 不合法' })
+  feeCodes?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value == null ? undefined : String(value).trim()))
+  @IsString()
+  @MaxLength(50, { message: 'keyword 不能超过 50 个字符' })
+  keyword?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'limit 必须是整数' })
+  @Min(1)
+  @Max(COLLECTION_MAX_DETAIL_LIMIT, { message: `limit 不能超过 ${COLLECTION_MAX_DETAIL_LIMIT}` })
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'offset 必须是整数' })
+  @Min(0)
+  offset?: number;
+}
+
+/** P4-A 签报情况统计。 */
+export class SignoffQueryDto {
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value == null ? undefined : value))
+  @Matches(DATE_RE, { message: 'dateFrom 必须是 YYYY-MM-DD' })
+  dateFrom?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value == null ? undefined : value))
+  @Matches(DATE_RE, { message: 'dateTo 必须是 YYYY-MM-DD' })
+  dateTo?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(OFFICE_CODE_RE, { each: true, message: 'officeCodes 必须是两位管理处代码' })
+  officeCodes?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(60, { each: true, message: '签报类型不能超过 60 个字符' })
+  types?: string[];
+
+  @IsOptional()
+  @IsIn(SIGNOFF_STATUSES, { message: 'status 必须是 all/effective/voided/open' })
+  status?: SignoffStatus;
 
   @IsOptional()
   @Transform(({ value }) => (value === '' || value == null ? undefined : String(value).trim()))

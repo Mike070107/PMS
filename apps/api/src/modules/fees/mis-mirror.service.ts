@@ -62,6 +62,10 @@ export class MisMirrorService {
          (SELECT COUNT(*)::int FROM mis_mirror_bill) AS bills,
          (SELECT COUNT(*)::int FROM mis_mirror_owner) AS owners,
          (SELECT COUNT(*)::int FROM mis_mirror_fee_item) AS fee_items,
+         (SELECT COUNT(*)::int FROM mis_mirror_ticket) AS tickets,
+         (SELECT COUNT(*)::int FROM mis_mirror_ticket_item) AS ticket_items,
+         (SELECT COUNT(*)::int FROM mis_mirror_signoff) AS signoffs,
+         (SELECT COUNT(*)::int FROM mis_mirror_relief) AS reliefs,
          (SELECT MAX(synced_at) FROM mis_mirror_bill) AS last_bill_sync`,
     ).catch(() => [{ bills: 0, owners: 0, fee_items: 0, last_bill_sync: null }]);
     return { mode, state, ...(counts[0] ?? {}), dataAsOf: await this.dataAsOf(tenantId) };
@@ -93,6 +97,7 @@ export class MisMirrorService {
     try {
       rows = await this.syncBills(tenantId);
       await this.syncSmallDimensions();
+      await this.syncExtraMirrors(tenantId);
       return { skipped: null, rows };
     } catch (error) {
       const consecutiveFailures = await this.recordSyncError(tenantId, 'bill', error).catch(() => 0);
@@ -197,6 +202,10 @@ export class MisMirrorService {
         CONVERT(varchar(10),w.ZJ_TKRQ,23) AS refundDate,
         COALESCE(NULLIF(w.收款方式,N''),m.收款方式) AS paymentMethod,
         w.收款人 AS cashier,
+        CAST(ROUND(ISNULL(w.收入,0)*100,0) AS bigint) AS incomeCents,
+        w.票据入库单编号 AS receiptWarehouseNo,
+        w.发票号码 AS invoiceNo,
+        w.凭证号码 AS receiptVoucherNo,
         CONVERT(varchar(19),w.updatedate,126) AS sourceUpdatedAt
       FROM dbo.WYZJ w
       INNER JOIN dbo.业主表 z ON z.ZH_ID=w.ZH_ID
@@ -224,7 +233,7 @@ export class MisMirrorService {
 
   private async upsertBills(rows: any[]) {
     if (!rows.length) return;
-    const fields = ['zjId', 'officeCode', 'lId', 'sId', 'zhId', 'ownerName', 'roomNo', 'address', 'feeCode', 'feeName', 'natureCode', 'period', 'amountCents', 'paidDate', 'refundDate', 'paymentMethod', 'cashier', 'sourceUpdatedAt'];
+    const fields = ['zjId', 'officeCode', 'lId', 'sId', 'zhId', 'ownerName', 'roomNo', 'address', 'feeCode', 'feeName', 'natureCode', 'period', 'amountCents', 'paidDate', 'refundDate', 'paymentMethod', 'cashier', 'incomeCents', 'receiptWarehouseNo', 'invoiceNo', 'receiptVoucherNo', 'sourceUpdatedAt'];
     const values: unknown[] = [];
     const tuples: string[] = [];
     for (const row of rows) {
@@ -235,7 +244,7 @@ export class MisMirrorService {
       tuples.push(`(${placeholders.join(',')})`);
     }
     await this.dataSource.query(
-      `INSERT INTO mis_mirror_bill(zj_id,office_code,l_id,s_id,zh_id,owner_name,room_no,address,fee_code,fee_name,nature_code,period,amount_cents,paid_date,refund_date,payment_method,cashier,source_updated_at)
+      `INSERT INTO mis_mirror_bill(zj_id,office_code,l_id,s_id,zh_id,owner_name,room_no,address,fee_code,fee_name,nature_code,period,amount_cents,paid_date,refund_date,payment_method,cashier,income_cents,receipt_warehouse_no,invoice_no,receipt_voucher_no,source_updated_at)
        VALUES ${tuples.join(',')}
        ON CONFLICT (zj_id) DO UPDATE SET
          office_code=EXCLUDED.office_code,l_id=EXCLUDED.l_id,s_id=EXCLUDED.s_id,zh_id=EXCLUDED.zh_id,
@@ -243,6 +252,8 @@ export class MisMirrorService {
          fee_code=EXCLUDED.fee_code,fee_name=EXCLUDED.fee_name,nature_code=EXCLUDED.nature_code,period=EXCLUDED.period,
          amount_cents=EXCLUDED.amount_cents,paid_date=EXCLUDED.paid_date,refund_date=EXCLUDED.refund_date,
          payment_method=EXCLUDED.payment_method,cashier=EXCLUDED.cashier,
+         income_cents=EXCLUDED.income_cents,receipt_warehouse_no=EXCLUDED.receipt_warehouse_no,
+         invoice_no=EXCLUDED.invoice_no,receipt_voucher_no=EXCLUDED.receipt_voucher_no,
          source_updated_at=EXCLUDED.source_updated_at,synced_at=now()`,
       values,
     );
@@ -285,8 +296,179 @@ export class MisMirrorService {
   }
 
   /**
+   * P4-A 补充镜像：票据/开票数据/核销记录/签报情况/签报减免。
+   *
+   * 5 张表都是小表（生产：票据 588、开票数据 597、核销 0、签报 23、减免 19），
+   * 源表没有可靠增量时间字段，因此每轮 5 分钟全量 upsert（按源主键幂等）。
+   * 每张表单独 try/catch，失败只写 mis_sync_state.last_error，不影响账单与其它表。
+   */
+  async syncExtraMirrors(tenantId: number): Promise<{ synced: number; failed: string[] }> {
+    const specs: Array<{
+      source: string;
+      table: string;
+      conflict: string;
+      columns: Array<[string, string]>;
+      sql: string;
+    }> = [
+      {
+        source: 'ticket',
+        table: 'mis_mirror_ticket',
+        conflict: 'id',
+        columns: [
+          ['id', 'id'], ['ticket_no', 'ticketNo'], ['warehouse_no', 'warehouseNo'], ['office_code', 'officeCode'],
+          ['issue_date', 'issueDate'], ['payer', 'payer'], ['amount_cents', 'amountCents'], ['tax_cents', 'taxCents'],
+          ['pre_issue', 'preIssue'], ['receipt_date', 'receiptDate'], ['issuer', 'issuer'], ['payee', 'payee'],
+          ['void_date', 'voidDate'], ['void_reason', 'voidReason'], ['writeoff_date', 'writeoffDate'],
+          ['payment_method', 'paymentMethod'], ['refund_date', 'refundDate'], ['zh_id', 'zhId'],
+          ['customer_name', 'customerName'], ['address', 'address'], ['invoice_no', 'invoiceNo'],
+          ['invoice_code', 'invoiceCode'], ['type', 'type'], ['source_updated_at', 'sourceUpdatedAt'],
+        ],
+        sql: `SELECT ID AS id, 票据编号 AS ticketNo, 入库单编号 AS warehouseNo, 管理处 AS officeCode,
+            CONVERT(varchar(10),开票日期,23) AS issueDate, 付款人 AS payer,
+            CAST(ROUND(ISNULL(金额,0)*100,0) AS bigint) AS amountCents,
+            CAST(ROUND(ISNULL(税额,0)*100,0) AS bigint) AS taxCents,
+            CONVERT(bit,ISNULL(预开,0)) AS preIssue, CONVERT(varchar(10),收款日期,23) AS receiptDate,
+            开票人 AS issuer, 收款人 AS payee, CONVERT(varchar(10),作废日期,23) AS voidDate,
+            作废原因 AS voidReason, CONVERT(varchar(10),核销日期,23) AS writeoffDate,
+            收款方式 AS paymentMethod, CONVERT(varchar(10),退款日期,23) AS refundDate,
+            ZH_ID AS zhId, 购方名称 AS customerName, 地址 AS address, 发票流水号 AS invoiceNo,
+            发票代码 AS invoiceCode, CAST(NULL AS varchar(60)) AS type, CAST(NULL AS varchar(19)) AS sourceUpdatedAt
+          FROM [票据] WHERE ID IS NOT NULL`,
+      },
+      {
+        source: 'ticket_item',
+        table: 'mis_mirror_ticket_item',
+        conflict: 'id',
+        columns: [
+          ['id', 'id'], ['ticket_id', 'ticketId'], ['ticket_no', 'ticketNo'], ['item_name', 'itemName'],
+          ['project', 'project'], ['amount_cents', 'amountCents'], ['tax_cents', 'taxCents'], ['fee_code', 'feeCode'],
+          ['warehouse_no', 'warehouseNo'], ['receipt_voucher_no', 'receiptVoucherNo'], ['non_daily', 'nonDaily'],
+          ['tax_rate', 'taxRate'],
+        ],
+        sql: `SELECT ID AS id, 票据id AS ticketId, 票据编号 AS ticketNo, 品名 AS itemName, 项目 AS project,
+            CAST(ROUND(ISNULL(金额,0)*100,0) AS bigint) AS amountCents,
+            CAST(ROUND(ISNULL(税额,0)*100,0) AS bigint) AS taxCents,
+            收费项目代号 AS feeCode, 入库单编号 AS warehouseNo, 收款凭证编号 AS receiptVoucherNo,
+            CONVERT(bit,ISNULL(非日常,0)) AS nonDaily, 税率 AS taxRate
+          FROM [票据开票数据] WHERE ID IS NOT NULL`,
+      },
+      {
+        source: 'ticket_writeoff',
+        table: 'mis_mirror_ticket_writeoff',
+        conflict: 'id',
+        columns: [
+          ['id', 'id'], ['writeoff_no', 'writeoffNo'], ['office_code', 'officeCode'],
+          ['writeoff_date', 'writeoffDate'], ['quantity', 'quantity'], ['issued_qty', 'issuedQty'],
+          ['void_qty', 'voidQty'], ['pre_issue_qty', 'preIssueQty'], ['unused_qty', 'unusedQty'],
+          ['issued_amount_cents', 'issuedAmountCents'], ['pre_issue_amount_cents', 'preIssueAmountCents'],
+          ['writeoff_user', 'writeoffUser'],
+        ],
+        sql: `SELECT ID AS id, 核销记录编号 AS writeoffNo, 核销部门代号 AS officeCode,
+            CONVERT(varchar(10),核销日期,23) AS writeoffDate, 核销数量 AS quantity, 已开数量 AS issuedQty,
+            作废数量 AS voidQty, 预开数量 AS preIssueQty, 未用数 AS unusedQty,
+            CAST(ROUND(ISNULL(开票金额,0)*100,0) AS bigint) AS issuedAmountCents,
+            CAST(ROUND(ISNULL(预开金额,0)*100,0) AS bigint) AS preIssueAmountCents, 核销人 AS writeoffUser
+          FROM [票据核销记录] WHERE ID IS NOT NULL`,
+      },
+      {
+        source: 'signoff',
+        table: 'mis_mirror_signoff',
+        conflict: 'id',
+        columns: [
+          ['id', 'id'], ['doc_no', 'docNo'], ['title', 'title'], ['type', 'type'], ['detail', 'detail'],
+          ['office_code', 'officeCode'], ['reason', 'reason'], ['zh_id', 'zhId'], ['draft_date', 'draftDate'],
+          ['approve_date', 'approveDate'], ['result', 'result'], ['voided', 'voided'], ['ended', 'ended'],
+          ['adjust_amount_cents', 'adjustAmountCents'], ['fee_code', 'feeCode'], ['nature', 'nature'],
+          ['source_updated_at', 'sourceUpdatedAt'],
+        ],
+        sql: `SELECT ID AS id, 文号字 AS docNo, 签报标题 AS title, 签报类型 AS type, 类型详细 AS detail,
+            管理处 AS officeCode, 签报事由 AS reason, ZH_ID AS zhId,
+            CONVERT(varchar(10),拟稿日期,23) AS draftDate, CONVERT(varchar(10),审批日期,23) AS approveDate,
+            结果 AS result, CONVERT(bit,ISNULL(作废,0)) AS voided, CONVERT(bit,ISNULL(结束,0)) AS ended,
+            CAST(ROUND(ISNULL(调整金额,0)*100,0) AS bigint) AS adjustAmountCents,
+            收费项目 AS feeCode, 房屋性质 AS nature, CONVERT(varchar(19),数据修改日期,126) AS sourceUpdatedAt
+          FROM [签报情况表] WHERE ID IS NOT NULL`,
+      },
+      {
+        source: 'relief',
+        table: 'mis_mirror_relief',
+        conflict: 'id',
+        columns: [
+          ['id', 'id'], ['doc_no', 'docNo'], ['zh_id', 'zhId'], ['fee_code', 'feeCode'],
+          ['fee_name', 'feeName'], ['old_receivable_cents', 'oldReceivableCents'],
+          ['receivable_cents', 'receivableCents'], ['relief_cents', 'reliefCents'],
+          ['relief_start_date', 'reliefStartDate'], ['relief_end_date', 'reliefEndDate'],
+          ['relief_date', 'reliefDate'], ['method', 'method'],
+        ],
+        sql: `SELECT ID AS id, 文号 AS docNo, ZH_ID AS zhId, 项目代号 AS feeCode, 项目名称 AS feeName,
+            CAST(ROUND(ISNULL(OLD应收金额,0)*100,0) AS bigint) AS oldReceivableCents,
+            CAST(ROUND(ISNULL(应收金额,0)*100,0) AS bigint) AS receivableCents,
+            CAST(ROUND(ISNULL(减免金额,0)*100,0) AS bigint) AS reliefCents,
+            CONVERT(varchar(10),减免开始日期,23) AS reliefStartDate,
+            CONVERT(varchar(10),减免结束日期,23) AS reliefEndDate,
+            CONVERT(varchar(10),减免日期,23) AS reliefDate, 减免方式 AS method
+          FROM [签报减免信息] WHERE ID IS NOT NULL`,
+      },
+    ];
+    let synced = 0;
+    const failed: string[] = [];
+    for (const spec of specs) {
+      try {
+        const result = await this.misFees.mirrorRead(spec.sql, {}, MIS_TIMEOUT);
+        const sourceRows = (result?.recordsets?.[0] ?? []) as any[];
+        const affected = await this.upsertMirrorRows(spec.table, spec.conflict, spec.columns, sourceRows);
+        synced += affected;
+        await this.dataSource.query(
+          `INSERT INTO mis_sync_state(tenant_id,source_table,last_success_at,last_attempt_at,last_error,initialized_at,synced_rows)
+           VALUES($1,$2,now(),now(),NULL,now(),$3)
+           ON CONFLICT (tenant_id,source_table) DO UPDATE SET
+             last_success_at=now(),last_attempt_at=now(),last_error=NULL,
+             initialized_at=COALESCE(mis_sync_state.initialized_at,now()),synced_rows=EXCLUDED.synced_rows`,
+          [tenantId, spec.source, sourceRows.length],
+        );
+      } catch (error) {
+        failed.push(spec.source);
+        await this.recordSyncError(tenantId, spec.source, error).catch(() => 0);
+        this.logger.warn(`MIS 补充镜像 ${spec.source} 同步失败：${(error as Error).message}`);
+      }
+    }
+    return { synced, failed };
+  }
+
+  /** 通用小表全量 upsert（列名/表名为内部常量，不做外部拼接）。 */
+  private async upsertMirrorRows(
+    table: string,
+    conflict: string,
+    columns: Array<[string, string]>,
+    rows: any[],
+  ): Promise<number> {
+    if (!rows.length) return 0;
+    const values: unknown[] = [];
+    const tuples: string[] = [];
+    for (const row of rows) {
+      const placeholders = columns.map(([, field]) => {
+        values.push(row[field] ?? null);
+        return `$${values.length}`;
+      });
+      tuples.push(`(${placeholders.join(',')},now())`);
+    }
+    const columnNames = columns.map(([column]) => column).join(',');
+    const updates = columns
+      .filter(([column]) => column !== conflict)
+      .map(([column]) => `${column}=EXCLUDED.${column}`)
+      .join(',');
+    await this.dataSource.query(
+      `INSERT INTO ${table}(${columnNames},synced_at) VALUES ${tuples.join(',')}
+       ON CONFLICT (${conflict}) DO UPDATE SET ${updates},synced_at=now()`,
+      values,
+    );
+    return rows.length;
+  }
+
+
+  /**
    * 手工全量重灌：先维度后账单，按 ZJ_ID keyset 分批 500。
-   * 只允许管理员触发；不在定时任务里调用。
+   * 只允许管理员触发；不在定时任务里调用。完成后顺带同步 P4-A 补充镜像。
    */
   async reloadAll(tenantId: number) {
     const lock = await this.dataSource.query(`SELECT pg_try_advisory_lock(hashtext('mis-mirror-sync')) AS ok`);
@@ -329,6 +511,8 @@ export class MisMirrorService {
              w.ZJ_LX AS feeCode, f.XM AS feeName, w.FWXZ_DH AS natureCode, w.ZJ_CNY AS period, CAST(ROUND(w.ZJ_JE*100,0) AS bigint) AS amountCents,
              CONVERT(varchar(10),w.ZJ_SKRQ,23) AS paidDate, CONVERT(varchar(10),w.ZJ_TKRQ,23) AS refundDate,
              COALESCE(NULLIF(w.收款方式,N''),m.收款方式) AS paymentMethod, w.收款人 AS cashier,
+             CAST(ROUND(ISNULL(w.收入,0)*100,0) AS bigint) AS incomeCents,
+             w.票据入库单编号 AS receiptWarehouseNo, w.发票号码 AS invoiceNo, w.凭证号码 AS receiptVoucherNo,
              CONVERT(varchar(19),w.updatedate,126) AS sourceUpdatedAt           FROM dbo.WYZJ w
            INNER JOIN dbo.业主表 z ON z.ZH_ID=w.ZH_ID
            INNER JOIN dbo.室表 s ON s.S_ID=z.S_ID
@@ -353,7 +537,8 @@ export class MisMirrorService {
           WHERE tenant_id=$1 AND source_table='bill'`,
         [tenantId, last[0]?.lastupdated ?? null, last[0]?.lastid ?? null, total],
       );
-      return { rows: total };
+      const extra = await this.syncExtraMirrors(tenantId);
+      return { rows: total, extra };
     } finally {
       await this.dataSource.query(`SELECT pg_advisory_unlock(hashtext('mis-mirror-sync'))`).catch(() => undefined);
     }

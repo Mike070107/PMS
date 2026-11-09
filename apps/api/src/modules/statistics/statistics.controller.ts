@@ -7,6 +7,7 @@ import { PermissionsGuard } from '../access/permissions.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AnalysisStatisticsService } from './analysis.service';
 import { LedgerStatisticsService } from './ledger.service';
+import { MiscReportService } from './misc-report.service';
 import { ArrearsStatisticsService } from './arrears.service';
 import { CollectionStatisticsService } from './collection.service';
 import {
@@ -25,6 +26,8 @@ import {
   BuildingLedgerQueryDto,
   OwnerLedgerQueryDto,
   PropertySummaryQueryDto,
+  ReliefQueryDto,
+  SignoffQueryDto,
   StatisticsAnnualDetailQueryDto,
   StatisticsAnnualQueryDto,
   StatisticsBillsQueryDto,
@@ -41,6 +44,7 @@ export class StatisticsController {
     private readonly arrearsService: ArrearsStatisticsService,
     private readonly analysisService: AnalysisStatisticsService,
     private readonly ledgerService: LedgerStatisticsService,
+    private readonly miscService: MiscReportService,
   ) {}
 
   @Get('options')
@@ -215,6 +219,27 @@ export class StatisticsController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.ledgerService.buildingLedger(query, user, access);
+  }
+
+  /** P4-A 减免情况统计 / 签报情况统计。 */
+  @Get('relief')
+  @RequirePermission('business', 'view')
+  relief(
+    @Query() query: ReliefQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.miscService.relief(query, user, access);
+  }
+
+  @Get('signoffs')
+  @RequirePermission('business', 'view')
+  signoffs(
+    @Query() query: SignoffQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.miscService.signoffs(query, user, access);
   }
 
   @Get('daily')
