@@ -25,6 +25,16 @@ namespace Pms.AccessCardAgent
                 var databasePasswordPath = Path.Combine(root, "legacy-db-password.dat");
                 var icCardPasswordPath = Path.Combine(root, "iccard-db-password.dat");
                 var parkingPasswordPath = Path.Combine(root, "parking-db-password.dat");
+                if (args.Length > 0 && args[0] == "--version")
+                {
+                    var assembly = typeof(Program).Assembly;
+                    var fileInfo = FileVersionInfo.GetVersionInfo(assembly.Location);
+                    Console.WriteLine("PMS 数据同步助手 " + AgentApiClient.Version);
+                    Console.WriteLine("程序集版本：" + assembly.GetName().Version);
+                    Console.WriteLine("文件版本：" + fileInfo.FileVersion);
+                    Console.WriteLine("说明：本版本新增门禁库只读查询、能力如实上报和默认关闭的生命周期写；包内不含任何凭据。");
+                    return 0;
+                }
                 if (args.Length > 2 && args[0] == "--apply-update")
                 {
                     int previousProcessId;
@@ -115,13 +125,106 @@ namespace Pms.AccessCardAgent
                         throw new InvalidOperationException("门禁卡号去零查询变体测试失败");
                     if (!AccessCardLifecycle.IsPmsRecord("PMS_ITEM_12") || AccessCardLifecycle.IsPmsRecord("228/5/301/3"))
                         throw new InvalidOperationException("PMS 发卡标记识别测试失败");
+                    // 捷顺发卡历史字段契约：.80 上报的 JSON 字段名必须与 API LegacyHistoryEntryDto 一致
+                    // （personCreatedAt=HR.Person.OptDate、lastSwipeAt=LastBrushCardTime、lastDevice=Device.Name、cardInfoId=CardInfo.ID）。
+                    var legacyEntryJson = new JavaScriptSerializer().Serialize(new LegacyHistoryEntry
+                    {
+                        personId = 26412, personNo = "11296", sequence = 8, icCardNo = "B9F7D803",
+                        issuedAt = "2026-11-09T14:58:19", personName = "228/50/202/8", cardInfoId = 12026,
+                        personCreatedAt = "2015-03-20T22:52:06", lastSwipeAt = "2026-11-09T14:58:19", lastDevice = "3号岗入口"
+                    });
+                    foreach (var field in new[] { "cardInfoId", "personCreatedAt", "lastSwipeAt", "lastDevice" })
+                    {
+                        if (legacyEntryJson.IndexOf("\"" + field + "\"", StringComparison.Ordinal) < 0)
+                            throw new InvalidOperationException("捷顺发卡历史上报字段名与后端 DTO 不一致：" + field);
+                    }
+                    var legacyEmptyJson = new JavaScriptSerializer().Serialize(new LegacyHistoryEntry
+                    {
+                        personId = 1, personNo = "1", sequence = 1
+                    });
+                    foreach (var field in new[] { "cardInfoId", "personCreatedAt", "lastSwipeAt", "lastDevice" })
+                    {
+                        if (legacyEmptyJson.IndexOf("\"" + field + "\":null", StringComparison.Ordinal) < 0)
+                            throw new InvalidOperationException("捷顺发卡历史空字段未按 null 上报：" + field);
+                    }
+                    var legacyRoundTrip = new DateTime(2026, 11, 9, 14, 58, 19)
+                        .ToString("o", CultureInfo.InvariantCulture);
+                    if (legacyRoundTrip.Length > 40)
+                        throw new InvalidOperationException("捷顺发卡历史时间字段超出后端 DTO 40 字符限制：" + legacyRoundTrip);
+                    // iCCard WG 卡号去前导零规则（2026-11-07）：只在写 iCCard 时转换，其他系统保持原样。
+                    var icNormalized = IcCardNumber.NormalizeForWrite("05108721");
+                    if (icNormalized.value != "5108721" || String.IsNullOrWhiteSpace(icNormalized.warning))
+                        throw new InvalidOperationException("iCCard WG 去前导零测试失败：05108721");
+                    if (IcCardNumber.NormalizeForWrite("00108721").value != "108721")
+                        throw new InvalidOperationException("iCCard WG 去前导零测试失败：00108721");
+                    if (IcCardNumber.NormalizeForWrite("10000000").value != "10000000")
+                        throw new InvalidOperationException("iCCard WG 去前导零误删中间零测试失败");
+                    var allZero = IcCardNumber.NormalizeForWrite("00000000");
+                    if (allZero.value != "0" || String.IsNullOrWhiteSpace(allZero.warning))
+                        throw new InvalidOperationException("iCCard WG 全 0 边界测试失败");
+                    if (IcCardNumber.ForSystem("mjsystem", "05108721") != "05108721" ||
+                        IcCardNumber.ForSystem("legacy", "05108721") != "05108721")
+                        throw new InvalidOperationException("MjSystem/捷顺不应受 iCCard 去零规则影响");
+                    var icVariants = IcCardNumber.QueryVariants("00108721");
+                    if (Array.IndexOf(icVariants, "108721") < 0 || Array.IndexOf(icVariants, "00108721") < 0 ||
+                        Array.IndexOf(IcCardNumber.QueryVariants("00000000"), "") >= 0)
+                        throw new InvalidOperationException("iCCard 读卡候选值测试失败");
+                    var warningWritten = new[] { (object)new AccessDatabaseWriteResult { warning = "WG 卡号 00000000 去前导零后为空" } };
+                    var warningUploads = new[] { (object)new AccessControllerUploadResult { buildingNo = "11", status = "controller_uploaded" } };
+                    var mergedWarnings = AgentLoop.AttachIcCardWarnings(warningWritten, warningUploads);
+                    if (AgentLoop.FirstWarning(mergedWarnings) == null ||
+                        ((AccessControllerUploadResult)mergedWarnings[0]).warning == null)
+                        throw new InvalidOperationException("iCCard 去零 warning 未传递到控制器回执/活动日志");
+                    // 门禁主板远程控制：命令构造与不支持设备的明确拒绝（不连控制器）。
+                    if (AccessControllerUploader.BuildIcCardDoorOperationFunction("remote_open", 1, 0) != "9D100101")
+                        throw new InvalidOperationException("iCCard 立即开门命令测试失败");
+                    if (AccessControllerUploader.BuildIcCardDoorOperationFunction("temporary_open", 26, 5) != "8F101A010032")
+                        throw new InvalidOperationException("iCCard 临时常开命令测试失败");
+                    if (AccessControllerUploader.BuildIcCardDoorOperationFunction("restore_normal", 26, 5) != "8F101A030032")
+                        throw new InvalidOperationException("iCCard 恢复常开命令测试失败");
+                    var mjRemoteArguments = AccessControllerUploader.BuildMjSystemRemoteOpenArguments("0160217", 1);
+                    if (Convert.ToString(mjRemoteArguments[0], CultureInfo.InvariantCulture) != "1A" ||
+                        Convert.ToString(mjRemoteArguments[1], CultureInfo.InvariantCulture) != "0160217" ||
+                        Convert.ToString(mjRemoteArguments[2], CultureInfo.InvariantCulture) != "1")
+                        throw new InvalidOperationException("MjSystem 立即开门参数测试失败");
+                    AccessControllerUploader.ValidateMjSystemRemoteOpenCommand(
+                        "9E01EB391A250100000000000000000000000000000000000000000000000000000002039D");
+                    try
+                    {
+                        AccessControllerUploader.ValidateMjSystemRemoteOpenCommand(
+                            "9E01EB390724000000000000000000000000000000000000000000000000000003039D");
+                        throw new InvalidOperationException("MjSystem 非 1A 命令未被拒绝");
+                    }
+                    catch (InvalidOperationException exception)
+                    {
+                        if (exception.Message.IndexOf("不是 1A 远程开门命令", StringComparison.Ordinal) < 0) throw;
+                    }
+                    var unsupportedTask = new AgentTask
+                    {
+                        operation = "temporary_open",
+                        targetBuildings = new[]
+                        {
+                            new AccessTargetBuilding { id = 26, buildingNo = "26", accessSystem = "mjsystem" }
+                        }
+                    };
+                    var unsupportedResults = AccessControllerUploader.ExecuteDoorOperation(new AgentConfig(), null, unsupportedTask);
+                    var unsupportedRejected = false;
+                    foreach (var item in unsupportedResults)
+                    {
+                        var row = item as AccessControllerUploadResult;
+                        if (row != null && row.status == "controller_failed" && row.error != null &&
+                            row.error.IndexOf("未发送", StringComparison.Ordinal) >= 0) unsupportedRejected = true;
+                    }
+                    if (!unsupportedRejected || !AccessControllerUploader.HasDoorOperationFailures("temporary_open", unsupportedResults))
+                        throw new InvalidOperationException("MjSystem 临时常开未按不支持设备明确拒绝");
                     using (var first = SingleInstance.TryEnter("SelfTest"))
                     using (var second = SingleInstance.TryEnter("SelfTest"))
                     {
                         if (first == null || second != null)
                             throw new InvalidOperationException("单实例锁测试失败");
                     }
-                    Console.WriteLine("自检通过：门禁房号隔离、停车房号格式和查询通配符转义正常");
+                    Console.WriteLine("版本：" + AgentApiClient.Version);
+                    Console.WriteLine("自检通过：门禁房号隔离、门禁开门/常开命令构造、iCCard 卡号去零、停车房号格式和查询通配符转义正常");
                     return 0;
                 }
                 if (args.Length > 0 && args[0] == "--install-token")

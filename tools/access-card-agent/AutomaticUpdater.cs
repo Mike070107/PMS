@@ -60,7 +60,9 @@ namespace Pms.AccessCardAgent
                     TryDelete(downloaded);
                     throw new InvalidOperationException("更新文件哈希校验失败");
                 }
-                if (!HasTrustedSignature(downloaded, manifest.signerThumbprint))
+                // 2026-11-07 Lead 决策：暂时放宽为只校验 sha256。
+                // 清单里没有 signerThumbprint 时跳过签名校验；一旦配置了指纹则仍然强制校验。
+                if (!String.IsNullOrWhiteSpace(manifest.signerThumbprint) && !HasTrustedSignature(downloaded, manifest.signerThumbprint))
                 {
                     TryDelete(downloaded);
                     throw new InvalidOperationException("更新文件签名无效或发布者不匹配");

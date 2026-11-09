@@ -22,8 +22,8 @@ Copy-Item -LiteralPath $built -Destination (Join-Path $OutputDirectory 'Pms.Acce
 Copy-Item -LiteralPath $built -Destination (Join-Path $OutputDirectory '枫桦景苑门禁卡加密初始化助手.exe') -Force
 $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $OutputDirectory 'Pms.AccessCardAssistant.exe')).Hash.ToLowerInvariant()
 $manifest = [ordered]@{
-  version = '0.9.0'
-  downloadUrl = 'https://prsznh.cn/downloads/pms-access-card-assistant/0.9.0/Pms.AccessCardAssistant.exe'
+  version = '0.10.0'
+  downloadUrl = 'https://prsznh.cn/downloads/pms-access-card-assistant/0.10.0/Pms.AccessCardAssistant.exe'
   sha256 = $hash
   signerThumbprint = $SignerThumbprint.Replace(' ', '')
   releaseNotes = '独立批量初始化；PMS 发卡仅接受已初始化卡；捷顺入库与回读。'

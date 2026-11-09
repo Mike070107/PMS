@@ -4,6 +4,8 @@
 
 ## 已接入能力
 
+- 2.5.52（源码待现场部署）：`.80` 捷顺发卡历史与最近 30 笔补报`HR.Person.OptDate`（人事资料添加时间）、`MC.LastBrushInfo.LastBrushCardTime`（最后刷卡时间）、`MC.Device.Name`（最后刷卡出入口）和 `MC.CardInfo.ID`；JSON 字段 `personCreatedAt`/`lastSwipeAt`/`lastDevice`/`cardInfoId` 与 API `LegacyHistoryEntryDto` 一致，后端快照与页面按 `personCreatedAt`/`lastSwipeAt`/`lastDevice` 显示。取数口径对齐旧页面 `htdocs/htdocs/Bottom_MJ_CardQty.php`（`LastBrushInfo.CardInfoID = CardInfo.ID`、`LastBrushCardDeviceId = Device.ID`，每张卡取最后一次刷卡）。**现场 `.80` 必须升级本助手的 V2 2.5.52**；旧单机 `Pms.DataSyncAssistant.exe` 0.10.0 的心跳版本是 0.10.0，低于 API 要求的 2.5.28，不能用于“最近 30 笔”。本地自检只验证字段契约，字段有值仍须现场看到真实刷卡记录才算完成。
+
 - 2.5.48（2026-10-21 已发布更新包，现场安装待确认）：历史授权、新发卡和撤销均按门栋隔离写库与控制器操作，一栋异常保留逐栋结果并继续其他门栋。API/Web 复用原失败任务，仅重试尚未成功的门栋；管理权限重新打开后仍显示下发与撤销结果。配套 API/Web 已发布，真实离线控制器与刷卡仍待现场验收。
 
 - 2.5.47（源码待现场部署）：停车“下发设备”不再把写入 `Car_Download` 队列当成完成；逐通道入队后等待旧停车系统把 `Car_Issue.P_Download` 更新为覆盖本车全部现行授权通道，最长 60 秒。未确认时返回具体通道并保留重新下发入口；二期已退役人防通道 23/25 不参与确认。

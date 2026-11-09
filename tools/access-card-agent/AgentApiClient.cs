@@ -9,7 +9,7 @@ namespace Pms.AccessCardAgent
 {
     internal sealed class AgentApiClient
     {
-        public const string Version = "0.9.0";
+        public const string Version = "0.10.0";
         private readonly AgentConfig _config;
         private readonly string _token;
         private readonly string _version;

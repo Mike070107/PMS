@@ -23,6 +23,8 @@ namespace Pms.AccessCardAgent
         public string accessSystem { get; set; }
         public string status { get; set; }
         public string databaseRecord { get; set; }
+        public string cardNoForDatabase { get; set; }
+        public string warning { get; set; }
         public int? groupId { get; set; }
         public string groupName { get; set; }
         public string[] doors { get; set; }
@@ -156,15 +158,14 @@ namespace Pms.AccessCardAgent
             {
                 try
                 {
-                    var consumer = Scalar(connection, transaction,
-                        "SELECT TOP 1 f_ConsumerID FROM t_b_IDCard WHERE f_CardNO=?", cardNo);
-                    if (consumer != null && consumer != DBNull.Value)
+                    var consumerId = FindIcCardConsumerId(connection, transaction, cardNo);
+                    if (consumerId.HasValue)
                     {
                         var door = IcCardDoors(connection, transaction, target.buildingNo).Single();
                         using (var command = Command(connection, transaction,
-                            "DELETE FROM t_d_Privilege WHERE f_ConsumerID=? AND f_DoorID=?", new object[] { consumer, door })) command.ExecuteNonQuery();
+                            "DELETE FROM t_d_Privilege WHERE f_ConsumerID=? AND f_DoorID=?", new object[] { consumerId.Value, door })) command.ExecuteNonQuery();
                         if (Convert.ToInt32(Scalar(connection, transaction,
-                            "SELECT COUNT(*) FROM t_d_Privilege WHERE f_ConsumerID=? AND f_DoorID=?", consumer, door)) != 0)
+                            "SELECT COUNT(*) FROM t_d_Privilege WHERE f_ConsumerID=? AND f_DoorID=?", consumerId.Value, door)) != 0)
                             throw new InvalidOperationException(target.buildingNo + "号楼 iCCard 权限删除后读回仍存在");
                     }
                     transaction.Commit();
@@ -251,28 +252,49 @@ namespace Pms.AccessCardAgent
                 "INNER JOIN t_b_Door AS D ON P.f_DoorID=D.f_DoorID) " +
                 "INNER JOIN t_b_Controller AS C ON D.f_ControllerID=C.f_ControllerID " +
                 "WHERE I.f_CardNO=?";
-            using (var command = connection.CreateCommand())
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var variant in IcCardNumber.QueryVariants(cardNo))
             {
-                command.CommandText = sql;
-                command.Parameters.AddWithValue("@card", cardNo);
-                using (var reader = command.ExecuteReader())
+                using (var command = connection.CreateCommand())
                 {
-                    while (reader.Read())
+                    command.CommandText = sql;
+                    command.Parameters.AddWithValue("@card", variant);
+                    using (var reader = command.ExecuteReader())
                     {
-                        var doorName = Text(reader, "f_DoorName");
-                        var controller = Text(reader, "f_ControllerName");
-                        output.Add(new AccessPermissionResult
+                        while (reader.Read())
                         {
-                            wgCardNo = cardNo,
-                            accessSystem = "iccard",
-                            buildingNo = ExtractBuildingNo(doorName, controller),
-                            controller = EmptyToNull(controller),
-                            door = doorName,
-                            sourceTable = "t_d_Privilege"
-                        });
+                            var doorName = Text(reader, "f_DoorName");
+                            var controller = Text(reader, "f_ControllerName");
+                            var key = doorName + "\u0000" + controller;
+                            if (!seen.Add(key)) continue;
+                            output.Add(new AccessPermissionResult
+                            {
+                                wgCardNo = cardNo,
+                                accessSystem = "iccard",
+                                buildingNo = ExtractBuildingNo(doorName, controller),
+                                controller = EmptyToNull(controller),
+                                door = doorName,
+                                sourceTable = "t_d_Privilege"
+                            });
+                        }
                     }
                 }
             }
+        }
+
+        /** iCCard 历史数据 7/8 位混用：按去零值 + 原值/补零值依次查找，避免重复建卡或匹配不到。 */
+        private static int? FindIcCardConsumerId(
+            OleDbConnection connection,
+            OleDbTransaction transaction,
+            string cardNo)
+        {
+            foreach (var variant in IcCardNumber.QueryVariants(cardNo))
+            {
+                var consumerId = ScalarInt(connection, transaction,
+                    "SELECT TOP 1 f_ConsumerID FROM t_b_IDCard WHERE f_CardNO=?", variant);
+                if (consumerId.HasValue) return consumerId;
+            }
+            return null;
         }
 
         private static string Text(OleDbDataReader reader, string field)
@@ -421,10 +443,10 @@ namespace Pms.AccessCardAgent
                     if (String.IsNullOrWhiteSpace(homeBuildingNo))
                         throw new InvalidOperationException("无法从用户姓名解析本楼栋，必须使用“弄号/楼栋/房号/序号”格式");
                     var group = ResolveIcCardGroup(connection, transaction, homeBuildingNo);
+                    var normalizedCardNo = IcCardNumber.NormalizeForWrite(task.wgCardNo);
                     var isExistingCardGrant = String.Equals(task.action, "authorize_existing_card", StringComparison.OrdinalIgnoreCase);
                     var marker = isExistingCardGrant ? "PMS_AUTH_" + task.taskId : "PMS_ITEM_" + task.itemId;
-                    var consumerId = ScalarInt(connection, transaction,
-                        "SELECT f_ConsumerID FROM t_b_IDCard WHERE f_CardNO=?", task.wgCardNo);
+                    var consumerId = FindIcCardConsumerId(connection, transaction, task.wgCardNo);
                     if (consumerId.HasValue)
                     {
                         var note = ScalarString(connection, transaction,
@@ -446,7 +468,7 @@ namespace Pms.AccessCardAgent
                         consumerId = Convert.ToInt32(Scalar(connection, transaction, "SELECT @@IDENTITY"));
                         Execute(connection, transaction,
                             "INSERT INTO t_b_IDCard (f_CardNO,f_CardStatusDesc,f_ConsumerID) VALUES (?,?,?)",
-                            task.wgCardNo, "0", consumerId.Value);
+                            normalizedCardNo.value, "0", consumerId.Value);
                     }
 
                     var output = new List<object>();
@@ -478,7 +500,10 @@ namespace Pms.AccessCardAgent
                             buildingNo = target.buildingNo,
                             accessSystem = "iccard",
                             status = "access_db_written",
-                            databaseRecord = "ConsumerID=" + consumerId.Value + ";GroupID=" + group.Id,
+                            databaseRecord = "CardNO=" + normalizedCardNo.value +
+                                ";ConsumerID=" + consumerId.Value + ";GroupID=" + group.Id,
+                            cardNoForDatabase = normalizedCardNo.value,
+                            warning = normalizedCardNo.warning,
                             groupId = group.Id,
                             groupName = group.Name,
                             doors = verifiedDoors

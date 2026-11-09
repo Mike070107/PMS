@@ -498,7 +498,8 @@ namespace Pms.AccessCardAgent
                 var controllerResults = AccessControllerUploader.ExecutePerBuilding(task, delegate(AgentTask single)
                 {
                     var written = AccessGatewayDatabase.Activate(_config, LoadSecret("iccard-db-password.dat"), single);
-                    return databaseOnly ? written : AccessControllerUploader.Upload(_config, LoadSecret("iccard-db-password.dat"), single);
+                    return databaseOnly ? written : AttachIcCardWarnings(written,
+                        AccessControllerUploader.Upload(_config, LoadSecret("iccard-db-password.dat"), single));
                 });
                 var failed = controllerResults.OfType<AccessControllerUploadResult>().Any(row => row.status == "controller_failed")
                     || (!databaseOnly && AccessControllerUploader.HasFailures(controllerResults));
@@ -509,9 +510,11 @@ namespace Pms.AccessCardAgent
                     controllerResults = controllerResults,
                     errorMessage = failed ? AccessControllerUploader.FailureMessage(controllerResults) : null
                 });
-                RecordActivity(databaseOnly ? "添加门禁数据库" : "下发门禁控制器", task.wgCardNo, !failed,
-                    failed ? AccessControllerUploader.FailureMessage(controllerResults)
-                        : databaseOnly ? "门禁管理系统数据库写入完成" : "数据库写入和控制器下发完成");
+                var accessMessage = failed ? AccessControllerUploader.FailureMessage(controllerResults)
+                    : databaseOnly ? "门禁管理系统数据库写入完成" : "数据库写入和控制器下发完成";
+                var accessWarning = FirstWarning(controllerResults);
+                if (!String.IsNullOrWhiteSpace(accessWarning)) accessMessage += "；警告：" + accessWarning;
+                RecordActivity(databaseOnly ? "添加门禁数据库" : "下发门禁控制器", task.wgCardNo, !failed, accessMessage);
             }
             catch (Exception exception)
             {
@@ -523,6 +526,33 @@ namespace Pms.AccessCardAgent
                 });
                 RecordActivity("追加门栋权限", task.wgCardNo, false, exception.Message);
             }
+        }
+
+        /** iCCard 去前导零可能产生 warning；把写库警告带到控制器结果，便于页面/活动日志审计。 */
+        internal static object[] AttachIcCardWarnings(object[] written, object[] results)
+        {
+            var warning = FirstWarning(written);
+            if (String.IsNullOrWhiteSpace(warning) || results == null) return results;
+            foreach (var item in results)
+            {
+                var row = item as AccessControllerUploadResult;
+                if (row == null) continue;
+                row.warning = String.IsNullOrWhiteSpace(row.warning) ? warning : row.warning + "；" + warning;
+            }
+            return results;
+        }
+
+        internal static string FirstWarning(object[] results)
+        {
+            if (results == null) return null;
+            foreach (var item in results)
+            {
+                var written = item as AccessDatabaseWriteResult;
+                if (written != null && !String.IsNullOrWhiteSpace(written.warning)) return written.warning;
+                var uploaded = item as AccessControllerUploadResult;
+                if (uploaded != null && !String.IsNullOrWhiteSpace(uploaded.warning)) return uploaded.warning;
+            }
+            return null;
         }
 
         private static string DescribeCards(AccessPermissionTaskCard[] cards)
@@ -590,8 +620,9 @@ namespace Pms.AccessCardAgent
                 {
                     var controllerResults = AccessControllerUploader.ExecutePerBuilding(task, delegate(AgentTask single)
                     {
-                        AccessGatewayDatabase.Activate(_config, LoadSecret("iccard-db-password.dat"), single);
-                        return AccessControllerUploader.Upload(_config, LoadSecret("iccard-db-password.dat"), single);
+                        var written = AccessGatewayDatabase.Activate(_config, LoadSecret("iccard-db-password.dat"), single);
+                        return AttachIcCardWarnings(written,
+                            AccessControllerUploader.Upload(_config, LoadSecret("iccard-db-password.dat"), single));
                     });
                     var failed = AccessControllerUploader.HasFailures(controllerResults);
                     _api.Report(new AgentReport
@@ -601,8 +632,12 @@ namespace Pms.AccessCardAgent
                         controllerResults = controllerResults,
                         errorMessage = failed ? AccessControllerUploader.FailureMessage(controllerResults) : null
                     });
-                    RecordActivity("下发门禁权限", task.wgCardNo, !failed,
-                        failed ? AccessControllerUploader.FailureMessage(controllerResults) : "数据库写入和控制器下发完成");
+                    var accessMessage = failed
+                        ? AccessControllerUploader.FailureMessage(controllerResults)
+                        : "数据库写入和控制器下发完成";
+                    var accessWarning = FirstWarning(controllerResults);
+                    if (!String.IsNullOrWhiteSpace(accessWarning)) accessMessage += "；警告：" + accessWarning;
+                    RecordActivity("下发门禁权限", task.wgCardNo, !failed, accessMessage);
                 }
                 catch (Exception exception)
                 {

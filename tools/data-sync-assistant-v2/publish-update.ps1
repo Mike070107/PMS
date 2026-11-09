@@ -19,8 +19,32 @@ if ($Upload) {
 & $MsBuild $ProjectFile /t:Rebuild /p:Configuration=Release /p:Platform=x86
 if ($LASTEXITCODE -ne 0) { throw "PMS 数据同步助手构建失败" }
 
-$SelfTest = Start-Process -FilePath $Executable -ArgumentList "--self-test" -WindowStyle Hidden -Wait -PassThru
-if ($SelfTest.ExitCode -ne 0) { throw "PMS 数据同步助手自检失败" }
+# 自检：不用 Start-Process -Wait（在部分 agent/非交互会话里会挂起），改用 Process API + 超时；
+# 并把 TEMP/TMP 指到项目内目录：默认 Windows 8.3 短 TEMP（C:\Users\ADMINI~1\...）下
+# WPF 自检会静默退出 1 且不写日志（已发布的 2.5.50 二进制同样复现），属构建环境问题。
+$SelfTestTemp = Join-Path $ProjectDir "obj\self-test-temp"
+New-Item -ItemType Directory -Force -Path $SelfTestTemp | Out-Null
+$PreviousTemp = $env:TEMP
+$PreviousTmp = $env:TMP
+$env:TEMP = $SelfTestTemp
+$env:TMP = $SelfTestTemp
+try {
+    $SelfTestInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $SelfTestInfo.FileName = $Executable
+    $SelfTestInfo.Arguments = "--self-test"
+    $SelfTestInfo.UseShellExecute = $false
+    $SelfTestInfo.CreateNoWindow = $true
+    $SelfTest = [System.Diagnostics.Process]::Start($SelfTestInfo)
+    if (-not $SelfTest.WaitForExit(180000)) {
+        try { $SelfTest.Kill() } catch { }
+        throw "PMS 数据同步助手自检超时（180 秒）"
+    }
+    if ($SelfTest.ExitCode -ne 0) { throw "PMS 数据同步助手自检失败（退出码 $($SelfTest.ExitCode)）" }
+}
+finally {
+    $env:TEMP = $PreviousTemp
+    $env:TMP = $PreviousTmp
+}
 
 $Version = [Diagnostics.FileVersionInfo]::GetVersionInfo($Executable).FileVersion
 $ShortVersion = ([Version]$Version).ToString(3)

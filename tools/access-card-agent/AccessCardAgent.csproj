@@ -32,6 +32,8 @@
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="IcCardNumber.cs" />
+    <Compile Include="AssemblyInfo.cs" />
     <Compile Include="AccessOleDb.cs" />
     <Compile Include="AccessCardLifecycle.cs" />
     <Compile Include="AccessDatabaseQuery.cs" />

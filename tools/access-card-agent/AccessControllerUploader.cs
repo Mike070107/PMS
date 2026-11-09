@@ -20,6 +20,7 @@ namespace Pms.AccessCardAgent
         public string door { get; set; }
         public string protocol { get; set; }
         public string acknowledgement { get; set; }
+        public string warning { get; set; }
         public string error { get; set; }
     }
 
@@ -580,32 +581,35 @@ namespace Pms.AccessCardAgent
                 "FROM (v_d_Privilege AS P INNER JOIN t_b_Door AS D ON P.f_DoorID=D.f_DoorID) " +
                 "INNER JOIN t_b_Controller AS C ON D.f_ControllerID=C.f_ControllerID " +
                 "WHERE P.f_CardNO=? AND P.f_DoorID=?";
-            using (var command = connection.CreateCommand())
+            foreach (var variant in IcCardNumber.QueryVariants(cardNo))
             {
-                command.CommandText = sql;
-                command.Parameters.AddWithValue("@card", cardNo);
-                command.Parameters.AddWithValue("@door", doorId);
-                using (var reader = command.ExecuteReader())
+                using (var command = connection.CreateCommand())
                 {
-                    if (!reader.Read())
-                        throw new InvalidOperationException("iCCard 数据库中找不到刚写入的卡号和门权限，已停止控制器下发");
-                    return new ControllerUploadRecord
+                    command.CommandText = sql;
+                    command.Parameters.AddWithValue("@card", variant);
+                    command.Parameters.AddWithValue("@door", doorId);
+                    using (var reader = command.ExecuteReader())
                     {
-                        CardNo = Convert.ToInt64(reader["f_CardNO"], CultureInfo.InvariantCulture),
-                        DoorNo = Convert.ToInt64(reader["f_DoorNO"], CultureInfo.InvariantCulture),
-                        BeginDate = Convert.ToDateTime(reader["f_BeginYMD"], CultureInfo.InvariantCulture),
-                        EndDate = Convert.ToDateTime(reader["f_EndYMD"], CultureInfo.InvariantCulture),
-                        ControlSegmentId = Convert.ToInt64(reader["f_ControlSegID"], CultureInfo.InvariantCulture),
-                        Password = reader["f_Password"] == DBNull.Value ? 0L : Convert.ToInt64(reader["f_Password"], CultureInfo.InvariantCulture),
-                        ControllerSn = Convert.ToInt64(reader["f_ControllerSN"], CultureInfo.InvariantCulture),
-                        ControllerName = Convert.ToString(reader["f_ControllerName"], CultureInfo.InvariantCulture),
-                        CommMode = Convert.ToString(reader["f_ComPort"], CultureInfo.InvariantCulture),
-                        IpAddress = Convert.ToString(reader["f_IP"], CultureInfo.InvariantCulture),
-                        Port = Convert.ToInt32(reader["f_PORT"], CultureInfo.InvariantCulture),
-                        DoorName = Convert.ToString(reader["f_DoorName"], CultureInfo.InvariantCulture)
-                    };
+                        if (!reader.Read()) continue;
+                        return new ControllerUploadRecord
+                        {
+                            CardNo = Convert.ToInt64(reader["f_CardNO"], CultureInfo.InvariantCulture),
+                            DoorNo = Convert.ToInt64(reader["f_DoorNO"], CultureInfo.InvariantCulture),
+                            BeginDate = Convert.ToDateTime(reader["f_BeginYMD"], CultureInfo.InvariantCulture),
+                            EndDate = Convert.ToDateTime(reader["f_EndYMD"], CultureInfo.InvariantCulture),
+                            ControlSegmentId = Convert.ToInt64(reader["f_ControlSegID"], CultureInfo.InvariantCulture),
+                            Password = reader["f_Password"] == DBNull.Value ? 0L : Convert.ToInt64(reader["f_Password"], CultureInfo.InvariantCulture),
+                            ControllerSn = Convert.ToInt64(reader["f_ControllerSN"], CultureInfo.InvariantCulture),
+                            ControllerName = Convert.ToString(reader["f_ControllerName"], CultureInfo.InvariantCulture),
+                            CommMode = Convert.ToString(reader["f_ComPort"], CultureInfo.InvariantCulture),
+                            IpAddress = Convert.ToString(reader["f_IP"], CultureInfo.InvariantCulture),
+                            Port = Convert.ToInt32(reader["f_PORT"], CultureInfo.InvariantCulture),
+                            DoorName = Convert.ToString(reader["f_DoorName"], CultureInfo.InvariantCulture)
+                        };
+                    }
                 }
             }
+            throw new InvalidOperationException("iCCard 数据库中找不到刚写入的卡号和门权限，已停止控制器下发");
         }
 
         private static ControllerUploadRecord ReadIcCardDoorRecord(OleDbConnection connection, int doorId)

@@ -53,6 +53,7 @@ namespace Pms.DataSyncAssistant
                 VerifyPerBuildingIsolation();
                 VerifyAccessGatewayMigration(root);
                 VerifyLegacyRoomMatching();
+                VerifyLegacyHistoryFields();
                 VerifyParkingOwnerColumnMapping();
                 VerifyParkingMovementSource();
                 VerifyParkingFeeSource();
@@ -927,6 +928,54 @@ namespace Pms.DataSyncAssistant
         private static string JoinErrors(IEnumerable<string> errors)
         {
             return String.Join("；", errors.ToArray());
+        }
+
+        /**
+         * 捷顺发卡历史上报契约（.80）：字段名必须与 API LegacyHistoryEntryDto 一致，
+         * 后端把 history 原样存入 JSONB 快照再由 legacy-card-history.util.ts 映射。
+         * 字段名一旦改名/漏序列化，现场升级后页面仍会是空值或接口 400，因此在本地先断言。
+         */
+        private static void VerifyLegacyHistoryFields()
+        {
+            var entry = new LegacyHistoryEntry
+            {
+                personId = 26412,
+                personNo = "11296",
+                sequence = 8,
+                icCardNo = "B9F7D803",
+                issuedAt = "2026-11-09T14:58:19",
+                personName = "228/50/202/8",
+                cardInfoId = 12026,
+                personCreatedAt = "2015-03-20T22:52:06",
+                lastSwipeAt = "2026-11-09T14:58:19",
+                lastDevice = "3号岗入口",
+            };
+            var json = new JavaScriptSerializer().Serialize(entry);
+            var required = new[]
+            {
+                "personId", "personNo", "sequence", "icCardNo", "issuedAt", "personName",
+                "cardInfoId", "personCreatedAt", "lastSwipeAt", "lastDevice",
+            };
+            foreach (var field in required)
+            {
+                if (json.IndexOf("\"" + field + "\"", StringComparison.Ordinal) < 0)
+                    throw new InvalidOperationException("捷顺发卡历史上报字段名与后端 DTO 不一致：" + field);
+            }
+            var empty = new JavaScriptSerializer().Serialize(new LegacyHistoryEntry
+            {
+                personId = 1,
+                personNo = "1",
+                sequence = 1,
+            });
+            foreach (var field in new[] { "cardInfoId", "personCreatedAt", "lastSwipeAt", "lastDevice" })
+            {
+                if (empty.IndexOf("\"" + field + "\":null", StringComparison.Ordinal) < 0)
+                    throw new InvalidOperationException("捷顺发卡历史空字段未按 null 上报：" + field);
+            }
+            // 后端 DTO 对时间字段 MaxLength(40)；ReadDateText 用 DateTime.ToString("o")。
+            var roundTrip = new DateTime(2026, 11, 9, 14, 58, 19).ToString("o", System.Globalization.CultureInfo.InvariantCulture);
+            if (roundTrip.Length > 40)
+                throw new InvalidOperationException("捷顺发卡历史时间字段超出后端 DTO 40 字符限制：" + roundTrip);
         }
 
         private static void WriteSelfTestLog(string detail)

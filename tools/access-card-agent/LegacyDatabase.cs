@@ -21,6 +21,14 @@ namespace Pms.AccessCardAgent
         public string icCardNo { get; set; }
         public string issuedAt { get; set; }
         public string personName { get; set; }
+        /** 捷顺 MC.CardInfo.ID；用于 /cards/:id 定位。 */
+        public long? cardInfoId { get; set; }
+        /** 捷顺 HR.Person.OptDate（人事资料添加时间）。 */
+        public string personCreatedAt { get; set; }
+        /** 捷顺 MC.LastBrushInfo.LastBrushCardTime（最后刷卡时间）。 */
+        public string lastSwipeAt { get; set; }
+        /** 捷顺 MC.Device.Name（最后刷卡出入口）。 */
+        public string lastDevice { get; set; }
     }
 
     internal sealed class LegacyHistoryResult
@@ -104,8 +112,16 @@ namespace Pms.AccessCardAgent
             using (var command = connection.CreateCommand())
             {
                 connection.Open();
-                command.CommandText = @"SELECT TOP (30) c.[ID], c.[PersonID], p.[NO], p.[Name], c.[IDNO], c.[IssueDate]
-FROM [MC].[CardInfo] c LEFT JOIN [HR].[Person] p ON p.[ID] = c.[PersonID]
+                command.CommandText = @"SELECT TOP (30) c.[ID], c.[PersonID], p.[NO], p.[Name], p.[OptDate],
+       c.[IDNO], c.[IssueDate], lb.[LastBrushCardTime], dev.[Name] AS LastBrushDeviceName
+FROM [MC].[CardInfo] c
+LEFT JOIN [HR].[Person] p ON p.[ID] = c.[PersonID]
+OUTER APPLY (
+    SELECT TOP 1 l.[LastBrushCardTime], l.[LastBrushCardDeviceId]
+    FROM [MC].[LastBrushInfo] l WHERE l.[CardInfoID] = c.[ID]
+    ORDER BY l.[LastBrushCardTime] DESC
+) lb
+LEFT JOIN [MC].[Device] dev ON dev.[ID] = lb.[LastBrushCardDeviceId]
 WHERE c.[IDNO] IS NOT NULL AND LTRIM(RTRIM(c.[IDNO])) <> '' AND c.[IssueDate] IS NOT NULL
 ORDER BY c.[IssueDate] DESC, c.[ID] DESC;";
                 using (var reader = command.ExecuteReader())
@@ -114,8 +130,12 @@ ORDER BY c.[IssueDate] DESC, c.[ID] DESC;";
                         personNo = reader.IsDBNull(2) ? "" : Convert.ToString(reader.GetValue(2), CultureInfo.InvariantCulture).Trim(),
                         personName = reader.IsDBNull(3) ? "" : Convert.ToString(reader.GetValue(3), CultureInfo.InvariantCulture).Trim(),
                         sequence = result.history.Count + 1,
-                        icCardNo = reader.IsDBNull(4) ? null : Convert.ToString(reader.GetValue(4), CultureInfo.InvariantCulture).Trim().ToUpperInvariant(),
-                        issuedAt = reader.GetDateTime(5).ToString("o", CultureInfo.InvariantCulture)
+                        cardInfoId = reader.IsDBNull(0) ? (long?)null : Convert.ToInt64(reader.GetValue(0), CultureInfo.InvariantCulture),
+                        personCreatedAt = ReadDateText(reader, 4),
+                        icCardNo = reader.IsDBNull(5) ? null : Convert.ToString(reader.GetValue(5), CultureInfo.InvariantCulture).Trim().ToUpperInvariant(),
+                        issuedAt = ReadDateText(reader, 6),
+                        lastSwipeAt = ReadDateText(reader, 7),
+                        lastDevice = reader.IsDBNull(8) ? null : Convert.ToString(reader.GetValue(8), CultureInfo.InvariantCulture).Trim()
                     });
             }
             result.issuedCount = result.history.Count;
@@ -193,9 +213,16 @@ WHERE [Name] LIKE @candidate ESCAPE '\';";
             {
                 connection.Open();
                 command.CommandText = @"
-SELECT p.[ID], p.[NO], p.[Name], c.[IDNO], c.[IssueDate]
+SELECT p.[ID], p.[NO], p.[Name], p.[OptDate], c.[ID], c.[IDNO], c.[IssueDate],
+       lb.[LastBrushCardTime], dev.[Name] AS LastBrushDeviceName
 FROM [HR].[Person] p
 LEFT JOIN [MC].[CardInfo] c ON c.[PersonID] = p.[ID]
+OUTER APPLY (
+    SELECT TOP 1 l.[LastBrushCardTime], l.[LastBrushCardDeviceId]
+    FROM [MC].[LastBrushInfo] l WHERE l.[CardInfoID] = c.[ID]
+    ORDER BY l.[LastBrushCardTime] DESC
+) lb
+LEFT JOIN [MC].[Device] dev ON dev.[ID] = lb.[LastBrushCardDeviceId]
 WHERE p.[Name] LIKE @candidate ESCAPE '\'
 ORDER BY p.[ID] DESC;";
                 command.Parameters.Add("@candidate", SqlDbType.NVarChar, 120).Value = CandidateLike(roomKey);
@@ -211,8 +238,13 @@ ORDER BY p.[ID] DESC;";
                             personId = reader.GetInt64(0),
                             personNo = reader.IsDBNull(1) ? "" : reader.GetString(1),
                             sequence = cardSequence,
-                            icCardNo = reader.IsDBNull(3) ? null : reader.GetString(3).Trim().ToUpperInvariant(),
-                            issuedAt = reader.IsDBNull(4) ? null : reader.GetDateTime(4).ToString("o", CultureInfo.InvariantCulture)
+                            personName = name,
+                            cardInfoId = reader.IsDBNull(4) ? (long?)null : Convert.ToInt64(reader.GetValue(4), CultureInfo.InvariantCulture),
+                            icCardNo = reader.IsDBNull(5) ? null : reader.GetString(5).Trim().ToUpperInvariant(),
+                            issuedAt = ReadDateText(reader, 6),
+                            personCreatedAt = ReadDateText(reader, 3),
+                            lastSwipeAt = ReadDateText(reader, 7),
+                            lastDevice = reader.IsDBNull(8) ? null : Convert.ToString(reader.GetValue(8), CultureInfo.InvariantCulture).Trim()
                         });
                     }
                 }
@@ -607,6 +639,13 @@ FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME=@table ORDER BY ORDINAL_POSITIO
                         });
             }
             return output;
+        }
+
+        private static string ReadDateText(SqlDataReader reader, int index)
+        {
+            if (reader.IsDBNull(index)) return null;
+            return Convert.ToDateTime(reader.GetValue(index), CultureInfo.InvariantCulture)
+                .ToString("o", CultureInfo.InvariantCulture);
         }
 
         private static string ConnectionString(AgentConfig config, string password)

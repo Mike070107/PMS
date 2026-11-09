@@ -69,6 +69,7 @@
     <Compile Include="Building3ControllerTest.cs" />
     <Compile Include="TrayApplication.cs" />
     <Compile Include="..\access-card-agent\AgentConfig.cs"><Link>Adapters\AgentConfig.cs</Link></Compile>
+    <Compile Include="..\access-card-agent\IcCardNumber.cs"><Link>Adapters\IcCardNumber.cs</Link></Compile>
     <Compile Include="..\access-card-agent\AgentApiClient.cs"><Link>Adapters\AgentApiClient.cs</Link></Compile>
     <Compile Include="..\access-card-agent\AgentLoop.cs"><Link>Adapters\AgentLoop.cs</Link></Compile>
     <Compile Include="..\access-card-agent\AgentStatus.cs"><Link>Adapters\AgentStatus.cs</Link></Compile>

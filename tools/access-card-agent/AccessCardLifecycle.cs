@@ -29,6 +29,7 @@ namespace Pms.AccessCardAgent
         public string detail { get; set; }
         public string beforeValue { get; set; }
         public string afterValue { get; set; }
+        public string warning { get; set; }
         public string error { get; set; }
     }
 
@@ -274,17 +275,16 @@ namespace Pms.AccessCardAgent
             {
                 try
                 {
+                    var normalizedCardNo = IcCardNumber.NormalizeForWrite(request.wgCardNo);
                     int consumerId;
                     int cardId;
                     DateTime? end;
                     DateTime? deadline;
-                    using (var command = connection.CreateCommand())
+                    using (var command = CreateIcCardLookup(connection, transaction,
+                        "SELECT TOP 1 I.f_CardID,I.f_ConsumerID,C.f_EndYMD,I.f_Deadline " +
+                        "FROM (t_b_IDCard AS I INNER JOIN t_b_Consumer AS C ON I.f_ConsumerID=C.f_ConsumerID) " +
+                        "WHERE I.f_CardNO IN ({cards}) ORDER BY I.f_CardID DESC", request.wgCardNo))
                     {
-                        command.Transaction = transaction;
-                        command.CommandText = "SELECT I.f_CardID,I.f_ConsumerID,C.f_EndYMD,I.f_Deadline " +
-                            "FROM (t_b_IDCard AS I INNER JOIN t_b_Consumer AS C ON I.f_ConsumerID=C.f_ConsumerID) " +
-                            "WHERE I.f_CardNO=?";
-                        command.Parameters.AddWithValue("@card", request.wgCardNo);
                         using (var reader = command.ExecuteReader())
                         {
                             if (!reader.Read())
@@ -308,7 +308,7 @@ namespace Pms.AccessCardAgent
                         {
                             accessSystem = "iccard", status = "skipped",
                             detail = "有效期已经是目标日期", beforeValue = before,
-                            afterValue = before
+                            afterValue = before, warning = normalizedCardNo.warning
                         });
                         return;
                     }
@@ -354,7 +354,8 @@ namespace Pms.AccessCardAgent
                         accessSystem = "iccard", status = "completed",
                         detail = "ConsumerID=" + consumerId + " / CardID=" + cardId + " 已延期，需重新下发控制器后才在设备生效",
                         beforeValue = before,
-                        afterValue = target.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                        afterValue = target.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                        warning = normalizedCardNo.warning
                     });
                 }
                 catch { transaction.Rollback(); throw; }
@@ -366,6 +367,7 @@ namespace Pms.AccessCardAgent
             var lostStatus = config.AccessLostStatus;
             if (String.IsNullOrWhiteSpace(lostStatus))
                 throw new InvalidOperationException("iCCard 挂失状态码未配置：请在 .88 的 agent.config.json 设置 AccessLostStatus（现场取证后填写）");
+            var normalizedCardNo = IcCardNumber.NormalizeForWrite(request.wgCardNo);
             using (var connection = Open(config.IcCardDatabasePath, password, "iCCard"))
             using (var transaction = connection.BeginTransaction())
             {
@@ -375,11 +377,10 @@ namespace Pms.AccessCardAgent
                     int consumerId;
                     string status;
                     DateTime? lostDate;
-                    using (var command = connection.CreateCommand())
+                    using (var command = CreateIcCardLookup(connection, transaction,
+                        "SELECT TOP 1 f_CardID,f_ConsumerID,f_CardStatusDesc,f_LostDate FROM t_b_IDCard WHERE f_CardNO IN ({cards}) ORDER BY f_CardID DESC",
+                        request.wgCardNo))
                     {
-                        command.Transaction = transaction;
-                        command.CommandText = "SELECT f_CardID,f_ConsumerID,f_CardStatusDesc,f_LostDate FROM t_b_IDCard WHERE f_CardNO=?";
-                        command.Parameters.AddWithValue("@card", request.wgCardNo);
                         using (var reader = command.ExecuteReader())
                         {
                             if (!reader.Read())
@@ -398,7 +399,8 @@ namespace Pms.AccessCardAgent
                         transaction.Rollback();
                         result.rows.Add(new AccessLifecycleRow
                         {
-                            accessSystem = "iccard", status = "skipped", detail = "该卡已经是挂失状态"
+                            accessSystem = "iccard", status = "skipped", detail = "该卡已经是挂失状态",
+                            warning = normalizedCardNo.warning
                         });
                         return;
                     }
@@ -420,7 +422,8 @@ namespace Pms.AccessCardAgent
                         accessSystem = "iccard", status = "completed",
                         detail = "CardID=" + cardId + " 已挂失并删除 " + removedDoors.Length +
                             " 个门权限；需重新下发控制器后才在设备生效。恢复需要门 ID：" +
-                            String.Join(",", removedDoors.Select(item => item.ToString(CultureInfo.InvariantCulture)).ToArray())
+                            String.Join(",", removedDoors.Select(item => item.ToString(CultureInfo.InvariantCulture)).ToArray()),
+                        warning = normalizedCardNo.warning
                     });
                 }
                 catch { transaction.Rollback(); throw; }
@@ -431,6 +434,7 @@ namespace Pms.AccessCardAgent
         {
             var normalStatus = String.IsNullOrWhiteSpace(config.AccessNormalStatus) ? "0" : config.AccessNormalStatus.Trim();
             var doors = (request.restoreDoorIds ?? new int[0]).Distinct().ToArray();
+            var normalizedCardNo = IcCardNumber.NormalizeForWrite(request.wgCardNo);
             if (doors.Length == 0)
                 throw new InvalidOperationException("iCCard 解挂需要提供恢复的门 ID（restoreDoorIds），否则卡会恢复成无权限状态");
             using (var connection = Open(config.IcCardDatabasePath, password, "iCCard"))
@@ -440,11 +444,10 @@ namespace Pms.AccessCardAgent
                 {
                     int cardId;
                     int consumerId;
-                    using (var command = connection.CreateCommand())
+                    using (var command = CreateIcCardLookup(connection, transaction,
+                        "SELECT TOP 1 f_CardID,f_ConsumerID FROM t_b_IDCard WHERE f_CardNO IN ({cards}) ORDER BY f_CardID DESC",
+                        request.wgCardNo))
                     {
-                        command.Transaction = transaction;
-                        command.CommandText = "SELECT f_CardID,f_ConsumerID FROM t_b_IDCard WHERE f_CardNO=?";
-                        command.Parameters.AddWithValue("@card", request.wgCardNo);
                         using (var reader = command.ExecuteReader())
                         {
                             if (!reader.Read())
@@ -483,7 +486,8 @@ namespace Pms.AccessCardAgent
                     result.rows.Add(new AccessLifecycleRow
                     {
                         accessSystem = "iccard", status = "completed",
-                        detail = "CardID=" + cardId + " 已解挂并恢复 " + doors.Length + " 个门权限；需重新下发控制器后才在设备生效"
+                        detail = "CardID=" + cardId + " 已解挂并恢复 " + doors.Length + " 个门权限；需重新下发控制器后才在设备生效",
+                        warning = normalizedCardNo.warning
                     });
                 }
                 catch { transaction.Rollback(); throw; }
@@ -495,6 +499,7 @@ namespace Pms.AccessCardAgent
             var cancelStatus = config.AccessCancelStatus;
             if (String.IsNullOrWhiteSpace(cancelStatus))
                 throw new InvalidOperationException("iCCard 注销状态码未配置：请在 .88 的 agent.config.json 设置 AccessCancelStatus（现场取证后填写）");
+            var normalizedCardNo = IcCardNumber.NormalizeForWrite(request.wgCardNo);
             using (var connection = Open(config.IcCardDatabasePath, password, "iCCard"))
             using (var transaction = connection.BeginTransaction())
             {
@@ -503,11 +508,10 @@ namespace Pms.AccessCardAgent
                     int cardId;
                     int consumerId;
                     DateTime? deletedDate;
-                    using (var command = connection.CreateCommand())
+                    using (var command = CreateIcCardLookup(connection, transaction,
+                        "SELECT TOP 1 f_CardID,f_ConsumerID,f_DeletedDate FROM t_b_IDCard WHERE f_CardNO IN ({cards}) ORDER BY f_CardID DESC",
+                        request.wgCardNo))
                     {
-                        command.Transaction = transaction;
-                        command.CommandText = "SELECT f_CardID,f_ConsumerID,f_DeletedDate FROM t_b_IDCard WHERE f_CardNO=?";
-                        command.Parameters.AddWithValue("@card", request.wgCardNo);
                         using (var reader = command.ExecuteReader())
                         {
                             if (!reader.Read())
@@ -516,7 +520,8 @@ namespace Pms.AccessCardAgent
                                 transaction.Rollback();
                                 result.rows.Add(new AccessLifecycleRow
                                 {
-                                    accessSystem = "iccard", status = "skipped", detail = "iCCard 没有该卡号记录，视为已注销"
+                                    accessSystem = "iccard", status = "skipped", detail = "iCCard 没有该卡号记录，视为已注销",
+                                    warning = normalizedCardNo.warning
                                 });
                                 return;
                             }
@@ -535,7 +540,8 @@ namespace Pms.AccessCardAgent
                         transaction.Rollback();
                         result.rows.Add(new AccessLifecycleRow
                         {
-                            accessSystem = "iccard", status = "skipped", detail = "该卡已经注销且无门权限"
+                            accessSystem = "iccard", status = "skipped", detail = "该卡已经注销且无门权限",
+                            warning = normalizedCardNo.warning
                         });
                         return;
                     }
@@ -563,7 +569,8 @@ namespace Pms.AccessCardAgent
                     {
                         accessSystem = "iccard", status = "completed",
                         detail = "CardID=" + cardId + " 已置注销并删除 " + removedDoors.Length +
-                            " 个门权限，卡记录保留供审计；需重新下发控制器后才在设备生效"
+                            " 个门权限，卡记录保留供审计；需重新下发控制器后才在设备生效",
+                        warning = normalizedCardNo.warning
                     });
                 }
                 catch { transaction.Rollback(); throw; }
@@ -618,6 +625,20 @@ namespace Pms.AccessCardAgent
             return !String.IsNullOrWhiteSpace(value) &&
                 (value.Trim().StartsWith("PMS_", StringComparison.OrdinalIgnoreCase) ||
                  value.IndexOf("PMS_", StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
+        private static OleDbCommand CreateIcCardLookup(
+            OleDbConnection connection,
+            OleDbTransaction transaction,
+            string sql,
+            string wgCardNo)
+        {
+            var variants = IcCardNumber.QueryVariants(wgCardNo);
+            var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = sql.Replace("{cards}", IcCardNumber.Placeholders(variants.Length));
+            foreach (var variant in variants) command.Parameters.AddWithValue("@card", variant);
+            return command;
         }
 
         private static OleDbConnection Open(string path, string password, string name)

@@ -117,19 +117,23 @@ namespace Pms.AccessCardAgent
         public static AccessQueryResult QueryByCard(AgentConfig config, string password, string cardNo)
         {
             var result = NewResult(cardNo, "cardNo");
-            ForEachCardVariant(cardNo, delegate(string variant)
+            // MjSystem 保持 8 位原值；iCCard 先按去零值查，再兼容原 8 位/补零历史数据。
+            foreach (var variant in CardVariants(cardNo))
             {
                 TryMjSystem(config, result, delegate(OleDbConnection connection)
                 {
                     ReadMjCards(connection, variant, result.cards);
                     ReadMjRecords(connection, variant, result.records);
                 });
+            }
+            foreach (var variant in IcCardNumber.QueryVariants(cardNo))
+            {
                 TryIcCard(config, password, result, delegate(OleDbConnection connection)
                 {
                     ReadIcCards(connection, variant, result.cards);
                     ReadIcRecords(connection, variant, result.records);
                 });
-            });
+            }
             SortRecords(result);
             return result;
         }
@@ -322,11 +326,6 @@ namespace Pms.AccessCardAgent
         private static AccessQueryResult NewResult(string term, string matchedBy)
         {
             return new AccessQueryResult { term = term, matchedBy = matchedBy };
-        }
-
-        private static void ForEachCardVariant(string cardNo, Action<string> action)
-        {
-            foreach (var variant in CardVariants(cardNo)) action(variant);
         }
 
         internal static string[] CardVariants(string cardNo)
