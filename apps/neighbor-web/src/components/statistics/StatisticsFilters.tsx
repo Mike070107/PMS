@@ -115,8 +115,10 @@ export default function StatisticsFilters({
   }, [feeGroups, feeQuery]);
 
   const canSubmit = draft.officeCodes.length > 0 && draft.feeCodes.length > 0 && draft.natures.length > 0
-    && (reportType !== 'fee-nature' || draft.paymentMethods.length > 0)
-    && (reportType !== 'fee-nature' && reportType !== 'daily' || (!!draft.paidDateFrom && !!draft.paidDateTo));
+    && (reportType !== 'fee-nature' && reportType !== 'daily' || (!!draft.paidDateFrom && !!draft.paidDateTo))
+    && (reportType !== 'arrears-prepaid' || (!!draft.asOfPeriod && !!draft.paidDateTo))
+    && (reportType !== 'assessment' || !!draft.assessmentYear)
+    && (reportType !== 'fee-nature' || draft.paymentMethods.length > 0);
   const monthValue = draft.asOfPeriod && /^\d{6}$/.test(draft.asOfPeriod)
     ? `${draft.asOfPeriod.slice(0, 4)}-${draft.asOfPeriod.slice(4)}`
     : '';
@@ -235,6 +237,8 @@ export default function StatisticsFilters({
         </CheckGroup>
 
         <div className="stats-filter-dates">
+          {reportType !== 'arrears-prepaid' && reportType !== 'assessment' ? (
+            <>
           <div className="stats-date-range-label">
             {reportType === 'fee-nature' || reportType === 'daily' ? '收款日期范围（必填）' : '收款日期范围'}
             <span className="muted">
@@ -262,6 +266,42 @@ export default function StatisticsFilters({
               onChange={(event) => onChange({ paidDateTo: event.target.value })}
             />
           </div>
+            </>
+          ) : null}
+          {reportType === 'arrears-prepaid' ? (
+            <>
+              <div className="stats-date-range-label">统计条件 <span className="muted">（统计年月 + 收款截止日期共同生效）</span></div>
+              <div className="stats-extra-fields">
+                <label>
+                  统计年月
+                  <DateInput type="month" value={monthValue} onChange={(event) => onChange({ asOfPeriod: String(event.target.value || '').replace('-', '') })} />
+                </label>
+                <label>
+                  收款截止日期
+                  <DateInput type="date" value={draft.paidDateTo} onChange={(event) => onChange({ paidDateTo: event.target.value })} />
+                </label>
+              </div>
+              <div className="stats-filter-hint">欠收=统计年月前未缴；溢收=统计年月后已预收；两页签共用同一统计条件。</div>
+            </>
+          ) : null}
+          {reportType === 'assessment' ? (
+            <>
+              <div className="stats-date-range-label">统计条件</div>
+              <div className="stats-extra-fields">
+                <label>
+                  统计年份
+                  <select className="in" data-testid="assessment-year" value={draft.assessmentYear} onChange={(event) => onChange({ assessmentYear: event.target.value })}>
+                    {subjectYears.map((year) => <option key={year} value={year}>{year}</option>)}
+                  </select>
+                </label>
+                <label>
+                  收款截止日期（可选）
+                  <DateInput type="date" value={draft.paidDateTo} onChange={(event) => onChange({ paidDateTo: event.target.value })} />
+                </label>
+              </div>
+              <div className="stats-filter-hint">按所属年月统计 1–12 月应收；已收默认截至今天，可清空为不限制。</div>
+            </>
+          ) : null}
           {reportType === 'fee-nature' ? (
             <>
               <CheckGroup title="收款方式" hint="来自收款方式字典；至少勾选一项">
@@ -309,9 +349,9 @@ export default function StatisticsFilters({
               应收截止年月
               <DateInput type="month" value={monthValue} onChange={(event) => onChange({ asOfPeriod: String(event.target.value || '').replace('-', '') })} />
             </label>
-          ) : (
+          ) : reportType === 'received' ? (
             <div className="stats-filter-hint" data-testid="asof-period-hint">应收截止年月仅欠费报表使用；实收报表列按应收年度展示，不受截止年月截断。</div>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -327,7 +367,11 @@ export default function StatisticsFilters({
         <div className="note2 stats-filter-note" role="status"><Icon name="alert" />
           {reportType === 'fee-nature' || reportType === 'daily'
             ? '请至少各选一个管理处、收费项目、房屋性质，并填写收款日期范围；收费汇总还需至少一个收款方式。'
-            : '请至少各选一个管理处、收费项目和房屋性质。'}
+            : reportType === 'arrears-prepaid'
+              ? '请至少各选一个管理处、收费项目和房屋性质，并填写统计年月与收款截止日期。'
+              : reportType === 'assessment'
+                ? '请至少各选一个管理处、收费项目和房屋性质，并选择统计年份。'
+                : '请至少各选一个管理处、收费项目和房屋性质。'}
         </div>
       ) : null}
     </aside>

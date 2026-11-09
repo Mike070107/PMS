@@ -138,6 +138,61 @@ test('统计汇总金额/CSV 纯函数：整数分格式化、UTF-8 BOM、筛选
   assert.ok(dailyCsvText.includes('2026-10-01,80000.00,80000.00'));
   assert.ok(dailyCsvText.includes('合计,80000.00,80000.00'));
 
+  // P2-C：欠收与溢收 / 收缴考核请求参数与 CSV。
+  const arrearsQuery = {
+    type: 'arrears-prepaid', tab: 'arrears', officeCodes: ['02'], feeCodes: ['01', '04'], natures: ['01', '06'],
+    asOfPeriod: '202610', paidDateTo: '2026-11-09',
+  };
+  assert.deepEqual(JSON.parse(JSON.stringify(lib.arrearsPrepaidSummaryParams(arrearsQuery))), {
+    asOfPeriod: '202610', paidDateTo: '2026-11-09', officeCodes: '02', feeCodes: '01,04', natures: '01,06', groupBy: 'office',
+  });
+  const arrearsDetailParams = lib.arrearsPrepaidDetailParams(arrearsQuery, 20, 200);
+  assert.equal(arrearsDetailParams.tab, 'arrears');
+  assert.equal(arrearsDetailParams.offset, 20);
+  assert.equal(arrearsDetailParams.limit, 200);
+  const billsParams = lib.arrearsBillsParams({ ...arrearsQuery, tab: 'prepaid' }, { sId: 2, feeCode: '01' });
+  assert.equal(billsParams.tab, 'prepaid');
+  assert.equal(billsParams.sId, 2);
+  assert.equal(billsParams.feeCode, '01');
+  assert.equal(billsParams.asOfPeriod, '202610');
+
+  const assessmentQuery = {
+    type: 'assessment', officeCodes: ['02'], feeCodes: ['01'], natures: ['01', '04'], year: '2026', paidDateTo: '2026-11-09',
+  };
+  const assessmentParams = lib.assessmentQueryParams(assessmentQuery, 0, 200);
+  assert.equal(assessmentParams.year, '2026');
+  assert.equal(assessmentParams.paidDateTo, '2026-11-09');
+  assert.equal(assessmentParams.feeCodes, '01');
+  assert.equal(assessmentParams.limit, 200);
+
+  const arrearsDetail = {
+    rows: [{ sId: 1, address: '永德路228弄3号402', ownerName: '朱全锋', areaSqm: 88.5, feeCode: '04', feeName: '泊位费', natureCode: '06', periodFrom: '201404', periodTo: '202011', months: 16, amountCents: 1582500 }],
+    totals: { amountCents: 1582500, rows: 1 }, count: 1,
+  };
+  const arrearsCsvText = lib.arrearsPrepaidCsv(arrearsDetail, arrearsQuery);
+  assert.equal(arrearsCsvText.charCodeAt(0), 0xFEFF);
+  assert.ok(arrearsCsvText.includes('欠收统计'));
+  assert.ok(arrearsCsvText.includes('欠费年月范围'));
+  assert.ok(arrearsCsvText.includes('2014-04~2020-11'));
+  assert.ok(arrearsCsvText.includes('15825.00'));
+
+  const assessmentReport = {
+    rows: [{
+      officeCode: '02', officeName: '二期A', sId: 21, address: '宝秀路701号701', ownerName: '陆乾一', areaSqm: 630.98,
+      months: Array.from({ length: 12 }, (_, index) => ({ month: index + 1, receivableCents: index === 0 ? 1000000 : 0, receivedCents: index === 0 ? 500000 : 0 })),
+      totalReceivableCents: 1000000, totalReceivedCents: 500000, ratePct: 50,
+    }],
+    summary: { receivableCents: 1000000, receivedCents: 500000, ratePct: 50, payableHouseholds: 1, paidHouseholds: 1, householdRatePct: 100 },
+    count: 1,
+  };
+  const assessmentCsvText = lib.assessmentCsv(assessmentReport, assessmentQuery);
+  assert.equal(assessmentCsvText.charCodeAt(0), 0xFEFF);
+  assert.ok(assessmentCsvText.includes('收缴考核'));
+  assert.ok(assessmentCsvText.includes('1月应收,1月收款'));
+  assert.ok(assessmentCsvText.includes('10000.00,5000.00'));
+  assert.ok(assessmentCsvText.includes('50.00%'));
+  assert.ok(assessmentCsvText.includes('合计'));
+
   const annual = {
     type: 'arrears',
     columns: [2011, 2014],
@@ -284,8 +339,14 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     assert.ok(await js("!!document.querySelector('[data-report-type=arrears]')"));
     assert.ok(await js("!!document.querySelector('[data-report-type=\"fee-nature\"]')"), '收费汇总已启用');
     assert.ok(await js("!!document.querySelector('[data-report-type=daily]')"), '收款日报表已启用');
+    assert.ok(await js("!!document.querySelector('[data-report-type=\"arrears-prepaid\"]')"), '欠收与溢收汇总已启用');
+    assert.ok(await js("!!document.querySelector('[data-report-type=assessment]')"), '收缴考核已启用');
     assert.ok(await js("document.querySelectorAll('.stats-report-pending').length >= 15"), '待接入报表要用灰字列出');
-    assert.equal(await js("[...document.querySelectorAll('.stats-report-pending')].some((e) => ['收费汇总', '收款日报表'].includes(e.textContent.trim()))"), false, '已启用报表不能仍列在待接入');
+    assert.equal(
+      await js("[...document.querySelectorAll('.stats-report-pending')].some((e) => ['收费汇总', '收款日报表', '欠收与溢收汇总', '收缴考核'].includes(e.textContent.trim()))"),
+      false,
+      '已启用报表不能仍列在待接入',
+    );
     assert.ok(await js("[...document.querySelectorAll('.stats-report-pending')].every((e) => (e.title || '').includes('待接入'))"));
 
     // 默认实收年度表：年度表头 2004..2026 + 合计、4 个管理处行、合计/小计、数据截止。
@@ -869,6 +930,126 @@ test('P2 收款日报表：日期×收费项目矩阵、合计行列、单元格
     const exported = await js(`(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], report: text.includes('收款日报表'), header: text.includes('日期,'), row: text.includes('${month}-01'), total: text.includes('合计,') }; })()`);
     assert.deepEqual(exported.bom, [0xEF, 0xBB, 0xBF]);
     assert.ok(exported.report && exported.header && exported.row && exported.total, '收款日报表 CSV 内容');
+  });
+});
+
+test('P2-C 欠收与溢收汇总：两页签、合计/小计、查看逐笔合计、CSV、窄屏内部滚动', { timeout: 180000 }, async () => {
+  await withPage(async ({ js, call, waitFor, screenshot }) => {
+    await waitFor("!!document.querySelector('.stats')", '统计页挂载', 25000);
+    await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度表', 25000);
+    await js("document.querySelector('[data-report-type=\"arrears-prepaid\"]').click()");
+    await waitFor("!!document.querySelector('[data-testid=arrears-prepaid-table]')", '欠收明细表', 25000);
+    const month = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+    const summaryQuery = await js("window.__calls.filter((c) => c.url === '/statistics/arrears-prepaid/summary').slice(-1)[0].query");
+    assert.equal(summaryQuery.asOfPeriod, month);
+    assert.equal(summaryQuery.paidDateTo, today);
+    assert.equal(summaryQuery.groupBy, 'office');
+    const detailQuery = await js("window.__calls.filter((c) => c.url === '/statistics/arrears-prepaid/detail').slice(-1)[0].query");
+    assert.equal(detailQuery.tab, 'arrears');
+    assert.equal(detailQuery.asOfPeriod, month);
+    assert.equal(detailQuery.paidDateTo, today);
+
+    assert.equal(await js("document.querySelector('[data-arrears-tab=\"arrears\"]').getAttribute('aria-selected')"), 'true');
+    assert.ok(await js("!!document.querySelector('[data-arrears-tab=\"prepaid\"]')"));
+    const bodyText = await js('document.body.textContent');
+    assert.ok(bodyText.includes('欠收') && bodyText.includes('溢收'));
+    assert.ok((await js("document.querySelector('[data-testid=arrears-summary-chips]').textContent")).includes('枫桦景苑一期'));
+    assert.ok((await js("document.querySelector('[data-testid=arrears-prepaid-total]').textContent")).includes('¥39,232.00'), '欠收明细合计');
+    assert.ok((await js("document.querySelector('[data-testid=arrears-prepaid-total]').textContent")).includes('3'));
+    assert.ok((await js("document.querySelector('[data-s-id=\"1\"]').textContent")).includes('永德路228弄3号402'));
+    assert.ok((await js("document.querySelector('[data-s-id=\"1\"]').textContent")).includes('2014-04 ~ 2020-11'));
+    await screenshot('statistics-arrears-prepaid-1440.png');
+
+    // 查看 → 逐笔抽屉，合计=行金额。
+    await js("document.querySelector('[data-s-id=\"1\"] [data-view-bills]').click()");
+    await waitFor("!!document.querySelector('[data-testid=arrears-bills-table]')", '逐笔抽屉');
+    assert.ok((await js("document.querySelector('.sheet').textContent")).includes('¥15,825.00'));
+    const billsQuery = await js("window.__calls.filter((c) => c.url === '/statistics/arrears-prepaid/detail/bills').slice(-1)[0].query");
+    assert.equal(billsQuery.tab, 'arrears');
+    assert.equal(billsQuery.sId, 1);
+    assert.equal(billsQuery.feeCode, '04');
+    await screenshot('statistics-arrears-bills-1440.png');
+    await js("document.querySelector('.sheet .x').click()");
+    await waitFor("!document.querySelector('.sheet')", '关闭逐笔抽屉');
+
+    // 溢收页签：请求 tab=prepaid、合计=溢收金额。
+    await js("document.querySelector('[data-arrears-tab=\"prepaid\"]').click()");
+    await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/arrears-prepaid/detail'); const last = list[list.length - 1]; return last && last.query.tab === 'prepaid'; })()", '溢收明细请求');
+    await waitFor("document.querySelector('[data-testid=arrears-prepaid-table] tbody tr[data-s-id]')?.textContent.includes('永德路228弄33号1202')", '溢收明细表');
+    assert.ok((await js("document.querySelector('[data-testid=arrears-prepaid-total]').textContent")).includes('¥8,531.80'), '溢收明细合计');
+    assert.ok((await js("document.querySelector('[data-testid=arrears-prepaid-table]').textContent")).includes('收费年月范围'));
+    await screenshot('statistics-prepaid-1440.png');
+
+    // CSV：BOM、当前页签、收费年月范围、合计。
+    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
+    await js("document.querySelector('[data-testid=stats-export]').click()");
+    await waitFor("window.__blobs.length >= 1", '欠收溢收 CSV Blob');
+    const exported = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], tab: text.includes('溢收统计'), range: text.includes('收费年月范围'), total: text.includes('合计') }; })()");
+    assert.deepEqual(exported.bom, [0xEF, 0xBB, 0xBF]);
+    assert.ok(exported.tab && exported.range && exported.total, '欠收与溢收 CSV 内容');
+    await pause(2600);
+
+    // 宽表内部滚动、页面 390 不横向溢出。
+    await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
+    await pause(500);
+    if (await js("!!document.querySelector('.stats-filter-float')")) {
+      await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
+      await pause(300);
+    }
+    assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '欠收溢收 390 页面横向溢出');
+    await screenshot('statistics-arrears-prepaid-390.png');
+  });
+});
+
+test('P2-C 收缴考核：12 月应收/收款表头、指标卡、合计/收缴率、CSV、窄屏内部滚动', { timeout: 180000 }, async () => {
+  await withPage(async ({ js, call, waitFor, screenshot }) => {
+    await waitFor("!!document.querySelector('.stats')", '统计页挂载', 25000);
+    await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度表', 25000);
+    await js("document.querySelector('[data-report-type=assessment]').click()");
+    await waitFor("!!document.querySelector('[data-testid=assessment-table]')", '收缴考核表', 25000);
+    const query = await js("window.__calls.filter((c) => c.url === '/statistics/collection-assessment').slice(-1)[0].query");
+    assert.equal(query.year, String(new Date().getFullYear()));
+    assert.ok(query.feeCodes.includes('01'));
+    assert.ok(query.natures.length > 0);
+    assert.ok(query.paidDateTo);
+
+    const cards = await js("document.querySelector('[data-testid=assessment-cards]').textContent");
+    assert.ok(cards.includes('应收合计') && cards.includes('已收合计') && cards.includes('金额收缴率'));
+    assert.ok(cards.includes('应缴 / 已缴户数') && cards.includes('按户数收缴率'));
+    assert.ok(cards.includes('¥30,005.60'), '应收合计指标卡');
+    assert.ok(cards.includes('¥10,000.00'), '已收合计指标卡');
+    assert.ok(cards.includes('33.33%'), '金额收缴率指标卡');
+    assert.ok(cards.includes('66.67%'), '按户数收缴率指标卡');
+
+    const headers = await js("[...document.querySelectorAll('[data-testid=assessment-table] thead th')].map((th) => th.textContent.trim()).filter(Boolean)");
+    assert.equal(headers.length, 42, '收缴考核表头：首行 18 个（含 12 个月分组）+ 次行 24 个');
+    assert.ok(headers.includes('1 月') && headers.includes('12 月'));
+    assert.ok(headers.includes('合计应收') && headers.includes('合计已收') && headers.includes('收缴率'));
+    assert.ok((await js("document.querySelector('[data-testid=assessment-table]').textContent")).includes('宝秀路701号701'));
+    assert.ok((await js("document.querySelector('[data-testid=assessment-table]').textContent")).includes('24.13%'));
+    assert.ok((await js("document.querySelector('[data-testid=assessment-total]').textContent")).includes('33.33%'), '合计行收缴率');
+    await screenshot('statistics-assessment-1440.png');
+
+    // CSV：BOM、12 月表头、合计、收缴率。
+    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
+    await js("document.querySelector('[data-testid=stats-export]').click()");
+    await waitFor("window.__blobs.length >= 1", '收缴考核 CSV Blob');
+    const exported = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], title: text.includes('收缴考核'), months: text.includes('1月应收') && text.includes('12月收款'), total: text.includes('合计'), rate: text.includes('33.33%') }; })()");
+    assert.deepEqual(exported.bom, [0xEF, 0xBB, 0xBF]);
+    assert.ok(exported.title && exported.months && exported.total && exported.rate, '收缴考核 CSV 内容');
+    await pause(2600);
+
+    // 宽表内部横向滚动、表头 sticky；页面 390 不横向溢出。
+    await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
+    await pause(500);
+    if (await js("!!document.querySelector('.stats-filter-float')")) {
+      await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
+      await pause(300);
+    }
+    assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '收缴考核 390 页面横向溢出');
+    assert.ok(await js("(() => { const el = document.querySelector('.stats-assessment-scroll'); return el && el.scrollWidth > el.clientWidth; })()"), '考核宽表应内部滚动');
+    await screenshot('statistics-assessment-390.png');
   });
 });
 

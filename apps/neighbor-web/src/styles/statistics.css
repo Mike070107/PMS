@@ -594,6 +594,43 @@
 .stats-detail-scroll { max-height: 56vh; overflow: auto; }
 .stats-load-more { padding: 12px 0 2px; text-align: center; }
 
+/* P2-C：欠收与溢收汇总 / 收缴考核 */
+.stats-tabs { display: flex; gap: 8px; margin-bottom: 10px; }
+.stats-tab {
+  border: 1px solid var(--line); background: #fff; border-radius: 18px; padding: 6px 16px;
+  font-size: 13px; cursor: pointer; color: var(--ink2);
+}
+.stats-tab.on { background: var(--acc); border-color: var(--acc); color: #fff; font-weight: 600; }
+.stats-summary-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.stats-summary-chip {
+  display: inline-flex; gap: 8px; align-items: center; padding: 5px 10px; border-radius: 8px;
+  background: var(--sunken, #f4f7fb); font-size: 12px; color: var(--ink3);
+}
+.stats-summary-chip b { color: var(--ink1); }
+.stats-arrears-table-scroll { max-height: 58vh; }
+.stats-arrears-prepaid-table { min-width: 1120px; }
+.stats-arrears-prepaid-table th, .stats-arrears-prepaid-table td { white-space: nowrap; }
+.stats-arrears-prepaid-table td.num, .stats-arrears-prepaid-table th.num { text-align: right; }
+.stats-arrears-bills-table { min-width: 520px; }
+.stats-arrears-bills-table td.num { text-align: right; }
+.stats-kpi-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+@media (max-width: 1100px) { .stats-kpi-cards { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); } }
+.stats-kpi { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #fff; }
+.stats-kpi span { display: block; font-size: 12px; color: var(--ink3); margin-bottom: 4px; }
+.stats-kpi b { font-size: 17px; font-variant-numeric: tabular-nums; }
+.stats-assessment-scroll { max-height: 62vh; overflow: auto; }
+.stats-assessment-table { min-width: 2860px; }
+.stats-assessment-table th, .stats-assessment-table td { white-space: nowrap; }
+.stats-assessment-table td.num, .stats-assessment-table th.num { text-align: right; }
+.stats-assessment-table thead tr:first-child th { position: sticky; top: 0; z-index: 4; background: var(--sunken, #f4f7fb); }
+.stats-assessment-table thead tr:nth-child(2) th { position: sticky; top: 34px; z-index: 4; background: var(--sunken, #f4f7fb); }
+.stats-assessment-table .stats-sticky-name { position: sticky; left: 0; z-index: 3; min-width: 190px; max-width: 230px; background: #fff; box-shadow: 1px 0 0 var(--line); }
+.stats-assessment-table .stats-sticky-owner { position: sticky; left: 190px; z-index: 3; min-width: 90px; background: #fff; box-shadow: 1px 0 0 var(--line); }
+.stats-assessment-table thead .stats-sticky-name, .stats-assessment-table thead .stats-sticky-owner { z-index: 6; background: var(--sunken, #f4f7fb); }
+.stats-assessment-table .stats-month-head { text-align: center; }
+.stats-assessment-table .stats-month-sub { font-size: 11.5px; color: var(--ink3); }
+.stats-assessment-table tbody tr:hover td { background: #f7f9fc; }
+
 .stats-received-table { min-width: 980px; }
 
 .stats-received-table tbody tr:hover td { background: var(--sunken); }

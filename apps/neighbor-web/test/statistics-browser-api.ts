@@ -228,6 +228,100 @@ function dailyResponse(query: any) {
   };
 }
 
+// P2-C 欠收与溢收：按管理处汇总（数字与 docs §4.10 实测同量级）。
+const ARREARS_PREPAID_OFFICES = [
+  { officeCode: '01', officeName: '枫桦景苑一期', arrearsCents: 87340540, arrearsRows: 3705, prepaidCents: 36416380, prepaidRows: 2402 },
+  { officeCode: '02', officeName: '枫桦景苑二期A', arrearsCents: 70235030, arrearsRows: 3394, prepaidCents: 33252430, prepaidRows: 2241 },
+  { officeCode: '03', officeName: '枫桦景苑二期B', arrearsCents: 95436170, arrearsRows: 4082, prepaidCents: 33911360, prepaidRows: 2349 },
+  { officeCode: '04', officeName: '上海新家', arrearsCents: 35608500, arrearsRows: 428, prepaidCents: 57957200, prepaidRows: 654 },
+];
+
+function arrearsPrepaidSummaryResponse() {
+  const total = ARREARS_PREPAID_OFFICES.reduce((sum, row) => ({
+    arrearsCents: sum.arrearsCents + row.arrearsCents,
+    arrearsRows: sum.arrearsRows + row.arrearsRows,
+    prepaidCents: sum.prepaidCents + row.prepaidCents,
+    prepaidRows: sum.prepaidRows + row.prepaidRows,
+  }), { arrearsCents: 0, arrearsRows: 0, prepaidCents: 0, prepaidRows: 0 });
+  return { rows: ARREARS_PREPAID_OFFICES, total, dataAsOf: OPTIONS.dataAsOf, available: true, message: null };
+}
+
+const ARREARS_ROWS = [
+  { sId: 1, address: '永德路228弄3号402', ownerName: '朱全锋', areaSqm: 88.5, feeCode: '04', feeName: '泊位费', natureCode: '06', periodFrom: '201404', periodTo: '202011', months: 16, amountCents: 1582500 },
+  { sId: 2, address: '宝秀路701号701', ownerName: '陆乾一', areaSqm: 630.98, feeCode: '01', feeName: '管理费', natureCode: '04', periodFrom: '202601', periodTo: '202610', months: 10, amountCents: 1514300 },
+  { sId: 3, address: '宝秀路723-725号723-725', ownerName: '杨凤林', areaSqm: 344.37, feeCode: '01', feeName: '管理费', natureCode: '04', periodFrom: '202601', periodTo: '202610', months: 10, amountCents: 826400 },
+];
+const PREPAID_ROWS = [
+  { sId: 11, address: '永德路228弄33号1202', ownerName: '邹庆萍', areaSqm: 126.5, feeCode: '01', feeName: '管理费', natureCode: '01', periodFrom: '202611', periodTo: '202712', months: 14, amountCents: 523180 },
+  { sId: 12, address: '永德路228弄1号103', ownerName: '王晶', areaSqm: 98.2, feeCode: '04', feeName: '泊位费', natureCode: '06', periodFrom: '202611', periodTo: '202710', months: 12, amountCents: 330000 },
+];
+
+function arrearsPrepaidDetailResponse(query: any) {
+  const tab = query?.tab === 'prepaid' ? 'prepaid' : 'arrears';
+  const rows = tab === 'prepaid' ? PREPAID_ROWS : ARREARS_ROWS;
+  const totals = { amountCents: rows.reduce((sum, row) => sum + row.amountCents, 0), rows: rows.length };
+  return {
+    rows, totals, count: rows.length,
+    dataAsOf: OPTIONS.dataAsOf, available: true, message: null,
+  };
+}
+
+function arrearsBillsResponse(query: any) {
+  const target = Number(query?.sId) === 2 ? 1514300 : 1582500;
+  const rows = [
+    { zjId: 1, period: '201404', amountCents: 500000, paidDate: null, refundDate: null },
+    { zjId: 2, period: '201405', amountCents: 500000, paidDate: null, refundDate: null },
+    { zjId: 3, period: '202011', amountCents: target - 1000000, paidDate: null, refundDate: null },
+  ];
+  return { rows, totalCents: rows.reduce((sum, row) => sum + row.amountCents, 0), available: true, message: null };
+}
+
+// P2-C 收缴考核：3 户 × 12 个月；合计/收缴率用于指标卡断言。
+const ASSESSMENT_ROWS = [
+  {
+    officeCode: '02', officeName: '枫桦景苑二期A', sId: 21, address: '宝秀路701号701', ownerName: '陆乾一', areaSqm: 630.98,
+    months: Array.from({ length: 12 }, (_, index) => ({
+      month: index + 1,
+      receivableCents: index === 0 ? 1000000 : index === 9 ? 1072160 : 0,
+      receivedCents: index === 0 ? 500000 : 0,
+    })),
+    totalReceivableCents: 2072160, totalReceivedCents: 500000, ratePct: 24.13,
+  },
+  {
+    officeCode: '02', officeName: '枫桦景苑二期A', sId: 22, address: '宝秀路723-725号723-725', ownerName: '杨凤林', areaSqm: 344.37,
+    months: Array.from({ length: 12 }, (_, index) => ({
+      month: index + 1,
+      receivableCents: index === 0 ? 500000 : 0,
+      receivedCents: index === 0 ? 500000 : 0,
+    })),
+    totalReceivableCents: 500000, totalReceivedCents: 500000, ratePct: 100,
+  },
+  {
+    officeCode: '04', officeName: '上海新家', sId: 23, address: '上海新家1号101', ownerName: '合成业主', areaSqm: 90,
+    months: Array.from({ length: 12 }, (_, index) => ({
+      month: index + 1,
+      receivableCents: index === 0 ? 428400 : 0,
+      receivedCents: 0,
+    })),
+    totalReceivableCents: 428400, totalReceivedCents: 0, ratePct: 0,
+  },
+];
+
+function assessmentResponse() {
+  const receivableCents = ASSESSMENT_ROWS.reduce((sum, row) => sum + row.totalReceivableCents, 0);
+  const receivedCents = ASSESSMENT_ROWS.reduce((sum, row) => sum + row.totalReceivedCents, 0);
+  return {
+    rows: ASSESSMENT_ROWS,
+    summary: {
+      receivableCents, receivedCents,
+      ratePct: Number(((receivedCents / receivableCents) * 100).toFixed(2)),
+      payableHouseholds: 3, paidHouseholds: 2,
+      householdRatePct: Number(((2 / 3) * 100).toFixed(2)),
+    },
+    count: ASSESSMENT_ROWS.length, dataAsOf: OPTIONS.dataAsOf, available: true, message: null,
+  };
+}
+
 export async function request<T>(options: any): Promise<T> {
   w.__calls.push({ url: options.url, method: options.method ?? 'GET', query: options.query ?? null, at: Date.now() });
   await pause(20);
@@ -305,6 +399,22 @@ export async function request<T>(options: any): Promise<T> {
 
   if (options.url === '/statistics/daily') {
     return dailyResponse(options.query) as T;
+  }
+
+  if (options.url === '/statistics/arrears-prepaid/summary') {
+    return arrearsPrepaidSummaryResponse() as T;
+  }
+
+  if (options.url === '/statistics/arrears-prepaid/detail') {
+    return arrearsPrepaidDetailResponse(options.query) as T;
+  }
+
+  if (options.url === '/statistics/arrears-prepaid/detail/bills') {
+    return arrearsBillsResponse(options.query) as T;
+  }
+
+  if (options.url === '/statistics/collection-assessment') {
+    return assessmentResponse() as T;
   }
 
   throw Error('Unhandled synthetic request ' + String(options.url));

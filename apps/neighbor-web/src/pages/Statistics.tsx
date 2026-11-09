@@ -8,12 +8,19 @@ import HouseDetailSheet, { type DetailTarget } from '@/components/statistics/Hou
 import FeeNatureTable, { type FeeNatureCellTarget } from '@/components/statistics/FeeNatureTable';
 import DailyTable, { type DailyCellTarget } from '@/components/statistics/DailyTable';
 import CollectionDetailSheet, { type CollectionDetailTarget } from '@/components/statistics/CollectionDetailSheet';
+import ArrearsPrepaidTable from '@/components/statistics/ArrearsPrepaidTable';
+import ArrearsBillsSheet, { type ArrearsBillsTarget } from '@/components/statistics/ArrearsBillsSheet';
+import AssessmentTable from '@/components/statistics/AssessmentTable';
 import StatisticsFilters from '@/components/statistics/StatisticsFilters';
 import { dayjs } from '@/lib/format';
 import {
   PENDING_REPORTS, REPORTS,
-  annualCsv, annualQueryParams, collectionQueryParams, dailyCsv, dailyQueryParams, downloadCsv, feeNatureCsv, fmtCents, reportName,
-  type AnnualQuery, type AnnualReportType, type AnnualSummaryResponse, type CollectionQuery, type DailyQuery, type DailyResponse,
+  annualCsv, annualQueryParams, arrearsPrepaidCsv, arrearsPrepaidDetailParams, arrearsPrepaidSummaryParams,
+  assessmentCsv, assessmentQueryParams, collectionQueryParams, dailyCsv, dailyQueryParams, downloadCsv,
+  feeNatureCsv, fmtCents, reportName,
+  type AnnualQuery, type AnnualReportType, type AnnualSummaryResponse, type ArrearsPrepaidDetailResponse,
+  type ArrearsPrepaidQuery, type ArrearsPrepaidSummaryResponse, type ArrearsPrepaidDetailRow,
+  type AssessmentQuery, type AssessmentResponse, type CollectionQuery, type DailyQuery, type DailyResponse,
   type FeeNatureResponse, type FilterDraft, type ReportQuery, type StatisticsOptions, type StatisticsReportType,
 } from '@/lib/statistics';
 import '@/styles/statistics.css';
@@ -29,6 +36,8 @@ const DEFAULT_EXCLUDED_NATURE_BY_REPORT: Record<StatisticsReportType, Set<string
   arrears: new Set(['06']),
   'fee-nature': new Set(),
   daily: new Set(),
+  'arrears-prepaid': new Set(),
+  assessment: new Set(),
 };
 
 /** P2 报表日期区间必填，默认本月 1 日~今天；P1 报表保留原行为（日期可选）。 */
@@ -75,17 +84,21 @@ function sameNatureSelection(left: string[], right: string[]): boolean {
 /** 筛选草稿的默认值：管理处/收费项目全选；房屋性质按报表类型默认；P2 日期默认本月。 */
 function defaultDraft(options: StatisticsOptions, reportType: StatisticsReportType): FilterDraft {
   const range = defaultDateRange(reportType);
+  const today = dayjs();
   return {
     officeCodes: options.offices.map((office) => office.officeCode),
     feeCodes: options.feeItems.map((fee) => fee.code),
     natures: defaultNatures(options, reportType),
     paidDateFrom: range.from,
-    paidDateTo: range.to,
-    asOfPeriod: `${dayjs().year()}12`,
+    paidDateTo: reportType === 'arrears-prepaid' || reportType === 'assessment' ? today.format('YYYY-MM-DD') : range.to,
+    asOfPeriod: reportType === 'arrears-prepaid'
+      ? `${today.year()}${String(today.month() + 1).padStart(2, '0')}`
+      : `${dayjs().year()}12`,
     paymentMethods: (options.paymentMethods ?? []).map((method) => method.id),
     cashier: '',
     subjectYearFrom: '',
     subjectYearTo: '',
+    assessmentYear: String(today.year()),
   };
 }
 
@@ -120,6 +133,29 @@ function buildQuery(type: StatisticsReportType, draft: FilterDraft, options: Sta
     };
     return query;
   }
+  if (type === 'arrears-prepaid') {
+    const query: ArrearsPrepaidQuery = {
+      type: 'arrears-prepaid',
+      tab: 'arrears',
+      officeCodes: draft.officeCodes,
+      feeCodes: draft.feeCodes,
+      natures: draft.natures,
+      asOfPeriod: draft.asOfPeriod,
+      paidDateTo: draft.paidDateTo,
+    };
+    return query;
+  }
+  if (type === 'assessment') {
+    const query: AssessmentQuery = {
+      type: 'assessment',
+      officeCodes: draft.officeCodes,
+      feeCodes: draft.feeCodes,
+      natures: draft.natures,
+      year: draft.assessmentYear,
+      paidDateTo: draft.paidDateTo,
+    };
+    return query;
+  }
   const query: DailyQuery = {
     type: 'daily',
     officeCodes: draft.officeCodes,
@@ -148,7 +184,7 @@ export default function Statistics() {
   const [optionsRetry, setOptionsRetry] = useState(0);
   const [draft, setDraft] = useState<FilterDraft>({
     officeCodes: [], feeCodes: [], natures: [], paidDateFrom: '', paidDateTo: '', asOfPeriod: '',
-    paymentMethods: [], cashier: '', subjectYearFrom: '', subjectYearTo: '',
+    paymentMethods: [], cashier: '', subjectYearFrom: '', subjectYearTo: '', assessmentYear: String(dayjs().year()),
   });
   const [reportType, setReportType] = useState<StatisticsReportType>('received');
   const reportTypeRef = useRef<StatisticsReportType>('received');
@@ -162,6 +198,15 @@ export default function Statistics() {
   const [daily, setDaily] = useState<DailyResponse | null>(null);
   const [dailyLoading, setDailyLoading] = useState(false);
   const [dailyError, setDailyError] = useState('');
+  const [arrearsSummary, setArrearsSummary] = useState<ArrearsPrepaidSummaryResponse | null>(null);
+  const [arrearsDetail, setArrearsDetail] = useState<ArrearsPrepaidDetailResponse | null>(null);
+  const [arrearsLoading, setArrearsLoading] = useState(false);
+  const [arrearsError, setArrearsError] = useState('');
+  const [arrearsBillsTarget, setArrearsBillsTarget] = useState<ArrearsBillsTarget | null>(null);
+  const [arrearsBillsOpen, setArrearsBillsOpen] = useState(false);
+  const [assessment, setAssessment] = useState<AssessmentResponse | null>(null);
+  const [assessmentLoading, setAssessmentLoading] = useState(false);
+  const [assessmentError, setAssessmentError] = useState('');
   const [reportRetry, setReportRetry] = useState(0);
   const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -215,12 +260,31 @@ export default function Statistics() {
         .then((response) => { if (!cancelled) setCollection(response); })
         .catch((error) => { if (!cancelled) setCollectionError(error instanceof Error && error.message ? error.message : '收费汇总读取失败'); })
         .finally(() => { if (!cancelled) setCollectionLoading(false); });
-    } else {
+    } else if (applied.type === 'daily') {
       setDailyLoading(true); setDailyError('');
       request<DailyResponse>({ url: '/statistics/daily', query: dailyQueryParams(applied as DailyQuery) })
         .then((response) => { if (!cancelled) setDaily(response); })
         .catch((error) => { if (!cancelled) setDailyError(error instanceof Error && error.message ? error.message : '收款日报表读取失败'); })
         .finally(() => { if (!cancelled) setDailyLoading(false); });
+    } else if (applied.type === 'arrears-prepaid') {
+      setArrearsLoading(true); setArrearsError('');
+      Promise.all([
+        request<ArrearsPrepaidSummaryResponse>({ url: '/statistics/arrears-prepaid/summary', query: arrearsPrepaidSummaryParams(applied) }),
+        request<ArrearsPrepaidDetailResponse>({ url: '/statistics/arrears-prepaid/detail', query: arrearsPrepaidDetailParams(applied) }),
+      ])
+        .then(([summary, detail]) => {
+          if (cancelled) return;
+          setArrearsSummary(summary);
+          setArrearsDetail(detail);
+        })
+        .catch((error) => { if (!cancelled) setArrearsError(error instanceof Error && error.message ? error.message : '欠收与溢收读取失败'); })
+        .finally(() => { if (!cancelled) setArrearsLoading(false); });
+    } else {
+      setAssessmentLoading(true); setAssessmentError('');
+      request<AssessmentResponse>({ url: '/statistics/collection-assessment', query: assessmentQueryParams(applied as AssessmentQuery) })
+        .then((response) => { if (!cancelled) setAssessment(response); })
+        .catch((error) => { if (!cancelled) setAssessmentError(error instanceof Error && error.message ? error.message : '收缴考核读取失败'); })
+        .finally(() => { if (!cancelled) setAssessmentLoading(false); });
     }
     return () => { cancelled = true; };
   }, [applied, reportRetry]);
@@ -228,7 +292,9 @@ export default function Statistics() {
   const datesFilled = !!draft.paidDateFrom && !!draft.paidDateTo;
   const canSubmit = !!options
     && draft.officeCodes.length > 0 && draft.feeCodes.length > 0 && draft.natures.length > 0
-    && (!isDateRequired(reportType) || datesFilled)
+    && (reportType !== 'fee-nature' && reportType !== 'daily' || datesFilled)
+    && (reportType !== 'arrears-prepaid' || (!!draft.asOfPeriod && !!draft.paidDateTo))
+    && (reportType !== 'assessment' || !!draft.assessmentYear)
     && (reportType !== 'fee-nature' || draft.paymentMethods.length > 0);
 
   const resetDraft = () => {
@@ -239,7 +305,10 @@ export default function Statistics() {
   const submit = () => {
     if (!options || !canSubmit) return;
     if (isDateRequired(reportType) && !datesFilled) { toast('请填写收款日期范围'); return; }
-    if (draft.paidDateFrom && draft.paidDateTo && draft.paidDateFrom > draft.paidDateTo) {
+    if (reportType === 'arrears-prepaid' && (!draft.asOfPeriod || !draft.paidDateTo)) { toast('请填写统计年月和收款截止日期'); return; }
+    if (reportType === 'assessment' && !draft.assessmentYear) { toast('请选择统计年份'); return; }
+    if (draft.paidDateFrom && draft.paidDateTo && draft.paidDateFrom > draft.paidDateTo
+      && (reportType === 'received' || reportType === 'arrears' || isDateRequired(reportType))) {
       toast('收款日期起不能晚于收款日期至');
       return;
     }
@@ -276,6 +345,18 @@ export default function Statistics() {
     if (type === 'fee-nature' && !nextDraft.paymentMethods.length) {
       nextDraft.paymentMethods = (options.paymentMethods ?? []).map((method) => method.id);
     }
+    if (type === 'arrears-prepaid') {
+      const today = dayjs();
+      const previousDefaultPeriod = defaultDraft(options, reportType).asOfPeriod;
+      if (!nextDraft.asOfPeriod || nextDraft.asOfPeriod === previousDefaultPeriod) {
+        nextDraft.asOfPeriod = `${today.year()}${String(today.month() + 1).padStart(2, '0')}`;
+      }
+      if (!nextDraft.paidDateTo) nextDraft.paidDateTo = today.format('YYYY-MM-DD');
+    }
+    if (type === 'assessment') {
+      if (!nextDraft.assessmentYear) nextDraft.assessmentYear = String(dayjs().year());
+      if (!nextDraft.paidDateTo) nextDraft.paidDateTo = dayjs().format('YYYY-MM-DD');
+    }
     setReportType(type);
     setDraft(nextDraft);
     setApplied(buildQuery(type, nextDraft, options));
@@ -309,6 +390,50 @@ export default function Statistics() {
     setCollectionDetailOpen(true);
   };
 
+  const switchArrearsTab = (tab: ArrearsPrepaidQuery['tab']) => {
+    if (!applied || applied.type !== 'arrears-prepaid' || applied.tab === tab) return;
+    setArrearsDetail(null);
+    setArrearsBillsOpen(false);
+    setApplied({ ...applied, tab });
+  };
+
+  const openArrearsBills = (row: ArrearsPrepaidDetailRow) => {
+    setArrearsBillsTarget({
+      sId: row.sId, feeCode: row.feeCode, feeName: row.feeName, address: row.address, amountCents: row.amountCents,
+    });
+    setArrearsBillsOpen(true);
+  };
+
+  const loadMoreArrears = async () => {
+    if (!applied || applied.type !== 'arrears-prepaid' || !arrearsDetail) return;
+    try {
+      const response = await request<ArrearsPrepaidDetailResponse>({
+        url: '/statistics/arrears-prepaid/detail',
+        query: arrearsPrepaidDetailParams(applied, arrearsDetail.rows.length),
+      });
+      setArrearsDetail((previous) => (previous
+        ? { ...previous, rows: [...previous.rows, ...(response.rows ?? [])], totals: response.totals ?? previous.totals, count: response.count ?? previous.count }
+        : response));
+    } catch (e) {
+      toast(e instanceof Error && e.message ? e.message : '加载更多失败');
+    }
+  };
+
+  const loadMoreAssessment = async () => {
+    if (!applied || applied.type !== 'assessment' || !assessment) return;
+    try {
+      const response = await request<AssessmentResponse>({
+        url: '/statistics/collection-assessment',
+        query: assessmentQueryParams(applied, assessment.rows.length),
+      });
+      setAssessment((previous) => (previous
+        ? { ...previous, rows: [...previous.rows, ...(response.rows ?? [])], count: response.count ?? previous.count }
+        : response));
+    } catch (e) {
+      toast(e instanceof Error && e.message ? e.message : '加载更多失败');
+    }
+  };
+
   const exportCurrent = () => {
     if (!applied) return;
     const stamp = dayjs().format('YYYYMMDD');
@@ -333,36 +458,82 @@ export default function Statistics() {
       else toast('导出失败，请重试');
       return;
     }
-    if (!daily) return;
-    const name = `统计汇总-收款日报表-${stamp}.csv`;
-    if (downloadCsv(name, dailyCsv(daily, applied as DailyQuery, options?.feeItems))) toast('已导出收款日报表 CSV');
+    if (applied.type === 'daily') {
+      if (!daily) return;
+      const name = `统计汇总-收款日报表-${stamp}.csv`;
+      if (downloadCsv(name, dailyCsv(daily, applied as DailyQuery, options?.feeItems))) toast('已导出收款日报表 CSV');
+      else toast('导出失败，请重试');
+      return;
+    }
+    if (applied.type === 'arrears-prepaid') {
+      if (!arrearsDetail) return;
+      const name = `统计汇总-欠收与溢收汇总-${applied.tab === 'arrears' ? '欠收' : '溢收'}-${stamp}.csv`;
+      if (downloadCsv(name, arrearsPrepaidCsv(arrearsDetail, applied))) toast('已导出欠收与溢收汇总 CSV');
+      else toast('导出失败，请重试');
+      return;
+    }
+    if (!assessment) return;
+    const name = `统计汇总-收缴考核-${stamp}.csv`;
+    if (downloadCsv(name, assessmentCsv(assessment, applied as AssessmentQuery))) toast('已导出收缴考核 CSV');
     else toast('导出失败，请重试');
   };
 
   const activeLabel = reportName(applied?.type ?? reportType);
-  const isLoading = applied?.type === 'fee-nature' ? collectionLoading : applied?.type === 'daily' ? dailyLoading : annualLoading;
-  const activeError = applied?.type === 'fee-nature' ? collectionError : applied?.type === 'daily' ? dailyError : annualError;
+  const isLoading = applied?.type === 'fee-nature'
+    ? collectionLoading
+    : applied?.type === 'daily'
+      ? dailyLoading
+      : applied?.type === 'arrears-prepaid'
+        ? arrearsLoading
+        : applied?.type === 'assessment'
+          ? assessmentLoading
+          : annualLoading;
+  const activeError = applied?.type === 'fee-nature'
+    ? collectionError
+    : applied?.type === 'daily'
+      ? dailyError
+      : applied?.type === 'arrears-prepaid'
+        ? arrearsError
+        : applied?.type === 'assessment'
+          ? assessmentError
+          : annualError;
   const activeDataAsOf = applied?.type === 'fee-nature'
     ? collection?.dataAsOf
     : applied?.type === 'daily'
       ? daily?.dataAsOf
-      : annual?.dataAsOf;
+      : applied?.type === 'arrears-prepaid'
+        ? (arrearsSummary?.dataAsOf ?? arrearsDetail?.dataAsOf)
+        : applied?.type === 'assessment'
+          ? assessment?.dataAsOf
+          : annual?.dataAsOf;
   const dataAsOf = timeText(activeDataAsOf || options?.dataAsOf);
   const sourceLabel = options?.sourceMode === 'mirror' ? 'MIS 镜像' : (options?.sourceMode || '');
   const activeAvailable = applied?.type === 'fee-nature'
     ? collection?.available
     : applied?.type === 'daily'
       ? daily?.available
-      : annual?.available;
+      : applied?.type === 'arrears-prepaid'
+        ? (arrearsDetail?.available ?? arrearsSummary?.available)
+        : applied?.type === 'assessment'
+          ? assessment?.available
+          : annual?.available;
   const activeMessage = applied?.type === 'fee-nature'
     ? collection?.message
     : applied?.type === 'daily'
       ? daily?.message
-      : annual?.message;
+      : applied?.type === 'arrears-prepaid'
+        ? (arrearsDetail?.message ?? arrearsSummary?.message)
+        : applied?.type === 'assessment'
+          ? assessment?.message
+          : annual?.message;
 
   const dateRangeText = applied && 'dateFrom' in applied
     ? [applied.dateFrom, applied.dateTo].filter(Boolean).join(' 至 ')
-    : '';
+    : applied?.type === 'arrears-prepaid'
+      ? `统计年月 ${applied.asOfPeriod} · 收款截止 ${applied.paidDateTo}`
+      : applied?.type === 'assessment'
+        ? `统计年份 ${applied.year}${applied.paidDateTo ? ` · 收款截止 ${applied.paidDateTo}` : ''}`
+        : '';
 
   return (
     <div className="stats">
@@ -459,6 +630,15 @@ export default function Statistics() {
                 {activeAvailable !== false && applied?.type === 'arrears' && annual?.subtotal ? <span className="tag acc">合计 {fmtCents(annual.subtotal.totalCents)}</span> : null}
                 {activeAvailable !== false && applied?.type === 'fee-nature' && collection?.subtotal ? <span className="tag acc">合计 {fmtCents(collection.subtotal.netCents)}</span> : null}
                 {activeAvailable !== false && applied?.type === 'daily' && daily?.subtotal ? <span className="tag acc">合计 {fmtCents(daily.subtotal.totalCents)}</span> : null}
+                {activeAvailable !== false && applied?.type === 'arrears-prepaid' && arrearsSummary?.total ? (
+                  <span className="tag acc">欠收 {fmtCents(arrearsSummary.total.arrearsCents)}</span>
+                ) : null}
+                {activeAvailable !== false && applied?.type === 'arrears-prepaid' && arrearsSummary?.total ? (
+                  <span className="tag warn">溢收 {fmtCents(arrearsSummary.total.prepaidCents)}</span>
+                ) : null}
+                {activeAvailable !== false && applied?.type === 'assessment' && assessment?.summary ? (
+                  <span className="tag acc">收缴率 {Number(assessment.summary.ratePct || 0).toFixed(2)}%</span>
+                ) : null}
                 {applied?.type === 'received' || applied?.type === 'arrears' ? (
                   annual?.columns?.length ? <span className="muted stats-range">{annual.columns[0]}–{annual.columns[annual.columns.length - 1]} 年度</span> : null
                 ) : dateRangeText ? <span className="muted stats-range">{dateRangeText}</span> : null}
@@ -501,6 +681,81 @@ export default function Statistics() {
                   ) : daily.rows.length ? (
                     <DailyTable report={daily} onCellClick={openDailyCell} />
                   ) : <div className="empty">{daily.message || '当前筛选没有可汇总的数据'}</div>
+                ) : null
+              ) : applied?.type === 'arrears-prepaid' ? (
+                arrearsDetail ? (
+                  arrearsDetail.available === false ? (
+                    <div className="note2" role="status"><Icon name="alert" />{arrearsDetail.message || '欠收与溢收数据尚未就绪；请稍后再试。'}</div>
+                  ) : (
+                    <>
+                      <div className="stats-tabs" role="tablist" aria-label="欠收与溢收">
+                        {(['arrears', 'prepaid'] as const).map((tab) => (
+                          <button
+                            key={tab}
+                            type="button"
+                            role="tab"
+                            data-arrears-tab={tab}
+                            aria-selected={applied.tab === tab}
+                            className={`stats-tab${applied.tab === tab ? ' on' : ''}`}
+                            onClick={() => switchArrearsTab(tab)}
+                          >{tab === 'arrears' ? '欠收统计' : '溢收统计'}</button>
+                        ))}
+                      </div>
+                      {arrearsSummary?.rows?.length ? (
+                        <div className="stats-summary-chips" data-testid="arrears-summary-chips">
+                          {arrearsSummary.rows.map((row) => (
+                            <span key={row.officeCode} className="stats-summary-chip">
+                              <b>{row.officeName || row.officeCode}</b>
+                              <span>欠收 {fmtCents(row.arrearsCents)}</span>
+                              <span>溢收 {fmtCents(row.prepaidCents)}</span>
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                      {arrearsDetail.rows.length ? (
+                        <>
+                          <ArrearsPrepaidTable report={arrearsDetail} tab={applied.tab} onView={openArrearsBills} />
+                          {arrearsDetail.count != null && arrearsDetail.rows.length < arrearsDetail.count ? (
+                            <div className="stats-load-more">
+                              <button type="button" className="btn sm" onClick={() => void loadMoreArrears()}>
+                                加载更多（已显示 {arrearsDetail.rows.length}/{arrearsDetail.count}）
+                              </button>
+                            </div>
+                          ) : null}
+                        </>
+                      ) : <div className="empty">{arrearsDetail.message || (applied.tab === 'arrears' ? '当前筛选没有欠收明细' : '当前筛选没有溢收明细')}</div>}
+                    </>
+                  )
+                ) : null
+              ) : applied?.type === 'assessment' ? (
+                assessment ? (
+                  assessment.available === false ? (
+                    <div className="note2" role="status"><Icon name="alert" />{assessment.message || '收缴考核数据尚未就绪；请稍后再试。'}</div>
+                  ) : (
+                    <>
+                      {assessment.summary ? (
+                        <div className="stats-kpi-cards" data-testid="assessment-cards">
+                          <div className="stats-kpi"><span>应收合计</span><b>{fmtCents(assessment.summary.receivableCents)}</b></div>
+                          <div className="stats-kpi"><span>已收合计</span><b>{fmtCents(assessment.summary.receivedCents)}</b></div>
+                          <div className="stats-kpi"><span>金额收缴率</span><b>{Number(assessment.summary.ratePct || 0).toFixed(2)}%</b></div>
+                          <div className="stats-kpi"><span>应缴 / 已缴户数</span><b>{assessment.summary.payableHouseholds} / {assessment.summary.paidHouseholds}</b></div>
+                          <div className="stats-kpi"><span>按户数收缴率</span><b>{Number(assessment.summary.householdRatePct || 0).toFixed(2)}%</b></div>
+                        </div>
+                      ) : null}
+                      {assessment.rows.length ? (
+                        <>
+                          <AssessmentTable report={assessment} />
+                          {assessment.count != null && assessment.rows.length < assessment.count ? (
+                            <div className="stats-load-more">
+                              <button type="button" className="btn sm" onClick={() => void loadMoreAssessment()}>
+                                加载更多（已显示 {assessment.rows.length}/{assessment.count}）
+                              </button>
+                            </div>
+                          ) : null}
+                        </>
+                      ) : <div className="empty">{assessment.message || '当前筛选没有收缴考核数据'}</div>}
+                    </>
+                  )
                 ) : null
               ) : annual ? (
                 annual.available === false ? (
@@ -546,6 +801,13 @@ export default function Statistics() {
         base={applied}
         target={collectionTarget}
         reportLabel={activeLabel}
+      />
+
+      <ArrearsBillsSheet
+        open={arrearsBillsOpen}
+        onClose={() => setArrearsBillsOpen(false)}
+        base={applied?.type === 'arrears-prepaid' ? applied : null}
+        target={arrearsBillsTarget}
       />
     </div>
   );
