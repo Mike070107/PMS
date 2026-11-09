@@ -6920,3 +6920,10 @@
   - f586bd9c feat(statistics): 收费项目分类（源 SETUPSFXM.收费类别）+ 实收报表收款日期范围
   - 4ce953ba feat(statistics-api): P2-A 收费汇总类只读报表接口（收费汇总/实收明细/日常日报表/月报表）
 
+## 2026-11-09 23:51 · web · e68d274f
+
+- 包：`pms-web-20261109-235031.tar.gz`
+- 提交：e68d274f deploy: api → d90dc314
+- 自上次（4ce953ba）以来上线的相关提交：
+  - d90dc314 feat(statistics-ui): 收费项目分类树筛选 + 收款日期范围 + 导出 Excel 文案
+
