@@ -6962,3 +6962,17 @@
 - 自上次（2345364c）以来上线的相关提交：
   - f1675aea feat(access-ui): 门禁发卡改版——设备管理独立页、最近30笔默认展示+分页、历史分页全量序号、添加到二期门禁系统、授权楼栋收敛
 
+## 2026-11-10 01:04 · assistant · cf44af3f
+
+- 提交：cf44af3f deploy: web → 76a54e2a
+- 自上次（348b24fd）以来上线的相关提交：
+  - 3b42edb3 feat(assistant): v2 2.5.52——发卡历史/最近30笔上报人事资料添加时间+最后刷卡时间+出入口；修复 v2 编入 IcCardNumber
+  - 2ff2a5d6 chore(assistant): v2 版本 2.5.50 → 2.5.51（含 accessCardQuery 能力）
+  - b6e1cb0c test(assistant): SelfTest 覆盖 .88 五项查询与 accessCardQuery 独立性
+  - 38ae5918 feat(assistant): access_gateway 心跳新增 accessCardQuery（写/控制器能力保持 2.5.50 语义）
+  - 34ea9bbb feat(assistant): v2 编入 .88 Access 只读查询能力并上报 accessCardQuery
+  - 06bec68b feat(access-card): 门禁查询/生命周期占位与能力探测（.88 Access 读、.80 只读探测）
+  - 936ec843 feat(parking): 一个入口综合查询——纯数字 4~11 位同时匹配车牌列与电话列(新 PlatePhone),房号6/502或228/6/502、姓名、完整车牌、4位以上尾号/电话都能查;现场助手 2.5.50;自检按新分类更新,清理临时目录失败不再判自检失败
+  - 7ce66f6d feat: 全站地址搜索统一(账单/车辆/工单走 common/address-lookup，现场停车库查询先落到唯一一户)；工单用料仓库按数据授权范围；亲情车从旧停车库拉取(助手 2.5.49 新增只读 identity_list，导入带旧库实际车库与有效期、过期记已过期)
+  - 3c064af7 docs(access-cards): record production release and field verification gaps
+
