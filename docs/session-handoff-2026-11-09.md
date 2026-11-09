@@ -32,17 +32,18 @@ ALTER TABLE mis_sync_state ADD COLUMN IF NOT EXISTS consecutive_failures int NOT
 ALTER TABLE mis_sync_state ADD COLUMN IF NOT EXISTS last_failure_at timestamptz;
 ```
 
-## 二、线上版本（2026-11-09 23:36）
+## 二、线上版本（2026-11-09 23:50）
 
 ```
-Web = 2.0.20261109-2335
-API = api-05aebea（db up，含 P1.1；P2-A 后端代码已入库但未发布）
+Web = 2.0.20261109-2350
+API = api-d90dc31（db up，含 P1.2；P2-A 接口也已随包上线但页面未接入，口径待确认）
 ```
 
 > 22:11 上线：P0-4 最近30笔不再 pending、P0-5 门禁页助手状态按真实网关+能力分项显示（详见「待办」P0 4/5）。
 > 22:50 上线：统计汇总 P1（`/statistics`：项目实收/欠费年度汇总 + 三级下钻 + 勾选筛选 + CSV），口径见 `docs/statistics-reports-spec.md`。
 > 23:05 上线 P1.1：`mis_mirror_bill.nature_code` 行级房屋性质 + 镜像回填；统计按「收费时点性质」过滤，前端默认排除 06 空房。生产实测 01 管理处 ¥662,269.00、02 管理处 ¥745,182.10，与旧系统截图逐格一致（spec §8）。
 > 23:36 上线统计汇总 UI 改版（web）：左侧菜单「分析」+「统计」合并为「统计分析」；统计汇总筛选改悬浮可收纳（localStorage、窄屏抽屉、收起后表格占满）；管理处编号独立列、表头/数值统一对齐、加表格线、年度列压缩减少横向滚动。截图见 `D:\pms-statistics-evidence\`。
+> 23:50 上线 P1.2：`mis_mirror_fee_item.category`（源 `SETUPSFXM.收费类别`，镜像已回填：代收费/其它/日常收费/停车收费）；筛选面板收费项目改为**分类树**（组级全选/半选、搜索），房屋性质 13 项按 code 排序，收款日期改为**范围（从/至，仅实收）**；生产实测选项 16 项分类顺序正确、实收 2026-01-01~03-31 小计与独立 SQL 一致（¥340,723.80）、明细=单元格、欠费仍 ¥662,269.00。
 
 ## 三、已完成并上线（不要重复做）
 
