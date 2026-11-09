@@ -6955,3 +6955,10 @@
 - 自上次（556ecdc7）以来上线的相关提交：
   - 182b7504 feat(access): recent/history 行带 accessSystem+homeBuildingNo；apply-mdb 默认本楼栋系统；新增 grant-options
 
+## 2026-11-10 01:03 · web · 76a54e2a
+
+- 包：`pms-web-20261110-010242.tar.gz`
+- 提交：76a54e2a fix(deploy): web 构建输出不回流到 Make-WebPackage 返回值（避免上传包名被构建日志污染导致 scp ambiguous target）
+- 自上次（2345364c）以来上线的相关提交：
+  - f1675aea feat(access-ui): 门禁发卡改版——设备管理独立页、最近30笔默认展示+分页、历史分页全量序号、添加到二期门禁系统、授权楼栋收敛
+
