@@ -1604,3 +1604,33 @@ sudo docker exec -i pms-postgres psql -U pms -d pms_repair -X -P pager=off
 - 生产 `DB_SYNCHRONIZE` 不处理 `mis_mirror_*`：上线时要手工执行同一段 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...`，并跑一次手工重灌（或等增量覆盖）后新列才有历史值；未回填前报表应按「字段可空」处理，不能把空值当成 0 或忽略过滤。**本轮未连接生产、未执行迁移或重灌。**
 - 本轮只补数据底座，未新增报表入口；月报表 28 列、综合月报表B 33 列仍缺列头/公式截图，线上收费查询仍缺权限与口径定义，不能据此声称这些菜单已完成。
 - 提交 `11fa324a` 已推 `main`；随后在干净 detached worktree 中重建 API 与 Web，退出码均 0，证据见 `.tmp/legacy-statistics-round18-annual-id/build-evidence-11fa324a/verification.json`。仍未部署、未连生产。
+
+## 附录 Q：MIS 只读同步方向与「报表一致」验收方法（Round23）
+
+### Q.1 同步方向：只从 MIS 读，绝不写 MIS
+
+- MIS 是唯一原始数据源，PMS 只做**单向只读镜像**：[镜像同步](<apps/api/src/modules/fees/mis-mirror.service.ts>)对 WYZJ/楼表/室表/业主表等只发 `SELECT`，账号为只读用途（连接串 `appName: PMS-MIS-ReadOnly`）；不存在 UPDATE/INSERT/DELETE 到 MIS 的代码路径，也没有向 MIS 回填“房号”的做法。所谓“房号同步”指的是把 MIS 的楼/室/业主/账单**读进 PMS 自己的 `mis_mirror_*` 表**，供统计查询使用。
+- 周期由[定时任务](<apps/api/src/modules/tasks/tasks.service.ts>)负责：**每 5 分钟**增量同步（`ZJ_ID` keyset + 15 分钟 `updatedate` 补漏），**每天 03:00** 做一次镜像与 MIS 的总量对账并把差异写 `system_logs`；全量重灌必须管理员手工触发（不会自动清空账单）。连续 3 次同步失败才升级微信告警。
+- 历史账单改过源字段后，只有等增量按 `updatedate` 扫到或手工重灌才会回填；新加列（如本轮 5 列）也必须重灌后才补齐历史值。
+
+### Q.2 房号/地址字段的生成方式与只读自查
+
+- 镜像账单的 `room_no` 取 `室表.室`，`address` 取 `楼表.地址1+字1+…+地址4+字4 + 室 + 字`（[源 SQL](<apps/api/src/modules/fees/mis-mirror.service.ts>)），与旧 MIS 明细里“永德路187号187室”的拼装方式一致；不是靠 PMS 自己补房号。
+- 如果页面出现房号/地址空白，先在生产 PMS 执行下面三条**只读** SQL 定位，而不是去动 MIS：
+  ```sql
+  -- 1) 账单镜像里地址/房号为空的规模
+  SELECT COUNT(*) FILTER (WHERE address IS NULL OR address='') AS empty_address,
+         COUNT(*) FILTER (WHERE room_no IS NULL OR room_no='') AS empty_room_no,
+         COUNT(*) AS total FROM mis_mirror_bill;
+  -- 2) 楼表地址分段是否为空的楼（镜像表）
+  SELECT COUNT(*) FILTER (WHERE COALESCE(building_no,'')='') FROM mis_mirror_building;
+  -- 3) 最近一次成功同步水位，判断是不是“镜像过期”
+  SELECT source_table,last_success_at,synced_rows,last_error FROM mis_sync_state;
+  ```
+  若 1) 为空但页面空白，说明是页面取值/权限问题；若 3) 水位很久没更新，则先查同步告警再重灌，仍不需要碰 MIS。
+
+### Q.3 「PMS 报表 = MIS 报表」作为验收标准
+
+- 已用 2026-11-06 全库快照离线复核：项目欠费年度汇总（02 管理处管理费 2011/2012/2014/2025 与历史验收逐分一致）、项目实收年度汇总（01×2004=882.40）、收费汇总（02 管理处 2026-10 四个块 15,374,220/15,000/-60,000/15,314,220 全部一致），见附录 N/O；脚本在 `tools/statistics-parity-audit/`。
+- 新快照到手后重跑同一组脚本即可判断“是否一致”；不一致时按脚本列出的明细行定位是镜像缺失、筛选口径还是数据时效（如 2026 当年数字会随收款变化）。
+- 说明：一致性的最终确认仍需要生产上跑一次真实报表对照（需授权）；离线快照只能证明口径与代码正确，不能证明生产镜像已更新到同一时点。
