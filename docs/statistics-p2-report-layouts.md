@@ -846,7 +846,7 @@ GROUP BY b.paid_date ORDER BY b.paid_date;
 3. 退款是否单列；负调整是否直接抵扣。
 4. 管理费是否按「日常收费」类别过滤。
 
-**本轮验证**：P2 后端 19/19，全统计后端 P1–P8 88/88（108042ms）；前后端 typecheck 通过；完整统计浏览器 18/18（160537ms）。新增合成日报覆盖完整月份/仅退款与负调整日期、八类金额及合计下钻、已应用快照、CSV、1440/390/320、等待/失败/未同步/重试。后端逐日三块与逐费项收款合计对照真实 service 明细返回 `totals`，前端夹具同步该契约。截图见[桌面金额区](<D:/pms-statistics-evidence/statistics-daily-fees-amounts-1440.png>)、[320 窄屏](<D:/pms-statistics-evidence/statistics-daily-fees-320.png>)、[负调整逐笔](<D:/pms-statistics-evidence/statistics-daily-adjust-detail-1440.png>)。本轮为隔离数据库与合成浏览器夹具，不证明生产正式入口或旧模板完全一致。
+**本轮验证**：P2 后端 19/19，全统计后端 P1–P8 88/88（108042ms）；前后端 typecheck 通过；完整统计浏览器 18/18（160537ms）。新增合成日报覆盖完整月份/仅退款与负调整日期、八类金额及合计下钻、已应用快照、CSV、1440/390/320、等待/失败/未同步/重试。后端逐日三块与逐费项收款合计对照真实 service 明细返回 `totals`，前端夹具同步该契约。截图见[桌面金额区](<D:/pms-statistics-evidence/statistics-daily-fees-amounts-1440.png>)、[320 窄屏](<D:/pms-statistics-evidence/statistics-daily-fees-320.png>)、[负调整逐笔](<D:/pms-statistics-evidence/statistics-daily-adjust-detail-1440.png>)。本轮为隔离数据库与合成浏览器夹具，不证明生产正式入口或旧模板完全一致。实现 `f68669af` 合入并推送 main 后，前端正式构建 `tsc --noEmit && vite build` 通过（20.07s，>500KB 分块提示保留）；构建时前端无未提交修改，其他任务 API/文档 WIP 未纳入提交，未上传产物。
 
 ---
 

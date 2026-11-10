@@ -66,7 +66,7 @@ API = api-475b21f（db up）
 - 修复共享逐笔抽屉的真实契约：后端返回 `totals`，不是顶层 `totalCents`；按明细类型读取分类总额，退款正数、调整带符号，未知/未就绪显示“—”而非假 0。切换目标重置类型与过期摘要。
 - 后端 P2 定向 19/19，统计 P1–P8 全部 88/88 通过（108042ms，隔离 PGlite，镜像超时警告为预期失败场景）。本轮未连接/发布生产，未改门禁或其他任务 telemetry/网关 WIP。
 - 前后端 typecheck 通过；最终完整统计浏览器 **18/18** 通过（160537ms）。真实 Chromium + 生产组件 + 合成 API，仅证明 UI/契约，不代表生产业务验收。覆盖完整月份、退款/负调整独立业务日、八类金额/合计下钻、草稿与已应用快照、CSV 负数/公式防护、1440/390/320、等待/错误/未同步/重试。首轮 16/18 的两处旧断言（CSV 表头和待接入菜单数量）已更新并全量重跑。
-- 已查看[桌面金额区](<D:/pms-statistics-evidence/statistics-daily-fees-amounts-1440.png>)、[320 窄屏](<D:/pms-statistics-evidence/statistics-daily-fees-320.png>)和[负调整逐笔](<D:/pms-statistics-evidence/statistics-daily-adjust-detail-1440.png>)截图。合入推送后的构建待记录；未上传产物。
+- 已查看[桌面金额区](<D:/pms-statistics-evidence/statistics-daily-fees-amounts-1440.png>)、[320 窄屏](<D:/pms-statistics-evidence/statistics-daily-fees-320.png>)和[负调整逐笔](<D:/pms-statistics-evidence/statistics-daily-adjust-detail-1440.png>)截图。实现提交 `f68669af` 已合入并推送 main，随后以已推送且前端无未提交修改的源码运行 `tsc --noEmit && vite build`，20.07s 通过（仍有 >500KB 分块提示）。临时目录使用 `.tmp/build-temp`，未上传产物；未对含其他任务 telemetry WIP 的 API 工作区生成交付构建。线上 Web/API/助手版本均未变。
 
 ## 三、已完成并上线（不要重复做）
 
