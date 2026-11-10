@@ -285,16 +285,16 @@ test('最近 30 笔：进页即显示、10 条/页、添加到二期门禁系统
     await js("(() => { const buttons = [...document.querySelectorAll('[data-testid=recent-pager] button')]; buttons.find((b) => b.textContent.trim() === '1').click(); })()");
     await waitFor("document.querySelector('[data-testid=recent-block] tbody tr[data-card-id] td')?.textContent.trim() === '1'", '回到最近记录第 1 页');
 
-    // 添加到二期门禁系统：无二次确认、直接 POST 正确 URL、成功行内绿色状态。
+    // 添加到二期门禁系统：无二次确认、直接 POST 正确 URL、成功按钮变绿不可点。
     const beforeApply = (await js('window.__calls')).filter((item) => item.method === 'POST').length;
-    await js("document.querySelector('[data-card-id=\"1\"] .ac-apply-btn').click()");
-    await waitFor("window.__calls.some((item) => item.method === 'POST' && item.url === '/access-card-issuance/cards/1/apply-mdb')", 'apply-mdb 请求');
-    await waitFor("document.querySelector('[data-card-id=\"1\"]')?.textContent.includes('已添加二期门禁系统')", '成功行内绿色状态');
+    await js("document.querySelector('[data-card-id=\"2\"] .ac-apply-btn').click()");
+    await waitFor("window.__calls.some((item) => item.method === 'POST' && item.url === '/access-card-issuance/cards/2/apply-mdb')", 'apply-mdb 请求');
+    await waitFor("document.querySelector('[data-card-id=\"2\"]')?.textContent.includes('已添加二期门禁系统')", '成功行内绿色状态');
     assert.equal(await js("!!document.querySelector('.sheet')"), false, '添加到二期门禁系统不应弹二次确认');
     assert.equal((await js('window.__calls')).filter((item) => item.method === 'POST').length, beforeApply + 1);
-    const applyCall = (await js('window.__calls')).find((item) => item.url === '/access-card-issuance/cards/1/apply-mdb');
+    const applyCall = (await js('window.__calls')).find((item) => item.url === '/access-card-issuance/cards/2/apply-mdb');
     assert.deepEqual(applyCall.data.systems, ['iccard']);
-    assert.ok((await js("document.querySelector('[data-card-id=\"1\"]').textContent")).includes('已添加二期门禁系统'));
+    assert.equal(await js("document.querySelector('[data-card-id=\"2\"] [data-testid=apply-btn]').disabled"), true);
     await screenshot('access-recent-applied.png');
 
     // 授权楼栋：来自 grant-options，默认勾选本房楼栋 6。
@@ -363,6 +363,78 @@ test('最近 30 笔一直 pending：自动重试 5 次后出现可点的重试�
     );
     await waitFor("!document.querySelector('.ac-recent-retry')", '重试后重试入口复位', 4000);
   }, '?recent-stall');
+});
+
+test('门禁操作区：已添加变绿、授权轮询完成自动关弹窗、最新任务中文+权限核验、失败保持', { timeout: 180000 }, async () => {
+  const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  await withPage(async ({ js, call, waitFor, screenshot }) => {
+    await waitFor("document.querySelectorAll('[data-testid=recent-block] tbody tr[data-card-id]').length === 10", '最近记录 ready', 15000);
+    // 已添加：绿色实心按钮、disabled、状态列不再挂重复 tag。
+    const appliedBtn = await js("document.querySelector('[data-card-id=\"1\"] [data-testid=apply-btn]')?.outerHTML");
+    assert.ok(appliedBtn.includes('已添加二期门禁系统'), '已添加按钮文案');
+    assert.ok(appliedBtn.includes('data-applied=\"true\"'), '已添加按钮标记');
+    assert.match(appliedBtn, /ac-applied-btn/);
+    assert.match(appliedBtn, /disabled/);
+    const statusCell = await js("document.querySelector('[data-card-id=\"1\"]').children[9].textContent");
+    assert.equal(statusCell.includes('已添加二期门禁系统'), false, '状态列不再重复已添加 tag');
+    // 未添加：可点，成功后立即变绿 disabled。
+    assert.equal(await js("document.querySelector('[data-card-id=\"2\"] [data-testid=apply-btn]').disabled"), false);
+    await js("document.querySelector('[data-card-id=\"2\"] [data-testid=apply-btn]').click()");
+    await waitFor("window.__calls.some((item) => item.method === 'POST' && item.url === '/access-card-issuance/cards/2/apply-mdb')", 'apply-mdb 请求');
+    await waitFor("document.querySelector('[data-card-id=\"2\"] [data-testid=apply-btn]')?.getAttribute('data-applied') === 'true'", '添加成功后按钮变绿');
+    assert.equal(await js("document.querySelector('[data-card-id=\"2\"] [data-testid=apply-btn]').disabled"), true);
+    await screenshot('access-applied-buttons.png');
+
+    // 授权成功：轮询 history-authorizations 到 completed，读回权限后自动关弹窗。
+    await js("document.querySelector('[data-card-id=\"2\"] .ac-grant-btn').click()");
+    await waitFor("!!document.querySelector('.sheet')", '授权弹窗');
+    await waitFor("document.querySelectorAll('[data-grant-building]').length === 3", '授权门栋选项');
+    await js("document.querySelector('[data-grant-building=\"7\"]').click()");
+    await js("document.querySelector('.ac-dialog-foot .btn.p').click()");
+    await waitFor("!!document.querySelector('[data-testid=grant-polling]')", '开始轮询控制器回执', 5000);
+    await waitFor("window.__calls.filter((item) => item.url.startsWith('/access-card-issuance/history-authorizations/')).length >= 2", '轮询任务');
+    await waitFor("!document.querySelector('.sheet')", '全部完成后自动关闭弹窗', 15000);
+    assert.equal(await js("!!document.querySelector('[data-testid=grant-error]')"), false);
+
+    // 最新任务：中文操作/状态/时间/逐栋回执，不能出现英文状态。
+    await waitFor("!!document.querySelector('[data-testid=latest-tasks]')", '最新任务中文列表');
+    const taskText = await js("document.querySelector('[data-testid=latest-tasks]').textContent");
+    assert.ok(taskText.includes('授权楼栋') && taskText.includes('写入 Access 库') && taskText.includes('控制器检测'), '操作中文');
+    assert.ok(taskText.includes('已完成') && taskText.includes('失败'), '状态中文');
+    assert.ok(taskText.includes('请求：') && taskText.includes('完成：'), '请求/完成时间');
+    assert.ok(taskText.includes('主板回执 OK') && taskText.includes('控制器离线'), '逐栋回执');
+    assert.equal(/controller_upload|access_database_only|controller_detect|completed|failed/.test(taskText), false, '任务中不能出现英文状态/操作');
+    // 权限读回：显示核验时间/来源/逐栋，重新核验按钮 POST 并展示结果。
+    const permissionText = await js("document.querySelector('[data-testid=permission-block]').textContent");
+    assert.ok(permissionText.includes('权限读回') && permissionText.includes('核验时间') && permissionText.includes('来源'));
+    assert.ok(permissionText.includes('已授权') && permissionText.includes('未授权'), '逐栋权限读回');
+    await js("document.querySelector('.ac-detail-row [data-testid=verify-grant-btn]').click()");
+    await waitFor("window.__calls.some((item) => item.method === 'POST' && item.url === '/access-card-issuance/cards/2/verify-grant')", 'verify-grant 请求');
+    await waitFor("(document.querySelector('[data-testid=permission-block]')?.textContent || '').includes('已读回 .88 门禁权限表')", '核验结果');
+    await screenshot('access-grant-permission-1440.png');
+
+    // 授权失败：保持弹窗，显示中文逐栋失败与「重新提交」。
+    await js("window.__grantMode = 'fail'");
+    await js("document.querySelector('[data-card-id=\"3\"] .ac-grant-btn').click()");
+    await waitFor("!!document.querySelector('.sheet')", '失败场景授权弹窗');
+    await waitFor("document.querySelectorAll('[data-grant-building]').length === 3", '失败场景门栋选项');
+    await js("document.querySelector('.ac-dialog-foot .btn.p').click()");
+    await waitFor("!!document.querySelector('[data-testid=grant-error]')", '授权失败错误提示', 10000);
+    assert.ok(await js("!!document.querySelector('.sheet')"), '有失败/离线时不自动关闭');
+    const failText = await js("document.querySelector('.sheet').textContent");
+    assert.ok(failText.includes('失败') && failText.includes('控制器离线'), '逐栋中文失败结果');
+    assert.equal(failText.includes('controller_failed'), false, '结果中不能出现英文状态');
+    assert.ok((await js("document.querySelector('.ac-dialog-foot .btn.p').textContent")).includes('重新提交'));
+    await screenshot('access-grant-failed.png');
+    await js("document.querySelector('.sheet .x').click()");
+    await waitFor("!document.querySelector('.sheet')", '关闭失败弹窗');
+
+    // 390 无横向溢出。
+    await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
+    await pause(400);
+    assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '390 出现横向溢出');
+    await screenshot('access-applied-390.png');
+  });
 });
 
 test('发卡历史：personCreatedAt 倒序、全量倒序序号 30..21/20..11、字段升级提示与列头 title', { timeout: 120000 }, async () => {

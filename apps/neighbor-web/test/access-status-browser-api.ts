@@ -5,6 +5,12 @@ w.__calls = [];
 w.__scenario = 'normal';
 w.__recentMode = 'ready';
 w.__recentCalls = 0;
+w.__grantMode = 'success';
+w.__appliedIds = new Set<number>();
+w.__grantDone = false;
+w.__lastGrantBuildings = [];
+w.__grantPolls = {};
+w.__verifyCalls = 0;
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -86,6 +92,7 @@ const RECENT_READY_ROWS = Array.from({ length: 30 }, (_, index) => {
     lastSwipeAt: hasSwipe ? `2026-11-0${1 + (index % 8)}T09:00:00+08:00` : null,
     lastDevice: hasSwipe ? '228弄3号大门' : null,
     accessSystem: 'iccard', homeBuildingNo: '6',
+    appliedSystems: index === 0 ? ['iccard'] : null,
     ownerName: null, ownerPhone: null, ownerId: null, fieldsIncomplete: incomplete,
   };
 });
@@ -130,14 +137,44 @@ const GRANT_OPTIONS = {
 };
 
 function cardDetail(id: number) {
+  const applied = id === 1 || w.__appliedIds.has(id);
+  const grantedBuildings = w.__grantDone ? w.__lastGrantBuildings : (id === 1 ? ['6'] : []);
   return {
     id,
     communityId: 2,
     homeBuildingNo: '6',
     accessSystem: 'iccard',
-    appliedSystems: [],
-    grantedBuildings: [],
-    latestTasks: [],
+    appliedSystems: applied ? ['iccard'] : [],
+    grantedBuildings,
+    permissionCheckedAt: '2026-11-09T11:00:00+08:00',
+    permissionSource: 'access_permission',
+    grantedBuildingDetails: [
+      { buildingNo: '6', granted: true, source: 't_d_Privilege' },
+      { buildingNo: '7', granted: grantedBuildings.includes('7'), source: 't_d_Privilege' },
+      { buildingNo: '8', granted: false, source: 't_d_Privilege' },
+    ],
+    latestTasks: [
+      {
+        id: 71, operation: 'controller_upload', status: 'completed',
+        requestedAt: '2026-11-09T11:05:00+08:00', completedAt: '2026-11-09T11:05:08+08:00',
+        targetBuildings: [{ buildingNo: '6', accessSystem: 'iccard' }, { buildingNo: '7', accessSystem: 'iccard' }],
+        controllerResults: [
+          { buildingNo: '6', status: 'success', acknowledgement: '主板回执 OK' },
+          { buildingNo: '7', status: 'controller_failed', error: '控制器离线' },
+        ],
+        error: null, acknowledgement: null,
+      },
+      {
+        id: 72, operation: 'access_database_only', status: 'completed',
+        requestedAt: '2026-11-09T11:04:00+08:00', completedAt: '2026-11-09T11:04:02+08:00',
+        targetBuildings: [], controllerResults: [], error: null, acknowledgement: null,
+      },
+      {
+        id: 73, operation: 'controller_detect', status: 'failed',
+        requestedAt: '2026-11-09T11:03:00+08:00', completedAt: '2026-11-09T11:03:20+08:00',
+        targetBuildings: [{ buildingNo: '6' }], controllerResults: [], error: '网关未响应', acknowledgement: null,
+      },
+    ],
     icCardNo: `NEWA${String(id).padStart(4, '0')}`,
     roomLabel: '228/6/502',
   };
@@ -195,10 +232,49 @@ export async function request<T>(options: any): Promise<T> {
     return GRANT_OPTIONS as T;
   }
   if (/^\/access-card-issuance\/cards\/\d+\/apply-mdb$/.test(options.url)) {
+    const id = Number(options.url.split('/')[3]);
+    w.__appliedIds.add(id);
     return { ok: true, systems: ['iccard'] } as T;
   }
   if (/^\/access-card-issuance\/cards\/\d+\/grant-boards$/.test(options.url)) {
-    return { results: [{ buildingNo: '6', status: '成功', ok: true }] } as T;
+    w.__lastGrantBuildings = Array.isArray(options.data?.buildingNos) ? options.data.buildingNos.map(String) : [];
+    w.__grantDone = false;
+    w.__grantPolls = {};
+    return {
+      taskIds: [71, 72],
+      results: w.__lastGrantBuildings.map((buildingNo: string, index: number) => ({ buildingNo, status: 'ok', taskId: 71 + index })),
+    } as T;
+  }
+  if (/^\/access-card-issuance\/cards\/\d+\/verify-grant$/.test(options.url)) {
+    w.__verifyCalls += 1;
+    return {
+      checkedAt: '2026-11-09T12:00:00+08:00',
+      grantedBuildings: ['6', '7'],
+      message: '已读回 .88 门禁权限表：6、7 号楼',
+    } as T;
+  }
+  if (/^\/access-card-issuance\/history-authorizations\/\d+$/.test(options.url)) {
+    const taskId = Number(options.url.split('/').pop());
+    w.__grantPolls[taskId] = (w.__grantPolls[taskId] ?? 0) + 1;
+    const completedIds = [71, 72].filter((id) => (w.__grantPolls[id] ?? 0) >= 2);
+    if (completedIds.length === 2) w.__grantDone = true;
+    const firstPoll = w.__grantPolls[taskId] < 2;
+    if (w.__grantMode === 'fail') {
+      return {
+        id: taskId, operation: 'controller_upload', status: 'failed',
+        requestedAt: '2026-11-09T11:05:00+08:00', completedAt: '2026-11-09T11:05:05+08:00',
+        targetBuildings: w.__lastGrantBuildings.map((buildingNo: string) => ({ buildingNo, accessSystem: 'iccard' })),
+        controllerResults: w.__lastGrantBuildings.map((buildingNo: string) => ({ buildingNo, status: 'controller_failed', error: '控制器离线' })),
+        error: '部分楼栋失败',
+      } as T;
+    }
+    return {
+      id: taskId, operation: 'controller_upload', status: firstPoll ? 'running' : 'completed',
+      requestedAt: '2026-11-09T11:05:00+08:00', completedAt: firstPoll ? null : '2026-11-09T11:05:08+08:00',
+      targetBuildings: w.__lastGrantBuildings.map((buildingNo: string) => ({ buildingNo, accessSystem: 'iccard' })),
+      controllerResults: firstPoll ? [] : w.__lastGrantBuildings.map((buildingNo: string) => ({ buildingNo, status: 'success', acknowledgement: '主板回执 OK' })),
+      error: null,
+    } as T;
   }
   if (options.url === '/business/search') return { accessCards: [] } as T;
   throw Error('Unhandled synthetic request ' + String(options.url));

@@ -17,6 +17,8 @@ interface CardHistoryRow {
   personCreatedAt?: string | null; icCardNo?: string | null; wgCardNo?: string | null;
   issuedAt?: string | null; lastSwipeAt?: string | null; lastDevice?: string | null;
   accessSystem?: 'iccard' | 'mjsystem' | null; homeBuildingNo?: string | null; communityId?: number | null;
+  /** 已写入的二期门禁系统（后端 additive；有值=已添加）。 */
+  appliedSystems?: string[] | null;
   /** 该行字段是否由现场助手完整回传；false/缺省时「空」代表该卡本来没有 .80 记录，不是助手没升级。 */
   fieldsIncomplete?: boolean;
 }
@@ -26,6 +28,7 @@ type CardRecent = {
   issuedAt?: string | null; hidden?: boolean; status?: string | null;
   personCreatedAt?: string | null; lastSwipeAt?: string | null; lastDevice?: string | null;
   accessSystem?: 'iccard' | 'mjsystem' | null; homeBuildingNo?: string | null;
+  appliedSystems?: string[] | null;
   communityId?: number | null; communityName?: string | null; lane?: string | null; buildingId?: number | null;
   buildingNo?: string | null; buildingText?: string | null; houseId?: number | null; roomNo?: string | null;
   roomKey?: string | null; projectPhase?: 'phase1' | 'phase2' | null;
@@ -92,10 +95,27 @@ function recentRoomParts(row: CardRecent) {
   return { lane: null, buildingNo: null, roomNo: null };
 }
 
+interface LatestTask {
+  id?: number | string;
+  operation?: string | null;
+  status?: string | null;
+  requestedAt?: string | null;
+  completedAt?: string | null;
+  targetBuildings?: Array<{ buildingNo?: string | null; accessSystem?: string | null }> | null;
+  controllerResults?: Array<Record<string, unknown>> | null;
+  error?: string | null;
+  acknowledgement?: string | null;
+}
+interface PermissionBuildingDetail { buildingNo: string; granted?: boolean; source?: string | null }
 interface CardDetail {
-  id: number; appliedSystems?: string[]; grantedBuildings?: string[]; latestTasks?: unknown[];
+  id: number; appliedSystems?: string[]; grantedBuildings?: string[]; latestTasks?: LatestTask[];
   icCardNo?: string | null; wgCardNo?: string | null; roomLabel?: string | null; status?: string | null;
   communityId?: number | null; homeBuildingNo?: string | null; accessSystem?: 'iccard' | 'mjsystem' | null;
+  permissionCheckedAt?: string | null; permissionSource?: string | null;
+  grantedBuildingDetails?: PermissionBuildingDetail[] | null;
+}
+interface VerifyGrantState {
+  busy: boolean; message?: string; error?: string; checkedAt?: string | null; grantedBuildings?: string[];
 }
 
 /** 发卡历史与最近 30 笔共用的行视图（11 列表格）；displayNo 为页面上显示的序号。 */
@@ -104,6 +124,7 @@ interface CardRecordView {
   personCreatedAt?: string | null; icCardNo?: string | null; wgCardNo?: string | null;
   issuedAt?: string | null; lastSwipeAt?: string | null; lastDevice?: string | null;
   accessSystem?: 'iccard' | 'mjsystem' | null; homeBuildingNo?: string | null; communityId?: number | null;
+  appliedSystems?: string[] | null;
   /** 行级优先；缺省时回退到接口级 fieldsIncomplete。 */
   fieldsIncomplete?: boolean;
   displayNo: number;
@@ -183,7 +204,82 @@ const grantResultRows = (raw: any): Array<{ buildingNo: string; status: string; 
   });
 };
 
-/** 简易分页：上一页 / 下一页 + 页码；只在数据超过一页时出现。 */
+/** 授权任务：后端 history-authorizations/:id 的对外形态（additive 字段可选）。 */
+interface GrantTask {
+  id: number | string;
+  operation?: string | null;
+  status?: string | null;
+  requestedAt?: string | null;
+  completedAt?: string | null;
+  targetBuildings?: Array<{ buildingNo?: string | null; accessSystem?: string | null }> | null;
+  controllerResults?: Array<Record<string, unknown>> | null;
+  error?: string | null;
+  acknowledgement?: string | null;
+}
+
+const TASK_STATUS_CN: Record<string, string> = {
+  pending: '待处理', running: '执行中', sent: '执行中', completed: '已完成', succeeded: '已完成', failed: '失败', cancelled: '已取消',
+};
+const TASK_OPERATION_CN: Record<string, string> = {
+  access_database_only: '写入 Access 库', controller_upload: '授权楼栋', controller_revoke: '撤销楼栋',
+  remote_open: '远程开门', temporary_open: '常开', restore_normal: '恢复常开', controller_detect: '控制器检测',
+  apply_mdb: '写入 Access 库', grant_boards: '授权楼栋', revoke_boards: '撤销楼栋',
+};
+const TASK_STATUS_TONE: Record<string, string> = { pending: 'warn', running: 'blue', sent: 'blue', completed: 'ok', succeeded: 'ok', failed: 'dang', cancelled: 'mute' };
+const taskStatusCN = (status?: string | null) => (status ? TASK_STATUS_CN[status] || '未知状态' : '—');
+const taskOperationCN = (operation?: string | null) => (operation ? TASK_OPERATION_CN[operation] || '其他门禁任务' : '—');
+const taskStatusTone = (status?: string | null) => TASK_STATUS_TONE[status || ''] || 'mute';
+const SYSTEM_CN: Record<string, string> = { iccard: 'IC 卡门禁', mjsystem: 'MjSystem 门禁' };
+const systemCN = (value?: string | null) => (value ? SYSTEM_CN[value] || '门禁系统' : '—');
+/** 权限来源/表名尽量中文化，未知值原样保留（避免伪造）。 */
+function permissionSourceCN(source?: string | null): string {
+  if (!source) return '—';
+  if (/access_permission|t_d_Privilege|^t88$|\.88/i.test(source)) return 'Access 权限表';
+  if (/legacy|80/.test(source)) return '.80 捷顺库';
+  return source;
+}
+
+/** 逐栋控制器回执 -> 中文结果行。 */
+function taskBuildingResults(task: LatestTask | GrantTask): Array<{ buildingNo: string; ok: boolean; status: string; detail: string }> {
+  const results = Array.isArray(task.controllerResults) ? task.controllerResults : [];
+  if (results.length) {
+    return results.map((item, index) => {
+      const rawStatus = String(item?.status ?? item?.result ?? '');
+      const ok = ['success', 'succeeded', 'ok', 'completed', 'done', 'applied'].includes(rawStatus);
+      const offline = ['offline', 'controller_offline', 'unreachable', 'not_connected', '待连', '未连接'].includes(rawStatus);
+      const failed = ['controller_failed', 'failed', 'error', 'timeout'].includes(rawStatus) || (!ok && !offline && rawStatus !== '');
+      const statusCn = ok ? '成功' : offline ? '离线' : failed ? '失败' : '处理中';
+      const detail = actionText(item?.acknowledgement ?? item?.message ?? item?.error ?? item?.reason ?? '') || statusCn;
+      return { buildingNo: String(item?.buildingNo ?? item?.building ?? index + 1), ok, status: statusCn, detail };
+    });
+  }
+  if (Array.isArray(task.targetBuildings) && task.targetBuildings.length) {
+    const taskStatus = task.status || '';
+    const ok = taskStatus === 'completed' || taskStatus === 'succeeded';
+    return task.targetBuildings.map((building) => ({
+      buildingNo: String(building?.buildingNo ?? '—'),
+      ok,
+      status: ok ? '成功' : taskStatusCN(taskStatus),
+      detail: taskStatusCN(taskStatus),
+    }));
+  }
+  return [];
+}
+
+/** 任务列表 + 提交返回 results -> 逐栋中文结果（无控制器回执时回退提交结果）。 */
+function grantRowsFromTasks(tasks: GrantTask[], fallback: Array<{ buildingNo: string; status: string; ok: boolean; detail: string }>) {
+  const rows = tasks.flatMap((task) => taskBuildingResults(task));
+  const source = rows.length ? rows : fallback;
+  // 多任务可能包含同一楼栋（旧后端每个系统一条任务），逐栋结果去重；失败/离线优先展示。
+  const byBuilding = new Map<string, { buildingNo: string; ok: boolean; status: string; detail: string }>();
+  for (const row of source) {
+    const existing = byBuilding.get(row.buildingNo);
+    if (!existing || (existing.ok && !row.ok)) byBuilding.set(row.buildingNo, row);
+  }
+  return [...byBuilding.values()];
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 function Pager({ page, pageCount, total, onChange, testId }: {
   page: number; pageCount: number; total: number; onChange: (page: number) => void; testId?: string;
 }) {
@@ -202,15 +298,17 @@ function Pager({ page, pageCount, total, onChange, testId }: {
 
 /** 发卡历史 / 最近 30 笔共用 11 列表格；空字段按 fieldsIncomplete 提示升级或显示 —，操作行内反馈。 */
 export function CardRecordsTable({
-  rows, canEdit, cardDetails, applyBusyIds, applyState, onApply, onGrant,
+  rows, canEdit, cardDetails, applyBusyIds, applyState, verifyState, onApply, onGrant, onVerify,
 }: {
   rows: CardRecordView[];
   canEdit: boolean;
   cardDetails: Record<number, CardDetail>;
   applyBusyIds: Record<number, boolean>;
   applyState: Record<number, { ok: boolean; error?: string }>;
+  verifyState: Record<number, VerifyGrantState>;
   onApply: (row: CardRecordView) => void;
   onGrant: (row: CardRecordView) => void;
+  onVerify: (cardId: number) => void;
 }) {
   return (
     <div className="t-scroll">
@@ -237,7 +335,10 @@ export function CardRecordsTable({
             const incomplete = row.fieldsIncomplete === true;
             const room = String(row.roomLabel || '').replace(/已隐藏/g, '').replace(/^[\s·\-]+/, '') || '—';
             const statusText = hidden ? '已隐藏' : (row.status || '—');
-            const applied = applyState[row.id];
+            const applied = applyState[row.id]?.ok === true
+              || (row.appliedSystems?.length ?? 0) > 0
+              || (detail?.appliedSystems?.length ?? 0) > 0;
+            const appliedError = applyState[row.id] && !applyState[row.id].ok ? (applyState[row.id].error || '添加失败') : '';
             const busy = !!applyBusyIds[row.id];
             return (
               <Fragment key={row.id}>
@@ -253,15 +354,20 @@ export function CardRecordsTable({
                   <td className="nw">{row.lastDevice || cardFieldHint('lastDevice', incomplete)}</td>
                   <td className="nw">
                     <span className={'tag ' + (hidden ? 'mute' : 'ok')}>{statusText}</span>
-                    {applied?.ok ? <span className="tag ok ac-applied-tag" style={{ marginLeft: 6 }}><Icon name="check" size={13} />已添加二期门禁系统</span> : null}
-                    {applied && !applied.ok ? <small className="ac-apply-error" title={applied.error}>{applied.error || '添加失败'}</small> : null}
                   </td>
                   <td className="nw ac-actions">
                     {canEdit ? <>
-                      <button className="btn sm ac-apply-btn" disabled={busy} onClick={() => onApply(row)}>
-                        {busy ? '添加中…' : '添加到二期门禁系统'}
-                      </button>
+                      {applied ? (
+                        <button type="button" className="btn sm ac-applied-btn" data-testid="apply-btn" data-applied="true" disabled>
+                          <Icon name="check" size={14} />已添加二期门禁系统
+                        </button>
+                      ) : (
+                        <button type="button" className="btn sm ac-apply-btn" data-testid="apply-btn" data-applied="false" disabled={busy} onClick={() => onApply(row)}>
+                          {busy ? '添加中…' : '添加到二期门禁系统'}
+                        </button>
+                      )}
                       <button className="btn sm ac-grant-btn" onClick={() => onGrant(row)}>授权楼栋</button>
+                      {appliedError ? <small className="ac-apply-error" title={appliedError}>{appliedError}</small> : null}
                     </> : '—'}
                   </td>
                 </tr>
@@ -269,9 +375,60 @@ export function CardRecordsTable({
                   <tr className="ac-detail-row">
                     <td colSpan={11}>
                       <div className="ac-card-detail">
-                        <span><b>已应用系统：</b>{(detail.appliedSystems ?? []).length ? (detail.appliedSystems ?? []).join('、') : '—'}</span>
+                        <span><b>已应用系统：</b>{(detail.appliedSystems ?? []).length ? (detail.appliedSystems ?? []).map(systemCN).join('、') : '—'}</span>
                         <span><b>已授权楼栋：</b>{(detail.grantedBuildings ?? []).length ? (detail.grantedBuildings ?? []).join('、') : '—'}</span>
-                        <span><b>最新任务：</b>{(detail.latestTasks ?? []).length ? (detail.latestTasks as any[]).map((task) => task?.status ?? task?.type ?? '—').join('、') : '—'}</span>
+                        <div className="ac-detail-note">
+                          说明：「已完成」= 控制器回执确认（不是仅入队）；「已验证」= 读回 .88 门禁权限表成功后才算。
+                        </div>
+                        <div className="ac-task-list" data-testid="latest-tasks">
+                          <b>最新任务</b>
+                          {(detail.latestTasks ?? []).length ? (
+                            (detail.latestTasks ?? []).map((task, taskIndex) => (
+                              <div className="ac-task-item" data-testid="task-item" key={`${task.id ?? taskIndex}`}>
+                                <div className="ac-task-head">
+                                  <span className="ac-task-op">{taskOperationCN(task.operation)}</span>
+                                  <span className={`tag ${taskStatusTone(task.status)}`}>{taskStatusCN(task.status)}</span>
+                                  <span className="muted">请求：{fmtCardTime(task.requestedAt)} · 完成：{fmtCardTime(task.completedAt)}</span>
+                                </div>
+                                {taskBuildingResults(task).length ? (
+                                  <div className="ac-task-buildings">
+                                    {taskBuildingResults(task).map((item, index) => (
+                                      <span key={`${item.buildingNo}-${index}`} className={item.ok ? 'ok' : item.status === '离线' ? 'warn' : 'dang'}>
+                                        {item.buildingNo} 号楼：{item.status}{item.detail && item.detail !== item.status ? ` · ${item.detail}` : ''}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : <small className="muted">无逐栋回执</small>}
+                                {task.acknowledgement ? <small className="ac-task-ack">回执：{task.acknowledgement}</small> : null}
+                                {task.error ? <small className="dang">错误：{task.error}</small> : null}
+                              </div>
+                            ))
+                          ) : <small className="muted">暂无任务</small>}
+                        </div>
+                        <div className="ac-permission" data-testid="permission-block">
+                          <div className="ac-permission-head">
+                            <b>权限读回</b>
+                            <span className="muted">核验时间：{fmtCardTime(verifyState[row.id]?.checkedAt ?? detail.permissionCheckedAt)}</span>
+                            <span className="muted">来源：{permissionSourceCN(verifyState[row.id]?.message ? 'access_permission' : detail.permissionSource)}</span>
+                            <button type="button" className="btn sm" data-testid="verify-grant-btn" disabled={!canEdit || verifyState[row.id]?.busy} onClick={() => onVerify(row.id)}>
+                              {verifyState[row.id]?.busy ? '核验中…' : '重新核验权限'}
+                            </button>
+                          </div>
+                          {(detail.grantedBuildingDetails ?? []).length ? (
+                            <div className="ac-permission-buildings">
+                              {(detail.grantedBuildingDetails ?? []).map((item) => (
+                                <span key={item.buildingNo} className={item.granted ? 'ok' : 'dang'} data-building-no={item.buildingNo}>
+                                  {item.buildingNo} 号楼：{item.granted === false ? '未授权' : '已授权'}{item.source ? ` · 来源 ${permissionSourceCN(item.source)}` : ''}
+                                </span>
+                              ))}
+                            </div>
+                          ) : <div className="muted">暂无逐栋权限读回明细，可点「重新核验权限」。</div>}
+                          {verifyState[row.id]?.grantedBuildings?.length ? (
+                            <div className="ac-permission-result ok">核验读回楼栋：{verifyState[row.id]!.grantedBuildings!.join('、')}</div>
+                          ) : null}
+                          {verifyState[row.id]?.message ? <div className="ac-permission-result ok">{verifyState[row.id]!.message}</div> : null}
+                          {verifyState[row.id]?.error ? <div className="ac-permission-result dang">{verifyState[row.id]!.error}</div> : null}
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -331,6 +488,10 @@ export default function AccessCards() {
   const [grantOptionsLoading, setGrantOptionsLoading] = useState(false);
   const [grantOptionsError, setGrantOptionsError] = useState('');
   const [grantHomeBuilding, setGrantHomeBuilding] = useState<string | null>(null);
+  const [grantPolling, setGrantPolling] = useState(false);
+  const [grantFailed, setGrantFailed] = useState(false);
+  const [grantError, setGrantError] = useState('');
+  const [verifyState, setVerifyState] = useState<Record<number, VerifyGrantState>>({});
 
   useEffect(() => { address.tree().then(setTree).catch(() => setTree([])); }, []);
   useEffect(() => {
@@ -464,6 +625,7 @@ export default function AccessCards() {
     setGrantCard({ ...card } as unknown as CardHistoryRow);
     setGrantMode('add'); setGrantSearch(''); setGrantSelected([]); setGrantResults(null);
     setGrantOptions([]); setGrantOptionsLoading(true); setGrantOptionsError('');
+    setGrantPolling(false); setGrantFailed(false); setGrantError('');
     const parsedHome = buildingNoFromRoomLabel(card.roomLabel);
     setGrantHomeBuilding(card.homeBuildingNo || parsedHome);
     let detail: CardDetail | null = null;
@@ -507,17 +669,96 @@ export default function AccessCards() {
     }
   };
 
+  /** 轮询任务到 completed/failed，最长 90 秒；返回最终任务或超时。 */
+  const pollGrantTasks = async (taskIds: number[]) => {
+    const deadline = Date.now() + 90000;
+    let latest: GrantTask[] = [];
+    while (Date.now() < deadline) {
+      latest = await Promise.all(taskIds.map((taskId) => request<GrantTask>({
+        url: '/access-card-issuance/history-authorizations/' + taskId,
+      })));
+      if (latest.every((task) => task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled')) return latest;
+      await sleep(1800);
+    }
+    return 'timeout' as const;
+  };
+
   const submitGrant = async () => {
     if (!grantCard || grantBusy) return;
     if (!grantSelected.length) { setGrantResults([{ buildingNo: '—', status: '失败', ok: false, detail: '请至少选择一栋楼' }]); return; }
-    setGrantBusy(true);
+    setGrantBusy(true); setGrantFailed(false); setGrantError(''); setGrantPolling(false);
     try {
-      const raw = await request<unknown>({ method: 'POST', url: '/access-card-issuance/cards/' + grantCard.id + '/grant-boards', data: { buildingNos: grantSelected, mode: grantMode } });
-      setGrantResults(grantResultRows(raw));
-      await refreshCardDetail(grantCard.id);
+      const raw = await request<{ taskIds?: number[]; results?: unknown[] }>({
+        method: 'POST', url: '/access-card-issuance/cards/' + grantCard.id + '/grant-boards',
+        data: { buildingNos: grantSelected, mode: grantMode },
+      });
+      const fallback = grantResultRows(raw);
+      setGrantResults(fallback);
+      const taskIds = Array.isArray(raw?.taskIds) ? raw.taskIds.filter((id): id is number => Number.isFinite(Number(id))) : [];
+      if (!taskIds.length) {
+        // 旧后端只返回入队结果：保持弹窗，提示以控制器回执为准。
+        setGrantFailed(true);
+        setGrantError('提交已入队，但后端未返回任务编号，无法确认控制器回执；请稍后刷新详情查看最新任务。');
+        return;
+      }
+      setGrantPolling(true);
+      const tasks = await pollGrantTasks(taskIds);
+      if (tasks === 'timeout') {
+        setGrantFailed(true);
+        setGrantError('等待控制器回执超时（已轮询 90 秒），任务可能仍在执行；请稍后刷新详情或重新提交。');
+        return;
+      }
+      const rows = grantRowsFromTasks(tasks, fallback);
+      setGrantResults(rows);
+      const allCompleted = tasks.every((task) => task.status === 'completed');
+      const refreshed = await refreshCardDetail(grantCard.id);
+      const granted = (refreshed?.grantedBuildings ?? []).map(String);
+      const allGranted = grantSelected.every((buildingNo) => granted.includes(String(buildingNo)));
+      if (allCompleted && allGranted) {
+        toast(`授权完成：${grantSelected.length} 栋已生效（已读回 .88 门禁权限表）`);
+        setGrantCard(null);
+        setGrantResults(null);
+        setGrantFailed(false);
+        setGrantPolling(false);
+        return;
+      }
+      setGrantFailed(true);
+      setGrantError(allCompleted
+        ? '控制器已回执，但 .88 权限表未读回全部所选楼栋；请点「重新核验权限」或重新提交。'
+        : '部分楼栋执行失败/离线，请查看逐栋中文结果后重新提交。');
     } catch (e) {
       setGrantResults([{ buildingNo: '—', status: '失败', ok: false, detail: e instanceof Error ? e.message : '楼栋授权失败' }]);
-    } finally { setGrantBusy(false); }
+      setGrantFailed(true);
+      setGrantError(e instanceof Error && e.message ? e.message : '楼栋授权失败');
+    } finally {
+      setGrantBusy(false); setGrantPolling(false);
+    }
+  };
+
+  const verifyGrant = async (cardId: number) => {
+    setVerifyState((prev) => ({ ...prev, [cardId]: { ...(prev[cardId] ?? {}), busy: true, error: '' } }));
+    try {
+      const raw = await request<{ checkedAt?: string | null; grantedBuildings?: string[]; message?: string | null; success?: boolean; ok?: boolean }>({
+        method: 'POST', url: `/access-card-issuance/cards/${cardId}/verify-grant`,
+      });
+      const granted = Array.isArray(raw?.grantedBuildings) ? raw.grantedBuildings.map(String) : [];
+      setVerifyState((prev) => ({
+        ...prev,
+        [cardId]: {
+          busy: false,
+          checkedAt: raw?.checkedAt ?? null,
+          grantedBuildings: granted,
+          message: raw?.message || `核验完成：已读回 ${granted.length} 栋权限`,
+          error: '',
+        },
+      }));
+      await refreshCardDetail(cardId);
+    } catch (e) {
+      setVerifyState((prev) => ({
+        ...prev,
+        [cardId]: { ...(prev[cardId] ?? {}), busy: false, error: e instanceof Error && e.message ? e.message : '权限核验失败，请稍后重试' },
+      }));
+    }
   };
   useEffect(() => {
     if (!batch) return undefined;
@@ -665,8 +906,10 @@ export default function AccessCards() {
               cardDetails={cardDetails}
               applyBusyIds={applyBusyIds}
               applyState={applyState}
+              verifyState={verifyState}
               onApply={(row) => void applyCardToAccess(row)}
               onGrant={(row) => void openGrant(row)}
+              onVerify={(cardId) => void verifyGrant(cardId)}
             />
             <Pager page={safeRecentPage} pageCount={recentPageCount} total={recentTotal} onChange={setRecentPage} testId="recent-pager" />
           </>
@@ -789,8 +1032,10 @@ export default function AccessCards() {
                   cardDetails={cardDetails}
                   applyBusyIds={applyBusyIds}
                   applyState={applyState}
+                  verifyState={verifyState}
                   onApply={(row) => void applyCardToAccess(row)}
                   onGrant={(row) => void openGrant(row)}
+                  onVerify={(cardId) => void verifyGrant(cardId)}
                 />
                 <Pager page={safeHistoryPage} pageCount={historyPageCount} total={historyTotal} onChange={setHistoryPage} testId="history-pager" />
               </div>
@@ -839,6 +1084,8 @@ export default function AccessCards() {
                 </div>
               </>
             )}
+            {grantPolling ? <div className="note2" data-testid="grant-polling"><Icon name="refresh" size={14} />正在轮询控制器回执（间隔 1.8 秒，最长 90 秒）…「已完成」以后端控制器回执为准。</div> : null}
+            {grantError ? <div className="note2" role="alert" style={{ background: 'var(--dang-w)', color: 'var(--dang)' }} data-testid="grant-error"><Icon name="alert" />{grantError}</div> : null}
             {grantResults ? (
               <div className="ac-results">
                 {grantResults.map((result, index) => <div key={result.buildingNo + index} className={result.ok ? 'ok' : result.status === '离线' ? 'warn' : 'dang'}><b>{result.buildingNo} 号</b><span>{result.status}{result.detail && result.detail !== result.status ? ' · ' + result.detail : ''}</span></div>)}
@@ -846,7 +1093,9 @@ export default function AccessCards() {
             ) : null}
             <div className="ac-dialog-foot">
               <button className="btn" disabled={grantBusy} onClick={() => setGrantCard(null)}>取消</button>
-              <button className="btn p" disabled={grantBusy || grantOptionsLoading || !grantSelected.length} onClick={() => void submitGrant()}>{grantBusy ? '提交中…' : (grantMode === 'add' ? '确认授权' : '确认撤销')}</button>
+              <button className="btn p" disabled={grantBusy || grantOptionsLoading || !grantSelected.length} onClick={() => void submitGrant()}>
+                {grantBusy ? (grantPolling ? '等待控制器回执…' : '提交中…') : grantFailed ? '重新提交' : (grantMode === 'add' ? '确认授权' : '确认撤销')}
+              </button>
             </div>
           </>
         ) : null}

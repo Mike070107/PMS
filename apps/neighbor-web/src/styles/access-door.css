@@ -281,6 +281,36 @@
 .ac-apply-error { display: block; color: var(--dang); font-size: 11.5px; margin-top: 3px; max-width: 200px; white-space: normal; overflow-wrap: anywhere; }
 .ac-pager { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
 .ac-pager .muted { margin-right: 4px; font-size: 12px; }
+
+/* 已添加二期门禁系统：绿色实心按钮，不可重复点击 */
+.ac-applied-btn,
+.ac-applied-btn:disabled {
+  background: var(--ok, #0f8b74) !important;
+  border-color: var(--ok, #0f8b74) !important;
+  color: #fff !important;
+  opacity: 1 !important;
+  cursor: default;
+}
+
+/* 详情：任务中文列表 + 权限读回 */
+.ac-detail-note { color: var(--ink3); font-size: 12px; margin: 4px 0 8px; }
+.ac-task-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.ac-task-item { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: #fff; }
+.ac-task-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ac-task-op { font-weight: 600; }
+.ac-task-buildings { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 5px; font-size: 12.5px; }
+.ac-task-buildings .ok { color: var(--ok, #0f8b74); }
+.ac-task-buildings .warn { color: var(--warn, #d99200); }
+.ac-task-buildings .dang { color: var(--dang); }
+.ac-task-ack { display: block; margin-top: 5px; color: var(--ink3); }
+.ac-permission { border-top: 1px dashed var(--line); padding-top: 8px; }
+.ac-permission-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.ac-permission-buildings { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; }
+.ac-permission-buildings .ok { color: var(--ok, #0f8b74); }
+.ac-permission-buildings .dang { color: var(--dang); }
+.ac-permission-result { margin-top: 5px; font-size: 12.5px; }
+.ac-permission-result.ok { color: var(--ok, #0f8b74); }
+.ac-permission-result.dang { color: var(--dang); }
 .ac-grant-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
 .ac-grant-tools .in { flex: 1; min-width: 180px; }
 .ac-building-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 12px; max-height: 260px; overflow: auto; padding: 10px 12px; border: 1px solid var(--line2); border-radius: 9px; background: var(--sunken); }
