@@ -54,9 +54,9 @@ export default function WorkOrders() {
       const kw = q.trim() || undefined;
       // 作废单服务端默认不返回，单独拉一次给「已作废」用（不算进「全部」）
       const [active, done, voided] = await Promise.all([
-        repairs.list({ scope: 'all', q: kw } as any),
-        repairs.list({ scope: 'done', q: kw } as any).catch(() => [] as WorkOrderListItem[]),
-        repairs.list({ scope: 'all', status: WorkOrderStatus.VOIDED, q: kw } as any).catch(() => [] as WorkOrderListItem[]),
+        repairs.list({ scope: 'all', q: kw, sort: 'repair_time_desc' }),
+        repairs.list({ scope: 'done', q: kw, sort: 'repair_time_desc' }).catch(() => [] as WorkOrderListItem[]),
+        repairs.list({ scope: 'all', status: WorkOrderStatus.VOIDED, q: kw, sort: 'repair_time_desc' }).catch(() => [] as WorkOrderListItem[]),
       ]);
       const map = new Map<number, WorkOrderListItem>();
       [...active, ...done, ...voided].forEach((o) => map.set(o.id, o));
@@ -87,10 +87,11 @@ export default function WorkOrders() {
         return stageOf(o) === filter;
       })
       .sort((a, b) => {
-        // 紧急、超时优先，其次新建的在前
-        const rank = (o: WorkOrderListItem) => (isOverdue(o) ? 0 : o.urgent ? 1 : 2);
-        const d = rank(a) - rank(b);
-        return d !== 0 ? d : (b.createdAt || '').localeCompare(a.createdAt || '');
+        // 维修时间取完工时间，未完工取接单开工时间；派单/建单不代表已经维修。
+        // 尚未开工的排在有维修记录的后面，同维修时间再按报修时间倒序。
+        const time = (v: string | null | undefined) => v ? Date.parse(v) || 0 : 0;
+        const repairedAt = (o: WorkOrderListItem) => time(o.completedAt) || time(o.acceptedAt);
+        return repairedAt(b) - repairedAt(a) || time(b.createdAt) - time(a.createdAt) || a.id - b.id;
       });
   }, [orders, filter]);
 
@@ -108,7 +109,7 @@ export default function WorkOrders() {
 
   return (
     <>
-      <div className="ph">
+      <div className="ph wo-page-head">
         <div>
           <div className="h1row"><ToneIcon kind="workorders" /><h1>工单调度</h1></div>
           <p>看板按处理环节排列；点任意一张卡片在右侧处理，不离开当前页</p>
@@ -177,8 +178,13 @@ export default function WorkOrders() {
           })}
         </div>
       ) : (
-        <Card style={{ overflow: 'hidden' }}>
-          <table className="t">
+        <Card style={{ overflowX: 'auto' }}>
+          <table className="t wo-list-table">
+            <colgroup>
+              <col style={{ width: '22%' }} /><col style={{ width: '26%' }} />
+              <col style={{ width: 112 }} /><col style={{ width: '12%' }} />
+              <col style={{ width: '8%' }} /><col style={{ width: '10%' }} /><col style={{ width: '13%' }} />
+            </colgroup>
             <thead>
               <tr><th>地址</th><th>问题</th><th>状态</th><th>负责人</th><th>已用时</th><th>要求完成</th><th>单号</th></tr>
             </thead>
@@ -186,7 +192,7 @@ export default function WorkOrders() {
               {filtered.length ? filtered.map((o) => (
                 <tr key={o.id} className={`row ${sel === o.id ? 'sel' : ''}`} onClick={() => setParam({ sel: String(o.id) })}>
                   <td><b>{o.summaryAddress || '—'}</b>{o.urgent ? <span className="pill urg" style={{ marginLeft: 6 }}>紧急</span> : null}</td>
-                  <td className="sub" style={{ maxWidth: 300 }}>{o.summaryContent || '—'}</td>
+                  <td className="sub"><div className="wo-list-problem" title={o.summaryContent || ''}>{o.summaryContent || '—'}</div></td>
                   <td><Pill status={stageOf(o)} /></td>
                   <td>{o.assigneeName || (stageOf(o) === 'pending_accept' ? <span className="muted">已自动派给 {o.candidateIds?.length} 位</span> : <span className="muted">—</span>)}</td>
                   <td>{ago(o.createdAt).replace('前', '')}</td>

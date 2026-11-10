@@ -346,6 +346,11 @@ export class WorkOrdersQueryDto {
   @IsIn(['1'])
   activeOnly?: '1';
 
+  /** Web 调度台显式选择维修时间倒序；不改变小程序默认抢修优先级。 */
+  @IsOptional()
+  @IsIn(['repair_time_desc'])
+  sort?: 'repair_time_desc';
+
   /**
    * 关键词：单号 / 报修地址 / 故障描述。
    * 办公室在派单台上查「上次那单谁修的」，只能靠这几样想起来，
