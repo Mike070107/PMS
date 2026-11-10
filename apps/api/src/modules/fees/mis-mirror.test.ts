@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { PGlite } from '@electric-sql/pglite';
 import { MisMirror1794500000000 } from '../../migrations/1794500000000-MisMirror';
 import { MisMirrorFailureCount1794600000000 } from '../../migrations/1794600000000-MisMirrorFailureCount';
+import { MisMirrorOwnerReportFields1795600000000 } from '../../migrations/1795600000000-MisMirrorOwnerReportFields';
 import { MisMirrorService } from './mis-mirror.service';
 
 async function fixture() {
@@ -12,6 +13,7 @@ async function fixture() {
   await migration.up({ query: (sql: string) => pg.query(sql) } as any);
   const health = new MisMirrorFailureCount1794600000000();
   await health.up({ query: (sql: string) => pg.query(sql) } as any);
+  await new MisMirrorOwnerReportFields1795600000000().up({ query: (sql: string) => pg.query(sql) } as any);
   const dataSource: any = { query: async (sql: string, params?: any[]) => (await pg.query(sql, params)).rows };
   const misFees: any = {
     residentialScope: async () => [{ id: 1, name: '枫桦苑一期', offices: ['01'] }],
@@ -35,6 +37,71 @@ async function fixture() {
   await add(9, 8, 8, 10000, '2026-11-08', '2026-11-08');
   return { pg, service, migration, health };
 }
+
+test('业主报表字段迁移可重复执行/回退，旧行保持未知且不改变原有数据', async () => {
+  const pg = new PGlite();
+  const runner = { query: (sql: string) => pg.query(sql) } as any;
+  const migration = new MisMirrorOwnerReportFields1795600000000();
+  try {
+    await new MisMirror1794500000000().up(runner);
+    await pg.query(`INSERT INTO mis_mirror_owner(zh_id,s_id,name) VALUES(1,10,'合成旧住户')`);
+    await migration.up(runner);
+    await migration.up(runner);
+    const { rows } = await pg.query(`SELECT name,owner_note,move_in_date,billing_start_date FROM mis_mirror_owner WHERE zh_id=1`);
+    assert.deepEqual(rows, [{ name: '合成旧住户', owner_note: null, move_in_date: null, billing_start_date: null }]);
+    await migration.down(runner);
+    await migration.down(runner);
+    assert.deepEqual((await pg.query(`SELECT zh_id,s_id,name FROM mis_mirror_owner`)).rows, [{ zh_id: 1, s_id: 10, name: '合成旧住户' }]);
+    const columns = await pg.query(`SELECT column_name FROM information_schema.columns WHERE table_name='mis_mirror_owner' AND column_name IN ('owner_note','move_in_date','billing_start_date')`);
+    assert.equal(columns.rows.length, 0);
+  } finally { await pg.close(); }
+});
+
+test('全量业主镜像保留原始说明和民用日期，不猜测空置/退户状态或填补缺失日期', async () => {
+  const { pg, service } = await fixture();
+  const owners = [
+    { zhId: 701, sId: 1, name: '合成住户', ownerNote: '新进户', moveInDate: '2020-01-01', billingStartDate: '2020-02-01' },
+    { zhId: 702, sId: 1, name: '合成历史住户', ownerNote: '历史说明原文' },
+    { zhId: 703, sId: 2, name: null, ownerNote: null, moveInDate: null, billingStartDate: null },
+  ];
+  let ownerQueries = 0;
+  const run = async (sql: string, params?: any[]) => {
+    if (sql.includes('pg_try_advisory_lock')) return [{ ok: true }];
+    if (sql.includes('pg_advisory_unlock')) return [];
+    return (await pg.query(sql, params)).rows;
+  };
+  service.dataSource = {
+    query: run,
+    transaction: (work: any) => pg.transaction(async (tx) => work({
+      query: async (sql: string, params?: any[]) => (await tx.query(sql, params)).rows,
+    })),
+  };
+  service.misFees = { mirrorRead: async (sql: string) => {
+    if (sql.includes('FROM dbo.业主表')) {
+      ownerQueries++;
+      assert.match(sql, /说明 AS ownerNote/, '不能丢失旧报表按业主说明筛选的源字段');
+      assert.match(sql, /CONVERT\(varchar\(10\),进户日期,23\) AS moveInDate/);
+      assert.match(sql, /CONVERT\(varchar\(10\),开始收费日期,23\) AS billingStartDate/);
+      return { recordsets: [owners] };
+    }
+    return { recordsets: [[]] };
+  } };
+  service.syncSmallDimensions = async () => undefined;
+  service.syncExtraMirrors = async () => ({ rows: 0 });
+  try {
+    await service.reloadAll(1);
+    const read = () => pg.query<{ zh_id: number; owner_note: string | null; move_in_date: string | null; billing_start_date: string | null }>(`SELECT zh_id,owner_note,move_in_date::text,billing_start_date::text FROM mis_mirror_owner ORDER BY zh_id`);
+    assert.deepEqual((await read()).rows, [
+      { zh_id: 701, owner_note: '新进户', move_in_date: '2020-01-01', billing_start_date: '2020-02-01' },
+      { zh_id: 702, owner_note: '历史说明原文', move_in_date: null, billing_start_date: null },
+      { zh_id: 703, owner_note: null, move_in_date: null, billing_start_date: null },
+    ]);
+    owners[0].ownerNote = '原始说明变更';
+    await service.reloadAll(1);
+    assert.equal(ownerQueries, 2);
+    assert.equal((await read()).rows[0].owner_note, '原始说明变更', '重复重灌必须保留最新源值');
+  } finally { await pg.close(); }
+});
 
 test('镜像迁移可 up/down，金额分档按户聚合后分档', async () => {
   const { pg, service, migration, health } = await fixture();

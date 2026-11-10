@@ -476,7 +476,11 @@ export class MisMirrorService {
     try {
       const buildings = (await this.misFees.mirrorRead('SELECT L_ID AS lId,管理处 AS officeCode,地址1 AS road,地址2 AS lane,地址3 AS buildingNo FROM dbo.楼表', {}, MIS_TIMEOUT)).recordsets?.[0] ?? [];
       const rooms = (await this.misFees.mirrorRead('SELECT S_ID AS sId,L_ID AS lId,室 AS roomNo,房屋性质 AS nature,建筑面积 AS areaSqm FROM dbo.室表', {}, MIS_TIMEOUT)).recordsets?.[0] ?? [];
-      const owners = (await this.misFees.mirrorRead('SELECT ZH_ID AS zhId,S_ID AS sId,姓名 AS name,移动电话 AS mobile,固定电话 AS phone2,updatedate AS sourceUpdatedAt FROM dbo.业主表', {}, MIS_TIMEOUT)).recordsets?.[0] ?? [];
+      const owners = (await this.misFees.mirrorRead(`SELECT ZH_ID AS zhId,S_ID AS sId,姓名 AS name,
+        移动电话 AS mobile,固定电话 AS phone2,说明 AS ownerNote,
+        CONVERT(varchar(10),进户日期,23) AS moveInDate,
+        CONVERT(varchar(10),开始收费日期,23) AS billingStartDate,
+        updatedate AS sourceUpdatedAt FROM dbo.业主表`, {}, MIS_TIMEOUT)).recordsets?.[0] ?? [];
       await this.dataSource.transaction(async (manager) => {
         await manager.query('DELETE FROM mis_mirror_building');
         await manager.query('DELETE FROM mis_mirror_room');
@@ -490,8 +494,9 @@ export class MisMirrorService {
           [row.sId, row.lId ?? null, row.roomNo ?? '', row.nature ?? null, row.areaSqm ?? null],
         );
         for (const row of owners as any[]) await manager.query(
-          `INSERT INTO mis_mirror_owner(zh_id,s_id,name,mobile,phone2,source_updated_at,synced_at) VALUES($1,$2,$3,$4,$5,$6,now())`,
-          [row.zhId, row.sId ?? null, row.name ?? null, row.mobile ?? null, row.phone2 ?? null, row.sourceUpdatedAt ?? null],
+          `INSERT INTO mis_mirror_owner(zh_id,s_id,name,mobile,phone2,source_updated_at,owner_note,move_in_date,billing_start_date,synced_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,now())`,
+          [row.zhId, row.sId ?? null, row.name ?? null, row.mobile ?? null, row.phone2 ?? null, row.sourceUpdatedAt ?? null,
+            row.ownerNote ?? null, row.moveInDate ?? null, row.billingStartDate ?? null],
         );
       });
       await this.syncSmallDimensions();
