@@ -1,4 +1,4 @@
-﻿const test = require('node:test');
+const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -1244,6 +1244,8 @@ test('P2-C 收缴考核：12 月应收/收款表头、指标卡、合计/收缴�
     assert.ok((await classOf("document.querySelector('[data-s-id=\"22\"] .stats-p2-net-col')")).includes('stats-rate-pos'));
     assert.ok((await classOf("document.querySelector('[data-s-id=\"23\"] .stats-p2-net-col')")).includes('stats-rate-neg'));
     assert.ok(await js("!!document.querySelector('[data-testid=assessment-legend]')"), '表下图例');
+    // 宽表（24 个月列）1440 仍允许内部横向滚动，不强行压缩数字。
+    assert.ok(await js("(() => { const el = document.querySelector('.stats-assessment-scroll'); return el && el.scrollWidth > el.clientWidth + 1; })()"), '收缴考核宽表内部滚动');
     await screenshot('statistics-assessment-1440.png');
 
     // CSV：BOM、12 月表头、合计、收缴率。
@@ -1394,6 +1396,9 @@ test('P3-A 房产汇总：管理处行/合计/性质房屋数列/CSV/窄屏内�
     assert.ok(total.includes('1,161'), '业主数合计');
     assert.ok(total.includes('150460.75'), '建筑面积合计');
     assert.ok(total.includes('165'), '空房 06 合计');
+    // 窄表 1440 应填满容器且不出现内部横向滚动。
+    const propertyFit = await js("(() => { const el = document.querySelector('.stats-property-scroll'); return el ? { scroll: el.scrollWidth, client: el.clientWidth } : null; })()");
+    assert.ok(propertyFit && propertyFit.scroll <= propertyFit.client + 1, '房产汇总窄表 1440 不应横向滚动：' + JSON.stringify(propertyFit));
     await screenshot('statistics-property-summary-1440.png');
 
     await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");

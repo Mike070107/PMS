@@ -115,6 +115,9 @@ test('收费报表：PMS/旧系统来源、数字下钻明细、分页/空态、
     assert.ok(communityTable.includes('锦川公寓') && communityTable.includes('PMS'), 'PMS 来源行');
     assert.ok(communityTable.includes('枫桦景苑一期') && communityTable.includes('旧系统'), '旧系统来源行');
     assert.ok(await js("!!document.querySelector('[data-testid=export-fees]')"), '导出 Excel 保留');
+    // 窄表 1440 填满容器不横向滚动。
+    const breakdownFit = await js("(() => { const table = document.querySelector('[data-testid=fee-breakdown-community]'); const wrap = table.closest('.erp-report-table'); return { scroll: wrap.scrollWidth, client: wrap.clientWidth }; })()");
+    assert.ok(breakdownFit.scroll <= breakdownFit.client + 1, '收费报表窄表 1440 不应横向滚动：' + JSON.stringify(breakdownFit));
 
     const open = async (selector) => {
       await js(`document.querySelector(${JSON.stringify(selector)}).click()`);

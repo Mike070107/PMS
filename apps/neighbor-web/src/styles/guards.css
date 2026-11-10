@@ -23,3 +23,8 @@
 /* antd 浮层（下拉/日期/级联）挂 body 下，必须压过侧栏与粘性页头，否则看得见却点不到 */
 .ant-select-dropdown,.ant-picker-dropdown,.ant-cascader-dropdown,.ant-dropdown,.ant-modal-root{z-index:2000!important}
 .ant-select-dropdown,.ant-cascader-dropdown{max-width:min(560px,92vw)}
+
+/* 全站表格自适应：默认填满容器；内容自然宽度超出时才由 .t-scroll 内部横向滚动。 */
+.t { width: 100%; table-layout: auto; }
+.t th, .t td { white-space: nowrap; }
+.t-scroll { min-width: 0; max-width: 100%; overflow-x: auto; overflow-y: visible; }

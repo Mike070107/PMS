@@ -232,8 +232,11 @@ test('门禁发卡页能力分项 + 设备管理独立页（控制器/在线/无
 test('最近 30 笔：进页即显示、10 条/页、添加到二期门禁系统无需确认、授权楼栋来自 grant-options', { timeout: 120000 }, async () => {
   await withPage(async ({ js, call, click, waitFor, screenshot }) => {
     await waitFor("!!document.querySelector('.findBar')", '门禁发卡页挂载');
-    // 不选房也应显示最近 30 笔区块。
+    // 不选房也应显示最近 30 笔区块；默认折叠，展开后才加载 recent。
     assert.ok(await js("!!document.querySelector('[data-testid=recent-block]')"), '最近 30 笔不做选房前置');
+    assert.equal(await js("window.__calls.filter((item) => item.url === '/access-card-issuance/cards/recent').length"), 0, '默认折叠不请求 recent');
+    await js("document.querySelector('[data-testid=recent-toggle]').click()");
+    await waitFor("!!document.querySelector('[data-testid=recent-block] tbody tr[data-card-id]') || document.body.textContent.includes('助手回传中…')", '展开后加载最近记录');
     await waitFor("document.body.textContent.includes('助手回传中…')", 'pending 提示', 5000);
     let bodyText = await js('document.body.textContent');
     assert.ok(bodyText.includes('OLD00001'), 'pending 时应先显示旧行');
@@ -345,6 +348,7 @@ test('最近 30 笔：进页即显示、10 条/页、添加到二期门禁系统
 test('最近 30 笔一直 pending：自动重试 5 次后出现可点的重试入口，不会卡死在助手回传中', { timeout: 120000 }, async () => {
   await withPage(async ({ js, click, waitFor, screenshot }) => {
     await waitFor("!!document.querySelector('.findBar')", '门禁发卡页挂载');
+    await js("document.querySelector('[data-testid=recent-toggle]').click()");
     // 用尽 5 次自动重试仍 pending：必须露出「重试」入口，并说明已暂停自动刷新。
     await waitFor("!!document.querySelector('.ac-recent-retry')", '自动重试耗尽后的重试入口', 15000);
     const bodyText = await js('document.body.textContent');
@@ -368,6 +372,8 @@ test('最近 30 笔一直 pending：自动重试 5 次后出现可点的重试�
 test('门禁操作区：已添加变绿、授权轮询完成自动关弹窗、最新任务中文+权限核验、失败保持', { timeout: 180000 }, async () => {
   const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   await withPage(async ({ js, call, waitFor, screenshot }) => {
+    await waitFor("!!document.querySelector('.findBar')", '门禁发卡页挂载');
+    await js("document.querySelector('[data-testid=recent-toggle]').click()");
     await waitFor("document.querySelectorAll('[data-testid=recent-block] tbody tr[data-card-id]').length === 10", '最近记录 ready', 15000);
     // 默认折叠：无详情行/日志，首列 ▸；行内按钮 stopPropagation 不展开。
     assert.equal(await js("!!document.querySelector('.ac-detail-row')"), false, '默认不应展开详情');
@@ -455,6 +461,50 @@ test('门禁操作区：已添加变绿、授权轮询完成自动关弹窗、�
     await pause(400);
     assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '390 出现横向溢出');
     await screenshot('access-applied-390.png');
+  });
+});
+
+test('最近30笔默认折叠在发卡历史之后、隐藏记录按普通行展示、1440 表格填满不滚动', { timeout: 120000 }, async () => {
+  const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  await withPage(async ({ js, call, click, clickText, waitFor, screenshot }) => {
+    await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await waitFor("!!document.querySelector('.findBar')", '门禁发卡页挂载');
+    await pickHouse({ click, clickText, waitFor });
+    await waitFor("!!document.querySelector('[data-testid=history-block]')", '发卡历史', 15000);
+    // 默认折叠、无 recent 请求、位置在发卡历史之后。
+    assert.equal(await js("!!document.querySelector('[data-testid=recent-block] tbody tr[data-card-id]')"), false, '最近30笔默认折叠');
+    assert.equal(await js("window.__calls.filter((item) => item.url === '/access-card-issuance/cards/recent').length"), 0, '折叠时不得请求 recent');
+    assert.ok((await js("document.querySelector('[data-testid=history-block]').getBoundingClientRect().top")) < (await js("document.querySelector('[data-testid=recent-block]').getBoundingClientRect().top")), '最近30笔在发卡历史之后');
+    assert.ok((await js("document.querySelector('[data-testid=recent-toggle]').getAttribute('aria-expanded')")) === 'false');
+    await js("document.querySelector('[data-testid=recent-block]').scrollIntoView({ block: 'end' })");
+    await pause(200);
+    await screenshot('access-recent-collapsed-1440.png');
+    // 1440 发卡历史 11 列完整显示：容器无横向滚动，表格宽度≈容器。
+    const historyFit = await js("(() => { const wrap = document.querySelector('[data-testid=history-block] .t-scroll'); const table = wrap.querySelector('table'); return { scroll: wrap.scrollWidth, client: wrap.clientWidth, table: table.getBoundingClientRect().width }; })()");
+    assert.ok(historyFit.scroll <= historyFit.client + 1, '1440 发卡历史不应横向滚动：' + JSON.stringify(historyFit));
+    assert.ok(historyFit.table >= historyFit.client - 2, '发卡历史表格应填满容器：' + JSON.stringify(historyFit));
+    // 展开后才加载，表格/分页出现。
+    await js("document.querySelector('[data-testid=recent-toggle]').click()");
+    await waitFor("document.querySelectorAll('[data-testid=recent-block] tbody tr[data-card-id]').length === 10", '展开后加载最近30笔', 15000);
+    assert.ok(await js("!!document.querySelector('[data-testid=recent-pager]')"));
+    const recentFit = await js("(() => { const wrap = document.querySelector('[data-testid=recent-block] .t-scroll'); return { scroll: wrap.scrollWidth, client: wrap.clientWidth }; })()");
+    assert.ok(recentFit.scroll <= recentFit.client + 1, '1440 最近30笔不应横向滚动：' + JSON.stringify(recentFit));
+    await js("document.querySelector('[data-testid=recent-block]').scrollIntoView({ block: 'start' })");
+    await pause(200);
+    await screenshot('access-recent-expanded-1440.png');
+    // 已隐藏记录按普通行：无「已隐藏」文案/class，状态在用，操作可用，房号去前缀。
+    const hiddenRow = await js("(() => { const row = document.querySelector('[data-card-id=\"3\"]'); return { text: row.textContent, cls: row.className, room: row.children[2].textContent.trim(), status: row.children[9].textContent.trim(), applyDisabled: row.querySelector('[data-testid=apply-btn]').disabled }; })()");
+    assert.equal(hiddenRow.text.includes('已隐藏'), false, '隐藏记录不再显示已隐藏');
+    assert.equal(hiddenRow.cls.includes('ac-hidden-row'), false);
+    assert.equal(hiddenRow.room, '228/6/502', '房号去掉已隐藏前缀');
+    assert.equal(hiddenRow.status, '在用');
+    assert.equal(hiddenRow.applyDisabled, false, '隐藏记录操作可用');
+    // 390 页面不溢出，表格内部可滚动。
+    await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
+    await pause(400);
+    assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '390 页面横向溢出');
+    assert.ok(await js("(() => { const wrap = document.querySelector('[data-testid=recent-block] .t-scroll'); return wrap && wrap.scrollWidth >= wrap.clientWidth; })()"), '窄屏表格容器内部滚动');
+    await screenshot('access-recent-390.png');
   });
 });
 

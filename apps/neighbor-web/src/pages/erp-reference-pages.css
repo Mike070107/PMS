@@ -57,3 +57,11 @@
   .fee-detail-total { margin-left: 0; width: 100%; }
 }
 
+
+/* 收费报表/明细抽屉：表格默认填满，内容超宽才内部滚动。 */
+.erp-report-table { overflow-x: auto; max-width: 100%; min-width: 0; }
+.erp-report-table table { width: 100%; min-width: 0; table-layout: auto; }
+.erp-report-table th, .erp-report-table td { white-space: nowrap; }
+.fee-detail-table-scroll { min-width: 0; max-width: 100%; overflow-x: auto; }
+.fee-detail-table { width: 100%; min-width: 0 !important; table-layout: auto; }
+.fee-detail-table th, .fee-detail-table td { white-space: nowrap; }

@@ -387,10 +387,9 @@ export function CardRecordsTable({
         <tbody>
           {rows.map((row) => {
             const detail = cardDetails[row.id];
-            const hidden = !!row.hidden;
             const incomplete = row.fieldsIncomplete === true;
             const room = String(row.roomLabel || '').replace(/已隐藏/g, '').replace(/^[\s·\-]+/, '') || '—';
-            const statusText = hidden ? '已隐藏' : (row.status || '—');
+            const statusText = row.status || '在用';
             const applied = applyState[row.id]?.ok === true
               || (row.appliedSystems?.length ?? 0) > 0
               || (detail?.appliedSystems?.length ?? 0) > 0;
@@ -398,10 +397,10 @@ export function CardRecordsTable({
             const busy = !!applyBusyIds[row.id];
             return (
               <Fragment key={row.id}>
-                <tr className={`${hidden ? 'ac-hidden-row' : ''} ac-clickable-row`} data-card-id={row.id} data-expanded={expandedId === row.id ? 'true' : 'false'} onClick={() => onToggle(row)}>
+                <tr className="ac-clickable-row" data-card-id={row.id} data-expanded={expandedId === row.id ? 'true' : 'false'} onClick={() => onToggle(row)}>
                   <td className="nw muted">{row.displayNo}<span className="ac-expand-arrow" aria-hidden="true">{expandedId === row.id ? '▾' : '▸'}</span></td>
                   <td className="nw">{row.personNo || '—'}</td>
-                  <td className="nw"><b>{room}</b>{hidden ? <span className="tag mute" style={{ marginLeft: 6 }}>已隐藏</span> : null}</td>
+                  <td className="nw"><b>{room}</b></td>
                   <td className="nw">{row.personCreatedAt ? fmtCardTime(row.personCreatedAt) : cardFieldHint('personCreatedAt', incomplete)}</td>
                   <td className="nw">{row.icCardNo || '—'}</td>
                   <td className="nw">{row.wgCardNo || '—'}</td>
@@ -409,7 +408,7 @@ export function CardRecordsTable({
                   <td className="nw">{row.lastSwipeAt ? fmtCardTime(row.lastSwipeAt) : cardFieldHint('lastSwipeAt', incomplete)}</td>
                   <td className="nw">{row.lastDevice || cardFieldHint('lastDevice', incomplete)}</td>
                   <td className="nw">
-                    <span className={'tag ' + (hidden ? 'mute' : 'ok')}>{statusText}</span>
+                    <span className="tag ok">{statusText}</span>
                   </td>
                   <td className="nw ac-actions">
                     {canEdit ? <>
@@ -544,6 +543,14 @@ export default function AccessCards() {
   const [grantError, setGrantError] = useState('');
   const [verifyState, setVerifyState] = useState<Record<number, VerifyGrantState>>({});
   const [expandedCardId, setExpandedCardId] = useState<number | null>(null);
+  const [recentOpen, setRecentOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem('access.recent.open') === '1'; } catch { return false; }
+  });
+  const toggleRecent = () => setRecentOpen((open) => {
+    const next = !open;
+    try { localStorage.setItem('access.recent.open', next ? '1' : '0'); } catch { /* 忽略存储失败 */ }
+    return next;
+  });
 
   useEffect(() => { address.tree().then(setTree).catch(() => setTree([])); }, []);
   useEffect(() => {
@@ -615,6 +622,7 @@ export default function AccessCards() {
   }, [historyKey, historyRetry, loadHouse, picked]);
 
   useEffect(() => {
+    if (!recentOpen) return undefined;
     let cancelled = false;
     let retryTimer = 0;
     let attempts = 0;
@@ -647,7 +655,7 @@ export default function AccessCards() {
     };
     void run();
     return () => { cancelled = true; if (retryTimer) window.clearTimeout(retryTimer); };
-  }, [recentRetry]);
+  }, [recentRetry, recentOpen]);
 
   const refreshCardDetail = useCallback(async (cardId: number) => {
     const detail = await request<CardDetail>({ url: '/access-card-issuance/cards/' + cardId });
@@ -938,49 +946,6 @@ export default function AccessCards() {
 
       {err ? <div className="note2" style={{ background: 'var(--dang-w)', color: 'var(--dang)', marginBottom: 12 }}><Icon name="alert" />{err}</div> : null}
 
-      <div className="card" data-testid="recent-block" style={{ padding: '14px 16px', marginBottom: 14 }}>
-        <div className="panelHd" style={{ marginBottom: 10 }}>
-          <b>最近 30 笔做卡记录</b>
-          {recentRows.length ? <span className="tag mute" style={{ marginLeft: 8 }}>{recentRows.length} 笔</span> : null}
-          {recent?.status === 'pending' ? <span className="tag warn" style={{ marginLeft: 8 }}><Icon name="refresh" size={14} />助手回传中…</span> : null}
-          {recent?.status === 'pending' && recentStalled ? (
-            <button type="button" className="btn sm ac-recent-retry" style={{ marginLeft: 8 }} onClick={() => setRecentRetry((value) => value + 1)}>
-              <Icon name="refresh" size={14} />重试
-            </button>
-          ) : null}
-          {recent?.status === 'ready' && recent.refreshedAt ? <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>更新于 {dayjs(recent.refreshedAt).format('HH:mm')}</span> : null}
-          {recent?.fieldsIncomplete ? <span className="ac-field-hint">部分字段需升级现场助手后显示</span> : null}
-        </div>
-        {recentErrorText ? (
-          <div className="note2" role="alert" style={{ color: 'var(--dang)' }}><Icon name="alert" />{recentErrorText}<button className="btn sm" style={{ marginLeft: 10 }} onClick={() => setRecentRetry((value) => value + 1)}>重试</button></div>
-        ) : recent === null ? <Loading text="读最近做卡记录…" /> : null}
-        {recent?.status === 'pending' && recentStalled && !recentErrorText ? (
-          <div className="note2" style={{ marginBottom: 10 }}><Icon name="refresh" size={14} />助手回传较慢，已暂停自动刷新，可点「重试」继续查询。</div>
-        ) : null}
-        {recent && recentRows.length ? (
-          <>
-            <CardRecordsTable
-              rows={recentView}
-              canEdit={canEdit}
-              cardDetails={cardDetails}
-              applyBusyIds={applyBusyIds}
-              applyState={applyState}
-              verifyState={verifyState}
-              expandedId={expandedCardId}
-              onToggle={toggleCardDetail}
-              onApply={(row) => void applyCardToAccess(row)}
-              onGrant={(row) => void openGrant(row)}
-              onVerify={(cardId) => void verifyGrant(cardId)}
-            />
-            <Pager page={safeRecentPage} pageCount={recentPageCount} total={recentTotal} onChange={setRecentPage} testId="recent-pager" />
-          </>
-        ) : recent && !recentErrorText && recent.status === 'ready' ? (
-          <div className="muted">暂无最近做卡记录</div>
-        ) : recent && !recentErrorText && recent.status === 'pending' && !recentStalled ? (
-          <div className="muted"><Icon name="refresh" size={14} /> 助手回传中，稍后自动刷新…</div>
-        ) : null}
-      </div>
-
       {!picked ? (
         <div className="card" style={{ padding: '56px 20px', textAlign: 'center' }}>
           <Icon name="key" size={42} style={{ color: 'var(--ink4)', marginBottom: 10 }} />
@@ -1111,6 +1076,56 @@ export default function AccessCards() {
 
         </>
       )}
+      <div className="card" data-testid="recent-block" style={{ padding: '14px 16px', marginBottom: 14 }}>
+        <div className="panelHd ac-recent-head" style={{ marginBottom: recentOpen ? 10 : 0, cursor: 'pointer' }} onClick={toggleRecent}>
+          <b>最近 30 笔做卡记录</b>
+          <span className="tag mute" style={{ marginLeft: 8 }}>{recentRows.length || 30} 笔</span>
+          {recent?.status === 'pending' ? <span className="tag warn" style={{ marginLeft: 8 }}><Icon name="refresh" size={14} />助手回传中…</span> : null}
+          {recent?.status === 'pending' && recentStalled ? (
+            <button type="button" className="btn sm ac-recent-retry" style={{ marginLeft: 8 }} onClick={(event) => { event.stopPropagation(); setRecentRetry((value) => value + 1); }}>
+              <Icon name="refresh" size={14} />重试
+            </button>
+          ) : null}
+          {recent?.status === 'ready' && recent.refreshedAt ? <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>更新于 {dayjs(recent.refreshedAt).format('HH:mm')}</span> : null}
+          {recent?.fieldsIncomplete ? <span className="ac-field-hint">部分字段需升级现场助手后显示</span> : null}
+          <button type="button" className="btn sm" data-testid="recent-toggle" style={{ marginLeft: 'auto' }} aria-expanded={recentOpen} onClick={(event) => { event.stopPropagation(); toggleRecent(); }}>
+            {recentOpen ? '收起 ▾' : '展开 ▸'}
+          </button>
+        </div>
+        {recentOpen ? (
+          <>
+            {recentErrorText ? (
+              <div className="note2" role="alert" style={{ color: 'var(--dang)' }}><Icon name="alert" />{recentErrorText}<button className="btn sm" style={{ marginLeft: 10 }} onClick={(event) => { event.stopPropagation(); setRecentRetry((value) => value + 1); }}>重试</button></div>
+            ) : recent === null ? <Loading text="读最近做卡记录…" /> : null}
+            {recent?.status === 'pending' && recentStalled && !recentErrorText ? (
+              <div className="note2" style={{ marginBottom: 10 }}><Icon name="refresh" size={14} />助手回传较慢，已暂停自动刷新，可点「重试」继续查询。</div>
+            ) : null}
+            {recent && recentRows.length ? (
+              <>
+                <CardRecordsTable
+                  rows={recentView}
+                  canEdit={canEdit}
+                  cardDetails={cardDetails}
+                  applyBusyIds={applyBusyIds}
+                  applyState={applyState}
+                  verifyState={verifyState}
+                  expandedId={expandedCardId}
+                  onToggle={toggleCardDetail}
+                  onApply={(row) => void applyCardToAccess(row)}
+                  onGrant={(row) => void openGrant(row)}
+                  onVerify={(cardId) => void verifyGrant(cardId)}
+                />
+                <Pager page={safeRecentPage} pageCount={recentPageCount} total={recentTotal} onChange={setRecentPage} testId="recent-pager" />
+              </>
+            ) : recent && !recentErrorText && recent.status === 'ready' ? (
+              <div className="muted">暂无最近做卡记录</div>
+            ) : recent && !recentErrorText && recent.status === 'pending' && !recentStalled ? (
+              <div className="muted"><Icon name="refresh" size={14} /> 助手回传中，稍后自动刷新…</div>
+            ) : null}
+          </>
+        ) : <div className="muted" style={{ fontSize: 12 }}>最近做卡记录默认折叠，点「展开」后加载。</div>}
+      </div>
+
       <Sheet open={!!grantCard} onClose={() => { if (!grantBusy) setGrantCard(null); }} width={640} title="授权楼栋" subtitle={grantCard ? '卡 ' + (grantCard.icCardNo || grantCard.wgCardNo || '—') + ' · ' + (grantCard.roomLabel || '') : ''}>
         {grantCard ? (
           <>

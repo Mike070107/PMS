@@ -349,3 +349,20 @@
 .ac-card-detail > .ac-log-list { flex: 1 0 100%; min-width: 0; }
 .ac-card-detail > .ac-permission { flex: 1 0 100%; min-width: 0; }
 .ac-card-detail > .ac-detail-note { flex: 1 0 100%; margin: 0; }
+
+/* 门禁发卡表格：不再固定 1420px，1440 下 11 列完整显示；内容超宽才滚动。 */
+.ac-history-table, .ac-recent-table { width: 100%; min-width: 0; table-layout: auto; }
+.ac-history-table th, .ac-history-table td, .ac-recent-table th, .ac-recent-table td { white-space: nowrap; }
+.ac-history-table .ac-actions { white-space: nowrap; }
+.ac-recent-head { cursor: pointer; }
+/* 1440 下 11 列完整显示：压缩内边距、表头可换行、操作按钮纵向排列。 */
+.ac-history-table { font-size: 12px; }
+.ac-history-table th, .ac-history-table td { padding: 8px 6px; }
+.ac-history-table thead th { white-space: normal; line-height: 1.25; }
+.ac-history-table .ac-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.ac-history-table .ac-actions .btn { padding: 4px 8px; height: auto; font-size: 12px; }
+.ac-history-table { font-size: 11.5px; }
+.ac-history-table th, .ac-history-table td { padding: 7px 4px; }
+.ac-history-table .ac-actions .btn { padding: 3px 6px; font-size: 11px; }
+/* 时间列允许在日期与时分之间换行（数字本身不换行），确保 1440 完整 11 列。 */
+.ac-history-table td:nth-child(4), .ac-history-table td:nth-child(7), .ac-history-table td:nth-child(8) { white-space: normal; line-height: 1.3; }
