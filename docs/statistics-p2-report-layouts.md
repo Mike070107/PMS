@@ -1603,3 +1603,4 @@ sudo docker exec -i pms-postgres psql -U pms -d pms_repair -X -P pager=off
 - [账单镜像回归](<apps/api/src/modules/fees/bill-mirror.test.ts>)新增 1 项：增量 SQL 与手工重灌 SQL 都必须含这 5 个投影，落库后回读 `book_date/adjust_date/change_date/trade_order_no/merchant_order_no` 与源一致；[镜像扩展测试](<apps/api/src/modules/statistics/mirror-extra.test.ts>)也执行新迁移。常规 `test:mis-mirror` **34/34** 通过，API `tsc --noEmit` 通过。
 - 生产 `DB_SYNCHRONIZE` 不处理 `mis_mirror_*`：上线时要手工执行同一段 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...`，并跑一次手工重灌（或等增量覆盖）后新列才有历史值；未回填前报表应按「字段可空」处理，不能把空值当成 0 或忽略过滤。**本轮未连接生产、未执行迁移或重灌。**
 - 本轮只补数据底座，未新增报表入口；月报表 28 列、综合月报表B 33 列仍缺列头/公式截图，线上收费查询仍缺权限与口径定义，不能据此声称这些菜单已完成。
+- 提交 `11fa324a` 已推 `main`；随后在干净 detached worktree 中重建 API 与 Web，退出码均 0，证据见 `.tmp/legacy-statistics-round18-annual-id/build-evidence-11fa324a/verification.json`。仍未部署、未连生产。
