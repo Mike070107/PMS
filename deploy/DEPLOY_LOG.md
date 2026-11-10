@@ -7074,3 +7074,10 @@
 - 自上次（b0eb2cfe）以来上线的相关提交：
   - ed557694 fix(access-ui): 发卡历史空值提示——仅 fieldsIncomplete 才提示升级助手，无刷卡记录显示「—」并说明 .80/.88 来源
 
+## 2026-11-10 08:37 · api · 451eef90
+
+- 包：`pms-api-fast-20261110-083608.tar.gz`
+- 提交：451eef90 feat(access-ui): 门禁发卡操作区——已添加绿色按钮/授权轮询完成自动关弹窗/最新任务中文+时间+逐栋回执/权限重新核验
+- 自上次（dd52dda4）以来上线的相关提交：
+  - ae1a0254 feat(access): 行级 appliedSystems/grantedBuildings/latestTaskAt + 详情权限读回与 verify-grant + 任务回执字段
+
