@@ -60,9 +60,9 @@ async function standardFixture() {
       if (sourceFailure) throw sourceFailure;
       return missingResultSet ? { recordsets: [] } : { recordsets: [rows] };
     }
-    if (sql.includes('FROM dbo.楼表')) return { recordsets: [[{ lId: 502, officeCode: '01' }]] };
-    if (sql.includes('FROM dbo.室表')) return { recordsets: [[{ sId: 502, lId: 502, roomNo: '新合成室' }]] };
-    if (sql.includes('FROM dbo.业主表')) return { recordsets: [[{ zhId: 902, sId: 502, name: '新合成住户' }]] };
+    if (sql.includes('FROM dbo.楼表')) return { recordsets: [[{ lId: '502', officeCode: '01' }]] };
+    if (sql.includes('FROM dbo.室表')) return { recordsets: [[{ sId: '502', lId: '502', roomNo: '新合成室' }]] };
+    if (sql.includes('FROM dbo.业主表')) return { recordsets: [[{ zhId: '902', sId: '502', name: '新合成住户' }]] };
     return { recordsets: [[]] };
   } } as any, {} as any);
   service.syncSmallDimensions = async () => undefined;

@@ -1461,3 +1461,26 @@ sudo docker exec -i pms-postgres psql -U pms -d pms_repair -X -P pager=off
 - [新增标准回归](<apps/api/src/modules/fees/charge-standard-mirror.test.ts>)及[既有镜像回归](<apps/api/src/modules/fees/mis-mirror.test.ts>)、[补充镜像回归](<apps/api/src/modules/statistics/mirror-extra.test.ts>)共 **19/19** 通过：幂等迁移/回退、水位区分、超安全整数 ID、money 两端界、0.0049+0.0049 的同单元格精度、NULL/负数/历史/租赁保留、重复/空快照、源失败/缺结果集/损坏传输/重复主键真实事务回滚；另确认定时同步不读 WYDJ、不初始化标准水位。API `tsc --noEmit` 通过，独立只读代码审查 PASS；均为 PGlite 合成数据与静态 SQL/字节证据，不冒充真实 SQL Server 查询或现场验收。
 - API/前端报表均未新增，#24 仍待接入。后续仍需原始费项名称/停用元数据、管理处名称、完整楼室地址、显示临界语义与日期外观等证据/镜像准备，不能靠账单地址替代无账单房屋；JE 上游业务单位、独立菜单 ID 调度、模板及现场数据核验仍未完成。
 - 未部署、未执行生产迁移/重灌、未增加源读取频率。未来获得当次生产授权后，应先应用两条迁移，再明确执行手工重灌并验证快照和水位；不能用本地通过代替上线结果。
+
+## 附录 J：主数据 ID 精度与完整地址源证据（Round16）
+
+### J.1 修复手工重灌的五个 numeric18 主数据 ID
+
+- [源结构](<outputs/mis-db-sync-20261106/schema-columns.csv#L13007>)确认楼表 L_ID、[室表 S_ID/L_ID](<outputs/mis-db-sync-20261106/schema-columns.csv#L14388-L14390>)、[业主表 ZH_ID/S_ID](<outputs/mis-db-sync-20261106/schema-columns.csv#L15746-L15747>)均为 **NOT NULL numeric(18,0)**。此前只对 WYDJ 转字符串，不能据此声称楼室业主关联也已精确保留。
+- [手工重灌](<apps/api/src/modules/fees/mis-mirror.service.ts#L490-L496>)对这五个源字段统一 `CONVERT(varchar(20),…)`；[维度校验](<apps/api/src/modules/fees/dimension-mirror.util.ts>)在任何替换事务前要求真实数组结果集及每个 ID 为 1..18 位有符号十进制字符串。即使安全范围内的 JS Number 也拒绝，防止源端转换被漏掉；缺字段、NULL、数值、指数/小数/空格、19 位 ID 均 503，错误不携带原始源值。源允许的零、负 ID 不擅自过滤，孤立关联不增设外键。
+- 三个维度缺结果集不再被 `?? []` 当作成功空快照，避免静默清空；真实 `[]` 仍允许提交。楼/室/业主/标准与标准水位沿用同一既有事务，重复主键等写入失败整体回滚。未新增迁移、接口、源查询次数或定时任务，也没有改变日期、房号默认值、既有统计消费字段与 API 形状。
+- [新增精度回归](<apps/api/src/modules/fees/dimension-mirror.test.ts>)先在旧查询复现相邻 `9007199254740992`/`9007199254740993` 被 Number 合并导致楼主键碰撞；修复后真实 PGlite 跨标准→业主→室→楼关联精确保留不同的相邻大 ID 和 18 位上界业主 ID。源传输部分使用**明确的本地驱动模型**（缺 CAST 时返回 Number），不是实际 SQL Server 执行证据。另覆盖三个源结果结构/五个 ID 的 74 个损坏案例在事务前拒绝、非空原账单与镜像/水位保留、重复业主主键事务回滚、零/负关联和真实空快照。
+- **精度修复边界**：仅本轮手工维度读取与已有 WYDJ 快照。账单增量/全量 SQL、分页游标的 Number 转换及报表 API 中的数值 ID 仍未在本轮重构，不能宣称全部业务链路都支持超安全整数 ID；完整 reloadAll 仍不是单一事务（见 I.1）。
+
+### J.2 已核实源字段与地址 NULL 差异，尚未新增原始元数据镜像
+
+- [团队证据](<.tmp/legacy-statistics-round16-source-research/findings.md>)及[定点字节复核](<.tmp/legacy-statistics-round16-source-research/native-fixed-offset-verification.txt>)核对命名窗体指针/JMP 和 26 个 BSTR 引用；[Lead 独立脚本](<.tmp/legacy-statistics-round16-source-research/lead_verify.py>)、[结果](<.tmp/legacy-statistics-round16-source-research/lead-verification.json>)另验证原 EXE SHA256、11 个直接引用/指令操作码、8 个地址分段和五个 ID 源类型。偏移均为十进制文件偏移；只读静态 EXE 与表结构字段，没有执行 EXE、读取实际住户行、安装依赖或连接 MIS/生产。
+- 原 #24 地址先对楼表 `地址1,字1,地址2,字2,地址3,字3,地址4,字4` 各自 CASE NULL→空串（引用 @17827565–17827684），随后直接 **`+ 室表.室 + CASE 室表.字 …`**（BSTR @1336616，引用 @17827810）。室号没有 NULL→空串；不能替换为现有账单的全分段 ISNULL 拼接。历史 SQL 会话 `CONCAT_NULL_YIELDS_NULL` 未证明，因此保留原始 NULL/空串差异，不声称 NULL 室号最终地址外观已经确定。
+- 原 JOIN 是 `设置管理处.GYD_DH=楼表.管理处`（引用 @17827913），不是 GYD_ID 或室表.GYD；业主通过室 S_ID 且 `说明='新进户'` 作为 LEFT JOIN 条件（@17827935）。费用目录用原始 `XM`，不能把 `COALESCE(显示名称,XM)` 当作相同；类别/费项选择只取终止日期 NULL，管理处选择另有商用物业 0/2 和可选部门条件。准确选中项/权限分支仍待模板阶段核实。
+- [费项结构](<outputs/mis-db-sync-20261106/schema-columns.csv#L2396-L2410>)中 DH/XM/收费类别/显示名称分别为 nvarchar(50)，终止日期为可空 smalldatetime；[管理处](<outputs/mis-db-sync-20261106/schema-columns.csv#L14187-L14212>)代码 nvarchar(50)、名称 nvarchar(400)。楼八段各可空 nvarchar(50)，室号可空 nvarchar(250)、字可空 nvarchar(50)，完整声明地址长度可达 700。现有镜像的名称/代码/房号/账单地址宽度和 NULL/default 语义不能完整承载这些原始字段。
+- 后续需在不改变既有 fee_name、cron 和正常统计消费语义前提下补充原始元数据/地址快照与独立就绪标记，不能把原始字段放进会被 cron 覆盖的回退名称/类别列；不得从字段 CSV 推断代码唯一性、外键或排序规则。完整地址排序/分组、面积 float 精度、日期/金额运行时显示与业务单位等未解决事项仍适用附录 I；本轮没有因此开放 #24。
+
+### J.3 验证与上线边界
+
+- 四套镜像回归共 **22/22**、API `tsc --noEmit` 通过；新增 3 个测试覆盖本轮修复，既有 19 个回归继续覆盖原标准金额、迁移、日期失败、账单/补充镜像和 cron 排除行为。独立只读代码审查 PASS，保留上述 bill/分页精度边界；并将四套加入[常规 test:mis-mirror 脚本](<apps/api/package.json#L48>)，避免新增保护只靠临时手工命令。结果为本地合成数据和离线源证据，不代替真实源重灌、网页报表或生产验收。
+- 仅 API 源码/测试与本文档变更；Web/助手未变，报表 #24 仍灰字待接入，整个统计汇总目标仍未完成。未连接生产、未部署、未执行实际迁移或手工重灌。

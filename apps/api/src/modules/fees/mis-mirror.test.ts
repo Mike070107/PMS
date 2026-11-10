@@ -62,9 +62,9 @@ test('业主报表字段迁移可重复执行/回退，旧行保持未知且不�
 test('全量业主镜像保留原始说明和民用日期，不猜测空置/退户状态或填补缺失日期', async () => {
   const { pg, service } = await fixture();
   const owners = [
-    { zhId: 701, sId: 1, name: '合成住户', ownerNote: '新进户', moveInDate: '2020-01-01', billingStartDate: '2020-02-01' },
-    { zhId: 702, sId: 1, name: '合成历史住户', ownerNote: '历史说明原文' },
-    { zhId: 703, sId: 2, name: null, ownerNote: null, moveInDate: null, billingStartDate: null },
+    { zhId: '701', sId: '1', name: '合成住户', ownerNote: '新进户', moveInDate: '2020-01-01', billingStartDate: '2020-02-01' },
+    { zhId: '702', sId: '1', name: '合成历史住户', ownerNote: '历史说明原文' },
+    { zhId: '703', sId: '2', name: null, ownerNote: null, moveInDate: null, billingStartDate: null },
   ];
   let ownerQueries = 0;
   const run = async (sql: string, params?: any[]) => {
@@ -157,11 +157,11 @@ test('业主源读取失败或新日期落库失败均保留原维度、账单�
     })),
   };
   service.misFees.mirrorRead = async (sql: string) => {
-    if (sql.includes('FROM dbo.楼表')) return { recordsets: [[{ lId: 502, officeCode: '01' }]] };
-    if (sql.includes('FROM dbo.室表')) return { recordsets: [[{ sId: 502, lId: 502, roomNo: '新合成室' }]] };
+    if (sql.includes('FROM dbo.楼表')) return { recordsets: [[{ lId: '502', officeCode: '01' }]] };
+    if (sql.includes('FROM dbo.室表')) return { recordsets: [[{ sId: '502', lId: '502', roomNo: '新合成室' }]] };
     if (sql.includes('FROM dbo.业主表')) {
       if (failSource) throw sourceFailure;
-      return { recordsets: [[{ zhId: 902, sId: 502, name: '新合成住户', ownerNote: '新进户', moveInDate: 'invalid-civil-day' }]] };
+      return { recordsets: [[{ zhId: '902', sId: '502', name: '新合成住户', ownerNote: '新进户', moveInDate: 'invalid-civil-day' }]] };
     }
     if (sql.includes('FROM dbo.WYDJ')) return { recordsets: [[]] };
     throw new Error('失败后的同步步骤不应执行');

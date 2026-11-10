@@ -10,6 +10,7 @@ import { misFeeCategoryLabel, misFeeCategorySql } from './mis-fee-category';
 import { loadCollectionTargets } from './collection-targets.util';
 import { buildScreenSummary } from './screen-summary.util';
 import { chargeStandardMirrorParams } from './charge-standard-mirror.util';
+import { dimensionMirrorRows } from './dimension-mirror.util';
 
 type MirrorMode = 'mis' | 'mirror';
 type MirrorCommunity = { id: number; name: string; offices: string[] };
@@ -486,13 +487,13 @@ export class MisMirrorService {
         }
         throw error;
       }
-      const buildings = (await this.misFees.mirrorRead('SELECT L_ID AS lId,管理处 AS officeCode,地址1 AS road,地址2 AS lane,地址3 AS buildingNo FROM dbo.楼表', {}, MIS_TIMEOUT)).recordsets?.[0] ?? [];
-      const rooms = (await this.misFees.mirrorRead('SELECT S_ID AS sId,L_ID AS lId,室 AS roomNo,房屋性质 AS nature,建筑面积 AS areaSqm FROM dbo.室表', {}, MIS_TIMEOUT)).recordsets?.[0] ?? [];
-      const owners = (await this.misFees.mirrorRead(`SELECT ZH_ID AS zhId,S_ID AS sId,姓名 AS name,
+      const buildings = dimensionMirrorRows(await this.misFees.mirrorRead('SELECT CONVERT(varchar(20),L_ID) AS lId,管理处 AS officeCode,地址1 AS road,地址2 AS lane,地址3 AS buildingNo FROM dbo.楼表', {}, MIS_TIMEOUT), '楼表');
+      const rooms = dimensionMirrorRows(await this.misFees.mirrorRead('SELECT CONVERT(varchar(20),S_ID) AS sId,CONVERT(varchar(20),L_ID) AS lId,室 AS roomNo,房屋性质 AS nature,建筑面积 AS areaSqm FROM dbo.室表', {}, MIS_TIMEOUT), '室表');
+      const owners = dimensionMirrorRows(await this.misFees.mirrorRead(`SELECT CONVERT(varchar(20),ZH_ID) AS zhId,CONVERT(varchar(20),S_ID) AS sId,姓名 AS name,
         移动电话 AS mobile,固定电话 AS phone2,说明 AS ownerNote,
         CONVERT(varchar(10),进户日期,23) AS moveInDate,
         CONVERT(varchar(10),开始收费日期,23) AS billingStartDate,
-        updatedate AS sourceUpdatedAt FROM dbo.业主表`, {}, MIS_TIMEOUT)).recordsets?.[0] ?? [];
+        updatedate AS sourceUpdatedAt FROM dbo.业主表`, {}, MIS_TIMEOUT), '业主表');
       // 仅既有管理员手工重灌读取 WYDJ；定时账单同步不读取/初始化此镜像。
       const standardResult = await this.misFees.mirrorRead(`SELECT
         CONVERT(varchar(20),ID) AS standardId,CONVERT(varchar(20),ZH_ID) AS zhId,
