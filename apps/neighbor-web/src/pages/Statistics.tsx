@@ -86,13 +86,14 @@ function defaultDateRange(type: StatisticsReportType): { from: string; to: strin
 const FILTERS_COLLAPSED_KEY = 'statistics.filters.collapsed';
 
 function initialFiltersCollapsed(): boolean {
-  if (typeof window === 'undefined') return false;
+  if (typeof window === 'undefined') return true;
   try {
     const stored = window.localStorage.getItem(FILTERS_COLLAPSED_KEY);
     if (stored === '1') return true;
     if (stored === '0') return false;
-  } catch { /* 隐私模式读不到本地存储时按视口判断 */ }
-  return window.innerWidth <= 900;
+  } catch { /* 隐私模式读不到本地存储时仍默认收起 */ }
+  // 默认收起：筛选是悬浮弹层，不占据结果区布局宽度。
+  return true;
 }
 
 function rememberFiltersCollapsed(collapsed: boolean) {
@@ -414,6 +415,23 @@ export default function Statistics() {
     setFiltersCollapsed(false);
     rememberFiltersCollapsed(false);
   };
+  useEffect(() => {
+    if (filtersCollapsed) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); collapseFilters(); }
+    };
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('.stats-filter-float') || target?.closest('[data-testid=stats-filter-toggle]')) return;
+      collapseFilters();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('pointerdown', onPointerDown, true);
+    };
+  }, [filtersCollapsed]);
 
   useEffect(() => { reportTypeRef.current = reportType; }, [reportType]);
 

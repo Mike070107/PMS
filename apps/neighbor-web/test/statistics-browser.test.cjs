@@ -371,7 +371,7 @@ test('统计汇总金额/CSV 纯函数：整数分格式化、UTF-8 BOM、筛选
   assert.ok(csv.includes('管理费'));
 });
 
-function buildFixture() {
+function buildFixture(openFiltersByDefault = true) {
   fs.mkdirSync(evidenceDir, { recursive: true });
   const build = esbuild.buildSync({
     entryPoints: [path.join(__dirname, 'statistics-browser.tsx')],
@@ -396,13 +396,15 @@ function buildFixture() {
   fs.writeFileSync(
     path.join(evidenceDir, 'fixture.html'),
     '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-    + '<link rel="stylesheet" href="fixture.css"><div id="root"></div><script src="fixture.js"></script>',
+    + '<link rel="stylesheet" href="fixture.css"><div id="root"></div>'
+    + (openFiltersByDefault ? '<script>if(!sessionStorage.getItem("stats.fixture.seeded")){localStorage.setItem("statistics.filters.collapsed","0");sessionStorage.setItem("stats.fixture.seeded","1")}</script>' : '')
+    + '<script src="fixture.js"></script>',
   );
 }
 
 /** 起静态服务 + 无头 Chrome，把 CDP 辅助函数交给用例；结束后一律关闭。 */
 async function withPage(run, query = '') {
-  buildFixture();
+  buildFixture(!query.includes('no-auto-open'));
   const server = http.createServer((request, response) => {
     const name = request.url.split('?')[0].slice(1);
     if (!['fixture.html', 'fixture.css', 'fixture.js'].includes(name)) {
@@ -596,14 +598,14 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
 
     // 悬浮筛选可收纳：收起后数据区变宽、面板消失；localStorage 记住状态。
     assert.ok(await js("!!document.querySelector('.stats-filter-float')"), '桌面默认展开筛选浮层');
-    assert.equal(await js("localStorage.getItem('statistics.filters.collapsed')"), null);
+    assert.equal(await js("localStorage.getItem('statistics.filters.collapsed')"), '0');
     const widthExpanded = await js("document.querySelector('.stats-main').clientWidth");
     await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
     await pause(300);
     assert.equal(await js("!!document.querySelector('.stats-filters')"), false, '收起后筛选面板应隐藏');
     assert.equal(await js("localStorage.getItem('statistics.filters.collapsed')"), '1', '收起状态应写入 localStorage');
     const widthCollapsed = await js("document.querySelector('.stats-main').clientWidth");
-    assert.ok(widthCollapsed > widthExpanded, `收起后数据区应变宽（${widthExpanded} → ${widthCollapsed}）`);
+    assert.equal(widthCollapsed, widthExpanded, '筛选是悬浮层，收起/展开不改变结果区宽度');
     assert.ok((await js("document.querySelector('[data-testid=stats-filter-toggle]').textContent")).includes('筛选'));
     await screenshot('statistics-filters-collapsed-1440.png');
     await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
@@ -1704,3 +1706,49 @@ test('统计选项未就绪：优先显示后端 message，不渲染空表', { t
   }, '?options-unavailable');
 });
 
+
+test('筛选浮层：默认收起、打开不挤压表格、统计后关闭、外部/Esc 关闭、窄屏底部抽屉', { timeout: 120000 }, async () => {
+  const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  await withPage(async ({ js, call, waitFor, screenshot }) => {
+    await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度表', 25000);
+    // 默认收起：无浮层，紧凑入口存在，表格占满内容容器。
+    assert.equal(await js("!!document.querySelector('.stats-filters')"), false, '默认应收起筛选');
+    assert.ok((await js("document.querySelector('[data-testid=stats-filter-toggle]').textContent")).includes('筛选条件（'));
+    const before = await js("(() => { const main = document.querySelector('.stats-main'); const result = document.querySelector('.stats-result'); return { main: main.getBoundingClientRect().width, result: result.getBoundingClientRect().width }; })()");
+    await screenshot('statistics-filter-overlay-collapsed-1440.png');
+    // 打开浮层：覆盖内容，表格/结果区宽度不变。
+    await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
+    await waitFor("!!document.querySelector('.stats-filters')", '筛选浮层打开');
+    const after = await js("(() => { const main = document.querySelector('.stats-main'); const result = document.querySelector('.stats-result'); return { main: main.getBoundingClientRect().width, result: result.getBoundingClientRect().width }; })()");
+    assert.ok(Math.abs(before.main - after.main) <= 1, '打开浮层不改变结果区宽度：' + JSON.stringify({ before, after }));
+    assert.ok(Math.abs(before.result - after.result) <= 1, '打开浮层不挤压表格');
+    assert.ok(await js("(() => { const r = document.querySelector('.stats-filter-float').getBoundingClientRect(); return r.width >= 380 && r.width <= 460; })()"), '浮层宽度 380–440');
+    assert.ok(await js("!!document.querySelector('[data-testid=stats-export]')?.closest('.stats-result-head')"), '导出仍在结果标题右侧');
+    await screenshot('statistics-filter-overlay-open-1440.png');
+    // 点击外部（结果区表格）关闭，不误触发表格。
+    await js("document.querySelector('.stats-result').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))");
+    await waitFor("!document.querySelector('.stats-filters')", '点外部关闭浮层');
+    // Esc 关闭。
+    await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
+    await waitFor("!!document.querySelector('.stats-filters')", '再次打开浮层');
+    for (const type of ['keyDown', 'keyUp']) {
+      await call('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
+    }
+    await waitFor("!document.querySelector('.stats-filters')", 'Esc 关闭浮层');
+    // 统计后自动关闭。
+    await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
+    await waitFor("!!document.querySelector('.stats-filters')", '打开浮层以统计');
+    await js("document.querySelector('[data-testid=stats-submit]').click()");
+    await waitFor("!document.querySelector('.stats-filters')", '统计后自动关闭浮层');
+    // 窄屏：底部抽屉不超宽，页面不横向溢出。
+    await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
+    await pause(300);
+    await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
+    await waitFor("!!document.querySelector('.stats-filters')", '窄屏筛选抽屉');
+    const drawer = await js("(() => { const r = document.querySelector('.stats-filter-float').getBoundingClientRect(); return { left: r.left, right: r.right, bottom: r.bottom, top: r.top, innerWidth, innerHeight }; })()");
+    assert.ok(drawer.left >= -1 && drawer.right <= drawer.innerWidth + 1, '窄屏抽屉不超宽：' + JSON.stringify(drawer));
+    assert.ok(drawer.bottom <= drawer.innerHeight + 1, '窄屏抽屉在视口内');
+    assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '390 页面横向溢出');
+    await screenshot('statistics-filter-overlay-390.png');
+  }, '?no-auto-open');
+});
