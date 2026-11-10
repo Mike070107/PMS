@@ -1,6 +1,26 @@
 /* 统计汇总：悬浮可收纳筛选 + 年度汇总表（编号/管理处固定列、年度横向滚动、合计高亮、表格线）+ 三级下钻 */
 .stats { min-width: 0; }
 
+/* 开票统计沿用现有表格/抽屉，超宽内容只在表内滚动。 */
+.stats-ticket-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.stats-ticket-group .in { width: auto; min-width: 120px; }
+.stats-ticket-note { overflow-wrap: anywhere; margin: 10px 0; }
+.stats-ticket-items-table { min-width: 700px; }
+.stats-ticket-item-detail-table { min-width: 1200px; }
+.stats-ticket-items-table .num, .stats-ticket-item-detail-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.stats-ticket-detail-filters { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; }
+.stats-ticket-detail-filters label { display: grid; gap: 6px; flex: 1 1 220px; min-width: 0; }
+.stats-ticket-detail-filters .in { min-width: 0; width: 100%; }
+.stats-ticket-totals { margin: 12px 0; flex-wrap: wrap; }
+.stats-ticket-items-table .stats-cell-link, .stats-tickets-table .stats-cell-link { min-height: 32px; }
+.stats-ticket-items-table .stats-cell-link:focus-visible, .stats-tickets-table .stats-cell-link:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+@media (max-width: 600px) {
+  .stats-ticket-detail-filters label { flex-basis: 100%; }
+  .stats > .ph { flex-direction: column; align-items: stretch; gap: 12px; }
+  .stats .stats-head-actions { justify-content: flex-start; flex-wrap: wrap; }
+  .stats-ticket-detail-filters button, .stats-ticket-items-table .stats-cell-link, .stats-tickets-table .stats-cell-link { min-height: 44px; }
+}
+
 .stats-head-actions { flex-wrap: wrap; justify-content: flex-end; }
 
 /* ---------- 悬浮筛选（不占表格横向空间） ---------- */

@@ -371,6 +371,34 @@ test('统计汇总金额/CSV 纯函数：整数分格式化、UTF-8 BOM、筛选
   assert.ok(csv.includes('管理费'));
 });
 
+test('P4-B 开票参数、精确下钻、动态覆盖与 CSV 安全', () => {
+  const lib = loadStatisticsLib();
+  const q = { type: 'ticket-items', officeCodes: ['01', '02'], feeCodes: ['01', '04'], dateFrom: '', dateTo: '' };
+  assert.deepEqual(JSON.parse(JSON.stringify(lib.ticketItemsParams(q))), { officeCodes: '01,02', feeCodes: '01,04' });
+  assert.equal(lib.ticketItemsDrillQuery(q, 'fee', ''), null);
+  const fee = lib.ticketItemsDrillQuery(q, 'fee', '01');
+  assert.equal(fee.feeCodes.join(','), '01'); assert.equal(fee.officeCodes.join(','), '01,02');
+  const office = lib.ticketItemsDrillQuery(q, 'office', '02');
+  assert.equal(office.officeCodes.join(','), '02'); assert.equal(office.feeCodes.join(','), '01,04');
+  const day = lib.ticketItemsDrillQuery(q, 'day', '2023-12-23');
+  assert.equal(day.dateFrom, '2023-12-23'); assert.equal(day.dateTo, day.dateFrom);
+  assert.equal(q.feeCodes.join(','), '01,04', '下钻不改原快照');
+  const coverage = { dateFrom: '2022-11-25', dateTo: '2023-12-23', itemCount: 3, ticketCount: 2, nonzeroTaxItemCount: 0, unknownTaxItemCount: 0 };
+  assert.ok(lib.ticketItemsCoverageText(coverage).includes('税额均为 0'));
+  assert.ok(!lib.ticketItemsCoverageText({ ...coverage, unknownTaxItemCount: 1 }).includes('税额均为 0'));
+  assert.ok(!lib.ticketItemsCoverageText({ ...coverage, nonzeroTaxItemCount: 1 }).includes('税额均为 0'));
+  assert.ok(!lib.ticketItemsCoverageText({ ...coverage, itemCount: 0 }).includes('税额均为 0'));
+  assert.ok(lib.ticketItemsCoverageText(null).includes('暂不可用'));
+  const totals = { ticketCount: 2, itemCount: 3, amountCents: -100, taxCents: 0, incomeCents: -100 };
+  const csv = lib.ticketItemsCsv({ groupBy: 'fee', rows: [{ key: '01', label: '=unsafe', ...totals }], totals, coverage, available: true }, q);
+  assert.equal(csv.charCodeAt(0), 0xfeff);
+  assert.ok(csv.includes("'=unsafe,2,3,-1.00,0.00,-1.00"));
+  assert.ok(csv.includes('独立去重合计,2,3,-1.00,0.00,-1.00'));
+  const detail = lib.ticketItemDetailsCsv({ rows: [{ ticketNo: '=unsafe', warehouseNo: '+CMD', invoiceNo: '@foo', officeCode: '01', feeCode: '01', itemName: '\t=unsafe', amountCents: -100, taxCents: null, incomeCents: -100 }], totals, available: true }, '测试');
+  assert.ok(detail.includes("'=unsafe")); assert.ok(detail.includes("'+CMD")); assert.ok(detail.includes("'@foo"));
+  assert.ok(detail.includes('-1.00,,-1.00'), '缺失税额导出留空，负金额保留数值');
+});
+
 function buildFixture(openFiltersByDefault = true) {
   fs.mkdirSync(evidenceDir, { recursive: true });
   const build = esbuild.buildSync({
@@ -1694,6 +1722,138 @@ test('P2-E 收款汇总表/票据情况统计：动态列/副表/状态筛选/�
     await pause(400);
     assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '票据 320 页面横向溢出');
   });
+});
+
+test('P4-B 开票统计：分组下钻、独立总计、分页全量导出、逐票、等待错误未同步及窄屏', { timeout: 180000 }, async () => {
+  await withPage(async ({ js, call, waitFor, screenshot }) => {
+    const select = async value => {
+      await js(`(() => { const el = document.querySelector('[data-testid=ticket-items-group]'); el.value = ${JSON.stringify(value)}; el.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+      await waitFor(`window.__calls.filter(c=>c.url==='/statistics/ticket-items/summary').at(-1).query.groupBy === ${JSON.stringify(value)} && !!document.querySelector('[data-testid=ticket-items-table]')`, '分组完成');
+    };
+    const close = async () => { await js("document.querySelector('.sheet .x').click()"); await waitFor("!document.querySelector('.sheet')", '关闭明细'); };
+    const input = async (selector, value) => { await js(`(() => { const el=document.querySelector(${JSON.stringify(selector)}); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,${JSON.stringify(value)}); el.dispatchEvent(new Event('input',{bubbles:true})); })()`); await pause(100); };
+    await waitFor("!!document.querySelector('.stats-annual-table')", '默认表');
+    await js("window.__ticketDelay=900; document.querySelector('[data-report-type=ticket-items]').click()");
+    await waitFor("document.querySelector('.stats-result').textContent.includes('统计中')", '等待状态');
+    await screenshot('statistics-ticket-items-loading-1440.png');
+    await waitFor("!!document.querySelector('[data-testid=ticket-items-table]')", '开票汇总');
+    await js("window.__ticketDelay=0");
+    const initial = await js("window.__calls.filter(c=>c.url==='/statistics/ticket-items/summary').at(-1).query");
+    assert.equal(initial.dateFrom, undefined); assert.equal(initial.dateTo, undefined);
+    assert.equal(initial.groupBy, 'fee'); assert.ok(initial.officeCodes.includes('01,02')); assert.ok(initial.feeCodes.includes('01'));
+    assert.ok((await js("document.querySelector('[data-testid=ticket-items-total]').textContent")).includes('¥199.00'));
+    assert.equal(await js("document.querySelector('[data-testid=ticket-items-total] td:nth-child(2)').textContent"), '2', '独立去重，不相加成 3 张');
+    assert.ok((await js("document.querySelector('[data-testid=ticket-items-coverage]').textContent")).includes('2022-11-25 至 2023-12-23'));
+    await screenshot('statistics-ticket-items-1440.png');
+    await js("window.__blobs=[]; const original=URL.createObjectURL.bind(URL); URL.createObjectURL=blob=>{window.__blobs.push(blob);return original(blob)}; document.querySelector('[data-testid=stats-export]').click()");
+    await waitFor("window.__blobs.length===1", '汇总导出');
+    assert.ok((await js("window.__blobs[0].text()")).includes('独立去重合计,2,201,199.00,0.00,199.00'));
+    await js("document.querySelector('[data-group-key=\"01\"] button').click()");
+    await waitFor("!!document.querySelector('[data-testid=ticket-item-detail-table]')", '费项明细');
+    assert.equal(await js("window.__calls.filter(c=>c.url==='/statistics/ticket-items/detail').at(-1).query.feeCodes"), '01');
+    assert.ok((await js("document.querySelector('[data-testid=ticket-item-detail-totals]').textContent")).includes('¥200.00'));
+    await close();
+    await js("document.querySelector('[data-testid=ticket-items-total] button').click()");
+    await waitFor("document.querySelector('[data-testid=ticket-item-detail-count]')?.textContent.includes('200 / 201')", '首 200 行');
+    assert.ok((await js("document.querySelector('[data-testid=ticket-item-detail-totals]').textContent")).includes('¥199.00'));
+    await js("window.__ticketPageChanged=true; [...document.querySelectorAll('.sheet button')].find(b=>b.textContent.includes('导出全部明细')).click()");
+    await waitFor("[...document.querySelectorAll('.toast')].some(e=>e.textContent.includes('数据发生变化'))", '水位变化中止导出');
+    assert.equal(await js('window.__blobs.length'), 1, '不下载不一致的数据');
+    await js("window.__ticketPageChanged=false; [...document.querySelectorAll('.sheet button')].find(b=>b.textContent.includes('导出全部明细')).click()");
+    await waitFor("window.__blobs.length===2", '全量 201 行导出');
+    const csv = await js("window.__blobs[1].text()");
+    assert.ok(csv.includes('导出行数,201')); assert.ok(csv.includes("'=unsafe")); assert.ok(csv.includes('全部明细合计,2 张 / 201 行'));
+    assert.equal(await js("window.__calls.filter(c=>c.url==='/statistics/ticket-items/detail').at(-1).query.offset"), 200);
+    await js("[...document.querySelectorAll('.sheet button')].find(b=>b.textContent.includes('加载更多')).click()");
+    await waitFor("document.querySelector('[data-testid=ticket-item-detail-count]').textContent.includes('201 / 201')", '分页追加');
+    await input('.stats-ticket-detail-filters label:first-child input', 'SYN-2');
+    await js("document.querySelector('.stats-ticket-detail-filters').requestSubmit()");
+    await waitFor("document.querySelector('[data-testid=ticket-item-detail-count]')?.textContent.includes('100 / 100')", '精确票号过滤');
+    assert.equal(await js("window.__calls.filter(c=>c.url==='/statistics/ticket-items/detail').at(-1).query.ticketNo"), 'SYN-2');
+    await close();
+    await select('office');
+    await js("document.querySelector('[data-group-key=\"02\"] button').click()");
+    await waitFor("!!document.querySelector('[data-testid=ticket-item-detail-table]')", '管理处下钻');
+    assert.equal(await js("window.__calls.filter(c=>c.url==='/statistics/ticket-items/detail').at(-1).query.officeCodes"), '02');
+    await close();
+    await select('day');
+    await js("document.querySelector('[data-group-key=\"2023-12-23\"] button').click()");
+    await waitFor("!!document.querySelector('[data-testid=ticket-item-detail-table]')", '按日下钻');
+    const dayQuery = await js("window.__calls.filter(c=>c.url==='/statistics/ticket-items/detail').at(-1).query");
+    assert.equal(dayQuery.dateFrom, '2023-12-23'); assert.equal(dayQuery.dateTo, dayQuery.dateFrom);
+    await waitFor("!document.querySelector('.toast')", '导出提示自然消失');
+    await screenshot('statistics-ticket-items-detail-1440.png');
+    for (const width of [390, 320]) {
+      await call('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false }); await pause(200);
+      assert.ok(await js('document.documentElement.scrollWidth <= innerWidth+1'), `明细 ${width} 不溢出`);
+      assert.ok(await js("(()=>{const el=document.querySelector('.stats-detail-scroll');return el.scrollWidth>el.clientWidth})()"));
+      await screenshot(`statistics-ticket-items-detail-${width}.png`);
+    }
+    await close();
+    assert.ok(await js('document.documentElement.scrollWidth <= innerWidth+1'), '汇总 320 不溢出');
+    await js("document.querySelector('.stats-result').scrollIntoView()");
+    await screenshot('statistics-ticket-items-320.png');
+    await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await js("window.__ticketFail=true");
+    await js("document.querySelector('[data-testid=ticket-items-group]').value='fee'; document.querySelector('[data-testid=ticket-items-group]').dispatchEvent(new Event('change',{bubbles:true}))");
+    await waitFor("document.querySelector('.stats-result').textContent.includes('合成开票接口读取失败')", '错误非假零');
+    assert.equal(await js("!!document.querySelector('[data-testid=ticket-items-table]')"), false);
+    await screenshot('statistics-ticket-items-error-1440.png');
+    await js("window.__ticketFail=false; window.__ticketUnavailable=true; [...document.querySelectorAll('.stats-result button')].find(b=>b.textContent.includes('重试')).click()");
+    await waitFor("document.querySelector('.stats-result').textContent.includes('开票镜像尚未同步')", '未同步');
+    assert.equal(await js("document.querySelector('[data-testid=stats-export]').disabled"), true);
+    await js("window.__ticketUnavailable=false; window.__ticketUnknownTax=true; [...document.querySelectorAll('.stats-head-actions button')].find(b=>b.textContent.includes('刷新')).click()");
+    await waitFor("!!document.querySelector('[data-testid=ticket-items-table]')", '恢复');
+    assert.ok(!(await js("document.querySelector('[data-testid=ticket-items-coverage]').textContent")).includes('税额均为 0'));
+    await openFilters(js, waitFor);
+    assert.equal(await js("!!document.querySelector('[aria-label=房屋性质]')"), false);
+    const before = await js("window.__calls.filter(c=>c.url==='/statistics/ticket-items/summary').length");
+    const date = async (selector, text) => {
+      if (!text) { await js(`document.querySelector(${JSON.stringify(selector)}).closest('.ant-picker').querySelector('.ant-picker-clear').click()`); await pause(150); return; }
+      await js(`document.querySelector(${JSON.stringify(selector)}).focus()`);
+      for (const type of ['keyDown', 'keyUp']) await call('Input.dispatchKeyEvent', { type, key: 'a', code: 'KeyA', modifiers: 2, windowsVirtualKeyCode: 65 });
+      for (const type of ['keyDown', 'keyUp']) await call('Input.dispatchKeyEvent', { type, key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
+      await call('Input.insertText', { text }); await pause(150);
+      for (const type of ['keyDown', 'keyUp']) await call('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+      await pause(250);
+    };
+    await date('[aria-label=开票日期从]', '2022-11-25'); await date('[aria-label=开票日期至]', '2023-12-23');
+    await js("document.querySelector('[data-testid=stats-submit]').click()");
+    await waitFor("[...document.querySelectorAll('.toast')].some(e=>e.textContent.includes('366'))", '日期跨度验证');
+    assert.equal(await js("window.__calls.filter(c=>c.url==='/statistics/ticket-items/summary').length"), before);
+    await date('[aria-label=开票日期从]', '2024-01-01');
+    await js("document.querySelector('[data-testid=stats-submit]').click()");
+    assert.equal(await js("window.__calls.filter(c=>c.url==='/statistics/ticket-items/summary').length"), before);
+    await date('[aria-label=开票日期从]', '2023-01-01'); await date('[aria-label=开票日期至]', '');
+    for (const code of ['01', '03', '04']) await js(`document.querySelector('[data-office-code="${code}"]').click()`);
+    await js("document.querySelector('[data-testid=stats-submit]').click()");
+    await waitFor("!!document.querySelector('[data-testid=ticket-items-table]') && document.querySelector('[data-testid=ticket-items-total]').textContent.includes('¥100.00')", '单侧日期和管理处应用');
+    const narrowed = await js("window.__calls.filter(c=>c.url==='/statistics/ticket-items/summary').at(-1).query");
+    assert.equal(narrowed.officeCodes, '02'); assert.equal(narrowed.dateFrom, '2023-01-01'); assert.equal(narrowed.dateTo, undefined);
+    await openFilters(js, waitFor);
+    await js("[...document.querySelectorAll('.stats-filters button')].find(b=>b.textContent.includes('重置')).click()");
+    assert.equal(await js("document.querySelector('[aria-label=开票日期从]').value"), ''); assert.equal(await js("document.querySelector('[aria-label=开票日期至]').value"), '');
+    await js("document.querySelector('[data-testid=stats-submit]').click()");
+    await waitFor("document.querySelector('[data-testid=ticket-items-total]')?.textContent.includes('¥199.00')", '重置全历史');
+    // 关闭后迟到的旧明细不能污染新抽屉。
+    await js("window.__ticketDelay=800; document.querySelector('[data-group-key=\"01\"] button').click()");
+    await waitFor("document.querySelector('.sheet')?.textContent.includes('读取开票明细')", '明细等待');
+    await close();
+    await js("window.__ticketDelay=0; window.__ticketFail=true; document.querySelector('[data-group-key=\"04\"] button').click()");
+    await waitFor("document.querySelector('.sheet')?.textContent.includes('合成开票接口读取失败')", '明细错误保留重试');
+    await js("window.__ticketFail=false; [...document.querySelectorAll('.sheet button')].find(b=>b.textContent.includes('重试')).click()");
+    await waitFor("document.querySelector('[data-testid=ticket-item-detail-count]')?.textContent.includes('1 / 1')", '明细恢复');
+    await pause(900);
+    assert.ok((await js("document.querySelector('[data-testid=ticket-item-detail-count]').textContent")).includes('1 / 1'), '迟到旧响应隔离');
+    await close();
+    await js("document.querySelector('[data-report-type=tickets]').click()");
+    await waitFor("!!document.querySelector('[data-testid=tickets-table]')", '票据表');
+    await js("document.querySelector('[data-testid=tickets-table] tbody button').click()");
+    await waitFor("!!document.querySelector('[data-testid=ticket-header]')", '逐票摘要');
+    assert.ok(await js("window.__calls.some(c=>c.url==='/statistics/tickets/1/items')"));
+    assert.ok((await js("document.querySelector('[data-testid=ticket-item-detail-count]').textContent")).includes('101 / 101'));
+    await screenshot('statistics-ticket-single-items-1440.png');
+  }, '?no-auto-open');
 });
 
 test('统计选项未就绪：优先显示后端 message，不渲染空表', { timeout: 60000 }, async () => {

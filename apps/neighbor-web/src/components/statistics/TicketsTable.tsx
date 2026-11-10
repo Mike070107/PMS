@@ -4,7 +4,7 @@ import type { TicketsResponse } from '@/lib/statistics';
 const STATUS_TONE: Record<string, string> = { issued: 'ok', pre_issue: 'blue', voided: 'mute', written_off: 'acc' };
 
 /** 票据情况统计：16 列 + 合计行（件数/金额/税额）。 */
-export default function TicketsTable({ report }: { report: TicketsResponse }) {
+export default function TicketsTable({ report, onOpen }: { report: TicketsResponse; onOpen?: (row: TicketsResponse['rows'][number]) => void }) {
   return (
     <div className="t-scroll stats-tickets-scroll">
       <table className="t stats-tickets-table" data-testid="tickets-table">
@@ -19,7 +19,7 @@ export default function TicketsTable({ report }: { report: TicketsResponse }) {
           {report.rows.map((row, index) => (
             <tr key={`${row.id}-${index}`} data-ticket-id={row.id} data-status={row.status}>
               <td className="muted">{index + 1}</td>
-              <td><b>{row.ticketNo || '—'}</b></td>
+              <td>{onOpen ? <button type="button" className="stats-money-btn stats-cell-link" aria-label={`查看票据 ${row.ticketNo || row.id} 开票明细`} onClick={() => onOpen(row)}>{row.ticketNo || '未编号票据'} · 明细</button> : <b>{row.ticketNo || '—'}</b>}</td>
               <td>{row.warehouseNo || '—'}</td>
               <td>{row.officeName || row.officeCode}</td>
               <td>{row.issueDate || '—'}</td>

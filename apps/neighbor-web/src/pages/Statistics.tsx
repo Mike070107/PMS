@@ -20,6 +20,8 @@ import BuildingLedgerTable from '@/components/statistics/BuildingLedgerTable';
 import ReliefTable from '@/components/statistics/ReliefTable';
 import SignoffsTable from '@/components/statistics/SignoffsTable';
 import TicketSummaryTable from '@/components/statistics/TicketSummaryTable';
+import TicketItemsTable from '@/components/statistics/TicketItemsTable';
+import TicketItemsDetailSheet, { type TicketItemsTarget } from '@/components/statistics/TicketItemsDetailSheet';
 import TicketsTable from '@/components/statistics/TicketsTable';
 import StatisticsFilters from '@/components/statistics/StatisticsFilters';
 import { dayjs } from '@/lib/format';
@@ -31,6 +33,8 @@ import {
   feeNatureCsv, fmtCents, monthlyReportCsv, monthlyReportParams, ownerLedgerCsv, ownerLedgerParams,
   propertySummaryCsv, propertySummaryParams, reliefCsv, reliefParams, reportName, signoffsCsv, signoffsParams,
   ticketSummaryCsv, ticketSummaryParams, ticketsCsv, ticketsParams,
+  ticketItemsCsv, ticketItemsParams, ticketItemsDrillQuery,
+  type TicketItemsQuery, type TicketItemsGroup, type TicketItemsSummaryResponse,
   type AnnualQuery, type AnnualReportType, type AnnualSummaryResponse, type ArrearsPrepaidDetailResponse,
   type ArrearsPrepaidQuery, type ArrearsPrepaidSummaryResponse, type ArrearsPrepaidDetailRow,
   type AssessmentQuery, type AssessmentResponse, type BuildingLedgerQuery, type BuildingLedgerResponse,
@@ -65,6 +69,7 @@ const DEFAULT_EXCLUDED_NATURE_BY_REPORT: Record<StatisticsReportType, Set<string
   signoffs: new Set(),
   'ticket-summary': new Set(),
   tickets: new Set(),
+  'ticket-items': new Set(),
 };
 
 /** P2 报表日期区间必填，默认本月 1 日~今天；P1 报表保留原行为（日期可选）。 */
@@ -121,8 +126,9 @@ function defaultDraft(options: StatisticsOptions, reportType: StatisticsReportTy
     officeCodes: options.offices.map((office) => office.officeCode),
     feeCodes: options.feeItems.map((fee) => fee.code),
     natures: defaultNatures(options, reportType),
-    paidDateFrom: range.from,
-    paidDateTo: reportType === 'arrears-prepaid' || reportType === 'assessment' ? today.format('YYYY-MM-DD') : range.to,    asOfPeriod: reportType === 'arrears-prepaid' || reportType === 'collection-analysis' || reportType === 'monthly-report'
+    paidDateFrom: reportType === 'ticket-items' ? '' : range.from,
+    paidDateTo: reportType === 'ticket-items' ? '' : reportType === 'arrears-prepaid' || reportType === 'assessment' ? today.format('YYYY-MM-DD') : range.to,
+    asOfPeriod: reportType === 'arrears-prepaid' || reportType === 'collection-analysis' || reportType === 'monthly-report'
       ? `${today.year()}${String(today.month() + 1).padStart(2, '0')}`
       : `${dayjs().year()}12`,
     paymentMethods: (options.paymentMethods ?? []).map((method) => method.id),
@@ -264,6 +270,7 @@ function buildQuery(type: StatisticsReportType, draft: FilterDraft, options: Sta
     };
     return query;
   }
+  if (type === 'ticket-items') return { type, officeCodes: [...draft.officeCodes], feeCodes: [...draft.feeCodes], dateFrom: draft.paidDateFrom, dateTo: draft.paidDateTo };
   if (type === 'tickets') {
     const query: TicketListQuery = {
       type: 'tickets',
@@ -312,11 +319,11 @@ function activeFilterCount(type: StatisticsReportType, draft: FilterDraft): numb
   if (draft.officeCodes.length) count += 1;
   const usesFees = !['property-summary', 'owner-ledger', 'building-ledger', 'signoffs', 'tickets'].includes(type);
   if (usesFees && draft.feeCodes.length) count += 1;
-  const usesNatures = !['property-summary', 'building-ledger', 'relief', 'signoffs', 'ticket-summary', 'tickets'].includes(type);
+  const usesNatures = !['property-summary', 'building-ledger', 'relief', 'signoffs', 'ticket-summary', 'tickets', 'ticket-items'].includes(type);
   if (usesNatures && draft.natures.length) count += 1;
   if ((type === 'fee-nature' || type === 'ticket-summary') && draft.paymentMethods.length) count += 1;
-  const usesDates = ['fee-nature', 'daily', 'collection-analysis', 'relief', 'signoffs', 'ticket-summary', 'tickets'].includes(type);
-  if (usesDates && draft.paidDateFrom && draft.paidDateTo) count += 1;
+  const usesDates = ['fee-nature', 'daily', 'collection-analysis', 'relief', 'signoffs', 'ticket-summary', 'tickets', 'ticket-items'].includes(type);
+  if (usesDates && (draft.paidDateFrom || draft.paidDateTo)) count += 1;
   const usesPeriod = ['arrears', 'arrears-prepaid', 'collection-analysis', 'monthly-report'].includes(type);
   if (usesPeriod && draft.asOfPeriod) count += 1;
   const usesKeyword = ['owner-ledger', 'building-ledger', 'relief', 'signoffs', 'tickets'].includes(type);
@@ -390,6 +397,11 @@ export default function Statistics() {
   const [ticketSummary, setTicketSummary] = useState<TicketSummaryResponse | null>(null);
   const [ticketSummaryLoading, setTicketSummaryLoading] = useState(false);
   const [ticketSummaryError, setTicketSummaryError] = useState('');
+  const [ticketItems, setTicketItems] = useState<TicketItemsSummaryResponse | null>(null);
+  const [ticketItemsLoading, setTicketItemsLoading] = useState(false);
+  const [ticketItemsError, setTicketItemsError] = useState('');
+  const [ticketItemsGroup, setTicketItemsGroup] = useState<TicketItemsGroup>('fee');
+  const [ticketItemsTarget, setTicketItemsTarget] = useState<TicketItemsTarget | null>(null);
   const [tickets, setTickets] = useState<TicketsResponse | null>(null);
   const [ticketsLoading, setTicketsLoading] = useState(false);
   const [ticketsError, setTicketsError] = useState('');
@@ -544,6 +556,12 @@ export default function Statistics() {
         .then((response) => { if (!cancelled) setTicketSummary(response); })
         .catch((error) => { if (!cancelled) setTicketSummaryError(error instanceof Error && error.message ? error.message : '收款汇总表读取失败'); })
         .finally(() => { if (!cancelled) setTicketSummaryLoading(false); });
+    } else if (applied.type === 'ticket-items') {
+      setTicketItemsLoading(true); setTicketItemsError(''); setTicketItems(null);
+      request<TicketItemsSummaryResponse>({ url: '/statistics/ticket-items/summary', query: { ...ticketItemsParams(applied), groupBy: ticketItemsGroup } })
+        .then(response => { if (!cancelled) setTicketItems(response); })
+        .catch(error => { if (!cancelled) setTicketItemsError(error instanceof Error ? error.message : '开票数据读取失败'); })
+        .finally(() => { if (!cancelled) setTicketItemsLoading(false); });
     } else {
       setTicketsLoading(true); setTicketsError('');
       request<TicketsResponse>({ url: '/statistics/tickets', query: ticketsParams(applied as TicketListQuery) })
@@ -552,13 +570,13 @@ export default function Statistics() {
         .finally(() => { if (!cancelled) setTicketsLoading(false); });
     }
     return () => { cancelled = true; };
-  }, [applied, reportRetry]);
+  }, [applied, reportRetry, ticketItemsGroup]);
 
   const datesFilled = !!draft.paidDateFrom && !!draft.paidDateTo;
   const isLedger = reportType === 'property-summary' || reportType === 'owner-ledger' || reportType === 'building-ledger';
   const hasRequiredSelections = isLedger || reportType === 'signoffs' || reportType === 'tickets'
     ? draft.officeCodes.length > 0
-    : reportType === 'relief' || reportType === 'ticket-summary'
+    : reportType === 'relief' || reportType === 'ticket-summary' || reportType === 'ticket-items'
       ? draft.officeCodes.length > 0 && draft.feeCodes.length > 0
       : draft.officeCodes.length > 0 && draft.feeCodes.length > 0 && draft.natures.length > 0;
   const canSubmit = !!options
@@ -584,6 +602,11 @@ export default function Statistics() {
       toast('收款日期起不能晚于收款日期至');
       return;
     }
+    if (reportType === 'ticket-items' && draft.paidDateFrom && draft.paidDateTo) {
+      const days = dayjs(draft.paidDateTo).diff(dayjs(draft.paidDateFrom), 'day');
+      if (days < 0 || days > 366) { toast('开票日期起止顺序须正确，范围不能超过 366 天；清空日期可查看全部历史'); return; }
+    }
+    setTicketItemsTarget(null);
     if (draft.subjectYearFrom && draft.subjectYearTo && Number(draft.subjectYearFrom) > Number(draft.subjectYearTo)) {
       toast('所属年度起不能晚于所属年度止');
       return;
@@ -598,6 +621,7 @@ export default function Statistics() {
   };
 
   const switchReport = (type: StatisticsReportType) => {
+    setTicketItemsTarget(null);
     setDetailOpen(false);
     setDetailTarget(null);
     setCollectionDetailOpen(false);
@@ -610,6 +634,7 @@ export default function Statistics() {
     // 用户手动改过就保留（实收/欠费默认差在 06 空房，P2 为 13 项全选）。
     const followsPreviousDefault = sameNatureSelection(draft.natures, defaultNatures(options, reportType));
     const nextDraft: FilterDraft = { ...draft, natures: followsPreviousDefault ? defaultNatures(options, type) : draft.natures };
+    if (type === 'ticket-items') { nextDraft.paidDateFrom = ''; nextDraft.paidDateTo = ''; }
     // P2 报表日期必填：从其它报表切过来时用新报表默认范围（避免沿用旧报表的月份/年份区间）。
     if (isDateRequired(type)) {
       const previousDefault = defaultDateRange(reportType);
@@ -907,6 +932,10 @@ export default function Statistics() {
       else toast('导出失败，请重试');
       return;
     }
+    if (applied.type === 'ticket-items') {
+      if (ticketItems && downloadCsv(`开票数据统计-${stamp}.csv`, ticketItemsCsv(ticketItems, applied))) toast('已导出开票数据统计 CSV');
+      return;
+    }
     if (applied.type === 'tickets') {
       if (!tickets) return;
       const name = `统计汇总-票据情况统计-${stamp}.csv`;
@@ -924,7 +953,7 @@ export default function Statistics() {
 
   const activeLabel = reportName(applied?.type ?? reportType);
   const signoffTypeOptions = Array.from(new Set((signoffs?.rows ?? []).map((row) => row.type).filter((value): value is string => !!value)));
-  const hasExportData = applied?.type === 'fee-nature'
+  const hasExportData = applied?.type === 'ticket-items' ? !!ticketItems : applied?.type === 'fee-nature'
     ? !!collection
     : applied?.type === 'daily'
       ? !!daily
@@ -951,7 +980,7 @@ export default function Statistics() {
                           : applied?.type === 'tickets'
                             ? !!tickets
                             : !!annual;
-  const isLoading = applied?.type === 'fee-nature'
+  const isLoading = applied?.type === 'ticket-items' ? ticketItemsLoading : applied?.type === 'fee-nature'
     ? collectionLoading
     : applied?.type === 'daily'
       ? dailyLoading
@@ -978,7 +1007,7 @@ export default function Statistics() {
                           : applied?.type === 'tickets'
                             ? ticketsLoading
                             : annualLoading;
-  const activeError = applied?.type === 'fee-nature'
+  const activeError = applied?.type === 'ticket-items' ? ticketItemsError : applied?.type === 'fee-nature'
     ? collectionError
     : applied?.type === 'daily'
       ? dailyError
@@ -1005,7 +1034,7 @@ export default function Statistics() {
                           : applied?.type === 'tickets'
                             ? ticketsError
                             : annualError;
-  const activeDataAsOf = applied?.type === 'fee-nature'
+  const activeDataAsOf = applied?.type === 'ticket-items' ? ticketItems?.dataAsOf : applied?.type === 'fee-nature'
     ? collection?.dataAsOf
     : applied?.type === 'daily'
       ? daily?.dataAsOf
@@ -1034,7 +1063,7 @@ export default function Statistics() {
                             : annual?.dataAsOf;
   const dataAsOf = timeText(activeDataAsOf || options?.dataAsOf);
   const sourceLabel = options?.sourceMode === 'mirror' ? 'MIS 镜像' : (options?.sourceMode || '');
-  const activeAvailable = applied?.type === 'fee-nature'
+  const activeAvailable = applied?.type === 'ticket-items' ? ticketItems?.available : applied?.type === 'fee-nature'
     ? collection?.available
     : applied?.type === 'daily'
       ? daily?.available
@@ -1061,7 +1090,7 @@ export default function Statistics() {
                           : applied?.type === 'tickets'
                             ? tickets?.available
                             : annual?.available;
-  const activeMessage = applied?.type === 'fee-nature'
+  const activeMessage = applied?.type === 'ticket-items' ? ticketItems?.message : applied?.type === 'fee-nature'
     ? collection?.message
     : applied?.type === 'daily'
       ? daily?.message
@@ -1089,7 +1118,9 @@ export default function Statistics() {
                             ? tickets?.message
                             : annual?.message;
 
-  const dateRangeText = applied?.type === 'arrears-prepaid'
+  const dateRangeText = applied?.type === 'ticket-items'
+    ? `开票日期 ${applied.dateFrom || '不限'} 至 ${applied.dateTo || '不限'}`
+    : applied?.type === 'arrears-prepaid'
     ? `统计年月 ${applied.asOfPeriod} · 收款截止 ${applied.paidDateTo}`
     : applied?.type === 'assessment'
       ? `统计年份 ${applied.year}${applied.paidDateTo ? ` · 收款截止 ${applied.paidDateTo}` : ''}`
@@ -1193,6 +1224,9 @@ export default function Statistics() {
             <div className="card stats-result">
               <div className="panelHd stats-result-head">
                 <b>{activeLabel}</b>
+                {applied?.type === 'ticket-items' ? <label className="stats-ticket-group">分组 <select className="in" data-testid="ticket-items-group" value={ticketItemsGroup} onChange={e => { setTicketItemsTarget(null); setTicketItemsGroup(e.target.value as TicketItemsGroup); }}>
+                  <option value="fee">收费项目</option><option value="office">管理处</option><option value="day">开票日期</option>
+                </select></label> : null}
                 {applied?.type === 'fee-nature' && collection && collection.available !== false ? <span className="tag mute">{collection.rows.length} 个收费项目</span> : null}
                 {applied?.type === 'daily' && daily && daily.available !== false ? <span className="tag mute">{daily.rows.length} 天</span> : null}
                 {applied?.type !== 'fee-nature' && applied?.type !== 'daily' && (applied?.type === 'received' || applied?.type === 'arrears') && annual && annual.available !== false ? <span className="tag mute">{annual.rows.length} 个管理处</span> : null}
@@ -1519,13 +1553,18 @@ export default function Statistics() {
                     <TicketSummaryTable report={ticketSummary} />
                   ) : <div className="empty">{ticketSummary.message || '当前筛选没有收款汇总数据'}</div>
                 ) : null
+              ) : applied?.type === 'ticket-items' ? (
+                ticketItems ? <TicketItemsTable report={ticketItems} onDrill={(key, label) => {
+                  const query = key == null ? applied : ticketItemsDrillQuery(applied, ticketItems.groupBy, key);
+                  if (query) setTicketItemsTarget({ query, label });
+                }} /> : null
               ) : applied?.type === 'tickets' ? (
                 tickets ? (
                   tickets.available === false ? (
                     <div className="note2" role="status"><Icon name="alert" />{tickets.message || '票据情况数据尚未就绪；请稍后再试。'}</div>
                   ) : tickets.rows.length ? (
                     <>
-                      <TicketsTable report={tickets} />
+                      <TicketsTable report={tickets} onOpen={row => setTicketItemsTarget({ ticketId: row.id, label: row.ticketNo || '未编号票据' })} />
                       {tickets.count != null && tickets.rows.length < tickets.count ? (
                         <div className="stats-load-more">
                           <button type="button" className="btn sm" onClick={() => void loadMoreTickets()}>
@@ -1589,6 +1628,7 @@ export default function Statistics() {
         target={arrearsBillsTarget}
       />
 
+      <TicketItemsDetailSheet target={ticketItemsTarget} onClose={() => setTicketItemsTarget(null)} />
       <CollectionAnalysisDetailSheet
         open={analysisDetailOpen}
         onClose={() => setAnalysisDetailOpen(false)}

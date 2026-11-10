@@ -3,7 +3,7 @@
  * 金额一律是整数分；页面显示统一 ¥x,xxx.xx，CSV 用纯数字便于 Excel 计算。
  */
 
-export type StatisticsReportType = 'received' | 'arrears' | 'fee-nature' | 'daily' | 'arrears-prepaid' | 'assessment' | 'collection-analysis' | 'monthly-report' | 'property-summary' | 'owner-ledger' | 'building-ledger' | 'relief' | 'signoffs' | 'ticket-summary' | 'tickets';
+export type StatisticsReportType = 'received' | 'arrears' | 'fee-nature' | 'daily' | 'arrears-prepaid' | 'assessment' | 'collection-analysis' | 'monthly-report' | 'property-summary' | 'owner-ledger' | 'building-ledger' | 'relief' | 'signoffs' | 'ticket-summary' | 'tickets' | 'ticket-items';
 /** P1 年度报表：共用应收截止年月/收款日期等筛选。 */
 export type AnnualReportType = 'received' | 'arrears';
 
@@ -278,7 +278,83 @@ export interface TicketListQuery {
   dateTo: string;
 }
 
-export type ReportQuery = AnnualQuery | CollectionQuery | DailyQuery | ArrearsPrepaidQuery | AssessmentQuery | CollectionAnalysisQuery | MonthlyReportQuery | PropertySummaryQuery | OwnerLedgerQuery | BuildingLedgerQuery | ReliefQuery | SignoffsQuery | TicketSummaryQuery | TicketListQuery;
+export type ReportQuery = AnnualQuery | CollectionQuery | DailyQuery | ArrearsPrepaidQuery | AssessmentQuery | CollectionAnalysisQuery | MonthlyReportQuery | PropertySummaryQuery | OwnerLedgerQuery | BuildingLedgerQuery | ReliefQuery | SignoffsQuery | TicketSummaryQuery | TicketListQuery | TicketItemsQuery;
+
+export interface TicketItemsQuery {
+  type: 'ticket-items';
+  officeCodes: string[];
+  feeCodes: string[];
+  dateFrom: string;
+  dateTo: string;
+}
+export type TicketItemsGroup = 'fee' | 'office' | 'day';
+export interface TicketItemsTotals {
+  itemCount: number; ticketCount: number; amountCents: number; taxCents: number; incomeCents: number;
+}
+export interface TicketItemsCoverage {
+  dateFrom: string | null; dateTo: string | null; itemCount: number; ticketCount: number;
+  nonzeroTaxItemCount: number; unknownTaxItemCount: number;
+}
+export interface TicketItemsSummaryResponse {
+  groupBy: TicketItemsGroup;
+  rows: Array<TicketItemsTotals & { key: string; label: string }>;
+  totals: TicketItemsTotals | null;
+  coverage?: TicketItemsCoverage | null;
+  available: boolean; message?: string | null; dataAsOf?: string | null;
+}
+export interface TicketItemRow {
+  itemId: number; ticketId: number; ticketNo: string | null; warehouseNo: string | null;
+  officeCode: string; officeName?: string | null; issueDate: string | null; invoiceNo: string | null;
+  feeCode: string | null; feeName: string | null; itemName: string | null; project: string | null;
+  amountCents: number | null; taxCents: number | null; incomeCents: number;
+}
+export interface TicketItemsDetailResponse {
+  rows: TicketItemRow[]; totals: TicketItemsTotals | null; count?: number | null;
+  ticket?: { id: number; ticketNo: string | null; payer: string | null; address: string | null; customerName: string | null; issueDate: string | null; officeName: string | null } | null;
+  available: boolean; message?: string | null; dataAsOf?: string | null;
+}
+export function ticketItemsParams(query: TicketItemsQuery) {
+  return { officeCodes: query.officeCodes.join(','), feeCodes: query.feeCodes.join(','),
+    dateFrom: query.dateFrom || undefined, dateTo: query.dateTo || undefined };
+}
+/** 空 key 代表源数据缺失值，现有 API 不能精确表达该分组，禁止误钻为全部数据。 */
+export function ticketItemsDrillQuery(query: TicketItemsQuery, group: TicketItemsGroup, key: string): TicketItemsQuery | null {
+  if (!key) return null;
+  return { ...query, officeCodes: group === 'office' ? [key] : [...query.officeCodes],
+    feeCodes: group === 'fee' ? [key] : [...query.feeCodes],
+    dateFrom: group === 'day' ? key : query.dateFrom, dateTo: group === 'day' ? key : query.dateTo };
+}
+export function ticketItemsCoverageText(coverage?: TicketItemsCoverage | null): string {
+  if (!coverage) return '历史覆盖信息暂不可用。';
+  if (!coverage.itemCount) return '所选管理处及收费项目尚无开票行。';
+  const dates = coverage.dateFrom && coverage.dateTo ? `${coverage.dateFrom} 至 ${coverage.dateTo}` : '未记录开票日期';
+  const tax = coverage.nonzeroTaxItemCount === 0 && coverage.unknownTaxItemCount === 0
+    ? '；这些历史行的税额均为 0' : coverage.unknownTaxItemCount > 0 ? '；部分源税额缺失，汇总按源接口口径计算' : '';
+  return `所选管理处及收费项目历史覆盖：${dates}，${coverage.ticketCount} 张 / ${coverage.itemCount} 行（不受日期筛选限制）${tax}。`;
+}
+function ticketCsvCell(value: string): string {
+  // Preserve numeric negative amounts, neutralize text that spreadsheet apps can execute.
+  const safe = /^[\s]*[=+@-]/.test(value) && !/^-?\d+(?:\.\d+)?$/.test(value) || /^[\t\r]/.test(value) ? `'${value}` : value;
+  return csvCell(safe);
+}
+export function ticketItemsCsv(report: TicketItemsSummaryResponse, query: TicketItemsQuery): string {
+  const label = { fee: '收费项目', office: '管理处', day: '开票日期' }[report.groupBy];
+  const lines: string[][] = [['开票数据统计'], ['口径', '源全部开票行（含作废/预开/核销），非有效净开票或收款'],
+    ['管理处', query.officeCodes.join('、')], ['收费项目', query.feeCodes.join('、')],
+    ['开票日期', query.dateFrom || '不限', query.dateTo || '不限'], ['数据截止', report.dataAsOf || ''],
+    [ticketItemsCoverageText(report.coverage)], [], [label, '票据张数', '开票行数', '金额', '税额', '收入（金额－税额）']];
+  for (const row of report.rows) lines.push([row.label, String(row.ticketCount), String(row.itemCount), centsForCsv(row.amountCents), centsForCsv(row.taxCents), centsForCsv(row.incomeCents)]);
+  if (report.totals) { const t = report.totals; lines.push(['独立去重合计', String(t.ticketCount), String(t.itemCount), centsForCsv(t.amountCents), centsForCsv(t.taxCents), centsForCsv(t.incomeCents)]); }
+  return '\uFEFF' + lines.map(line => line.map(ticketCsvCell).join(',')).join('\r\n');
+}
+export function ticketItemDetailsCsv(report: TicketItemsDetailResponse, scope: string): string {
+  const lines: string[][] = [['开票逐笔明细'], ['筛选范围', scope], ['口径', '源全部开票行，非有效净开票或收款'],
+    ['数据截止', report.dataAsOf || ''], ['导出行数', String(report.rows.length)], [],
+    ['票据编号', '管理处', '开票日期', '收费项目', '开票项目', '项目说明', '金额', '税额', '收入（金额－税额）', '入库单编号', '发票号']];
+  for (const r of report.rows) lines.push([r.ticketNo || '', r.officeName || r.officeCode, r.issueDate || '', r.feeName || r.feeCode || '', r.itemName || '', r.project || '', r.amountCents == null ? '' : centsForCsv(r.amountCents), r.taxCents == null ? '' : centsForCsv(r.taxCents), centsForCsv(r.incomeCents), r.warehouseNo || '', r.invoiceNo || '']);
+  if (report.totals) { const t = report.totals; lines.push(['全部明细合计', `${t.ticketCount} 张 / ${t.itemCount} 行`, '', '', '', '', centsForCsv(t.amountCents), centsForCsv(t.taxCents), centsForCsv(t.incomeCents)]); }
+  return '\uFEFF' + lines.map(line => line.map(ticketCsvCell).join(',')).join('\r\n');
+}
 
 export interface FilterDraft {
   officeCodes: string[];
@@ -323,6 +399,7 @@ export const REPORTS: Array<{ type: StatisticsReportType; name: string; hint: st
   { type: 'relief', name: '减免情况统计', hint: '按减免日期/管理处/收费项目查减免记录（原应收/现应收/减免金额）；分页导出' },
   { type: 'signoffs', name: '签报情况统计', hint: '按拟稿日期/管理处/状态/类型查签报；含作废/结束/调整金额与状态标签' },
   { type: 'ticket-summary', name: '收款汇总表', hint: '费项×收款方式动态列，附票据口径与按收款人副表；按收款日期统计' },
+  { type: 'ticket-items', name: '开票数据统计', hint: '按开票日期统计源开票行，支持收费项目/管理处/日期分组及逐笔下钻；非有效净开票口径' },
   { type: 'tickets', name: '票据情况统计', hint: '按开票日期/管理处/状态查票据（编号/入库单/金额/税额/作废/核销/发票号）' },
 ];
 
@@ -333,7 +410,7 @@ export const PENDING_REPORTS = [
   '分等综合月报表',
   '日常收费项目收款日报表',
   '空房情况统计',
-  '开票数据统计',
+
   '住户票据查询',
   '票据使用数量统计',
   '线上收费查询',

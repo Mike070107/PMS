@@ -720,11 +720,49 @@ export async function request<T>(options: any): Promise<T> {
     return ticketSummaryResponse() as T;
   }
 
+  if (options.url === '/statistics/ticket-items/summary' || options.url === '/statistics/ticket-items/detail' || /^\/statistics\/tickets\/\d+\/items$/.test(options.url)) {
+    if (w.__ticketDelay) await pause(w.__ticketDelay);
+    if (w.__ticketFail) throw Error('合成开票接口读取失败');
+    if (w.__ticketUnavailable) return { available: false, rows: [], totals: null, count: null, coverage: null, message: '开票镜像尚未同步，不可视为零' } as T;
+    return ticketItemsResponse(options.url, options.query ?? {}) as T;
+  }
+
   if (options.url === '/statistics/tickets') {
     return ticketListResponse(options.query) as T;
   }
 
   throw Error('Unhandled synthetic request ' + String(options.url));
+}
+
+// Synthetic item rows: 2 distinct tickets span 2 fee groups; totals must not sum group ticket counts.
+function ticketItemsResponse(url: string, query: Record<string, any>) {
+  const data = Array.from({ length: 201 }, (_, index) => {
+    const ticketId = index === 200 ? 1 : index % 2 + 1;
+    return { itemId: index + 1, ticketId, ticketNo: `SYN-${ticketId}`, warehouseNo: '=unsafe', invoiceNo: 'INV-1',
+      officeCode: ticketId === 1 ? '01' : '02', officeName: ticketId === 1 ? '枫桦景苑一期' : '枫桦景苑二期A',
+      issueDate: ticketId === 1 ? '2022-11-25' : '2023-12-23', feeCode: index === 200 ? '04' : '01',
+      feeName: index === 200 ? '泊位费' : '管理费', itemName: index === 0 ? '=HYPERLINK("https://invalid")' : '合成开票项目', project: '仅测试',
+      amountCents: index === 200 ? -100 : 100, taxCents: 0, incomeCents: index === 200 ? -100 : 100 };
+  });
+  const totals = (rows: typeof data) => ({ ticketCount: new Set(rows.map(r => r.ticketId)).size, itemCount: rows.length,
+    amountCents: rows.reduce((s, r) => s + r.amountCents, 0), taxCents: 0, incomeCents: rows.reduce((s, r) => s + r.incomeCents, 0) });
+  const exactId = url.match(/\/tickets\/(\d+)\/items$/)?.[1];
+  const scoped = data.filter(r => (!query.officeCodes || String(query.officeCodes).split(',').includes(r.officeCode))
+    && (!query.feeCodes || String(query.feeCodes).split(',').includes(r.feeCode)) && (!exactId || r.ticketId === Number(exactId)));
+  const dates = scoped.map(r => r.issueDate).sort();
+  const coverage = { ...totals(scoped), dateFrom: dates[0] ?? null, dateTo: dates.at(-1) ?? null,
+    nonzeroTaxItemCount: 0, unknownTaxItemCount: w.__ticketUnknownTax ? 1 : 0 };
+  const filtered = scoped.filter(r => (!query.dateFrom || r.issueDate >= query.dateFrom) && (!query.dateTo || r.issueDate <= query.dateTo)
+    && (!query.ticketNo || r.ticketNo === query.ticketNo) && (!query.keyword || `${r.ticketNo} ${r.warehouseNo} ${r.itemName} ${r.feeCode} ${r.invoiceNo}`.toLowerCase().includes(query.keyword.toLowerCase())));
+  const base = { available: true, totals: totals(filtered), coverage, dataAsOf: w.__ticketPageChanged && Number(query.offset) > 0 ? '2026-11-10T03:01:00Z' : '2026-11-10T03:00:00Z' };
+  if (url.endsWith('/summary')) {
+    const groupBy = query.groupBy || 'fee';
+    const groups = new Map<string, typeof data>();
+    for (const row of filtered) { const key = groupBy === 'fee' ? row.feeCode : groupBy === 'office' ? row.officeCode : row.issueDate; groups.set(key, [...(groups.get(key) ?? []), row]); }
+    return { ...base, groupBy, rows: [...groups].map(([key, rows]) => ({ key, label: groupBy === 'fee' ? rows[0].feeName : groupBy === 'office' ? rows[0].officeName : key, ...totals(rows) })) };
+  }
+  return { ...base, count: filtered.length, rows: exactId ? filtered : filtered.slice(Number(query.offset ?? 0), Number(query.offset ?? 0) + Number(query.limit ?? 200)),
+    ticket: exactId ? { id: Number(exactId), ticketNo: `SYN-${exactId}`, payer: '合成付款人', address: '测试地址', issueDate: filtered[0]?.issueDate, officeName: filtered[0]?.officeName } : undefined };
 }
 
 // 统计页只用到 request；其余导出仅为兼容可能的公共模块静态导入。
