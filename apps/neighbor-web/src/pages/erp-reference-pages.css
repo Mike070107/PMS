@@ -21,3 +21,39 @@
 .erp-report-table{overflow:auto}.erp-report-table table{width:100%;border-collapse:collapse;font-size:16px}.erp-report-table th,.erp-report-table td{padding:12px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}.erp-report-table .num{text-align:right;font-variant-numeric:tabular-nums}
 .erp-reports .wo-bar input,.erp-reports .wo-bar select,.erp-reports .chip{min-height:44px;max-width:100%;font-size:16px}
 @media(max-width:760px){.erp-report-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.erp-report-kpis .stat{padding:14px}.erp-report-breakdowns{grid-template-columns:minmax(0,1fr)}.erp-report-trend,.erp-report-breakdown{padding:16px}.erp-reports .wo-bar{gap:8px!important}.erp-reports .wo-bar input{width:calc(50% - 20px)!important;min-width:0}.erp-reports .wo-bar select{margin-left:0!important;width:100%!important}.erp-reports .fees-breakdown-label{flex-wrap:wrap}}
+/* ---------- 收费报表：来源标签、可下钻数字、明细抽屉 ---------- */
+.fee-source-tag { font-size: 11px; padding: 1px 6px; }
+.fee-detail-link {
+  border: 0; background: transparent; padding: 0; margin: 0; font: inherit; color: var(--acc);
+  cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+}
+.fee-detail-link:hover { color: var(--acc-t); }
+.fee-breakdown-detail table { width: 100%; }
+.fee-detail-mask {
+  position: fixed; inset: 0; z-index: 60; background: rgba(20, 28, 40, .35);
+  display: flex; justify-content: flex-end;
+}
+.fee-detail-sheet {
+  width: min(860px, 100vw); height: 100%; background: #fff; display: flex; flex-direction: column;
+  padding: 16px 18px; box-shadow: -18px 0 50px -30px rgba(23, 32, 51, .45); overflow: auto;
+}
+.fee-detail-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+.fee-detail-head > div { flex: 1; min-width: 0; }
+.fee-detail-sub { font-size: 12px; margin-top: 4px; }
+.fee-detail-table-scroll { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.fee-detail-table { min-width: 820px; }
+.fee-detail-table th { white-space: nowrap; }
+.fee-detail-table td { white-space: nowrap; }
+.fee-detail-table td:nth-child(4) { white-space: normal; min-width: 180px; }
+.fee-detail-foot {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line);
+}
+.fee-detail-total { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }
+.fee-detail-pager { display: flex; gap: 6px; }
+@media (max-width: 760px) {
+  .fee-detail-sheet { width: 100vw; padding: 12px; }
+  .fee-detail-foot { gap: 8px; }
+  .fee-detail-total { margin-left: 0; width: 100%; }
+}
+

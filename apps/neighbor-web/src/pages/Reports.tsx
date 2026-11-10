@@ -13,7 +13,7 @@ import './erp-reference-pages.css';
 interface Breakdown { amountCents: number; count: number; share: number }
 interface MethodRow extends Breakdown { method: string | null }
 interface FeeRow extends Breakdown { feeCode: string; feeName: string }
-interface CommunityRow extends Breakdown { communityId: number | null; communityName: string | null }
+interface CommunityRow extends Breakdown { communityId: number | null; communityName: string | null; source?: 'pms' | 'mis'; officeCode?: string | null }
 interface CashierRow extends Breakdown { cashier: string | null }
 interface TrendRow { day?: string; bucket?: string; label?: string; amountCents: number; count: number }
 interface Totals { netCents: number; chargedCents: number; refundedCents: number; receiptCount: number; houseCount: number; itemCount: number }
@@ -21,7 +21,20 @@ interface Report {
   range: { from: string; to: string; granularity: string }; totals: Totals; previous: Totals;
   growth: { netCents: number; receiptCount: number; houseCount: number };
   trend: TrendRow[]; byMethod: MethodRow[]; byFee: FeeRow[]; byCommunity: CommunityRow[]; byCashier: CashierRow[];
+  sourceNote?: string | null; message?: string | null;
 }
+type FeeDimension = 'community' | 'fee' | 'method' | 'cashier' | 'day';
+interface FeeDetailRow {
+  id: number | string; source?: 'pms' | 'mis' | null; occurredAt?: string | null;
+  officeCode?: string | null; officeName?: string | null; communityId?: number | null; communityName?: string | null;
+  address?: string | null; ownerName?: string | null; feeCode?: string | null; feeName?: string | null;
+  amountCents: number; method?: string | null; cashier?: string | null; receiptNo?: string | null;
+}
+interface FeeDetailResponse {
+  rows: FeeDetailRow[]; totals?: { count: number; amountCents: number } | null;
+  count?: number; limit?: number; offset?: number; message?: string | null;
+}
+interface DetailTarget { dimension: FeeDimension; key: string; label: string; amountCents: number; count: number; source?: 'pms' | 'mis' }
 
 interface AggMetrics {
   total: number; completed: number; pendingReview: number; cancelled: number; active: number; overdue: number;
@@ -134,6 +147,11 @@ export default function Reports() {
   const [muErr, setMuErr] = useState('');
   const [exporting, setExporting] = useState('');
   const [revision, setRevision] = useState(0);
+  const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
+  const [detailData, setDetailData] = useState<FeeDetailResponse | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
+  const [detailOffset, setDetailOffset] = useState(0);
   const scope = JSON.stringify([session.generation, session.user?.id, session.actingTenant?.id, session.access?.scopeAll, session.access?.communityIds]);
 
   useEffect(() => { address.tree().then(setTree).catch(() => setTree([])); }, []);
@@ -153,6 +171,32 @@ export default function Reports() {
     return () => { alive = false; };
   };
   useEffect(load, [from, to, communityId, scope, revision]);
+
+  async function fetchFeeDetail(target: DetailTarget, offset: number) {
+    setDetailLoading(true); setDetailError('');
+    try {
+      const res = await request<FeeDetailResponse>({
+        url: '/fees/reports/detail',
+        query: {
+          from, to, communityId: communityId || undefined,
+          dimension: target.dimension, key: target.key,
+          source: target.source || undefined, limit: 200, offset,
+        },
+      });
+      setDetailData(res); setDetailOffset(offset);
+    } catch (error) {
+      setDetailError(error instanceof Error && error.message ? error.message : '明细读取失败，请稍后重试');
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+  function openFeeDetail(target: DetailTarget) {
+    setDetailTarget(target); setDetailData(null); setDetailOffset(0);
+    void fetchFeeDetail(target, 0);
+  }
+  function closeFeeDetail() {
+    setDetailTarget(null); setDetailData(null); setDetailError('');
+  }
 
   useEffect(() => {
     if (tab !== 'work-orders') return;
@@ -232,15 +276,46 @@ export default function Reports() {
     { icon: 'refresh', tone: 'amber', label: '退款(红冲)', val: money(data.totals.refundedCents / 100) },
   ] : [];
 
-  const Bars = ({ title, icon, rows }: { title: string; icon: IconName; rows: Array<{ key: string; name: string; amountCents: number; count: number; share: number }> }) => (
+  const Bars = ({ title, icon, dimension, rows }: {
+    title: string; icon: IconName; dimension: FeeDimension;
+    rows: Array<{ key: string; name: string; amountCents: number; count: number; share: number; source?: 'pms' | 'mis'; officeCode?: string | null }>;
+  }) => (
     <section className="card erp-report-breakdown">
       <h2 className="secTitle"><Icon name={icon} size={18} />{title}</h2>
       <FeeBreakdownChart loading={false} rows={rows.map(r => ({ ...r, share: Number.isFinite(r.share) ? Math.round(r.share * 100) : null }))} />
+      <div className="erp-report-table fee-breakdown-detail" style={{ marginTop: 10 }}>
+        <table data-testid={`fee-breakdown-${dimension}`}>
+          <thead><tr><th>名称</th><th className="num">净收款（元）</th><th className="num">笔数</th></tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.key}>
+                <td>
+                  {r.name}
+                  {r.source ? <span className={`tag fee-source-tag ${r.source === 'mis' ? 'acc' : 'ok'}`} style={{ marginLeft: 6 }}>{r.source === 'mis' ? '旧系统' : 'PMS'}</span> : null}
+                </td>
+                <td className="num">
+                  <button type="button" className="fee-detail-link" data-fee-detail data-dimension={dimension} data-key={r.key} data-source={r.source} title="查看该条件下收款明细"
+                    onClick={() => openFeeDetail({ dimension, key: r.key, label: r.name, amountCents: r.amountCents, count: r.count, source: r.source })}>
+                    {money(r.amountCents / 100)}
+                  </button>
+                </td>
+                <td className="num">
+                  <button type="button" className="fee-detail-link" data-fee-detail data-dimension={dimension} data-key={r.key} data-source={r.source} title="查看该条件下收款明细"
+                    onClick={() => openFeeDetail({ dimension, key: r.key, label: r.name, amountCents: r.amountCents, count: r.count, source: r.source })}>
+                    {r.count}
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {!rows.length ? <tr><td colSpan={3} className="muted">当前筛选范围没有数据</td></tr> : null}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 
   const exportButton = (kind: ExportKind, extra: Record<string, string | number | undefined>, fallback: string, disabled: boolean) => (
-    <button className="btn" disabled={disabled || exporting === kind} onClick={() => void download(kind, extra, fallback)}>
+    <button className="btn" data-testid={`export-${kind}`} disabled={disabled || exporting === kind} onClick={() => void download(kind, extra, fallback)}>
       <Icon name="file" />{exporting === kind ? '导出中…' : '导出 Excel'}
     </button>
   );
@@ -300,6 +375,10 @@ export default function Reports() {
             ))}
           </div>
 
+          <div className="note2" data-testid="fee-source-note" style={{ marginTop: 10 }}>
+            <Icon name="alert" />数据来源：锦川公寓等 PMS 收费小区为 PMS 收款；枫桦景苑一期/二期/上海新家为旧系统 MIS 实收（收款日期口径）。{data.sourceNote ? ` ${data.sourceNote}` : ''}{data.message ? ` ${data.message}` : ''}
+          </div>
+
           <section className="card erp-report-trend" data-testid="reports-trend-chart" role="region" aria-label="收款趋势，金额单位元，含红冲负数">
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <h2 className="secTitle" style={{ margin: 0 }}><Icon name="chart" size={18} />收款趋势</h2>
@@ -307,16 +386,20 @@ export default function Reports() {
             </div>
             <FeeTrendChart loading={false} rows={data.trend.map(t => ({ bucket: t.label || t.bucket || t.day || '未标注日期', amountCents: t.amountCents, count: t.count }))} label={bucket => bucket} />
             <details><summary>查看趋势明细 · {data.trend.length} 个日期</summary>
-              <div className="erp-report-table"><table><thead><tr><th>日期</th><th className="num">净收款（元）</th><th className="num">笔数</th></tr></thead><tbody>
-                {data.trend.map((t, i) => <tr key={i}><td>{t.label || t.bucket || t.day || '未标注日期'}</td><td className="num">{money(t.amountCents / 100)}</td><td className="num">{t.count}</td></tr>)}
+              <div className="erp-report-table"><table data-testid="fee-trend-table"><thead><tr><th>日期</th><th className="num">净收款（元）</th><th className="num">笔数</th></tr></thead><tbody>
+                {data.trend.map((t, i) => {
+                  const label = t.label || t.bucket || t.day || '未标注日期';
+                  const key = t.day || t.bucket || label;
+                  return <tr key={i}><td>{label}</td><td className="num"><button type="button" className="fee-detail-link" data-fee-detail data-dimension="day" data-key={key} title="查看当日收款明细" onClick={() => openFeeDetail({ dimension: 'day', key, label, amountCents: t.amountCents, count: t.count })}>{money(t.amountCents / 100)}</button></td><td className="num"><button type="button" className="fee-detail-link" data-fee-detail data-dimension="day" data-key={key} title="查看当日收款明细" onClick={() => openFeeDetail({ dimension: 'day', key, label, amountCents: t.amountCents, count: t.count })}>{t.count}</button></td></tr>;
+                })}
               </tbody></table></div>
             </details>
           </section>
           <div className="erp-report-breakdowns">
-            <Bars title="按费项" icon="receipt" rows={data.byFee.map((r) => ({ key: r.feeCode, name: r.feeName, amountCents: r.amountCents, count: r.count, share: r.share }))} />
-            <Bars title="按收款方式" icon="wallet" rows={data.byMethod.map((r) => ({ key: r.method || 'null', name: PM_LABEL[r.method || ''] || r.method || '未知', amountCents: r.amountCents, count: r.count, share: r.share }))} />
-            {data.byCommunity.length > 1 ? <Bars title="按小区" icon="building" rows={data.byCommunity.map((r) => ({ key: String(r.communityId), name: r.communityName || '未分小区', amountCents: r.amountCents, count: r.count, share: r.share }))} /> : null}
-            <Bars title="按收费员" icon="users" rows={data.byCashier.map((r) => ({ key: r.cashier || 'null', name: r.cashier || '未记名', amountCents: r.amountCents, count: r.count, share: r.share }))} />
+            <Bars title="按费项" icon="receipt" dimension="fee" rows={data.byFee.map((r) => ({ key: r.feeCode, name: r.feeName, amountCents: r.amountCents, count: r.count, share: r.share }))} />
+            <Bars title="按收款方式" icon="wallet" dimension="method" rows={data.byMethod.map((r) => ({ key: r.method || 'null', name: PM_LABEL[r.method || ''] || r.method || '未知', amountCents: r.amountCents, count: r.count, share: r.share }))} />
+            {data.byCommunity.length ? <Bars title="按小区" icon="building" dimension="community" rows={data.byCommunity.map((r) => ({ key: r.source === 'mis' ? String(r.officeCode || r.communityId) : String(r.communityId), name: r.communityName || '未分小区', amountCents: r.amountCents, count: r.count, share: r.share, source: r.source }))} /> : null}
+            <Bars title="按收费员" icon="users" dimension="cashier" rows={data.byCashier.map((r) => ({ key: r.cashier || 'null', name: r.cashier || '未记名', amountCents: r.amountCents, count: r.count, share: r.share }))} />
           </div>
         </>
       ) : null)}
@@ -430,6 +513,62 @@ export default function Reports() {
           )}
         </>
       )}
+
+      {detailTarget ? (
+        <div className="fee-detail-mask" onClick={closeFeeDetail}>
+          <aside className="fee-detail-sheet" role="dialog" aria-label="收款明细清单" data-testid="fee-detail-sheet" onClick={(event) => event.stopPropagation()}>
+            <div className="fee-detail-head">
+              <div>
+                <h2 className="secTitle" style={{ margin: 0 }}>明细清单 · {detailTarget.label}</h2>
+                <div className="muted fee-detail-sub">{from} 至 {to} · {communityId ? communities.find((c) => c.id === communityId)?.name || '当前小区' : '全部小区'} · 数据来源 PMS + 旧系统</div>
+              </div>
+              <button type="button" className="btn sm fee-detail-close" aria-label="关闭明细" onClick={closeFeeDetail}><Icon name="x" size={15} /></button>
+            </div>
+            {detailLoading ? <Loading text="读收款明细…" /> : detailError ? (
+              <div className="note2" role="alert" style={{ background: 'var(--dang-w)', color: 'var(--dang)' }}>
+                <Icon name="alert" />{detailError}<button className="btn sm" style={{ marginLeft: 8 }} onClick={() => void fetchFeeDetail(detailTarget, detailOffset)}>重试</button>
+              </div>
+            ) : detailData ? (
+              <>
+                {detailData.message ? <div className="note2"><Icon name="alert" />{detailData.message}</div> : null}
+                {detailData.rows.length ? (
+                  <div className="t-scroll fee-detail-table-scroll">
+                    <table className="t fee-detail-table" data-testid="fee-detail-table">
+                      <thead><tr><th>来源</th><th>日期</th><th>管理处/小区</th><th>地址</th><th>业主</th><th>收费项目</th><th className="num">金额</th><th>收款方式</th><th>收款人</th><th>票据/入库单号</th></tr></thead>
+                      <tbody>
+                        {detailData.rows.map((row, index) => (
+                          <tr key={`${row.id}-${index}`} data-detail-row data-source={row.source || undefined}>
+                            <td><span className={`tag ${row.source === 'mis' ? 'acc' : 'ok'}`}>{row.source === 'mis' ? '旧系统' : 'PMS'}</span></td>
+                            <td className="nw">{row.occurredAt ? String(row.occurredAt).slice(0, 10) : '—'}</td>
+                            <td>{row.communityName || row.officeName || '—'}</td>
+                            <td>{row.address || '—'}</td>
+                            <td>{row.ownerName || '—'}</td>
+                            <td>{row.feeName || row.feeCode || '—'}</td>
+                            <td className={`num ${row.amountCents < 0 ? 'stats-num-neg' : ''}`}>{money(row.amountCents / 100)}</td>
+                            <td>{PM_LABEL[row.method || ''] || row.method || '—'}</td>
+                            <td>{row.cashier || '—'}</td>
+                            <td>{row.receiptNo || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : <div className="empty" data-testid="fee-detail-empty">该条件下无明细</div>}
+                <div className="fee-detail-foot">
+                  <span className="muted">共 {detailData.count ?? detailData.totals?.count ?? detailTarget.count} 笔</span>
+                  <span className="fee-detail-total" data-testid="fee-detail-total" data-cell-amount={detailTarget.amountCents}>
+                    合计 {detailData.totals?.count ?? detailData.rows.length} 笔 · {money((detailData.totals?.amountCents ?? detailData.rows.reduce((sum, row) => sum + row.amountCents, 0)) / 100)}
+                  </span>
+                  <span className="fee-detail-pager">
+                    <button type="button" className="btn sm" data-testid="fee-detail-prev" disabled={detailLoading || detailOffset <= 0} onClick={() => void fetchFeeDetail(detailTarget, Math.max(0, detailOffset - 200))}>上一页</button>
+                    <button type="button" className="btn sm" data-testid="fee-detail-next" disabled={detailLoading || detailOffset + 200 >= Number(detailData.count ?? detailData.totals?.count ?? 0)} onClick={() => void fetchFeeDetail(detailTarget, detailOffset + 200)}>下一页</button>
+                  </span>
+                </div>
+              </>
+            ) : <div className="empty">该条件下无明细</div>}
+          </aside>
+        </div>
+      ) : null}
 
       <div className="note2"><Icon name="alert" />口径：收费按实收时间（红冲计负）；工单/材料按创建时间，库存按仓库 × 物料当前结存；导出 Excel 使用与页面相同的筛选条件。</div>
     </div>
