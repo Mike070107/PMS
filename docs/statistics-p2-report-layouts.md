@@ -1652,3 +1652,4 @@ sudo docker exec -i pms-postgres psql -U pms -d pms_repair -X -P pager=off
 - 新增[对账回归](<apps/api/src/modules/fees/mirror-reconcile.test.ts>) 2 项：全一致时 `ok=true` 且日志 `info`，房号/地址空白规模可回读；金额一致但室/业主维度差时 `ok=false`、消息含「维度差」「重灌」。加入常规 `test:mis-mirror`，镜像回归 **36/36** 通过。
 - 只读：对 MIS 仍只执行 `SELECT`（计数），不写 MIS；维度差只提示重灌，不自动重建，也不自动改任何数据。
 - 仍待生产确认：真实生产上跑一次对账看到 `quality` 数值，才能判定房号缺失是镜像空白还是页面问题（需要只读生产授权）。
+- 提交 `2509c4bb` 已推 `main`（pre-push 类型检查通过）；隔离 worktree 重建 API/Web 退出码均 0，证据 `.tmp/legacy-statistics-round18-annual-id/build-evidence-2509c4bb/`。未部署、未连生产。
