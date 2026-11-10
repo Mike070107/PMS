@@ -732,6 +732,64 @@ export class TicketSummaryQueryDto {
   offset?: number;
 }
 
+/** P4-B 开票数据（开票日期口径，不等同收款日期）。 */
+export class TicketItemFiltersQueryDto {
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value == null ? undefined : value))
+  @Matches(DATE_RE)
+  dateFrom?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value == null ? undefined : value))
+  @Matches(DATE_RE)
+  dateTo?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(OFFICE_CODE_RE, { each: true })
+  officeCodes?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(CODE_RE, { each: true })
+  feeCodes?: string[];
+}
+
+export class TicketItemsSummaryQueryDto extends TicketItemFiltersQueryDto {
+  @IsOptional()
+  @IsIn(['fee', 'office', 'day'])
+  groupBy?: 'fee' | 'office' | 'day';
+}
+
+export class TicketItemsDetailQueryDto extends TicketItemFiltersQueryDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  ticketNo?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  keyword?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(COLLECTION_MAX_DETAIL_LIMIT)
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  offset?: number;
+}
+
 /** P2-E 票据情况统计。 */
 export class TicketsQueryDto {
   @IsOptional()

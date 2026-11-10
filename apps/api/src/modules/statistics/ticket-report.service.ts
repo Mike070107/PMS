@@ -1,12 +1,12 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import { Community } from '../../entities';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
-import { TicketSummaryQueryDto, TicketsQueryDto } from './dto';
-import { validateCollectionDateRange } from './collection.util';
+import { TicketSummaryQueryDto, TicketsQueryDto, TicketItemFiltersQueryDto, TicketItemsSummaryQueryDto, TicketItemsDetailQueryDto } from './dto';
+import { parseCollectionDate, validateCollectionDateRange } from './collection.util';
 import {
   normalizeCashierLabel,
   normalizeMethodLabel,
@@ -365,7 +365,8 @@ export class TicketReportService {
       const pattern = add(`%${query.keyword.trim()}%`);
       where.push(`(COALESCE(t.ticket_no,'') ILIKE ${pattern} OR COALESCE(t.warehouse_no,'') ILIKE ${pattern}
         OR COALESCE(t.payer,'') ILIKE ${pattern} OR COALESCE(t.invoice_no,'') ILIKE ${pattern}
-        OR COALESCE(t.address,'') ILIKE ${pattern} OR COALESCE(t.issuer,'') ILIKE ${pattern})`);
+        OR COALESCE(t.address,'') ILIKE ${pattern} OR COALESCE(t.customer_name,'') ILIKE ${pattern}
+        OR COALESCE(t.issuer,'') ILIKE ${pattern})`);
     }
     const whereSql = where.join(' AND ');
     const statusWhere = status === 'all' ? '' : ` AND ${TICKET_STATUS_SQL} = '${status}'`;
@@ -446,6 +447,154 @@ export class TicketReportService {
       available: true,
       message: null,
     };
+  }
+
+  /** 开票行口径；分组张数不可直接相加（同一票据可含多个费项）。 */
+  async ticketItemsSummary(query: TicketItemsSummaryQueryDto, user: AuthUser, access?: ResolvedAccess) {
+    const groupBy = query.groupBy ?? 'fee';
+    if (!['fee', 'office', 'day'].includes(groupBy)) throw new BadRequestException('groupBy 必须是 fee/office/day');
+    const context = await this.ticketItemsContext(query, user, access);
+    const base = { groupBy, filters: context.filters, dataAsOf: context.state.dataAsOf, coverage: context.coverage };
+    if (!context.state.available) return { ...base, rows: [], totals: null, available: false, message: context.message };
+    const key = groupBy === 'fee' ? `COALESCE(i.fee_code,'')`
+      : groupBy === 'office' ? `COALESCE(t.office_code,'')` : `COALESCE(to_char(t.issue_date,'YYYY-MM-DD'),'')`;
+    const raw: any[] = await this.dataSource.query(
+      `SELECT ${key} AS key, ${this.ticketItemAggregateSql()}
+       FROM mis_mirror_ticket_item i JOIN mis_mirror_ticket t ON t.id=i.ticket_id
+       WHERE ${context.where} GROUP BY 1
+       ORDER BY ${groupBy === 'day' ? 'key ASC' : '"amountCents" DESC, key ASC'}`, context.params);
+    const fees: any[] = groupBy === 'fee'
+      ? await this.dataSource.query('SELECT fee_code, fee_name FROM mis_mirror_fee_item') : [];
+    const labels = new Map(fees.map(row => [String(row.fee_code), row.fee_name]));
+    const rows = raw.map(row => ({
+      key: String(row.key),
+      label: groupBy === 'office' ? (STATISTICS_OFFICE_NAMES[row.key] ?? row.key)
+        : groupBy === 'fee' ? (labels.get(row.key) || row.key || '未分类') : (row.key || '未记录日期'),
+      ...this.ticketItemNumbers(row),
+    }));
+    const totals = await this.ticketItemTotals(context.where, context.params);
+    return { ...base, rows, totals, available: true, message: null };
+  }
+
+  async ticketItemsDetail(query: TicketItemsDetailQueryDto, user: AuthUser, access?: ResolvedAccess) {
+    const limit = query.limit ?? 200;
+    const offset = query.offset ?? 0;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 500 || !Number.isInteger(offset) || offset < 0) {
+      throw new BadRequestException('分页参数不合法');
+    }
+    const context = await this.ticketItemsContext(query, user, access);
+    const base = { filters: { ...context.filters, ticketNo: query.ticketNo ?? null, keyword: query.keyword ?? null },
+      limit, offset, dataAsOf: context.state.dataAsOf, coverage: context.coverage };
+    if (!context.state.available) return { ...base, rows: [], totals: null, count: null, available: false, message: context.message };
+    const totals = await this.ticketItemTotals(context.where, context.params);
+    const rows = await this.loadTicketItems(context.where, context.params, limit, offset);
+    return { ...base, rows, totals, count: totals.itemCount, available: true, message: null };
+  }
+
+  async ticketItems(id: number, user: AuthUser, access?: ResolvedAccess) {
+    if (!Number.isSafeInteger(id) || id < 1) throw new BadRequestException('票据 id 不合法');
+    const tenantId = this.requireTenant(user);
+    const selected = await this.selectedOffices(tenantId, access);
+    if (!selected.length) throw new NotFoundException('票据不存在');
+    const ticketState = await this.ticketMirrorState(tenantId);
+    if (!ticketState.available) return { ticket: null, rows: [], totals: null, available: false,
+      dataAsOf: ticketState.dataAsOf, message: '票据镜像尚未同步，不能将未同步数据视为 0' };
+    const params: unknown[] = [id, ...selected.map(office => office.officeCode)];
+    const raw: any[] = await this.dataSource.query(
+      `SELECT id, ticket_no AS "ticketNo", warehouse_no AS "warehouseNo", office_code AS "officeCode",
+       to_char(issue_date,'YYYY-MM-DD') AS "issueDate", payer, address, customer_name AS "customerName",
+       invoice_no AS "invoiceNo", amount_cents AS "amountCents", tax_cents AS "taxCents"
+       FROM mis_mirror_ticket WHERE id=$1 AND office_code IN (${selected.map((_, index) => `$${index + 2}`).join(',')})`, params);
+    if (!raw.length) throw new NotFoundException('票据不存在');
+    const ticket = { ...raw[0], id: Number(raw[0].id), amountCents: Number(raw[0].amountCents || 0),
+      taxCents: Number(raw[0].taxCents || 0), officeName: STATISTICS_OFFICE_NAMES[raw[0].officeCode] ?? raw[0].officeCode };
+    const state = await this.ticketItemMirrorState(tenantId);
+    if (!state.available) return { ticket, rows: [], totals: null, available: false,
+      dataAsOf: state.dataAsOf, message: '票据开票明细镜像尚未同步，不能将未同步数据视为 0' };
+    const rows = await this.loadTicketItems('t.id=$1', [id]);
+    const totals = await this.ticketItemTotals('t.id=$1', [id]);
+    return { ticket, rows, totals, available: true, dataAsOf: state.dataAsOf, message: null };
+  }
+
+  private ticketItemAggregateSql() {
+    return `COUNT(*)::int AS "itemCount", COUNT(DISTINCT t.id)::int AS "ticketCount",
+      COALESCE(SUM(i.amount_cents),0)::bigint AS "amountCents", COALESCE(SUM(i.tax_cents),0)::bigint AS "taxCents",
+      COALESCE(SUM(COALESCE(i.amount_cents,0)-COALESCE(i.tax_cents,0)),0)::bigint AS "incomeCents"`;
+  }
+
+  private ticketItemNumbers(row: any) {
+    return { itemCount: Number(row.itemCount || 0), ticketCount: Number(row.ticketCount || 0),
+      amountCents: Number(row.amountCents || 0), taxCents: Number(row.taxCents || 0), incomeCents: Number(row.incomeCents || 0) };
+  }
+
+  private async ticketItemTotals(where: string, params: unknown[]) {
+    const raw: any[] = await this.dataSource.query(`SELECT ${this.ticketItemAggregateSql()}
+      FROM mis_mirror_ticket_item i JOIN mis_mirror_ticket t ON t.id=i.ticket_id WHERE ${where}`, params);
+    return this.ticketItemNumbers(raw[0] ?? {});
+  }
+
+  private async loadTicketItems(where: string, params: unknown[], limit?: number, offset = 0) {
+    const pagination = limit == null ? '' : ` LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    const raw: any[] = await this.dataSource.query(
+      `SELECT i.id AS "itemId", t.id AS "ticketId", t.ticket_no AS "ticketNo", t.warehouse_no AS "warehouseNo",
+       to_char(t.issue_date,'YYYY-MM-DD') AS "issueDate", t.office_code AS "officeCode", t.invoice_no AS "invoiceNo",
+       i.item_name AS "itemName", i.project, i.fee_code AS "feeCode", COALESCE(f.fee_name,i.fee_code) AS "feeName",
+       i.amount_cents AS "amountCents", i.tax_cents AS "taxCents",
+       COALESCE(i.amount_cents,0)-COALESCE(i.tax_cents,0) AS "incomeCents"
+       FROM mis_mirror_ticket_item i JOIN mis_mirror_ticket t ON t.id=i.ticket_id
+       LEFT JOIN mis_mirror_fee_item f ON f.fee_code=i.fee_code WHERE ${where}
+       ORDER BY t.issue_date DESC NULLS LAST, t.id DESC, i.id ASC${pagination}`,
+      limit == null ? params : [...params, limit, offset]);
+    return raw.map(row => ({ ...row, itemId: Number(row.itemId), ticketId: Number(row.ticketId),
+      officeName: STATISTICS_OFFICE_NAMES[row.officeCode] ?? row.officeCode,
+      amountCents: Number(row.amountCents || 0), taxCents: Number(row.taxCents || 0), incomeCents: Number(row.incomeCents || 0) }));
+  }
+
+  private async ticketItemsContext(query: TicketItemFiltersQueryDto & { ticketNo?: string; keyword?: string },
+    user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    if (query.dateFrom) parseCollectionDate(query.dateFrom, 'dateFrom');
+    if (query.dateTo) parseCollectionDate(query.dateTo, 'dateTo');
+    if (query.dateFrom && query.dateTo) validateCollectionDateRange(query.dateFrom, query.dateTo);
+    const selected = await this.selectedOffices(tenantId, access, query.officeCodes);
+    const state = await this.ticketItemMirrorState(tenantId);
+    const params: unknown[] = [];
+    const add = (value: unknown) => { params.push(value); return `$${params.length}`; };
+    const where = [selected.length ? `t.office_code IN (${selected.map(office => add(office.officeCode)).join(',')})` : 'FALSE'];
+    // 覆盖范围只受授权管理处/费项约束，不随日期和关键词缩小；页面不能硬编码历史年份或税额状态。
+    if (query.feeCodes?.length) where.push(`i.fee_code IN (${query.feeCodes.map(code => add(code)).join(',')})`);
+    const coverageRaw: any[] = state.available ? await this.dataSource.query(
+      `SELECT to_char(MIN(t.issue_date),'YYYY-MM-DD') AS "dateFrom", to_char(MAX(t.issue_date),'YYYY-MM-DD') AS "dateTo",
+       COUNT(*)::int AS "itemCount", COUNT(DISTINCT t.id)::int AS "ticketCount",
+       COUNT(*) FILTER (WHERE i.tax_cents <> 0)::int AS "nonzeroTaxItemCount",
+       COUNT(*) FILTER (WHERE i.tax_cents IS NULL)::int AS "unknownTaxItemCount"
+       FROM mis_mirror_ticket_item i JOIN mis_mirror_ticket t ON t.id=i.ticket_id WHERE ${where.join(' AND ')}`, params) : [];
+    const coverage = coverageRaw.length ? { ...coverageRaw[0], itemCount: Number(coverageRaw[0].itemCount),
+      ticketCount: Number(coverageRaw[0].ticketCount), nonzeroTaxItemCount: Number(coverageRaw[0].nonzeroTaxItemCount),
+      unknownTaxItemCount: Number(coverageRaw[0].unknownTaxItemCount) } : null;
+    if (query.dateFrom) where.push(`t.issue_date >= ${add(query.dateFrom)}::date`);
+    if (query.dateTo) where.push(`t.issue_date < (${add(query.dateTo)}::date + INTERVAL '1 day')`);
+    if (query.ticketNo) where.push(`t.ticket_no=${add(query.ticketNo)}`);
+    if (query.keyword?.trim()) {
+      const p = add(`%${query.keyword.trim()}%`);
+      where.push(`(COALESCE(t.ticket_no,'') ILIKE ${p} OR COALESCE(t.warehouse_no,'') ILIKE ${p}
+        OR COALESCE(t.invoice_no,'') ILIKE ${p} OR COALESCE(i.item_name,'') ILIKE ${p} OR COALESCE(i.fee_code,'') ILIKE ${p})`);
+    }
+    return { state, coverage, params, where: where.join(' AND '), filters: { dateFrom: query.dateFrom ?? null,
+      dateTo: query.dateTo ?? null, officeCodes: selected.map(office => office.officeCode), feeCodes: query.feeCodes ?? null },
+      message: '票据或开票明细镜像尚未同步，不能将未同步数据视为 0' };
+  }
+
+  private async ticketItemMirrorState(tenantId: number) {
+    const tickets = await this.ticketMirrorState(tenantId);
+    const raw: any[] = await this.dataSource.query(`SELECT COUNT(*)::int AS count, MAX(synced_at) AS "dataAsOf",
+      (SELECT last_success_at FROM mis_sync_state WHERE tenant_id=$1 AND source_table='ticket_item' LIMIT 1) AS "lastSuccessAt"
+      FROM mis_mirror_ticket_item`, [tenantId]).catch(() => []);
+    const item = raw[0] ?? {};
+    const synced = item.lastSuccessAt ?? item.dataAsOf;
+    const dates = [tickets.dataAsOf, synced].filter(Boolean).map(value => new Date(value).getTime());
+    return { available: tickets.available && (Number(item.count || 0) > 0 || Boolean(item.lastSuccessAt)),
+      dataAsOf: dates.length ? new Date(Math.min(...dates)).toISOString() : null };
   }
 
   private emptySummaryTotals(methodLabels: string[]) {

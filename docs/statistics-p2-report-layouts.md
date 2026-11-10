@@ -1268,3 +1268,25 @@ sudo docker exec -i pms-postgres psql -U pms -d pms_repair -X -P pager=off
 | `collection.util.ts#buildCollectionDailyReport/#buildCollectionMonthlyReport` | 退款按 `ABS` 计，成对行双计 | 加 `rowKind` 与退款/调整分列 |
 
 > P2-A 的未提交文件（`collection.service.ts`、`collection.util.ts`、`dto.ts`、`statistics.controller.ts`、`statistics.module.ts` 等）属其他队友工作，本文件**未修改**，仅记录差异供 Lead 合并时参考。
+
+---
+
+## 附录 D：P4-B 开票统计接口（2026-11-10，本轮仅后端，未发布）
+
+使用既有 `mis_mirror_ticket_item JOIN mis_mirror_ticket`，不新增镜像、不写业务表；权限 `business:view`，管理处始终按当前租户的小区权限收敛。
+
+| GET /statistics 下路径 | 查询与结果 |
+|---|---|
+| `ticket-items/summary` | `groupBy=fee/office/day`；日期、管理处、费项多选；行含明细行数、去重票据张数、金额/税额/不含税收入（整数分）；合计单独 COUNT DISTINCT，不累加各组张数 |
+| `ticket-items/detail` | 同上筛选，另有 `ticketNo` 精确匹配、`keyword` 匹配票号/入库单/发票号/品名/费项代码；默认 200 行、最多 500，分页不影响合计 |
+| `tickets/:id/items` | 当前权限内票据摘要及全部开票行；不存在或越权统一 404；镜像未同步返回 available:false、totals:null，而非假 0 |
+
+- 日期按票据 `issue_date`，包含起止当天，支持任一单侧日期或不传日期。双侧日期沿用其他日报的最多 366 天差限制；查询全部历史可不传日期。
+- 不默认剔除作废/预开/核销票据，本轮统计明确为源镜像所有开票行口径，不称作实际收款或有效净开票。
+- 税额取开票行，收入=金额−税额，保留源负数。`coverage` 动态返回授权管理处/所选费项下镜像开票日期范围、行数/张数、非零税额行数、未知税额行数；不随日期/关键词缩小，前端不得硬编码 2022–2023 或「税额全部为 0」。
+- `dataAsOf` 取票据和开票行水位的较早值。空镜像未同步返回 available:false；有成功同步水位的空表才可返回真实 0。
+- 住户检索复用 `tickets`，关键词已有票号/付款人/地址/发票号，补充 `customer_name`（住户名称）。住户票据查询不是已确认的旧统计菜单项，暂不额外启用该菜单，逐票明细可先接现有「票据情况统计」。
+- 回归 `test:statistics-p8`：小型多费项/负数/非零税额夹具验证计算、分页、筛选、范围收敛、404、DTO和权限；597 行/588 票夹具仅为聚合基准合成数据，**不是生产原始明细**。
+- 上一轮只读核对的生产基准：597 行/588 票，117,484,580 分，税额 0，日期 2022-11-25 至 2023-12-23。本轮未连接生产，不能据此宣称生产接口已验收。
+- 验证：API typecheck exit 0；同一 Node 进程加载统计 P1–P8 的全部 11 个测试文件，88/88 通过（新增 P8 7/7）。其中镜像同步超时 WARN 是既有故障隔离夹具预期输出，测试通过；无生产操作。未做发布构建与公网验收。
+- 待办：接入「开票数据统计」页面、现有票据表逐票抽屉、CSV、桌面/窄屏浏览器验收；获当次发布授权后再上线。

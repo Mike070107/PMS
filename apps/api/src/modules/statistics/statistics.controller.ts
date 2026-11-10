@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, ParseIntPipe, Query, UseGuards } from '@nestjs/common';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { RequirePermission } from '../../common/require-permission.decorator';
 import { ResolvedAccess } from '../access/access.service';
@@ -29,6 +29,8 @@ import {
   PropertySummaryQueryDto,
   ReliefQueryDto,
   TicketSummaryQueryDto,
+  TicketItemsSummaryQueryDto,
+  TicketItemsDetailQueryDto,
   TicketsQueryDto,
   SignoffQueryDto,
   StatisticsAnnualDetailQueryDto,
@@ -266,6 +268,36 @@ export class StatisticsController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.ticketService.tickets(query, user, access);
+  }
+
+  @Get('ticket-items/summary')
+  @RequirePermission('business', 'view')
+  ticketItemsSummary(
+    @Query() query: TicketItemsSummaryQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.ticketService.ticketItemsSummary(query, user, access);
+  }
+
+  @Get('ticket-items/detail')
+  @RequirePermission('business', 'view')
+  ticketItemsDetail(
+    @Query() query: TicketItemsDetailQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.ticketService.ticketItemsDetail(query, user, access);
+  }
+
+  @Get('tickets/:id/items')
+  @RequirePermission('business', 'view')
+  ticketItems(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.ticketService.ticketItems(id, user, access);
   }
 
   @Get('daily')
