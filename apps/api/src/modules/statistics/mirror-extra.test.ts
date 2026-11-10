@@ -6,6 +6,7 @@ import { MisMirror1794500000000 } from '../../migrations/1794500000000-MisMirror
 import { MisMirrorP4Extras1795500000000 } from '../../migrations/1795500000000-MisMirrorP4Extras';
 import { MisMirrorBillNature1795300000000 } from '../../migrations/1795300000000-MisMirrorBillNature';
 import { MisMirrorOwnerReportFields1795600000000 } from '../../migrations/1795600000000-MisMirrorOwnerReportFields';
+import { MisMirrorChargeStandard1795700000000 } from '../../migrations/1795700000000-MisMirrorChargeStandard';
 import { MisMirrorService } from '../fees/mis-mirror.service';
 
 const tenantId = 1;
@@ -16,6 +17,7 @@ async function makeDatabase() {
   await new MisMirrorBillNature1795300000000().up({ query: (sql: string) => pg.query(sql) } as any);
   await new MisMirrorP4Extras1795500000000().up({ query: (sql: string) => pg.query(sql) } as any);
   await new MisMirrorOwnerReportFields1795600000000().up({ query: (sql: string) => pg.query(sql) } as any);
+  await new MisMirrorChargeStandard1795700000000().up({ query: (sql: string) => pg.query(sql) } as any);
   await pg.query('ALTER TABLE mis_sync_state ADD COLUMN IF NOT EXISTS consecutive_failures int');
   await pg.query('ALTER TABLE mis_sync_state ADD COLUMN IF NOT EXISTS last_failure_at timestamptz');
   return pg;
@@ -237,6 +239,8 @@ test('billSelect/upsertBills：增量 SQL 含收入/入库单/发票/凭证列�
     );
     const { service, captured } = makeService(pg, billSyncReader({ bill: [BILL_ROW] }));
     await service.syncTick(tenantId);
+    assert.equal(captured.some((sql) => sql.includes('FROM dbo.WYDJ')), false, '定时同步不能新增 WYDJ 源读取');
+    assert.equal((await pg.query(`SELECT * FROM mis_sync_state WHERE source_table='charge_standard'`)).rows.length, 0, '定时同步不能把未重灌的标准镜像初始化');
     const billSql = captured.find((sql) => sql.includes('FROM dbo.WYZJ') && sql.includes('w.ZJ_ID > @lastId')) ?? '';
     for (const keyword of ['w.收入', 'w.票据入库单编号', 'w.发票号码', 'w.凭证号码', 'AS incomeCents', 'AS receiptWarehouseNo', 'AS invoiceNo', 'AS receiptVoucherNo']) {
       assert.ok(billSql.includes(keyword), keyword);

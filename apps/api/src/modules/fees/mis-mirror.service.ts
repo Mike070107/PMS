@@ -9,6 +9,7 @@ import { MisFeesService } from './mis-fees.service';
 import { misFeeCategoryLabel, misFeeCategorySql } from './mis-fee-category';
 import { loadCollectionTargets } from './collection-targets.util';
 import { buildScreenSummary } from './screen-summary.util';
+import { chargeStandardMirrorParams } from './charge-standard-mirror.util';
 
 type MirrorMode = 'mis' | 'mirror';
 type MirrorCommunity = { id: number; name: string; offices: string[] };
@@ -477,10 +478,11 @@ export class MisMirrorService {
       // 部署代码不代表已执行手工迁移：先检查目标列，避免带着旧结构访问 MIS 后才失败。
       try {
         await this.dataSource.query('SELECT owner_note,move_in_date,billing_start_date FROM mis_mirror_owner LIMIT 0');
+        await this.dataSource.query('SELECT wy_dj_id,zh_id,zl_id,fee_code,je,bz,is_history FROM mis_mirror_charge_standard LIMIT 0');
       } catch (error) {
         const code = String((error as { code?: unknown })?.code ?? '');
         if (code === '42703' || code === '42P01') {
-          throw new ServiceUnavailableException('业主镜像结构尚未就绪，请先完成镜像迁移（含 1795600000000）后重试');
+          throw new ServiceUnavailableException('业主/收费标准镜像结构尚未就绪，请先完成镜像迁移（含 1795600000000、1795700000000）后重试');
         }
         throw error;
       }
@@ -491,10 +493,20 @@ export class MisMirrorService {
         CONVERT(varchar(10),进户日期,23) AS moveInDate,
         CONVERT(varchar(10),开始收费日期,23) AS billingStartDate,
         updatedate AS sourceUpdatedAt FROM dbo.业主表`, {}, MIS_TIMEOUT)).recordsets?.[0] ?? [];
+      // 仅既有管理员手工重灌读取 WYDJ；定时账单同步不读取/初始化此镜像。
+      const standardResult = await this.misFees.mirrorRead(`SELECT
+        CONVERT(varchar(20),ID) AS standardId,CONVERT(varchar(20),ZH_ID) AS zhId,
+        CONVERT(varchar(20),ZL_ID) AS zlId,DH AS feeCode,
+        CONVERT(varchar(40),JE,2) AS je,CONVERT(varchar(40),BZ,2) AS bz,Histroy AS isHistory
+        FROM dbo.WYDJ`, {}, MIS_TIMEOUT);
+      const standardRows = standardResult?.recordsets?.[0];
+      if (!Array.isArray(standardRows)) throw new ServiceUnavailableException('WYDJ 收费标准源未返回结果集，未更新镜像');
+      const standards = standardRows.map(chargeStandardMirrorParams);
       await this.dataSource.transaction(async (manager) => {
         await manager.query('DELETE FROM mis_mirror_building');
         await manager.query('DELETE FROM mis_mirror_room');
         await manager.query('DELETE FROM mis_mirror_owner');
+        await manager.query('DELETE FROM mis_mirror_charge_standard');
         for (const row of buildings as any[]) await manager.query(
           `INSERT INTO mis_mirror_building(l_id,office_code,road,lane,building_no,synced_at) VALUES($1,$2,$3,$4,$5,now())`,
           [row.lId, row.officeCode, row.road ?? null, row.lane ?? null, row.buildingNo ?? null],
@@ -507,6 +519,17 @@ export class MisMirrorService {
           `INSERT INTO mis_mirror_owner(zh_id,s_id,name,mobile,phone2,source_updated_at,owner_note,move_in_date,billing_start_date,synced_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,now())`,
           [row.zhId, row.sId ?? null, row.name ?? null, row.mobile ?? null, row.phone2 ?? null, row.sourceUpdatedAt ?? null,
             row.ownerNote ?? null, row.moveInDate ?? null, row.billingStartDate ?? null],
+        );
+        for (const values of standards) await manager.query(
+          `INSERT INTO mis_mirror_charge_standard(wy_dj_id,zh_id,zl_id,fee_code,je,bz,is_history,synced_at)
+           VALUES($1,$2,$3,$4,$5,$6,$7,now())`, values,
+        );
+        await manager.query(
+          `INSERT INTO mis_sync_state(tenant_id,source_table,initialized_at,last_attempt_at,last_success_at,synced_rows)
+           VALUES($1,'charge_standard',now(),now(),now(),$2)
+           ON CONFLICT (tenant_id,source_table) DO UPDATE SET initialized_at=now(),last_attempt_at=now(),
+             last_success_at=now(),last_error=NULL,lag_rows=0,synced_rows=EXCLUDED.synced_rows`,
+          [tenantId, standards.length],
         );
       });
       await this.syncSmallDimensions();
@@ -553,7 +576,7 @@ export class MisMirrorService {
         [tenantId, last[0]?.lastupdated ?? null, last[0]?.lastid ?? null, total],
       );
       const extra = await this.syncExtraMirrors(tenantId);
-      return { rows: total, extra };
+      return { rows: total, extra, chargeStandardRows: standards.length };
     } finally {
       await this.dataSource.query(`SELECT pg_advisory_unlock(hashtext('mis-mirror-sync'))`).catch(() => undefined);
     }

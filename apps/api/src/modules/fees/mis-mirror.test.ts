@@ -5,6 +5,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { MisMirror1794500000000 } from '../../migrations/1794500000000-MisMirror';
 import { MisMirrorFailureCount1794600000000 } from '../../migrations/1794600000000-MisMirrorFailureCount';
 import { MisMirrorOwnerReportFields1795600000000 } from '../../migrations/1795600000000-MisMirrorOwnerReportFields';
+import { MisMirrorChargeStandard1795700000000 } from '../../migrations/1795700000000-MisMirrorChargeStandard';
 import { MisMirrorService } from './mis-mirror.service';
 
 async function fixture() {
@@ -14,6 +15,7 @@ async function fixture() {
   const health = new MisMirrorFailureCount1794600000000();
   await health.up({ query: (sql: string) => pg.query(sql) } as any);
   await new MisMirrorOwnerReportFields1795600000000().up({ query: (sql: string) => pg.query(sql) } as any);
+  await new MisMirrorChargeStandard1795700000000().up({ query: (sql: string) => pg.query(sql) } as any);
   const dataSource: any = { query: async (sql: string, params?: any[]) => (await pg.query(sql, params)).rows };
   const misFees: any = {
     residentialScope: async () => [{ id: 1, name: '枫桦苑一期', offices: ['01'] }],
@@ -161,6 +163,7 @@ test('业主源读取失败或新日期落库失败均保留原维度、账单�
       if (failSource) throw sourceFailure;
       return { recordsets: [[{ zhId: 902, sId: 502, name: '新合成住户', ownerNote: '新进户', moveInDate: 'invalid-civil-day' }]] };
     }
+    if (sql.includes('FROM dbo.WYDJ')) return { recordsets: [[]] };
     throw new Error('失败后的同步步骤不应执行');
   };
   const snapshot = async () => Promise.all([
