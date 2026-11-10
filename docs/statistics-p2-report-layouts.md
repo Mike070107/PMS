@@ -1589,3 +1589,17 @@ sudo docker exec -i pms-postgres psql -U pms -d pms_repair -X -P pager=off
 4. 只读验收（发布后）：年度两张表与旧系统截图对历史年度（如 02 管理处管理费 2011=921.00、2012=307.00、2014=477.90、2025=16,595.00；实收 01×2004=882.40）逐项比对；收费汇总用 02 管理处 2026-10 的 15,314,220 分作为基准，并核对 06 空房勾选与否在 2007 等年度造成的差额。
 5. 回滚：保留上一版本 API/Web 包与 `deployed/*` 标签，按 deploy 脚本内置回退路径回滚；数据库本轮无迁移，无需数据回滚。
 6. 记录：发布后在 `deploy/DEPLOY_LOG.md` 追加版本/提交/验收结果；未完成的现场未知项（镜像更新时间、旧系统同期截图差异）单列。
+
+## 附录 P：补齐月报/合表所需的审计日期与线上订单字段（Round22）
+
+### P.1 补了什么
+
+旧「收费月报表（28 列）」「综合月报表B」「欠收/溢收」的截止判断除 `ZJ_SKRQ/ZJ_TKRQ` 外还用到 WYZJ 的 **记账日期 `ZJ_Jzrq`、调整日期 `ZJ_TZRQ`、变动日期 `ZJ_Bdrq`**；「线上收费查询」需要 **`交易订单号`/`商户订单号`**。这些字段此前没有进镜像，属于 [#25/#8/#12 的已知缺口](<docs/statistics-p2-report-layouts.md>)。
+
+本轮新增[迁移](<apps/api/src/migrations/1795800000000-MisMirrorBillAuditDates.ts>)给 `mis_mirror_bill` 加 5 列（`book_date/adjust_date/change_date/trade_order_no/merchant_order_no`，幂等、含 `book_date` 索引、提供 down），并让[增量与手工重灌两处源 SQL](<apps/api/src/modules/fees/mis-mirror.service.ts>)都用 `CONVERT(varchar(10),…,23)` 投影日期、原样带订单号；[upsert](<apps/api/src/modules/fees/mis-mirror.service.ts>) 同步写入并随冲突更新。
+
+### P.2 验证与上线注意
+
+- [账单镜像回归](<apps/api/src/modules/fees/bill-mirror.test.ts>)新增 1 项：增量 SQL 与手工重灌 SQL 都必须含这 5 个投影，落库后回读 `book_date/adjust_date/change_date/trade_order_no/merchant_order_no` 与源一致；[镜像扩展测试](<apps/api/src/modules/statistics/mirror-extra.test.ts>)也执行新迁移。常规 `test:mis-mirror` **34/34** 通过，API `tsc --noEmit` 通过。
+- 生产 `DB_SYNCHRONIZE` 不处理 `mis_mirror_*`：上线时要手工执行同一段 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...`，并跑一次手工重灌（或等增量覆盖）后新列才有历史值；未回填前报表应按「字段可空」处理，不能把空值当成 0 或忽略过滤。**本轮未连接生产、未执行迁移或重灌。**
+- 本轮只补数据底座，未新增报表入口；月报表 28 列、综合月报表B 33 列仍缺列头/公式截图，线上收费查询仍缺权限与口径定义，不能据此声称这些菜单已完成。

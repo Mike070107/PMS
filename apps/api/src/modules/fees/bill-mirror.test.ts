@@ -9,6 +9,7 @@ import { MisMirrorBillNature1795300000000 } from '../../migrations/1795300000000
 import { MisMirrorP4Extras1795500000000 } from '../../migrations/1795500000000-MisMirrorP4Extras';
 import { MisMirrorOwnerReportFields1795600000000 } from '../../migrations/1795600000000-MisMirrorOwnerReportFields';
 import { MisMirrorChargeStandard1795700000000 } from '../../migrations/1795700000000-MisMirrorChargeStandard';
+import { MisMirrorBillAuditDates1795800000000 } from '../../migrations/1795800000000-MisMirrorBillAuditDates';
 import { MisMirrorService } from './mis-mirror.service';
 
 /**
@@ -63,6 +64,11 @@ function billRow(zjId: string, overrides: Record<string, unknown> = {}) {
     amountCents: 12340,
     paidDate: '2026-10-01',
     refundDate: null,
+    bookDate: '2026-10-02',
+    adjustDate: null,
+    changeDate: null,
+    tradeOrderNo: 'T202610010001',
+    merchantOrderNo: 'M202610010001',
     paymentMethod: '现金',
     cashier: '收款员',
     incomeCents: 0,
@@ -118,6 +124,7 @@ async function makeFixture(options: FixtureOptions = {}) {
   await new MisMirrorP4Extras1795500000000().up(runner);
   await new MisMirrorOwnerReportFields1795600000000().up(runner);
   await new MisMirrorChargeStandard1795700000000().up(runner);
+  await new MisMirrorBillAuditDates1795800000000().up(runner);
   const reads: Array<{ sql: string; params: Record<string, any> }> = [];
   const queries: string[] = [];
   const main = [...(options.mainResults ?? [])];
@@ -358,8 +365,35 @@ test('billSelect 增量 SQL：zjId/lId/sId/zhId 全部源端 CONVERT(varchar(20)
   }
 });
 
-test('syncBills 增量分页：>2^53 光标跨批保持字符串，满批+尾批完整落库且水位精确', async () => {
-  const firstBatch = batchOf(BIG_START, BATCH_SIZE);
+test('账单镜像补齐记账/调整/变动日期与线上订单号：两处源 SQL 投影且落库可回读', async () => {
+  const row = billRow('9007199254740993', { adjustDate: '2026-10-05', changeDate: '2026-10-06' });
+  const f = await makeFixture({ mainResults: [[row]], sweepResult: records([row]) });
+  try {
+    await seedBillState(f.pg);
+    await f.service.syncBills(1);
+    const mainRead = f.reads.find((read) => read.sql.includes('w.ZJ_ID > @lastId'));
+    assert.ok(mainRead, '缺少增量账单 SQL');
+    // 增量 SQL 必须从源库按日期文本投影，避免驱动把 smalldatetime 转成本地时间字符串。
+    for (const [alias, column] of [['ZJ_Jzrq', 'bookDate'], ['ZJ_TZRQ', 'adjustDate'], ['ZJ_Bdrq', 'changeDate']] as const) {
+      assert.match(mainRead.sql, new RegExp(`CONVERT\\(varchar\\(10\\),w\\.${alias},23\\)\\s+AS\\s+${column}`, 'i'));
+    }
+    assert.match(mainRead.sql, /w\.交易订单号\s+AS\s+tradeOrderNo/i);
+    assert.match(mainRead.sql, /w\.商户订单号\s+AS\s+merchantOrderNo/i);
+    const stored: any = (await f.pg.query(
+      `SELECT book_date::text AS "bookDate", adjust_date::text AS "adjustDate", change_date::text AS "changeDate",
+              trade_order_no AS "tradeOrderNo", merchant_order_no AS "merchantOrderNo"
+         FROM mis_mirror_bill WHERE zj_id = 9007199254740993`,
+    )).rows[0];
+    assert.deepEqual(stored, {
+      bookDate: '2026-10-02', adjustDate: '2026-10-05', changeDate: '2026-10-06',
+      tradeOrderNo: 'T202610010001', merchantOrderNo: 'M202610010001',
+    });
+  } finally {
+    await f.pg.close();
+  }
+});
+
+test('syncBills 增量分页：>2^53 光标跨批保持字符串，满批+尾批完整落库且水位精确', async () => {  const firstBatch = batchOf(BIG_START, BATCH_SIZE);
   const f = await makeFixture({
     mainResults: [firstBatch, [billRow('9007199254740994')]],
   });
@@ -408,6 +442,12 @@ test('reloadAll：起点 "0" 字符串、>2^53 游标保持字符串、MAX(zj_id
     assertVarchar20Cast(mainReads[0].sql, 'l', 'L_ID');
     assertVarchar20Cast(mainReads[0].sql, 's', 'S_ID');
     assertVarchar20Cast(mainReads[0].sql, 'z', 'ZH_ID');
+    // 手工重灌用同一套源投影：记账/调整/变动日期与线上订单号也必须带上。
+    for (const [alias, column] of [['ZJ_Jzrq', 'bookDate'], ['ZJ_TZRQ', 'adjustDate'], ['ZJ_Bdrq', 'changeDate']] as const) {
+      assert.match(mainReads[0].sql, new RegExp(`CONVERT\\(varchar\\(10\\),w\\.${alias},23\\)\\s+AS\\s+${column}`, 'i'));
+    }
+    assert.match(mainReads[0].sql, /w\.交易订单号\s+AS\s+tradeOrderNo/i);
+    assert.match(mainReads[0].sql, /w\.商户订单号\s+AS\s+merchantOrderNo/i);
     // MAX(zj_id) 直接取文本，避免 PG driver 把 bigint 收成 Number。
     assert.ok(
       f.queries.some((sql) => /MAX\s*\(\s*zj_id\s*\)\s*::\s*text/i.test(sql)),

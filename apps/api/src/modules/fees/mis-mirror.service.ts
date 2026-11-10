@@ -203,6 +203,11 @@ export class MisMirrorService {
         CAST(ROUND(w.ZJ_JE * 100, 0) AS bigint) AS amountCents,
         CONVERT(varchar(10),w.ZJ_SKRQ,23) AS paidDate,
         CONVERT(varchar(10),w.ZJ_TKRQ,23) AS refundDate,
+        CONVERT(varchar(10),w.ZJ_Jzrq,23) AS bookDate,
+        CONVERT(varchar(10),w.ZJ_TZRQ,23) AS adjustDate,
+        CONVERT(varchar(10),w.ZJ_Bdrq,23) AS changeDate,
+        w.交易订单号 AS tradeOrderNo,
+        w.商户订单号 AS merchantOrderNo,
         COALESCE(NULLIF(w.收款方式,N''),m.收款方式) AS paymentMethod,
         w.收款人 AS cashier,
         CAST(ROUND(ISNULL(w.收入,0)*100,0) AS bigint) AS incomeCents,
@@ -237,7 +242,7 @@ export class MisMirrorService {
   private async upsertBills(rows: any[]) {
     rows = billMirrorRows({ recordsets: [rows] });
     if (!rows.length) return;
-    const fields = ['zjId', 'officeCode', 'lId', 'sId', 'zhId', 'ownerName', 'roomNo', 'address', 'feeCode', 'feeName', 'natureCode', 'period', 'amountCents', 'paidDate', 'refundDate', 'paymentMethod', 'cashier', 'incomeCents', 'receiptWarehouseNo', 'invoiceNo', 'receiptVoucherNo', 'sourceUpdatedAt'];
+    const fields = ['zjId', 'officeCode', 'lId', 'sId', 'zhId', 'ownerName', 'roomNo', 'address', 'feeCode', 'feeName', 'natureCode', 'period', 'amountCents', 'paidDate', 'refundDate', 'bookDate', 'adjustDate', 'changeDate', 'tradeOrderNo', 'merchantOrderNo', 'paymentMethod', 'cashier', 'incomeCents', 'receiptWarehouseNo', 'invoiceNo', 'receiptVoucherNo', 'sourceUpdatedAt'];
     const values: unknown[] = [];
     const tuples: string[] = [];
     for (const row of rows) {
@@ -248,13 +253,15 @@ export class MisMirrorService {
       tuples.push(`(${placeholders.join(',')})`);
     }
     await this.dataSource.query(
-      `INSERT INTO mis_mirror_bill(zj_id,office_code,l_id,s_id,zh_id,owner_name,room_no,address,fee_code,fee_name,nature_code,period,amount_cents,paid_date,refund_date,payment_method,cashier,income_cents,receipt_warehouse_no,invoice_no,receipt_voucher_no,source_updated_at)
+      `INSERT INTO mis_mirror_bill(zj_id,office_code,l_id,s_id,zh_id,owner_name,room_no,address,fee_code,fee_name,nature_code,period,amount_cents,paid_date,refund_date,book_date,adjust_date,change_date,trade_order_no,merchant_order_no,payment_method,cashier,income_cents,receipt_warehouse_no,invoice_no,receipt_voucher_no,source_updated_at)
        VALUES ${tuples.join(',')}
        ON CONFLICT (zj_id) DO UPDATE SET
          office_code=EXCLUDED.office_code,l_id=EXCLUDED.l_id,s_id=EXCLUDED.s_id,zh_id=EXCLUDED.zh_id,
          owner_name=EXCLUDED.owner_name,room_no=EXCLUDED.room_no,address=EXCLUDED.address,
          fee_code=EXCLUDED.fee_code,fee_name=EXCLUDED.fee_name,nature_code=EXCLUDED.nature_code,period=EXCLUDED.period,
          amount_cents=EXCLUDED.amount_cents,paid_date=EXCLUDED.paid_date,refund_date=EXCLUDED.refund_date,
+         book_date=EXCLUDED.book_date,adjust_date=EXCLUDED.adjust_date,change_date=EXCLUDED.change_date,
+         trade_order_no=EXCLUDED.trade_order_no,merchant_order_no=EXCLUDED.merchant_order_no,
          payment_method=EXCLUDED.payment_method,cashier=EXCLUDED.cashier,
          income_cents=EXCLUDED.income_cents,receipt_warehouse_no=EXCLUDED.receipt_warehouse_no,
          invoice_no=EXCLUDED.invoice_no,receipt_voucher_no=EXCLUDED.receipt_voucher_no,
@@ -551,6 +558,8 @@ export class MisMirrorService {
              ISNULL(l.地址1,N'')+ISNULL(l.字1,N'')+ISNULL(l.地址2,N'')+ISNULL(l.字2,N'')+ISNULL(l.地址3,N'')+ISNULL(l.字3,N'')+ISNULL(l.地址4,N'')+ISNULL(l.字4,N'')+ISNULL(s.室,N'')+ISNULL(s.字,N'') AS address,
              w.ZJ_LX AS feeCode, f.XM AS feeName, w.FWXZ_DH AS natureCode, w.ZJ_CNY AS period, CAST(ROUND(w.ZJ_JE*100,0) AS bigint) AS amountCents,
              CONVERT(varchar(10),w.ZJ_SKRQ,23) AS paidDate, CONVERT(varchar(10),w.ZJ_TKRQ,23) AS refundDate,
+             CONVERT(varchar(10),w.ZJ_Jzrq,23) AS bookDate, CONVERT(varchar(10),w.ZJ_TZRQ,23) AS adjustDate, CONVERT(varchar(10),w.ZJ_Bdrq,23) AS changeDate,
+             w.交易订单号 AS tradeOrderNo, w.商户订单号 AS merchantOrderNo,
              COALESCE(NULLIF(w.收款方式,N''),m.收款方式) AS paymentMethod, w.收款人 AS cashier,
              CAST(ROUND(ISNULL(w.收入,0)*100,0) AS bigint) AS incomeCents,
              w.票据入库单编号 AS receiptWarehouseNo, w.发票号码 AS invoiceNo, w.凭证号码 AS receiptVoucherNo,
