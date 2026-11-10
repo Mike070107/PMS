@@ -10,6 +10,10 @@ import {
   type CollectionGroupBy,
 } from './collection.util';
 import {
+  TICKET_STATUSES,
+  type TicketStatus,
+} from './ticket-report.util';
+import {
   SIGNOFF_STATUSES,
   type SignoffStatus,
 } from './misc-report.util';
@@ -657,6 +661,99 @@ export class SignoffQueryDto {
   @IsOptional()
   @IsIn(SIGNOFF_STATUSES, { message: 'status 必须是 all/effective/voided/open' })
   status?: SignoffStatus;
+
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value == null ? undefined : String(value).trim()))
+  @IsString()
+  @MaxLength(50, { message: 'keyword 不能超过 50 个字符' })
+  keyword?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'limit 必须是整数' })
+  @Min(1)
+  @Max(COLLECTION_MAX_DETAIL_LIMIT, { message: `limit 不能超过 ${COLLECTION_MAX_DETAIL_LIMIT}` })
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'offset 必须是整数' })
+  @Min(0)
+  offset?: number;
+}
+/** P2-E 收款汇总表。 */
+export class TicketSummaryQueryDto {
+  @IsString({ message: 'dateFrom 必填' })
+  @Matches(DATE_RE, { message: 'dateFrom 必须是 YYYY-MM-DD' })
+  dateFrom!: string;
+
+  @IsString({ message: 'dateTo 必填' })
+  @Matches(DATE_RE, { message: 'dateTo 必须是 YYYY-MM-DD' })
+  dateTo!: string;
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(OFFICE_CODE_RE, { each: true, message: 'officeCodes 必须是两位管理处代码' })
+  officeCodes?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(CODE_RE, { each: true, message: 'feeCodes 不合法' })
+  feeCodes?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @MaxLength(30, { each: true, message: '收款方式名称不能超过 30 个字符' })
+  paymentMethods?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value == null ? undefined : String(value).trim()))
+  @IsString()
+  @MaxLength(50, { message: 'cashier 不能超过 50 个字符' })
+  cashier?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'limit 必须是整数' })
+  @Min(1)
+  @Max(COLLECTION_MAX_DETAIL_LIMIT, { message: `limit 不能超过 ${COLLECTION_MAX_DETAIL_LIMIT}` })
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'offset 必须是整数' })
+  @Min(0)
+  offset?: number;
+}
+
+/** P2-E 票据情况统计。 */
+export class TicketsQueryDto {
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value == null ? undefined : value))
+  @Matches(DATE_RE, { message: 'dateFrom 必须是 YYYY-MM-DD' })
+  dateFrom?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => (value === '' || value == null ? undefined : value))
+  @Matches(DATE_RE, { message: 'dateTo 必须是 YYYY-MM-DD' })
+  dateTo?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => toCodeList(value))
+  @IsArray()
+  @IsString({ each: true })
+  @Matches(OFFICE_CODE_RE, { each: true, message: 'officeCodes 必须是两位管理处代码' })
+  officeCodes?: string[];
+
+  @IsOptional()
+  @IsIn(TICKET_STATUSES, { message: 'status 必须是 all/issued/pre_issue/voided/written_off' })
+  status?: TicketStatus;
 
   @IsOptional()
   @Transform(({ value }) => (value === '' || value == null ? undefined : String(value).trim()))

@@ -8,6 +8,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AnalysisStatisticsService } from './analysis.service';
 import { LedgerStatisticsService } from './ledger.service';
 import { MiscReportService } from './misc-report.service';
+import { TicketReportService } from './ticket-report.service';
 import { ArrearsStatisticsService } from './arrears.service';
 import { CollectionStatisticsService } from './collection.service';
 import {
@@ -27,6 +28,8 @@ import {
   OwnerLedgerQueryDto,
   PropertySummaryQueryDto,
   ReliefQueryDto,
+  TicketSummaryQueryDto,
+  TicketsQueryDto,
   SignoffQueryDto,
   StatisticsAnnualDetailQueryDto,
   StatisticsAnnualQueryDto,
@@ -45,6 +48,7 @@ export class StatisticsController {
     private readonly analysisService: AnalysisStatisticsService,
     private readonly ledgerService: LedgerStatisticsService,
     private readonly miscService: MiscReportService,
+    private readonly ticketService: TicketReportService,
   ) {}
 
   @Get('options')
@@ -240,6 +244,28 @@ export class StatisticsController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.miscService.signoffs(query, user, access);
+  }
+
+  /** P2-E 收款汇总表（bills 金额块 + tickets 开票块 + 收款人块）。 */
+  @Get('ticket-summary')
+  @RequirePermission('business', 'view')
+  ticketSummary(
+    @Query() query: TicketSummaryQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.ticketService.ticketSummary(query, user, access);
+  }
+
+  /** P2-E 票据情况统计。 */
+  @Get('tickets')
+  @RequirePermission('business', 'view')
+  tickets(
+    @Query() query: TicketsQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.ticketService.tickets(query, user, access);
   }
 
   @Get('daily')
