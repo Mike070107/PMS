@@ -26,7 +26,7 @@
 .stats-head-actions { flex-wrap: wrap; justify-content: flex-end; }
 
 /* ---------- 悬浮筛选（不占表格横向空间） ---------- */
-/* 悬浮面板贴着左侧导航右边；紧凑侧栏时左偏移自动收窄。 */
+/* 卡片与导航及顶栏保留 16px 悬浮间距；紧凑侧栏时左偏移自动收窄。 */
 #web { --stats-sidebar-width: 252px; }
 #web.sidebar-compact { --stats-sidebar-width: 76px; }
 
@@ -54,15 +54,18 @@
   pointer-events: none;
 }
 
-.stats-filter-float .stats-filters {
+/* Override ERP's #web .card only for this overlay; ordinary cards stay flat. */
+#web .stats-filter-float .stats-filters {
   width: 100%;
   max-height: calc(100dvh - 100px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   padding: 14px 16px;
-  border-radius: 14px;
-  box-shadow: 0 22px 60px -28px rgba(23, 32, 51, .45), 0 2px 10px rgba(23, 32, 51, .08);
+  background: var(--surface);
+  border-radius: 16px;
+  /* A detached card, not a flush sidebar: broad elevation stays visible over busy tables. */
+  box-shadow: 0 24px 64px -12px rgba(23, 32, 51, .30), 0 8px 24px -8px rgba(23, 32, 51, .20);
 }
 
 /* 面板内容多时只在中间滚动，「统计」「导出」固定在底部 */

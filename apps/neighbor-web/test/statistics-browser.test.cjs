@@ -2137,6 +2137,11 @@ test('真实Shell全宽与顶部抽屉：2886/1920/1440/390/320逐帧布局零�
       assert.ok(drawer.top>=drawer.header && drawer.top<=drawer.header+30,'top drawer clears header '+JSON.stringify(drawer));
       assert.ok(drawer.left>=0&&drawer.right<=width&&drawer.bottom<= (width===2886?1453:1000),'drawer fits viewport');
       assert.equal(drawer.transition,'transform, opacity','no layout transitions');
+      const card=await js(`(() => {const s=getComputedStyle(document.querySelector('.stats-filters'));return {radius:parseFloat(s.borderTopLeftRadius),surface:s.backgroundColor,resultSurface:getComputedStyle(document.querySelector('.stats-result')).backgroundColor,shadow:s.boxShadow};})()`);
+      assert.ok(card.radius>=16,'floating drawer is a rounded card, not an attached panel');
+      assert.equal(card.surface,card.resultSurface,'floating card has an opaque themed surface');
+      const shadows=card.shadow.replace(/rgba?\([^)]*\)/g,'').split(',').map(s=>s.trim().split(/\s+/).map(parseFloat));
+      assert.ok(shadows.some(s=>s[1]>=20 && s[2]>=48 && (s[3]??0)>=-16),'floating card needs a broad, visible elevation shadow');
       await screenshot(`layout-${width}-open.png`);
       const closing=await sampleDrawer(js,"document.querySelector('[data-action=filters-collapse]').click()");
       assertLayoutStable(before,closing,width+' closing');
