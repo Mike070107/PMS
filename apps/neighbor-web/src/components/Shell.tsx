@@ -99,10 +99,10 @@ export default function Shell() {
   const [unread, setUnread] = useState(0);
   // 当前页 key：优先按路由前缀匹配（/parking/main 要算到 garage-main，而不是首段 parking）
   const page = (NAV.find((n) => n.to && (loc.pathname === n.to || loc.pathname.startsWith(`${n.to}/`)))?.key) || PAGE_OF(loc.pathname);
-  // 层级菜单：默认全部折叠，只展开当前页所在分组
+  // 层级菜单：默认展开当前页分组 + 门禁管理（去重）；用户仍可手动收起。
   const [openGroups, setOpenGroups] = useState<string[]>(() => {
     const hit = GROUPS.find((g) => g.keys.includes(page));
-    return [hit ? hit.title : GROUPS[0].title];
+    return [...new Set([hit ? hit.title : GROUPS[0].title, '门禁管理'].filter(Boolean))];
   });
   const toggleGroup = (t: string) => setOpenGroups((l) => (l.includes(t) ? l.filter((x) => x !== t) : [...l, t]));
   // 当前页所在分组始终展开（首次进站时 pathname 可能还是 /，靠这个补上）
