@@ -7,7 +7,7 @@ import { PERMISSION_KEY } from '../../common/require-permission.decorator';
 import { MisMirror1794500000000 } from '../../migrations/1794500000000-MisMirror';
 import { MisMirrorBillNature1795300000000 } from '../../migrations/1795300000000-MisMirrorBillNature';
 import { MisMirrorFeeItemCategory1795400000000 } from '../../migrations/1795400000000-MisMirrorFeeItemCategory';
-import { StatisticsAnnualDetailQueryDto, StatisticsAnnualQueryDto } from './dto';
+import { StatisticsAnnualDetailQueryDto, StatisticsAnnualQueryDto, StatisticsBillsQueryDto } from './dto';
 import { StatisticsController } from './statistics.controller';
 import { StatisticsService } from './statistics.service';
 import { STATISTICS_NATURE_OPTIONS } from './statistics.util';
@@ -1029,6 +1029,251 @@ test('type/日期非法 400，列表参数解析为数组', async () => {
   assert.equal(parsed.paidDateFrom, '2026-03-01');
   assert.equal(parsed.paidDateTo, '2026-03-31');
 });
+
+for (const type of ['arrears', 'received'] as const) {
+  test(`年度组合守恒 ${type}：多管理处×多费项×多行级性质，逐年/逐行/总计=detail=bills`, async () => {
+    const pg = await makeDatabase();
+    try {
+      // 同一房屋跨月、跨性质、跨费项；室表当前空房不能覆盖账单性质，缺室表也不能丢账单。
+      await pg.query(`INSERT INTO mis_mirror_room(s_id,room_no,nature,area_sqm) VALUES(3101,'101','06',88.5)`);
+      const inputs: Array<[string, number, string, string, string | null, number, string?]> = [
+        ['01', 3101, '202401', '01', '01', 101],
+        ['01', 3101, '202402', '02', '04 ', 203],
+        ['01', 3101, '202501', '01', '04', 307],
+        ['02', 3201, '202401', '02', '01', 409],
+        ['02', 3201, '202502', '01', '04', 503],
+        ['02', 3201, '202603', '02', ' 01', 607],
+        ['02', 3202, '202612', '02', '04', 701],
+        ['03', 3301, '202601', '01', '04', 809],
+        ['03', 3302, '202501', '02', '01', 0],
+        ['02', 3201, '202502', '02', '04', -37, '2026-03-01'],
+        // 年度实收按流水求和：refund_date 非空的正行也保留，绝非 P2 净额口径。
+        ['02', 3201, '202503', '02', '01', 131, '2026-03-01'],
+        ['01', 3101, '202401', '03', '01', 8001],
+        ['02', 3201, '202501', '01', '06', 8002],
+        ['03', 3301, '202601', '02', null, 8003],
+        ['04', 3401, '202601', '01', '01', 8004],
+        ['05', 3501, '202601', '02', '04', 8005],
+        ['03', 3301, '2026xx', '01', '01', 8006],
+        ['03', 3301, '202701', '02', '04', 8007],
+      ];
+      for (const [index, [office, sId, period, fee, nature, cents, refund]] of inputs.entries()) {
+        await pg.query(`INSERT INTO mis_mirror_bill
+          (zj_id,office_code,s_id,period,fee_code,nature_code,amount_cents,paid_date,refund_date)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [index + 1, office, sId, period, fee, nature, cents, type === 'received' ? '2026-03-01' : null, refund ?? null]);
+      }
+      // 相反支付状态的行不能混入；实收日期在边界外的行也不能混入。
+      await pg.query(`INSERT INTO mis_mirror_bill
+        (zj_id,office_code,s_id,period,fee_code,nature_code,amount_cents,paid_date)
+        VALUES(100,'01',3101,'202401','01','01',9001,$1)`, [type === 'received' ? null : '2026-03-01']);
+      if (type === 'received') {
+        await pg.query(`INSERT INTO mis_mirror_bill
+          (zj_id,office_code,s_id,period,fee_code,nature_code,amount_cents,paid_date)
+          VALUES(101,'01',3101,'202401','01','01',9002,'2020-02-28'),
+                (102,'01',3101,'202401','01','01',9003,'2026-03-02')`);
+      }
+      const service = serviceFor(pg);
+      const access = { scopeAll: false, communityIds: [1, 2] } as never;
+      const common = { type, feeCodes: ['02', '01', '02'], natures: ['04', '01', '04'],
+        asOfPeriod: '202606', paidDateFrom: '2020-02-29', paidDateTo: '2026-03-01' };
+      const annual: any = await service.annual({ ...common, officeCodes: ['05', '03', '04', '02', '01', '02'],
+        yearFrom: 2024, yearTo: 2026 }, user, access);
+      assert.deepEqual(annual.filters.officeCodes, ['01', '02', '03']);
+      assert.deepEqual(annual.rows.map((row: any) => row.officeCode), ['01', '02', '03']);
+      assert.deepEqual(annual.subtotal.cells, { '2024': 713, '2025': 904, '2026': type === 'received' ? 2117 : 1416 });
+      assert.equal(annual.subtotal.totalCents, type === 'received' ? 3734 : 3033);
+      let allDetailTotal = 0;
+      for (const row of annual.rows) {
+        let rowTotal = 0;
+        for (const year of annual.columns) {
+          const detail: any = await service.annualDetail({ ...common, officeCode: row.officeCode, year }, user, access);
+          assert.equal(detail.totalCents, row.cells[String(year)], `${row.officeCode}×${year}`);
+          assert.equal(detail.rows.reduce((sum: number, item: any) => sum + item.amountCents, 0), detail.totalCents);
+          // 实收明细按房屋×period；逐笔 API 是房屋×year，先逐月核对，再按房屋核对一次，不能重复累计整年账单。
+          for (const sId of new Set<number>(detail.rows.map((item: any) => item.sId))) {
+            const bills: any = await service.annualDetailBills({ ...common, officeCode: row.officeCode, year, sId }, user, access);
+            const houseRows = detail.rows.filter((item: any) => item.sId === sId);
+            assert.equal(bills.totalCents, houseRows.reduce((sum: number, item: any) => sum + item.amountCents, 0));
+            assert.equal(bills.rows.reduce((sum: number, item: any) => sum + item.amountCents, 0), bills.totalCents);
+            if (type === 'received') {
+              for (const item of houseRows) {
+                assert.equal(bills.rows.filter((bill: any) => bill.period === item.period)
+                  .reduce((sum: number, bill: any) => sum + bill.amountCents, 0), item.amountCents);
+              }
+              if (sId === 3201 && year === 2025) {
+                assert.deepEqual(bills.rows.map((bill: any) => bill.amountCents), [503, -37, 131]);
+                assert.equal(bills.rows[2].refundDate, '2026-03-01');
+              }
+            }
+          }
+          rowTotal += detail.totalCents;
+        }
+        assert.equal(rowTotal, row.totalCents);
+        allDetailTotal += rowTotal;
+      }
+      assert.equal(allDetailTotal, annual.subtotal.totalCents);
+      for (const year of annual.columns) {
+        assert.equal(annual.rows.reduce((sum: number, row: any) => sum + row.cells[String(year)], 0), annual.subtotal.cells[String(year)]);
+      }
+    } finally {
+      await pg.close();
+    }
+  });
+}
+
+test('年度全越权请求与空 scope 不执行金额查询，detail/bills 均拒绝越权', async () => {
+  const pg = await makeDatabase();
+  try {
+    await seed(pg);
+    const statements: string[] = [];
+    const service = makeService({ query: async (sql, params) => {
+      statements.push(sql);
+      return (await pg.query(sql, params as any[])).rows;
+    } });
+    for (const type of ['arrears', 'received'] as const) {
+      for (const [access, officeCodes] of [
+        [scopeCommunityTwo, ['01', '04', '05']],
+        [{ scopeAll: false, communityIds: [] }, undefined],
+        [{ scopeAll: false }, ['01', '02', '03', '04', '05']],
+      ] as const) {
+        statements.length = 0;
+        const result: any = await service.annual({ type, officeCodes: officeCodes ? [...officeCodes] : undefined,
+          yearFrom: 2024, yearTo: 2026 }, user, access as never);
+        assert.equal(result.available, true);
+        assert.deepEqual(result.rows, []);
+        assert.deepEqual(result.filters.officeCodes, []);
+        assert.deepEqual(result.subtotal, { cells: { '2024': 0, '2025': 0, '2026': 0 }, totalCents: 0 });
+        assert.equal(statements.filter((sql) => sql.includes('FROM mis_mirror_bill b')).length, 0);
+        await assert.rejects(service.annualDetail({ type, officeCode: '01', year: 2026 }, user, access as never), /不在你的数据范围/);
+        await assert.rejects(service.annualDetailBills({ type, officeCode: '01', year: 2026, sId: 801 }, user, access as never), /不在你的数据范围/);
+      }
+    }
+    const options: any = await service.options(user, { scopeAll: false, communityIds: [] } as never);
+    assert.deepEqual(options.offices, []);
+  } finally {
+    await pg.close();
+  }
+});
+
+test('年度未同步 unknown 与已同步无匹配零值区别覆盖两个类型和两级下钻', async () => {
+  const pg = await makeDatabase();
+  try {
+    const service = serviceFor(pg);
+    for (const type of ['arrears', 'received'] as const) {
+      const query = { type, officeCode: '02', sId: 501, year: 2026, yearFrom: 2026, yearTo: 2026 };
+      const annual: any = await service.annual(query, user, scopeAll);
+      assert.equal(annual.available, false);
+      assert.equal(annual.subtotal, null);
+      assert.equal(annual.dataAsOf, null);
+      assert.deepEqual(annual.rows, []);
+      for (const detail of [
+        await service.annualDetail(query, user, scopeAll),
+        await service.annualDetailBills(query, user, scopeAll),
+      ]) {
+        assert.equal(detail.available, false);
+        assert.equal(detail.totalCents, null);
+        assert.equal(detail.dataAsOf, null);
+        assert.deepEqual(detail.rows, []);
+        assert.match(detail.message!, /镜像/);
+      }
+      await assert.rejects(service.annualDetail(query, user, { scopeAll: false, communityIds: [] } as never), /不在你的数据范围/);
+      await assert.rejects(service.annualDetailBills(query, user, { scopeAll: false, communityIds: [] } as never), /不在你的数据范围/);
+    }
+    await seed(pg);
+    for (const type of ['arrears', 'received'] as const) {
+      const query = { type, officeCode: '02', officeCodes: ['02'], sId: 501, year: 2026,
+        yearFrom: 2026, yearTo: 2026, feeCodes: ['99'], natures: ['01', '04'] };
+      const annual: any = await service.annual(query, user, scopeAll);
+      assert.equal(annual.available, true);
+      assert.equal(annual.subtotal.totalCents, 0);
+      for (const detail of [
+        await service.annualDetail(query, user, scopeAll),
+        await service.annualDetailBills(query, user, scopeAll),
+      ]) {
+        assert.equal(detail.available, true);
+        assert.equal(detail.totalCents, 0);
+        assert.equal(detail.message, null);
+        assert.deepEqual(detail.rows, []);
+      }
+    }
+  } finally {
+    await pg.close();
+  }
+});
+
+test('年度非正常参数 400、重复数组与空值保持既有语义、闰日与单侧日期可用', async () => {
+  const pipe = new ValidationPipe({ whitelist: true, transform: true });
+  for (const query of [
+    { yearFrom: '2026.5' }, { yearTo: '2101' }, { yearFrom: 'NaN' },
+    { asOfPeriod: '202600' }, { asOfPeriod: '202613' },
+    { feeCodes: '01,select *' }, { officeCodes: '01,1' }, { natures: ['01', '04;'] },
+    { paidDateFrom: '2024-02-29T00:00:00Z' },
+  ]) {
+    await assert.rejects(pipe.transform({ type: 'received', ...query },
+      { type: 'query', metatype: StatisticsAnnualQueryDto }), (error: unknown) => error instanceof BadRequestException);
+  }
+  for (const sId of ['0', '-1', '1.5', 'not-id']) {
+    await assert.rejects(pipe.transform({ type: 'arrears', officeCode: '02', year: '2026', sId },
+      { type: 'query', metatype: StatisticsBillsQueryDto }), (error: unknown) => error instanceof BadRequestException);
+  }
+  const parsed = await pipe.transform({ type: 'received', officeCodes: ['02', '03', '02'],
+    feeCodes: '01,02', natures: '', paidDateFrom: '', paidDateTo: '2024-02-29' },
+  { type: 'query', metatype: StatisticsAnnualQueryDto });
+  assert.deepEqual(parsed.officeCodes, ['02', '03', '02']);
+  assert.deepEqual(parsed.feeCodes, ['01', '02']);
+  assert.equal(parsed.natures, undefined);
+  assert.equal(parsed.paidDateFrom, undefined);
+  assert.equal(parsed.paidDateTo, '2024-02-29');
+  const service = makeService({ query: async () => [] });
+  for (const [yearFrom, yearTo] of [[2026, 2025], [2004, 2060]]) {
+    await assert.rejects(service.annual({ type: 'received', yearFrom, yearTo }, user, scopeAll), BadRequestException);
+  }
+  for (const dates of [{ paidDateFrom: '2024-02-29' }, { paidDateTo: '2024-02-29' },
+    { paidDateFrom: '2024-02-29', paidDateTo: '2024-02-29' },
+    { paidDateFrom: '2004-01-01', paidDateTo: '2026-12-31' }]) {
+    // 日期合法时未知镜像仍返回 unknown；不得错误沿用 P2 的 366 天区间限制。
+    const result = await service.annual({ type: 'received', ...dates }, user, scopeAll);
+    assert.equal(result.available, false);
+  }
+});
+
+test('年度 DTO 拒绝不存在的日历日期，而不只是检查 YYYY-MM-DD 形状', async () => {
+  const pipe = new ValidationPipe({ whitelist: true, transform: true });
+  for (const metatype of [StatisticsAnnualQueryDto, StatisticsAnnualDetailQueryDto, StatisticsBillsQueryDto]) {
+    for (const field of ['paidDateFrom', 'paidDateTo']) {
+      for (const date of ['2026-02-29', '2026-02-30', '2026-04-31']) {
+        await assert.rejects(
+          pipe.transform({ type: 'received', officeCode: '02', year: '2026', sId: '501', [field]: date },
+            { type: 'query', metatype }),
+          (error: unknown) => error instanceof BadRequestException,
+          `${metatype.name}.${field}=${date} 应返回 400`,
+        );
+      }
+    }
+  }
+});
+
+for (const invalid of [
+  { label: '不存在日期', paidDateFrom: '2026-02-30', paidDateTo: '2026-03-01' },
+  { label: '倒序日期', paidDateFrom: '2026-03-02', paidDateTo: '2026-03-01' },
+]) {
+  test(`年度三入口在查询镜像前拒绝${invalid.label}，不伪造已知零值`, async () => {
+    let calls = 0;
+    const service = makeService({ query: async () => { calls += 1; return []; } });
+    const query = { type: 'received', officeCodes: ['02'], officeCode: '02', sId: 501,
+      yearFrom: 2026, yearTo: 2026, year: 2026,
+      paidDateFrom: invalid.paidDateFrom, paidDateTo: invalid.paidDateTo };
+    for (const invoke of [
+      () => service.annual(query as never, user, scopeAll),
+      () => service.annualDetail(query as never, user, scopeAll),
+      () => service.annualDetailBills(query as never, user, scopeAll),
+    ]) {
+      await assert.rejects(invoke(), (error: unknown) => error instanceof BadRequestException);
+    }
+    assert.equal(calls, 0, '参数错误不能依赖镜像是否同步才得到不同结果');
+  });
+}
 
 test('报表接口复用 business:view 权限，不新增页面 key', () => {
   const handlers = StatisticsController.prototype as unknown as Record<string, object>;

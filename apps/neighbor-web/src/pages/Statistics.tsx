@@ -413,14 +413,9 @@ export default function Statistics() {
   const [collectionDetailOpen, setCollectionDetailOpen] = useState(false);
   const [filtersCollapsed, setFiltersCollapsed] = useState<boolean>(initialFiltersCollapsed);
 
-  const toggleFilters = () => {
-    setFiltersCollapsed((collapsed) => {
-      const next = !collapsed;
-      rememberFiltersCollapsed(next);
-      return next;
-    });
-  };
+  const filterEntryRef = useRef<HTMLButtonElement>(null);
   const collapseFilters = () => {
+    filterEntryRef.current?.focus({ preventScroll: true });
     setFiltersCollapsed(true);
     rememberFiltersCollapsed(true);
   };
@@ -431,11 +426,14 @@ export default function Statistics() {
   useEffect(() => {
     if (filtersCollapsed) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { event.preventDefault(); collapseFilters(); }
+      // The portalled calendar owns Escape while open; do not dismiss its parent drawer.
+      if (event.key === 'Escape' && !document.querySelector('.ant-picker-dropdown:not(.ant-picker-dropdown-hidden)')) {
+        event.preventDefault(); collapseFilters();
+      }
     };
     const onPointerDown = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.closest('.stats-filter-float') || target?.closest('[data-testid=stats-filter-toggle]')) return;
+      if (target?.closest('.stats-filter-float, .stats-filter-entry, .ant-picker-dropdown, .ant-select-dropdown')) return;
       collapseFilters();
     };
     window.addEventListener('keydown', onKeyDown);
@@ -1167,41 +1165,44 @@ export default function Statistics() {
         </div>
       ) : (
         <div className={`stats-body${filtersCollapsed ? ' filters-collapsed' : ''}`}>
-          {!filtersCollapsed ? (
-            <>
-              <div className="stats-filter-mask" aria-hidden="true" onClick={toggleFilters} />
-              <div className="stats-filter-float" role="dialog" aria-label="统计筛选">
-                <StatisticsFilters
-                  options={options}
-                  draft={draft}
-                  onChange={(patch) => setDraft((previous) => ({ ...previous, ...patch }))}
-                  onSubmit={submit}
-                  onReset={resetDraft}
-                  onCollapse={collapseFilters}
-                  reportType={reportType}
-                  signoffTypeOptions={signoffTypeOptions}
-                  loading={isLoading}
-                />
-              </div>
-            </>
-          ) : null}
-
           <section className="stats-main">
-            {filtersCollapsed ? (
-              <div className="stats-compact-entry">
-                <button
-                  type="button"
-                  className="btn sm stats-filter-entry"
-                  data-testid="stats-filter-toggle"
-                  aria-expanded="false"
-                  title="展开筛选条件"
-                  onClick={expandFilters}
-                >
-                  <Icon name="search" size={15} />筛选条件（{activeFilterCount(reportType, draft)}）
-                  <Icon name="chev" size={14} />
-                </button>
-              </div>
-            ) : null}
+            <div className="stats-compact-entry">
+              <button
+                type="button"
+                className="btn sm stats-filter-entry"
+                data-testid="stats-filter-toggle"
+                ref={filterEntryRef}
+                aria-expanded={!filtersCollapsed}
+                aria-controls="stats-filter-drawer"
+                title={filtersCollapsed ? '展开筛选条件' : '收起筛选条件'}
+                onClick={filtersCollapsed ? expandFilters : collapseFilters}
+              >
+                <Icon name="search" size={15} />筛选条件（{activeFilterCount(reportType, draft)}）
+                <Icon name="chev" size={14} />
+              </button>
+            </div>
+            {/* Mounted through exit; React 18 forwards the native inert attribute as a string. */}
+            <div className="stats-filter-mask" aria-hidden="true" onClick={collapseFilters} />
+            <div
+              id="stats-filter-drawer"
+              className="stats-filter-float"
+              role={filtersCollapsed ? undefined : 'dialog'}
+              aria-label="统计筛选"
+              aria-hidden={filtersCollapsed}
+              {...(filtersCollapsed ? { inert: '' } : {})}
+            >
+              <StatisticsFilters
+                options={options}
+                draft={draft}
+                onChange={(patch) => setDraft((previous) => ({ ...previous, ...patch }))}
+                onSubmit={submit}
+                onReset={resetDraft}
+                onCollapse={collapseFilters}
+                reportType={reportType}
+                signoffTypeOptions={signoffTypeOptions}
+                loading={isLoading}
+              />
+            </div>
             <div className="card stats-catalog">
               <div className="stats-catalog-main">
                 {REPORTS.map((report) => (

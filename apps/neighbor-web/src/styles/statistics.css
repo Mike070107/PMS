@@ -1,4 +1,6 @@
 /* 统计汇总：悬浮可收纳筛选 + 年度汇总表（编号/管理处固定列、年度横向滚动、合计高亮、表格线）+ 三级下钻 */
+/* Shell owns the cap; lift it only while this wrap hosts the statistics route. */
+.content > .wrap:has(> .stats) { max-width: none; min-width: 0; }
 .stats { min-width: 0; }
 
 /* 开票统计沿用现有表格/抽屉，超宽内容只在表内滚动。 */
@@ -30,28 +32,31 @@
 
 .stats-body { position: relative; min-width: 0; }
 
-.stats-main {
-  min-width: 0;
-  margin-left: 0;
-  transition: margin-left .18s ease;
-}
+.stats-main { min-width: 0; }
 
-/* 展开时为浮动面板留出左侧空间；收起后数据区立即占满。 */
-.stats-body:not(.filters-collapsed) .stats-main { margin-left: 324px; }
-
+/* A non-modal top drawer: no body lock, layout reservation or layout animation. */
 .stats-filter-float {
   position: fixed;
-  left: calc(var(--stats-sidebar-width, 252px) + 12px);
-  top: 86px;
-  width: 308px;
-  max-height: calc(100vh - 116px);
+  left: calc(var(--stats-sidebar-width, 252px) + 16px);
+  top: 84px;
+  width: 400px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 100px);
   z-index: 35;
   display: flex;
+  transform: translateY(0);
+  opacity: 1;
+  transition: transform 200ms ease-out, opacity 200ms ease-out;
+}
+.filters-collapsed .stats-filter-float {
+  transform: translateY(-24px);
+  opacity: 0;
+  pointer-events: none;
 }
 
 .stats-filter-float .stats-filters {
   width: 100%;
-  max-height: calc(100vh - 116px);
+  max-height: calc(100dvh - 100px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -69,6 +74,19 @@
 }
 
 .stats-filter-mask { display: none; }
+@media (max-width: 900px) {
+  .stats-filter-float { left: 16px; right: 16px; top: 84px; width: auto; }
+  .stats-filter-mask {
+    display: block;
+    position: fixed;
+    inset: 68px 0 0;
+    z-index: 34;
+    background: rgba(20, 28, 40, .22);
+    opacity: 1;
+    transition: opacity 200ms ease-out;
+  }
+  .filters-collapsed .stats-filter-mask { opacity: 0; pointer-events: none; }
+}
 
 .stats-filter-toggle {
   height: 32px;
@@ -740,24 +758,6 @@
 .stats-received-table tbody tr:hover td { background: var(--sunken); }
 
 /* ---------- 响应式 ---------- */
-@media (max-width: 900px) {
-  .stats-body:not(.filters-collapsed) .stats-main { margin-left: 0; }
-  .stats-filter-float {
-    left: 12px;
-    right: 12px;
-    top: 76px;
-    width: auto;
-    max-height: 72vh;
-  }
-  .stats-filter-float .stats-filters { max-height: 72vh; }
-  .stats-filter-mask {
-    display: block;
-    position: fixed;
-    inset: 0;
-    z-index: 34;
-    background: rgba(20, 30, 25, .28);
-  }
-}
 
 @media (max-width: 760px) {
   .stats-table-scroll { display: none; }
@@ -774,7 +774,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .stats-main { transition: none; }
+  .stats-filter-float { transition: none; transform: none; }
+  .stats-filter-mask { transition: none; }
 }
 
 /* ---------- 数值语义色（低饱和，仅用于统计报表展示） ---------- */
@@ -859,35 +860,3 @@
 .stats-property-table th, .stats-property-table td { white-space: normal; overflow-wrap: anywhere; padding: 6px 4px; }
 .stats .stats-property-table { table-layout: fixed !important; width: 100% !important; min-width: 0 !important; }
 .stats .stats-property-table th, .stats .stats-property-table td { white-space: normal !important; overflow-wrap: anywhere; padding: 6px 4px !important; }
-
-/* ---------- 筛选改为真正悬浮弹层：结果区始终占满，无左侧预留 ---------- */
-.stats-main, .stats-body .stats-main { margin-left: 0 !important; }
-.stats-filter-mask {
-  display: block;
-  position: fixed;
-  inset: 0;
-  z-index: 34;
-  background: rgba(20, 28, 40, .22);
-}
-.stats-filter-float {
-  z-index: 35;
-  width: 400px;
-  max-width: calc(100vw - 24px);
-}
-@media (max-width: 900px) {
-  .stats-filter-float { left: 12px; right: 12px; top: 76px; width: auto; }
-}
-@media (max-width: 640px) {
-  .stats-filter-float {
-    left: 0; right: 0; top: auto; bottom: 0; width: auto;
-    max-height: 88vh;
-  }
-  .stats-filter-float .stats-filters {
-    max-height: 88vh;
-    border-radius: 16px 16px 0 0;
-  }
-}
-/* 桌面端用点击外部关闭，不显示全屏遮罩（避免挡住表格交互）；窄屏保留遮罩。 */
-@media (min-width: 901px) {
-  .stats-filter-mask { display: none; }
-}

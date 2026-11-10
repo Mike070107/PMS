@@ -242,6 +242,91 @@ test('票据情况统计：状态派生/四态过滤/statusCounts 不受 status 
   }
 });
 
+const summaryQuery = { dateFrom: '2026-10-01', dateTo: '2026-10-31', officeCodes: ['02'] };
+const ticketFields = ['ticketAmountCents', 'ticketTaxCents', 'ticketIncomeCents', 'ticketCount'];
+
+for (const missing of ['both', 'items', 'tickets', 'item-table', 'ticket-table'] as const) {
+  test(`收款汇总表：${missing} 未就绪时票据未知，已知收款与收款人不丢失`, async () => {
+    const pg = await makeDatabase();
+    try {
+      await seed(pg);
+      if (missing === 'both' || missing === 'items') await pg.query('DELETE FROM mis_mirror_ticket_item');
+      if (missing === 'both' || missing === 'tickets') await pg.query('DELETE FROM mis_mirror_ticket');
+      if (missing === 'item-table') await pg.query('DROP TABLE mis_mirror_ticket_item');
+      if (missing === 'ticket-table') await pg.query('DROP TABLE mis_mirror_ticket');
+      const result: any = await serviceFor(pg).ticketSummary(summaryQuery as never, user, scopeAll);
+      assert.equal(result.available, true);
+      // 先断言原缺陷本身，而不是只断言新增加的元信息。
+      for (const field of ticketFields) {
+        assert.equal(result.totals[field], null, field);
+        for (const row of result.rows) assert.equal(row[field], null, field);
+      }
+      assert.equal(result.ticketBlockReady, false);
+      assert.equal(result.partial, true);
+      assert.equal(result.totals.receivedCents, 15_314_220);
+      assert.equal(result.cashierTotals.netCents, 15_314_220);
+      assert.deepEqual(result.cashierRows.map((row: any) => row.cashier), ['赵丽萍']);
+      assert.match(result.message, /未就绪|未同步/);
+      assert.doesNotMatch(result.message, /暂显示 0|无票据数据/);
+      // 全越权也不能绕过镜像就绪状态而伪造票据零。
+      const denied: any = await serviceFor(pg).ticketSummary(summaryQuery as never, user,
+        { scopeAll: false, communityIds: [] } as never);
+      assert.deepEqual(denied.rows, []);
+      assert.equal(denied.totals.receivedCents, 0);
+      assert.equal(denied.totals.ticketAmountCents, null);
+    } finally { await pg.close(); }
+  });
+}
+
+test('收款汇总表：成功同步空票据/空开票明细是真实 0，分块水位取较早值', async () => {
+  const pg = await makeDatabase();
+  try {
+    await seed(pg);
+    await pg.query('DELETE FROM mis_mirror_ticket_item');
+    await pg.query('DELETE FROM mis_mirror_ticket');
+    await pg.query(`INSERT INTO mis_sync_state(tenant_id,source_table,last_success_at)
+      VALUES (1,'ticket','2026-11-01T01:00:00Z'),(1,'ticket_item','2026-11-01T00:00:00Z')`);
+    const result: any = await serviceFor(pg).ticketSummary(summaryQuery as never, user, scopeAll);
+    assert.equal(result.ticketBlockReady, true);
+    assert.equal(result.partial, false);
+    assert.equal(result.ticketDataAsOf, '2026-11-01T00:00:00.000Z');
+    assert.equal(result.message, null);
+    for (const field of ticketFields) {
+      assert.equal(result.totals[field], 0);
+      for (const row of result.rows) assert.equal(row[field], 0);
+    }
+    // 只有票据头已同步，明细未同步，仍为未知（COUNT=0 不是未同步的依据）。
+    await pg.query(`DELETE FROM mis_sync_state WHERE source_table='ticket_item'`);
+    const partial: any = await serviceFor(pg).ticketSummary(summaryQuery as never, user, scopeAll);
+    assert.equal(partial.ticketBlockReady, false);
+    assert.equal(partial.totals.ticketAmountCents, null);
+  } finally { await pg.close(); }
+});
+
+test('收款汇总表：就绪无匹配/全越权是真实 0，跨费项票据合计去重不变', async () => {
+  const pg = await makeDatabase();
+  try {
+    await seed(pg);
+    await pg.query(`INSERT INTO mis_mirror_ticket_item(id,ticket_id,fee_code,amount_cents,tax_cents)
+      VALUES(2001,1001,'14',1000,100)`);
+    const service = serviceFor(pg);
+    const result: any = await service.ticketSummary(summaryQuery as never, user, scopeAll);
+    assert.equal(result.ticketBlockReady, true);
+    assert.equal(result.totals.ticketCount, 5);
+    assert.equal(result.totals.ticketAmountCents, 126_000);
+    assert.equal(result.rows.find((row: any) => row.feeCode === '14').ticketCount, 1);
+    for (const [query, access] of [
+      [{ ...summaryQuery, dateFrom: '2025-10-01', dateTo: '2025-10-31' }, scopeAll],
+      [summaryQuery, { scopeAll: false, communityIds: [] }],
+    ] as const) {
+      const empty: any = await service.ticketSummary(query as never, user, access as never);
+      assert.equal(empty.ticketBlockReady, true);
+      assert.deepEqual(empty.rows, []);
+      for (const field of ticketFields) assert.equal(empty.totals[field], 0);
+    }
+  } finally { await pg.close(); }
+});
+
 test('P2-E：未镜像、DTO/日期校验、权限与路由', async () => {
   const pg = await makeDatabase();
   try {

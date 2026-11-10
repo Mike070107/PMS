@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { request } from '@pms/api-client';
 import Icon from '@/components/Icon';
-import { Loading, Sheet, toast } from '@/components/ui';
+import { Loading, Sheet } from '@/components/ui';
 import {
   collectionAnalysisDetailParams, fmtCents, fmtPeriod,
   type CollectionAnalysisDetailResponse, type CollectionAnalysisDetailRow, type CollectionAnalysisQuery,
@@ -21,8 +21,9 @@ const KIND_TAG: Record<CollectionAnalysisDetailRow['rowKind'], { text: string; t
 };
 const LIMIT = 200;
 
-function kindCents(totals: CollectionAnalysisDetailResponse['totals'], kind: keyof NonNullable<CollectionAnalysisDetailResponse['totals']>): number {
-  return Number(totals?.[kind] ?? 0);
+function kindAmount(totals: CollectionAnalysisDetailResponse['totals'], kind: keyof NonNullable<CollectionAnalysisDetailResponse['totals']>): string {
+  const value = totals?.[kind];
+  return value == null ? '—' : fmtCents(value);
 }
 
 /** 收款分析「点行」：该户逐笔明细，合计按类型分组。 */
@@ -38,41 +39,67 @@ export default function CollectionAnalysisDetailSheet({ open, onClose, base, tar
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
+  const [loadMoreError, setLoadMoreError] = useState('');
+  const [retryTick, setRetryTick] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const generationRef = useRef(0);
+  const loadingMoreRef = useRef(false);
 
   useEffect(() => {
     if (!open || !base || !target) return undefined;
-    let cancelled = false;
+    const generation = ++generationRef.current;
+    loadingMoreRef.current = false;
+    setLoadingMore(false); setLoadMoreError(''); setOffset(0);
     setLoading(true); setError(''); setRows([]); setTotals(null); setCount(null);
     request<CollectionAnalysisDetailResponse>({
       url: '/statistics/collection-analysis/detail',
       query: collectionAnalysisDetailParams(base, target.sId),
     })
       .then((response) => {
-        if (cancelled) return;
+        if (generation !== generationRef.current) return;
+        if (response.available === false) {
+          setError(response.message ? `逐笔明细尚未同步：${response.message}` : '逐笔明细尚未同步，请重试');
+          return;
+        }
         setRows(Array.isArray(response.rows) ? response.rows : []);
         setTotals(response.totals ?? null);
         setCount(response.count ?? null);
       })
-      .catch((e) => { if (!cancelled) setError(e instanceof Error && e.message ? e.message : '逐笔明细读取失败'); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [open, base, target]);
+      .catch((e) => { if (generation === generationRef.current) setError(e instanceof Error && e.message ? e.message : '逐笔明细读取失败'); })
+      .finally(() => { if (generation === generationRef.current) setLoading(false); });
+    return () => {
+      if (generation === generationRef.current) generationRef.current += 1;
+    };
+  }, [open, base, target, retryTick]);
 
   const loadMore = async () => {
-    if (!base || !target || loadingMore) return;
-    setLoadingMore(true);
+    if (!open || !base || !target || loading || loadingMoreRef.current) return;
+    const generation = generationRef.current;
+    const nextOffset = offset + LIMIT;
+    loadingMoreRef.current = true;
+    setLoadingMore(true); setLoadMoreError('');
     try {
-      const offset = rows.length;
       const response = await request<CollectionAnalysisDetailResponse>({
         url: '/statistics/collection-analysis/detail',
-        query: { ...collectionAnalysisDetailParams(base, target.sId), offset, limit: LIMIT },
+        query: { ...collectionAnalysisDetailParams(base, target.sId), offset: nextOffset, limit: LIMIT },
       });
-      setRows((previous) => [...previous, ...(response.rows ?? [])]);
+      if (generation !== generationRef.current) return;
+      if (response.available === false) {
+        setLoadMoreError(response.message ? `分页明细尚未同步：${response.message}` : '分页明细尚未同步，可重试');
+        return;
+      }
+      setRows((previous) => [...previous, ...(Array.isArray(response.rows) ? response.rows : [])]);
       setTotals(response.totals ?? null);
       setCount(response.count ?? null);
+      setOffset(nextOffset);
     } catch (e) {
-      toast(e instanceof Error && e.message ? e.message : '加载更多失败');
-    } finally { setLoadingMore(false); }
+      if (generation === generationRef.current) setLoadMoreError(e instanceof Error && e.message ? e.message : '加载更多失败，可重试');
+    } finally {
+      if (generation === generationRef.current) {
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+      }
+    }
   };
 
   return (
@@ -80,17 +107,20 @@ export default function CollectionAnalysisDetailSheet({ open, onClose, base, tar
       {target ? (
         <>
           <div className="stats-detail-tools">
-            <span className="muted" data-testid="analysis-detail-summary">共 {count ?? rows.length} 笔</span>
+            <span className="muted" data-testid="analysis-detail-summary">共 {count == null ? '—' : count} 笔</span>
             <span className="stats-summary-chips" data-testid="analysis-detail-totals">
-              <span className="stats-summary-chip">收款 <b>{fmtCents(kindCents(totals, 'receivedCents'))}</b></span>
-              <span className="stats-summary-chip">退款 <b>{fmtCents(kindCents(totals, 'refundCents'))}</b></span>
-              <span className="stats-summary-chip">调整 <b>{fmtCents(kindCents(totals, 'adjustCents'))}</b></span>
-              <span className="stats-summary-chip">欠收 <b>{fmtCents(kindCents(totals, 'unpaidCents'))}</b></span>
+              <span className="stats-summary-chip">收款 <b>{kindAmount(totals, 'receivedCents')}</b></span>
+              <span className="stats-summary-chip">退款 <b>{kindAmount(totals, 'refundCents')}</b></span>
+              <span className="stats-summary-chip">调整 <b>{kindAmount(totals, 'adjustCents')}</b></span>
+              <span className="stats-summary-chip">欠收 <b>{kindAmount(totals, 'unpaidCents')}</b></span>
             </span>
           </div>
           <div className="note2" style={{ marginBottom: 10 }}><Icon name="alert" />类型汇总合计=该户当前筛选下的逐笔合计；加载更多每次 200 条。</div>
           {error ? (
-            <div className="note2" role="alert" style={{ background: 'var(--dang-w)', color: 'var(--dang)' }}><Icon name="alert" />{error}</div>
+            <div className="note2" role="alert" style={{ background: 'var(--dang-w)', color: 'var(--dang)' }}>
+              <Icon name="alert" />{error}
+              <button type="button" className="btn sm" data-testid="analysis-detail-retry" disabled={loading} onClick={() => setRetryTick((value) => value + 1)}>重试</button>
+            </div>
           ) : loading ? <Loading text="读逐笔明细…" /> : !rows.length ? <div className="empty">该户没有逐笔明细</div> : (
             <>
               <div className="t-scroll stats-detail-scroll">
@@ -117,6 +147,12 @@ export default function CollectionAnalysisDetailSheet({ open, onClose, base, tar
                   </tbody>
                 </table>
               </div>
+              {loadMoreError ? (
+                <div className="note2" role="alert" data-testid="analysis-detail-loadmore-error" style={{ background: 'var(--dang-w)', color: 'var(--dang)', marginTop: 8 }}>
+                  <Icon name="alert" />{loadMoreError}
+                  <button type="button" className="btn sm" data-testid="analysis-detail-loadmore-retry" disabled={loadingMore} onClick={() => void loadMore()}>重试加载更多</button>
+                </div>
+              ) : null}
               {count != null && rows.length < count ? (
                 <div className="stats-load-more">
                   <button type="button" className="btn sm" disabled={loadingMore} onClick={() => void loadMore()}>

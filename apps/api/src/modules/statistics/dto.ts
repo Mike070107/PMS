@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { IsArray, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
+import { IsArray, IsDateString, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import {
   COLLECTION_DETAIL_KINDS,
   COLLECTION_GROUP_BYS,
@@ -90,12 +90,14 @@ export class StatisticsAnnualQueryDto {
   /** 收款截止日期（仅 received 生效）：paid_date <= paidDateTo。 */
   @IsOptional()
   @Transform(({ value }) => (value === '' || value == null ? undefined : value))
+  @IsDateString({ strict: true }, { message: 'paidDateTo 不是有效日期' })
   @Matches(DATE_RE, { message: 'paidDateTo 必须是 YYYY-MM-DD' })
   paidDateTo?: string;
 
   /** 收款起始日期（仅 received 生效）：paid_date >= paidDateFrom。 */
   @IsOptional()
   @Transform(({ value }) => (value === '' || value == null ? undefined : value))
+  @IsDateString({ strict: true }, { message: 'paidDateFrom 不是有效日期' })
   @Matches(DATE_RE, { message: 'paidDateFrom 必须是 YYYY-MM-DD' })
   paidDateFrom?: string;
 }
@@ -135,12 +137,14 @@ export class StatisticsAnnualDetailQueryDto {
   /** 收款截止日期（仅 received 生效）：paid_date <= paidDateTo。 */
   @IsOptional()
   @Transform(({ value }) => (value === '' || value == null ? undefined : value))
+  @IsDateString({ strict: true }, { message: 'paidDateTo 不是有效日期' })
   @Matches(DATE_RE, { message: 'paidDateTo 必须是 YYYY-MM-DD' })
   paidDateTo?: string;
 
   /** 收款起始日期（仅 received 生效）：paid_date >= paidDateFrom。 */
   @IsOptional()
   @Transform(({ value }) => (value === '' || value == null ? undefined : value))
+  @IsDateString({ strict: true }, { message: 'paidDateFrom 不是有效日期' })
   @Matches(DATE_RE, { message: 'paidDateFrom 必须是 YYYY-MM-DD' })
   paidDateFrom?: string;
 }

@@ -1,12 +1,14 @@
-import { fmtCents } from '@/lib/statistics';
+import { fmtCents, ticketSummaryTicketReady } from '@/lib/statistics';
 import type { TicketSummaryResponse } from '@/lib/statistics';
 
-const money = (cents: number) => (cents === 0 ? '—' : fmtCents(cents));
+const money = (cents: number | null) => (cents == null ? '—' : fmtCents(cents));
 const moneyClass = (cents: number) => (cents === 0 ? 'stats-num-muted' : cents < 0 ? 'stats-num-neg' : '');
 
 /** 收款汇总表：主表（费项×收款方式动态列 + 合计）+ 票据口径副表 + 按收款人副表。 */
 export default function TicketSummaryTable({ report }: { report: TicketSummaryResponse }) {
   const totals = report.totals;
+  const ticketsReady = ticketSummaryTicketReady(report);
+  const ticketMoney = (cents: number | null) => money(ticketsReady ? cents : null);
   return (
     <div className="stats-ticket-summary">
       <div className="t-scroll stats-ticket-summary-scroll">
@@ -47,6 +49,7 @@ export default function TicketSummaryTable({ report }: { report: TicketSummaryRe
         <div className="panelHd" style={{ marginBottom: 8 }}>
           <b>票据口径</b><span className="muted">开票数据，与收款金额口径不同</span>
         </div>
+        {!ticketsReady ? <p className="muted" role="status">票据或开票明细镜像未就绪，金额、税额、不含税收入及张数显示「—」（未知，并非 0）；收款及收款人数据仍可查看和导出。</p> : null}
         <div className="t-scroll">
           <table className="t stats-ticket-summary-ticket-table" data-testid="ticket-summary-ticket-table">
             <thead><tr><th>收费项目</th><th className="num">票据金额</th><th className="num">税额</th><th className="num">不含税收入</th><th className="num">票据张数</th></tr></thead>
@@ -54,19 +57,19 @@ export default function TicketSummaryTable({ report }: { report: TicketSummaryRe
               {report.rows.map((row) => (
                 <tr key={row.feeCode}>
                   <td>{row.feeName || row.feeCode}</td>
-                  <td className="num">{money(row.ticketAmountCents)}</td>
-                  <td className="num">{money(row.ticketTaxCents)}</td>
-                  <td className="num">{money(row.ticketIncomeCents)}</td>
-                  <td className={`num ${row.ticketCount === 0 ? 'stats-num-muted' : ''}`}>{row.ticketCount === 0 ? '—' : row.ticketCount}</td>
+                  <td className="num">{ticketMoney(row.ticketAmountCents)}</td>
+                  <td className="num">{ticketMoney(row.ticketTaxCents)}</td>
+                  <td className="num">{ticketMoney(row.ticketIncomeCents)}</td>
+                  <td className={`num ${row.ticketCount === 0 ? 'stats-num-muted' : ''}`}>{ticketsReady ? row.ticketCount : '—'}</td>
                 </tr>
               ))}
               {totals ? (
                 <tr className="stats-subtotal-row stats-total-row">
                   <td><b>合计</b></td>
-                  <td className="num"><b>{money(totals.ticketAmountCents)}</b></td>
-                  <td className="num"><b>{money(totals.ticketTaxCents)}</b></td>
-                  <td className="num"><b>{money(totals.ticketIncomeCents)}</b></td>
-                  <td className="num"><b>{totals.ticketCount === 0 ? '—' : totals.ticketCount}</b></td>
+                  <td className="num"><b>{ticketMoney(totals.ticketAmountCents)}</b></td>
+                  <td className="num"><b>{ticketMoney(totals.ticketTaxCents)}</b></td>
+                  <td className="num"><b>{ticketMoney(totals.ticketIncomeCents)}</b></td>
+                  <td className="num"><b>{ticketsReady ? totals.ticketCount : '—'}</b></td>
                 </tr>
               ) : null}
             </tbody>

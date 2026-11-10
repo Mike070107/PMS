@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { request } from '@pms/api-client';
 import Icon from '@/components/Icon';
-import { Loading, Sheet, toast } from '@/components/ui';
+import { Loading, Sheet } from '@/components/ui';
 import {
   collectionDetailParams, collectionDetailTotal, fmtCents, fmtPeriod, type CollectionDetailKind, type CollectionDetailResponse,
   type CollectionDetailRow, type ReportQuery,
@@ -41,7 +41,11 @@ export default function CollectionDetailSheet({ open, onClose, base, target, rep
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
+  const [loadMoreError, setLoadMoreError] = useState('');
   const [offset, setOffset] = useState(0);
+  const [retryTick, setRetryTick] = useState(0);
+  const generationRef = useRef(0);
+  const loadingMoreRef = useRef(false);
 
   useEffect(() => {
     if (!open || !target) return;
@@ -50,38 +54,58 @@ export default function CollectionDetailSheet({ open, onClose, base, target, rep
 
   useEffect(() => {
     if (!open || !base || !target) return undefined;
-    let cancelled = false;
+    const generation = ++generationRef.current;
+    loadingMoreRef.current = false;
+    setLoadingMore(false); setLoadMoreError('');
     setLoading(true); setError(''); setOffset(0); setRows([]); setTotalCents(null); setCount(null);
     const params = collectionDetailParams(base, { feeCode: target.feeCode, natureCode: target.natureCode, kind, date: target.date }, 0, LIMIT);
     request<CollectionDetailResponse>({ url: '/statistics/collection/detail', query: params })
       .then((response) => {
-        if (cancelled) return;
-        if (response.available === false) setError(response.message || '明细数据尚未就绪');
+        if (generation !== generationRef.current) return;
+        if (response.available === false) {
+          // 未同步是「未知」，不能当成 0 笔/¥0.00，也不能用空行覆盖。
+          setError(response.message ? `逐笔明细尚未同步：${response.message}` : '逐笔明细尚未同步，请重试');
+          return;
+        }
         setRows(Array.isArray(response.rows) ? response.rows : []);
         setTotalCents(collectionDetailTotal(response, kind));
         setCount(response.count ?? null);
       })
-      .catch((e) => { if (!cancelled) setError(e instanceof Error && e.message ? e.message : '明细读取失败'); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [open, base, target, kind]);
+      .catch((e) => { if (generation === generationRef.current) setError(e instanceof Error && e.message ? e.message : '明细读取失败'); })
+      .finally(() => { if (generation === generationRef.current) setLoading(false); });
+    return () => {
+      if (generation === generationRef.current) generationRef.current += 1;
+    };
+  }, [open, base, target, kind, retryTick]);
 
   const loadMore = async () => {
-    if (!base || !target || loadingMore) return;
+    if (!open || !base || !target || loading || loadingMoreRef.current) return;
+    const generation = generationRef.current;
     const nextOffset = offset + LIMIT;
-    setLoadingMore(true);
+    loadingMoreRef.current = true;
+    setLoadingMore(true); setLoadMoreError('');
     try {
       const response = await request<CollectionDetailResponse>({
         url: '/statistics/collection/detail',
         query: collectionDetailParams(base, { feeCode: target.feeCode, natureCode: target.natureCode, kind, date: target.date }, nextOffset, LIMIT),
       });
+      if (generation !== generationRef.current) return;
+      if (response.available === false) {
+        setLoadMoreError(response.message ? `分页明细尚未同步：${response.message}` : '分页明细尚未同步，可重试');
+        return;
+      }
       setRows((previous) => [...previous, ...(Array.isArray(response.rows) ? response.rows : [])]);
       setTotalCents(collectionDetailTotal(response, kind));
       setCount(response.count ?? null);
       setOffset(nextOffset);
     } catch (e) {
-      toast(e instanceof Error && e.message ? e.message : '加载更多失败');
-    } finally { setLoadingMore(false); }
+      if (generation === generationRef.current) setLoadMoreError(e instanceof Error && e.message ? e.message : '加载更多失败，可重试');
+    } finally {
+      if (generation === generationRef.current) {
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+      }
+    }
   };
 
   const title = target ? `${target.feeName}${target.natureName || target.natureCode ? ` · ${target.natureName || target.natureCode}` : ''}` : '';
@@ -108,7 +132,10 @@ export default function CollectionDetailSheet({ open, onClose, base, target, rep
             <Icon name="alert" />明细合计与所点单元格同源；切换类型只改变筛选，不改变统计口径。
           </div>
           {error ? (
-            <div className="note2" role="alert" style={{ background: 'var(--dang-w)', color: 'var(--dang)' }}><Icon name="alert" />{error}</div>
+            <div className="note2" role="alert" style={{ background: 'var(--dang-w)', color: 'var(--dang)' }}>
+              <Icon name="alert" />{error}
+              <button type="button" className="btn sm" data-testid="collection-detail-retry" disabled={loading} style={{ marginLeft: 8 }} onClick={() => setRetryTick((value) => value + 1)}>重试</button>
+            </div>
           ) : loading ? <Loading text="读明细…" /> : !rows.length ? (
             <div className="empty">该单元格没有逐笔明细</div>
           ) : (
@@ -143,6 +170,12 @@ export default function CollectionDetailSheet({ open, onClose, base, target, rep
                   </tbody>
                 </table>
               </div>
+              {loadMoreError ? (
+                <div className="note2" role="alert" data-testid="collection-detail-loadmore-error" style={{ background: 'var(--dang-w)', color: 'var(--dang)', marginTop: 8 }}>
+                  <Icon name="alert" />{loadMoreError}
+                  <button type="button" className="btn sm" data-testid="collection-detail-loadmore-retry" disabled={loadingMore} style={{ marginLeft: 8 }} onClick={() => void loadMore()}>重试加载更多</button>
+                </div>
+              ) : null}
               {count != null && rows.length < count ? (
                 <div className="stats-load-more">
                   <button type="button" className="btn sm" disabled={loadingMore} onClick={() => void loadMore()}>

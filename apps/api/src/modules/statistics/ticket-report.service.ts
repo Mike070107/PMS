@@ -24,7 +24,7 @@ import {
 const MIRROR_UNAVAILABLE_MESSAGE =
   'MIS 镜像尚未同步或没有账单数据，请管理员先执行镜像重灌后再查看报表';
 const TICKET_MIRROR_MISSING_MESSAGE =
-  '票据镜像未同步或无票据数据，票据金额/税额/不含税收入列暂显示 0';
+  '票据或开票明细镜像未就绪，票据金额/税额/不含税收入/张数未知（—）；已就绪的收款及收款人数据可查看和导出';
 
 const TICKET_STATUS_SQL = `CASE
   WHEN t.void_date IS NOT NULL THEN 'voided'
@@ -71,7 +71,9 @@ export class TicketReportService {
       offset,
     };
     const billState = await this.billMirrorState(tenantId);
-    const ticketState = await this.ticketMirrorState(tenantId);
+    // 票据块依赖票据头和开票明细；沿用开票报表就绪判定（成功同步空表是真实零）。
+    const ticketState = await this.ticketItemMirrorState(tenantId);
+    const ticketZero = ticketState.available ? 0 : null;
     const methodRows: any[] = await this.dataSource
       .query(`SELECT method_name FROM mis_mirror_payment_method ORDER BY method_id`)
       .catch(() => []);
@@ -91,6 +93,9 @@ export class TicketReportService {
       limit,
       offset,
       dataAsOf: billState.dataAsOf,
+      ticketBlockReady: ticketState.available,
+      ticketDataAsOf: ticketState.available ? ticketState.dataAsOf : null,
+      partial: billState.available && !ticketState.available,
     };
     if (!billState.available) {
       return {
@@ -101,7 +106,7 @@ export class TicketReportService {
     if (!selected.length) {
       return {
         ...base, rows: [], count: 0,
-        totals: this.emptySummaryTotals(methodLabels),
+        totals: this.emptySummaryTotals(methodLabels, ticketZero),
         cashierRows: [], cashierTotals: this.emptyCashierTotals(methodLabels),
         available: true, message: ticketState.available ? null : TICKET_MIRROR_MISSING_MESSAGE,
       };
@@ -245,10 +250,10 @@ export class TicketReportService {
         receivedCents,
         refundCents: refundByFee.get(feeCode) ?? 0,
         netCents: receivedCents,
-        ticketAmountCents: ticket ? Number(ticket.ticketAmountCents || 0) : 0,
-        ticketTaxCents: ticket ? Number(ticket.ticketTaxCents || 0) : 0,
-        ticketIncomeCents: ticket ? Number(ticket.ticketIncomeCents || 0) : 0,
-        ticketCount: ticket ? Number(ticket.ticketCount || 0) : 0,
+        ticketAmountCents: ticket ? Number(ticket.ticketAmountCents || 0) : ticketZero,
+        ticketTaxCents: ticket ? Number(ticket.ticketTaxCents || 0) : ticketZero,
+        ticketIncomeCents: ticket ? Number(ticket.ticketIncomeCents || 0) : ticketZero,
+        ticketCount: ticket ? Number(ticket.ticketCount || 0) : ticketZero,
         rows: rowsByFee.get(feeCode) ?? 0,
       };
     };
@@ -261,9 +266,11 @@ export class TicketReportService {
         }
         sum.receivedCents += row.receivedCents;
         sum.refundCents += row.refundCents;
-        sum.ticketAmountCents += row.ticketAmountCents;
-        sum.ticketTaxCents += row.ticketTaxCents;
-        sum.ticketIncomeCents += row.ticketIncomeCents;
+        if (ticketState.available) {
+          sum.ticketAmountCents += row.ticketAmountCents;
+          sum.ticketTaxCents += row.ticketTaxCents;
+          sum.ticketIncomeCents += row.ticketIncomeCents;
+        }
         sum.rows += row.rows;
         return sum;
       },
@@ -271,15 +278,15 @@ export class TicketReportService {
         methods: emptyMethods(),
         receivedCents: 0,
         refundCents: 0,
-        ticketAmountCents: 0,
-        ticketTaxCents: 0,
-        ticketIncomeCents: 0,
-        ticketCount: 0,
+        ticketAmountCents: ticketZero,
+        ticketTaxCents: ticketZero,
+        ticketIncomeCents: ticketZero,
+        ticketCount: ticketZero,
         rows: 0,
       } as any,
     );
     totals.netCents = totals.receivedCents;
-    totals.ticketCount = Number(ticketTotals[0]?.ticketCount ?? 0);
+    totals.ticketCount = ticketState.available ? Number(ticketTotals[0]?.ticketCount ?? 0) : null;
     // 收款人块：rows 为同筛选下按收款人×方式聚合。
     const cashierMap = new Map<string, any>();
     for (const row of cashierAgg) {
@@ -597,16 +604,16 @@ export class TicketReportService {
       dataAsOf: dates.length ? new Date(Math.min(...dates)).toISOString() : null };
   }
 
-  private emptySummaryTotals(methodLabels: string[]) {
+  private emptySummaryTotals(methodLabels: string[], ticketZero: number | null) {
     return {
       methods: Object.fromEntries(methodLabels.map((label) => [label, 0])),
       receivedCents: 0,
       refundCents: 0,
       netCents: 0,
-      ticketAmountCents: 0,
-      ticketTaxCents: 0,
-      ticketIncomeCents: 0,
-      ticketCount: 0,
+      ticketAmountCents: ticketZero,
+      ticketTaxCents: ticketZero,
+      ticketIncomeCents: ticketZero,
+      ticketCount: ticketZero,
       rows: 0,
     };
   }

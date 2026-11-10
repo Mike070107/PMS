@@ -385,7 +385,7 @@ export interface FilterDraft {
 }
 
 export const REPORTS: Array<{ type: StatisticsReportType; name: string; hint: string }> = [
-  { type: 'received', name: '项目实收年度汇总', hint: '按收款日期年度汇总实收金额（含退款红冲负数）' },
+  { type: 'received', name: '项目实收年度汇总', hint: '按应收年月所属年度汇总已收流水（含退款标记行及负调整）' },
   { type: 'arrears', name: '项目欠费年度汇总', hint: '按所属年度汇总未缴金额（收款日期为空）' },
   { type: 'fee-nature', name: '收费汇总', hint: '按收款日期统计收款/退款/调整；行=收费项目、列=房屋性质；点单元格查逐笔明细' },
   { type: 'daily', name: '收款日报表', hint: '按收款日期逐日统计各收费项目收款；点单元格查当日收款明细' },
@@ -406,10 +406,21 @@ export const REPORTS: Array<{ type: StatisticsReportType; name: string; hint: st
 
 /** 旧系统里尚未接入的报表：只列灰字，不做假按钮，不伪造数据。 */
 export const PENDING_REPORTS = [
+  '应收帐销账情况',
+  '物业收款汇总',
+  '收退款明细统计',
   '月报表',
   '综合月报表 B/C',
   '分等综合月报表',
   '空房情况统计',
+  '能耗环比分析图表',
+  '能耗同比分析图表',
+  '能耗分析统计图表',
+  '收费标准汇总',
+  '项目欠费统计',
+  '项目欠费汇总统计',
+  '项目溢收统计',
+  '项目溢收汇总统计',
 
   '住户票据查询',
   '票据使用数量统计',
@@ -1307,10 +1318,10 @@ export interface TicketSummaryRow {
   receivedCents: number;
   refundCents: number;
   netCents: number;
-  ticketAmountCents: number;
-  ticketTaxCents: number;
-  ticketIncomeCents: number;
-  ticketCount: number;
+  ticketAmountCents: number | null;
+  ticketTaxCents: number | null;
+  ticketIncomeCents: number | null;
+  ticketCount: number | null;
   rows: number;
 }
 export interface TicketSummaryTotals {
@@ -1318,10 +1329,10 @@ export interface TicketSummaryTotals {
   receivedCents: number;
   refundCents: number;
   netCents: number;
-  ticketAmountCents: number;
-  ticketTaxCents: number;
-  ticketIncomeCents: number;
-  ticketCount: number;
+  ticketAmountCents: number | null;
+  ticketTaxCents: number | null;
+  ticketIncomeCents: number | null;
+  ticketCount: number | null;
   rows: number;
 }
 export interface TicketSummaryCashierRow {
@@ -1336,6 +1347,10 @@ export interface TicketSummaryResponse {
   totals: TicketSummaryTotals | null;
   cashierRows: TicketSummaryCashierRow[];
   cashierTotals: TicketSummaryCashierRow | null;
+  /** available 仅表示收款块可用；票据块依赖票据及开票明细两个镜像。 */
+  ticketBlockReady?: boolean;
+  ticketDataAsOf?: string | null;
+  partial?: boolean;
   dataAsOf?: string | null;
   available?: boolean;
   message?: string | null;
@@ -1396,7 +1411,17 @@ export function ticketsParams(query: TicketListQuery, offset = 0, limit = 200) {
   };
 }
 
-/** 收款汇总表主表 -> CSV（动态收款方式列 + 合计）。 */
+/** 兼容旧响应时也不把缺失的票据字段当 0；显式未就绪优先于数值。 */
+export function ticketSummaryTicketReady(report: TicketSummaryResponse): boolean {
+  // 老 API 可能仍返回占位 0 + 未同步告警；未给显式就绪时保守保留未知。
+  const legacyWarning = report.ticketBlockReady == null && Boolean(report.message);
+  return report.ticketBlockReady !== false && report.partial !== true && !legacyWarning && Boolean(report.totals)
+    && [...report.rows, ...(report.totals ? [report.totals] : [])].every(row =>
+      [row.ticketAmountCents, row.ticketTaxCents, row.ticketIncomeCents, row.ticketCount]
+        .every(value => value != null && Number.isFinite(value)));
+}
+
+/** 收款汇总表 -> CSV（收款、独立票据口径、收款人三块）。 */
 export function ticketSummaryCsv(report: TicketSummaryResponse, query: TicketSummaryQuery): string {
   const lines: string[][] = [
     ['统计汇总', '收款汇总表'],
@@ -1421,7 +1446,33 @@ export function ticketSummaryCsv(report: TicketSummaryResponse, query: TicketSum
       centsForCsv(report.totals.netCents),
     ]);
   }
-  return '\uFEFF' + lines.map((line) => line.map(csvCell).join(',')).join('\r\n');
+  const ticketsReady = ticketSummaryTicketReady(report);
+  // 仅限本报表：未知票据留空，真实零仍为可计算的 0.00；不改全局金额格式化。
+  const ticketMoney = (value: number | null) => ticketsReady && value != null ? centsForCsv(value) : '';
+  const ticketCount = (value: number | null) => ticketsReady && value != null ? String(value) : '';
+  lines.push([], ['票据口径', ticketsReady ? '开票数据，与收款金额口径不同' : '未就绪：票据金额/税额/不含税收入/张数未知，留空并非 0'],
+    ['票据数据截止', report.ticketDataAsOf || ''],
+    ['收费项目', '票据金额', '税额', '不含税收入', '票据张数']);
+  for (const row of report.rows) {
+    lines.push([row.feeName || row.feeCode, ticketMoney(row.ticketAmountCents), ticketMoney(row.ticketTaxCents),
+      ticketMoney(row.ticketIncomeCents), ticketCount(row.ticketCount)]);
+  }
+  if (report.totals) {
+    const totals = report.totals;
+    lines.push(['合计', ticketMoney(totals.ticketAmountCents), ticketMoney(totals.ticketTaxCents),
+      ticketMoney(totals.ticketIncomeCents), ticketCount(totals.ticketCount)]);
+  }
+  lines.push([], ['其中：按收款人'], ['收款人', ...report.methodColumns.map(column => column.label), '合计', '笔数']);
+  for (const row of report.cashierRows) {
+    lines.push([row.cashier, ...report.methodColumns.map(column => centsForCsv(row.methods?.[column.key] ?? 0)),
+      centsForCsv(row.netCents), String(row.rows)]);
+  }
+  if (report.cashierTotals) {
+    const totals = report.cashierTotals;
+    lines.push(['合计', ...report.methodColumns.map(column => centsForCsv(totals.methods?.[column.key] ?? 0)),
+      centsForCsv(totals.netCents), String(totals.rows)]);
+  }
+  return '\uFEFF' + lines.map((line) => line.map(spreadsheetCsvCell).join(',')).join('\r\n');
 }
 
 /** 票据情况统计 -> CSV（16 列）。 */

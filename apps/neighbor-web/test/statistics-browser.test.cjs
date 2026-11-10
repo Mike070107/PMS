@@ -11,7 +11,7 @@ const ts = require('typescript');
 const app = path.resolve(__dirname, '..');
 const esbuild = createRequire(require.resolve('vite/package.json'))('esbuild');
 const chrome = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-const evidenceDir = path.resolve(app, '../../../..', 'pms-statistics-evidence');
+const evidenceDir = path.resolve(app, '../..', '.tmp/gpt-stats-layout');
 // 应收截止默认「当前年份 12 月」，与旧系统截图口径一致（镜像同步月份不能当截止月）。
 const expectedAsOfPeriod = `${new Date().getFullYear()}12`;
 // MIS FWXZK 全字典 01–13。实收报表默认 13 项（含 06 空房）；欠费报表默认 12 项（排除 06）。
@@ -31,9 +31,12 @@ function loadStatisticsLib() {
 
 /** 点「统计」/「收起」后筛选面板会自动折叠为左上角紧凑入口；测试在继续操作筛选前先展开。 */
 async function openFilters(js, waitFor) {
-  if (await js("!!document.querySelector('.stats-filters')")) return;
-  await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
-  await waitFor("!!document.querySelector('.stats-filters')", '展开筛选面板', 8000);
+  if (!(await js("!!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')"))) {
+    assert.ok(await js("document.querySelector('.stats-filter-float').inert && document.querySelector('.stats-filter-float').getAttribute('aria-hidden')==='true'"), 'closed filters are hidden and inert, not unmounted');
+    await js("document.querySelector('.stats-filter-entry').click()");
+    await waitFor("!!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')", '展开筛选面板', 8000);
+  }
+  assert.ok(await js("!document.querySelector('.stats-filter-float').inert && document.querySelector('.stats-filter-float').getAttribute('aria-hidden')==='false'"), 'open filters are explicitly interactive');
 }
 
 test('统计汇总金额/CSV 纯函数：整数分格式化、UTF-8 BOM、筛选参数', () => {
@@ -400,16 +403,62 @@ test('P4-B 开票参数、精确下钻、动态覆盖与 CSV 安全', () => {
   assert.ok(detail.includes('-1.00,,-1.00'), '缺失税额导出留空，负金额保留数值');
 });
 
-function buildFixture(openFiltersByDefault = true) {
+const detailHarness = `
+import { useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import Collection from '@/components/statistics/CollectionDetailSheet';
+import Analysis from '@/components/statistics/CollectionAnalysisDetailSheet';
+import Bills from '@/components/statistics/ArrearsBillsSheet';
+import { IconSprite } from '@/components/Icon';
+import './src/styles/design.css';
+import './src/styles/app.css';
+import './src/styles/large.css';
+import './src/styles/guards.css';
+import './src/styles/statistics.css';
+const base = { type:'fee-nature', officeCodes:['02'], feeCodes:[], natures:[], paymentMethods:[], cashier:'', dateFrom:'', dateTo:'', asOfPeriod:'202612', sort:'currentArrears' };
+function Harness() {
+ const [state, setState] = useState({ mode:'collection', open:false, id:901, fee:'01' });
+ window.__sheet = (change) => setState(s => ({ ...s, ...change }));
+ const close = () => setState(s => ({...s, open:false}));
+ return <><IconSprite />{state.mode === 'collection' ? <Collection open={state.open} onClose={close} base={base} target={window.__targets[state.fee]} reportLabel="回归明细" /> : state.mode === 'analysis' ? <Analysis open={state.open} onClose={close} base={base} target={window.__households[state.id]} /> : <Bills open={state.open} onClose={close} base={{...base, type:'arrears-prepaid', tab:'arrears'}} target={window.__billTargets[state.id]} />}</>;
+}
+window.__targets = Object.fromEntries(['01','04'].map(fee => [fee, {feeCode:fee, feeName:fee === '01' ? '管理费' : '泊位费', natureCode:fee === '01' ? '01' : undefined}]));
+window.__households = Object.fromEntries([901,902].map(sId => [sId,{sId,address:'目标'+sId,ownerName:'合成业主'}]));
+window.__billTargets = Object.fromEntries([901,902].map(sId => [sId,{sId,feeCode:'04',feeName:'泊位费',address:'目标'+sId,amountCents:1582500}]));
+createRoot(document.getElementById('root')).render(<Harness />);
+`;
+
+// Match Shell's real ancestry and import order: a padded page alone conceals .wrap's 1460px cap.
+const statisticsHarness = `
+import { createRoot } from 'react-dom/client';
+import Statistics from '@/pages/Statistics';
+import { IconSprite } from '@/components/Icon';
+import { Toaster } from '@/components/ui';
+import './src/styles/design.css';
+import './src/styles/app.css';
+import './src/styles/large.css';
+import './src/styles/guards.css';
+import './src/styles/calendar.css';
+import './src/styles/erp-reference.css';
+if (location.search.includes('options-unavailable')) window.__optionsUnavailable = true;
+function Fixture() {
+  return <><IconSprite /><div id="web"><aside className="side"><div className="brand">PMS · 合成验收</div></aside><section className="main"><header className="top"><div className="crumb">财务统计<b>统计汇总</b></div></header><div className="content"><div className="wrap"><Statistics /></div></div></section></div><Toaster /></>;
+}
+createRoot(document.getElementById('root')).render(<Fixture />);
+`;
+
+function buildFixture(openFiltersByDefault = true, harness = false) {
   fs.mkdirSync(evidenceDir, { recursive: true });
   const build = esbuild.buildSync({
-    entryPoints: [path.join(__dirname, 'statistics-browser.tsx')],
+    stdin: { contents: harness ? detailHarness : statisticsHarness, resolveDir: app, sourcefile: harness ? 'detail-harness.tsx' : 'statistics-shell-harness.tsx', loader: 'tsx' },
     bundle: true,
+    nodePaths: [path.join(app, 'node_modules')],
     format: 'iife',
     jsx: 'automatic',
     write: false,
     outfile: path.join(evidenceDir, 'fixture.js'),
     alias: {
+      ...(process.env.STATISTICS_BASELINE_DIR ? Object.fromEntries(['CollectionDetailSheet','CollectionAnalysisDetailSheet','ArrearsBillsSheet'].map(name => [`@/components/statistics/${name}`, path.join(process.env.STATISTICS_BASELINE_DIR, name + '.tsx')])) : {}),
       '@': path.join(app, 'src'),
       '@pms/api-client': path.join(__dirname, 'statistics-browser-api.ts'),
       '@pms/shared-types': path.join(app, '../../packages/shared-types/src/index.ts'),
@@ -433,7 +482,7 @@ function buildFixture(openFiltersByDefault = true) {
 
 /** 起静态服务 + 无头 Chrome，把 CDP 辅助函数交给用例；结束后一律关闭。 */
 async function withPage(run, query = '') {
-  buildFixture(!query.includes('no-auto-open'));
+  buildFixture(!query.includes('no-auto-open'), query.includes('detail-harness'));
   const server = http.createServer((request, response) => {
     const name = request.url.split('?')[0].slice(1);
     if (!['fixture.html', 'fixture.css', 'fixture.js'].includes(name)) {
@@ -504,6 +553,8 @@ async function withPage(run, query = '') {
       assert.fail('等待超时：' + label);
     };
     const screenshot = async (name) => {
+      // 等待有限入场动画；加载转圈为无限动画，不等待它。避免截到半透明入场帧。
+      await js('Promise.all(document.getAnimations().filter(a => a.effect?.getComputedTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})))');
       const shot = await call('Page.captureScreenshot', { format: 'png' });
       fs.writeFileSync(path.join(evidenceDir, name), Buffer.from(shot.data, 'base64'));
     };
@@ -628,12 +679,12 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     await waitFor("!document.querySelector('.sheet')", '关闭实收逐笔抽屉');
 
     // 悬浮筛选可收纳：收起后数据区变宽、面板消失；localStorage 记住状态。
-    assert.ok(await js("!!document.querySelector('.stats-filter-float')"), '桌面默认展开筛选浮层');
+    assert.ok(await js("!!document.querySelector('.stats-filter-float[role=dialog]')"), '桌面默认展开筛选浮层');
     assert.equal(await js("localStorage.getItem('statistics.filters.collapsed')"), '0');
     const widthExpanded = await js("document.querySelector('.stats-main').clientWidth");
     await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
     await pause(300);
-    assert.equal(await js("!!document.querySelector('.stats-filters')"), false, '收起后筛选面板应隐藏');
+    assert.equal(await js("!!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')"), false, '收起后筛选面板应隐藏');
     assert.equal(await js("localStorage.getItem('statistics.filters.collapsed')"), '1', '收起状态应写入 localStorage');
     const widthCollapsed = await js("document.querySelector('.stats-main').clientWidth");
     assert.equal(widthCollapsed, widthExpanded, '筛选是悬浮层，收起/展开不改变结果区宽度');
@@ -641,7 +692,7 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     await screenshot('statistics-filters-collapsed-1440.png');
     await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
     await pause(300);
-    assert.ok(await js("!!document.querySelector('.stats-filters')"), '再次点击应展开筛选');
+    assert.ok(await js("!!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')"), '再次点击应展开筛选');
     assert.equal(await js("localStorage.getItem('statistics.filters.collapsed')"), '0');
 
     // 收费项目分类树：4 组按旧 MIS 顺序；组级全选/半选；搜索保留分组结构。
@@ -789,17 +840,17 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     await screenshot('statistics-filtered-1440.png');
 
     // 布局：点「统计」后自动收起为左上角紧凑入口；入口含条件数、点击可展开；导出按钮在结果区右上角，筛选面板不再有导出。
-    assert.equal(await js("!!document.querySelector('.stats-filters')"), false, '统计成功后筛选应自动收起');
+    assert.equal(await js("!!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')"), false, '统计成功后筛选应自动收起');
     const entryText = await js("document.querySelector('[data-testid=stats-filter-toggle]').textContent");
     assert.ok(entryText.includes('筛选条件（4）'), '紧凑入口显示当前条件数（管理处/收费项目/房屋性质/应收截止=4）：' + entryText);
     assert.ok(await js("!!document.querySelector('[data-testid=stats-export]')?.closest('.stats-result-head')"), '导出按钮应在结果 header 右上角');
     await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
-    await waitFor("!!document.querySelector('.stats-filters')", '点紧凑入口重新展开筛选');
+    await waitFor("!!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')", '点紧凑入口重新展开筛选');
     await screenshot('statistics-filters-expanded-1440.png');
     assert.equal(await js("!!document.querySelector('.stats-filter-actions [data-testid=stats-export]')"), false, '筛选面板底部不再有导出按钮');
     assert.ok(await js("!!document.querySelector('[data-action=filters-collapse]')"), '展开面板保留收起按钮');
     await js("document.querySelector('[data-action=filters-collapse]').click()");
-    await waitFor("!document.querySelector('.stats-filters')", '点收起后自动收起');
+    await waitFor("!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')", '点收起后自动收起');
     await screenshot('statistics-filters-compact-entry-1440.png');
 
     // 三级下钻：单元格 → 房屋明细（合计与单元格一致）→ 逐笔账单。
@@ -894,7 +945,7 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     await pause(900);
     await waitFor("!!document.querySelector('.stats')", '窄屏重载统计页', 25000);
     await waitFor("document.querySelectorAll('.stats-office-card').length >= 1", '窄屏卡片', 25000);
-    assert.equal(await js("!!document.querySelector('.stats-filters')"), false, '窄屏默认收起筛选面板');
+    assert.equal(await js("!!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')"), false, '窄屏默认收起筛选面板');
     assert.ok((await js("document.querySelector('[data-testid=stats-filter-toggle]').textContent")).includes('筛选'));
     assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '390 窄屏出现横向溢出');
     assert.equal(await js("getComputedStyle(document.querySelector('.stats-table-scroll')).display"), 'none');
@@ -904,12 +955,12 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     await screenshot('statistics-390-collapsed.png');
     await js('window.scrollTo(0, 0)');
     await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
-    await waitFor("!!document.querySelector('.stats-filters')", '窄屏筛选浮层', 8000);
+    await waitFor("!!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')", '窄屏筛选浮层', 8000);
     assert.equal(await js("getComputedStyle(document.querySelector('.stats-filter-mask')).display"), 'block', '窄屏筛选浮层应有遮罩');
     await screenshot('statistics-390-filters-open.png');
     await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
     await pause(300);
-    assert.equal(await js("!!document.querySelector('.stats-filters')"), false, '窄屏再次点击应收起筛选');
+    assert.equal(await js("!!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')"), false, '窄屏再次点击应收起筛选');
 
     await call('Emulation.setDeviceMetricsOverride', { width: 320, height: 900, deviceScaleFactor: 1, mobile: false });
     await pause(350);
@@ -920,9 +971,9 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     // 重置按当前报表类型恢复默认：窄屏重载后是实收报表 → 房屋性质 13 项（含 06 空房）；重置自身不自动请求。
     await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
     await pause(400);
-    if (!(await js("!!document.querySelector('.stats-filters')"))) {
+    if (!(await js("!!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')"))) {
       await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
-      await waitFor("!!document.querySelector('.stats-filters')", '桌面筛选面板恢复', 8000);
+      await waitFor("!!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')", '桌面筛选面板恢复', 8000);
     }
     const callsBeforeReset = await js("window.__calls.filter((c) => c.url === '/statistics/annual').length");
     await js("document.querySelector('[data-action=filters-reset]').click()");
@@ -1095,7 +1146,7 @@ test('P2 收费汇总：费项×性质矩阵、行尾四块、总计、单元格
     // 窄屏：页面不横向溢出，宽表在内部滚动。
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
     await pause(500);
-    if (await js("!!document.querySelector('.stats-filter-float')")) {
+    if (await js("!!document.querySelector('.stats-filter-float[role=dialog]')")) {
       await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
       await pause(300);
     }
@@ -1165,8 +1216,8 @@ test('日常收费日报：完整月份、所有合计下钻、快照筛选、�
     const csv = await js('(async () => await window.__blobs[0].text())()');
     assert.ok(csv.includes('日常收费项目收款日报表')); assert.ok(csv.includes('管理处,01/02/03/04'));
     assert.ok(csv.includes('153742.20,150.00,-600.00')); assert.ok(csv.includes(`${month}-05`));
-    if (await js("!!document.querySelector('.stats-filters')")) await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
-    await waitFor("!document.querySelector('.stats-filters')", '窄屏验收前收起草稿');
+    if (await js("!!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')")) await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
+    await waitFor("!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')", '窄屏验收前收起草稿');
     await pause(2600);
     for (const width of [390, 320]) {
       await call('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false }); await pause(300);
@@ -1255,7 +1306,10 @@ test('P2 收款日报表：日期×收费项目矩阵、合计行列、单元格
     assert.equal(detailQuery.feeCodes, '01');
     assert.equal(detailQuery.dateFrom, `${month}-01`);
     assert.equal(detailQuery.dateTo, `${month}-01`);
-    assert.equal(await js("document.querySelectorAll('[data-testid=collection-detail-table] tbody tr[data-row-kind=\"received\"]').length"), 1);
+    assert.equal(await js("document.querySelectorAll('[data-testid=collection-detail-table] tbody tr[data-row-kind=\"received\"]').length"), 200);
+    await js("document.querySelector('.stats-load-more button').click()");
+    await waitFor("document.querySelectorAll('[data-testid=collection-detail-table] tbody tr').length === 201", '日收款 201 笔全量');
+    assert.equal(await js("Array.from(document.querySelectorAll('[data-testid=collection-detail-table] tbody tr')).reduce((sum,tr) => sum + Math.round(Number(tr.querySelector('.num').textContent.replace(/[^0-9.-]/g,''))*100),0)"), 8000000);
     await screenshot('statistics-daily-detail-1440.png');
     await js("document.querySelector('.sheet .x').click()");
     await waitFor("!document.querySelector('.sheet')", '关闭日报表明细');
@@ -1332,7 +1386,7 @@ test('P2-C 欠收与溢收汇总：两页签、合计/小计、查看逐笔合�
     // 宽表内部滚动、页面 390 不横向溢出。
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
     await pause(500);
-    if (await js("!!document.querySelector('.stats-filter-float')")) {
+    if (await js("!!document.querySelector('.stats-filter-float[role=dialog]')")) {
       await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
       await pause(300);
     }
@@ -1407,7 +1461,7 @@ test('P2-C 收缴考核：12 月应收/收款表头、指标卡、合计/收缴�
     // 宽表内部横向滚动、表头 sticky；页面 390 不横向溢出。
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
     await pause(500);
-    if (await js("!!document.querySelector('.stats-filter-float')")) {
+    if (await js("!!document.querySelector('.stats-filter-float[role=dialog]')")) {
       await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
       await pause(300);
     }
@@ -1471,7 +1525,7 @@ test('P2-D 收款分析（按户）：请求参数/合计/点行逐笔/排序/CS
 
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
     await pause(500);
-    if (await js("!!document.querySelector('.stats-filter-float')")) {
+    if (await js("!!document.querySelector('.stats-filter-float[role=dialog]')")) {
       await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
       await pause(300);
     }
@@ -1512,7 +1566,7 @@ test('P2-D 收费月报表（核心指标）：11 列/合计行/回收率/提示
 
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
     await pause(500);
-    if (await js("!!document.querySelector('.stats-filter-float')")) {
+    if (await js("!!document.querySelector('.stats-filter-float[role=dialog]')")) {
       await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
       await pause(300);
     }
@@ -1558,7 +1612,7 @@ test('P3-A 房产汇总：管理处行/合计/性质房屋数列/CSV/窄屏内�
 
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
     await pause(500);
-    if (await js("!!document.querySelector('.stats-filter-float')")) {
+    if (await js("!!document.querySelector('.stats-filter-float[role=dialog]')")) {
       await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
       await pause(300);
     }
@@ -1635,7 +1689,7 @@ test('P3-A 住户台账/楼房台账：关键词/分页/空值/合计/CSV/窄屏
 
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
     await pause(500);
-    if (await js("!!document.querySelector('.stats-filter-float')")) {
+    if (await js("!!document.querySelector('.stats-filter-float[role=dialog]')")) {
       await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
       await pause(300);
     }
@@ -1729,7 +1783,7 @@ test('P4-A 减免情况统计/签报情况统计：日期关键词参数/合计/
 
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
     await pause(500);
-    if (await js("!!document.querySelector('.stats-filter-float')")) {
+    if (await js("!!document.querySelector('.stats-filter-float[role=dialog]')")) {
       await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
       await pause(300);
     }
@@ -1828,7 +1882,7 @@ test('P2-E 收款汇总表/票据情况统计：动态列/副表/状态筛选/�
 
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
     await pause(500);
-    if (await js("!!document.querySelector('.stats-filter-float')")) {
+    if (await js("!!document.querySelector('.stats-filter-float[role=dialog]')")) {
       await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
       await pause(300);
     }
@@ -1984,18 +2038,18 @@ test('统计选项未就绪：优先显示后端 message，不渲染空表', { t
 });
 
 
-test('筛选浮层：默认收起、打开不挤压表格、统计后关闭、外部/Esc 关闭、窄屏底部抽屉', { timeout: 120000 }, async () => {
+test('筛选浮层：默认收起、打开不挤压表格、统计后关闭、外部/Esc 关闭、窄屏顶部抽屉', { timeout: 120000 }, async () => {
   const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   await withPage(async ({ js, call, waitFor, screenshot }) => {
     await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度表', 25000);
     // 默认收起：无浮层，紧凑入口存在，表格占满内容容器。
-    assert.equal(await js("!!document.querySelector('.stats-filters')"), false, '默认应收起筛选');
+    assert.equal(await js("!!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')"), false, '默认应收起筛选');
     assert.ok((await js("document.querySelector('[data-testid=stats-filter-toggle]').textContent")).includes('筛选条件（'));
     const before = await js("(() => { const main = document.querySelector('.stats-main'); const result = document.querySelector('.stats-result'); return { main: main.getBoundingClientRect().width, result: result.getBoundingClientRect().width }; })()");
     await screenshot('statistics-filter-overlay-collapsed-1440.png');
     // 打开浮层：覆盖内容，表格/结果区宽度不变。
     await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
-    await waitFor("!!document.querySelector('.stats-filters')", '筛选浮层打开');
+    await waitFor("!!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')", '筛选浮层打开');
     const after = await js("(() => { const main = document.querySelector('.stats-main'); const result = document.querySelector('.stats-result'); return { main: main.getBoundingClientRect().width, result: result.getBoundingClientRect().width }; })()");
     assert.ok(Math.abs(before.main - after.main) <= 1, '打开浮层不改变结果区宽度：' + JSON.stringify({ before, after }));
     assert.ok(Math.abs(before.result - after.result) <= 1, '打开浮层不挤压表格');
@@ -2004,24 +2058,24 @@ test('筛选浮层：默认收起、打开不挤压表格、统计后关闭、�
     await screenshot('statistics-filter-overlay-open-1440.png');
     // 点击外部（结果区表格）关闭，不误触发表格。
     await js("document.querySelector('.stats-result').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))");
-    await waitFor("!document.querySelector('.stats-filters')", '点外部关闭浮层');
+    await waitFor("!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')", '点外部关闭浮层');
     // Esc 关闭。
     await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
-    await waitFor("!!document.querySelector('.stats-filters')", '再次打开浮层');
+    await waitFor("!!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')", '再次打开浮层');
     for (const type of ['keyDown', 'keyUp']) {
       await call('Input.dispatchKeyEvent', { type, key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
     }
-    await waitFor("!document.querySelector('.stats-filters')", 'Esc 关闭浮层');
+    await waitFor("!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')", 'Esc 关闭浮层');
     // 统计后自动关闭。
     await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
-    await waitFor("!!document.querySelector('.stats-filters')", '打开浮层以统计');
+    await waitFor("!!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')", '打开浮层以统计');
     await js("document.querySelector('[data-testid=stats-submit]').click()");
-    await waitFor("!document.querySelector('.stats-filters')", '统计后自动关闭浮层');
-    // 窄屏：底部抽屉不超宽，页面不横向溢出。
+    await waitFor("!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')", '统计后自动关闭浮层');
+    // 窄屏：顶部抽屉不超宽，页面不横向溢出。
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
     await pause(300);
     await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
-    await waitFor("!!document.querySelector('.stats-filters')", '窄屏筛选抽屉');
+    await waitFor("!!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')", '窄屏筛选抽屉');
     const drawer = await js("(() => { const r = document.querySelector('.stats-filter-float').getBoundingClientRect(); return { left: r.left, right: r.right, bottom: r.bottom, top: r.top, innerWidth, innerHeight }; })()");
     assert.ok(drawer.left >= -1 && drawer.right <= drawer.innerWidth + 1, '窄屏抽屉不超宽：' + JSON.stringify(drawer));
     assert.ok(drawer.bottom <= drawer.innerHeight + 1, '窄屏抽屉在视口内');
@@ -2029,3 +2083,322 @@ test('筛选浮层：默认收起、打开不挤压表格、统计后关闭、�
     await screenshot('statistics-filter-overlay-390.png');
   }, '?no-auto-open');
 });
+
+
+const layoutSnapshot = `() => {
+  const rect = selector => { const r = document.querySelector(selector)?.getBoundingClientRect(); return r ? {x:r.x,y:r.y,width:r.width,height:r.height} : {x:0,y:0,width:0,height:0}; };
+  return { main:rect('.stats-main'), catalog:rect('.stats-catalog'), result:rect('.stats-result'), table:rect('.stats-annual-table'), scroller:rect('.stats-table-scroll'), cards:rect('.stats-annual-cards'), scroll:{content:document.querySelector('.content').scrollTop,document:document.documentElement.scrollTop,body:document.body.scrollTop,x:scrollX,y:scrollY,table:document.querySelector('.stats-table-scroll')?.scrollLeft ?? 0} };
+}`;
+function assertLayoutStable(before, frames, label) {
+  assert.ok(frames.length >= 3, label + ' must sample animation frames');
+  for (const frame of frames) for (const [region, values] of Object.entries(before)) for (const [key, value] of Object.entries(values)) {
+    assert.ok(Math.abs(frame.layout[region][key] - value) <= 1, `${label}: ${region}.${key} shifted: ${value} -> ${frame.layout[region][key]}`);
+  }
+}
+async function sampleDrawer(js, action) {
+  return js(`(async () => {
+    const snapshot = ${layoutSnapshot};
+    const frames=[]; ${action};
+    for(let i=0;i<120;i++) {
+      await new Promise(requestAnimationFrame);
+      const panel=document.querySelector('.stats-filter-float'), style=getComputedStyle(panel);
+      frames.push({layout:snapshot(),opacity:Number(style.opacity),ty:new DOMMatrix(style.transform).m42,top:panel.getBoundingClientRect().top});
+      if(i>=2 && !panel.getAnimations().some(a=>a.playState==='running')) break;
+    }
+    return frames;
+  })()`);
+}
+
+test('真实Shell全宽与顶部抽屉：2886/1920/1440/390/320逐帧布局零位移、滚动保持、退场及竞态', {timeout:180000}, async () => {
+  await withPage(async ({js,call,waitFor,screenshot}) => {
+    await waitFor("!!document.querySelector('.stats-annual-table')", '年度表');
+    const measurements=[];
+    for (const width of [2886,1920,1440,390,320]) {
+      await call('Emulation.setDeviceMetricsOverride',{width,height:width===2886?1453:1000,deviceScaleFactor:1,mobile:false});
+      await js('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+      const sizing = await js(`(() => {const c=document.querySelector('.content'),w=c.querySelector('.wrap'),s=getComputedStyle(c);return {available:c.clientWidth-parseFloat(s.paddingLeft)-parseFloat(s.paddingRight),wrap:w.getBoundingClientRect().width,padding:parseFloat(s.paddingLeft)};})()`);
+      assert.ok(Math.abs(sizing.available-sizing.wrap)<=1, width+' stats must fill Shell available content '+JSON.stringify(sizing));
+      assert.ok(sizing.padding>=16 && sizing.padding<=28, 'retain normal content padding');
+      assert.ok(await js('document.documentElement.scrollWidth<=innerWidth+1'),width+' page must not horizontally overflow');
+      const ordinary = await js(`(() => {const s=document.querySelector('.stats');s.classList.remove('stats');const w=document.querySelector('.content>.wrap').getBoundingClientRect().width;s.classList.add('stats');return w;})()`);
+      assert.ok(Math.abs(ordinary-Math.min(1460,sizing.available))<=1, 'non-stats wrap remains capped');
+      // A long result page is already scrolled before opening. Keep table horizontal scroll too.
+      await js(`(() => { if(!document.querySelector('[data-layout-tail]')) {const tail=document.createElement('div');tail.dataset.layoutTail='';tail.style.height='1000px';document.querySelector('.content>.wrap').append(tail);} document.querySelector('.content').scrollTop=120; const t=document.querySelector('.stats-table-scroll');t.scrollLeft=450;})()`);
+      await js('new Promise(requestAnimationFrame)');
+      const before=await js(`(${layoutSnapshot})()`);
+      assert.ok(before.scroll.content>0,'start from scrolled results');
+      if(width===1440 || width===1920) assert.ok(before.scroll.table>0,'start with an actually horizontally scrolled table');
+      const opening=await sampleDrawer(js,"document.querySelector('.stats-filter-entry').click()");
+      assertLayoutStable(before,opening,width+' opening');
+      assert.ok(opening.some(f=>f.opacity>0.02&&f.opacity<0.98),'real intermediate opacity frames');
+      assert.ok(opening.some(f=>f.ty < -0.1),'drawer enters downwards from above');
+      assert.ok(Math.abs(opening.at(-1).ty)<=1,'drawer finishes at its top anchor');
+      const drawer=await js(`(() => {const p=document.querySelector('[role=dialog]'),r=p.getBoundingClientRect(),t=document.querySelector('.top').getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,header:t.bottom,transition:getComputedStyle(p).transitionProperty};})()`);
+      assert.ok(drawer.top>=drawer.header && drawer.top<=drawer.header+30,'top drawer clears header '+JSON.stringify(drawer));
+      assert.ok(drawer.left>=0&&drawer.right<=width&&drawer.bottom<= (width===2886?1453:1000),'drawer fits viewport');
+      assert.equal(drawer.transition,'transform, opacity','no layout transitions');
+      await screenshot(`layout-${width}-open.png`);
+      const closing=await sampleDrawer(js,"document.querySelector('[data-action=filters-collapse]').click()");
+      assertLayoutStable(before,closing,width+' closing');
+      assert.ok(closing.some(f=>f.opacity>0.02&&f.opacity<0.98),'close animates too');
+      assert.ok(closing.at(-1).ty<0,'close exits upwards');
+      assert.equal(await js("!!document.querySelector('[role=dialog]')"),false,'closed panel is not an open dialog');
+      assert.ok(await js("document.querySelector('.stats-filter-float').inert && document.querySelector('.stats-filter-float').getAttribute('aria-hidden')==='true'"),'closed panel inert and hidden from accessibility tree');
+      assert.ok(await js("document.activeElement===document.querySelector('.stats-filter-entry')"),'focus returns without scrolling');
+      await screenshot(`layout-${width}-closed.png`);
+      await js("document.querySelector('.stats-filter-float input').focus({preventScroll:true})");
+      assert.ok(await js("!document.querySelector('.stats-filter-float').contains(document.activeElement)"),'closed controls cannot focus');
+      // Reverse in-flight transitions on frame boundaries, never use timer-based race sleeps.
+      const rapid=await sampleDrawer(js,`document.querySelector('.stats-filter-entry').click(); await new Promise(requestAnimationFrame); document.querySelector('.stats-filter-entry').click(); await new Promise(requestAnimationFrame); document.querySelector('.stats-filter-entry').click()`);
+      assertLayoutStable(before,rapid,width+' rapid reversal');
+      assert.equal(await js("document.querySelector('.stats-filter-entry').getAttribute('aria-expanded')"),'true');
+      const escape=await sampleDrawer(js,"document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+      assertLayoutStable(before,escape,width+' Escape');
+      await js("document.querySelector('.stats-filter-entry').click()");
+      await js('new Promise(requestAnimationFrame)');
+      const outside=await sampleDrawer(js,"document.querySelector('.stats-result').dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}))");
+      assertLayoutStable(before,outside,width+' outside');
+      await call('Emulation.setEmulatedMedia',{features:[{name:'prefers-reduced-motion',value:'reduce'}]});
+      const reduced=await sampleDrawer(js,"document.querySelector('.stats-filter-entry').click()");
+      assertLayoutStable(before,reduced,width+' reduced motion');
+      assert.ok(reduced.every(f=>Math.abs(f.ty)<=1&&f.opacity===1),'reduced motion is immediate');
+      await sampleDrawer(js,"document.querySelector('.stats-filter-entry').click()");
+      await call('Emulation.setEmulatedMedia',{features:[]});
+      // Freeze a real CSS transition midway for evidence (the screenshot helper deliberately waits).
+      await js(`(async () => {document.querySelector('.stats-filter-entry').click();await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);const animations=document.querySelector('.stats-filter-float').getAnimations();for(const a of animations){a.pause();a.currentTime=100;} await new Promise(requestAnimationFrame);})()`);
+      const middle=await js(`(() => {const p=document.querySelector('.stats-filter-float'),s=getComputedStyle(p);return {layout:(${layoutSnapshot})(),opacity:Number(s.opacity),ty:new DOMMatrix(s.transform).m42};})()`);
+      assert.ok(middle.opacity>0&&middle.opacity<1&&middle.ty<0,'paused evidence is a real intermediate top-down frame');
+      for(const [region,values] of Object.entries(before)) for(const [key,value] of Object.entries(values)) assert.ok(Math.abs(middle.layout[region][key]-value)<=1,'midpoint screenshot layout stable');
+      const shot=await call('Page.captureScreenshot',{format:'png'});
+      fs.writeFileSync(path.join(evidenceDir,`layout-${width}-mid-animation.png`),Buffer.from(shot.data,'base64'));
+      await js("Promise.all(document.querySelector('.stats-filter-float').getAnimations().map(a=>{a.play();return a.finished.catch(()=>{})}))");
+      await sampleDrawer(js,"document.querySelector('.stats-filter-entry').click()");
+      measurements.push({width,sizing,before,opening,closing,rapid,escape,outside,reduced,middle});
+      await js("document.querySelector('.content').scrollTop=0");
+    }
+    fs.writeFileSync(path.join(evidenceDir,'layout-verified.json'),JSON.stringify({viewports:[2886,1920,1440,390,320],maxAllowedDelta:1,measurements},null,2));
+  },'?no-auto-open');
+});
+
+test('顶部抽屉日期portal及统计退场：等待/错误/成功均不因开关位移、草稿与已应用快照保留', {timeout:120000}, async () => {
+  await withPage(async ({js,call,waitFor,screenshot}) => {
+    await waitFor("!!document.querySelector('.stats-annual-table')", '年度表');
+    await sampleDrawer(js,"document.querySelector('.stats-filter-entry').click()");
+    const baselineCalls=await js("window.__calls.filter(c=>c.url==='/statistics/annual').length");
+    await js("document.querySelector('.stats-filter-body').scrollTop=99999");
+    const point=await js("(() => {const r=document.querySelector('.stats-date-range input').getBoundingClientRect();return {x:r.x+15,y:r.y+r.height/2};})()");
+    for(const type of ['mousePressed','mouseReleased']) await call('Input.dispatchMouseEvent',{type,...point,button:'left',clickCount:1});
+    await waitFor("!!document.querySelector('.ant-picker-dropdown:not(.ant-picker-dropdown-hidden)')",'真实portalled日历打开');
+    assert.equal(await js("document.querySelector('.stats-filter-entry').getAttribute('aria-expanded')"),'true');
+    assert.ok(await js("!document.querySelector('.stats-filter-float').contains(document.querySelector('.ant-picker-dropdown'))"),'calendar is really outside drawer DOM');
+    await js('Promise.all(document.getAnimations().filter(a=>a.effect?.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))');
+    await screenshot('drawer-calendar-portal.png');
+    const day=await js("(() => {const r=document.querySelector('.ant-picker-dropdown:not(.ant-picker-dropdown-hidden) .ant-picker-cell-in-view:not(.ant-picker-cell-disabled) .ant-picker-cell-inner').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()");
+    for(const type of ['mousePressed','mouseReleased']) await call('Input.dispatchMouseEvent',{type,...day,button:'left',clickCount:1});
+    await waitFor("document.querySelector('.stats-date-range input').value!==''",'日期进入草稿');
+    assert.equal(await js("document.querySelector('.stats-filter-entry').getAttribute('aria-expanded')"),'true','点击portal不能误关抽屉');
+    assert.equal(await js("window.__calls.filter(c=>c.url==='/statistics/annual').length"),baselineCalls,'改草稿不发统计请求');
+    const draftDate=await js("document.querySelector('.stats-date-range input').value");
+    await sampleDrawer(js,"document.querySelector('[data-action=filters-collapse]').click()");
+    await sampleDrawer(js,"document.querySelector('.stats-filter-entry').click()");
+    assert.equal(await js("document.querySelector('.stats-date-range input').value"),draftDate,'收起重开保留日期草稿');
+    // Named request gate isolates the exit animation from the network's next render.
+    await js("window.__requestPlans.push({id:'drawer-loading',url:'/statistics/annual',hold:true,fail:true});document.querySelector('[data-testid=stats-submit]').click()");
+    await waitFor("window.__pendingRequests.some(p=>p.id==='drawer-loading')",'请求等待中');
+    assert.ok(await js("document.querySelector('.stats-result').textContent.includes('统计中')"),'等待反馈');
+    const loading=await js(`(${layoutSnapshot})()`);
+    const queryExit=await sampleDrawer(js,'');
+    assertLayoutStable(loading,queryExit,'query closing while loading');
+    assert.ok(queryExit.some(f=>f.opacity>0&&f.opacity<1),'统计后的关闭也有真实退场帧');
+    await screenshot('drawer-query-waiting.png');
+    assert.ok(await js("document.querySelector('.stats-filter-float').inert"),'waiting drawer closed inert');
+    // Opening while loading is also strictly overlay-only.
+    assertLayoutStable(loading,await sampleDrawer(js,"document.querySelector('.stats-filter-entry').click()"),'loading open');
+    assertLayoutStable(loading,await sampleDrawer(js,"document.querySelector('[data-action=filters-collapse]').click()"),'loading close');
+    await js("window.__pendingRequests.find(p=>p.id==='drawer-loading').release()");
+    await waitFor("!!document.querySelector('.stats-result [role=alert]')",'统计错误');
+    await screenshot('drawer-query-error.png');
+    const error=await js(`(${layoutSnapshot})()`);
+    assertLayoutStable(error,await sampleDrawer(js,"document.querySelector('.stats-filter-entry').click()"),'error open');
+    assertLayoutStable(error,await sampleDrawer(js,"document.querySelector('[data-action=filters-collapse]').click()"),'error close');
+    await openFilters(js,waitFor);
+    assert.equal(await js("document.querySelector('.stats-date-range input').value"),draftDate,'失败保留输入');
+    await js("document.querySelector('[data-testid=stats-submit]').click()");
+    await waitFor("!!document.querySelector('.stats-annual-table')",'恢复成功');
+    await js("Promise.all(document.querySelector('.stats-filter-float').getAnimations().map(a=>a.finished.catch(()=>{})))");
+    assert.ok(await js("document.querySelector('.stats-filter-float').inert"),'成功后仍折叠');
+    assert.equal(await js("window.__calls.filter(c=>c.url==='/statistics/annual').at(-1).query.paidDateFrom"),draftDate,'查询使用已应用日期快照');
+    const success=await js(`(${layoutSnapshot})()`);
+    assertLayoutStable(success,await sampleDrawer(js,"document.querySelector('.stats-filter-entry').click()"),'success open');
+    assertLayoutStable(success,await sampleDrawer(js,"document.querySelector('[data-action=filters-collapse]').click()"),'success close');
+    await screenshot('drawer-query-success.png');
+  },'?no-auto-open');
+});
+
+const detailModes = {
+  collection: { url:'/statistics/collection/detail', table:'collection-detail-table', summary:'collection-detail-summary', retry:'collection-detail-retry', pageError:'collection-detail-loadmore-error', pageRetry:'collection-detail-loadmore-retry', count:202 },
+  analysis: { url:'/statistics/collection-analysis/detail', table:'analysis-detail-table', summary:'analysis-detail-summary', totals:'analysis-detail-totals', retry:'analysis-detail-retry', pageError:'analysis-detail-loadmore-error', pageRetry:'analysis-detail-loadmore-retry', count:204 },
+  bills: { url:'/statistics/arrears-prepaid/detail/bills', table:'arrears-bills-table', summary:'arrears-bills-summary', retry:'arrears-bills-retry' },
+};
+async function detailTools(ctx, mode) {
+  const {js,waitFor,call,screenshot}=ctx, cfg=detailModes[mode];
+  await waitFor('!!window.__sheet', '隔离明细夹具');
+  const plan=async (id, extra={}) => js(`window.__requestPlans.push(${JSON.stringify({id,url:cfg.url,...extra})})`);
+  const release=async id => {
+    await js(`window.__pendingRequests.find(p=>p.id===${JSON.stringify(id)}).release()`);
+    await waitFor(`window.__finishedRequests.includes(${JSON.stringify(id)})`, '请求已完成 '+id);
+    await js('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+  };
+  const set=async change => {
+    await js(`window.__sheet(${JSON.stringify({mode,...change})})`);
+    await js('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+  };
+  const rows=()=>js(`document.querySelectorAll('[data-testid=${cfg.table}] tbody tr').length`);
+  const summary=()=>js(`document.querySelector('[data-testid=${cfg.summary}]')?.textContent || ''`);
+  const text=()=>js(`(document.querySelector('[data-testid=${cfg.summary}]')?.textContent || '') + (document.querySelector('[data-testid=${cfg.totals}]')?.textContent || '')`);
+  const click=selector=>js(`document.querySelector(${JSON.stringify(selector)}).click()`);
+  const ready=()=>waitFor(`!!document.querySelector('[data-testid=${cfg.table}] tbody tr')`, '明细成功');
+  const shots=async state=>{
+    for(const width of [1440,390,320]){
+      await call('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:width<900});
+      await screenshot(`statistics-gpt-${mode}-${state}-${width}.png`);
+      assert.equal(await js('document.documentElement.scrollWidth > innerWidth'),false, `${mode}/${state}/${width} 不得页面横向溢出`);
+      assert.ok(await js('document.querySelector(".sheet .x").getBoundingClientRect().right <= innerWidth'), '关闭按钮可见');
+    }
+  };
+  return {...ctx,cfg,plan,release,set,rows,summary,text,click,ready,shots};
+}
+for(const mode of Object.keys(detailModes)) {
+  test(`GPT ${mode} 明细：等待/失败/未同步/未知/重试与三宽截图`,{timeout:120000},async()=>withPage(async ctx=>{
+    const t=await detailTools(ctx,mode), {cfg,plan,release,set,waitFor,js}=t;
+    await plan('first',{hold:true,fail:true});
+    await set({open:true});
+    await waitFor("window.__pendingRequests.some(p=>p.id==='first')",'首屏等待');
+    assert.ok((await t.text()).includes('—'),'等待合计/count必须未知');
+    assert.equal((await t.text()).includes('¥0.00'),false,'等待不得伪0');
+    if(mode==='bills') assert.ok((await t.summary()).startsWith('明细合计 —'),'行金额不能冒充明细合计');
+    await t.shots('waiting');
+    await release('first');
+    await waitFor(`!!document.querySelector('[data-testid=${cfg.retry}]')`,'失败可重试');
+    assert.equal((await t.text()).includes('¥0.00'),false,'失败不得伪0');
+    await t.shots('failure');
+    await plan('unsynced',{unavailable:true});
+    await t.click(`[data-testid=${cfg.retry}]`);
+    await waitFor("document.querySelector('.sheet').textContent.includes('尚未同步')",'明确尚未同步');
+    assert.equal(await t.rows(),0,'未同步不得展示空成功表');
+    assert.equal((await t.text()).includes('¥0.00'),false,'未同步不得伪0');
+    await plan('unknown',{unknown:true});
+    await t.click(`[data-testid=${cfg.retry}]`);
+    await t.ready();
+    assert.ok((await t.text()).includes('—'),'available true但null总额/count仍未知');
+    assert.equal((await t.text()).includes('¥0.00'),false,'null总额不可伪0');
+    await set({open:false}); await waitFor('!document.querySelector(".sheet")','关闭');
+    await set({open:true}); await t.ready();
+    await t.shots('success');
+  },'?detail-harness'));
+
+  test(`GPT ${mode} 明细：切换目标及关闭重开隔离迟到首屏成功/失败`,{timeout:120000},async()=>withPage(async ctx=>{
+    const t=await detailTools(ctx,mode);
+    for(const fail of [false,true]){
+      const id='late-'+fail;
+      await t.set({open:false,id:901,fee:'01'});
+      await t.waitFor('!document.querySelector(".sheet")','关闭');
+      await t.plan(id,{hold:true,fail});
+      await t.set({open:true});
+      await t.waitFor(`window.__pendingRequests.some(p=>p.id==='${id}')`,'旧首屏等待');
+      await t.set({id:902,fee:'04'}); await t.ready();
+      const before=await t.js('document.querySelector(".sheet").textContent');
+      await t.release(id);
+      assert.equal(await t.js('document.querySelector(".sheet").textContent'),before,'旧首屏不污染新目标');
+      await t.set({open:false}); await t.waitFor('!document.querySelector(".sheet")','关闭');
+      await t.plan('closed-'+fail,{hold:true,fail}); await t.set({open:true});
+      await t.waitFor(`window.__pendingRequests.some(p=>p.id==='closed-${fail}')`,'关闭前首屏等待');
+      await t.set({open:false}); await t.waitFor('!document.querySelector(".sheet")','关闭');
+      await t.set({open:true}); await t.ready();
+      const reopened=await t.js('document.querySelector(".sheet").textContent');
+      await t.release('closed-'+fail);
+      assert.equal(await t.js('document.querySelector(".sheet").textContent'),reopened,'旧首屏不污染关闭重开');
+    }
+  },'?detail-harness'));
+}
+for(const mode of ['collection','analysis']) {
+  test(`GPT ${mode} 分页：失败及未同步保留完整页与合计/同offset重试/重复点击`,{timeout:120000},async()=>withPage(async ctx=>{
+    const t=await detailTools(ctx,mode),{cfg}=t;
+    await t.set({open:true}); await t.ready();
+    assert.equal(await t.rows(),200);
+    const summary=await t.text();
+    for(const unavailable of [false,true]){
+      await t.plan('page-'+unavailable,{offset:200,hold:true,fail:!unavailable,unavailable});
+      const before=await t.js(`window.__calls.filter(c=>c.url==='${cfg.url}').length`);
+      await t.js("(()=>{const b=document.querySelector('.stats-load-more button'); b.click(); b.click();})()");
+      await t.waitFor(`window.__pendingRequests.some(p=>p.id==='page-${unavailable}')`,'分页等待');
+      assert.equal(await t.js(`window.__calls.filter(c=>c.url==='${cfg.url}').length`),before+1,'同步重复点击只发一次');
+      await t.release('page-'+unavailable);
+      await t.waitFor(`!!document.querySelector('[data-testid=${cfg.pageError}]')`,'分页错误可见');
+      assert.equal(await t.rows(),200,'失败保留已知完整页');
+      assert.equal(await t.text(),summary,'失败保留真实合计/count');
+    }
+    await t.click(`[data-testid=${cfg.pageRetry}]`);
+    await t.waitFor(`document.querySelectorAll('[data-testid=${cfg.table}] tbody tr').length===${cfg.count}`,'同offset重试成功');
+    const calls=await t.js(`window.__calls.filter(c=>c.url==='${cfg.url}').map(c=>c.query.offset || 0)`);
+    assert.deepEqual(calls,[0,200,200,200]);
+    if(mode==='collection') assert.equal(await t.js(`Array.from(document.querySelectorAll('[data-testid=${cfg.table}] tbody tr')).reduce((sum,tr)=>sum+Math.round(Number(tr.querySelector('.num').textContent.replace(/[^0-9.-]/g,''))*100),0)`),11915220,'分页合计=矩阵单元格');
+  },'?detail-harness'));
+
+  test(`GPT ${mode} 分页：旧成功/旧失败/关闭重开/新世代锁隔离`,{timeout:120000},async()=>withPage(async ctx=>{
+    const t=await detailTools(ctx,mode),{cfg}=t;
+    for(const fail of [false,true]){
+      await t.set({open:true,id:901,fee:'01'}); await t.ready();
+      await t.plan('old-'+fail,{hold:true,fail,offset:200});
+      await t.click('.stats-load-more button');
+      await t.waitFor(`window.__pendingRequests.some(p=>p.id==='old-${fail}')`,'旧分页等待');
+      // Reopening the same target creates a new generation with a separate lock.
+      await t.set({open:false}); await t.waitFor('!document.querySelector(".sheet")','关闭');
+      await t.set({open:true}); await t.ready();
+      await t.plan('new-'+fail,{hold:true,offset:200}); await t.click('.stats-load-more button');
+      await t.waitFor(`window.__pendingRequests.some(p=>p.id==='new-${fail}')`,'新分页未被旧锁阻止');
+      await t.release('old-'+fail);
+      assert.equal(await t.rows(),200,'旧成功不可追加');
+      assert.equal(await t.js(`!!document.querySelector('[data-testid=${cfg.pageError}]')`),false,'旧失败不可报错');
+      assert.equal(await t.js("document.querySelector('.stats-load-more button').disabled"),true,'旧finally不能解除新请求锁');
+      await t.release('new-'+fail);
+      await t.waitFor(`document.querySelectorAll('[data-testid=${cfg.table}] tbody tr').length===${cfg.count}`,'新分页正常完成');
+      await t.set({open:false}); await t.waitFor('!document.querySelector(".sheet")','关闭');
+    }
+    for(const fail of [false,true]){
+      await t.set({open:false,id:901,fee:'01'}); await t.waitFor('!document.querySelector(".sheet")','关闭');
+      await t.set({open:true}); await t.ready();
+      await t.plan('target-old-'+fail,{hold:true,fail,offset:200}); await t.click('.stats-load-more button');
+      await t.waitFor(`window.__pendingRequests.some(p=>p.id==='target-old-${fail}')`,'目标分页等待');
+      await t.set({id:902,fee:'04'}); await t.ready();
+      const before=await t.js('document.querySelector(".sheet").textContent');
+      await t.release('target-old-'+fail);
+      assert.equal(await t.js('document.querySelector(".sheet").textContent'),before,'旧分页成功/失败不能污染新目标');
+    }
+  },'?detail-harness'));
+}
+test('GPT collection 全类型：收款/退款/调整/全部与迟到分页隔离',{timeout:120000},async()=>withPage(async ctx=>{
+  const t=await detailTools(ctx,'collection');
+  for(const offset of [0,200]) for(const fail of [false,true]){
+    const id=`kind-old-${offset}-${fail}`;
+    await t.set({open:false}); await t.waitFor('!document.querySelector(".sheet")','关闭');
+    if(offset===0) await t.plan(id,{hold:true,fail,offset});
+    await t.set({open:true});
+    if(offset===200){
+      await t.ready(); await t.plan(id,{hold:true,fail,offset}); await t.click('.stats-load-more button');
+    }
+    await t.waitFor(`window.__pendingRequests.some(p=>p.id==='${id}')`,'旧类型请求');
+    await t.click('[data-kind=refund]');
+    await t.waitFor("document.querySelector('[data-testid=collection-detail-summary]').textContent.includes('共 0 笔')",'退款空结果');
+    const before=await t.js('document.querySelector(".sheet").textContent');
+    await t.release(id); assert.equal(await t.rows(),0);
+    assert.equal(await t.js('document.querySelector(".sheet").textContent'),before,'旧类型首屏/分页成功/失败均隔离');
+  }
+  for(const kind of ['received','adjust','all']){
+    await t.click(`[data-kind=${kind}]`);
+    await t.waitFor(`window.__calls.filter(c=>c.url==='/statistics/collection/detail').at(-1).query.kind==='${kind}'`,'类型请求');
+    await t.waitFor("!document.querySelector('.sheet').textContent.includes('读明细…')",'类型完成');
+    const expected=kind==='adjust'?'¥0.00':'¥119,152.20';
+    assert.ok((await t.summary()).includes(expected),kind+'分类合计');
+  }
+},'?detail-harness'));

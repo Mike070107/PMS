@@ -1,10 +1,11 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import { Community } from '../../entities';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
+import { parseCollectionDate } from './collection.util';
 import {
   StatisticsAnnualDetailQueryDto,
   StatisticsAnnualQueryDto,
@@ -83,6 +84,7 @@ export class StatisticsService {
   /** GET /statistics/annual：管理处 × 年度汇总表。 */
   async annual(query: StatisticsAnnualQueryDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
+    this.validatePaidDates(query);
     const offices = await this.officeScope(tenantId, access);
     const selected = filterRequestedOffices(offices, query.officeCodes);
     const yearFrom = query.yearFrom ?? DEFAULT_YEAR_FROM;
@@ -143,6 +145,7 @@ export class StatisticsService {
   /** GET /statistics/annual/detail：单元格下钻到房屋聚合明细，合计必须等于单元格。 */
   async annualDetail(query: StatisticsAnnualDetailQueryDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
+    this.validatePaidDates(query);
     const office = await this.requireOffice(tenantId, access, query.officeCode);
     const filters = {
       type: query.type,
@@ -242,6 +245,7 @@ export class StatisticsService {
   /** GET /statistics/annual/detail/bills：房屋明细再下钻到逐笔账单。 */
   async annualDetailBills(query: StatisticsBillsQueryDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
+    this.validatePaidDates(query);
     const office = await this.requireOffice(tenantId, access, query.officeCode);
     const filters = {
       type: query.type,
@@ -299,6 +303,15 @@ export class StatisticsService {
       available: true,
       message: null,
     };
+  }
+
+  /** 年度允许跨多年/单侧日期，不沿用 P2 区间的 366 天上限；错误参数先于镜像查询拒绝。 */
+  private validatePaidDates(query: { paidDateFrom?: string; paidDateTo?: string }) {
+    const from = query.paidDateFrom == null ? null : parseCollectionDate(query.paidDateFrom, 'paidDateFrom');
+    const to = query.paidDateTo == null ? null : parseCollectionDate(query.paidDateTo, 'paidDateTo');
+    if (from != null && to != null && from > to) {
+      throw new BadRequestException('paidDateFrom 不能晚于 paidDateTo');
+    }
   }
 
   private requireTenant(user: AuthUser): number {

@@ -8,6 +8,9 @@ w.__optionsUnavailable = false;
 w.__detailFail = false;
 w.__billsFail = false;
 w.__blobs = [];
+w.__requestPlans = [];
+w.__pendingRequests = [];
+w.__finishedRequests = [];
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -159,8 +162,16 @@ function feeNatureResponse(query: any) {
 // 日期跟随当前自然月；默认到今天时必须排除未来日期，整月验收显式改结束日。
 const NOW = new Date();
 const DAY = (day: number) => `${NOW.getFullYear()}-${String(NOW.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+const PAYMENT_DETAIL = { rowKind: 'received', feeCode: '01', feeName: '管理费', natureCode: '01', natureName: '商品房', ownerName: '合成业主1', period: `${NOW.getFullYear()}${String(NOW.getMonth() + 1).padStart(2, '0')}`, amountCents: 39800, paidDate: DAY(1), refundDate: null, paymentMethod: '微信', cashier: '合成收费员' };
+// 8,000,000 分拆为 201 条整数分（200×39,800 + 40,000），矩阵合计不变，用于分页竞态。
+const SPLIT_8000_ROWS = Array.from({ length: 201 }, (_, index) => ({
+  ...PAYMENT_DETAIL,
+  address: `宝秀路719号${101 + index}室`,
+  amountCents: index === 200 ? 40000 : 39800,
+  ownerName: `合成业主${index + 1}`,
+}));
 const COLLECTION_DETAIL_ROWS = [
-  { rowKind: 'received', feeCode: '01', feeName: '管理费', natureCode: '01', natureName: '商品房', address: '宝秀路719号101室', ownerName: '合成业主1', period: `${NOW.getFullYear()}${String(NOW.getMonth() + 1).padStart(2, '0')}`, amountCents: 8000000, paidDate: DAY(1), refundDate: null, paymentMethod: '微信', cashier: '合成收费员' },
+  ...SPLIT_8000_ROWS,
   { rowKind: 'received', feeCode: '01', feeName: '管理费', natureCode: '01', natureName: '商品房', address: '宝秀路720号102室', ownerName: '合成业主2', period: `${NOW.getFullYear()}${String(NOW.getMonth() + 1).padStart(2, '0')}`, amountCents: 3915220, paidDate: DAY(3), refundDate: null, paymentMethod: '现金', cashier: '合成收费员' },
   { rowKind: 'adjust', feeCode: '04', feeName: '泊位费', natureCode: '01', natureName: '商品房', address: '宝秀路721号103室', ownerName: '合成业主3', period: `${NOW.getFullYear()}${String(NOW.getMonth() + 1).padStart(2, '0')}`, amountCents: -60000, paidDate: DAY(5), refundDate: null, paymentMethod: '现金', cashier: '合成收费员' },
   { rowKind: 'received', feeCode: '04', feeName: '泊位费', natureCode: '06', natureName: '空房', address: '宝秀路722号104室', ownerName: '合成业主4', period: `${NOW.getFullYear()}${String(NOW.getMonth() + 1).padStart(2, '0')}`, amountCents: 3105000, paidDate: DAY(9), refundDate: null, paymentMethod: '微信', cashier: '合成收费员' },
@@ -358,10 +369,17 @@ function collectionAnalysisDetailResponse(query: any) {
     { zjId: sId * 10 + 2, period: '202611', amountCents: 90000, paidDate: '2026-11-02', refundDate: null, paymentMethod: '微信', cashier: '合成收费员', feeCode: '01', feeName: '管理费', natureCode: '04', rowKind: 'received' },
     { zjId: sId * 10 + 3, period: '202611', amountCents: 15000, paidDate: null, refundDate: '2026-11-03', paymentMethod: '现金', cashier: '合成收费员', feeCode: '04', feeName: '泊位费', natureCode: '06', rowKind: 'refund' },
   ];
+  // Dedicated paginated households keep the existing formal-entry fixture intact.
+  if (sId >= 900) {
+    const unpaid = rows.shift()!;
+    rows.unshift(...Array.from({ length: 201 }, (_, i) => ({ ...unpaid, zjId: sId * 1000 + i, feeName: `目标${sId}`, amountCents: i === 200 ? 14300 : 7500 })));
+    rows.push({ ...rows[0], zjId: sId * 1000 + 999, rowKind: 'adjust', amountCents: -5000 });
+  }
   const totals = {
     receivedCents: 90000, refundCents: 15000, adjustCents: -5000, unpaidCents: 1514300, amountCents: 1584300, rows: rows.length,
   };
-  return { rows, totals, count: rows.length, available: true, message: null };
+  const offset = Number(query?.offset ?? 0);
+  return { rows: rows.slice(offset, offset + Number(query?.limit ?? 200)), totals, count: rows.length, available: true, message: null };
 }
 
 // P2-D 收费月报表（核心指标）：11 项核心指标 + 合计，其余列 pendingColumns。
@@ -595,8 +613,24 @@ function ticketListResponse(query: any) {
   };
 }
 
+// One-shot outcomes are captured on dispatch. Tests release a named request,
+// never sleep hoping a race happened; unexpected URLs still fail closed below.
 export async function request<T>(options: any): Promise<T> {
   w.__calls.push({ url: options.url, method: options.method ?? 'GET', query: options.query ?? null, at: Date.now() });
+  const index = w.__requestPlans.findIndex((p: any) => p.url === options.url && (p.offset == null || p.offset === Number(options.query?.offset ?? 0)));
+  const plan = index < 0 ? null : w.__requestPlans.splice(index, 1)[0];
+  try {
+    if (plan?.hold) await new Promise<void>((release) => w.__pendingRequests.push({ id: plan.id, release }));
+    if (plan?.fail) throw Error('逐笔请求失败（合成）');
+    if (plan?.unavailable) return { rows: [], totals: null, totalCents: null, count: null, available: false, message: '逐笔数据尚未同步（合成）' } as T;
+    const result = await requestFixture<any>(options);
+    return (plan?.unknown ? { ...result, totals: null, totalCents: null, count: null } : result) as T;
+  } finally {
+    if (plan?.id) w.__finishedRequests.push(plan.id);
+  }
+}
+
+async function requestFixture<T>(options: any): Promise<T> {
   await pause(20);
 
   if (options.url === '/statistics/options') {
