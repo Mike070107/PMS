@@ -29,6 +29,13 @@ function loadStatisticsLib() {
   return module.exports;
 }
 
+/** 点「统计」/「收起」后筛选面板会自动折叠为左上角紧凑入口；测试在继续操作筛选前先展开。 */
+async function openFilters(js, waitFor) {
+  if (await js("!!document.querySelector('.stats-filters')")) return;
+  await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
+  await waitFor("!!document.querySelector('.stats-filters')", '展开筛选面板', 8000);
+}
+
 test('统计汇总金额/CSV 纯函数：整数分格式化、UTF-8 BOM、筛选参数', () => {
   const lib = loadStatisticsLib();
   assert.equal(lib.fmtCents(74518210), '¥745,182.10');
@@ -722,6 +729,7 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     assert.equal(await js("[...document.querySelectorAll('[data-nature-code]')].filter((el) => el.checked).length"), 12, '欠费重置恢复 12 项');
     await js("document.querySelector('[data-testid=stats-submit]').click()");
     await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/annual'); const last = list[list.length - 1]; return last && last.query.natures === '" + expectedDefaultNatures + "'; })()", '欠费重置后请求恢复默认房屋性质');
+    await openFilters(js, waitFor);
 
     // 筛选变更不自动请求；勾 02 管理处 + 管理费后点「统计」，请求参数正确。
     const beforeCalls = await js("window.__calls.filter((c) => c.url === '/statistics/annual').length");
@@ -746,6 +754,20 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     await waitFor("document.querySelectorAll('.stats-annual-table tbody tr[data-office-row]').length === 1", '筛选后只剩 02');
     assert.equal(await js("document.querySelector('[data-office-code=\"02\"][data-year=\"2014\"]').textContent.trim()"), '¥477.90');
     await screenshot('statistics-filtered-1440.png');
+
+    // 布局：点「统计」后自动收起为左上角紧凑入口；入口含条件数、点击可展开；导出按钮在结果区右上角，筛选面板不再有导出。
+    assert.equal(await js("!!document.querySelector('.stats-filters')"), false, '统计成功后筛选应自动收起');
+    const entryText = await js("document.querySelector('[data-testid=stats-filter-toggle]').textContent");
+    assert.ok(entryText.includes('筛选条件（4）'), '紧凑入口显示当前条件数（管理处/收费项目/房屋性质/应收截止=4）：' + entryText);
+    assert.ok(await js("!!document.querySelector('[data-testid=stats-export]')?.closest('.stats-result-head')"), '导出按钮应在结果 header 右上角');
+    await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
+    await waitFor("!!document.querySelector('.stats-filters')", '点紧凑入口重新展开筛选');
+    await screenshot('statistics-filters-expanded-1440.png');
+    assert.equal(await js("!!document.querySelector('.stats-filter-actions [data-testid=stats-export]')"), false, '筛选面板底部不再有导出按钮');
+    assert.ok(await js("!!document.querySelector('[data-action=filters-collapse]')"), '展开面板保留收起按钮');
+    await js("document.querySelector('[data-action=filters-collapse]').click()");
+    await waitFor("!document.querySelector('.stats-filters')", '点收起后自动收起');
+    await screenshot('statistics-filters-compact-entry-1440.png');
 
     // 三级下钻：单元格 → 房屋明细（合计与单元格一致）→ 逐笔账单。
     await js("document.querySelector('[data-office-code=\"02\"][data-year=\"2014\"]').click()");
@@ -796,6 +818,7 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     await waitFor("!document.querySelector('.sheet')", '关闭明细抽屉');
 
     // 错误态：可见错误 + 重试；恢复后重试能取回表格。
+    await openFilters(js, waitFor);
     await js('window.__annualFail = true');
     await js("document.querySelector('[data-testid=stats-submit]').click()");
     await waitFor("document.body.textContent.includes('统计读取失败')", '统计错误态');
@@ -806,12 +829,14 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     await waitFor("!!document.querySelector('.stats-annual-table')", '重试后恢复年度表');
 
     // 未镜像：annual.available=false + message 时优先显示后端说明，不渲染空表/通用「暂无数据」。
+    await openFilters(js, waitFor);
     await js('window.__annualUnavailable = true');
     await js("document.querySelector('[data-testid=stats-submit]').click()");
     await waitFor("document.body.textContent.includes('MIS 镜像本期未同步')", '未镜像说明');
     assert.equal(await js("!!document.querySelector('.stats-annual-table')"), false, '未镜像时不能渲染空表');
     assert.equal(await js("document.body.textContent.includes('当前筛选没有可汇总的数据')"), false, '未镜像时不能只说暂无数据');
     await screenshot('statistics-unavailable-1440.png');
+    await openFilters(js, waitFor);
     await js('window.__annualUnavailable = false');
     await js("document.querySelector('[data-testid=stats-submit]').click()");
     await waitFor("!!document.querySelector('.stats-annual-table')", '未镜像恢复后年度表');
@@ -886,6 +911,8 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     await js('window.scrollTo(0, 0)');
     await pause(200);
     await screenshot('statistics-reset-default-1440.png');
+    // 统计后筛选已自动收起为紧凑入口；日期范围输入前先重新展开。
+    await openFilters(js, waitFor);
 
     // 收款日期范围：实收请求带 paidDateFrom/paidDateTo；欠费不带；from>to 时 toast 且不发请求。
     const typeRangeDate = async (index, text) => {
@@ -940,6 +967,7 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     const arrearsQuery = await js("window.__calls.filter((c) => c.url === '/statistics/annual').slice(-1)[0].query");
     assert.equal(arrearsQuery.paidDateFrom, undefined, '欠费报表不带收款日期起');
     assert.equal(arrearsQuery.paidDateTo, undefined, '欠费报表不带收款日期止');
+    await openFilters(js, waitFor);
     await typeRangeDate(0, '2026-06-01');
     assert.equal(
       await js("document.querySelector('.stats-date-range').dataset.dateFrom"),
@@ -1402,6 +1430,7 @@ test('P3-A 住户台账/楼房台账：关键词/分页/空值/合计/CSV/窄屏
     await pause(2600);
 
     // 楼房台账：行/合计/关键词。
+    await openFilters(js, waitFor);
     await setKeyword('');
     await js("document.querySelector('[data-report-type=\"building-ledger\"]').click()");
     await waitFor("!!document.querySelector('[data-testid=building-ledger-table]')", '楼房台账表', 25000);
@@ -1477,6 +1506,7 @@ test('P4-A 减免情况统计/签报情况统计：日期关键词参数/合计/
     await pause(2600);
 
     // 签报情况统计
+    await openFilters(js, waitFor);
     await setInput('[data-testid=ledger-keyword]', '');
     await js("document.querySelector('[data-report-type=signoffs]').click()");
     await waitFor("!!document.querySelector('[data-testid=signoffs-table]')", '签报情况表', 25000);
@@ -1493,10 +1523,12 @@ test('P4-A 减免情况统计/签报情况统计：日期关键词参数/合计/
     await screenshot('statistics-signoffs-1440.png');
 
     // 类型多选 + 状态筛选参数
+    await openFilters(js, waitFor);
     await js("document.querySelector('[data-signoff-type=\"减免签报\"]').click()");
     await js("document.querySelector('[data-testid=stats-submit]').click()");
     await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/signoffs'); const last = list[list.length - 1]; return last && last.query.types === '减免签报' && last.query.status === 'all'; })()", '签报类型请求');
     await waitFor("document.querySelectorAll('[data-testid=signoffs-table] tbody tr[data-signoff-id]').length === 2", '签报类型结果');
+    await openFilters(js, waitFor);
     await js("document.querySelector('[data-signoff-type=\"减免签报\"]').click()");
     await setSelect('[data-testid=signoff-status]', 'voided');
     await js("document.querySelector('[data-testid=stats-submit]').click()");
@@ -1597,6 +1629,7 @@ test('P2-E 收款汇总表/票据情况统计：动态列/副表/状态筛选/�
     await js("document.querySelector('[data-testid=stats-submit]').click()");
     await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/tickets'); const last = list[list.length - 1]; return last && last.query.keyword === 'PJ202611002'; })()", '票据关键词请求');
     await waitFor("document.querySelectorAll('[data-testid=tickets-table] tbody tr[data-ticket-id]').length === 1", '票据关键词结果');
+    await openFilters(js, waitFor);
     await setInput('[data-testid=ledger-keyword]', '');
     await setSelect('[data-testid=ticket-status]', 'voided');
     await js("document.querySelector('[data-testid=stats-submit]').click()");

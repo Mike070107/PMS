@@ -61,6 +61,35 @@
   color: var(--acc-t);
 }
 
+/* 收起后：左上角紧凑入口，sticky 在内容区顶部，不遮挡表格。 */
+.stats-compact-entry {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  margin-bottom: 10px;
+  pointer-events: none;
+}
+.stats-filter-entry {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  box-shadow: 0 6px 18px -12px rgba(23, 32, 51, .35);
+  color: var(--ink1);
+  font-weight: 500;
+}
+.stats-filter-entry svg:last-child { transform: rotate(90deg); }
+.stats-filter-entry:hover { border-color: var(--acc); color: var(--acc); }
+
+/* 结果区标题行：导出按钮固定在右上角。 */
+.stats-result-head { flex-wrap: wrap; row-gap: 6px; }
+.stats-result-head .stats-export { margin-left: auto; flex: none; }
+
 /* ---------- 筛选内容 ---------- */
 .stats-filter-head {
   display: flex;

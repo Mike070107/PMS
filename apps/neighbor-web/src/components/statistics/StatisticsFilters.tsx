@@ -11,14 +11,12 @@ export interface StatisticsFiltersProps {
   onChange: (patch: Partial<FilterDraft>) => void;
   onSubmit: () => void;
   onReset: () => void;
-  onExport: () => void;
-  /** 收起悬浮筛选面板，把宽度还给数据区。 */
+  /** 收起悬浮筛选面板，把宽度还给数据区并显示左上角紧凑入口。 */
   onCollapse: () => void;
   /** 当前报表：应收截止年月只对欠费报表展示/生效。 */
   reportType: StatisticsReportType;
   /** P4-A 签报类型选项（来自已加载数据 distinct）。 */
   signoffTypeOptions?: string[];
-  canExport: boolean;
   loading: boolean;
 }
 
@@ -96,7 +94,7 @@ function FeeCategoryRow({
 
 /** 左侧悬浮筛选：管理处/小区、收费项目分类树、房屋性质、收款日期范围；只在点「统计」时生效。 */
 export default function StatisticsFilters({
-  options, draft, onChange, onSubmit, onReset, onExport, onCollapse, reportType, signoffTypeOptions = [], canExport, loading,
+  options, draft, onChange, onSubmit, onReset, onCollapse, reportType, signoffTypeOptions = [], loading,
 }: StatisticsFiltersProps) {
   const [officeQuery, setOfficeQuery] = useState('');
   const [feeQuery, setFeeQuery] = useState('');
@@ -162,7 +160,7 @@ export default function StatisticsFilters({
       <div className="stats-filter-head">
         <b><Icon name="search" size={17} />筛选条件</b>
         <div className="stats-filter-head-actions">
-          <button type="button" className="btn sm g" data-action="filters-collapse" title="收起筛选，给数据区更多宽度" onClick={onCollapse}>
+          <button type="button" className="btn sm g" data-action="filters-collapse" data-testid="stats-filter-toggle" title="收起筛选，给数据区更多宽度" onClick={onCollapse}>
             <Icon name="chev" size={15} />收起
           </button>
           <button type="button" className="btn sm g" data-action="filters-reset" onClick={onReset}>重置</button>
@@ -514,9 +512,6 @@ export default function StatisticsFilters({
       <div className="stats-filter-actions">
         <button type="button" className="btn p stats-apply" data-testid="stats-submit" disabled={!canSubmit || loading} onClick={onSubmit}>
           <Icon name="chart" size={17} />{loading ? '统计中…' : '统计'}
-        </button>
-        <button type="button" className="btn stats-export" data-testid="stats-export" disabled={!canExport || loading} onClick={onExport}>
-          <Icon name="download" size={17} />导出 Excel
         </button>
       </div>
       {!canSubmit ? (

@@ -291,6 +291,29 @@ function timeText(value?: string | null): string {
   return parsed.isValid() ? parsed.format('YYYY-MM-DD HH:mm') : String(value);
 }
 
+/** 收起后的「筛选条件（N）」计数：按该报表实际生效的筛选维度统计（默认 P1 为管理处/收费项目/房屋性质 = 3）。 */
+function activeFilterCount(type: StatisticsReportType, draft: FilterDraft): number {
+  let count = 0;
+  if (draft.officeCodes.length) count += 1;
+  const usesFees = !['property-summary', 'owner-ledger', 'building-ledger', 'signoffs', 'tickets'].includes(type);
+  if (usesFees && draft.feeCodes.length) count += 1;
+  const usesNatures = !['property-summary', 'building-ledger', 'relief', 'signoffs', 'ticket-summary', 'tickets'].includes(type);
+  if (usesNatures && draft.natures.length) count += 1;
+  if ((type === 'fee-nature' || type === 'ticket-summary') && draft.paymentMethods.length) count += 1;
+  const usesDates = ['fee-nature', 'daily', 'collection-analysis', 'relief', 'signoffs', 'ticket-summary', 'tickets'].includes(type);
+  if (usesDates && draft.paidDateFrom && draft.paidDateTo) count += 1;
+  const usesPeriod = ['arrears', 'arrears-prepaid', 'collection-analysis', 'monthly-report'].includes(type);
+  if (usesPeriod && draft.asOfPeriod) count += 1;
+  const usesKeyword = ['owner-ledger', 'building-ledger', 'relief', 'signoffs', 'tickets'].includes(type);
+  if (usesKeyword && draft.ledgerKeyword.trim()) count += 1;
+  if (type === 'signoffs') {
+    if (draft.signoffStatus !== 'all') count += 1;
+    if (draft.signoffTypes.length) count += 1;
+  }
+  if (type === 'tickets' && draft.ticketStatus !== 'all') count += 1;
+  return count;
+}
+
 /**
  * 统计汇总（P1 + P2）：旧「一通软件」统计菜单的前端复刻。
  * 左侧筛选勾选；已接入：实收/欠费年度汇总、收费汇总（费项×性质矩阵）、收款日报表（日期×费项矩阵）。
@@ -368,6 +391,14 @@ export default function Statistics() {
       rememberFiltersCollapsed(next);
       return next;
     });
+  };
+  const collapseFilters = () => {
+    setFiltersCollapsed(true);
+    rememberFiltersCollapsed(true);
+  };
+  const expandFilters = () => {
+    setFiltersCollapsed(false);
+    rememberFiltersCollapsed(false);
   };
 
   useEffect(() => { reportTypeRef.current = reportType; }, [reportType]);
@@ -530,6 +561,8 @@ export default function Statistics() {
     setCollectionDetailOpen(false);
     setCollectionTarget(null);
     setApplied(buildQuery(reportType, draft, options));
+    // 统计成功后自动收起为左上角紧凑入口，表格占满宽度、不再被浮层遮挡。
+    collapseFilters();
   };
 
   const switchReport = (type: StatisticsReportType) => {
@@ -1080,11 +1113,9 @@ export default function Statistics() {
                   onChange={(patch) => setDraft((previous) => ({ ...previous, ...patch }))}
                   onSubmit={submit}
                   onReset={resetDraft}
-                  onExport={exportCurrent}
-                  onCollapse={toggleFilters}
+                  onCollapse={collapseFilters}
                   reportType={reportType}
                   signoffTypeOptions={signoffTypeOptions}
-                  canExport={activeAvailable !== false && hasExportData}
                   loading={isLoading}
                 />
               </div>
@@ -1092,6 +1123,21 @@ export default function Statistics() {
           ) : null}
 
           <section className="stats-main">
+            {filtersCollapsed ? (
+              <div className="stats-compact-entry">
+                <button
+                  type="button"
+                  className="btn sm stats-filter-entry"
+                  data-testid="stats-filter-toggle"
+                  aria-expanded="false"
+                  title="展开筛选条件"
+                  onClick={expandFilters}
+                >
+                  <Icon name="search" size={15} />筛选条件（{activeFilterCount(reportType, draft)}）
+                  <Icon name="chev" size={14} />
+                </button>
+              </div>
+            ) : null}
             <div className="card stats-catalog">
               <div className="stats-catalog-main">
                 {REPORTS.map((report) => (
@@ -1114,16 +1160,6 @@ export default function Statistics() {
 
             <div className="card stats-result">
               <div className="panelHd stats-result-head">
-                <button
-                  type="button"
-                  className={`btn sm stats-filter-toggle${filtersCollapsed ? '' : ' on'}`}
-                  data-testid="stats-filter-toggle"
-                  aria-expanded={!filtersCollapsed}
-                  title={filtersCollapsed ? '展开筛选条件' : '收起筛选条件，给数据区更多宽度'}
-                  onClick={toggleFilters}
-                >
-                  <Icon name="search" size={15} />{filtersCollapsed ? '筛选' : '收起筛选'}
-                </button>
                 <b>{activeLabel}</b>
                 {applied?.type === 'fee-nature' && collection && collection.available !== false ? <span className="tag mute">{collection.rows.length} 个收费项目</span> : null}
                 {applied?.type === 'daily' && daily && daily.available !== false ? <span className="tag mute">{daily.rows.length} 天</span> : null}
@@ -1172,6 +1208,16 @@ export default function Statistics() {
                   annual?.columns?.length ? <span className="muted stats-range">{annual.columns[0]}–{annual.columns[annual.columns.length - 1]} 年度</span> : null
                 ) : dateRangeText ? <span className="muted stats-range">{dateRangeText}</span> : null}
                 <span className="muted stats-as-of">{dataAsOf ? `数据截止 ${dataAsOf}` : ''}</span>
+                <button
+                  type="button"
+                  className="btn sm stats-export"
+                  data-testid="stats-export"
+                  disabled={!hasExportData || isLoading || activeAvailable === false}
+                  title="导出当前筛选结果 CSV（Excel 可直接打开）"
+                  onClick={exportCurrent}
+                >
+                  <Icon name="download" size={15} />导出 Excel
+                </button>
               </div>
 
               {applied?.type === 'received' && annual?.available !== false ? (
