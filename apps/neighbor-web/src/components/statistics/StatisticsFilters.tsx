@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import Icon from '@/components/Icon';
 import DateInput from '@/components/DateInput';
 import { dayjs } from '@/lib/format';
-import { groupFeeItems, type FeeCategoryGroup, type FilterDraft, type StatisticsFeeItem, type StatisticsOptions, type StatisticsReportType } from '@/lib/statistics';
+import { groupFeeItems, reportName, type TicketItemsGroup, type ArrearsPrepaidQuery, type FeeCategoryGroup, type FilterDraft, type StatisticsFeeItem, type StatisticsOptions, type StatisticsReportType } from '@/lib/statistics';
 
 export interface StatisticsFiltersProps {
   options: StatisticsOptions;
@@ -18,6 +18,10 @@ export interface StatisticsFiltersProps {
   /** P4-A 签报类型选项（来自已加载数据 distinct）。 */
   signoffTypeOptions?: string[];
   loading: boolean;
+  ticketItemsGroup?: TicketItemsGroup;
+  onTicketItemsGroupChange?: (group: TicketItemsGroup) => void;
+  arrearsTab?: ArrearsPrepaidQuery['tab'];
+  onArrearsTabChange?: (tab: ArrearsPrepaidQuery['tab']) => void;
 }
 
 function toggle(list: string[], value: string): string[] {
@@ -95,6 +99,7 @@ function FeeCategoryRow({
 /** 左侧悬浮筛选：管理处/小区、收费项目分类树、房屋性质、收款日期范围；只在点「统计」时生效。 */
 export default function StatisticsFilters({
   options, draft, onChange, onSubmit, onReset, onCollapse, reportType, signoffTypeOptions = [], loading,
+  ticketItemsGroup = 'fee', onTicketItemsGroupChange, arrearsTab = 'arrears', onArrearsTabChange,
 }: StatisticsFiltersProps) {
   const [officeQuery, setOfficeQuery] = useState('');
   const [feeQuery, setFeeQuery] = useState('');
@@ -168,6 +173,17 @@ export default function StatisticsFilters({
       </div>
 
       <div className="stats-filter-body">
+        <p className="stats-filter-hint stats-selected-report" data-testid="stats-selected-report">{reportName(reportType)} · 点击生成后才执行查询</p>
+        {reportType === 'ticket-items' ? <CheckGroup title="分组方式">
+          <select className="in" aria-label="开票数据分组方式" data-testid="ticket-items-group" value={ticketItemsGroup} onChange={event => onTicketItemsGroupChange?.(event.target.value as TicketItemsGroup)}>
+            <option value="fee">收费项目</option><option value="office">管理处</option><option value="day">开票日期</option>
+          </select>
+        </CheckGroup> : null}
+        {reportType === 'arrears-prepaid' ? <CheckGroup title="统计明细">
+          <select className="in" aria-label="欠收或溢收" data-testid="arrears-tab-filter" value={arrearsTab} onChange={event => onArrearsTabChange?.(event.target.value as ArrearsPrepaidQuery['tab'])}>
+            <option value="arrears">欠收统计</option><option value="prepaid">溢收统计</option>
+          </select>
+        </CheckGroup> : null}
         <CheckGroup title="管理处 / 小区" hint="按旧系统管理处勾选，小区跟随管理处" actions={groupActions('offices', options.offices.map((office) => office.officeCode))}>
           <div className="stats-office-search">
             <Icon name="search" size={15} />
@@ -512,7 +528,7 @@ export default function StatisticsFilters({
 
       <div className="stats-filter-actions">
         <button type="button" className="btn p stats-apply" data-testid="stats-submit" disabled={!canSubmit || loading} onClick={onSubmit}>
-          <Icon name="chart" size={17} />{loading ? '统计中…' : '统计'}
+          <Icon name="chart" size={17} />{loading ? '正在生成…' : '生成统计报表'}
         </button>
       </div>
       {!canSubmit ? (

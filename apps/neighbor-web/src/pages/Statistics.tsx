@@ -27,13 +27,13 @@ import StatisticsFilters from '@/components/statistics/StatisticsFilters';
 import { dayjs } from '@/lib/format';
 import {
   PENDING_REPORTS, REPORTS,
-  annualCsv, annualQueryParams, arrearsPrepaidCsv, arrearsPrepaidDetailParams, arrearsPrepaidSummaryParams,
-  assessmentCsv, assessmentQueryParams, buildingLedgerCsv, buildingLedgerParams,
-  collectionAnalysisCsv, collectionAnalysisParams, collectionQueryParams, dailyCsv, dailyQueryParams, downloadCsv,
-  feeNatureCsv, fmtCents, monthlyReportCsv, monthlyReportParams, ownerLedgerCsv, ownerLedgerParams,
-  propertySummaryCsv, propertySummaryParams, reliefCsv, reliefParams, reportName, signoffsCsv, signoffsParams,
-  ticketSummaryCsv, ticketSummaryParams, ticketsCsv, ticketsParams,
-  ticketItemsCsv, ticketItemsParams, ticketItemsDrillQuery,
+  annualQueryParams, arrearsPrepaidDetailParams, arrearsPrepaidSummaryParams,
+  assessmentQueryParams, buildingLedgerParams,
+  collectionAnalysisParams, collectionQueryParams, dailyQueryParams,
+  fmtCents, monthlyReportParams, ownerLedgerParams,
+  propertySummaryParams, reliefParams, reportName, signoffsParams,
+  ticketSummaryParams, ticketsParams,
+  ticketItemsParams, ticketItemsDrillQuery,
   type TicketItemsQuery, type TicketItemsGroup, type TicketItemsSummaryResponse,
   type AnnualQuery, type AnnualReportType, type AnnualSummaryResponse, type ArrearsPrepaidDetailResponse,
   type ArrearsPrepaidQuery, type ArrearsPrepaidSummaryResponse, type ArrearsPrepaidDetailRow,
@@ -406,7 +406,18 @@ export default function Statistics() {
   const [tickets, setTickets] = useState<TicketsResponse | null>(null);
   const [ticketsLoading, setTicketsLoading] = useState(false);
   const [ticketsError, setTicketsError] = useState('');
-  const [reportRetry, setReportRetry] = useState(0);
+  // Draft browsing never creates a report request. This synchronous lock also catches double clicks.
+  const requestPendingRef = useRef(false);
+  const [generating, setGenerating] = useState(false);
+  const [appliedTicketItemsGroup, setAppliedTicketItemsGroup] = useState<TicketItemsGroup>('fee');
+  const [draftArrearsTab, setDraftArrearsTab] = useState<ArrearsPrepaidQuery['tab']>('arrears');
+  const appliedQueryRef = useRef<ReportQuery | null>(null);
+  const pageRequestRef = useRef<{ query: ReportQuery } | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const resultRef = useRef<HTMLDivElement>(null);
+  const exportPendingRef = useRef(false);
+  const lastExportAtRef = useRef(0);
+  const [exporting, setExporting] = useState(false);
   const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [collectionTarget, setCollectionTarget] = useState<CollectionDetailTarget | null>(null);
@@ -446,7 +457,7 @@ export default function Statistics() {
 
   useEffect(() => { reportTypeRef.current = reportType; }, [reportType]);
 
-  // 筛选选项：只读加载一次（失败可重试），成功后全选并自动出第一张报表。
+  // 仅加载轻量筛选字典；首次进入/字典重试均不自动计算报表。
   useEffect(() => {
     let cancelled = false;
     setOptionsError('');
@@ -456,7 +467,7 @@ export default function Statistics() {
         setOptions(response);
         const nextDraft = defaultDraft(response, reportTypeRef.current);
         setDraft(nextDraft);
-        setApplied(buildQuery(reportTypeRef.current, nextDraft, response));
+
       })
       .catch((error) => {
         if (cancelled) return;
@@ -466,28 +477,33 @@ export default function Statistics() {
     return () => { cancelled = true; };
   }, [optionsRetry]);
 
-  // 只有 applied 变化（点「统计」/切报表/重试）才请求；改草稿不自动请求。
+  // Only the explicit generate action commits applied. Catalogue/filter/group browsing stays local.
   useEffect(() => {
     if (!applied) return undefined;
     let cancelled = false;
+    const finish = () => {
+      if (cancelled) return;
+      requestPendingRef.current = false;
+      setGenerating(false);
+    };
     if (applied.type === 'received' || applied.type === 'arrears') {
       setAnnualLoading(true); setAnnualError('');
       request<AnnualSummaryResponse>({ url: '/statistics/annual', query: annualQueryParams(applied) })
         .then((response) => { if (!cancelled) setAnnual(response); })
         .catch((error) => { if (!cancelled) setAnnualError(error instanceof Error && error.message ? error.message : '统计数据读取失败'); })
-        .finally(() => { if (!cancelled) setAnnualLoading(false); });
+        .finally(() => { finish(); if (!cancelled) setAnnualLoading(false); });
     } else if (applied.type === 'fee-nature') {
       setCollectionLoading(true); setCollectionError('');
       request<FeeNatureResponse>({ url: '/statistics/collection/fee-nature', query: collectionQueryParams(applied) })
         .then((response) => { if (!cancelled) setCollection(response); })
         .catch((error) => { if (!cancelled) setCollectionError(error instanceof Error && error.message ? error.message : '收费汇总读取失败'); })
-        .finally(() => { if (!cancelled) setCollectionLoading(false); });
+        .finally(() => { finish(); if (!cancelled) setCollectionLoading(false); });
     } else if ((applied.type === 'daily' || applied.type === 'daily-fees')) {
       setDailyLoading(true); setDailyError('');
       request<DailyResponse>({ url: '/statistics/daily', query: dailyQueryParams(applied as DailyQuery) })
         .then((response) => { if (!cancelled) setDaily(response); })
         .catch((error) => { if (!cancelled) setDailyError(error instanceof Error && error.message ? error.message : '收款日报表读取失败'); })
-        .finally(() => { if (!cancelled) setDailyLoading(false); });
+        .finally(() => { finish(); if (!cancelled) setDailyLoading(false); });
     } else if (applied.type === 'arrears-prepaid') {
       setArrearsLoading(true); setArrearsError('');
       Promise.all([
@@ -500,76 +516,76 @@ export default function Statistics() {
           setArrearsDetail(detail);
         })
         .catch((error) => { if (!cancelled) setArrearsError(error instanceof Error && error.message ? error.message : '欠收与溢收读取失败'); })
-        .finally(() => { if (!cancelled) setArrearsLoading(false); });
+        .finally(() => { finish(); if (!cancelled) setArrearsLoading(false); });
     } else if (applied.type === 'assessment') {
       setAssessmentLoading(true); setAssessmentError('');
       request<AssessmentResponse>({ url: '/statistics/collection-assessment', query: assessmentQueryParams(applied as AssessmentQuery) })
         .then((response) => { if (!cancelled) setAssessment(response); })
         .catch((error) => { if (!cancelled) setAssessmentError(error instanceof Error && error.message ? error.message : '收缴考核读取失败'); })
-        .finally(() => { if (!cancelled) setAssessmentLoading(false); });
+        .finally(() => { finish(); if (!cancelled) setAssessmentLoading(false); });
     } else if (applied.type === 'collection-analysis') {
       setAnalysisLoading(true); setAnalysisError('');
       request<CollectionAnalysisResponse>({ url: '/statistics/collection-analysis', query: collectionAnalysisParams(applied) })
         .then((response) => { if (!cancelled) setAnalysis(response); })
         .catch((error) => { if (!cancelled) setAnalysisError(error instanceof Error && error.message ? error.message : '收款分析读取失败'); })
-        .finally(() => { if (!cancelled) setAnalysisLoading(false); });
+        .finally(() => { finish(); if (!cancelled) setAnalysisLoading(false); });
     } else if (applied.type === 'monthly-report') {
       setMonthlyLoading(true); setMonthlyError('');
       request<MonthlyReportResponse>({ url: '/statistics/monthly-report', query: monthlyReportParams(applied as MonthlyReportQuery) })
         .then((response) => { if (!cancelled) setMonthlyReport(response); })
         .catch((error) => { if (!cancelled) setMonthlyError(error instanceof Error && error.message ? error.message : '收费月报表读取失败'); })
-        .finally(() => { if (!cancelled) setMonthlyLoading(false); });
+        .finally(() => { finish(); if (!cancelled) setMonthlyLoading(false); });
     } else if (applied.type === 'property-summary') {
       setPropertyLoading(true); setPropertyError('');
       request<PropertySummaryResponse>({ url: '/statistics/property-summary', query: propertySummaryParams(applied) })
         .then((response) => { if (!cancelled) setPropertySummary(response); })
         .catch((error) => { if (!cancelled) setPropertyError(error instanceof Error && error.message ? error.message : '房产汇总读取失败'); })
-        .finally(() => { if (!cancelled) setPropertyLoading(false); });
+        .finally(() => { finish(); if (!cancelled) setPropertyLoading(false); });
     } else if (applied.type === 'owner-ledger') {
       setOwnerLoading(true); setOwnerError('');
       request<OwnerLedgerResponse>({ url: '/statistics/owner-ledger', query: ownerLedgerParams(applied) })
         .then((response) => { if (!cancelled) setOwnerLedger(response); })
         .catch((error) => { if (!cancelled) setOwnerError(error instanceof Error && error.message ? error.message : '住户台账读取失败'); })
-        .finally(() => { if (!cancelled) setOwnerLoading(false); });
+        .finally(() => { finish(); if (!cancelled) setOwnerLoading(false); });
     } else if (applied.type === 'building-ledger') {
       setBuildingLoading(true); setBuildingError('');
       request<BuildingLedgerResponse>({ url: '/statistics/building-ledger', query: buildingLedgerParams(applied as BuildingLedgerQuery) })
         .then((response) => { if (!cancelled) setBuildingLedger(response); })
         .catch((error) => { if (!cancelled) setBuildingError(error instanceof Error && error.message ? error.message : '楼房台账读取失败'); })
-        .finally(() => { if (!cancelled) setBuildingLoading(false); });
+        .finally(() => { finish(); if (!cancelled) setBuildingLoading(false); });
     } else if (applied.type === 'relief') {
       setReliefLoading(true); setReliefError('');
       request<ReliefResponse>({ url: '/statistics/relief', query: reliefParams(applied) })
         .then((response) => { if (!cancelled) setRelief(response); })
         .catch((error) => { if (!cancelled) setReliefError(error instanceof Error && error.message ? error.message : '减免情况读取失败'); })
-        .finally(() => { if (!cancelled) setReliefLoading(false); });
+        .finally(() => { finish(); if (!cancelled) setReliefLoading(false); });
     } else if (applied.type === 'signoffs') {
       setSignoffsLoading(true); setSignoffsError('');
       request<SignoffsResponse>({ url: '/statistics/signoffs', query: signoffsParams(applied as SignoffsQuery) })
         .then((response) => { if (!cancelled) setSignoffs(response); })
         .catch((error) => { if (!cancelled) setSignoffsError(error instanceof Error && error.message ? error.message : '签报情况读取失败'); })
-        .finally(() => { if (!cancelled) setSignoffsLoading(false); });
+        .finally(() => { finish(); if (!cancelled) setSignoffsLoading(false); });
     } else if (applied.type === 'ticket-summary') {
       setTicketSummaryLoading(true); setTicketSummaryError('');
       request<TicketSummaryResponse>({ url: '/statistics/ticket-summary', query: ticketSummaryParams(applied) })
         .then((response) => { if (!cancelled) setTicketSummary(response); })
         .catch((error) => { if (!cancelled) setTicketSummaryError(error instanceof Error && error.message ? error.message : '收款汇总表读取失败'); })
-        .finally(() => { if (!cancelled) setTicketSummaryLoading(false); });
+        .finally(() => { finish(); if (!cancelled) setTicketSummaryLoading(false); });
     } else if (applied.type === 'ticket-items') {
       setTicketItemsLoading(true); setTicketItemsError(''); setTicketItems(null);
-      request<TicketItemsSummaryResponse>({ url: '/statistics/ticket-items/summary', query: { ...ticketItemsParams(applied), groupBy: ticketItemsGroup } })
+      request<TicketItemsSummaryResponse>({ url: '/statistics/ticket-items/summary', query: { ...ticketItemsParams(applied), groupBy: appliedTicketItemsGroup } })
         .then(response => { if (!cancelled) setTicketItems(response); })
         .catch(error => { if (!cancelled) setTicketItemsError(error instanceof Error ? error.message : '开票数据读取失败'); })
-        .finally(() => { if (!cancelled) setTicketItemsLoading(false); });
+        .finally(() => { finish(); if (!cancelled) setTicketItemsLoading(false); });
     } else {
       setTicketsLoading(true); setTicketsError('');
       request<TicketsResponse>({ url: '/statistics/tickets', query: ticketsParams(applied as TicketListQuery) })
         .then((response) => { if (!cancelled) setTickets(response); })
         .catch((error) => { if (!cancelled) setTicketsError(error instanceof Error && error.message ? error.message : '票据情况读取失败'); })
-        .finally(() => { if (!cancelled) setTicketsLoading(false); });
+        .finally(() => { finish(); if (!cancelled) setTicketsLoading(false); });
     }
     return () => { cancelled = true; };
-  }, [applied, reportRetry, ticketItemsGroup]);
+  }, [applied, appliedTicketItemsGroup]);
 
   const datesFilled = !!draft.paidDateFrom && !!draft.paidDateTo;
   const isLedger = reportType === 'property-summary' || reportType === 'owner-ledger' || reportType === 'building-ledger';
@@ -592,7 +608,7 @@ export default function Statistics() {
   };
 
   const submit = () => {
-    if (!options || !canSubmit) return;
+    if (!options || !canSubmit || requestPendingRef.current) return;
     if (isDateRequired(reportType) && !datesFilled) { toast('请填写收款日期范围'); return; }
     if (reportType === 'arrears-prepaid' && (!draft.asOfPeriod || !draft.paidDateTo)) { toast('请填写统计年月和收款截止日期'); return; }
     if (reportType === 'assessment' && !draft.assessmentYear) { toast('请选择统计年份'); return; }
@@ -614,8 +630,16 @@ export default function Statistics() {
     setDetailTarget(null);
     setCollectionDetailOpen(false);
     setCollectionTarget(null);
-    setApplied(buildQuery(reportType, draft, options));
-    // 统计成功后自动收起为左上角紧凑入口，表格占满宽度、不再被浮层遮挡。
+    const built = buildQuery(reportType, draft, options);
+    const query = built.type === 'arrears-prepaid' ? { ...built, tab: draftArrearsTab } : built;
+    appliedQueryRef.current = query;
+    pageRequestRef.current = null; // A late old page must never append into a regenerated result.
+    setLoadingMore(false);
+    requestPendingRef.current = true;
+    setGenerating(true);
+    setAppliedTicketItemsGroup(ticketItemsGroup);
+    setApplied(query);
+    // 提交即收起筛选，居中展示等待状态；所有输入与类别浏览都不触发计算。
     collapseFilters();
   };
 
@@ -676,7 +700,7 @@ export default function Statistics() {
     }
     setReportType(type);
     setDraft(nextDraft);
-    setApplied(buildQuery(type, nextDraft, options));
+    expandFilters();
   };
 
   const openCell = (target: AnnualCellTarget) => {
@@ -709,9 +733,10 @@ export default function Statistics() {
 
   const switchArrearsTab = (tab: ArrearsPrepaidQuery['tab']) => {
     if (!applied || applied.type !== 'arrears-prepaid' || applied.tab === tab) return;
-    setArrearsDetail(null);
     setArrearsBillsOpen(false);
-    setApplied({ ...applied, tab });
+    setDraftArrearsTab(tab);
+    setReportType('arrears-prepaid');
+    expandFilters();
   };
 
   const openArrearsBills = (row: ArrearsPrepaidDetailRow) => {
@@ -721,34 +746,45 @@ export default function Statistics() {
     setArrearsBillsOpen(true);
   };
 
+  // Pagination is explicit too; serialize each page and reject responses from superseded snapshots.
+  const appendPage = async <T,>(fetchPage: () => Promise<T>, append: (response: T) => void) => {
+    if (!applied || applied !== appliedQueryRef.current || requestPendingRef.current || pageRequestRef.current) return;
+    const operation = { query: applied };
+    pageRequestRef.current = operation;
+    setLoadingMore(true);
+    const current = () => pageRequestRef.current === operation && appliedQueryRef.current === operation.query;
+    try {
+      const response = await fetchPage();
+      if (current()) append(response);
+    } catch (error) {
+      if (current()) toast(error instanceof Error && error.message ? error.message : '加载更多失败');
+    } finally {
+      if (current()) { pageRequestRef.current = null; setLoadingMore(false); }
+    }
+  };
+
   const loadMoreArrears = async () => {
     if (!applied || applied.type !== 'arrears-prepaid' || !arrearsDetail) return;
-    try {
-      const response = await request<ArrearsPrepaidDetailResponse>({
+    await appendPage(() => request<ArrearsPrepaidDetailResponse>({
         url: '/statistics/arrears-prepaid/detail',
         query: arrearsPrepaidDetailParams(applied, arrearsDetail.rows.length),
-      });
+      }), (response) => {
       setArrearsDetail((previous) => (previous
         ? { ...previous, rows: [...previous.rows, ...(response.rows ?? [])], totals: response.totals ?? previous.totals, count: response.count ?? previous.count }
         : response));
-    } catch (e) {
-      toast(e instanceof Error && e.message ? e.message : '加载更多失败');
-    }
+    });
   };
 
   const loadMoreAssessment = async () => {
     if (!applied || applied.type !== 'assessment' || !assessment) return;
-    try {
-      const response = await request<AssessmentResponse>({
+    await appendPage(() => request<AssessmentResponse>({
         url: '/statistics/collection-assessment',
         query: assessmentQueryParams(applied, assessment.rows.length),
-      });
+      }), (response) => {
       setAssessment((previous) => (previous
         ? { ...previous, rows: [...previous.rows, ...(response.rows ?? [])], count: response.count ?? previous.count }
         : response));
-    } catch (e) {
-      toast(e instanceof Error && e.message ? e.message : '加载更多失败');
-    }
+    });
   };
 
   const openAnalysisDetail = (row: CollectionAnalysisResponse['rows'][number]) => {
@@ -758,195 +794,107 @@ export default function Statistics() {
 
   const loadMoreAnalysis = async () => {
     if (!applied || applied.type !== 'collection-analysis' || !analysis) return;
-    try {
-      const response = await request<CollectionAnalysisResponse>({
+    await appendPage(() => request<CollectionAnalysisResponse>({
         url: '/statistics/collection-analysis',
         query: collectionAnalysisParams(applied, analysis.rows.length),
-      });
+      }), (response) => {
       setAnalysis((previous) => (previous
         ? { ...previous, rows: [...previous.rows, ...(response.rows ?? [])], totals: response.totals ?? previous.totals, count: response.count ?? previous.count }
         : response));
-    } catch (e) {
-      toast(e instanceof Error && e.message ? e.message : '加载更多失败');
-    }
+    });
   };
 
   const loadMoreOwnerLedger = async () => {
     if (!applied || applied.type !== 'owner-ledger' || !ownerLedger) return;
-    try {
-      const response = await request<OwnerLedgerResponse>({
+    await appendPage(() => request<OwnerLedgerResponse>({
         url: '/statistics/owner-ledger',
         query: ownerLedgerParams(applied, ownerLedger.rows.length),
-      });
+      }), (response) => {
       setOwnerLedger((previous) => (previous
         ? { ...previous, rows: [...previous.rows, ...(response.rows ?? [])], count: response.count ?? previous.count, totals: response.totals ?? previous.totals }
         : response));
-    } catch (e) {
-      toast(e instanceof Error && e.message ? e.message : '加载更多失败');
-    }
+    });
   };
 
   const loadMoreBuildingLedger = async () => {
     if (!applied || applied.type !== 'building-ledger' || !buildingLedger) return;
-    try {
-      const response = await request<BuildingLedgerResponse>({
+    await appendPage(() => request<BuildingLedgerResponse>({
         url: '/statistics/building-ledger',
         query: buildingLedgerParams(applied, buildingLedger.rows.length),
-      });
+      }), (response) => {
       setBuildingLedger((previous) => (previous
         ? { ...previous, rows: [...previous.rows, ...(response.rows ?? [])], count: response.count ?? previous.count, totals: response.totals ?? previous.totals }
         : response));
-    } catch (e) {
-      toast(e instanceof Error && e.message ? e.message : '加载更多失败');
-    }
+    });
   };
 
   const loadMoreRelief = async () => {
     if (!applied || applied.type !== 'relief' || !relief) return;
-    try {
-      const response = await request<ReliefResponse>({ url: '/statistics/relief', query: reliefParams(applied, relief.rows.length) });
+    await appendPage(() => request<ReliefResponse>({ url: '/statistics/relief', query: reliefParams(applied, relief.rows.length) }), (response) => {
       setRelief((previous) => (previous
         ? { ...previous, rows: [...previous.rows, ...(response.rows ?? [])], totals: response.totals ?? previous.totals, count: response.count ?? previous.count }
         : response));
-    } catch (e) {
-      toast(e instanceof Error && e.message ? e.message : '加载更多失败');
-    }
+    });
   };
 
   const loadMoreSignoffs = async () => {
     if (!applied || applied.type !== 'signoffs' || !signoffs) return;
-    try {
-      const response = await request<SignoffsResponse>({ url: '/statistics/signoffs', query: signoffsParams(applied, signoffs.rows.length) });
+    await appendPage(() => request<SignoffsResponse>({ url: '/statistics/signoffs', query: signoffsParams(applied, signoffs.rows.length) }), (response) => {
       setSignoffs((previous) => (previous
         ? { ...previous, rows: [...previous.rows, ...(response.rows ?? [])], totals: response.totals ?? previous.totals, count: response.count ?? previous.count }
         : response));
-    } catch (e) {
-      toast(e instanceof Error && e.message ? e.message : '加载更多失败');
-    }
+    });
   };
 
   const loadMoreTickets = async () => {
     if (!applied || applied.type !== 'tickets' || !tickets) return;
-    try {
-      const response = await request<TicketsResponse>({ url: '/statistics/tickets', query: ticketsParams(applied as TicketListQuery, tickets.rows.length) });
+    await appendPage(() => request<TicketsResponse>({ url: '/statistics/tickets', query: ticketsParams(applied as TicketListQuery, tickets.rows.length) }), (response) => {
       setTickets((previous) => (previous
         ? { ...previous, rows: [...previous.rows, ...(response.rows ?? [])], totals: response.totals ?? previous.totals, count: response.count ?? previous.count }
         : response));
-    } catch (e) {
-      toast(e instanceof Error && e.message ? e.message : '加载更多失败');
-    }
+    });
   };
 
-  const exportCurrent = () => {
-    if (!applied) return;
-    const stamp = dayjs().format('YYYYMMDD');
-    if (applied.type === 'received' || applied.type === 'arrears') {
-      if (!annual) return;
-      const csv = annualCsv(annual, {
-        dataAsOf: annual.dataAsOf || options?.dataAsOf || null,
-        filters: applied,
-        offices: options?.offices,
-        feeItems: options?.feeItems,
-        natures: options?.natures,
-      });
-      const name = `统计汇总-${reportName(annual.type)}-${stamp}.csv`;
-      if (downloadCsv(name, csv)) toast('已导出当前筛选结果 CSV');
-      else toast('导出失败，请重试');
-      return;
-    }
-    if (applied.type === 'fee-nature') {
-      if (!collection) return;
-      const name = `统计汇总-收费汇总-${stamp}.csv`;
-      if (downloadCsv(name, feeNatureCsv(collection, applied, options?.feeItems))) toast('已导出收费汇总 CSV');
-      else toast('导出失败，请重试');
-      return;
-    }
-    if ((applied.type === 'daily' || applied.type === 'daily-fees')) {
-      if (!daily) return;
-      const name = `统计汇总-${reportName(applied.type)}-${stamp}.csv`;
-      if (downloadCsv(name, dailyCsv(daily, applied as DailyQuery, options?.feeItems))) toast(`已导出${reportName(applied.type)} CSV`);
-      else toast('导出失败，请重试');
-      return;
-    }
-    if (applied.type === 'arrears-prepaid') {
-      if (!arrearsDetail) return;
-      const name = `统计汇总-欠收与溢收汇总-${applied.tab === 'arrears' ? '欠收' : '溢收'}-${stamp}.csv`;
-      if (downloadCsv(name, arrearsPrepaidCsv(arrearsDetail, applied))) toast('已导出欠收与溢收汇总 CSV');
-      else toast('导出失败，请重试');
-      return;
-    }
-    if (applied.type === 'collection-analysis') {
-      if (!analysis) return;
-      const name = `统计汇总-收款分析-${stamp}.csv`;
-      if (downloadCsv(name, collectionAnalysisCsv(analysis, applied))) toast('已导出收款分析 CSV');
-      else toast('导出失败，请重试');
-      return;
-    }
-    if (applied.type === 'monthly-report') {
-      if (!monthlyReport) return;
-      const name = `统计汇总-收费月报表（核心指标）-${stamp}.csv`;
-      if (downloadCsv(name, monthlyReportCsv(monthlyReport, applied as MonthlyReportQuery))) toast('已导出收费月报表 CSV');
-      else toast('导出失败，请重试');
-      return;
-    }
-    if (applied.type === 'property-summary') {
-      if (!propertySummary) return;
-      const name = `统计汇总-房产汇总-${stamp}.csv`;
-      if (downloadCsv(name, propertySummaryCsv(propertySummary, applied))) toast('已导出房产汇总 CSV');
-      else toast('导出失败，请重试');
-      return;
-    }
-    if (applied.type === 'owner-ledger') {
-      if (!ownerLedger) return;
-      const name = `统计汇总-住户台账-${stamp}.csv`;
-      if (downloadCsv(name, ownerLedgerCsv(ownerLedger, applied))) toast('已导出住户台账 CSV');
-      else toast('导出失败，请重试');
-      return;
-    }
-    if (applied.type === 'building-ledger') {
-      if (!buildingLedger) return;
-      const name = `统计汇总-楼房台账-${stamp}.csv`;
-      if (downloadCsv(name, buildingLedgerCsv(buildingLedger, applied as BuildingLedgerQuery))) toast('已导出楼房台账 CSV');
-      else toast('导出失败，请重试');
-      return;
-    }
-    if (applied.type === 'relief') {
-      if (!relief) return;
-      const name = `统计汇总-减免情况统计-${stamp}.csv`;
-      if (downloadCsv(name, reliefCsv(relief, applied))) toast('已导出减免情况统计 CSV');
-      else toast('导出失败，请重试');
-      return;
-    }
-    if (applied.type === 'signoffs') {
-      if (!signoffs) return;
-      const name = `统计汇总-签报情况统计-${stamp}.csv`;
-      if (downloadCsv(name, signoffsCsv(signoffs, applied))) toast('已导出签报情况统计 CSV');
-      else toast('导出失败，请重试');
-      return;
-    }
-    if (applied.type === 'ticket-summary') {
-      if (!ticketSummary) return;
-      const name = `统计汇总-收款汇总表-${stamp}.csv`;
-      if (downloadCsv(name, ticketSummaryCsv(ticketSummary, applied))) toast('已导出收款汇总表 CSV');
-      else toast('导出失败，请重试');
-      return;
-    }
-    if (applied.type === 'ticket-items') {
-      if (ticketItems && downloadCsv(`开票数据统计-${stamp}.csv`, ticketItemsCsv(ticketItems, applied))) toast('已导出开票数据统计 CSV');
-      return;
-    }
-    if (applied.type === 'tickets') {
-      if (!tickets) return;
-      const name = `统计汇总-票据情况统计-${stamp}.csv`;
-      if (downloadCsv(name, ticketsCsv(tickets, applied as TicketListQuery))) toast('已导出票据情况统计 CSV');
-      else toast('导出失败，请重试');
-      return;
-    }
-    if (applied.type === 'assessment') {
-      if (!assessment) return;
-      const name = `统计汇总-收缴考核-${stamp}.csv`;
-      if (downloadCsv(name, assessmentCsv(assessment, applied as AssessmentQuery))) toast('已导出收缴考核 CSV');
-      else toast('导出失败，请重试');
+  const exportCurrent = async () => {
+    if (!applied || !resultRef.current || !hasExportData || isLoading || activeError || activeAvailable === false
+      || exportPendingRef.current || Date.now() - lastExportAtRef.current < 1200) return;
+    exportPendingRef.current = true;
+    lastExportAtRef.current = Date.now();
+    setExporting(true);
+    try {
+      // Freeze the result DOM and applied metadata before async chunk loading. Never query during export.
+      const root = resultRef.current.cloneNode(true) as HTMLElement;
+      const query = applied;
+      const names = (codes: string[], items: Array<{ code: string; name: string }>) => codes.map(code => items.find(item => item.code === code)?.name || code).join('、');
+      const filterLabels: Record<string, string> = {
+        yearFrom: '起始年度', yearTo: '截止年度', year: '统计年度', asOfPeriod: '统计年月',
+        paidDateFrom: '收款起日', paidDateTo: '收款截止日', dateFrom: '开始日期', dateTo: '结束日期',
+        subjectYearFrom: '所属起始年度', subjectYearTo: '所属截止年度', keyword: '关键词',
+        cashier: '收款人', paymentMethods: '收款方式', types: '签报类型', status: '状态', sort: '排序', tab: '明细类别',
+      };
+      const valueLabels: Record<string, string> = { all: '全部', effective: '生效', voided: '作废', open: '未结束', issued: '已开', pre_issue: '预开', written_off: '已核销', currentArrears: '当年欠收', historyArrears: '历年欠收', address: '地址', arrears: '欠收统计', prepaid: '溢收统计' };
+      const subtitles = [
+        `管理处：${names(query.officeCodes, (options?.offices ?? []).map(o => ({ code: o.officeCode, name: o.name })))}`,
+        'feeCodes' in query ? `收费项目：${names(query.feeCodes, options?.feeItems ?? [])}` : '',
+        'natures' in query ? `房屋性质：${names(query.natures, options?.natures ?? [])}` : '',
+        dateRangeText,
+        ...Object.entries(query).filter(([key, value]) => !['type', 'officeCodes', 'feeCodes', 'natures'].includes(key) && value !== '' && value != null).map(([key, value]) => `${filterLabels[key] || key}：${Array.isArray(value) ? value.join('、') : valueLabels[String(value)] || value}`),
+        query.type === 'ticket-items' ? `分组：${appliedTicketItemsGroup === 'fee' ? '收费项目' : appliedTicketItemsGroup === 'office' ? '管理处' : '开票日期'}` : '',
+      ].filter(Boolean);
+      const note = [
+        '仅导出当前已生成报表的已显示结果；不会另行查询或导出其他统计项目。',
+        ...Array.from(root.querySelectorAll('.stats-load-more')).map(node => node.textContent?.trim()),
+        ...Array.from(root.querySelectorAll('.stats-received-hint, .stats-ticket-note, [role=status]')).map(node => node.textContent?.trim()),
+      ].filter(Boolean).join(' ');
+      const metadata = { title: activeLabel, subtitle: subtitles.join('\n'), dataAsOf, note };
+      const { downloadStatisticsXlsx } = await import('@/lib/statistics-xlsx');
+      await downloadStatisticsXlsx(root, metadata);
+      toast('已导出当前查询结果 Excel（1 个文件）');
+    } catch (error) {
+      toast(error instanceof Error && error.message ? error.message : 'Excel 导出失败，请重试');
+    } finally {
+      exportPendingRef.current = false;
+      setExporting(false);
     }
   };
 
@@ -979,7 +927,7 @@ export default function Statistics() {
                           : applied?.type === 'tickets'
                             ? !!tickets
                             : !!annual;
-  const isLoading = applied?.type === 'ticket-items' ? ticketItemsLoading : applied?.type === 'fee-nature'
+  const isLoading = generating || (applied?.type === 'ticket-items' ? ticketItemsLoading : applied?.type === 'fee-nature'
     ? collectionLoading
     : (applied?.type === 'daily' || applied?.type === 'daily-fees')
       ? dailyLoading
@@ -1005,7 +953,7 @@ export default function Statistics() {
                           ? ticketSummaryLoading
                           : applied?.type === 'tickets'
                             ? ticketsLoading
-                            : annualLoading;
+                            : annualLoading);
   const activeError = applied?.type === 'ticket-items' ? ticketItemsError : applied?.type === 'fee-nature'
     ? collectionError
     : (applied?.type === 'daily' || applied?.type === 'daily-fees')
@@ -1133,6 +1081,16 @@ export default function Statistics() {
 
   return (
     <div className="stats">
+      {isLoading ? (
+        <div className="stats-generating" data-testid="stats-generating" role="status" aria-live="polite" aria-atomic="true">
+          <div className="stats-generating-card">
+            <span className="stats-generating-spinner" aria-hidden="true" />
+            <b>正在生成统计报表</b>
+            <span>{activeLabel}</span>
+            <small>正在汇总所选数据，请稍候。数据量较大时需要一些时间，无需重复点击。</small>
+          </div>
+        </div>
+      ) : null}
       <div className="ph" style={{ marginBottom: 14 }}>
         <div>
           <div className="h1row"><ToneIcon kind="dashboard" /><h1 style={{ fontSize: 22 }}>统计汇总</h1></div>
@@ -1141,8 +1099,8 @@ export default function Statistics() {
         <div className="act stats-head-actions">
           {dataAsOf ? <span className="tag mute">数据截止 {dataAsOf}</span> : null}
           {sourceLabel ? <span className="tag acc">{sourceLabel}</span> : null}
-          <button type="button" className="btn sm" disabled={!applied || isLoading} onClick={() => setReportRetry((value) => value + 1)}>
-            <Icon name="refresh" size={15} />刷新
+          <button type="button" className="btn sm" disabled={!applied || isLoading} onClick={expandFilters}>
+            <Icon name="refresh" size={15} />重新生成
           </button>
         </div>
       </div>
@@ -1201,6 +1159,10 @@ export default function Statistics() {
                 reportType={reportType}
                 signoffTypeOptions={signoffTypeOptions}
                 loading={isLoading}
+                ticketItemsGroup={ticketItemsGroup}
+                onTicketItemsGroupChange={setTicketItemsGroup}
+                arrearsTab={draftArrearsTab}
+                onArrearsTabChange={setDraftArrearsTab}
               />
             </div>
             <div className="card stats-catalog">
@@ -1210,7 +1172,7 @@ export default function Statistics() {
                     key={report.type}
                     type="button"
                     data-report-type={report.type}
-                    className={`stats-report-tab${(applied?.type ?? reportType) === report.type ? ' on' : ''}`}
+                    className={`stats-report-tab${reportType === report.type ? ' on' : ''}`}
                     title={report.hint}
                     onClick={() => switchReport(report.type)}
                   >{report.name}</button>
@@ -1223,66 +1185,64 @@ export default function Statistics() {
               </div>
             </div>
 
-            <div className="card stats-result">
+            <div className="card stats-result" ref={resultRef} aria-busy={isLoading}>
               <div className="panelHd stats-result-head">
                 <b>{activeLabel}</b>
-                {applied?.type === 'ticket-items' ? <label className="stats-ticket-group">分组 <select className="in" data-testid="ticket-items-group" value={ticketItemsGroup} onChange={e => { setTicketItemsTarget(null); setTicketItemsGroup(e.target.value as TicketItemsGroup); }}>
-                  <option value="fee">收费项目</option><option value="office">管理处</option><option value="day">开票日期</option>
-                </select></label> : null}
-                {applied?.type === 'fee-nature' && collection && collection.available !== false ? <span className="tag mute">{collection.rows.length} 个收费项目</span> : null}
-                {(applied?.type === 'daily' || applied?.type === 'daily-fees') && daily && daily.available !== false ? <span className="tag mute">{daily.rows.length} 天</span> : null}
-                {applied?.type !== 'fee-nature' && applied?.type !== 'daily' && (applied?.type === 'received' || applied?.type === 'arrears') && annual && annual.available !== false ? <span className="tag mute">{annual.rows.length} 个管理处</span> : null}
-                {activeAvailable !== false && applied?.type === 'received' && annual?.subtotal ? <span className="tag acc">合计 {fmtCents(annual.subtotal.totalCents)}</span> : null}
-                {activeAvailable !== false && applied?.type === 'arrears' && annual?.subtotal ? <span className="tag acc">合计 {fmtCents(annual.subtotal.totalCents)}</span> : null}
-                {activeAvailable !== false && applied?.type === 'fee-nature' && collection?.subtotal ? <span className="tag acc">合计 {fmtCents(collection.subtotal.netCents)}</span> : null}
-                {activeAvailable !== false && (applied?.type === 'daily' || applied?.type === 'daily-fees') && daily?.subtotal ? <span className="tag acc">合计 {fmtCents(daily.subtotal.totalCents)}</span> : null}
-                {activeAvailable !== false && applied?.type === 'arrears-prepaid' && arrearsSummary?.total ? (
+                {applied?.type === 'ticket-items' ? <span className="tag mute">分组：{appliedTicketItemsGroup === 'fee' ? '收费项目' : appliedTicketItemsGroup === 'office' ? '管理处' : '开票日期'}</span> : null}
+                {!isLoading && !activeError && applied?.type === 'fee-nature' && collection && collection.available !== false ? <span className="tag mute">{collection.rows.length} 个收费项目</span> : null}
+                {!isLoading && !activeError && (applied?.type === 'daily' || applied?.type === 'daily-fees') && daily && daily.available !== false ? <span className="tag mute">{daily.rows.length} 天</span> : null}
+                {!isLoading && !activeError && (applied?.type === 'received' || applied?.type === 'arrears') && annual && annual.available !== false ? <span className="tag mute">{annual.rows.length} 个管理处</span> : null}
+                {!isLoading && !activeError && activeAvailable !== false && applied?.type === 'received' && annual?.subtotal ? <span className="tag acc">合计 {fmtCents(annual.subtotal.totalCents)}</span> : null}
+                {!isLoading && !activeError && activeAvailable !== false && applied?.type === 'arrears' && annual?.subtotal ? <span className="tag acc">合计 {fmtCents(annual.subtotal.totalCents)}</span> : null}
+                {!isLoading && !activeError && activeAvailable !== false && applied?.type === 'fee-nature' && collection?.subtotal ? <span className="tag acc">合计 {fmtCents(collection.subtotal.netCents)}</span> : null}
+                {!isLoading && !activeError && activeAvailable !== false && (applied?.type === 'daily' || applied?.type === 'daily-fees') && daily?.subtotal ? <span className="tag acc">合计 {fmtCents(daily.subtotal.totalCents)}</span> : null}
+                {!isLoading && !activeError && activeAvailable !== false && applied?.type === 'arrears-prepaid' && arrearsSummary?.total ? (
                   <span className="tag acc">欠收 {fmtCents(arrearsSummary.total.arrearsCents)}</span>
                 ) : null}
-                {activeAvailable !== false && applied?.type === 'arrears-prepaid' && arrearsSummary?.total ? (
+                {!isLoading && !activeError && activeAvailable !== false && applied?.type === 'arrears-prepaid' && arrearsSummary?.total ? (
                   <span className="tag warn">溢收 {fmtCents(arrearsSummary.total.prepaidCents)}</span>
                 ) : null}
-                {activeAvailable !== false && applied?.type === 'assessment' && assessment?.summary ? (
+                {!isLoading && !activeError && activeAvailable !== false && applied?.type === 'assessment' && assessment?.summary ? (
                   <span className="tag acc">收缴率 {Number(assessment.summary.ratePct || 0).toFixed(2)}%</span>
                 ) : null}
-                {activeAvailable !== false && applied?.type === 'collection-analysis' && analysis ? (
+                {!isLoading && !activeError && activeAvailable !== false && applied?.type === 'collection-analysis' && analysis ? (
                   <span className="tag mute">{analysis.rows.length} 户</span>
                 ) : null}
-                {activeAvailable !== false && applied?.type === 'monthly-report' && monthlyReport?.totals ? (
+                {!isLoading && !activeError && activeAvailable !== false && applied?.type === 'monthly-report' && monthlyReport?.totals ? (
                   <span className="tag acc">本期回收率 {Number(monthlyReport.totals.recoveryRatePct || 0).toFixed(2)}%</span>
                 ) : null}
-                {activeAvailable !== false && applied?.type === 'property-summary' && propertySummary ? (
+                {!isLoading && !activeError && activeAvailable !== false && applied?.type === 'property-summary' && propertySummary ? (
                   <span className="tag mute">{propertySummary.rows.length} 个管理处</span>
                 ) : null}
-                {activeAvailable !== false && applied?.type === 'owner-ledger' && ownerLedger ? (
+                {!isLoading && !activeError && activeAvailable !== false && applied?.type === 'owner-ledger' && ownerLedger ? (
                   <span className="tag mute">{ownerLedger.count ?? ownerLedger.rows.length} 户</span>
                 ) : null}
-                {activeAvailable !== false && applied?.type === 'building-ledger' && buildingLedger ? (
+                {!isLoading && !activeError && activeAvailable !== false && applied?.type === 'building-ledger' && buildingLedger ? (
                   <span className="tag mute">{buildingLedger.count ?? buildingLedger.rows.length} 栋</span>
                 ) : null}
-                {activeAvailable !== false && applied?.type === 'relief' && relief ? (
+                {!isLoading && !activeError && activeAvailable !== false && applied?.type === 'relief' && relief ? (
                   <span className="tag mute">{relief.count ?? relief.rows.length} 条</span>
                 ) : null}
-                {activeAvailable !== false && applied?.type === 'signoffs' && signoffs ? (
+                {!isLoading && !activeError && activeAvailable !== false && applied?.type === 'signoffs' && signoffs ? (
                   <span className="tag mute">{signoffs.count ?? signoffs.rows.length} 件</span>
                 ) : null}
-                {activeAvailable !== false && applied?.type === 'ticket-summary' && ticketSummary?.totals ? (
+                {!isLoading && !activeError && activeAvailable !== false && applied?.type === 'ticket-summary' && ticketSummary?.totals ? (
                   <span className="tag acc">合计 {fmtCents(ticketSummary.totals.netCents)}</span>
                 ) : null}
-                {activeAvailable !== false && applied?.type === 'tickets' && tickets ? (
+                {!isLoading && !activeError && activeAvailable !== false && applied?.type === 'tickets' && tickets ? (
                   <span className="tag mute">{tickets.count ?? tickets.rows.length} 张</span>
                 ) : null}
                 {applied?.type === 'received' || applied?.type === 'arrears' ? (
-                  annual?.columns?.length ? <span className="muted stats-range">{annual.columns[0]}–{annual.columns[annual.columns.length - 1]} 年度</span> : null
+                  !isLoading && !activeError && annual?.columns?.length ? <span className="muted stats-range">{annual.columns[0]}–{annual.columns[annual.columns.length - 1]} 年度</span> : null
                 ) : dateRangeText ? <span className="muted stats-range">{dateRangeText}</span> : null}
-                <span className="muted stats-as-of">{dataAsOf ? `数据截止 ${dataAsOf}` : ''}</span>
+                <span className="muted stats-as-of">{!isLoading && !activeError && dataAsOf ? `数据截止 ${dataAsOf}` : ''}</span>
                 <button
                   type="button"
                   className="btn sm stats-export"
                   data-testid="stats-export"
-                  disabled={!hasExportData || isLoading || activeAvailable === false}
-                  title="导出当前筛选结果 CSV（Excel 可直接打开）"
-                  onClick={exportCurrent}
+                  disabled={!hasExportData || isLoading || !!activeError || exporting || activeAvailable === false}
+                  title="仅导出当前已生成报表（XLSX，保留表格格式）"
+                  onClick={() => void exportCurrent()}
                 >
                   <Icon name="download" size={15} />导出 Excel
                 </button>
@@ -1351,10 +1311,17 @@ export default function Statistics() {
                 </div>
               ) : null}
 
-              {isLoading ? <Loading text="统计中…" /> : activeError ? (
+              {!applied ? (
+                <div className="empty stats-awaiting" data-testid="stats-awaiting">
+                  <Icon name="chart" size={32} />
+                  <b>选择统计项目，按需生成报表</b>
+                  <span>选择项目后设置筛选条件，点击「生成统计报表」才会开始查询。</span>
+                  <button type="button" className="btn p" onClick={expandFilters}>设置筛选条件</button>
+                </div>
+              ) : isLoading ? <div className="empty">正在生成，请留意页面中央的查询进度提示</div> : activeError ? (
                 <div className="note2" role="alert" style={{ background: 'var(--dang-w)', color: 'var(--dang)' }}>
                   <Icon name="alert" />{activeError}
-                  <button className="btn sm" style={{ marginLeft: 10 }} onClick={() => setReportRetry((value) => value + 1)}>重试</button>
+                  <button className="btn sm" style={{ marginLeft: 10 }} onClick={expandFilters}>重试</button>
                 </div>
               ) : applied?.type === 'fee-nature' ? (
                 collection ? (
@@ -1407,7 +1374,7 @@ export default function Statistics() {
                           <ArrearsPrepaidTable report={arrearsDetail} tab={applied.tab} onView={openArrearsBills} />
                           {arrearsDetail.count != null && arrearsDetail.rows.length < arrearsDetail.count ? (
                             <div className="stats-load-more">
-                              <button type="button" className="btn sm" onClick={() => void loadMoreArrears()}>
+                              <button type="button" className="btn sm" disabled={loadingMore || isLoading} onClick={() => void loadMoreArrears()}>
                                 加载更多（已显示 {arrearsDetail.rows.length}/{arrearsDetail.count}）
                               </button>
                             </div>
@@ -1437,7 +1404,7 @@ export default function Statistics() {
                           <AssessmentTable report={assessment} />
                           {assessment.count != null && assessment.rows.length < assessment.count ? (
                             <div className="stats-load-more">
-                              <button type="button" className="btn sm" onClick={() => void loadMoreAssessment()}>
+                              <button type="button" className="btn sm" disabled={loadingMore || isLoading} onClick={() => void loadMoreAssessment()}>
                                 加载更多（已显示 {assessment.rows.length}/{assessment.count}）
                               </button>
                             </div>
@@ -1456,7 +1423,7 @@ export default function Statistics() {
                       <CollectionAnalysisTable report={analysis} onRowClick={openAnalysisDetail} />
                       {analysis.count != null && analysis.rows.length < analysis.count ? (
                         <div className="stats-load-more">
-                          <button type="button" className="btn sm" onClick={() => void loadMoreAnalysis()}>
+                          <button type="button" className="btn sm" disabled={loadingMore || isLoading} onClick={() => void loadMoreAnalysis()}>
                             加载更多（已显示 {analysis.rows.length}/{analysis.count}）
                           </button>
                         </div>
@@ -1489,7 +1456,7 @@ export default function Statistics() {
                       <OwnerLedgerTable report={ownerLedger} />
                       {ownerLedger.count != null && ownerLedger.rows.length < ownerLedger.count ? (
                         <div className="stats-load-more">
-                          <button type="button" className="btn sm" onClick={() => void loadMoreOwnerLedger()}>
+                          <button type="button" className="btn sm" disabled={loadingMore || isLoading} onClick={() => void loadMoreOwnerLedger()}>
                             加载更多（已显示 {ownerLedger.rows.length}/{ownerLedger.count}）
                           </button>
                         </div>
@@ -1506,7 +1473,7 @@ export default function Statistics() {
                       <BuildingLedgerTable report={buildingLedger} />
                       {buildingLedger.count != null && buildingLedger.rows.length < buildingLedger.count ? (
                         <div className="stats-load-more">
-                          <button type="button" className="btn sm" onClick={() => void loadMoreBuildingLedger()}>
+                          <button type="button" className="btn sm" disabled={loadingMore || isLoading} onClick={() => void loadMoreBuildingLedger()}>
                             加载更多（已显示 {buildingLedger.rows.length}/{buildingLedger.count}）
                           </button>
                         </div>
@@ -1523,7 +1490,7 @@ export default function Statistics() {
                       <ReliefTable report={relief} />
                       {relief.count != null && relief.rows.length < relief.count ? (
                         <div className="stats-load-more">
-                          <button type="button" className="btn sm" onClick={() => void loadMoreRelief()}>
+                          <button type="button" className="btn sm" disabled={loadingMore || isLoading} onClick={() => void loadMoreRelief()}>
                             加载更多（已显示 {relief.rows.length}/{relief.count}）
                           </button>
                         </div>
@@ -1540,7 +1507,7 @@ export default function Statistics() {
                       <SignoffsTable report={signoffs} />
                       {signoffs.count != null && signoffs.rows.length < signoffs.count ? (
                         <div className="stats-load-more">
-                          <button type="button" className="btn sm" onClick={() => void loadMoreSignoffs()}>
+                          <button type="button" className="btn sm" disabled={loadingMore || isLoading} onClick={() => void loadMoreSignoffs()}>
                             加载更多（已显示 {signoffs.rows.length}/{signoffs.count}）
                           </button>
                         </div>
@@ -1570,7 +1537,7 @@ export default function Statistics() {
                       <TicketsTable report={tickets} onOpen={row => setTicketItemsTarget({ ticketId: row.id, label: row.ticketNo || '未编号票据' })} />
                       {tickets.count != null && tickets.rows.length < tickets.count ? (
                         <div className="stats-load-more">
-                          <button type="button" className="btn sm" onClick={() => void loadMoreTickets()}>
+                          <button type="button" className="btn sm" disabled={loadingMore || isLoading} onClick={() => void loadMoreTickets()}>
                             加载更多（已显示 {tickets.rows.length}/{tickets.count}）
                           </button>
                         </div>

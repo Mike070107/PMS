@@ -39,6 +39,85 @@ async function openFilters(js, waitFor) {
   assert.ok(await js("!document.querySelector('.stats-filter-float').inert && document.querySelector('.stats-filter-float').getAttribute('aria-hidden')==='false'"), 'open filters are explicitly interactive');
 }
 
+/** 显式生成；等到本次请求真正发出且中央忙碌态结束，不能误读旧表。 */
+async function generateStatistics(js, waitFor) {
+  await openFilters(js, waitFor);
+  await waitFor("!!document.querySelector('[data-testid=stats-submit]') && !document.querySelector('[data-testid=stats-submit]').disabled", '字典及必填筛选就绪', 25000);
+  const before = await js("window.__calls.filter(c => c.url !== '/statistics/options').length");
+  await js("document.querySelector('[data-testid=stats-submit]').click()");
+  await waitFor(`window.__calls.filter(c => c.url !== '/statistics/options').length > ${before}`, '显式生成发出请求', 25000);
+  await waitFor("!document.querySelector('[data-testid=stats-generating]') && document.querySelector('.stats-result')?.getAttribute('aria-busy') === 'false'", '本次统计结束', 25000);
+}
+
+async function generateInitial(js, waitFor) {
+  await waitFor("!!document.querySelector('[data-testid=stats-submit]')", '筛选字典加载完成', 25000);
+  // 只处理尚无 applied 的初次进入，不偷偷重生成已有结果或错误。
+  if (await js("!!document.querySelector('[data-testid=stats-awaiting]')")) {
+    assert.equal(await js("window.__calls.filter(c => c.url !== '/statistics/options').length"), 0, '首次进入只加载 options');
+    await generateStatistics(js, waitFor);
+  }
+  await waitFor("!document.querySelector('[data-testid=stats-generating]') && document.querySelector('.stats-result')?.getAttribute('aria-busy') === 'false'", '初始统计完成', 25000);
+}
+
+async function selectReportAndGenerate(js, waitFor, type) {
+  await js(`document.querySelector('[data-report-type="${type}"]').click()`);
+  await waitFor(`document.querySelector('[data-report-type="${type}"]').classList.contains('on') && document.querySelector('.stats-filter-entry').getAttribute('aria-expanded') === 'true'`, '选择项目仅展开筛选');
+  await generateStatistics(js, waitFor);
+}
+
+// 一个页面只装一次；数组可以重置，绝不层层包装 createObjectURL 导致假重复。
+const captureDownloads = `(() => {
+  if (window.__statisticsDownloadsInstalled) return;
+  window.__statisticsDownloadsInstalled = true;
+  window.__blobs = []; window.__downloads = [];
+  const create = URL.createObjectURL.bind(URL);
+  const click = HTMLAnchorElement.prototype.click;
+  URL.createObjectURL = blob => { window.__blobs.push(blob); return create(blob); };
+  HTMLAnchorElement.prototype.click = function () {
+    if (this.download) {
+      window.__downloads.push({ name: this.download, href: this.href });
+      return; // CDP 同时设 deny；内存断言永远不触发真实下载。
+    }
+    return click.call(this);
+  };
+})()`;
+
+let xlsxParser;
+function readXlsx(bytes) {
+  // 复用仓内已有 Excel 解析器，独立验证生成的 OOXML，不新增依赖。
+  if (!xlsxParser) xlsxParser = createRequire(path.resolve(app, '../admin-web/package.json'))('xlsx');
+  return xlsxParser.read(Buffer.from(bytes), { type: 'buffer', cellNF: true, cellStyles: true });
+}
+
+async function exportXlsx(js, waitFor, title, fragments = []) {
+  await waitFor("!document.querySelector('[data-testid=stats-export]').disabled", '当前结果可导出');
+  const before = await js('window.__calls.length');
+  await js("window.__blobs = []; window.__downloads = []; document.querySelector('[data-testid=stats-export]').click(); document.querySelector('[data-testid=stats-export]').click()");
+  await waitFor('window.__blobs.length >= 1 && window.__downloads.length >= 1', '异步 Excel 导出');
+  await waitFor("!document.querySelector('[data-testid=stats-export]').disabled", 'Excel 导出结束');
+  assert.equal(await js('window.__blobs.length'), 1, '重复点击仅创建一个 Blob');
+  const downloads = await js('window.__downloads');
+  assert.equal(downloads.length, 1, '只点击一个下载 anchor');
+  assert.match(downloads[0].name, /\.xlsx$/i);
+  assert.match(downloads[0].href, /^blob:/);
+  const captured = await js('(async () => ({ type: window.__blobs[0].type, bytes: [...new Uint8Array(await window.__blobs[0].arrayBuffer())] }))()');
+  assert.equal(captured.type, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  assert.deepEqual(captured.bytes.slice(0, 4), [0x50, 0x4b, 0x03, 0x04], '真实 XLSX ZIP，不是改后缀的 CSV');
+  const workbook = readXlsx(captured.bytes);
+  assert.equal(workbook.SheetNames.length, 1, '当前报表及其副表在一个工作表，不导出报表目录');
+  fs.writeFileSync(path.join(evidenceDir, `export-${title.replace(/[\\/:*?"<>|]/g, '_')}.xlsx`), Buffer.from(captured.bytes));
+  const rows = workbook.SheetNames.flatMap(name => xlsxParser.utils.sheet_to_json(workbook.Sheets[name], { header: 1, raw: false, defval: '' }));
+  const text = rows.map(row => row.join(' ')).join('\n');
+  const normalize = value => String(value).replace(/[¥￥,\s]/g, '');
+  for (const fragment of [title, ...fragments]) assert.ok(normalize(text).includes(normalize(fragment)), `XLSX 包含 ${fragment}`);
+  assert.equal(await js('window.__calls.length'), before, '主报表仅导出当前 DOM 已加载行，不另查全量或其他报表');
+  // 快速二次导出被 1200ms 门闩拒绝；不把异步导出完成当作可无限连点。
+  await js("document.querySelector('[data-testid=stats-export]').click()");
+  assert.equal(await js('window.__blobs.length'), 1);
+  assert.equal(await js('window.__downloads.length'), 1);
+  return { workbook, rows, text };
+}
+
 test('统计汇总金额/CSV 纯函数：整数分格式化、UTF-8 BOM、筛选参数', () => {
   const lib = loadStatisticsLib();
   assert.equal(lib.fmtCents(74518210), '¥745,182.10');
@@ -496,7 +575,7 @@ async function withPage(run, query = '') {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const url = `http://127.0.0.1:${server.address().port}/fixture.html${query}`;
   const profile = path.join(evidenceDir, 'chrome-' + Date.now() + '-' + Math.random().toString(16).slice(2));
-  const child = spawn(chrome, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--disable-gpu', url], { stdio: 'ignore' });
+  const child = spawn(chrome, ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run', '--disable-gpu', 'about:blank'], { stdio: 'ignore' });
   let socket;
   try {
     // Chrome 刚写出 DevToolsActivePort 时文件可能仍被占用（EBUSY），重试到能读出端口为止。
@@ -513,10 +592,10 @@ async function withPage(run, query = '') {
     let tabs;
     for (let attempt = 0; attempt < 150; attempt += 1) {
       tabs = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-      if (tabs.find((tab) => tab.url === url)) break;
+      if (tabs.find((tab) => tab.url === 'about:blank')) break;
       await pause(100);
     }
-    const tab = tabs.find((item) => item.url === url);
+    const tab = tabs.find((item) => item.url === 'about:blank');
     assert.ok(tab, 'Chrome 没有打开统计夹具页面');
     socket = new WebSocket(tab.webSocketDebuggerUrl);
     await new Promise((resolve) => socket.addEventListener('open', resolve, { once: true }));
@@ -558,7 +637,13 @@ async function withPage(run, query = '') {
       const shot = await call('Page.captureScreenshot', { format: 'png' });
       fs.writeFileSync(path.join(evidenceDir, name), Buffer.from(shot.data, 'base64'));
     };
+    // Test exports inspect in-memory Blobs; never write hundreds of files to the operator's Downloads.
+    await call('Browser.setDownloadBehavior', { behavior: 'deny' });
+    await call('Page.enable');
+    await call('Page.addScriptToEvaluateOnNewDocument', { source: captureDownloads });
     await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await call('Page.navigate', { url });
+    await waitFor('window.__statisticsDownloadsInstalled && Array.isArray(window.__calls)', '文档及下载捕获器就绪');
     await run({ js, call, waitFor, screenshot });
   } finally {
     socket?.close();
@@ -567,10 +652,101 @@ async function withPage(run, query = '') {
   }
 }
 
-test('统计汇总：默认年度表、筛选参数、三级下钻、错误重试、CSV 导出、窄屏卡片', { timeout: 180000 }, async () => {
+test('统计汇总：仅生成按钮触发统计，浏览类别零计算，防重复提交与居中等待', { timeout: 90000 }, async () => {
+  await withPage(async ({ js, call, waitFor, screenshot }) => {
+    await waitFor("!!document.querySelector('[data-report-type=received]')", '统计目录加载');
+    const reportCalls = "window.__calls.filter(c => c.url !== '/statistics/options')";
+    assert.equal(await js(`${reportCalls}.length`), 0, '初次进入只读筛选字典，不计算年度报表');
+    assert.ok(await js("document.body.textContent.includes('生成统计报表')"));
+    for (const type of ['arrears', 'fee-nature', 'daily', 'assessment', 'ticket-items', 'received']) {
+      await js(`document.querySelector('[data-report-type="${type}"]').click()`);
+      await waitFor("document.querySelector('[data-testid=stats-filter-toggle]').getAttribute('aria-expanded')==='true'", '选择类别自动展开筛选');
+      assert.equal(await js(`${reportCalls}.length`), 0, `${type} 仅浏览，不计算`);
+      assert.ok(await js(`document.querySelector('[data-report-type="${type}"]').classList.contains('on')`));
+    }
+    await js("window.__requestPlans.push({id:'manual-pending',url:'/statistics/annual',hold:true});document.querySelector('[data-testid=stats-submit]').click();document.querySelector('[data-testid=stats-submit]').click()");
+    await waitFor("!!document.querySelector('[data-testid=stats-generating]')", '页面中央等待状态');
+    assert.equal(await js(`${reportCalls}.length`), 1, '同步重复点击只触发一次统计');
+    assert.ok(await js("document.querySelector('[data-testid=stats-export]').disabled"));
+    assert.ok(await js("document.querySelector('[data-testid=stats-submit]').disabled"));
+    assert.ok(await js("(() => { const r=document.querySelector('.stats-generating-card').getBoundingClientRect();return Math.abs(r.x+r.width/2-innerWidth/2)<2 && Math.abs(r.y+r.height/2-innerHeight/2)<2; })()"), '加载卡片居中，不推挤结果区');
+    await screenshot('statistics-generating-1440.png');
+    await js("document.querySelector('[data-report-type=daily]').click()");
+    assert.equal(await js(`${reportCalls}.length`), 1, '计算中浏览其它类别仍不追加请求');
+    await js("window.__pendingRequests.find(r=>r.id==='manual-pending').release()");
+    await waitFor("!!document.querySelector('.stats-annual-table') && !document.querySelector('[data-testid=stats-generating]')", '手动生成成功');
+    assert.ok(await js("document.querySelector('.stats-result-head').textContent.includes('项目实收年度汇总')"), '已生成结果标题不随草稿类别改变');
+    assert.ok(await js("document.querySelector('[data-report-type=daily]').classList.contains('on')"), '类别选择仍为草稿项目');
+    await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
+    await js("window.__requestPlans.push({id:'manual-error',url:'/statistics/daily',hold:true,fail:true});document.querySelector('[data-testid=stats-submit]').click()");
+    await waitFor("!!document.querySelector('[data-testid=stats-generating]')", '窄屏等待');
+    await screenshot('statistics-generating-390.png');
+    await js("window.__pendingRequests.find(r=>r.id==='manual-error').release()");
+    await waitFor("!!document.querySelector('.stats-result [role=alert]') && !document.querySelector('[data-testid=stats-generating]')", '失败结束等待');
+    assert.ok(await js("document.querySelector('[data-testid=stats-export]').disabled"), '失败不可导出上一次结果冒充当前结果');
+    assert.equal(await js(`${reportCalls}.length`), 2);
+    await screenshot('statistics-manual-error-390.png');
+
+    // 同类型已有成功结果后换筛选失败，不能复用上一份数据恢复导出按钮。
+    await js("document.querySelector('.stats-result [role=alert] button').click()");
+    assert.equal(await js(`${reportCalls}.length`), 2, '重试只打开筛选，不直接重算');
+    await js("document.querySelector('[data-testid=stats-submit]').click()");
+    await waitFor("!!document.querySelector('[data-testid=daily-table]') && !document.querySelector('[data-testid=stats-generating]')", '同类型先成功生成');
+    assert.equal(await js("document.querySelector('[data-testid=stats-export]').disabled"), false);
+    await js("document.querySelector('.stats-filter-entry').click()");
+    await waitFor("document.querySelector('.stats-filter-entry').getAttribute('aria-expanded')==='true'", '重新打开日筛选');
+    await js("document.querySelector('[data-office-code=\"02\"]').click()");
+    assert.equal(await js(`${reportCalls}.length`), 3, '修改同类型筛选仍不计算');
+    await js("window.__requestPlans.push({id:'same-type-error',url:'/statistics/daily',hold:true,fail:true}); document.querySelector('[data-testid=stats-submit]').click()");
+    await waitFor("window.__pendingRequests.some(r=>r.id==='same-type-error') && !!document.querySelector('[data-testid=stats-generating]')", '同类型新筛选等待');
+    assert.ok(await js("document.querySelector('[data-testid=stats-export]').disabled"));
+    assert.ok((await js("document.querySelector('[data-testid=stats-submit]').textContent")).includes('正在生成…'));
+    await js("window.__pendingRequests.find(r=>r.id==='same-type-error').release()");
+    await waitFor("!!document.querySelector('.stats-result [role=alert]') && !document.querySelector('[data-testid=stats-generating]')", '同类型新筛选失败');
+    assert.ok(await js("document.querySelector('[data-testid=stats-export]').disabled"), '已有同类型旧数据也不可导出为新筛选结果');
+    assert.equal(await js(`${reportCalls}.length`), 4);
+    assert.equal(await js('window.__downloads.length'), 0, '失败不能下载旧结果');
+  }, '?no-auto-open&manual-generation');
+});
+
+test('统计主表分页：同步防重，重新生成后隔离迟到成功与失败', { timeout: 90000 }, async () => {
+  await withPage(async ({ js, waitFor }) => {
+    await waitFor("!!document.querySelector('[data-report-type=owner-ledger]')", '目录就绪');
+    for (const fail of [false, true]) {
+      await js("document.querySelector('[data-report-type=owner-ledger]').click()");
+      await openFilters(js, waitFor);
+      const setKeyword = async value => {
+        await js(`(() => { const el=document.querySelector('[data-testid=ledger-keyword]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,${JSON.stringify(value)}); el.dispatchEvent(new Event('input',{bubbles:true})); })()`);
+      };
+      await setKeyword('');
+      await generateStatistics(js, waitFor);
+      await waitFor("document.querySelectorAll('[data-testid=owner-ledger-table] tbody tr[data-s-id]').length===200", '初始分页');
+      const id = fail ? 'main-page-old-failure' : 'main-page-old-success';
+      const before = await js("window.__calls.filter(c=>c.url==='/statistics/owner-ledger').length");
+      await js(`window.__requestPlans.push({id:'${id}',url:'/statistics/owner-ledger',offset:200,hold:true,fail:${fail}}); document.querySelector('.stats-load-more button').click(); document.querySelector('.stats-load-more button').click()`);
+      await waitFor(`window.__pendingRequests.some(r=>r.id==='${id}')`, '旧分页等待');
+      assert.equal(await js("window.__calls.filter(c=>c.url==='/statistics/owner-ledger').length"), before + 1);
+      assert.ok(await js("document.querySelector('.stats-load-more button').disabled"));
+      await openFilters(js, waitFor);
+      await setKeyword('合成业主199');
+      await generateStatistics(js, waitFor);
+      await waitFor("document.querySelectorAll('[data-testid=owner-ledger-table] tbody tr[data-s-id]').length===1", '新查询结果');
+      await js(`window.__pendingRequests.find(r=>r.id==='${id}').release()`);
+      await waitFor(`window.__finishedRequests.includes('${id}')`, '旧请求结束');
+      await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+      assert.equal(await js("document.querySelectorAll('[data-testid=owner-ledger-table] tbody tr[data-s-id]').length"), 1, '迟到旧页不能追加到新条件');
+      assert.equal(await js("!!document.querySelector('.stats-result [role=alert]')"), false, '旧失败不覆盖新结果');
+    }
+  });
+});
+
+test('统计汇总：默认年度表、筛选参数、三级下钻、错误重试、XLSX 导出、窄屏卡片', { timeout: 180000 }, async () => {
   await withPage(async ({ js, call, waitFor, screenshot }) => {
     await waitFor("!!document.querySelector('.stats')", '统计页挂载', 25000);
+    await generateInitial(js, waitFor);
     await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度汇总表', 25000);
+
+    await openFilters(js, waitFor);
 
     // 报表目录：四张启用、其余灰字「待接入」，不是假按钮；收费汇总/收款日报表已启用。
     assert.equal(await js("document.querySelector('[data-report-type=received]').classList.contains('on')"), true);
@@ -774,7 +950,7 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     assert.equal(await js("getComputedStyle(document.querySelector('.stats-annual-table tbody td.stats-office-col')).left"), '56px', '管理处列应紧贴编号列左侧固定');
 
     // 切到项目欠费年度汇总：02×2014=¥477.90，02 合计 ¥745,182.10（生产验收基准）。
-    await js("document.querySelector('[data-report-type=arrears]').click()");
+    await selectReportAndGenerate(js, waitFor, 'arrears');
     await waitFor("document.querySelector('[data-office-code=\"02\"][data-year=\"2014\"]')?.textContent.includes('¥477.90')", '欠费 02×2014 单元格');
     assert.ok(await js("!!document.querySelector('[data-testid=asof-period-field]')"), '欠费报表展示应收截止年月');
     assert.equal(await js("!!document.querySelector('[data-testid=asof-period-hint]')"), false);
@@ -794,7 +970,7 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     await screenshot('statistics-arrears-natures-1440.png');
     await js("document.querySelector('.stats-filter-body').scrollTop = 0");
     // 再切回实收：默认值自动恢复 13 项（含 06）。
-    await js("document.querySelector('[data-report-type=received]').click()");
+    await selectReportAndGenerate(js, waitFor, 'received');
     await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/annual'); const last = list[list.length - 1]; return last && last.query.type === 'received' && last.query.natures === '" + receivedDefaultNatures + "'; })()", '实收默认房屋性质自动包含 06');
     assert.equal(await js("document.querySelector('[data-nature-code=\"06\"]').checked"), true, '切回实收后 06 空房恢复勾选');
     // 用户手动改过房屋性质后切换报表：保留用户选择，不强制套默认值。
@@ -802,7 +978,7 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     await pause(200);
     await js("document.querySelector('[data-nature-code=\"01\"]').click()");
     await pause(200);
-    await js("document.querySelector('[data-report-type=arrears]').click()");
+    await selectReportAndGenerate(js, waitFor, 'arrears');
     await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/annual'); const last = list[list.length - 1]; return last && last.query.type === 'arrears' && last.query.natures === '01'; })()", '手动房屋性质在切换报表后保留');
     assert.equal(await js("document.querySelector('[data-nature-code=\"01\"]').checked"), true, '手动选择 01 保留');
     assert.equal(await js("[...document.querySelectorAll('[data-nature-code]')].filter((el) => el.checked).length"), 1);
@@ -910,6 +1086,7 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     await screenshot('statistics-error-1440.png');
     await js('window.__annualFail = false');
     await js("(() => { const button = [...document.querySelectorAll('.stats-result button')].find((e) => e.textContent.trim() === '重试'); button.click(); })()");
+    await generateStatistics(js, waitFor);
     await waitFor("!!document.querySelector('.stats-annual-table')", '重试后恢复年度表');
 
     // 未镜像：annual.available=false + message 时优先显示后端说明，不渲染空表/通用「暂无数据」。
@@ -925,16 +1102,8 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     await js("document.querySelector('[data-testid=stats-submit]').click()");
     await waitFor("!!document.querySelector('.stats-annual-table')", '未镜像恢复后年度表');
 
-    // 导出 CSV：UTF-8 BOM、含当前报表/筛选与合计行。
-    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
-    await js("document.querySelector('[data-testid=stats-export]').click()");
-    await waitFor("window.__blobs.length >= 1", 'CSV Blob');
-    const csv = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], report: text.includes('项目欠费年度汇总'), header: text.includes('管理处,2004'), subtotal: text.includes('小计'), length: text.length }; })()");
-    assert.deepEqual(csv.bom, [0xEF, 0xBB, 0xBF], 'CSV 必须带 UTF-8 BOM');
-    assert.ok(csv.report, 'CSV 应含当前报表名');
-    assert.ok(csv.header, 'CSV 应含年度表头');
-    assert.ok(csv.subtotal, 'CSV 应含小计行');
-    assert.ok(csv.length > 200);
+    // 导出当前 DOM 的格式化 XLSX：报表、筛选及合计。
+    await exportXlsx(js, waitFor, "项目欠费年度汇总", ["管理处","2004","小计","745,182.10"]);
     // 等导出 toast 消失再截窄屏图，避免浮层遮住表格表头。
     await pause(2600);
 
@@ -944,6 +1113,7 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     await call('Page.reload', { ignoreCache: true });
     await pause(900);
     await waitFor("!!document.querySelector('.stats')", '窄屏重载统计页', 25000);
+    await generateInitial(js, waitFor);
     await waitFor("document.querySelectorAll('.stats-office-card').length >= 1", '窄屏卡片', 25000);
     assert.equal(await js("!!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')"), false, '窄屏默认收起筛选面板');
     assert.ok((await js("document.querySelector('[data-testid=stats-filter-toggle]').textContent")).includes('筛选'));
@@ -1000,6 +1170,7 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
 
     // 收款日期范围：实收请求带 paidDateFrom/paidDateTo；欠费不带；from>to 时 toast 且不发请求。
     const typeRangeDate = async (index, text) => {
+      await openFilters(js, waitFor);
       const stateKey = index === 0 ? 'dateFrom' : 'dateTo';
       const keyEvent = (type, params) => call('Input.dispatchKeyEvent', { type, ...params });
       for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -1020,7 +1191,7 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
       }
       assert.fail(`收款日期输入未生效：${text}`);
     };
-    await js("document.querySelector('[data-report-type=received]').click()");
+    await selectReportAndGenerate(js, waitFor, 'received');
     await waitFor("document.querySelector('[data-report-type=received]').classList.contains('on')", '切回实收报表');
     await typeRangeDate(0, '2026-01-01');
     await typeRangeDate(1, '2026-03-31');
@@ -1046,7 +1217,7 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     assert.equal(rangedDetailQuery.paidDateTo, '2026-03-31');
     await js("document.querySelector('.sheet .x').click()");
     await waitFor("!document.querySelector('.sheet')", '关闭实收逐笔抽屉（日期范围）');
-    await js("document.querySelector('[data-report-type=arrears]').click()");
+    await selectReportAndGenerate(js, waitFor, 'arrears');
     await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/annual'); const last = list[list.length - 1]; return last && last.query.type === 'arrears'; })()", '切换欠费报表');
     const arrearsQuery = await js("window.__calls.filter((c) => c.url === '/statistics/annual').slice(-1)[0].query");
     assert.equal(arrearsQuery.paidDateFrom, undefined, '欠费报表不带收款日期起');
@@ -1070,10 +1241,11 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
 test('P2 收费汇总：费项×性质矩阵、行尾四块、总计、单元格下钻合计、筛选与导出、窄屏', { timeout: 180000 }, async () => {
   await withPage(async ({ js, call, waitFor, screenshot }) => {
     await waitFor("!!document.querySelector('.stats')", '统计页挂载', 25000);
+    await generateInitial(js, waitFor);
     await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度表', 25000);
 
     // 启用收费汇总（目录按钮，不再灰字）。
-    await js("document.querySelector('[data-report-type=\"fee-nature\"]').click()");
+    await selectReportAndGenerate(js, waitFor, 'fee-nature');
     await waitFor("!!document.querySelector('[data-testid=fee-nature-table]')", '收费汇总矩阵', 25000);
     assert.equal(await js("document.querySelector('[data-report-type=\"fee-nature\"]').classList.contains('on')"), true);
     assert.ok((await js('document.body.textContent')).includes('收费汇总'));
@@ -1134,13 +1306,8 @@ test('P2 收费汇总：费项×性质矩阵、行尾四块、总计、单元格
     await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/collection/fee-nature'); const last = list[list.length - 1]; return last && last.query.paymentMethods === '现金,支付宝,银行,转账'; })()", '收费汇总筛选请求');
     await waitFor("!!document.querySelector('[data-testid=fee-nature-table]')", '筛选后矩阵');
 
-    // 导出：当前报表 CSV、BOM、含房屋性质表头/四块列/总计。
-    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
-    await js("document.querySelector('[data-testid=stats-export]').click()");
-    await waitFor("window.__blobs.length >= 1", '收费汇总 CSV Blob');
-    const exported = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], report: text.includes('收费汇总'), header: text.includes('01 商品房') && text.includes('净额'), row: text.includes('泊位费') && text.includes('30300.00'), total: text.includes('总计') }; })()");
-    assert.deepEqual(exported.bom, [0xEF, 0xBB, 0xBF]);
-    assert.ok(exported.report && exported.header && exported.row && exported.total, '收费汇总 CSV 内容');
+    // 导出当前报表 XLSX：房屋性质、四块列、总计。
+    await exportXlsx(js, waitFor, "收费汇总", ["01 商品房","净额","泊位费","30,300.00","总计"]);
     await pause(2600);
 
     // 窄屏：页面不横向溢出，宽表在内部滚动。
@@ -1162,8 +1329,9 @@ test('P2 收费汇总：费项×性质矩阵、行尾四块、总计、单元格
 
 test('日常收费日报：完整月份、所有合计下钻、快照筛选、窄屏与等待/错误/未就绪', { timeout: 180000 }, async () => {
   await withPage(async ({ js, call, waitFor, screenshot }) => {
+    await generateInitial(js, waitFor);
     await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度表', 25000);
-    await js("document.querySelector('[data-report-type=daily-fees]').click()");
+    await selectReportAndGenerate(js, waitFor, 'daily-fees');
     await waitFor("!!document.querySelector('[data-testid=daily-table]')", '日常收费日报');
     await openFilters(js, waitFor);
     const month = (await js("document.querySelector('.stats-date-range').dataset.dateFrom")).slice(0, 7);
@@ -1210,12 +1378,7 @@ test('日常收费日报：完整月份、所有合计下钻、快照筛选、�
       await js("document.querySelector('.sheet .x').click()");
       await waitFor("!document.querySelector('.sheet')", '关闭逐笔明细');
     }
-    await js("(() => { window.__blobs = []; const original = URL.createObjectURL.bind(URL); URL.createObjectURL = blob => { window.__blobs.push(blob); return original(blob); }; })()");
-    await js("document.querySelector('[data-testid=stats-export]').click()");
-    await waitFor('window.__blobs.length === 1', '日常收费日报导出');
-    const csv = await js('(async () => await window.__blobs[0].text())()');
-    assert.ok(csv.includes('日常收费项目收款日报表')); assert.ok(csv.includes('管理处,01/02/03/04'));
-    assert.ok(csv.includes('153742.20,150.00,-600.00')); assert.ok(csv.includes(`${month}-05`));
+    await exportXlsx(js, waitFor, "日常收费项目收款日报表", ["153,742.20","150.00","-600.00"]);
     if (await js("!!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')")) await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
     await waitFor("!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')", '窄屏验收前收起草稿');
     await pause(2600);
@@ -1229,7 +1392,7 @@ test('日常收费日报：完整月份、所有合计下钻、快照筛选、�
     // 提交带延迟的失败请求：保留草稿，不显示旧表；可重试恢复。
     await openFilters(js, waitFor);
     await js("document.querySelector('[data-office-code=\"02\"]').click(); window.__dailyDelay = 700; window.__dailyFail = true; document.querySelector('[data-testid=stats-submit]').click()");
-    await waitFor("(document.querySelector('.stats-result')?.textContent || '').includes('统计中')", '日报等待态');
+    await waitFor("!!document.querySelector('[data-testid=stats-generating]')", '日报等待态');
     assert.equal(await js("!!document.querySelector('[data-testid=daily-table]')"), false);
     await waitFor("document.body.textContent.includes('日报表读取失败')", '日报失败态');
     await screenshot('statistics-daily-fees-error-320.png');
@@ -1275,8 +1438,9 @@ test('日报纯函数：入口、分类明细总额、退款/负调整 CSV 与�
 test('P2 收款日报表：日期×收费项目矩阵、合计行列、单元格收款明细下钻、导出', { timeout: 180000 }, async () => {
   await withPage(async ({ js, call, waitFor, screenshot }) => {
     await waitFor("!!document.querySelector('.stats')", '统计页挂载', 25000);
+    await generateInitial(js, waitFor);
     await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度表', 25000);
-    await js("document.querySelector('[data-report-type=daily]').click()");
+    await selectReportAndGenerate(js, waitFor, 'daily');
     await waitFor("!!document.querySelector('[data-testid=daily-table]')", '收款日报表矩阵', 25000);
     assert.equal(await js("document.querySelector('[data-report-type=daily]').classList.contains('on')"), true);
     assert.ok((await js('document.body.textContent')).includes('收款日报表'));
@@ -1314,21 +1478,17 @@ test('P2 收款日报表：日期×收费项目矩阵、合计行列、单元格
     await js("document.querySelector('.sheet .x').click()");
     await waitFor("!document.querySelector('.sheet')", '关闭日报表明细');
 
-    // 导出当前日报表 CSV。
-    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
-    await js("document.querySelector('[data-testid=stats-export]').click()");
-    await waitFor("window.__blobs.length >= 1", '日报表 CSV Blob');
-    const exported = await js(`(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], report: text.includes('收款日报表'), header: text.includes('日期,'), row: text.includes('${month}-01'), total: text.includes('合计,') }; })()`);
-    assert.deepEqual(exported.bom, [0xEF, 0xBB, 0xBF]);
-    assert.ok(exported.report && exported.header && exported.row && exported.total, '收款日报表 CSV 内容');
+    // 导出当前日报表 XLSX。
+    await exportXlsx(js, waitFor, "收款日报表", ["日期","收款合计","合计"]);
   });
 });
 
-test('P2-C 欠收与溢收汇总：两页签、合计/小计、查看逐笔合计、CSV、窄屏内部滚动', { timeout: 180000 }, async () => {
+test('P2-C 欠收与溢收汇总：两页签、合计/小计、查看逐笔合计、XLSX、窄屏内部滚动', { timeout: 180000 }, async () => {
   await withPage(async ({ js, call, waitFor, screenshot }) => {
     await waitFor("!!document.querySelector('.stats')", '统计页挂载', 25000);
+    await generateInitial(js, waitFor);
     await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度表', 25000);
-    await js("document.querySelector('[data-report-type=\"arrears-prepaid\"]').click()");
+    await selectReportAndGenerate(js, waitFor, 'arrears-prepaid');
     await waitFor("!!document.querySelector('[data-testid=arrears-prepaid-table]')", '欠收明细表', 25000);
     const month = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}`;
     const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
@@ -1367,20 +1527,18 @@ test('P2-C 欠收与溢收汇总：两页签、合计/小计、查看逐笔合�
     await waitFor("!document.querySelector('.sheet')", '关闭逐笔抽屉');
 
     // 溢收页签：请求 tab=prepaid、合计=溢收金额。
+    const beforeTab = await js("window.__calls.length");
     await js("document.querySelector('[data-arrears-tab=\"prepaid\"]').click()");
+    assert.equal(await js('window.__calls.length'), beforeTab, '页签只修改草稿并打开筛选');
+    await generateStatistics(js, waitFor);
     await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/arrears-prepaid/detail'); const last = list[list.length - 1]; return last && last.query.tab === 'prepaid'; })()", '溢收明细请求');
     await waitFor("document.querySelector('[data-testid=arrears-prepaid-table] tbody tr[data-s-id]')?.textContent.includes('永德路228弄33号1202')", '溢收明细表');
     assert.ok((await js("document.querySelector('[data-testid=arrears-prepaid-total]').textContent")).includes('¥8,531.80'), '溢收明细合计');
     assert.ok((await js("document.querySelector('[data-testid=arrears-prepaid-table]').textContent")).includes('收费年月范围'));
     await screenshot('statistics-prepaid-1440.png');
 
-    // CSV：BOM、当前页签、收费年月范围、合计。
-    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
-    await js("document.querySelector('[data-testid=stats-export]').click()");
-    await waitFor("window.__blobs.length >= 1", '欠收溢收 CSV Blob');
-    const exported = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], tab: text.includes('溢收统计'), range: text.includes('收费年月范围'), total: text.includes('合计') }; })()");
-    assert.deepEqual(exported.bom, [0xEF, 0xBB, 0xBF]);
-    assert.ok(exported.tab && exported.range && exported.total, '欠收与溢收 CSV 内容');
+    // XLSX：当前页签、收费年月范围、合计。
+    await exportXlsx(js, waitFor, "欠收与溢收汇总", ["溢收统计","收费年月范围","合计","8,531.80"]);
     await pause(2600);
 
     // 宽表内部滚动、页面 390 不横向溢出。
@@ -1395,11 +1553,12 @@ test('P2-C 欠收与溢收汇总：两页签、合计/小计、查看逐笔合�
   });
 });
 
-test('P2-C 收缴考核：12 月应收/收款表头、指标卡、合计/收缴率、CSV、窄屏内部滚动', { timeout: 180000 }, async () => {
+test('P2-C 收缴考核：12 月应收/收款表头、指标卡、合计/收缴率、XLSX、窄屏内部滚动', { timeout: 180000 }, async () => {
   await withPage(async ({ js, call, waitFor, screenshot }) => {
     await waitFor("!!document.querySelector('.stats')", '统计页挂载', 25000);
+    await generateInitial(js, waitFor);
     await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度表', 25000);
-    await js("document.querySelector('[data-report-type=assessment]').click()");
+    await selectReportAndGenerate(js, waitFor, 'assessment');
     await waitFor("!!document.querySelector('[data-testid=assessment-table]')", '收缴考核表', 25000);
     const query = await js("window.__calls.filter((c) => c.url === '/statistics/collection-assessment').slice(-1)[0].query");
     assert.equal(query.year, String(new Date().getFullYear()));
@@ -1449,13 +1608,8 @@ test('P2-C 收缴考核：12 月应收/收款表头、指标卡、合计/收缴�
     assert.ok(await js("(() => { const el = document.querySelector('.stats-assessment-scroll'); return el && el.scrollWidth > el.clientWidth + 1; })()"), '收缴考核宽表内部滚动');
     await screenshot('statistics-assessment-1440.png');
 
-    // CSV：BOM、12 月表头、合计、收缴率。
-    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
-    await js("document.querySelector('[data-testid=stats-export]').click()");
-    await waitFor("window.__blobs.length >= 1", '收缴考核 CSV Blob');
-    const exported = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], title: text.includes('收缴考核'), months: text.includes('1月应收') && text.includes('12月收款'), total: text.includes('合计'), rate: text.includes('80.30%') }; })()");
-    assert.deepEqual(exported.bom, [0xEF, 0xBB, 0xBF]);
-    assert.ok(exported.title && exported.months && exported.total && exported.rate, '收缴考核 CSV 内容');
+    // XLSX：12 月表头、合计、收缴率。
+    await exportXlsx(js, waitFor, "收缴考核", ["1月","12月","应收","收款","合计","80.30%"]);
     await pause(2600);
 
     // 宽表内部横向滚动、表头 sticky；页面 390 不横向溢出。
@@ -1471,11 +1625,12 @@ test('P2-C 收缴考核：12 月应收/收款表头、指标卡、合计/收缴�
   });
 });
 
-test('P2-D 收款分析（按户）：请求参数/合计/点行逐笔/排序/CSV/窄屏', { timeout: 180000 }, async () => {
+test('P2-D 收款分析（按户）：请求参数/合计/点行逐笔/排序/XLSX/窄屏', { timeout: 180000 }, async () => {
   await withPage(async ({ js, call, waitFor, screenshot }) => {
     await waitFor("!!document.querySelector('.stats')", '统计页挂载', 25000);
+    await generateInitial(js, waitFor);
     await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度表', 25000);
-    await js("document.querySelector('[data-report-type=\"collection-analysis\"]').click()");
+    await selectReportAndGenerate(js, waitFor, 'collection-analysis');
     await waitFor("!!document.querySelector('[data-testid=collection-analysis-table]')", '收款分析表', 25000);
     const month = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}`;
     const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
@@ -1514,13 +1669,8 @@ test('P2-D 收款分析（按户）：请求参数/合计/点行逐笔/排序/CS
     await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/collection-analysis'); const last = list[list.length - 1]; return last && last.query.sort === 'historyArrears'; })()", '收款分析排序请求');
     await waitFor("document.querySelector('[data-testid=collection-analysis-table] tbody tr[data-s-id]')?.textContent.includes('邱解平')", '历年欠收降序首行');
 
-    // CSV：BOM、收款分析表头、合计。
-    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
-    await js("document.querySelector('[data-testid=stats-export]').click()");
-    await waitFor("window.__blobs.length >= 1", '收款分析 CSV Blob');
-    const exported = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], title: text.includes('收款分析'), header: text.includes('历年欠收,当年欠收,当月应收,预缴,区间实收'), total: text.includes('合计') }; })()");
-    assert.deepEqual(exported.bom, [0xEF, 0xBB, 0xBF]);
-    assert.ok(exported.title && exported.header && exported.total, '收款分析 CSV 内容');
+    // XLSX：收款分析表头、合计。
+    await exportXlsx(js, waitFor, "收款分析", ["历年欠收","当年欠收","当月应收","预缴","区间实收","合计"]);
     await pause(2600);
 
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -1534,11 +1684,12 @@ test('P2-D 收款分析（按户）：请求参数/合计/点行逐笔/排序/CS
   });
 });
 
-test('P2-D 收费月报表（核心指标）：11 列/合计行/回收率/提示/CSV/窄屏内部滚动', { timeout: 180000 }, async () => {
+test('P2-D 收费月报表（核心指标）：11 列/合计行/回收率/提示/XLSX/窄屏内部滚动', { timeout: 180000 }, async () => {
   await withPage(async ({ js, call, waitFor, screenshot }) => {
     await waitFor("!!document.querySelector('.stats')", '统计页挂载', 25000);
+    await generateInitial(js, waitFor);
     await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度表', 25000);
-    await js("document.querySelector('[data-report-type=\"monthly-report\"]').click()");
+    await selectReportAndGenerate(js, waitFor, 'monthly-report');
     await waitFor("!!document.querySelector('[data-testid=monthly-report-table]')", '收费月报表', 25000);
     const month = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}`;
     const query = await js("window.__calls.filter((c) => c.url === '/statistics/monthly-report').slice(-1)[0].query");
@@ -1556,12 +1707,7 @@ test('P2-D 收费月报表（核心指标）：11 列/合计行/回收率/提示
     assert.ok((await js("document.querySelector('[data-testid=monthly-report-table]').textContent")).includes('合计'));
     await screenshot('statistics-monthly-report-1440.png');
 
-    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
-    await js("document.querySelector('[data-testid=stats-export]').click()");
-    await waitFor("window.__blobs.length >= 1", '收费月报表 CSV Blob');
-    const exported = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], title: text.includes('收费月报表（核心指标）'), header: text.includes('月应收,月调整,累计应收'), total: text.includes('合计'), rate: text.includes('0.53%') }; })()");
-    assert.deepEqual(exported.bom, [0xEF, 0xBB, 0xBF]);
-    assert.ok(exported.title && exported.header && exported.total && exported.rate, '收费月报表 CSV 内容');
+    await exportXlsx(js, waitFor, "收费月报表（核心指标）", ["月应收","月调整","累计应收","合计","0.53%"]);
     await pause(2600);
 
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -1579,11 +1725,12 @@ test('P2-D 收费月报表（核心指标）：11 列/合计行/回收率/提示
   });
 });
 
-test('P3-A 房产汇总：管理处行/合计/性质房屋数列/CSV/窄屏内部滚动', { timeout: 180000 }, async () => {
+test('P3-A 房产汇总：管理处行/合计/性质房屋数列/XLSX/窄屏内部滚动', { timeout: 180000 }, async () => {
   await withPage(async ({ js, call, waitFor, screenshot }) => {
     await waitFor("!!document.querySelector('.stats')", '统计页挂载', 25000);
+    await generateInitial(js, waitFor);
     await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度表', 25000);
-    await js("document.querySelector('[data-report-type=\"property-summary\"]').click()");
+    await selectReportAndGenerate(js, waitFor, 'property-summary');
     await waitFor("!!document.querySelector('[data-testid=property-summary-table]')", '房产汇总表', 25000);
     const query = await js("window.__calls.filter((c) => c.url === '/statistics/property-summary').slice(-1)[0].query");
     assert.equal(query.officeCodes, '01,02,03,04');
@@ -1602,12 +1749,7 @@ test('P3-A 房产汇总：管理处行/合计/性质房屋数列/CSV/窄屏内�
     assert.ok(propertyFit && propertyFit.scroll <= propertyFit.client + 1, '房产汇总窄表 1440 不应横向滚动：' + JSON.stringify(propertyFit));
     await screenshot('statistics-property-summary-1440.png');
 
-    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
-    await js("document.querySelector('[data-testid=stats-export]').click()");
-    await waitFor("window.__blobs.length >= 1", '房产汇总 CSV Blob');
-    const exported = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], title: text.includes('房产汇总'), nature: text.includes('01 商品房'), total: text.includes('合计') }; })()");
-    assert.deepEqual(exported.bom, [0xEF, 0xBB, 0xBF]);
-    assert.ok(exported.title && exported.nature && exported.total, '房产汇总 CSV 内容');
+    await exportXlsx(js, waitFor, "房产汇总", ["01 商品房","13 私房","合计","150460.75"]);
     await pause(2600);
 
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -1622,17 +1764,19 @@ test('P3-A 房产汇总：管理处行/合计/性质房屋数列/CSV/窄屏内�
   });
 });
 
-test('P3-A 住户台账/楼房台账：关键词/分页/空值/合计/CSV/窄屏', { timeout: 180000 }, async () => {
+test('P3-A 住户台账/楼房台账：关键词/分页/空值/合计/XLSX/窄屏', { timeout: 180000 }, async () => {
   await withPage(async ({ js, call, waitFor, screenshot }) => {
     const setKeyword = async (value) => {
+      await openFilters(js, waitFor);
       await js(`(() => { const el = document.querySelector('[data-testid=ledger-keyword]'); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles: true })); })()`);
       await pause(150);
     };
     await waitFor("!!document.querySelector('.stats')", '统计页挂载', 25000);
+    await generateInitial(js, waitFor);
     await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度表', 25000);
 
     // 住户台账：默认 200 户 + 总数 201；空手机/电话显示「—」。
-    await js("document.querySelector('[data-report-type=\"owner-ledger\"]').click()");
+    await selectReportAndGenerate(js, waitFor, 'owner-ledger');
     await waitFor("!!document.querySelector('[data-testid=owner-ledger-table]')", '住户台账表', 25000);
     const ownerQuery = await js("window.__calls.filter((c) => c.url === '/statistics/owner-ledger').slice(-1)[0].query");
     assert.equal(ownerQuery.limit, 200);
@@ -1655,19 +1799,14 @@ test('P3-A 住户台账/楼房台账：关键词/分页/空值/合计/CSV/窄屏
     await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/owner-ledger'); const last = list[list.length - 1]; return last && last.query.keyword === '合成业主199'; })()", '住户台账关键词请求');
     await waitFor("document.querySelectorAll('[data-testid=owner-ledger-table] tbody tr[data-s-id]').length === 1", '住户台账关键词结果');
 
-    // CSV：BOM、住户台账列头。
-    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
-    await js("document.querySelector('[data-testid=stats-export]').click()");
-    await waitFor("window.__blobs.length >= 1", '住户台账 CSV Blob');
-    const ownerCsv = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], title: text.includes('住户台账'), header: text.includes('序号,管理处,地址,房号,业主,手机,电话,建筑面积,房屋性质') }; })()");
-    assert.deepEqual(ownerCsv.bom, [0xEF, 0xBB, 0xBF]);
-    assert.ok(ownerCsv.title && ownerCsv.header, '住户台账 CSV 内容');
+    // XLSX：住户台账列头。
+    await exportXlsx(js, waitFor, "住户台账", ["序号","管理处","地址","房号","业主","手机","电话","建筑面积","房屋性质","合成业主199"]);
     await pause(2600);
 
     // 楼房台账：行/合计/关键词。
     await openFilters(js, waitFor);
     await setKeyword('');
-    await js("document.querySelector('[data-report-type=\"building-ledger\"]').click()");
+    await selectReportAndGenerate(js, waitFor, 'building-ledger');
     await waitFor("!!document.querySelector('[data-testid=building-ledger-table]')", '楼房台账表', 25000);
     assert.equal(await js("document.querySelectorAll('[data-testid=building-ledger-table] tbody tr[data-l-id]').length"), 3);
     const buildingTotal = await js("document.querySelector('[data-testid=building-ledger-total]').textContent");
@@ -1679,12 +1818,7 @@ test('P3-A 住户台账/楼房台账：关键词/分页/空值/合计/CSV/窄屏
     await js("document.querySelector('[data-testid=stats-submit]').click()");
     await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/building-ledger'); const last = list[list.length - 1]; return last && last.query.keyword === '229弄'; })()", '楼房台账关键词请求');
     await waitFor("document.querySelectorAll('[data-testid=building-ledger-table] tbody tr[data-l-id]').length === 1", '楼房台账关键词结果');
-    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
-    await js("document.querySelector('[data-testid=stats-export]').click()");
-    await waitFor("window.__blobs.length >= 1", '楼房台账 CSV Blob');
-    const buildingCsv = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], title: text.includes('楼房台账'), header: text.includes('序号,管理处,路,弄/号,楼号,房屋数,业主数,建筑面积') }; })()");
-    assert.deepEqual(buildingCsv.bom, [0xEF, 0xBB, 0xBF]);
-    assert.ok(buildingCsv.title && buildingCsv.header, '楼房台账 CSV 内容');
+    await exportXlsx(js, waitFor, "楼房台账", ["序号","管理处","路","弄/号","楼号","房屋数","业主数","建筑面积","229弄"]);
     await pause(2600);
 
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -1701,23 +1835,26 @@ test('P3-A 住户台账/楼房台账：关键词/分页/空值/合计/CSV/窄屏
   });
 });
 
-test('P4-A 减免情况统计/签报情况统计：日期关键词参数/合计/状态标签/CSV/窄屏', { timeout: 180000 }, async () => {
+test('P4-A 减免情况统计/签报情况统计：日期关键词参数/合计/状态标签/XLSX/窄屏', { timeout: 180000 }, async () => {
   await withPage(async ({ js, call, waitFor, screenshot }) => {
     const setInput = async (selector, value) => {
+      await openFilters(js, waitFor);
       await js(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles: true })); })()`);
       await pause(150);
     };
     const setSelect = async (selector, value) => {
+      await openFilters(js, waitFor);
       await js(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set; setter.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('change', { bubbles: true })); })()`);
       await pause(150);
     };
     await waitFor("!!document.querySelector('.stats')", '统计页挂载', 25000);
+    await generateInitial(js, waitFor);
     await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度表', 25000);
     const year = String(new Date().getFullYear());
     const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
 
     // 减免情况统计
-    await js("document.querySelector('[data-report-type=relief]').click()");
+    await selectReportAndGenerate(js, waitFor, 'relief');
     await waitFor("!!document.querySelector('[data-testid=relief-table]')", '减免情况表', 25000);
     const reliefQuery = await js("window.__calls.filter((c) => c.url === '/statistics/relief').slice(-1)[0].query");
     assert.equal(reliefQuery.dateFrom, `${year}-01-01`, '减免日期默认今年');
@@ -1734,18 +1871,13 @@ test('P4-A 减免情况统计/签报情况统计：日期关键词参数/合计/
     await js("document.querySelector('[data-testid=stats-submit]').click()");
     await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/relief'); const last = list[list.length - 1]; return last && last.query.keyword === '泊位'; })()", '减免关键词请求');
     await waitFor("document.querySelectorAll('[data-testid=relief-table] tbody tr[data-relief-id]').length === 1", '减免关键词结果');
-    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
-    await js("document.querySelector('[data-testid=stats-export]').click()");
-    await waitFor("window.__blobs.length >= 1", '减免 CSV Blob');
-    const reliefCsv = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], title: text.includes('减免情况统计'), header: text.includes('减免金额'), amount: text.includes('3000.00') }; })()");
-    assert.deepEqual(reliefCsv.bom, [0xEF, 0xBB, 0xBF]);
-    assert.ok(reliefCsv.title && reliefCsv.header && reliefCsv.amount, '减免 CSV 内容');
+    await exportXlsx(js, waitFor, "减免情况统计", ["原应收","现应收","减免金额"]);
     await pause(2600);
 
     // 签报情况统计
     await openFilters(js, waitFor);
     await setInput('[data-testid=ledger-keyword]', '');
-    await js("document.querySelector('[data-report-type=signoffs]').click()");
+    await selectReportAndGenerate(js, waitFor, 'signoffs');
     await waitFor("!!document.querySelector('[data-testid=signoffs-table]')", '签报情况表', 25000);
     const signoffsQuery = await js("window.__calls.filter((c) => c.url === '/statistics/signoffs').slice(-1)[0].query");
     assert.equal(signoffsQuery.dateFrom, `${year}-01-01`);
@@ -1773,12 +1905,7 @@ test('P4-A 减免情况统计/签报情况统计：日期关键词参数/合计/
     await waitFor("document.querySelectorAll('[data-testid=signoffs-table] tbody tr[data-signoff-id]').length === 1", '签报作废结果');
     assert.equal(await js("document.querySelector('[data-status=\"voided\"]')?.textContent.includes('作废')"), true);
 
-    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
-    await js("document.querySelector('[data-testid=stats-export]').click()");
-    await waitFor("window.__blobs.length >= 1", '签报 CSV Blob');
-    const signoffCsv = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], title: text.includes('签报情况统计'), header: text.includes('调整金额') }; })()");
-    assert.deepEqual(signoffCsv.bom, [0xEF, 0xBB, 0xBF]);
-    assert.ok(signoffCsv.title && signoffCsv.header, '签报 CSV 内容');
+    await exportXlsx(js, waitFor, "签报情况统计", ["调整金额","作废"]);
     await pause(2600);
 
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -1796,23 +1923,26 @@ test('P4-A 减免情况统计/签报情况统计：日期关键词参数/合计/
   });
 });
 
-test('P2-E 收款汇总表/票据情况统计：动态列/副表/状态筛选/合计/CSV/窄屏', { timeout: 180000 }, async () => {
+test('P2-E 收款汇总表/票据情况统计：动态列/副表/状态筛选/合计/XLSX/窄屏', { timeout: 180000 }, async () => {
   await withPage(async ({ js, call, waitFor, screenshot }) => {
     const setInput = async (selector, value) => {
+      await openFilters(js, waitFor);
       await js(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles: true })); })()`);
       await pause(150);
     };
     const setSelect = async (selector, value) => {
+      await openFilters(js, waitFor);
       await js(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set; setter.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('change', { bubbles: true })); })()`);
       await pause(150);
     };
     await waitFor("!!document.querySelector('.stats')", '统计页挂载', 25000);
+    await generateInitial(js, waitFor);
     await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度表', 25000);
     const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
     const year = String(new Date().getFullYear());
 
     // 收款汇总表
-    await js("document.querySelector('[data-report-type=\"ticket-summary\"]').click()");
+    await selectReportAndGenerate(js, waitFor, 'ticket-summary');
     await waitFor("!!document.querySelector('[data-testid=ticket-summary-table]')", '收款汇总表', 25000);
     const summaryQuery = await js("window.__calls.filter((c) => c.url === '/statistics/ticket-summary').slice(-1)[0].query");
     assert.ok(summaryQuery.dateFrom.endsWith('-01'), '收款日期默认本月 1 日');
@@ -1832,16 +1962,11 @@ test('P2-E 收款汇总表/票据情况统计：动态列/副表/状态筛选/�
     assert.ok((await js("document.querySelector('[data-testid=ticket-summary-cashier-table]').textContent")).includes('张收费'));
     assert.ok((await js("document.querySelector('[data-testid=ticket-summary-cashier-total]').textContent")).includes('¥18,000.00'), '按收款人合计');
     await screenshot('statistics-ticket-summary-1440.png');
-    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
-    await js("document.querySelector('[data-testid=stats-export]').click()");
-    await waitFor("window.__blobs.length >= 1", '收款汇总 CSV Blob');
-    const summaryCsv = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], title: text.includes('收款汇总表'), header: text.includes('收费项目,现金'), total: text.includes('合计') }; })()");
-    assert.deepEqual(summaryCsv.bom, [0xEF, 0xBB, 0xBF]);
-    assert.ok(summaryCsv.title && summaryCsv.header && summaryCsv.total, '收款汇总 CSV 内容');
+    await exportXlsx(js, waitFor, "收款汇总表", ["收费项目","现金","合计"]);
     await pause(2600);
 
     // 票据情况统计
-    await js("document.querySelector('[data-report-type=tickets]').click()");
+    await selectReportAndGenerate(js, waitFor, 'tickets');
     await waitFor("!!document.querySelector('[data-testid=tickets-table]')", '票据情况表', 25000);
     const ticketsQuery = await js("window.__calls.filter((c) => c.url === '/statistics/tickets').slice(-1)[0].query");
     assert.equal(ticketsQuery.dateFrom, `${year}-01-01`);
@@ -1872,12 +1997,7 @@ test('P2-E 收款汇总表/票据情况统计：动态列/副表/状态筛选/�
     await js("document.querySelector('[data-testid=stats-submit]').click()");
     await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/tickets'); const last = list[list.length - 1]; return last && last.query.status === 'voided'; })()", '票据作废状态请求');
     await waitFor("document.querySelectorAll('[data-testid=tickets-table] tbody tr[data-ticket-id]').length === 1", '票据作废结果');
-    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
-    await js("document.querySelector('[data-testid=stats-export]').click()");
-    await waitFor("window.__blobs.length >= 1", '票据 CSV Blob');
-    const ticketsCsv = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], title: text.includes('票据情况统计'), header: text.includes('票据编号'), status: text.includes('作废') }; })()");
-    assert.deepEqual(ticketsCsv.bom, [0xEF, 0xBB, 0xBF]);
-    assert.ok(ticketsCsv.title && ticketsCsv.header && ticketsCsv.status, '票据 CSV 内容');
+    await exportXlsx(js, waitFor, "票据情况统计", ["票号","状态","作废"]);
     await pause(2600);
 
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -1898,14 +2018,25 @@ test('P2-E 收款汇总表/票据情况统计：动态列/副表/状态筛选/�
 test('P4-B 开票统计：分组下钻、独立总计、分页全量导出、逐票、等待错误未同步及窄屏', { timeout: 180000 }, async () => {
   await withPage(async ({ js, call, waitFor, screenshot }) => {
     const select = async value => {
+      await openFilters(js, waitFor);
+      const before = await js("window.__calls.filter(c => c.url === '/statistics/ticket-items/summary').length");
+      const appliedLabel = await js("document.querySelector('.stats-result-head').textContent");
       await js(`(() => { const el = document.querySelector('[data-testid=ticket-items-group]'); el.value = ${JSON.stringify(value)}; el.dispatchEvent(new Event('change', { bubbles: true })); })()`);
-      await waitFor(`window.__calls.filter(c=>c.url==='/statistics/ticket-items/summary').at(-1).query.groupBy === ${JSON.stringify(value)} && !!document.querySelector('[data-testid=ticket-items-table]')`, '分组完成');
+      assert.equal(await js("window.__calls.filter(c => c.url === '/statistics/ticket-items/summary').length"), before, '分组只修改草稿，不查询');
+      assert.equal(await js("document.querySelector('.stats-result-head').textContent"), appliedLabel, '结果仍标注已应用分组');
+      await generateStatistics(js, waitFor);
+      await waitFor(`window.__calls.filter(c=>c.url==='/statistics/ticket-items/summary').at(-1).query.groupBy === ${JSON.stringify(value)} && !!document.querySelector('[data-testid=ticket-items-table]')`, '生成后应用分组');
+      const label = { fee: '收费项目', office: '管理处', day: '开票日期' }[value];
+      assert.ok((await js("document.querySelector('.stats-result-head').textContent")).includes(`分组：${label}`));
     };
     const close = async () => { await js("document.querySelector('.sheet .x').click()"); await waitFor("!document.querySelector('.sheet')", '关闭明细'); };
     const input = async (selector, value) => { await js(`(() => { const el=document.querySelector(${JSON.stringify(selector)}); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,${JSON.stringify(value)}); el.dispatchEvent(new Event('input',{bubbles:true})); })()`); await pause(100); };
+    await generateInitial(js, waitFor);
     await waitFor("!!document.querySelector('.stats-annual-table')", '默认表');
     await js("window.__ticketDelay=900; document.querySelector('[data-report-type=ticket-items]').click()");
-    await waitFor("document.querySelector('.stats-result').textContent.includes('统计中')", '等待状态');
+    await openFilters(js, waitFor);
+    await js("document.querySelector('[data-testid=stats-submit]').click()");
+    await waitFor("!!document.querySelector('[data-testid=stats-generating]')", '等待状态');
     await screenshot('statistics-ticket-items-loading-1440.png');
     await waitFor("!!document.querySelector('[data-testid=ticket-items-table]')", '开票汇总');
     await js("window.__ticketDelay=0");
@@ -1916,9 +2047,7 @@ test('P4-B 开票统计：分组下钻、独立总计、分页全量导出、逐
     assert.equal(await js("document.querySelector('[data-testid=ticket-items-total] td:nth-child(2)').textContent"), '2', '独立去重，不相加成 3 张');
     assert.ok((await js("document.querySelector('[data-testid=ticket-items-coverage]').textContent")).includes('2022-11-25 至 2023-12-23'));
     await screenshot('statistics-ticket-items-1440.png');
-    await js("window.__blobs=[]; const original=URL.createObjectURL.bind(URL); URL.createObjectURL=blob=>{window.__blobs.push(blob);return original(blob)}; document.querySelector('[data-testid=stats-export]').click()");
-    await waitFor("window.__blobs.length===1", '汇总导出');
-    assert.ok((await js("window.__blobs[0].text()")).includes('独立去重合计,2,201,199.00,0.00,199.00'));
+    await exportXlsx(js, waitFor, '开票数据统计', ['独立去重合计', '199.00']);
     await js("document.querySelector('[data-group-key=\"01\"] button').click()");
     await waitFor("!!document.querySelector('[data-testid=ticket-item-detail-table]')", '费项明细');
     assert.equal(await js("window.__calls.filter(c=>c.url==='/statistics/ticket-items/detail').at(-1).query.feeCodes"), '01');
@@ -1965,15 +2094,22 @@ test('P4-B 开票统计：分组下钻、独立总计、分页全量导出、逐
     await js("document.querySelector('.stats-result').scrollIntoView()");
     await screenshot('statistics-ticket-items-320.png');
     await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
-    await js("window.__ticketFail=true");
-    await js("document.querySelector('[data-testid=ticket-items-group]').value='fee'; document.querySelector('[data-testid=ticket-items-group]').dispatchEvent(new Event('change',{bubbles:true}))");
+    await openFilters(js, waitFor);
+    await js("window.__ticketFail=true; document.querySelector('[data-testid=ticket-items-group]').value='fee'; document.querySelector('[data-testid=ticket-items-group]').dispatchEvent(new Event('change',{bubbles:true}))");
+    await generateStatistics(js, waitFor);
     await waitFor("document.querySelector('.stats-result').textContent.includes('合成开票接口读取失败')", '错误非假零');
     assert.equal(await js("!!document.querySelector('[data-testid=ticket-items-table]')"), false);
     await screenshot('statistics-ticket-items-error-1440.png');
+    const beforeRetry = await js('window.__calls.length');
     await js("window.__ticketFail=false; window.__ticketUnavailable=true; [...document.querySelectorAll('.stats-result button')].find(b=>b.textContent.includes('重试')).click()");
+    assert.equal(await js('window.__calls.length'), beforeRetry, '重试只打开筛选');
+    await generateStatistics(js, waitFor);
     await waitFor("document.querySelector('.stats-result').textContent.includes('开票镜像尚未同步')", '未同步');
     assert.equal(await js("document.querySelector('[data-testid=stats-export]').disabled"), true);
-    await js("window.__ticketUnavailable=false; window.__ticketUnknownTax=true; [...document.querySelectorAll('.stats-head-actions button')].find(b=>b.textContent.includes('刷新')).click()");
+    const beforeReload = await js('window.__calls.length');
+    await js("window.__ticketUnavailable=false; window.__ticketUnknownTax=true; document.querySelector('.stats-head-actions button').click()");
+    assert.equal(await js('window.__calls.length'), beforeReload, '重新生成入口只打开筛选');
+    await generateStatistics(js, waitFor);
     await waitFor("!!document.querySelector('[data-testid=ticket-items-table]')", '恢复');
     assert.ok(!(await js("document.querySelector('[data-testid=ticket-items-coverage]').textContent")).includes('税额均为 0'));
     await openFilters(js, waitFor);
@@ -2017,7 +2153,7 @@ test('P4-B 开票统计：分组下钻、独立总计、分页全量导出、逐
     await pause(900);
     assert.ok((await js("document.querySelector('[data-testid=ticket-item-detail-count]').textContent")).includes('1 / 1'), '迟到旧响应隔离');
     await close();
-    await js("document.querySelector('[data-report-type=tickets]').click()");
+    await selectReportAndGenerate(js, waitFor, 'tickets');
     await waitFor("!!document.querySelector('[data-testid=tickets-table]')", '票据表');
     await js("document.querySelector('[data-testid=tickets-table] tbody button').click()");
     await waitFor("!!document.querySelector('[data-testid=ticket-header]')", '逐票摘要');
@@ -2041,6 +2177,7 @@ test('统计选项未就绪：优先显示后端 message，不渲染空表', { t
 test('筛选浮层：默认收起、打开不挤压表格、统计后关闭、外部/Esc 关闭、窄屏顶部抽屉', { timeout: 120000 }, async () => {
   const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   await withPage(async ({ js, call, waitFor, screenshot }) => {
+    await generateInitial(js, waitFor);
     await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度表', 25000);
     // 默认收起：无浮层，紧凑入口存在，表格占满内容容器。
     assert.equal(await js("!!document.querySelector('.stats-filter-float[role=dialog] .stats-filters')"), false, '默认应收起筛选');
@@ -2111,6 +2248,7 @@ async function sampleDrawer(js, action) {
 
 test('真实Shell全宽与顶部抽屉：2886/1920/1440/390/320逐帧布局零位移、滚动保持、退场及竞态', {timeout:180000}, async () => {
   await withPage(async ({js,call,waitFor,screenshot}) => {
+    await generateInitial(js, waitFor);
     await waitFor("!!document.querySelector('.stats-annual-table')", '年度表');
     const measurements=[];
     for (const width of [2886,1920,1440,390,320]) {
@@ -2187,6 +2325,7 @@ test('真实Shell全宽与顶部抽屉：2886/1920/1440/390/320逐帧布局零�
 
 test('顶部抽屉日期portal及统计退场：等待/错误/成功均不因开关位移、草稿与已应用快照保留', {timeout:120000}, async () => {
   await withPage(async ({js,call,waitFor,screenshot}) => {
+    await generateInitial(js, waitFor);
     await waitFor("!!document.querySelector('.stats-annual-table')", '年度表');
     await sampleDrawer(js,"document.querySelector('.stats-filter-entry').click()");
     const baselineCalls=await js("window.__calls.filter(c=>c.url==='/statistics/annual').length");
@@ -2210,7 +2349,7 @@ test('顶部抽屉日期portal及统计退场：等待/错误/成功均不因开
     // Named request gate isolates the exit animation from the network's next render.
     await js("window.__requestPlans.push({id:'drawer-loading',url:'/statistics/annual',hold:true,fail:true});document.querySelector('[data-testid=stats-submit]').click()");
     await waitFor("window.__pendingRequests.some(p=>p.id==='drawer-loading')",'请求等待中');
-    assert.ok(await js("document.querySelector('.stats-result').textContent.includes('统计中')"),'等待反馈');
+    assert.ok(await js("!!document.querySelector('[data-testid=stats-generating]')"),'等待反馈');
     const loading=await js(`(${layoutSnapshot})()`);
     const queryExit=await sampleDrawer(js,'');
     assertLayoutStable(loading,queryExit,'query closing while loading');
