@@ -155,7 +155,7 @@ export default function HouseDetailSheet({
                       ))}
                     </tbody>
                     <tfoot>
-                      <tr className="stats-subtotal-row">
+                      <tr className="stats-subtotal-row stats-total-row">
                         <td colSpan={2}><b>合计</b></td>
                         <td className="stats-num"><b data-testid="stats-bills-total">{fmtCents(bills?.totalCents ?? 0)}</b></td>
                         <td colSpan={4} />
@@ -212,7 +212,7 @@ export default function HouseDetailSheet({
                         ))}
                       </tbody>
                       <tfoot>
-                        <tr className="stats-subtotal-row">
+                        <tr className="stats-subtotal-row stats-total-row">
                           <td colSpan={5}><b>合计</b></td>
                           <td className="stats-num"><b data-testid="stats-received-total">{fmtCents(detail?.totalCents ?? 0)}</b></td>
                           <td colSpan={3} />
@@ -255,7 +255,7 @@ export default function HouseDetailSheet({
                       ))}
                     </tbody>
                     <tfoot>
-                      <tr className="stats-subtotal-row">
+                      <tr className="stats-subtotal-row stats-total-row">
                         <td colSpan={4}><b>明细合计</b></td>
                         <td className="stats-num"><b data-testid="stats-detail-total">{fmtCents(detail?.totalCents ?? 0)}</b></td>
                       </tr>

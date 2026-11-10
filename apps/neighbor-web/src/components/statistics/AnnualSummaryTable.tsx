@@ -55,7 +55,7 @@ export default function AnnualSummaryTable({
                 <td className="stats-total-col"><b>{fmtCents(row.totalCents)}</b></td>
               </tr>
             ))}
-            <tr className="stats-subtotal-row" data-testid="stats-subtotal-row">
+            <tr className="stats-subtotal-row stats-total-row" data-testid="stats-subtotal-row">
               <td className="stats-index-col" />
               <td className="stats-office-col"><b>小计</b></td>
               {annual.columns.map((year) => (

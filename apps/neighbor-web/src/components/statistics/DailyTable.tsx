@@ -14,8 +14,8 @@ export default function DailyTable({ report, onCellClick }: {
 }) {
   const subtotal = report.subtotal;
   const amount = (cents: number, target: DailyCellTarget) => (
-    <button type="button" className="stats-money-btn" title="查看当日收款明细" onClick={() => onCellClick(target)}>
-      {fmtCents(cents)}
+    <button type="button" className={`stats-money-btn ${cents === 0 ? 'stats-num-muted' : ''}`} title={cents === 0 ? '当日无收款' : '查看当日收款明细'} onClick={() => onCellClick(target)}>
+      {cents === 0 ? '—' : fmtCents(cents)}
     </button>
   );
   return (
@@ -41,7 +41,7 @@ export default function DailyTable({ report, onCellClick }: {
             </tr>
           ))}
           {subtotal ? (
-            <tr className="stats-subtotal-row" data-testid="daily-subtotal">
+            <tr className="stats-subtotal-row stats-total-row" data-testid="daily-subtotal">
               <td className="stats-sticky-name"><b>合计</b></td>
               {report.columns.map((column) => (
                 <td key={column.code} className="num"><b>{fmtCents(Number(subtotal.cells?.[column.code] ?? 0))}</b></td>

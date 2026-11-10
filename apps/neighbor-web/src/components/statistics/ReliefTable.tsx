@@ -22,9 +22,9 @@ export default function ReliefTable({ report }: { report: ReliefResponse }) {
               <td><b>{row.address || '—'}</b></td>
               <td>{row.ownerName || '—'}</td>
               <td>{row.feeName || row.feeCode || '—'}</td>
-              <td className="num">{fmtCents(row.oldReceivableCents)}</td>
-              <td className="num">{fmtCents(row.receivableCents)}</td>
-              <td className="num"><b>{fmtCents(row.reliefCents)}</b></td>
+              <td className="num">{row.oldReceivableCents === 0 ? '—' : fmtCents(row.oldReceivableCents)}</td>
+              <td className="num">{row.receivableCents === 0 ? '—' : fmtCents(row.receivableCents)}</td>
+              <td className={`num ${row.reliefCents === 0 ? 'stats-num-muted' : 'stats-num-pos'}`}><b>{row.reliefCents === 0 ? '—' : fmtCents(row.reliefCents)}</b></td>
               <td>{row.reliefStartDate || '—'}</td>
               <td>{row.reliefEndDate || '—'}</td>
               <td>{row.reliefDate || '—'}</td>
@@ -32,11 +32,11 @@ export default function ReliefTable({ report }: { report: ReliefResponse }) {
             </tr>
           ))}
           {report.totals ? (
-            <tr className="stats-subtotal-row" data-testid="relief-total">
+            <tr className="stats-subtotal-row stats-total-row" data-testid="relief-total">
               <td colSpan={6}><b>合计</b></td>
               <td className="num"><b>{fmtCents(report.totals.oldReceivableCents)}</b></td>
               <td className="num"><b>{fmtCents(report.totals.receivableCents)}</b></td>
-              <td className="num"><b>{fmtCents(report.totals.reliefCents)}</b></td>
+              <td className="num stats-num-pos"><b>{fmtCents(report.totals.reliefCents)}</b></td>
               <td colSpan={4} />
             </tr>
           ) : null}

@@ -13,18 +13,19 @@ export default function FeeNatureTable({ report, onCellClick }: {
   report: FeeNatureResponse;
   onCellClick: (target: FeeNatureCellTarget) => void;
 }) {
-  const amount = (cents: number, target: FeeNatureCellTarget) => (
+  const amount = (cents: number, target: FeeNatureCellTarget, tone = '') => (
     <button
       type="button"
-      className="stats-money-btn"
+      className={`stats-money-btn ${cents === 0 ? 'stats-num-muted' : tone}`}
       data-kind={target.kind}
       data-fee-code={target.feeCode}
       data-nature-code={target.natureCode ?? undefined}
-      title="查看逐笔明细"
+      title={cents === 0 ? '本期无金额' : '查看逐笔明细'}
       onClick={() => onCellClick(target)}
-    >{fmtCents(cents)}</button>
+    >{cents === 0 ? '—' : fmtCents(cents)}</button>
   );
   const subtotal = report.subtotal;
+  const totalText = (cents: number) => (cents === 0 ? '—' : fmtCents(cents));
   return (
     <div className="t-scroll stats-matrix-scroll">
       <table className="t stats-fee-nature-table" data-testid="fee-nature-table">
@@ -48,26 +49,26 @@ export default function FeeNatureTable({ report, onCellClick }: {
                 const cents = Number(row.cells?.[column.code] ?? 0);
                 return (
                   <td key={column.code} className="num">
-                    {amount(cents, { feeCode: row.feeCode, feeName: row.feeName, natureCode: column.code, kind: 'all' })}
+                    {amount(cents, { feeCode: row.feeCode, feeName: row.feeName, natureCode: column.code, kind: 'all' }, cents < 0 ? 'stats-num-neg' : '')}
                   </td>
                 );
               })}
               <td className="num stats-p2-total-col">{amount(row.receivedCents, { feeCode: row.feeCode, feeName: row.feeName, kind: 'received' })}</td>
-              <td className="num stats-p2-total-col">{amount(row.refundCents, { feeCode: row.feeCode, feeName: row.feeName, kind: 'refund' })}</td>
-              <td className="num stats-p2-total-col">{amount(row.adjustCents, { feeCode: row.feeCode, feeName: row.feeName, kind: 'adjust' })}</td>
+              <td className="num stats-p2-total-col">{amount(row.refundCents, { feeCode: row.feeCode, feeName: row.feeName, kind: 'refund' }, 'stats-num-neg')}</td>
+              <td className="num stats-p2-total-col">{amount(row.adjustCents, { feeCode: row.feeCode, feeName: row.feeName, kind: 'adjust' }, 'stats-num-neg')}</td>
               <td className="num stats-p2-total-col stats-p2-net-col">{amount(row.netCents, { feeCode: row.feeCode, feeName: row.feeName, kind: 'all' })}</td>
             </tr>
           ))}
           {subtotal ? (
-            <tr className="stats-subtotal-row" data-testid="fee-nature-subtotal">
+            <tr className="stats-subtotal-row stats-total-row" data-testid="fee-nature-subtotal">
               <td className="stats-sticky-name"><b>总计</b></td>
               {report.columns.map((column) => (
-                <td key={column.code} className="num"><b>{fmtCents(Number(subtotal.cells?.[column.code] ?? 0))}</b></td>
+                <td key={column.code} className="num"><b>{totalText(Number(subtotal.cells?.[column.code] ?? 0))}</b></td>
               ))}
-              <td className="num stats-p2-total-col"><b>{fmtCents(subtotal.receivedCents)}</b></td>
-              <td className="num stats-p2-total-col"><b>{fmtCents(subtotal.refundCents)}</b></td>
-              <td className="num stats-p2-total-col"><b>{fmtCents(subtotal.adjustCents)}</b></td>
-              <td className="num stats-p2-total-col stats-p2-net-col"><b>{fmtCents(subtotal.netCents)}</b></td>
+              <td className="num stats-p2-total-col"><b>{totalText(subtotal.receivedCents)}</b></td>
+              <td className="num stats-p2-total-col stats-num-neg"><b>{totalText(subtotal.refundCents)}</b></td>
+              <td className="num stats-p2-total-col stats-num-neg"><b>{totalText(subtotal.adjustCents)}</b></td>
+              <td className="num stats-p2-total-col stats-p2-net-col"><b>{totalText(subtotal.netCents)}</b></td>
             </tr>
           ) : null}
         </tbody>

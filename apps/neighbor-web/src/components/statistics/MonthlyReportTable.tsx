@@ -16,7 +16,14 @@ const COLUMNS: Array<{ key: keyof MonthlyReportTotals; label: string; percent?: 
 ];
 
 function cell(value: number | undefined, percent?: boolean): string {
-  return percent ? `${(Number(value) || 0).toFixed(2)}%` : fmtCents(value);
+  if (percent) return `${(Number(value) || 0).toFixed(2)}%`;
+  if (!value) return '—';
+  return fmtCents(value);
+}
+function amountClass(value: number | undefined, percent?: boolean): string {
+  if (percent) return '';
+  if (!value) return 'stats-num-muted';
+  return Number(value) < 0 ? 'stats-num-neg' : '';
 }
 
 /** 收费月报表（核心指标）：行=管理处，11 项核心指标 + 合计行。 */
@@ -35,15 +42,15 @@ export default function MonthlyReportTable({ report }: { report: MonthlyReportRe
             <tr key={row.key} data-monthly-key={row.key}>
               <td className="stats-sticky-name"><b>{row.label || row.key}</b></td>
               {COLUMNS.map((column) => (
-                <td key={column.key} className="num">{cell(row[column.key] as number | undefined, column.percent)}</td>
+                <td key={column.key} className={`num ${amountClass(row[column.key] as number | undefined, column.percent)}`}>{cell(row[column.key] as number | undefined, column.percent)}</td>
               ))}
             </tr>
           ))}
           {report.totals ? (
-            <tr className="stats-subtotal-row" data-testid="monthly-report-total">
+            <tr className="stats-subtotal-row stats-total-row" data-testid="monthly-report-total">
               <td className="stats-sticky-name"><b>合计</b></td>
               {COLUMNS.map((column) => (
-                <td key={column.key} className="num"><b>{cell(report.totals?.[column.key] as number | undefined, column.percent)}</b></td>
+                <td key={column.key} className={`num ${amountClass(report.totals?.[column.key] as number | undefined, column.percent)}`}><b>{cell(report.totals?.[column.key] as number | undefined, column.percent)}</b></td>
               ))}
             </tr>
           ) : null}

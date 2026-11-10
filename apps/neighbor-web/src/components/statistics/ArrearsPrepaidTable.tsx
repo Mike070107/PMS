@@ -27,16 +27,18 @@ export default function ArrearsPrepaidTable({ report, tab, onView }: {
               <td>{row.feeName || row.feeCode}</td>
               <td>{[fmtPeriod(row.periodFrom), fmtPeriod(row.periodTo)].filter((text) => text !== '—').join(' ~ ') || '—'}</td>
               <td className="num">{row.months ?? '—'}</td>
-              <td className="num"><b>{fmtCents(row.amountCents)}</b></td>
+              <td className={`num ${row.amountCents === 0 ? 'stats-num-muted' : tab === 'arrears' ? 'stats-num-neg' : 'stats-num-info'}`}>
+                <b>{row.amountCents === 0 ? '—' : fmtCents(row.amountCents)}</b>
+              </td>
               <td className="muted" title="车位编号/车库说明需补镜像">—</td>
               <td><button type="button" className="btn sm" data-view-bills onClick={() => onView(row)}>查看</button></td>
             </tr>
           ))}
           {report.totals ? (
-            <tr className="stats-subtotal-row" data-testid="arrears-prepaid-total">
+            <tr className="stats-subtotal-row stats-total-row" data-testid="arrears-prepaid-total">
               <td colSpan={6}><b>合计</b></td>
               <td className="num"><b>{report.totals.rows}</b></td>
-              <td className="num"><b>{fmtCents(report.totals.amountCents)}</b></td>
+              <td className="num"><b>{report.totals.amountCents === 0 ? '—' : fmtCents(report.totals.amountCents)}</b></td>
               <td colSpan={2} />
             </tr>
           ) : null}

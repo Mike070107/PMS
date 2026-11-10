@@ -32,7 +32,7 @@ export default function PropertySummaryTable({ report }: { report: PropertySumma
             </tr>
           ))}
           {report.total ? (
-            <tr className="stats-subtotal-row" data-testid="property-summary-total">
+            <tr className="stats-subtotal-row stats-total-row" data-testid="property-summary-total">
               <td><b>合计</b></td>
               {counts(report.total).map((text, index) => <td key={index} className="num"><b>{text}</b></td>)}
             </tr>

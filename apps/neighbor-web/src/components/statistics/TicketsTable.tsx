@@ -37,7 +37,7 @@ export default function TicketsTable({ report }: { report: TicketsResponse }) {
             </tr>
           ))}
           {report.totals ? (
-            <tr className="stats-subtotal-row" data-testid="tickets-total">
+            <tr className="stats-subtotal-row stats-total-row" data-testid="tickets-total">
               <td colSpan={6}><b>合计（{report.totals.count ?? report.rows.length} 件）</b></td>
               <td className="num"><b>{fmtCents(report.totals.amountCents)}</b></td>
               <td className="num"><b>{fmtCents(report.totals.taxCents)}</b></td>

@@ -291,6 +291,20 @@ function timeText(value?: string | null): string {
   return parsed.isValid() ? parsed.format('YYYY-MM-DD HH:mm') : String(value);
 }
 
+/** 收缴率阈值色：≥95 绿 / 80–95 琥珀 / <80 红 / 无应收灰（低饱和）。 */
+function rateToneClass(rate: number | null | undefined, receivable: number): string {
+  if (!receivable) return 'stats-kpi-muted';
+  const value = Number(rate) || 0;
+  if (value >= 95) return 'stats-kpi-pos';
+  if (value >= 80) return 'stats-kpi-warn';
+  return 'stats-kpi-neg';
+}
+function receivedToneClass(received: number, receivable: number): string {
+  if (received >= receivable && receivable > 0) return 'stats-kpi-pos';
+  if (received < receivable) return 'stats-kpi-neg';
+  return 'stats-kpi-muted';
+}
+
 /** 收起后的「筛选条件（N）」计数：按该报表实际生效的筛选维度统计（默认 P1 为管理处/收费项目/房屋性质 = 3）。 */
 function activeFilterCount(type: StatisticsReportType, draft: FilterDraft): number {
   let count = 0;
@@ -1356,11 +1370,11 @@ export default function Statistics() {
                     <>
                       {assessment.summary ? (
                         <div className="stats-kpi-cards" data-testid="assessment-cards">
-                          <div className="stats-kpi"><span>应收合计</span><b>{fmtCents(assessment.summary.receivableCents)}</b></div>
-                          <div className="stats-kpi"><span>已收合计</span><b>{fmtCents(assessment.summary.receivedCents)}</b></div>
-                          <div className="stats-kpi"><span>金额收缴率</span><b>{Number(assessment.summary.ratePct || 0).toFixed(2)}%</b></div>
-                          <div className="stats-kpi"><span>应缴 / 已缴户数</span><b>{assessment.summary.payableHouseholds} / {assessment.summary.paidHouseholds}</b></div>
-                          <div className="stats-kpi"><span>按户数收缴率</span><b>{Number(assessment.summary.householdRatePct || 0).toFixed(2)}%</b></div>
+                          <div className="stats-kpi stats-kpi-neutral"><span>应收合计</span><b>{fmtCents(assessment.summary.receivableCents)}</b></div>
+                          <div className={`stats-kpi ${receivedToneClass(assessment.summary.receivedCents, assessment.summary.receivableCents)}`}><span>已收合计</span><b>{fmtCents(assessment.summary.receivedCents)}</b></div>
+                          <div className={`stats-kpi ${rateToneClass(assessment.summary.ratePct, assessment.summary.receivableCents)}`}><span>金额收缴率</span><b>{Number(assessment.summary.ratePct || 0).toFixed(2)}%</b></div>
+                          <div className="stats-kpi stats-kpi-neutral"><span>应缴 / 已缴户数</span><b>{assessment.summary.payableHouseholds} / {assessment.summary.paidHouseholds}</b></div>
+                          <div className={`stats-kpi ${rateToneClass(assessment.summary.householdRatePct, assessment.summary.payableHouseholds)}`}><span>按户数收缴率</span><b>{Number(assessment.summary.householdRatePct || 0).toFixed(2)}%</b></div>
                         </div>
                       ) : null}
                       {assessment.rows.length ? (

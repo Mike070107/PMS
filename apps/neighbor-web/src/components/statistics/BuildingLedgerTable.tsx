@@ -28,7 +28,7 @@ export default function BuildingLedgerTable({ report }: { report: BuildingLedger
             </tr>
           ))}
           {report.totals ? (
-            <tr className="stats-subtotal-row" data-testid="building-ledger-total">
+            <tr className="stats-subtotal-row stats-total-row" data-testid="building-ledger-total">
               <td colSpan={5}><b>合计</b></td>
               <td className="num"><b>{report.totals.roomCount ?? report.rows.reduce((sum, row) => sum + row.roomCount, 0)}</b></td>
               <td className="num"><b>{report.totals.ownerCount ?? report.rows.reduce((sum, row) => sum + row.ownerCount, 0)}</b></td>

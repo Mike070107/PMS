@@ -1,6 +1,9 @@
 import { fmtCents } from '@/lib/statistics';
 import type { TicketSummaryResponse } from '@/lib/statistics';
 
+const money = (cents: number) => (cents === 0 ? '—' : fmtCents(cents));
+const moneyClass = (cents: number) => (cents === 0 ? 'stats-num-muted' : cents < 0 ? 'stats-num-neg' : '');
+
 /** 收款汇总表：主表（费项×收款方式动态列 + 合计）+ 票据口径副表 + 按收款人副表。 */
 export default function TicketSummaryTable({ report }: { report: TicketSummaryResponse }) {
   const totals = report.totals;
@@ -19,15 +22,21 @@ export default function TicketSummaryTable({ report }: { report: TicketSummaryRe
             {report.rows.map((row) => (
               <tr key={row.feeCode} data-fee-code={row.feeCode}>
                 <td><b>{row.feeName || row.feeCode}</b></td>
-                {report.methodColumns.map((column) => <td key={column.key} className="num">{fmtCents(Number(row.methods?.[column.key] ?? 0))}</td>)}
-                <td className="num stats-p2-total-col"><b>{fmtCents(row.netCents)}</b></td>
+                {report.methodColumns.map((column) => {
+                  const cents = Number(row.methods?.[column.key] ?? 0);
+                  return <td key={column.key} className={`num ${moneyClass(cents)}`}>{money(cents)}</td>;
+                })}
+                <td className={`num stats-p2-total-col ${moneyClass(row.netCents)}`}><b>{money(row.netCents)}</b></td>
               </tr>
             ))}
             {totals ? (
-              <tr className="stats-subtotal-row" data-testid="ticket-summary-total">
+              <tr className="stats-subtotal-row stats-total-row" data-testid="ticket-summary-total">
                 <td><b>合计</b></td>
-                {report.methodColumns.map((column) => <td key={column.key} className="num"><b>{fmtCents(Number(totals.methods?.[column.key] ?? 0))}</b></td>)}
-                <td className="num stats-p2-total-col"><b>{fmtCents(totals.netCents)}</b></td>
+                {report.methodColumns.map((column) => {
+                  const cents = Number(totals.methods?.[column.key] ?? 0);
+                  return <td key={column.key} className={`num ${moneyClass(cents)}`}><b>{money(cents)}</b></td>;
+                })}
+                <td className={`num stats-p2-total-col ${moneyClass(totals.netCents)}`}><b>{money(totals.netCents)}</b></td>
               </tr>
             ) : null}
           </tbody>
@@ -45,19 +54,19 @@ export default function TicketSummaryTable({ report }: { report: TicketSummaryRe
               {report.rows.map((row) => (
                 <tr key={row.feeCode}>
                   <td>{row.feeName || row.feeCode}</td>
-                  <td className="num">{fmtCents(row.ticketAmountCents)}</td>
-                  <td className="num">{fmtCents(row.ticketTaxCents)}</td>
-                  <td className="num">{fmtCents(row.ticketIncomeCents)}</td>
-                  <td className="num">{row.ticketCount}</td>
+                  <td className="num">{money(row.ticketAmountCents)}</td>
+                  <td className="num">{money(row.ticketTaxCents)}</td>
+                  <td className="num">{money(row.ticketIncomeCents)}</td>
+                  <td className={`num ${row.ticketCount === 0 ? 'stats-num-muted' : ''}`}>{row.ticketCount === 0 ? '—' : row.ticketCount}</td>
                 </tr>
               ))}
               {totals ? (
-                <tr className="stats-subtotal-row">
+                <tr className="stats-subtotal-row stats-total-row">
                   <td><b>合计</b></td>
-                  <td className="num"><b>{fmtCents(totals.ticketAmountCents)}</b></td>
-                  <td className="num"><b>{fmtCents(totals.ticketTaxCents)}</b></td>
-                  <td className="num"><b>{fmtCents(totals.ticketIncomeCents)}</b></td>
-                  <td className="num"><b>{totals.ticketCount}</b></td>
+                  <td className="num"><b>{money(totals.ticketAmountCents)}</b></td>
+                  <td className="num"><b>{money(totals.ticketTaxCents)}</b></td>
+                  <td className="num"><b>{money(totals.ticketIncomeCents)}</b></td>
+                  <td className="num"><b>{totals.ticketCount === 0 ? '—' : totals.ticketCount}</b></td>
                 </tr>
               ) : null}
             </tbody>
@@ -78,16 +87,22 @@ export default function TicketSummaryTable({ report }: { report: TicketSummaryRe
               {report.cashierRows.map((row) => (
                 <tr key={row.cashier} data-cashier={row.cashier}>
                   <td><b>{row.cashier || '未填'}</b></td>
-                  {report.methodColumns.map((column) => <td key={column.key} className="num">{fmtCents(Number(row.methods?.[column.key] ?? 0))}</td>)}
-                  <td className="num"><b>{fmtCents(row.netCents)}</b></td>
+                  {report.methodColumns.map((column) => {
+                    const cents = Number(row.methods?.[column.key] ?? 0);
+                    return <td key={column.key} className={`num ${moneyClass(cents)}`}>{money(cents)}</td>;
+                  })}
+                  <td className={`num ${moneyClass(row.netCents)}`}><b>{money(row.netCents)}</b></td>
                   <td className="num">{row.rows}</td>
                 </tr>
               ))}
               {report.cashierTotals ? (
-                <tr className="stats-subtotal-row" data-testid="ticket-summary-cashier-total">
+                <tr className="stats-subtotal-row stats-total-row" data-testid="ticket-summary-cashier-total">
                   <td><b>合计</b></td>
-                  {report.methodColumns.map((column) => <td key={column.key} className="num"><b>{fmtCents(Number(report.cashierTotals?.methods?.[column.key] ?? 0))}</b></td>)}
-                  <td className="num"><b>{fmtCents(report.cashierTotals.netCents)}</b></td>
+                  {report.methodColumns.map((column) => {
+                    const cents = Number(report.cashierTotals?.methods?.[column.key] ?? 0);
+                    return <td key={column.key} className={`num ${moneyClass(cents)}`}><b>{money(cents)}</b></td>;
+                  })}
+                  <td className={`num ${moneyClass(report.cashierTotals.netCents)}`}><b>{money(report.cashierTotals.netCents)}</b></td>
                   <td className="num"><b>{report.cashierTotals.rows}</b></td>
                 </tr>
               ) : null}

@@ -282,10 +282,10 @@ const ASSESSMENT_ROWS = [
     officeCode: '02', officeName: '枫桦景苑二期A', sId: 21, address: '宝秀路701号701', ownerName: '陆乾一', areaSqm: 630.98,
     months: Array.from({ length: 12 }, (_, index) => ({
       month: index + 1,
-      receivableCents: index === 0 ? 1000000 : index === 9 ? 1072160 : 0,
-      receivedCents: index === 0 ? 500000 : 0,
+      receivableCents: index === 0 ? 1000000 : index === 1 ? 100000 : index === 9 ? 1072160 : 0,
+      receivedCents: index === 0 ? 1900000 : index === 1 ? 50000 : 0,
     })),
-    totalReceivableCents: 2072160, totalReceivedCents: 500000, ratePct: 24.13,
+    totalReceivableCents: 2172160, totalReceivedCents: 1950000, ratePct: 89.77,
   },
   {
     officeCode: '02', officeName: '枫桦景苑二期A', sId: 22, address: '宝秀路723-725号723-725', ownerName: '杨凤林', areaSqm: 344.37,
@@ -300,10 +300,10 @@ const ASSESSMENT_ROWS = [
     officeCode: '04', officeName: '上海新家', sId: 23, address: '上海新家1号101', ownerName: '合成业主', areaSqm: 90,
     months: Array.from({ length: 12 }, (_, index) => ({
       month: index + 1,
-      receivableCents: index === 0 ? 428400 : 0,
-      receivedCents: 0,
+      receivableCents: index === 0 ? 428400 : index === 1 ? 100000 : 0,
+      receivedCents: index === 1 ? 120000 : 0,
     })),
-    totalReceivableCents: 428400, totalReceivedCents: 0, ratePct: 0,
+    totalReceivableCents: 528400, totalReceivedCents: 120000, ratePct: 22.71,
   },
 ];
 
@@ -315,8 +315,8 @@ function assessmentResponse() {
     summary: {
       receivableCents, receivedCents,
       ratePct: Number(((receivedCents / receivableCents) * 100).toFixed(2)),
-      payableHouseholds: 3, paidHouseholds: 2,
-      householdRatePct: Number(((2 / 3) * 100).toFixed(2)),
+      payableHouseholds: 3, paidHouseholds: 3,
+      householdRatePct: 100,
     },
     count: ASSESSMENT_ROWS.length, dataAsOf: OPTIONS.dataAsOf, available: true, message: null,
   };

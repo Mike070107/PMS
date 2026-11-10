@@ -35,12 +35,12 @@ export default function SignoffsTable({ report }: { report: SignoffsResponse }) 
                 <td>{row.result || '—'}</td>
                 <td>{row.voided ? '是' : '否'}</td>
                 <td>{row.ended ? '是' : '否'}</td>
-                <td className="num"><b>{fmtCents(row.adjustAmountCents)}</b></td>
+                <td className={`num ${row.adjustAmountCents === 0 ? 'stats-num-muted' : row.adjustAmountCents < 0 ? 'stats-num-neg' : ''}`}><b>{row.adjustAmountCents === 0 ? '—' : fmtCents(row.adjustAmountCents)}</b></td>
               </tr>
             );
           })}
           {report.totals ? (
-            <tr className="stats-subtotal-row" data-testid="signoffs-total">
+            <tr className="stats-subtotal-row stats-total-row" data-testid="signoffs-total">
               <td colSpan={12}><b>合计（{report.totals.count ?? report.rows.length} 件 · 作废 {report.totals.voidedCount ?? 0} · 已结束 {report.totals.endedCount ?? 0}）</b></td>
               <td className="num"><b>{fmtCents(report.totals.adjustAmountCents)}</b></td>
             </tr>

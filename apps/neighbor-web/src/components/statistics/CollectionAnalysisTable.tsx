@@ -31,7 +31,7 @@ export default function CollectionAnalysisTable({ report, onRowClick }: {
             </tr>
           ))}
           {report.totals ? (
-            <tr className="stats-subtotal-row" data-testid="collection-analysis-total">
+            <tr className="stats-subtotal-row stats-total-row" data-testid="collection-analysis-total">
               <td colSpan={4}><b>合计</b></td>
               <td className="num"><b>{fmtCents(report.totals.historyArrearsCents)}</b></td>
               <td className="num"><b>{fmtCents(report.totals.currentYearArrearsCents)}</b></td>

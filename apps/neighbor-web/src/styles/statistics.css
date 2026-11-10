@@ -756,3 +756,66 @@
 @media (prefers-reduced-motion: reduce) {
   .stats-main { transition: none; }
 }
+
+/* ---------- 数值语义色（低饱和，仅用于统计报表展示） ---------- */
+.stats {
+  --stat-pos: #2f6b4f;
+  --stat-neg: #a4453d;
+  --stat-warn: #8a6420;
+  --stat-info: #315f86;
+  --stat-muted: #8b95a1;
+  --stat-neg-tint: rgba(164, 69, 61, .06);
+  --stat-total-bg: #f3f5f8;
+}
+.stats-num-pos { color: var(--stat-pos) !important; }
+.stats-num-neg { color: var(--stat-neg) !important; }
+.stats-num-info { color: var(--stat-info) !important; }
+.stats-num-muted { color: var(--stat-muted) !important; }
+.stats-cell-neg-tint { background: var(--stat-neg-tint) !important; }
+.stats-total-row td { border-top: 2px solid #cfd6df !important; background: var(--stat-total-bg) !important; font-weight: 600; }
+.stats-money-btn.stats-num-neg { color: var(--stat-neg) !important; }
+.stats-money-btn.stats-num-pos { color: var(--stat-pos) !important; }
+.stats-money-btn.stats-num-muted { color: var(--stat-muted) !important; text-decoration: none; }
+
+/* ---------- 收缴考核：专业报表排版 ---------- */
+.stats-assessment-wrap { min-width: 0; }
+.stats-assessment-table { min-width: 2900px; }
+.stats-assessment-table .stats-sticky-area {
+  position: sticky; left: 280px; z-index: 3; min-width: 92px; background: #fff;
+  box-shadow: 2px 0 6px -2px rgba(23, 32, 51, .16);
+}
+.stats-assessment-table thead .stats-sticky-area { z-index: 6; background: var(--sunken, #f4f7fb); }
+.stats-assessment-table thead th { border-bottom: 1px solid var(--line); }
+.stats-assessment-table .stats-month-head { text-align: center; border-left: 1px solid rgba(120, 132, 148, .16); }
+.stats-assessment-table .stats-month-head.stats-month-odd { background: #f4f6f9; }
+.stats-assessment-table .stats-month-head.stats-month-even { background: #fbfcfd; }
+.stats-assessment-table .stats-month-sub { font-size: 11.5px; font-weight: 500; color: var(--ink3); }
+.stats-assessment-table .stats-subhead-recv { background: #eef1f4; }
+.stats-assessment-table .stats-subhead-paid { background: #fff; }
+.stats-assessment-table tbody tr:nth-child(even) td { background: #fafbfc; }
+.stats-assessment-table tbody tr:nth-child(even) .stats-sticky-name,
+.stats-assessment-table tbody tr:nth-child(even) .stats-sticky-owner,
+.stats-assessment-table tbody tr:nth-child(even) .stats-sticky-area { background: #fafbfc; }
+.stats-assessment-table tbody tr:hover td { background: #f2f6fa; }
+.stats-assessment-table tbody tr:hover .stats-sticky-name,
+.stats-assessment-table tbody tr:hover .stats-sticky-owner,
+.stats-assessment-table tbody tr:hover .stats-sticky-area { background: #f2f6fa; }
+.stats-assessment-table .stats-total-row td { background: var(--stat-total-bg) !important; border-top: 2px solid #cfd6df; }
+.stats-assessment-table .stats-rate-pos { color: var(--stat-pos); }
+.stats-assessment-table .stats-rate-warn { color: var(--stat-warn); }
+.stats-assessment-table .stats-rate-neg { color: var(--stat-neg); }
+.stats-assessment-table .stats-rate-muted { color: var(--stat-muted); }
+.stats-assessment-legend {
+  display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; padding: 8px 10px;
+  font-size: 12px; color: var(--ink3); background: #fafbfc; border: 1px solid var(--line); border-radius: 8px;
+}
+.stats-assessment-legend span::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; background: currentColor; }
+
+/* 指标卡：低饱和语义色 + 等宽数字 */
+.stats-kpi { font-variant-numeric: tabular-nums; border-width: 1px; }
+.stats-kpi b { font-variant-numeric: tabular-nums; }
+.stats-kpi-neutral { color: var(--ink1); }
+.stats-kpi-pos { color: var(--stat-pos); border-color: rgba(47, 107, 79, .35); background: rgba(47, 107, 79, .05); }
+.stats-kpi-neg { color: var(--stat-neg); border-color: rgba(164, 69, 61, .32); background: rgba(164, 69, 61, .05); }
+.stats-kpi-warn { color: var(--stat-warn); border-color: rgba(138, 100, 32, .32); background: rgba(138, 100, 32, .05); }
+.stats-kpi-muted { color: var(--stat-muted); border-color: rgba(139, 149, 161, .35); }

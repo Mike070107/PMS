@@ -1,4 +1,4 @@
-const test = require('node:test');
+﻿const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -1015,6 +1015,10 @@ test('P2 收费汇总：费项×性质矩阵、行尾四块、总计、单元格
     assert.equal(await js("document.querySelector('[data-fee-row=\"04\"] [data-nature-code=\"06\"]').textContent.trim()"), '¥30,900.00');
     assert.ok((await js("document.querySelector('[data-testid=fee-nature-subtotal]').textContent")).includes('¥152,992.20'), '总计净额');
     assert.ok((await js("document.querySelector('[data-testid=fee-nature-subtotal]').textContent")).includes('¥153,742.20'), '总计收款');
+    assert.ok(await js("document.querySelector('[data-testid=fee-nature-subtotal]').classList.contains('stats-total-row')"), '收费汇总合计行统一 stats-total-row');
+    assert.ok(await js("!!document.querySelector('[data-fee-row=\"04\"] [data-nature-code=\"01\"].stats-num-neg')"), '收费汇总负数低饱和红 class');
+    assert.ok(await js("!!document.querySelector('[data-testid=fee-nature-table] tbody button.stats-num-muted')"), '收费汇总零金额显示灰色「—」');
+    assert.ok((await js("document.querySelector('[data-fee-row=\"04\"] [data-kind=\"refund\"]').className")).includes('stats-num-neg'), '退款列红色 class');
     assert.ok((await js("document.querySelector('[data-testid=fee-nature-hint]').textContent")).includes('按收款日期统计收款/退款/调整'));
     await screenshot('statistics-fee-nature-1440.png');
 
@@ -1143,6 +1147,8 @@ test('P2-C 欠收与溢收汇总：两页签、合计/小计、查看逐笔合�
     assert.ok((await js("document.querySelector('[data-testid=arrears-summary-chips]').textContent")).includes('枫桦景苑一期'));
     assert.ok((await js("document.querySelector('[data-testid=arrears-prepaid-total]').textContent")).includes('¥39,232.00'), '欠收明细合计');
     assert.ok((await js("document.querySelector('[data-testid=arrears-prepaid-total]').textContent")).includes('3'));
+    assert.ok(await js("document.querySelector('[data-testid=arrears-prepaid-total]').classList.contains('stats-total-row')"), '合计行统一 stats-total-row');
+    assert.ok((await js("document.querySelector('[data-s-id=\"1\"] td.stats-num-neg')?.textContent || ''")).includes('¥15,825.00'), '欠收金额低饱和红 class');
     assert.ok((await js("document.querySelector('[data-s-id=\"1\"]').textContent")).includes('永德路228弄3号402'));
     assert.ok((await js("document.querySelector('[data-s-id=\"1\"]').textContent")).includes('2014-04 ~ 2020-11'));
     await screenshot('statistics-arrears-prepaid-1440.png');
@@ -1203,25 +1209,48 @@ test('P2-C 收缴考核：12 月应收/收款表头、指标卡、合计/收缴�
     const cards = await js("document.querySelector('[data-testid=assessment-cards]').textContent");
     assert.ok(cards.includes('应收合计') && cards.includes('已收合计') && cards.includes('金额收缴率'));
     assert.ok(cards.includes('应缴 / 已缴户数') && cards.includes('按户数收缴率'));
-    assert.ok(cards.includes('¥30,005.60'), '应收合计指标卡');
-    assert.ok(cards.includes('¥10,000.00'), '已收合计指标卡');
-    assert.ok(cards.includes('33.33%'), '金额收缴率指标卡');
-    assert.ok(cards.includes('66.67%'), '按户数收缴率指标卡');
+    assert.ok(cards.includes('¥32,005.60'), '应收合计指标卡');
+    assert.ok(cards.includes('¥25,700.00'), '已收合计指标卡');
+    assert.ok(cards.includes('80.30%'), '金额收缴率指标卡');
+    assert.ok(cards.includes('100.00%'), '按户数收缴率指标卡');
+    // 指标卡低饱和语义色：已收按达/未达着色，金额收缴率 80.30% 为琥珀。
+    assert.ok(await js("!!document.querySelector('[data-testid=assessment-cards] .stats-kpi-pos')"));
+    assert.ok(await js("!!document.querySelector('[data-testid=assessment-cards] .stats-kpi-warn')"));
 
     const headers = await js("[...document.querySelectorAll('[data-testid=assessment-table] thead th')].map((th) => th.textContent.trim()).filter(Boolean)");
     assert.equal(headers.length, 42, '收缴考核表头：首行 18 个（含 12 个月分组）+ 次行 24 个');
-    assert.ok(headers.includes('1 月') && headers.includes('12 月'));
+    assert.ok(headers.includes('1 月（元）') && headers.includes('12 月（元）'), '月分组表头带（元）');
     assert.ok(headers.includes('合计应收') && headers.includes('合计已收') && headers.includes('收缴率'));
     assert.ok((await js("document.querySelector('[data-testid=assessment-table]').textContent")).includes('宝秀路701号701'));
-    assert.ok((await js("document.querySelector('[data-testid=assessment-table]').textContent")).includes('24.13%'));
-    assert.ok((await js("document.querySelector('[data-testid=assessment-total]').textContent")).includes('33.33%'), '合计行收缴率');
+    assert.ok((await js("document.querySelector('[data-testid=assessment-table]').textContent")).includes('89.77%'));
+    assert.ok((await js("document.querySelector('[data-testid=assessment-total]').textContent")).includes('80.30%'), '合计行收缴率');
+    // 月列纯数字+千分位两位，不再逐格 ￥；应收 0 显示灰色「—」。
+    const firstMonthReceivable = await js("document.querySelector('[data-s-id=\"21\"] td[data-receivable]').textContent.trim()");
+    assert.equal(firstMonthReceivable, '10,000.00');
+    assert.equal(firstMonthReceivable.includes('¥'), false);
+    const zeroCell = await js("document.querySelector('[data-s-id=\"21\"] td[data-zero=\"true\"]').textContent.trim()");
+    assert.equal(zeroCell, '—');
+    assert.ok(await js("document.querySelector('[data-s-id=\"21\"] td[data-zero=\"true\"]').classList.contains('stats-num-muted')"));
+    // 语义 class（不断言具体色值）：收款=应收绿、收款<应收红、超过应收蓝、应收未收红色+浅红底。
+    const classOf = (expr) => js(`(${expr}).className`);
+    assert.ok((await classOf("document.querySelector('[data-s-id=\"22\"] td[data-received-state=\"equal\"]')")).includes('stats-num-pos'));
+    assert.ok((await classOf("document.querySelector('[data-s-id=\"21\"] td[data-received-state=\"less\"]')")).includes('stats-num-neg'));
+    assert.ok((await classOf("document.querySelector('[data-s-id=\"23\"] td[data-received-state=\"over\"]')")).includes('stats-num-info'));
+    const unpaidClass = await classOf("document.querySelector('[data-s-id=\"21\"] td[data-received-state=\"unpaid\"]')");
+    assert.ok(unpaidClass.includes('stats-num-neg') && unpaidClass.includes('stats-cell-neg-tint'), '应收未收：红字+淡红底');
+    // 合计行与收缴率阈值 class：89.77% 琥珀、100% 绿、22.71% 红。
+    assert.ok(await js("document.querySelector('[data-testid=assessment-total]').classList.contains('stats-total-row')"));
+    assert.ok((await classOf("document.querySelector('[data-s-id=\"21\"] .stats-p2-net-col')")).includes('stats-rate-warn'));
+    assert.ok((await classOf("document.querySelector('[data-s-id=\"22\"] .stats-p2-net-col')")).includes('stats-rate-pos'));
+    assert.ok((await classOf("document.querySelector('[data-s-id=\"23\"] .stats-p2-net-col')")).includes('stats-rate-neg'));
+    assert.ok(await js("!!document.querySelector('[data-testid=assessment-legend]')"), '表下图例');
     await screenshot('statistics-assessment-1440.png');
 
     // CSV：BOM、12 月表头、合计、收缴率。
     await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
     await js("document.querySelector('[data-testid=stats-export]').click()");
     await waitFor("window.__blobs.length >= 1", '收缴考核 CSV Blob');
-    const exported = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], title: text.includes('收缴考核'), months: text.includes('1月应收') && text.includes('12月收款'), total: text.includes('合计'), rate: text.includes('33.33%') }; })()");
+    const exported = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], title: text.includes('收缴考核'), months: text.includes('1月应收') && text.includes('12月收款'), total: text.includes('合计'), rate: text.includes('80.30%') }; })()");
     assert.deepEqual(exported.bom, [0xEF, 0xBB, 0xBF]);
     assert.ok(exported.title && exported.months && exported.total && exported.rate, '收缴考核 CSV 内容');
     await pause(2600);
@@ -1492,6 +1521,8 @@ test('P4-A 减免情况统计/签报情况统计：日期关键词参数/合计/
     assert.ok(reliefTotal.includes('¥26,000.00'), '原应收合计');
     assert.ok(reliefTotal.includes('¥20,100.00'), '现应收合计');
     assert.ok(reliefTotal.includes('¥5,900.00'), '减免金额合计');
+    assert.ok(await js("document.querySelector('[data-testid=relief-total]').classList.contains('stats-total-row')"), '减免合计行统一 stats-total-row');
+    assert.ok(await js("!!document.querySelector('[data-testid=relief-table] tbody td.stats-num-pos')"), '减免金额绿色 class');
     await screenshot('statistics-relief-1440.png');
     await setInput('[data-testid=ledger-keyword]', '泊位');
     await js("document.querySelector('[data-testid=stats-submit]').click()");
@@ -1667,3 +1698,4 @@ test('统计选项未就绪：优先显示后端 message，不渲染空表', { t
     await screenshot('statistics-options-unavailable.png');
   }, '?options-unavailable');
 });
+
