@@ -45,7 +45,7 @@
     "test:telemetry": "node -r ts-node/register --test src/modules/telemetry/telemetry.persistence.test.ts",
     "test:observability-alert": "node -r ts-node/register --test src/modules/observability/observability-alert-cooldown.test.ts",
     "test:password-lockout": "node -r ts-node/register --test src/modules/auth/password-lockout.test.ts",
-    "test:mis-mirror": "node -r ts-node/register --test src/modules/fees/mis-mirror.test.ts src/modules/fees/charge-standard-mirror.test.ts src/modules/fees/dimension-mirror.test.ts src/modules/statistics/mirror-extra.test.ts",
+    "test:mis-mirror": "node -r ts-node/register --test src/modules/fees/mis-mirror.test.ts src/modules/fees/charge-standard-mirror.test.ts src/modules/fees/dimension-mirror.test.ts src/modules/fees/bill-mirror.test.ts src/modules/statistics/mirror-extra.test.ts",
     "test:feedback": "node -r ts-node/register --test src/modules/feedback/dto.test.ts src/modules/feedback/feedback-unified.test.ts src/modules/feedback/feedback-list.persistence.test.ts src/modules/feedback/feedback.http.test.ts",
     "test:screen-decision": "node -r ts-node/register --test src/modules/fees/screen-local-read.test.ts src/modules/fees/screen-decision.test.ts src/modules/fees/screen-summary.test.ts src/modules/fees/screen-settings.persistence.test.ts"
   },

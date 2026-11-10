@@ -11,6 +11,7 @@ import { loadCollectionTargets } from './collection-targets.util';
 import { buildScreenSummary } from './screen-summary.util';
 import { chargeStandardMirrorParams } from './charge-standard-mirror.util';
 import { dimensionMirrorRows } from './dimension-mirror.util';
+import { billCursorId, billMirrorRows } from './bill-mirror.util';
 
 type MirrorMode = 'mis' | 'mirror';
 type MirrorCommunity = { id: number; name: string; offices: string[] };
@@ -138,7 +139,7 @@ export class MisMirrorService {
       return 0;
     }
     let lastUpdated = state.last_updated_at ? new Date(state.last_updated_at) : null;
-    let lastId = Number(state.last_id ?? 0);
+    let lastId = billCursorId(state.last_id ?? '0');
     let total = 0;
     // 主增量：ZJ_ID 主键 keyset；不碰 updatedate，保证不扫 65 万行。
     for (let i = 0; i < MAX_BATCHES_PER_TICK; i += 1) {
@@ -146,7 +147,7 @@ export class MisMirrorService {
       if (!rows.length) break;
       await this.upsertBills(rows);
       total += rows.length;
-      lastId = Number(rows[rows.length - 1].zjId);
+      lastId = rows[rows.length - 1].zjId;
       if (rows.length < BATCH_SIZE) break;
     }
     // 补漏：旧 ZJ_ID 的 updatedate 变更每 15 分钟扫一次；不能作为每 5 分钟主谓词。
@@ -193,8 +194,8 @@ export class MisMirrorService {
   }
 
   private billSelect(where: string, order: string, params: Record<string, string | number>) {
-    return `SELECT TOP (@take) w.ZJ_ID AS zjId, l.管理处 AS officeCode, l.L_ID AS lId,
-        s.S_ID AS sId, z.ZH_ID AS zhId, z.姓名 AS ownerName, s.室 AS roomNo,
+    return `SELECT TOP (@take) CONVERT(varchar(20),w.ZJ_ID) AS zjId, l.管理处 AS officeCode, CONVERT(varchar(20),l.L_ID) AS lId,
+        CONVERT(varchar(20),s.S_ID) AS sId, CONVERT(varchar(20),z.ZH_ID) AS zhId, z.姓名 AS ownerName, s.室 AS roomNo,
         ISNULL(l.地址1,N'')+ISNULL(l.字1,N'')+ISNULL(l.地址2,N'')+ISNULL(l.字2,N'')+
         ISNULL(l.地址3,N'')+ISNULL(l.字3,N'')+ISNULL(l.地址4,N'')+ISNULL(l.字4,N'')+
         ISNULL(s.室,N'')+ISNULL(s.字,N'') AS address,
@@ -219,21 +220,22 @@ export class MisMirrorService {
       ORDER BY ${order}`;
   }
 
-  private async readNewBillBatch(lastId: number) {
-    const params: Record<string, string | number> = { take: BATCH_SIZE, lastId };
+  private async readNewBillBatch(lastId: string) {
+    const params: Record<string, string | number> = { take: BATCH_SIZE, lastId: billCursorId(lastId) };
     const sql = this.billSelect('w.ZJ_ID > @lastId', 'w.ZJ_ID ASC', params);
     const result = await this.misFees.mirrorRead(sql, params, MIS_TIMEOUT);
-    return (result?.recordsets?.[0] ?? []) as any[];
+    return billMirrorRows(result, params.lastId as string);
   }
 
   private async readUpdatedBillBatch(since: Date, take = BATCH_SIZE) {
     const params: Record<string, string | number> = { take, since: this.misDateTime(since) };
     const sql = this.billSelect('w.updatedate > CONVERT(datetime,@since,126)', 'w.updatedate ASC,w.ZJ_ID ASC', params);
     const result = await this.misFees.mirrorRead(sql, params, MIS_TIMEOUT);
-    return (result?.recordsets?.[0] ?? []) as any[];
+    return billMirrorRows(result);
   }
 
   private async upsertBills(rows: any[]) {
+    rows = billMirrorRows({ recordsets: [rows] });
     if (!rows.length) return;
     const fields = ['zjId', 'officeCode', 'lId', 'sId', 'zhId', 'ownerName', 'roomNo', 'address', 'feeCode', 'feeName', 'natureCode', 'period', 'amountCents', 'paidDate', 'refundDate', 'paymentMethod', 'cashier', 'incomeCents', 'receiptWarehouseNo', 'invoiceNo', 'receiptVoucherNo', 'sourceUpdatedAt'];
     const values: unknown[] = [];
@@ -540,11 +542,11 @@ export class MisMirrorService {
          ON CONFLICT (tenant_id,source_table) DO UPDATE SET initialized_at=now(),last_attempt_at=now(),last_error=NULL`,
         [tenantId],
       );
-      let lastId = 0;
+      let lastId = '0';
       let total = 0;
       for (;;) {
-        const batch = (await this.misFees.mirrorRead(
-          `SELECT TOP (@take) w.ZJ_ID AS zjId, l.管理处 AS officeCode, l.L_ID AS lId, s.S_ID AS sId, z.ZH_ID AS zhId,
+        const batch = billMirrorRows(await this.misFees.mirrorRead(
+          `SELECT TOP (@take) CONVERT(varchar(20),w.ZJ_ID) AS zjId, l.管理处 AS officeCode, CONVERT(varchar(20),l.L_ID) AS lId, CONVERT(varchar(20),s.S_ID) AS sId, CONVERT(varchar(20),z.ZH_ID) AS zhId,
              z.姓名 AS ownerName, s.室 AS roomNo,
              ISNULL(l.地址1,N'')+ISNULL(l.字1,N'')+ISNULL(l.地址2,N'')+ISNULL(l.字2,N'')+ISNULL(l.地址3,N'')+ISNULL(l.字3,N'')+ISNULL(l.地址4,N'')+ISNULL(l.字4,N'')+ISNULL(s.室,N'')+ISNULL(s.字,N'') AS address,
              w.ZJ_LX AS feeCode, f.XM AS feeName, w.FWXZ_DH AS natureCode, w.ZJ_CNY AS period, CAST(ROUND(w.ZJ_JE*100,0) AS bigint) AS amountCents,
@@ -561,15 +563,15 @@ export class MisMirrorService {
            WHERE w.ZJ_ID > @lastId AND ISNULL(w.SC,N'0')=N'0'
            ORDER BY w.ZJ_ID`,
           { take: BATCH_SIZE, lastId }, MIS_TIMEOUT,
-        )).recordsets?.[0] ?? [];
+        ), lastId);
         await this.upsertBills(batch as any[]);
         total += batch.length;
         if (!batch.length) break;
-        lastId = Number((batch as any[])[batch.length - 1].zjId);
+        lastId = batch[batch.length - 1].zjId;
         if (batch.length < BATCH_SIZE) break;
       }
       const last = await this.dataSource.query(
-        `SELECT MAX(source_updated_at) AS lastUpdated,MAX(zj_id) AS lastId FROM mis_mirror_bill`,
+        `SELECT MAX(source_updated_at) AS lastUpdated,MAX(zj_id)::text AS lastId FROM mis_mirror_bill`,
       );
       await this.dataSource.query(
         `UPDATE mis_sync_state SET last_updated_at=$2,last_id=$3,last_success_at=now(),last_error=NULL,lag_rows=0,synced_rows=$4

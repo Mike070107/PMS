@@ -1484,3 +1484,22 @@ sudo docker exec -i pms-postgres psql -U pms -d pms_repair -X -P pager=off
 
 - 四套镜像回归共 **22/22**、API `tsc --noEmit` 通过；新增 3 个测试覆盖本轮修复，既有 19 个回归继续覆盖原标准金额、迁移、日期失败、账单/补充镜像和 cron 排除行为。独立只读代码审查 PASS，保留上述 bill/分页精度边界；并将四套加入[常规 test:mis-mirror 脚本](<apps/api/package.json#L48>)，避免新增保护只靠临时手工命令。结果为本地合成数据和离线源证据，不代替真实源重灌、网页报表或生产验收。
 - 仅 API 源码/测试与本文档变更；Web/助手未变，报表 #24 仍灰字待接入，整个统计汇总目标仍未完成。未连接生产、未部署、未执行实际迁移或手工重灌。
+
+## 附录 K：账单源 ID 与同步游标精度（Round17）
+
+### K.1 修复入口与失败保护
+
+- [账单源结构](<outputs/mis-db-sync-20261106/schema-columns.csv#L3043-L3045>)的 ZJ_ID/ZH_ID 为 numeric(18,0)，楼/室/业主主键类型见 J.1。[增量/补漏 billSelect 与手工重灌](<apps/api/src/modules/fees/mis-mirror.service.ts>)均将实际投影的 `w.ZJ_ID/l.L_ID/s.S_ID/z.ZH_ID` 四列在 SQL Server 源端 `CONVERT(varchar(20),…)`，不让驱动先将 ID 变为 JS Number。
+- [账单校验](<apps/api/src/modules/fees/bill-mirror.util.ts>)要求真实数组结果集及四个必填 ID 字符串匹配 `^-?\d{1,18}$`，不 trim、不补缺值；源端即使安全范围内的 Number 也拒绝。主键分页在返回任何行/执行任何 upsert 前，用 BigInt 验证**整批**严格大于请求游标且逐行递增；相等、倒序、重复、后行损坏均 503。真实空数组可正常结束分页，缺结果集不能冒充空批。
+- 增量与重灌游标不再使用 `Number(last_id/zjId)`，源参数保持字符串；重灌收尾 `MAX(zj_id)::text` 避免聚合读回时被 PG 驱动数值化。旧安全整数数值水位仅在 `Number.isSafeInteger` 时转字符串兼容；unsafe Number、非整数或损坏文本拒绝，不能猜测恢复已经舍入的值。
+- 补漏仍保持原来的 updatedate 排序、十五分钟频率及超时降级批量。它不是 ZJ_ID 主键分页，因而只验证四个 ID 与结果结构，不强加跨时间组 ID 全局递增；合法的“较晚时间但较小 ID”仍可更新。upsert 前另做同样的结构/ID 校验，不改变金额/日期/票据字段处理、接口权限、cron 或报表 SQL 口径。
+
+### K.2 合成回归与未完成边界
+
+- [新增 11 项](<apps/api/src/modules/fees/bill-mirror.test.ts>)覆盖源结构/四 ID、游标 safe/unsafe Number、四个源 CAST、500 行满批加尾批的两次精确字符串游标、相邻 `2^53`/`2^53+1` 与 18 位维度 ID 的 PG 账单→业主→室→楼关联、账单成功水位、坏批整批拒绝、补漏非全局递增与失败保护；加入[常规 test:mis-mirror](<apps/api/package.json#L48>)。旧实现已明确复现：含被舍入 numeric18 Number 的源批未被拒绝，`assert.rejects` 报 `Missing expected rejection`；修复后的预期行为为 503。
+- 这是本地驱动桩与真实 PGlite 的合成证据，不是实际 SQL Server CONVERT/传输/执行计划或现场数据验收。手工重灌仍从原有正 ID 起点 `'0'` 扫描，未扩大到负/零 ID 的首次载入；补漏原有覆盖范围也未重设计。
+- **不是全链路 ID 重构**：住户明细 houseKey 解析及其他 API/read 路径仍可能存在 Number，不能据本轮声称所有金额下钻均支持超安全整数 ID。
+- **不是整次同步原子或历史修复**：reloadAll 的维度/标准事务先提交，账单逐批 upsert；增量也逐批提交。无效批在写入前拒绝且不推进最终账单成功水位，但更早的合法批次/维度可能已提交。既有 reloadAll 不清空账单表，因此本轮不会自动删除源已删账单或清理历史舍入造成的旧行；不能把上游结构校验文案理解为全库回滚承诺。
+- 五套镜像回归通过常规脚本共 **33/33**（新增 11，既有 22），API `tsc --noEmit` 通过；团队另独立运行 33/33、单套 11/11 与类型检查，只读审查 **PASS**。审查及 Lead 复核[源参数绑定](<apps/api/src/modules/fees/mis-fees.service.ts#L120-L129>)：字符串传为 NVarChar(4000)，保留 `w.ZJ_ID > @lastId`，按 SQL Server 类型优先级由参数转 numeric 比较，不是词典序或对列转 varchar；没有实际执行计划证据，不能承诺索引 seek 或耗时。这些仅证明上述本地代码、静态语义与合成数据边界。
+- 已经舍入但仍符合格式的**字符串旧水位**无法自动识别；重灌收尾仍取镜像 MAX，而非本次源最后一行，旧高 ID 幻影行可能抬高水位。重灌在账单循环前仍写 initialized_at/清 last_error，后续坏批不推进 last_success 并不代表初始化元数据完全不变。坏批会阻断后续主分页而非跳过，应结合 last_error 监控和授权后的独立对账处理；不在本轮自动重置水位或清理数据。
+- 没有新增迁移、报表入口或 Web/助手变更；#24 仍灰字。未连接 MIS/生产、未部署或执行实际迁移/重灌；统计汇总整体目标仍未完成。

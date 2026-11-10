@@ -223,7 +223,7 @@ function billSyncReader(overrides: { bill?: any; sweep?: any; extra?: Partial<Re
 }
 
 const BILL_ROW = {
-  zjId: 1, officeCode: '02', lId: 1, sId: 1, zhId: 133, ownerName: '袁明森', roomNo: '101',
+  zjId: '1', officeCode: '02', lId: '1', sId: '1', zhId: '133', ownerName: '袁明森', roomNo: '101',
   address: '永德路228弄1号101', feeCode: '01', feeName: '管理费', natureCode: '01', period: '202610',
   amountCents: 123400, paidDate: '2026-10-01', refundDate: null, paymentMethod: '现金', cashier: '胡美君',
   incomeCents: 116415, receiptWarehouseNo: 'WH-001', invoiceNo: 'INV-001', receiptVoucherNo: 'PZ-001',
@@ -265,7 +265,7 @@ test('reloadAll：全量账单 SQL 同样带票据四列，并顺带同步补充
     const { service, captured } = makeService(pg, billSyncReader({ extra: { ticket: [TICKET], relief: [RELIEF] } }));
     const result: any = await service.reloadAll(tenantId);
     assert.equal(result.rows, 0);
-    const reloadSql = captured.find((sql) => sql.includes('SELECT TOP (@take) w.ZJ_ID AS zjId')) ?? '';
+    const reloadSql = captured.find((sql) => sql.includes('SELECT TOP (@take) CONVERT(varchar(20),w.ZJ_ID) AS zjId')) ?? '';
     for (const keyword of ['w.收入', 'w.票据入库单编号', 'w.发票号码', 'w.凭证号码', 'incomeCents']) {
       assert.ok(reloadSql.includes(keyword), keyword);
     }
