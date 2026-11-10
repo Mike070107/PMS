@@ -361,6 +361,17 @@ export class AccessCardIssuanceController {
     return this.service.grantLegacyCardBoards(id, dto, user, access);
   }
 
+  /** 只读 .88 Access 权限表读回该卡授权（不写 Access 库/控制器），用于页面二次验证。 */
+  @Post('cards/:id/verify-grant')
+  @RequirePermission('business', 'view')
+  verifyLegacyCardGrant(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.service.verifyLegacyCardGrant(id, user, access);
+  }
+
   @Post('houses/:houseId/history/:historyId/authorizations')
   @RequirePermission('business', 'edit')
   createHistoryAuthorization(

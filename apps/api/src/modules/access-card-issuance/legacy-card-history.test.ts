@@ -3,6 +3,10 @@ import test from 'node:test';
 import { AccessCardIssuanceService } from './access-card-issuance.service';
 import { mapLegacyCardRow } from './legacy-card-history.util';
 import { icToWg } from './access-card-routing';
+import { ForbiddenException, RequestMethod, ServiceUnavailableException } from '@nestjs/common';
+import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
+import { PERMISSION_KEY } from '../../common/require-permission.decorator';
+import { AccessCardIssuanceController } from './access-card-issuance.controller';
 
 const user = { id: 7, tenantId: 3 } as never;
 const scopeAll = { scopeAll: true } as never;
@@ -408,4 +412,170 @@ test('cards/:id/grant-options：卡不在数据范围 403', async () => {
     service.getLegacyCardGrantOptions(12026, user, { scopeAll: false, communityIds: [16] } as never),
     /管理范围/,
   );
+});
+test('cards/history 行级聚合：一次 find、revoke 扣减、空 wg 返回空数组/null', async () => {
+  const { service, state } = makeService();
+  const local = {
+    ...snapshot,
+    history: [
+      { ...rawRows[0] },
+      { ...rawRows[1], icCardNo: null },
+    ],
+    permissions: [],
+  };
+  state.legacySnapshotRepo.findOne = async () => local;
+  state.requestLegacyHistory = async () => local;
+  state.waitLegacyHistory = async () => local;
+  const wg = icToWg(rawRows[0].icCardNo);
+  let findCalls = 0;
+  state.authorizationRepo.find = async () => {
+    findCalls += 1;
+    return [
+      {
+        id: 1, wgCardNo: wg, operation: 'controller_upload', status: 'completed',
+        createdAt: new Date('2026-10-01T00:00:00Z'), requestedAt: new Date('2026-10-01T00:00:00Z'),
+        completedAt: new Date('2026-10-01T01:00:00Z'),
+        targetBuildings: [
+          { buildingId: 50, buildingNo: '50', accessSystem: 'iccard' },
+          { buildingId: 41, buildingNo: '41', accessSystem: 'iccard' },
+        ],
+        controllerResults: [],
+      },
+      {
+        id: 2, wgCardNo: wg, operation: 'controller_revoke', status: 'completed',
+        createdAt: new Date('2026-10-02T00:00:00Z'), requestedAt: new Date('2026-10-02T00:00:00Z'),
+        completedAt: new Date('2026-10-02T01:00:00Z'),
+        targetBuildings: [{ buildingId: 41, buildingNo: '41', accessSystem: 'iccard' }],
+        controllerResults: [],
+      },
+    ];
+  };
+  const result: any = await service.getLegacyCardHistory(2, '228/50/202', undefined, user, scopeAll);
+  assert.equal(findCalls, 1, '必须一次批量查询本户所有卡任务');
+  const cardRow = result.rows.find((row: any) => row.icCardNo === rawRows[0].icCardNo);
+  assert.deepEqual(cardRow.appliedSystems, ['iccard']);
+  assert.deepEqual(cardRow.grantedBuildings, ['50']);
+  assert.equal(cardRow.latestTaskAt, '2026-10-02T01:00:00.000Z');
+  const emptyRow = result.rows.find((row: any) => row.icCardNo === null);
+  assert.deepEqual(emptyRow.appliedSystems, []);
+  assert.deepEqual(emptyRow.grantedBuildings, []);
+  assert.equal(emptyRow.latestTaskAt, null);
+});
+
+test('cards/:id 详情 additive：permissionCheckedAt/permissionSource/grantedBuildingDetails 读回优先', async () => {
+  const { service, state, snapshot: source } = makeService();
+  const wg = icToWg('B9F7D803');
+  const checkedAt = new Date('2026-11-10T00:00:00Z');
+  source.permissionRefreshedAt = checkedAt;
+  source.permissions = [
+    { wgCardNo: wg, accessSystem: 'iccard', buildingNo: '50', controller: '50号大门', door: '50号大门', sourceTable: 't_d_Privilege' },
+    { wgCardNo: wg, accessSystem: 'iccard', buildingNo: '41', controller: '41号大门', door: '41号大门', sourceTable: 'MJ_MacPower' },
+  ];
+  state.authorizationRepo.find = async () => [{
+    id: 1, wgCardNo: wg, operation: 'controller_upload', status: 'completed',
+    createdAt: new Date('2026-10-01T00:00:00Z'), requestedAt: new Date('2026-10-01T00:00:00Z'),
+    completedAt: new Date('2026-10-01T02:00:00Z'), targetBuildings: [], controllerResults: [],
+  }];
+  const result: any = await service.getLegacyCard(12026, user, scopeAll);
+  assert.equal(result.permissionCheckedAt, checkedAt.toISOString());
+  assert.equal(result.permissionSource, '.88 Access 门禁权限表（MjSystem / iCCard）');
+  assert.deepEqual(result.appliedSystems, ['iccard']);
+  assert.deepEqual(result.grantedBuildings, ['41', '50']);
+  const detail41 = result.grantedBuildingDetails.find((row: any) => row.buildingNo === '41');
+  const detail50 = result.grantedBuildingDetails.find((row: any) => row.buildingNo === '50');
+  assert.equal(detail41.source, 'permission_readback');
+  assert.equal(detail41.checkedAt, checkedAt.toISOString());
+  assert.equal(detail41.sourceTable, 'MJ_MacPower');
+  assert.equal(detail50.source, 'permission_readback');
+});
+
+test('任务回执 additive：acknowledgements 提取 acknowledgement/error，finishedAt=completedAt', async () => {
+  const { service } = makeService();
+  const completedAt = new Date('2026-10-01T01:02:00Z');
+  const response: any = (service as any).historyAuthorizationResponse({
+    id: 9, houseId: 1, historyRowId: 0, roomKey: '228/50/202', cardSequence: 1,
+    operation: 'controller_upload', icCardNo: 'B9F7D803', wgCardNo: '21663417',
+    targetBuildings: [], status: 'completed', attempt: 1, lastError: null,
+    requestedAt: new Date('2026-10-01T01:00:00Z'), completedAt, durationSeconds: 120,
+    controllerResults: [
+      { buildingNo: '41', acknowledgement: '控制器已确认' },
+      { buildingId: 50, error: '控制器无响应' },
+    ],
+  });
+  assert.equal(response.finishedAt, completedAt);
+  assert.equal(response.completedAt, completedAt);
+  assert.deepEqual(response.acknowledgements, ['41: 控制器已确认', '50: 控制器无响应']);
+});
+
+test('verify-grant：只读 .88 权限表成功返回授权楼栋/系统，不伪造', async () => {
+  const { service, state } = makeService();
+  const wg = icToWg('B9F7D803');
+  const checkedAt = new Date('2026-11-10T00:00:00Z');
+  state.waitAccessPermissions = async (snap: any) => ({
+    ...snap,
+    permissionStatus: 'ready',
+    permissionRefreshedAt: checkedAt,
+    permissions: [
+      { wgCardNo: wg, accessSystem: 'iccard', buildingNo: '50', controller: '50号大门', door: '50号大门', sourceTable: 't_d_Privilege' },
+      { wgCardNo: wg, accessSystem: 'iccard', buildingNo: '41', controller: '41号大门', door: '41号大门', sourceTable: 'MJ_MacPower' },
+    ],
+  });
+  const result: any = await service.verifyLegacyCardGrant(12026, user, scopeAll);
+  assert.equal(result.wgCardNo, wg);
+  assert.equal(result.accessSystem, 'iccard');
+  assert.equal(result.checkedAt, checkedAt.toISOString());
+  assert.deepEqual(result.appliedSystems, ['iccard']);
+  assert.deepEqual(result.grantedBuildings.map((row: any) => row.buildingNo), ['41', '50']);
+  assert.ok(result.grantedBuildings.every((row: any) => row.granted === true));
+  assert.match(result.message, /2 条门栋授权/);
+});
+
+test('verify-grant：网关离线 503、权限读回失败 503、无门栋授权返回空但不伪造', async () => {
+  const offline = makeService();
+  offline.state.agentRepo = { find: async () => [] };
+  await assert.rejects(
+    offline.service.verifyLegacyCardGrant(12026, user, scopeAll),
+    (error: unknown) => error instanceof ServiceUnavailableException && /网关离线/.test((error as Error).message),
+  );
+  const failed = makeService();
+  failed.state.waitAccessPermissions = async (snap: any) => ({
+    ...snap, permissionStatus: 'error', permissionLastError: '权限表连接失败',
+  });
+  await assert.rejects(
+    failed.service.verifyLegacyCardGrant(12026, user, scopeAll),
+    (error: unknown) => error instanceof ServiceUnavailableException && /权限表连接失败/.test((error as Error).message),
+  );
+  const empty = makeService();
+  empty.state.waitAccessPermissions = async (snap: any) => ({
+    ...snap, permissionStatus: 'ready', permissionRefreshedAt: new Date(), permissions: [],
+  });
+  const result: any = await empty.service.verifyLegacyCardGrant(12026, user, scopeAll);
+  assert.deepEqual(result.appliedSystems, []);
+  assert.deepEqual(result.grantedBuildings, []);
+  assert.match(result.message, /未查到/);
+});
+
+test('verify-grant：房号不匹配 400、越权 403', async () => {
+  const noRoom = makeService();
+  noRoom.state.resolveLegacyCardRoom = async () => null;
+  await assert.rejects(
+    noRoom.service.verifyLegacyCardGrant(12026, user, scopeAll),
+    /未能匹配这张卡的房号/,
+  );
+  const forbidden = makeService();
+  forbidden.state.resolveLegacyCardRoom = async () => {
+    throw new ForbiddenException('这张卡不在你的管理范围内');
+  };
+  await assert.rejects(
+    forbidden.service.verifyLegacyCardGrant(12026, user, scopeAll),
+    (error: unknown) => error instanceof ForbiddenException,
+  );
+});
+
+test('verify-grant 路由沿用 business view 权限，POST cards/:id/verify-grant', () => {
+  const handlers = AccessCardIssuanceController.prototype as unknown as Record<string, object>;
+  const handler = handlers.verifyLegacyCardGrant!;
+  assert.equal(Reflect.getMetadata(PATH_METADATA, handler), 'cards/:id/verify-grant');
+  assert.equal(Reflect.getMetadata(METHOD_METADATA, handler), RequestMethod.POST);
+  assert.deepEqual(Reflect.getMetadata(PERMISSION_KEY, handler), { items: [{ pageKey: 'business', action: 'view' }] });
 });

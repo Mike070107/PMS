@@ -147,6 +147,18 @@ type HouseContext = {
   legacyStorageRoomKey: string;
 };
 
+/** 行级任务聚合结果（appliedSystems/grantedBuildings 仍为 Set，输出时转数组）。 */
+type AuthorizationTaskAggregate = {
+  appliedSystems: Set<string>;
+  grantedBuildings: Set<string>;
+  latestTaskAt: number;
+  grantedAtByBuilding: Map<string, number>;
+  accessSystemByBuilding: Map<string, string>;
+};
+
+/** 权限读回来源展示文案（接口固定返回，供前端显示“可验证依据”）。 */
+const ACCESS_PERMISSION_SOURCE = '.88 Access 门禁权限表（MjSystem / iCCard）';
+
 /** 最近 30 笔捷顺发卡记录的固定 room_key；.80 助手按此读取快照。 */
 const RECENT_LEGACY_ROOM_KEY = '__recent_js_cards__';
 /** 快照新鲜期：过期才允许 GET 入队刷新，避免每次打开页面都重置 ready 快照。 */
@@ -360,13 +372,15 @@ export class AccessCardIssuanceService {
       .map((row) => row.icCardNo && /^[0-9A-F]{8}$/.test(row.icCardNo) ? icToWg(row.icCardNo) : null)
       .filter((value): value is string => Boolean(value));
     const tasks = cardNumbers.length ? await this.authorizationRepo.find({
-      where: { tenantId, wgCardNo: In(cardNumbers) }, order: { createdAt: 'DESC' }, take: 200,
+      where: { tenantId, wgCardNo: In(cardNumbers) }, order: { createdAt: 'DESC' },
     }) : [];
     const latestTask = new Map<string, AccessCardAuthorization>();
     for (const task of tasks) {
       const key = `${task.wgCardNo}:${task.operation}`;
       if (!latestTask.has(key)) latestTask.set(key, task);
     }
+    // 同一次 find 的任务顺带做行级聚合（appliedSystems/grantedBuildings/latestTaskAt），不再按卡查询。
+    const taskAggregates = this.aggregateAuthorizationTasks(tasks);
     const normalizeAddressPart = (value?: string | null) => {
       const trimmed = (value ?? '').trim();
       return /^\d+$/.test(trimmed) ? String(Number(trimmed)) : trimmed;
@@ -395,6 +409,7 @@ export class AccessCardIssuanceService {
                 : null;
       const roomKey = house && building ? legacyRoomKey(building.lane, building.buildingNo, house.roomNo) : null;
       const mapped = mapLegacyCardRow(row, index + 1, roomKey);
+      const aggregate = wgCardNo ? taskAggregates.get(wgCardNo) : undefined;
       return {
         ...mapped,
         wgCardNo: mapped.wgCardNo ?? wgCardNo,
@@ -411,6 +426,9 @@ export class AccessCardIssuanceService {
         homeBuildingNo: building?.buildingNo ?? null,
         canManageAccess,
         actionMessage,
+        appliedSystems: aggregate ? [...aggregate.appliedSystems].sort() : [],
+        grantedBuildings: aggregate ? [...aggregate.grantedBuildings].sort() : [],
+        latestTaskAt: aggregate && aggregate.latestTaskAt ? new Date(aggregate.latestTaskAt).toISOString() : null,
         accessDatabaseTask: wgCardNo ? this.historyAuthorizationResponse(latestTask.get(`${wgCardNo}:access_database_only`) ?? null) : null,
         controllerTask: wgCardNo ? this.historyAuthorizationResponse(latestTask.get(`${wgCardNo}:controller_upload`) ?? null) : null,
       };
@@ -455,13 +473,25 @@ export class AccessCardIssuanceService {
         accessSystem,
       }))
       : [];
+    // 一次批量聚合本户所有卡的已写入系统/已授权楼栋/最近任务时间。
+    const aggregates = await this.batchCardTaskAggregates(tenantId, rows.map((row) =>
+      row.icCardNo && /^[0-9A-F]{8}$/.test(row.icCardNo) ? icToWg(row.icCardNo) : row.wgCardNo));
+    const rowsWithAggregates = rows.map((row) => {
+      const aggregate = row.wgCardNo ? aggregates.get(row.wgCardNo) : undefined;
+      return {
+        ...row,
+        appliedSystems: aggregate ? [...aggregate.appliedSystems].sort() : [],
+        grantedBuildings: aggregate ? [...aggregate.grantedBuildings].sort() : [],
+        latestTaskAt: aggregate && aggregate.latestTaskAt ? new Date(aggregate.latestTaskAt).toISOString() : null,
+      };
+    });
     return {
       communityId,
       address: address || roomKey || context.roomKey,
       roomKey: context.roomKey,
       status: snapshot.status,
-      fieldsIncomplete: rows.length > 0 && rows.every((row) => row.fieldsIncomplete),
-      rows,
+      fieldsIncomplete: rowsWithAggregates.length > 0 && rowsWithAggregates.every((row) => row.fieldsIncomplete),
+      rows: rowsWithAggregates,
       error: snapshot.status === 'error' ? snapshot.lastError : null,
       refreshedAt: snapshot.refreshedAt,
     };
@@ -545,6 +575,50 @@ export class AccessCardIssuanceService {
         for (const target of task.targetBuildings ?? []) grantedBuildings.delete(normalizeBuildingNo(target.buildingNo));
       }
     }
+    const permissionCheckedAt = found.snapshot.permissionRefreshedAt
+      ? new Date(found.snapshot.permissionRefreshedAt).toISOString()
+      : null;
+    const taskAggregate = mapped.wgCardNo ? this.aggregateAuthorizationTasks(tasks).get(mapped.wgCardNo) : undefined;
+    const buildingDetails = new Map<string, {
+      buildingNo: string;
+      accessSystem: string;
+      granted: boolean;
+      source: 'permission_readback' | 'task';
+      checkedAt: string | null;
+      sourceTable?: string;
+    }>();
+    // 先放任务回执聚合，再用权限读回覆盖同一楼栋（permission_readback 优先）。
+    if (taskAggregate) {
+      for (const buildingNo of taskAggregate.grantedBuildings) {
+        const grantedAt = taskAggregate.grantedAtByBuilding.get(buildingNo);
+        buildingDetails.set(`${buildingNo}:${taskAggregate.accessSystemByBuilding.get(buildingNo) ?? ''}`, {
+          buildingNo,
+          accessSystem: taskAggregate.accessSystemByBuilding.get(buildingNo) ?? accessSystemOf('phase2', buildingNo) ?? '',
+          granted: true,
+          source: 'task',
+          checkedAt: grantedAt ? new Date(grantedAt).toISOString() : null,
+        });
+      }
+    }
+    if (found.snapshot.permissionStatus === 'ready' && mapped.wgCardNo) {
+      for (const permission of found.snapshot.permissions) {
+        if (permission.wgCardNo !== mapped.wgCardNo || !permission.buildingNo) continue;
+        const buildingNo = normalizeBuildingNo(permission.buildingNo);
+        buildingDetails.set(`${buildingNo}:${permission.accessSystem}`, {
+          buildingNo,
+          accessSystem: permission.accessSystem,
+          granted: true,
+          source: 'permission_readback',
+          checkedAt: permissionCheckedAt,
+          sourceTable: permission.sourceTable,
+        });
+      }
+    }
+    const grantedBuildingDetails = [...buildingDetails.values()]
+      .filter((detail) => detail.buildingNo)
+      .sort((left, right) =>
+        left.buildingNo.localeCompare(right.buildingNo, 'zh-CN', { numeric: true })
+        || left.accessSystem.localeCompare(right.accessSystem));
     return {
       ...mapped,
       communityId: context?.community.id ?? null,
@@ -553,8 +627,99 @@ export class AccessCardIssuanceService {
       houseId: context?.house.id ?? null,
       appliedSystems: [...appliedSystems].sort(),
       grantedBuildings: [...grantedBuildings].sort(),
+      permissionCheckedAt,
+      permissionSource: ACCESS_PERMISSION_SOURCE,
+      grantedBuildingDetails,
       latestTasks: tasks.slice(0, 10).map((task) => this.historyAuthorizationResponse(task)),
     };
+  }
+
+  /**
+   * POST /cards/:id/verify-grant：从 .88 Access 门禁权限表只读读回这张卡的授权。
+   *
+   * 真实语义：本接口只读 Access 权限表（MjSystem / iCCard），不写 Access 库、不操作控制器；
+   * 取/建该户权限快照并复用 requestAccessPermissions 的 .88 读回流程，
+   * 等助手回传 permissions 后返回可验证的楼栋/系统清单。网关离线/读取失败/超时 → 503，不伪造 granted。
+   */
+  async verifyLegacyCardGrant(id: number, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const found = await this.findLegacyCardById(tenantId, id);
+    if (!found) throw new NotFoundException('捷顺发卡记录不存在或已过期，请先刷新发卡历史');
+    const context = await this.resolveLegacyCardRoom(tenantId, found.row, access, true);
+    if (!context) throw new BadRequestException('未能匹配这张卡的房号，无法从 .88 Access 权限表验证授权');
+    const mapped = mapLegacyCardRow(found.row, 1, context.roomKey);
+    const wgCardNo = mapped.wgCardNo;
+    if (!wgCardNo) throw new BadRequestException('IC 卡号无法换算 WG 卡号，无法从 .88 Access 权限表验证授权');
+    const accessSystem = accessSystemOf('phase2', context.building.buildingNo);
+    if (!accessSystem) throw new BadRequestException('该楼栋门禁路由尚未配置，无法从 .88 Access 权限表验证授权');
+    const gatewayAgents = await this.agentRepo.find({ where: { tenantId, kind: 'access_gateway', enabled: true } });
+    if (!gatewayAgents.some((agent) => effectiveAgentStatus(agent) === 'online')) {
+      throw new ServiceUnavailableException('门禁网关离线，暂时无法从 .88 Access 权限表读回授权');
+    }
+    const snapshot = await this.requestLegacyHistory(tenantId, context.legacyStorageRoomKey, user.id);
+    const requested = await this.requestAccessPermissions(
+      snapshot,
+      [{ icCardNo: (mapped.icCardNo ?? '').toUpperCase(), wgCardNo }],
+      user.id,
+    );
+    const settled = await this.waitAccessPermissions(requested, tenantId);
+    if (settled.permissionStatus === 'error') {
+      throw new ServiceUnavailableException(settled.permissionLastError || '从 .88 Access 权限表读取授权失败');
+    }
+    if (settled.permissionStatus !== 'ready') {
+      throw new ServiceUnavailableException('从 .88 Access 权限表读取授权超时，请稍后重试');
+    }
+    const checkedAt = settled.permissionRefreshedAt
+      ? new Date(settled.permissionRefreshedAt).toISOString()
+      : new Date().toISOString();
+    const permissions = settled.permissions.filter((permission) => permission.wgCardNo === wgCardNo && permission.buildingNo);
+    const appliedSystems = new Set<string>();
+    const grantedBuildings = new Map<string, {
+      buildingNo: string;
+      accessSystem: 'mjsystem' | 'iccard';
+      granted: boolean;
+      sourceTable: string;
+    }>();
+    for (const permission of permissions) {
+      const buildingNo = normalizeBuildingNo(permission.buildingNo ?? '');
+      if (!buildingNo) continue;
+      appliedSystems.add(permission.accessSystem);
+      grantedBuildings.set(`${buildingNo}:${permission.accessSystem}`, {
+        buildingNo,
+        accessSystem: permission.accessSystem,
+        granted: true,
+        sourceTable: permission.sourceTable,
+      });
+    }
+    return {
+      checkedAt,
+      accessSystem,
+      wgCardNo,
+      appliedSystems: [...appliedSystems].sort(),
+      grantedBuildings: [...grantedBuildings.values()].sort((left, right) =>
+        left.buildingNo.localeCompare(right.buildingNo, 'zh-CN', { numeric: true })
+        || left.accessSystem.localeCompare(right.accessSystem)),
+      message: permissions.length
+        ? `已从 .88 Access 权限表读回 ${permissions.length} 条门栋授权`
+        : '门禁权限表中未查到该卡的门栋授权（未写入 Access 库，如需授权请先提交授权楼栋任务）',
+    };
+  }
+
+  /** verify-grant 有界等待 .88 权限读回（默认 8s，300ms 轮询）；测试可覆盖本方法。 */
+  private async waitAccessPermissions(
+    snapshot: AccessCardLegacySnapshot,
+    tenantId: number,
+    timeoutMs = 8_000,
+  ) {
+    let current = snapshot;
+    const deadline = Date.now() + timeoutMs;
+    while (['pending', 'running'].includes(current.permissionStatus) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const next = await this.legacySnapshotRepo.findOne({ where: { id: current.id, tenantId } });
+      if (!next) break;
+      current = next;
+    }
+    return current;
   }
 
   /**
@@ -2543,8 +2708,77 @@ export class AccessCardIssuanceService {
     };
   }
 
+  /**
+   * 行级授权聚合（GET /cards/recent、/cards/history、/cards/:id 共用）：
+   * 已完成 access_database_only/controller_upload 累加系统与楼栋，controller_revoke 扣减楼栋；
+   * latestTaskAt 取该卡全部任务中最近 completedAt/requestedAt。
+   * 只做内存聚合：调用方必须一次性批量取回这些卡的任务，禁止按卡 N+1。
+   */
+  private aggregateAuthorizationTasks(tasks: AccessCardAuthorization[]): Map<string, AuthorizationTaskAggregate> {
+    const byCard = new Map<string, AuthorizationTaskAggregate>();
+    const ordered = [...tasks].sort((left, right) =>
+      new Date(left.createdAt ?? left.requestedAt).getTime() - new Date(right.createdAt ?? right.requestedAt).getTime());
+    for (const task of ordered) {
+      const wgCardNo = task.wgCardNo?.trim();
+      if (!wgCardNo) continue;
+      const bucket = byCard.get(wgCardNo) ?? {
+        appliedSystems: new Set<string>(),
+        grantedBuildings: new Set<string>(),
+        latestTaskAt: 0,
+        grantedAtByBuilding: new Map<string, number>(),
+        accessSystemByBuilding: new Map<string, string>(),
+      };
+      const at = new Date(task.completedAt ?? task.requestedAt).getTime();
+      if (Number.isFinite(at)) bucket.latestTaskAt = Math.max(bucket.latestTaskAt, at);
+      if (task.status === 'completed') {
+        const completedAt = task.completedAt ? new Date(task.completedAt).getTime() : at;
+        if (task.operation === 'access_database_only') {
+          for (const target of task.targetBuildings ?? []) bucket.appliedSystems.add(target.accessSystem);
+        } else if (task.operation === 'controller_upload') {
+          for (const target of task.targetBuildings ?? []) {
+            bucket.appliedSystems.add(target.accessSystem);
+            const buildingNo = normalizeBuildingNo(target.buildingNo);
+            bucket.grantedBuildings.add(buildingNo);
+            bucket.accessSystemByBuilding.set(buildingNo, target.accessSystem);
+            bucket.grantedAtByBuilding.set(buildingNo, Math.max(bucket.grantedAtByBuilding.get(buildingNo) ?? 0, completedAt));
+          }
+        } else if (task.operation === 'controller_revoke') {
+          for (const target of task.targetBuildings ?? []) {
+            bucket.grantedBuildings.delete(normalizeBuildingNo(target.buildingNo));
+          }
+        }
+      }
+      byCard.set(wgCardNo, bucket);
+    }
+    return byCard;
+  }
+
+  /** 一次 find 批量取这些卡的任务并聚合；供 recent/history 行级 additive 字段使用。 */
+  private async batchCardTaskAggregates(
+    tenantId: number,
+    wgCardNos: Array<string | null | undefined>,
+  ): Promise<Map<string, AuthorizationTaskAggregate>> {
+    const unique = Array.from(new Set(wgCardNos
+      .map((value) => value?.trim())
+      .filter((value): value is string => Boolean(value))));
+    if (!unique.length) return new Map();
+    const tasks = await this.authorizationRepo.find({ where: { tenantId, wgCardNo: In(unique) } });
+    return this.aggregateAuthorizationTasks(tasks);
+  }
+
   private historyAuthorizationResponse(task: AccessCardAuthorization | null) {
     if (!task) return null;
+    const acknowledgements = (task.controllerResults ?? [])
+      .map((row) => {
+        const acknowledgement = typeof row.acknowledgement === 'string' ? row.acknowledgement.trim() : '';
+        const error = typeof row.error === 'string' ? row.error.trim() : '';
+        const text = acknowledgement || error;
+        if (!text) return null;
+        const building = typeof row.buildingNo === 'string' ? row.buildingNo
+          : row.buildingId != null ? String(row.buildingId) : '';
+        return building ? `${building}: ${text}` : text;
+      })
+      .filter((value): value is string => Boolean(value));
     return {
       id: task.id,
       houseId: task.houseId,
@@ -2561,7 +2795,9 @@ export class AccessCardIssuanceService {
       error: task.status === 'failed' ? task.lastError : null,
       requestedAt: task.requestedAt,
       completedAt: task.completedAt,
+      finishedAt: task.completedAt,
       durationSeconds: task.durationSeconds,
+      acknowledgements,
     };
   }
 

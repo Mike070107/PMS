@@ -264,3 +264,65 @@ test('GET queries：轮询不重置 ready 快照，过期才入队且刷新期�
   assert.equal(staleResult.refreshing, true);
   assert.equal(staleResult.rows.length, 30);
 });
+
+test('cards/recent 行级聚合：appliedSystems/grantedBuildings/latestTaskAt 一次批量查询，revoke 扣减、空卡为空', async () => {
+  const snapshot = makeSnapshot();
+  snapshot.history[0] = { ...snapshot.history[0], icCardNo: '11223344' };
+  snapshot.history[1] = { ...snapshot.history[1], icCardNo: '55667788' };
+  snapshot.history[2] = { ...snapshot.history[2], icCardNo: null };
+  const { service, state } = makeService(snapshot);
+  const wg0 = icToWg('11223344');
+  const wg1 = icToWg('55667788');
+  const at = (iso: string) => new Date(iso);
+  const task = (over: Record<string, unknown>) => ({
+    id: 1,
+    wgCardNo: wg0,
+    operation: 'controller_upload',
+    status: 'completed',
+    createdAt: at('2026-10-01T00:00:00Z'),
+    requestedAt: at('2026-10-01T00:00:00Z'),
+    completedAt: at('2026-10-01T00:01:00Z'),
+    targetBuildings: [],
+    controllerResults: [],
+    ...over,
+  });
+  let findCalls = 0;
+  state.authorizationRepo = {
+    find: async () => {
+      findCalls += 1;
+      return [
+        task({ id: 1, targetBuildings: [{ buildingId: 41, buildingNo: '41', accessSystem: 'iccard' }] }),
+        task({
+          id: 2,
+          wgCardNo: wg1,
+          createdAt: at('2026-10-02T00:00:00Z'),
+          requestedAt: at('2026-10-02T00:00:00Z'),
+          completedAt: at('2026-10-02T02:00:00Z'),
+          targetBuildings: [
+            { buildingId: 41, buildingNo: '41', accessSystem: 'iccard' },
+            { buildingId: 50, buildingNo: '50', accessSystem: 'iccard' },
+          ],
+        }),
+        task({
+          id: 3,
+          operation: 'controller_revoke',
+          createdAt: at('2026-10-03T00:00:00Z'),
+          requestedAt: at('2026-10-03T00:00:00Z'),
+          completedAt: at('2026-10-03T01:00:00Z'),
+          targetBuildings: [{ buildingId: 41, buildingNo: '41', accessSystem: 'iccard' }],
+        }),
+      ];
+    },
+  };
+  const result: any = await service.getLegacyCardRecent(user, scopeAll);
+  assert.equal(findCalls, 1, '必须一次批量查询，禁止按卡 N+1');
+  assert.deepEqual(result.rows[0].appliedSystems, ['iccard']);
+  assert.deepEqual(result.rows[0].grantedBuildings, []);
+  assert.equal(result.rows[0].latestTaskAt, '2026-10-03T01:00:00.000Z');
+  assert.deepEqual(result.rows[1].appliedSystems, ['iccard']);
+  assert.deepEqual(result.rows[1].grantedBuildings, ['41', '50']);
+  assert.equal(result.rows[1].latestTaskAt, '2026-10-02T02:00:00.000Z');
+  assert.deepEqual(result.rows[2].appliedSystems, []);
+  assert.deepEqual(result.rows[2].grantedBuildings, []);
+  assert.equal(result.rows[2].latestTaskAt, null);
+});
