@@ -5,6 +5,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { MisMirror1794500000000 } from '../../migrations/1794500000000-MisMirror';
 import { MisMirrorP4Extras1795500000000 } from '../../migrations/1795500000000-MisMirrorP4Extras';
 import { MisMirrorBillNature1795300000000 } from '../../migrations/1795300000000-MisMirrorBillNature';
+import { MisMirrorOwnerReportFields1795600000000 } from '../../migrations/1795600000000-MisMirrorOwnerReportFields';
 import { MisMirrorService } from '../fees/mis-mirror.service';
 
 const tenantId = 1;
@@ -14,6 +15,7 @@ async function makeDatabase() {
   await new MisMirror1794500000000().up({ query: (sql: string) => pg.query(sql) } as any);
   await new MisMirrorBillNature1795300000000().up({ query: (sql: string) => pg.query(sql) } as any);
   await new MisMirrorP4Extras1795500000000().up({ query: (sql: string) => pg.query(sql) } as any);
+  await new MisMirrorOwnerReportFields1795600000000().up({ query: (sql: string) => pg.query(sql) } as any);
   await pg.query('ALTER TABLE mis_sync_state ADD COLUMN IF NOT EXISTS consecutive_failures int');
   await pg.query('ALTER TABLE mis_sync_state ADD COLUMN IF NOT EXISTS last_failure_at timestamptz');
   return pg;

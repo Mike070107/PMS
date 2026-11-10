@@ -474,6 +474,16 @@ export class MisMirrorService {
     const lock = await this.dataSource.query(`SELECT pg_try_advisory_lock(hashtext('mis-mirror-sync')) AS ok`);
     if (!lock?.[0]?.ok) throw new BadRequestException('镜像同步正在运行，请稍后再试');
     try {
+      // 部署代码不代表已执行手工迁移：先检查目标列，避免带着旧结构访问 MIS 后才失败。
+      try {
+        await this.dataSource.query('SELECT owner_note,move_in_date,billing_start_date FROM mis_mirror_owner LIMIT 0');
+      } catch (error) {
+        const code = String((error as { code?: unknown })?.code ?? '');
+        if (code === '42703' || code === '42P01') {
+          throw new ServiceUnavailableException('业主镜像结构尚未就绪，请先完成镜像迁移（含 1795600000000）后重试');
+        }
+        throw error;
+      }
       const buildings = (await this.misFees.mirrorRead('SELECT L_ID AS lId,管理处 AS officeCode,地址1 AS road,地址2 AS lane,地址3 AS buildingNo FROM dbo.楼表', {}, MIS_TIMEOUT)).recordsets?.[0] ?? [];
       const rooms = (await this.misFees.mirrorRead('SELECT S_ID AS sId,L_ID AS lId,室 AS roomNo,房屋性质 AS nature,建筑面积 AS areaSqm FROM dbo.室表', {}, MIS_TIMEOUT)).recordsets?.[0] ?? [];
       const owners = (await this.misFees.mirrorRead(`SELECT ZH_ID AS zhId,S_ID AS sId,姓名 AS name,

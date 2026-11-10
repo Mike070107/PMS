@@ -103,6 +103,87 @@ test('全量业主镜像保留原始说明和民用日期，不猜测空置/退�
   } finally { await pg.close(); }
 });
 
+test('业主报表迁移缺失时重灌明确返回 503，且不读取 MIS 或改动已有镜像', async () => {
+  const { pg, service } = await fixture();
+  let sourceReads = 0;
+  let unlocks = 0;
+  service.dataSource.query = async (sql: string, params?: any[]) => {
+    if (sql.includes('pg_try_advisory_lock')) return [{ ok: true }];
+    if (sql.includes('pg_advisory_unlock')) { unlocks++; return []; }
+    return (await pg.query(sql, params)).rows;
+  };
+  service.misFees.mirrorRead = async () => { sourceReads++; throw new Error('不应访问 MIS'); };
+  try {
+    await pg.query(`INSERT INTO mis_mirror_owner(zh_id,name) VALUES(901,'合成保留住户')`);
+    await new MisMirrorOwnerReportFields1795600000000().down({ query: (sql: string) => pg.query(sql) } as any);
+    const before = (await pg.query('SELECT * FROM mis_mirror_owner')).rows;
+    await assert.rejects(service.reloadAll(1), (error: any) => error.getStatus?.() === 503 && error.message.includes('1795600000000'));
+    assert.equal(sourceReads, 0);
+    assert.equal(unlocks, 1, '迁移未就绪也应释放同步锁');
+    assert.deepEqual((await pg.query('SELECT * FROM mis_mirror_owner')).rows, before);
+    assert.equal((await pg.query('SELECT zj_id FROM mis_mirror_bill')).rows.length, 9);
+  } finally { await pg.close(); }
+});
+
+test('重灌结构检查保留数据库权限/连接错误，不伪装成缺迁移或继续读取 MIS', async () => {
+  const failure = Object.assign(new Error('synthetic permission denied'), { code: '42501' });
+  let sourceReads = 0;
+  let unlocks = 0;
+  const service = new MisMirrorService({ query: async (sql: string) => {
+    if (sql.includes('pg_try_advisory_lock')) return [{ ok: true }];
+    if (sql.includes('pg_advisory_unlock')) { unlocks++; return []; }
+    throw failure;
+  } } as any, { mirrorRead: async () => { sourceReads++; throw failure; } } as any, {} as any);
+  await assert.rejects(service.reloadAll(1), (error) => error === failure);
+  assert.equal(sourceReads, 0);
+  assert.equal(unlocks, 1);
+});
+
+test('业主源读取失败或新日期落库失败均保留原维度、账单及成功水位', async () => {
+  const { pg, service } = await fixture();
+  const sourceFailure = new Error('synthetic owner source unavailable');
+  let failSource = true;
+  let unlocks = 0;
+  service.dataSource = {
+    query: async (sql: string, params?: any[]) => {
+      if (sql.includes('pg_try_advisory_lock')) return [{ ok: true }];
+      if (sql.includes('pg_advisory_unlock')) { unlocks++; return []; }
+      return (await pg.query(sql, params)).rows;
+    },
+    transaction: (work: any) => pg.transaction(async (tx) => work({
+      query: async (sql: string, params?: any[]) => (await tx.query(sql, params)).rows,
+    })),
+  };
+  service.misFees.mirrorRead = async (sql: string) => {
+    if (sql.includes('FROM dbo.楼表')) return { recordsets: [[{ lId: 502, officeCode: '01' }]] };
+    if (sql.includes('FROM dbo.室表')) return { recordsets: [[{ sId: 502, lId: 502, roomNo: '新合成室' }]] };
+    if (sql.includes('FROM dbo.业主表')) {
+      if (failSource) throw sourceFailure;
+      return { recordsets: [[{ zhId: 902, sId: 502, name: '新合成住户', ownerNote: '新进户', moveInDate: 'invalid-civil-day' }]] };
+    }
+    throw new Error('失败后的同步步骤不应执行');
+  };
+  const snapshot = async () => Promise.all([
+    pg.query('SELECT * FROM mis_mirror_building ORDER BY l_id'),
+    pg.query('SELECT * FROM mis_mirror_room ORDER BY s_id'),
+    pg.query('SELECT * FROM mis_mirror_owner ORDER BY zh_id'),
+    pg.query('SELECT * FROM mis_mirror_bill ORDER BY zj_id'),
+    pg.query('SELECT * FROM mis_sync_state ORDER BY tenant_id,source_table'),
+  ]).then((results) => results.map((result) => result.rows));
+  try {
+    await pg.query(`INSERT INTO mis_mirror_building(l_id,office_code) VALUES(501,'01')`);
+    await pg.query(`INSERT INTO mis_mirror_room(s_id,l_id,room_no) VALUES(501,501,'原合成室')`);
+    await pg.query(`INSERT INTO mis_mirror_owner(zh_id,s_id,name,owner_note,move_in_date) VALUES(901,501,'原合成住户','原始说明','2020-01-01')`);
+    const before = await snapshot();
+    await assert.rejects(service.reloadAll(1), (error) => error === sourceFailure);
+    assert.deepEqual(await snapshot(), before, '源读取失败不能开始替换维度');
+    failSource = false;
+    await assert.rejects(service.reloadAll(1), /invalid input syntax for type date/);
+    assert.deepEqual(await snapshot(), before, '日期落库失败应回滚三张维度表，且不推进账单同步水位');
+    assert.equal(unlocks, 2);
+  } finally { await pg.close(); }
+});
+
 test('镜像迁移可 up/down，金额分档按户聚合后分档', async () => {
   const { pg, service, migration, health } = await fixture();
   try {
