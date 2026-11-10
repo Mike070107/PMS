@@ -3,7 +3,7 @@
  * 金额一律是整数分；页面显示统一 ¥x,xxx.xx，CSV 用纯数字便于 Excel 计算。
  */
 
-export type StatisticsReportType = 'received' | 'arrears' | 'fee-nature' | 'daily' | 'arrears-prepaid' | 'assessment' | 'collection-analysis' | 'monthly-report' | 'property-summary' | 'owner-ledger' | 'building-ledger' | 'relief' | 'signoffs' | 'ticket-summary' | 'tickets' | 'ticket-items';
+export type StatisticsReportType = 'received' | 'arrears' | 'fee-nature' | 'daily' | 'daily-fees' | 'arrears-prepaid' | 'assessment' | 'collection-analysis' | 'monthly-report' | 'property-summary' | 'owner-ledger' | 'building-ledger' | 'relief' | 'signoffs' | 'ticket-summary' | 'tickets' | 'ticket-items';
 /** P1 年度报表：共用应收截止年月/收款日期等筛选。 */
 export type AnnualReportType = 'received' | 'arrears';
 
@@ -168,7 +168,7 @@ export interface CollectionQuery {
 
 /** P2 收款日报表（行=日期，列=收费项目）。日期区间必填。 */
 export interface DailyQuery {
-  type: 'daily';
+  type: 'daily' | 'daily-fees';
   officeCodes: string[];
   feeCodes: string[];
   natures: string[];
@@ -332,7 +332,7 @@ export function ticketItemsCoverageText(coverage?: TicketItemsCoverage | null): 
     ? '；这些历史行的税额均为 0' : coverage.unknownTaxItemCount > 0 ? '；部分源税额缺失，汇总按源接口口径计算' : '';
   return `所选管理处及收费项目历史覆盖：${dates}，${coverage.ticketCount} 张 / ${coverage.itemCount} 行（不受日期筛选限制）${tax}。`;
 }
-function ticketCsvCell(value: string): string {
+function spreadsheetCsvCell(value: string): string {
   // Preserve numeric negative amounts, neutralize text that spreadsheet apps can execute.
   const safe = /^[\s]*[=+@-]/.test(value) && !/^-?\d+(?:\.\d+)?$/.test(value) || /^[\t\r]/.test(value) ? `'${value}` : value;
   return csvCell(safe);
@@ -345,7 +345,7 @@ export function ticketItemsCsv(report: TicketItemsSummaryResponse, query: Ticket
     [ticketItemsCoverageText(report.coverage)], [], [label, '票据张数', '开票行数', '金额', '税额', '收入（金额－税额）']];
   for (const row of report.rows) lines.push([row.label, String(row.ticketCount), String(row.itemCount), centsForCsv(row.amountCents), centsForCsv(row.taxCents), centsForCsv(row.incomeCents)]);
   if (report.totals) { const t = report.totals; lines.push(['独立去重合计', String(t.ticketCount), String(t.itemCount), centsForCsv(t.amountCents), centsForCsv(t.taxCents), centsForCsv(t.incomeCents)]); }
-  return '\uFEFF' + lines.map(line => line.map(ticketCsvCell).join(',')).join('\r\n');
+  return '\uFEFF' + lines.map(line => line.map(spreadsheetCsvCell).join(',')).join('\r\n');
 }
 export function ticketItemDetailsCsv(report: TicketItemsDetailResponse, scope: string): string {
   const lines: string[][] = [['开票逐笔明细'], ['筛选范围', scope], ['口径', '源全部开票行，非有效净开票或收款'],
@@ -353,7 +353,7 @@ export function ticketItemDetailsCsv(report: TicketItemsDetailResponse, scope: s
     ['票据编号', '管理处', '开票日期', '收费项目', '开票项目', '项目说明', '金额', '税额', '收入（金额－税额）', '入库单编号', '发票号']];
   for (const r of report.rows) lines.push([r.ticketNo || '', r.officeName || r.officeCode, r.issueDate || '', r.feeName || r.feeCode || '', r.itemName || '', r.project || '', r.amountCents == null ? '' : centsForCsv(r.amountCents), r.taxCents == null ? '' : centsForCsv(r.taxCents), centsForCsv(r.incomeCents), r.warehouseNo || '', r.invoiceNo || '']);
   if (report.totals) { const t = report.totals; lines.push(['全部明细合计', `${t.ticketCount} 张 / ${t.itemCount} 行`, '', '', '', '', centsForCsv(t.amountCents), centsForCsv(t.taxCents), centsForCsv(t.incomeCents)]); }
-  return '\uFEFF' + lines.map(line => line.map(ticketCsvCell).join(',')).join('\r\n');
+  return '\uFEFF' + lines.map(line => line.map(spreadsheetCsvCell).join(',')).join('\r\n');
 }
 
 export interface FilterDraft {
@@ -389,6 +389,7 @@ export const REPORTS: Array<{ type: StatisticsReportType; name: string; hint: st
   { type: 'arrears', name: '项目欠费年度汇总', hint: '按所属年度汇总未缴金额（收款日期为空）' },
   { type: 'fee-nature', name: '收费汇总', hint: '按收款日期统计收款/退款/调整；行=收费项目、列=房屋性质；点单元格查逐笔明细' },
   { type: 'daily', name: '收款日报表', hint: '按收款日期逐日统计各收费项目收款；点单元格查当日收款明细' },
+  { type: 'daily-fees', name: '日常收费项目收款日报表', hint: '日期×收费项目收款矩阵；退款/调整分列，所有金额可下钻；旧模板细节待核对' },
   { type: 'arrears-prepaid', name: '欠收与溢收汇总', hint: '按统计年月区分欠收/溢收（预收）明细；查看逐笔、可按管理处小计' },
   { type: 'assessment', name: '收缴考核', hint: '按年份 1–12 月应收/收款考核房屋收缴率；含按金额/按户数指标' },
   { type: 'collection-analysis', name: '收款分析', hint: '按户查看历年欠收/当年欠收/当月应收/预缴/区间实收；点行看逐笔' },
@@ -408,7 +409,6 @@ export const PENDING_REPORTS = [
   '月报表',
   '综合月报表 B/C',
   '分等综合月报表',
-  '日常收费项目收款日报表',
   '空房情况统计',
 
   '住户票据查询',
@@ -526,13 +526,13 @@ export interface FeeNatureResponse {
   available?: boolean;
   message?: string | null;
 }
-export interface DailyRow { date: string; cells: AnnualCells; totalCents: number }
+export interface DailyRow { date: string; cells: AnnualCells; totalCents: number; refundCents?: number; adjustCents?: number }
 export interface DailyResponse {
   columns: P2Column[];
   rows: DailyRow[];
   subtotal: { cells: AnnualCells; totalCents: number } | null;
-  refundTotalCents?: number;
-  adjustTotalCents?: number;
+  refundTotalCents?: number | null;
+  adjustTotalCents?: number | null;
   dataAsOf?: string | null;
   available?: boolean;
   message?: string | null;
@@ -554,11 +554,20 @@ export interface CollectionDetailRow {
 }
 export interface CollectionDetailResponse {
   rows: CollectionDetailRow[];
-  /** 与单元格一致：后端必须按同一筛选条件返回总额。 */
-  totalCents: number | null;
+  /** 现行 API 返回分类 totals；兼容早期 totalCents 响应。 */
+  totals?: { receivedCents: number; refundCents: number; adjustCents: number; netCents: number } | null;
+  totalCents?: number | null;
   count?: number | null;
   available?: boolean;
   message?: string | null;
+}
+
+/** 退款列显示正数退款额，不取 netCents 的负数；未就绪不伪造 0。 */
+export function collectionDetailTotal(response: CollectionDetailResponse, kind: CollectionDetailKind): number | null {
+  if (response.available === false) return null;
+  const key = ({ all: 'netCents', received: 'receivedCents', refund: 'refundCents', adjust: 'adjustCents' } as const)[kind];
+  if (response.totals) return response.totals[key] ?? null;
+  return response.totalCents ?? null;
 }
 
 /** 收费汇总请求参数（数组逗号连接；空值交给 request 过滤）。 */
@@ -649,21 +658,23 @@ export function feeNatureCsv(report: FeeNatureResponse, filters: CollectionQuery
 /** 收款日报表 -> CSV。 */
 export function dailyCsv(report: DailyResponse, filters: DailyQuery, feeItems?: StatisticsFeeItem[]): string {
   const lines: string[][] = [
-    ['统计汇总', '收款日报表'],
+    ['统计汇总', reportName(filters.type)],
+    ['口径', '收费项目列和收款合计仅含正收款；退款按退款日、调整按收款日另列，不是净收款'],
+    ['房屋性质', filters.natures.join('/') || '全部'],
     ['数据截止', String(report.dataAsOf || '')],
     ['管理处', filters.officeCodes.join('/') || '全部'],
     ['收费项目', filters.feeCodes.map((code) => feeItems?.find((item) => item.code === code)?.name || code).join('/') || '全部'],
     ['日期范围', [filters.dateFrom, filters.dateTo].filter(Boolean).join('~')],
     [],
-    ['日期', ...report.columns.map((column) => column.name), '合计'],
+    ['日期', ...report.columns.map((column) => column.name), '收款合计', '退款', '调整'],
   ];
   for (const row of report.rows) {
-    lines.push([row.date, ...report.columns.map((column) => centsForCsv(Number(row.cells?.[column.code] ?? 0))), centsForCsv(row.totalCents)]);
+    lines.push([row.date, ...report.columns.map((column) => centsForCsv(Number(row.cells?.[column.code] ?? 0))), centsForCsv(row.totalCents), row.refundCents == null ? '' : centsForCsv(row.refundCents), row.adjustCents == null ? '' : centsForCsv(row.adjustCents)]);
   }
   if (report.subtotal) {
-    lines.push(['合计', ...report.columns.map((column) => centsForCsv(Number(report.subtotal?.cells?.[column.code] ?? 0))), centsForCsv(report.subtotal.totalCents)]);
+    lines.push(['合计', ...report.columns.map((column) => centsForCsv(Number(report.subtotal?.cells?.[column.code] ?? 0))), centsForCsv(report.subtotal.totalCents), report.refundTotalCents == null ? '' : centsForCsv(report.refundTotalCents), report.adjustTotalCents == null ? '' : centsForCsv(report.adjustTotalCents)]);
   }
-  return '\uFEFF' + lines.map((line) => line.map(csvCell).join(',')).join('\r\n');
+  return '\uFEFF' + lines.map((line) => line.map(spreadsheetCsvCell).join(',')).join('\r\n');
 }
 
 

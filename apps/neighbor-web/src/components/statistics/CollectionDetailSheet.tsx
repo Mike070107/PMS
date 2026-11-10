@@ -3,7 +3,7 @@ import { request } from '@pms/api-client';
 import Icon from '@/components/Icon';
 import { Loading, Sheet, toast } from '@/components/ui';
 import {
-  collectionDetailParams, fmtCents, fmtPeriod, type CollectionDetailKind, type CollectionDetailResponse,
+  collectionDetailParams, collectionDetailTotal, fmtCents, fmtPeriod, type CollectionDetailKind, type CollectionDetailResponse,
   type CollectionDetailRow, type ReportQuery,
 } from '@/lib/statistics';
 
@@ -34,7 +34,7 @@ export default function CollectionDetailSheet({ open, onClose, base, target, rep
   target: CollectionDetailTarget | null;
   reportLabel: string;
 }) {
-  const [kind, setKind] = useState<CollectionDetailKind>('all');
+  const [kind, setKind] = useState<CollectionDetailKind>(target?.kind ?? (target?.date ? 'received' : 'all'));
   const [rows, setRows] = useState<CollectionDetailRow[]>([]);
   const [totalCents, setTotalCents] = useState<number | null>(null);
   const [count, setCount] = useState<number | null>(null);
@@ -51,13 +51,14 @@ export default function CollectionDetailSheet({ open, onClose, base, target, rep
   useEffect(() => {
     if (!open || !base || !target) return undefined;
     let cancelled = false;
-    setLoading(true); setError(''); setOffset(0);
+    setLoading(true); setError(''); setOffset(0); setRows([]); setTotalCents(null); setCount(null);
     const params = collectionDetailParams(base, { feeCode: target.feeCode, natureCode: target.natureCode, kind, date: target.date }, 0, LIMIT);
     request<CollectionDetailResponse>({ url: '/statistics/collection/detail', query: params })
       .then((response) => {
         if (cancelled) return;
+        if (response.available === false) setError(response.message || '明细数据尚未就绪');
         setRows(Array.isArray(response.rows) ? response.rows : []);
-        setTotalCents(response.totalCents ?? null);
+        setTotalCents(collectionDetailTotal(response, kind));
         setCount(response.count ?? null);
       })
       .catch((e) => { if (!cancelled) setError(e instanceof Error && e.message ? e.message : '明细读取失败'); })
@@ -75,7 +76,7 @@ export default function CollectionDetailSheet({ open, onClose, base, target, rep
         query: collectionDetailParams(base, { feeCode: target.feeCode, natureCode: target.natureCode, kind, date: target.date }, nextOffset, LIMIT),
       });
       setRows((previous) => [...previous, ...(Array.isArray(response.rows) ? response.rows : [])]);
-      setTotalCents(response.totalCents ?? null);
+      setTotalCents(collectionDetailTotal(response, kind));
       setCount(response.count ?? null);
       setOffset(nextOffset);
     } catch (e) {
@@ -100,7 +101,7 @@ export default function CollectionDetailSheet({ open, onClose, base, target, rep
               ))}
             </div>
             <span className="muted" data-testid="collection-detail-summary">
-              共 {count ?? rows.length} 笔 · 合计 <b>{fmtCents(totalCents)}</b>
+              共 {count ?? '—'} 笔 · 合计 <b>{totalCents == null ? '—' : fmtCents(totalCents)}</b>
             </span>
           </div>
           <div className="note2" style={{ marginBottom: 10 }}>

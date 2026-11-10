@@ -115,7 +115,7 @@ export default function StatisticsFilters({
   }, [feeGroups, feeQuery]);
 
   const isLedger = reportType === 'property-summary' || reportType === 'owner-ledger' || reportType === 'building-ledger';
-  const dateRequired = reportType === 'fee-nature' || reportType === 'daily' || reportType === 'collection-analysis'
+  const dateRequired = reportType === 'fee-nature' || (reportType === 'daily' || reportType === 'daily-fees') || reportType === 'collection-analysis'
     || reportType === 'relief' || reportType === 'signoffs' || reportType === 'ticket-summary' || reportType === 'tickets';
   const canSubmit = draft.officeCodes.length > 0
     && (isLedger || reportType === 'signoffs' || reportType === 'tickets'
@@ -266,7 +266,8 @@ export default function StatisticsFilters({
             && reportType !== 'property-summary' && reportType !== 'owner-ledger' && reportType !== 'building-ledger' ? (
             <>
           <div className="stats-date-range-label">
-            {reportType === 'fee-nature' || reportType === 'daily' || reportType === 'collection-analysis' || reportType === 'ticket-summary'
+            {reportType === 'daily' || reportType === 'daily-fees' ? '业务日期范围（必填）'
+              : reportType === 'fee-nature' || reportType === 'collection-analysis' || reportType === 'ticket-summary'
               ? '收款日期范围（必填）'
               : reportType === 'relief'
                 ? '减免日期范围（必填）'
@@ -453,8 +454,8 @@ export default function StatisticsFilters({
               </div>
               <div className="stats-filter-hint">所属年度按应收年月（period）筛选，不影响按收款日期统计。</div>
             </>
-          ) : reportType === 'daily' ? (
-            <div className="stats-filter-hint" data-testid="daily-hint">按收款日期逐日统计；没有收款的日期不显示 0 行。</div>
+          ) : (reportType === 'daily' || reportType === 'daily-fees') ? (
+            <div className="stats-filter-hint" data-testid="daily-hint">按日统计收款，退款/调整分列；无业务日期不补 0 行。</div>
           ) : reportType === 'arrears' ? (
             <label data-testid="asof-period-field">
               应收截止年月
@@ -516,7 +517,7 @@ export default function StatisticsFilters({
       </div>
       {!canSubmit ? (
         <div className="note2 stats-filter-note" role="status"><Icon name="alert" />
-          {reportType === 'fee-nature' || reportType === 'daily'
+          {reportType === 'fee-nature' || (reportType === 'daily' || reportType === 'daily-fees')
             ? '请至少各选一个管理处、收费项目、房屋性质，并填写收款日期范围；收费汇总还需至少一个收款方式。'
             : reportType === 'arrears-prepaid'
               ? '请至少各选一个管理处、收费项目和房屋性质，并填写统计年月与收款截止日期。'

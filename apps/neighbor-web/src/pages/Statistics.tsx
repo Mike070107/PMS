@@ -58,6 +58,7 @@ const DEFAULT_EXCLUDED_NATURE_BY_REPORT: Record<StatisticsReportType, Set<string
   arrears: new Set(['06']),
   'fee-nature': new Set(),
   daily: new Set(),
+  'daily-fees': new Set(),
   'arrears-prepaid': new Set(),
   assessment: new Set(),
   'collection-analysis': new Set(),
@@ -74,7 +75,7 @@ const DEFAULT_EXCLUDED_NATURE_BY_REPORT: Record<StatisticsReportType, Set<string
 
 /** P2 报表日期区间必填，默认本月 1 日~今天；P1 报表保留原行为（日期可选）。 */
 function isDateRequired(type: StatisticsReportType): boolean {
-  return type === 'fee-nature' || type === 'daily' || type === 'collection-analysis' || type === 'relief' || type === 'signoffs'
+  return type === 'fee-nature' || (type === 'daily' || type === 'daily-fees') || type === 'collection-analysis' || type === 'relief' || type === 'signoffs'
     || type === 'ticket-summary' || type === 'tickets';
 }
 
@@ -283,7 +284,7 @@ function buildQuery(type: StatisticsReportType, draft: FilterDraft, options: Sta
     return query;
   }
   const query: DailyQuery = {
-    type: 'daily',
+    type,
     officeCodes: draft.officeCodes,
     feeCodes: draft.feeCodes,
     natures: draft.natures,
@@ -322,7 +323,7 @@ function activeFilterCount(type: StatisticsReportType, draft: FilterDraft): numb
   const usesNatures = !['property-summary', 'building-ledger', 'relief', 'signoffs', 'ticket-summary', 'tickets', 'ticket-items'].includes(type);
   if (usesNatures && draft.natures.length) count += 1;
   if ((type === 'fee-nature' || type === 'ticket-summary') && draft.paymentMethods.length) count += 1;
-  const usesDates = ['fee-nature', 'daily', 'collection-analysis', 'relief', 'signoffs', 'ticket-summary', 'tickets', 'ticket-items'].includes(type);
+  const usesDates = ['fee-nature', 'daily', 'daily-fees', 'collection-analysis', 'relief', 'signoffs', 'ticket-summary', 'tickets', 'ticket-items'].includes(type);
   if (usesDates && (draft.paidDateFrom || draft.paidDateTo)) count += 1;
   const usesPeriod = ['arrears', 'arrears-prepaid', 'collection-analysis', 'monthly-report'].includes(type);
   if (usesPeriod && draft.asOfPeriod) count += 1;
@@ -483,7 +484,7 @@ export default function Statistics() {
         .then((response) => { if (!cancelled) setCollection(response); })
         .catch((error) => { if (!cancelled) setCollectionError(error instanceof Error && error.message ? error.message : '收费汇总读取失败'); })
         .finally(() => { if (!cancelled) setCollectionLoading(false); });
-    } else if (applied.type === 'daily') {
+    } else if ((applied.type === 'daily' || applied.type === 'daily-fees')) {
       setDailyLoading(true); setDailyError('');
       request<DailyResponse>({ url: '/statistics/daily', query: dailyQueryParams(applied as DailyQuery) })
         .then((response) => { if (!cancelled) setDaily(response); })
@@ -698,12 +699,12 @@ export default function Statistics() {
   };
 
   const openDailyCell = (target: DailyCellTarget) => {
-    if (!applied || applied.type !== 'daily') return;
+    if (!applied || (applied.type !== 'daily' && applied.type !== 'daily-fees')) return;
     setCollectionTarget({
       feeCode: target.feeCode,
       feeName: target.feeName,
       date: target.date,
-      kind: 'received',
+      kind: target.kind || 'received',
     });
     setCollectionDetailOpen(true);
   };
@@ -862,10 +863,10 @@ export default function Statistics() {
       else toast('导出失败，请重试');
       return;
     }
-    if (applied.type === 'daily') {
+    if ((applied.type === 'daily' || applied.type === 'daily-fees')) {
       if (!daily) return;
-      const name = `统计汇总-收款日报表-${stamp}.csv`;
-      if (downloadCsv(name, dailyCsv(daily, applied as DailyQuery, options?.feeItems))) toast('已导出收款日报表 CSV');
+      const name = `统计汇总-${reportName(applied.type)}-${stamp}.csv`;
+      if (downloadCsv(name, dailyCsv(daily, applied as DailyQuery, options?.feeItems))) toast(`已导出${reportName(applied.type)} CSV`);
       else toast('导出失败，请重试');
       return;
     }
@@ -955,7 +956,7 @@ export default function Statistics() {
   const signoffTypeOptions = Array.from(new Set((signoffs?.rows ?? []).map((row) => row.type).filter((value): value is string => !!value)));
   const hasExportData = applied?.type === 'ticket-items' ? !!ticketItems : applied?.type === 'fee-nature'
     ? !!collection
-    : applied?.type === 'daily'
+    : (applied?.type === 'daily' || applied?.type === 'daily-fees')
       ? !!daily
       : applied?.type === 'arrears-prepaid'
         ? !!arrearsDetail
@@ -982,7 +983,7 @@ export default function Statistics() {
                             : !!annual;
   const isLoading = applied?.type === 'ticket-items' ? ticketItemsLoading : applied?.type === 'fee-nature'
     ? collectionLoading
-    : applied?.type === 'daily'
+    : (applied?.type === 'daily' || applied?.type === 'daily-fees')
       ? dailyLoading
       : applied?.type === 'arrears-prepaid'
         ? arrearsLoading
@@ -1009,7 +1010,7 @@ export default function Statistics() {
                             : annualLoading;
   const activeError = applied?.type === 'ticket-items' ? ticketItemsError : applied?.type === 'fee-nature'
     ? collectionError
-    : applied?.type === 'daily'
+    : (applied?.type === 'daily' || applied?.type === 'daily-fees')
       ? dailyError
       : applied?.type === 'arrears-prepaid'
         ? arrearsError
@@ -1036,7 +1037,7 @@ export default function Statistics() {
                             : annualError;
   const activeDataAsOf = applied?.type === 'ticket-items' ? ticketItems?.dataAsOf : applied?.type === 'fee-nature'
     ? collection?.dataAsOf
-    : applied?.type === 'daily'
+    : (applied?.type === 'daily' || applied?.type === 'daily-fees')
       ? daily?.dataAsOf
       : applied?.type === 'arrears-prepaid'
         ? (arrearsSummary?.dataAsOf ?? arrearsDetail?.dataAsOf)
@@ -1065,7 +1066,7 @@ export default function Statistics() {
   const sourceLabel = options?.sourceMode === 'mirror' ? 'MIS 镜像' : (options?.sourceMode || '');
   const activeAvailable = applied?.type === 'ticket-items' ? ticketItems?.available : applied?.type === 'fee-nature'
     ? collection?.available
-    : applied?.type === 'daily'
+    : (applied?.type === 'daily' || applied?.type === 'daily-fees')
       ? daily?.available
       : applied?.type === 'arrears-prepaid'
         ? (arrearsDetail?.available ?? arrearsSummary?.available)
@@ -1092,7 +1093,7 @@ export default function Statistics() {
                             : annual?.available;
   const activeMessage = applied?.type === 'ticket-items' ? ticketItems?.message : applied?.type === 'fee-nature'
     ? collection?.message
-    : applied?.type === 'daily'
+    : (applied?.type === 'daily' || applied?.type === 'daily-fees')
       ? daily?.message
       : applied?.type === 'arrears-prepaid'
         ? (arrearsDetail?.message ?? arrearsSummary?.message)
@@ -1228,12 +1229,12 @@ export default function Statistics() {
                   <option value="fee">收费项目</option><option value="office">管理处</option><option value="day">开票日期</option>
                 </select></label> : null}
                 {applied?.type === 'fee-nature' && collection && collection.available !== false ? <span className="tag mute">{collection.rows.length} 个收费项目</span> : null}
-                {applied?.type === 'daily' && daily && daily.available !== false ? <span className="tag mute">{daily.rows.length} 天</span> : null}
+                {(applied?.type === 'daily' || applied?.type === 'daily-fees') && daily && daily.available !== false ? <span className="tag mute">{daily.rows.length} 天</span> : null}
                 {applied?.type !== 'fee-nature' && applied?.type !== 'daily' && (applied?.type === 'received' || applied?.type === 'arrears') && annual && annual.available !== false ? <span className="tag mute">{annual.rows.length} 个管理处</span> : null}
                 {activeAvailable !== false && applied?.type === 'received' && annual?.subtotal ? <span className="tag acc">合计 {fmtCents(annual.subtotal.totalCents)}</span> : null}
                 {activeAvailable !== false && applied?.type === 'arrears' && annual?.subtotal ? <span className="tag acc">合计 {fmtCents(annual.subtotal.totalCents)}</span> : null}
                 {activeAvailable !== false && applied?.type === 'fee-nature' && collection?.subtotal ? <span className="tag acc">合计 {fmtCents(collection.subtotal.netCents)}</span> : null}
-                {activeAvailable !== false && applied?.type === 'daily' && daily?.subtotal ? <span className="tag acc">合计 {fmtCents(daily.subtotal.totalCents)}</span> : null}
+                {activeAvailable !== false && (applied?.type === 'daily' || applied?.type === 'daily-fees') && daily?.subtotal ? <span className="tag acc">合计 {fmtCents(daily.subtotal.totalCents)}</span> : null}
                 {activeAvailable !== false && applied?.type === 'arrears-prepaid' && arrearsSummary?.total ? (
                   <span className="tag acc">欠收 {fmtCents(arrearsSummary.total.arrearsCents)}</span>
                 ) : null}
@@ -1296,9 +1297,10 @@ export default function Statistics() {
                   <Icon name="alert" />按收款日期统计收款/退款/调整；所属年度按应收年月筛选。行尾金额与房屋性质单元格均可点击查看逐笔明细，明细合计=单元格。
                 </div>
               ) : null}
-              {applied?.type === 'daily' && daily?.available !== false ? (
+              {(applied?.type === 'daily' || applied?.type === 'daily-fees') && daily?.available !== false ? (
                 <div className="note2 stats-received-hint" data-testid="daily-report-hint">
-                  <Icon name="alert" />按收款日期逐日统计；没有收款的日期不显示 0 行。点单元格查当日收款明细。
+                  <Icon name="alert" />收费项目列及收款合计仅含正收款，不是净收款；退款按退款日、调整按收款日另列，仅退款/调整日期也展示，无业务日不补 0 行。金额及合计均可下钻。
+                  {applied.type === 'daily-fees' ? ' 当前与收款日报表共用费项矩阵，不自动限定“日常收费”类别；旧模板列和收费类别范围待核对。' : ''}
                 </div>
               ) : null}
               {applied?.type === 'collection-analysis' && analysis?.available !== false ? (
@@ -1361,7 +1363,7 @@ export default function Statistics() {
                     <FeeNatureTable report={collection} onCellClick={openFeeNatureCell} />
                   ) : <div className="empty">{collection.message || '当前筛选没有可汇总的数据'}</div>
                 ) : null
-              ) : applied?.type === 'daily' ? (
+              ) : (applied?.type === 'daily' || applied?.type === 'daily-fees') ? (
                 daily ? (
                   daily.available === false ? (
                     <div className="note2" role="status"><Icon name="alert" />{daily.message || '收款日报表数据尚未就绪；请稍后再试。'}</div>
@@ -1614,6 +1616,7 @@ export default function Statistics() {
       ) : null}
 
       <CollectionDetailSheet
+        key={JSON.stringify([applied, collectionTarget])}
         open={collectionDetailOpen}
         onClose={() => setCollectionDetailOpen(false)}
         base={applied}

@@ -44,7 +44,7 @@ test('分组 label：管理处用旧系统名称，方式/收款人空值=未记
   assert.equal(collectionGroupLabel('cashier', '张三', null), '张三');
 });
 
-test('日报矩阵：cells=收款块、行=有收款日期升序、退款/调整按日单列、合计=收款之和', () => {
+test('日报矩阵：收款/退款/调整业务日升序，无业务不补行，收款合计不混入退款/调整', () => {
   const columns = [
     { code: '01', name: '管理费' },
     { code: '04', name: '泊位费' },
@@ -52,16 +52,23 @@ test('日报矩阵：cells=收款块、行=有收款日期升序、退款/调整
   const report = buildCollectionDailyReport(columns, [
     { date: '2026-10-06', feeCode: '04', receivedCents: 3_105_000, refundCents: 0, adjustCents: 0 },
     { date: '2026-10-05', feeCode: '01', receivedCents: 11_915_220, refundCents: 0, adjustCents: 0 },
-    // 只有调整/退款、没有收款的日期不虚构行，但计入总额。
+    // 只有调整/退款的业务日期也保留；不把退款或调整混入收费项目收款列。
+    { date: '2026-10-08', feeCode: '01', receivedCents: 0, refundCents: 0, adjustCents: 0 },
     { date: '2026-10-07', feeCode: '04', receivedCents: 0, refundCents: 0, adjustCents: -60_000 },
     { date: '2026-10-19', feeCode: '04', receivedCents: 0, refundCents: 15_000, adjustCents: 0 },
   ]);
-  assert.deepEqual(report.rows.map((row) => row.date), ['2026-10-05', '2026-10-06']);
+  assert.deepEqual(report.rows.map((row) => row.date), ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-19']);
+  assert.equal(report.rows[2].adjustCents, -60_000);
+  assert.equal(report.rows[3].refundCents, 15_000);
+  assert.equal(report.rows.reduce((sum, row) => sum + row.refundCents, 0), report.refundTotalCents);
+  assert.equal(report.rows.reduce((sum, row) => sum + row.adjustCents, 0), report.adjustTotalCents);
   assert.deepEqual(report.rows.map((row) => row.cells), [
     { '01': 11_915_220, '04': 0 },
     { '01': 0, '04': 3_105_000 },
+    { '01': 0, '04': 0 },
+    { '01': 0, '04': 0 },
   ]);
-  assert.deepEqual(report.rows.map((row) => row.totalCents), [11_915_220, 3_105_000]);
+  assert.deepEqual(report.rows.map((row) => row.totalCents), [11_915_220, 3_105_000, 0, 0]);
   assert.equal(report.subtotal.totalCents, 15_020_220);
   assert.equal(report.refundTotalCents, 15_000);
   assert.equal(report.adjustTotalCents, -60_000);

@@ -155,8 +155,8 @@ function feeNatureResponse(query: any) {
   };
 }
 
-// P2 收款日报表：单元格=当日收款；没有收款的日期不返回 0 行。
-// 日期跟随当前自然月，默认筛选（本月 1 日~今天）正好覆盖夹具数据。
+// P2 日报：费项列=正收款；退款/调整按业务日另列，无业务日不补行。
+// 日期跟随当前自然月；默认到今天时必须排除未来日期，整月验收显式改结束日。
 const NOW = new Date();
 const DAY = (day: number) => `${NOW.getFullYear()}-${String(NOW.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 const COLLECTION_DETAIL_ROWS = [
@@ -189,14 +189,15 @@ function collectionDetailResponse(query: any) {
     if (kind === 'all' && row.rowKind === 'refund') return inRange(row.refundDate);
     return inRange(row.paidDate);
   });
-  const totalCents = rows.reduce((sum, row) => {
-    if (row.rowKind === 'refund') return sum - row.amountCents;
-    return sum + row.amountCents;
-  }, 0);
+  const receivedCents = rows.filter((row) => row.rowKind === 'received').reduce((sum, row) => sum + row.amountCents, 0);
+  const refundCents = rows.filter((row) => row.rowKind === 'refund').reduce((sum, row) => sum + row.amountCents, 0);
+  const adjustCents = rows.filter((row) => row.rowKind === 'adjust').reduce((sum, row) => sum + row.amountCents, 0);
   const offset = Number(query?.offset ?? 0);
   const limit = Number(query?.limit ?? 200);
   return {
-    rows: rows.slice(offset, offset + limit), totalCents, count: rows.length,
+    rows: rows.slice(offset, offset + limit),
+    totals: { receivedCents, refundCents, adjustCents, netCents: kind === 'refund' ? -refundCents : receivedCents + adjustCents },
+    count: rows.length,
     available: true, message: null,
   };
 }
@@ -204,10 +205,10 @@ function collectionDetailResponse(query: any) {
 function dailyResponse(query: any) {
   const feeCodes = String(query?.feeCodes ?? '').split(',').filter(Boolean);
   const columns = FEE_ITEMS.filter((fee) => !feeCodes.length || feeCodes.includes(fee.code))
-    .filter((fee) => ['01', '04', '14', '16'].includes(fee.code))
     .map((fee) => ({ code: fee.code, name: fee.name }));
-  const received = COLLECTION_DETAIL_ROWS.filter((row) => row.rowKind === 'received' && row.paidDate);
-  const dates = [...new Set(received.map((row) => String(row.paidDate)))].sort();
+  const events = collectionDetailResponse({ ...query, kind: 'all', limit: 1000, offset: 0 }).rows;
+  const received = events.filter((row) => row.rowKind === 'received' && row.paidDate);
+  const dates = [...new Set(events.map((row) => String(row.rowKind === 'refund' ? row.refundDate : row.paidDate)))].sort();
   const rows = dates.map((date) => {
     const cells: Record<string, number> = {};
     for (const column of columns) {
@@ -215,7 +216,11 @@ function dailyResponse(query: any) {
         .filter((row) => row.paidDate === date && row.feeCode === column.code)
         .reduce((sum, row) => sum + row.amountCents, 0);
     }
-    return { date, cells, totalCents: columns.reduce((sum, column) => sum + cells[column.code], 0) };
+    return {
+      date, cells, totalCents: columns.reduce((sum, column) => sum + cells[column.code], 0),
+      refundCents: events.filter((row) => row.rowKind === 'refund' && row.refundDate === date).reduce((sum, row) => sum + row.amountCents, 0),
+      adjustCents: events.filter((row) => row.rowKind === 'adjust' && row.paidDate === date).reduce((sum, row) => sum + row.amountCents, 0),
+    };
   });
   const subtotalCells = Object.fromEntries(columns.map((column) => [
     column.code, rows.reduce((sum, row) => sum + Number(row.cells[column.code] ?? 0), 0),
@@ -223,7 +228,8 @@ function dailyResponse(query: any) {
   return {
     columns, rows,
     subtotal: { cells: subtotalCells, totalCents: rows.reduce((sum, row) => sum + row.totalCents, 0) },
-    refundTotalCents: 15000, adjustTotalCents: -60000,
+    refundTotalCents: rows.reduce((sum, row) => sum + row.refundCents, 0),
+    adjustTotalCents: rows.reduce((sum, row) => sum + row.adjustCents, 0),
     dataAsOf: OPTIONS.dataAsOf, available: true, message: null,
   };
 }
@@ -665,6 +671,9 @@ export async function request<T>(options: any): Promise<T> {
   }
 
   if (options.url === '/statistics/daily') {
+    if (w.__dailyDelay) await pause(w.__dailyDelay);
+    if (w.__dailyFail) throw Error('日报表读取失败（合成）');
+    if (w.__dailyUnavailable) return { columns: [], rows: [], subtotal: null, refundTotalCents: null, adjustTotalCents: null, available: false, message: '日报镜像尚未完成首次同步（合成）' } as T;
     return dailyResponse(options.query) as T;
   }
 

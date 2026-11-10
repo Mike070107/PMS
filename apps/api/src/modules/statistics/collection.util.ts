@@ -312,8 +312,8 @@ export function buildCollectionFeeNatureReport(
 
 /**
  * 日常收费项目收款日报表矩阵（P2-B 修正口径）：
- * cells = 收款块（paid_date ∈ 区间 & refund_date IS NULL & amount>0），行=收款日期升序；
- * 退款块按退款日期、调整块按收款日期在行上单列；只返回有收款发生的日期。
+ * cells = 收款块（paid_date ∈ 区间 & refund_date IS NULL & amount>0），行=业务日期升序；
+ * 退款按退款日期、调整按收款日期单列；仅退款/调整日也返回，全零业务日不补行。
  */
 export function buildCollectionDailyReport(
   columns: CollectionFeeColumn[],
@@ -347,7 +347,7 @@ export function buildCollectionDailyReport(
     entry.adjustCents += adjustCents;
   }
   const rows: CollectionDailyRow[] = [...byDate.entries()]
-    .filter(([, entry]) => [...entry.cells.values()].some((cents) => cents !== 0))
+    .filter(([, entry]) => [...entry.cells.values()].some((cents) => cents !== 0) || entry.refundCents !== 0 || entry.adjustCents !== 0)
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([date, entry]) => {
       const cells = emptyCells(finalColumns);

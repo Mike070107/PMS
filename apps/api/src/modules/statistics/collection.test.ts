@@ -332,7 +332,7 @@ test('collection/fee-nature：费项×性质净额矩阵，空性质不落列但
   }
 });
 
-test('daily：cells=收款块、退款/调整单列、只返回有收款日期', async () => {
+test('daily：收款/退款/调整业务日期保留，行列合计与逐笔明细一致', async () => {
   const pg = await makeDatabase();
   try {
     await seed(pg);
@@ -340,13 +340,24 @@ test('daily：cells=收款块、退款/调整单列、只返回有收款日期',
     const daily: any = await service.daily(OCT_02 as never, user, scopeAll);
     assert.equal(daily.available, true);
     assert.equal(daily.columns.length, 16);
-    assert.deepEqual(daily.rows.map((row: any) => row.date), ['2026-10-05', '2026-10-06', '2026-10-08', '2026-10-09']);
-    assert.deepEqual(daily.rows.map((row: any) => row.totalCents), [11_915_220, 3_105_000, 324_000, 30_000]);
+    assert.deepEqual(daily.rows.map((row: any) => row.date), ['2026-10-05', '2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09', '2026-10-19']);
+    assert.deepEqual(daily.rows.map((row: any) => row.totalCents), [11_915_220, 3_105_000, 0, 324_000, 30_000, 0]);
     assert.equal(daily.subtotal.totalCents, 15_374_220);
-    // 10-07 只有负调整、10-19 只有退款：不虚构日期行，但计入总额。
     assert.equal(daily.refundTotalCents, 15_000);
     assert.equal(daily.adjustTotalCents, -60_000);
-    assert.equal(daily.rows.some((row: any) => row.date === '2026-10-07'), false);
+    // 仅退款/调整日不再被隐藏；不改变原收款块或成对退款去重口径。
+    for (const row of daily.rows) {
+      for (const [kind, amount] of [['received', row.totalCents], ['refund', row.refundCents], ['adjust', row.adjustCents]]) {
+        const detail: any = await service.collectionDetail({ ...OCT_02, dateFrom: row.date, dateTo: row.date, kind } as never, user, scopeAll);
+        assert.equal(detail.totals[`${kind}Cents`], amount, `${row.date}/${kind}`);
+      }
+    }
+    for (const column of daily.columns) {
+      const detail: any = await service.collectionDetail({ ...OCT_02, feeCodes: [column.code], kind: 'received' } as never, user, scopeAll);
+      assert.equal(detail.totals.receivedCents, daily.subtotal.cells[column.code], `费项合计/${column.code}`);
+    }
+    assert.equal(daily.rows.reduce((sum: number, row: any) => sum + row.refundCents, 0), daily.refundTotalCents);
+    assert.equal(daily.rows.reduce((sum: number, row: any) => sum + row.adjustCents, 0), daily.adjustTotalCents);
 
     const single: any = await service.daily({ dateFrom: '2026-10-05', dateTo: '2026-10-05', officeCodes: ['02'] } as never, user, scopeAll);
     assert.equal(single.rows.length, 1);
