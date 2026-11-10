@@ -861,20 +861,61 @@ export class MisMirrorService {
       params, MIS_TIMEOUT,
     );
     const sourceRow = source?.recordsets?.[0]?.[0] || {};
+    // 维度镜像（楼/室/业主）只在手工重灌时重建：每日对账同时比较维度行数，
+    // 以及镜像内房号/地址的空白规模，避免“金额对得上但房号没同步”被当成正常。
+    const dimensionSource: any = await this.misFees.mirrorRead(
+      `SELECT (SELECT COUNT_BIG(*) FROM dbo.楼表) AS buildings,
+              (SELECT COUNT_BIG(*) FROM dbo.室表) AS rooms,
+              (SELECT COUNT_BIG(*) FROM dbo.业主表) AS owners`,
+      {}, MIS_TIMEOUT,
+    );
+    const dimensionSourceRow = dimensionSource?.recordsets?.[0]?.[0] || {};
     const mirror: any[] = await this.dataSource.query(
       `SELECT COUNT(*)::int AS total,COALESCE(SUM(amount_cents),0)::bigint AS amount FROM mis_mirror_bill`,
     );
+    const dimensionMirror: any[] = await this.dataSource.query(
+      `SELECT (SELECT COUNT(*)::int FROM mis_mirror_building) AS buildings,
+              (SELECT COUNT(*)::int FROM mis_mirror_room) AS rooms,
+              (SELECT COUNT(*)::int FROM mis_mirror_owner) AS owners,
+              (SELECT COUNT(*)::int FROM mis_mirror_room WHERE room_no IS NULL OR room_no='') AS "roomsWithoutNo",
+              (SELECT COUNT(*)::int FROM mis_mirror_bill WHERE address IS NULL OR address='') AS "billsWithoutAddress"`,
+    );
     const totalDiff = Number(mirror[0]?.total || 0) - Number(sourceRow.total || 0);
     const amountDiff = Number(mirror[0]?.amount || 0) - Math.round(Number(sourceRow.amount || 0));
-    const ok = totalDiff === 0 && amountDiff === 0;
+    const dimensionDiff = {
+      buildings: Number(dimensionMirror[0]?.buildings || 0) - Number(dimensionSourceRow.buildings || 0),
+      rooms: Number(dimensionMirror[0]?.rooms || 0) - Number(dimensionSourceRow.rooms || 0),
+      owners: Number(dimensionMirror[0]?.owners || 0) - Number(dimensionSourceRow.owners || 0),
+    };
+    const dimensionMismatch = Object.values(dimensionDiff).some((diff) => diff !== 0);
+    const ok = totalDiff === 0 && amountDiff === 0 && !dimensionMismatch;
+    const quality = {
+      roomsWithoutNo: Number(dimensionMirror[0]?.roomsWithoutNo || 0),
+      billsWithoutAddress: Number(dimensionMirror[0]?.billsWithoutAddress || 0),
+    };
+    const problems = [
+      totalDiff === 0 ? null : `记录差 ${totalDiff}`,
+      amountDiff === 0 ? null : `金额差 ${amountDiff} 分`,
+      dimensionMismatch ? `维度差 楼 ${dimensionDiff.buildings}、室 ${dimensionDiff.rooms}、业主 ${dimensionDiff.owners}（维度仅在手工重灌时重建，请重灌后复核）` : null,
+    ].filter(Boolean);
     await this.dataSource.query(
       `INSERT INTO system_logs(tenant_id,category,level,source,action,success,message,detail,created_at,updated_at)
        VALUES($1,'alert',$2,'mis-mirror',$3,$4,$5,$6::jsonb,now(),now())`,
       [tenantId, ok ? 'info' : 'warning', 'mis_mirror_reconcile', ok,
-        ok ? 'MIS 镜像对账一致' : `MIS 镜像不一致：记录差 ${totalDiff}、金额差 ${amountDiff} 分`,
-        JSON.stringify({ sourceTotal: Number(sourceRow.total || 0), mirrorTotal: Number(mirror[0]?.total || 0), sourceAmountCents: Math.round(Number(sourceRow.amount || 0)), mirrorAmountCents: Number(mirror[0]?.amount || 0), totalDiff, amountDiff })],
+        ok ? 'MIS 镜像对账一致' : `MIS 镜像不一致：${problems.join('；')}`,
+        JSON.stringify({ sourceTotal: Number(sourceRow.total || 0), mirrorTotal: Number(mirror[0]?.total || 0), sourceAmountCents: Math.round(Number(sourceRow.amount || 0)), mirrorAmountCents: Number(mirror[0]?.amount || 0), totalDiff, amountDiff, dimensionDiff, quality })],
     ).catch(() => undefined);
-    return { ok, sourceTotal: Number(sourceRow.total || 0), mirrorTotal: Number(mirror[0]?.total || 0), sourceAmountCents: Math.round(Number(sourceRow.amount || 0)), mirrorAmountCents: Number(mirror[0]?.amount || 0), totalDiff, amountDiff };
+    return {
+      ok,
+      sourceTotal: Number(sourceRow.total || 0),
+      mirrorTotal: Number(mirror[0]?.total || 0),
+      sourceAmountCents: Math.round(Number(sourceRow.amount || 0)),
+      mirrorAmountCents: Number(mirror[0]?.amount || 0),
+      totalDiff,
+      amountDiff,
+      dimensionDiff,
+      quality,
+    };
   }
 
   async today(q: { date?: string; communityIds?: number[] }, user: AuthUser, access?: ResolvedAccess) {
