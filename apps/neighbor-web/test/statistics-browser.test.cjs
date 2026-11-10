@@ -302,6 +302,46 @@ test('统计汇总金额/CSV 纯函数：整数分格式化、UTF-8 BOM、筛选
   assert.ok(signoffsCsvText.includes('调整金额'));
   assert.ok(signoffsCsvText.includes('-2400.00'));
 
+  // P2-E：收款汇总表 / 票据情况统计参数与 CSV。
+  const ticketSummaryQuery = {
+    type: 'ticket-summary', officeCodes: ['01'], feeCodes: ['01'], paymentMethods: ['现金', '微信'],
+    cashier: ' 张收费 ', dateFrom: '2026-11-01', dateTo: '2026-11-10',
+  };
+  const ticketSummaryParams = lib.ticketSummaryParams(ticketSummaryQuery, 0, 200);
+  assert.equal(ticketSummaryParams.cashier, '张收费');
+  assert.equal(ticketSummaryParams.paymentMethods, '现金,微信');
+  assert.equal(ticketSummaryParams.dateFrom, '2026-11-01');
+  const ticketSummaryReport = {
+    methodColumns: [{ key: '现金', label: '现金' }, { key: '微信', label: '微信' }],
+    rows: [{ feeCode: '01', feeName: '管理费', methods: { '现金': 500000, '微信': 500000 }, receivedCents: 1000000, refundCents: 0, netCents: 1000000, ticketAmountCents: 1000000, ticketTaxCents: 50000, ticketIncomeCents: 950000, ticketCount: 5, rows: 5 }],
+    totals: { methods: { '现金': 500000, '微信': 500000 }, receivedCents: 1000000, refundCents: 0, netCents: 1000000, ticketAmountCents: 1000000, ticketTaxCents: 50000, ticketIncomeCents: 950000, ticketCount: 5, rows: 5 },
+    cashierRows: [], cashierTotals: null,
+  };
+  const ticketSummaryCsvText = lib.ticketSummaryCsv(ticketSummaryReport, ticketSummaryQuery);
+  assert.equal(ticketSummaryCsvText.charCodeAt(0), 0xFEFF);
+  assert.ok(ticketSummaryCsvText.includes('收款汇总表'));
+  assert.ok(ticketSummaryCsvText.includes('收费项目,现金,微信,合计'));
+  assert.ok(ticketSummaryCsvText.includes('管理费,5000.00,5000.00,10000.00'));
+
+  const ticketsQuery = {
+    type: 'tickets', officeCodes: ['01'], status: 'voided', keyword: ' PJ2026 ', dateFrom: '2026-01-01', dateTo: '2026-11-10',
+  };
+  const ticketsParams = lib.ticketsParams(ticketsQuery, 0, 200);
+  assert.equal(ticketsParams.status, 'voided');
+  assert.equal(ticketsParams.keyword, 'PJ2026');
+  const ticketsReport = {
+    rows: [{ id: 1, ticketNo: 'PJ202611001', warehouseNo: 'RK1', officeCode: '01', officeName: '一期', issueDate: '2026-11-01', payer: '陆乾一', amountCents: 500000, taxCents: 25000, preIssue: false, receiptDate: '2026-11-01', issuer: '张收费', payee: '张收费', voidDate: null, writeoffDate: null, paymentMethod: '现金', invoiceNo: 'FP001', status: 'issued' }],
+    totals: { count: 1, amountCents: 500000, taxCents: 25000 },
+    statusCounts: { issued: 1 },
+    count: 1,
+  };
+  const ticketsCsvText = lib.ticketsCsv(ticketsReport, ticketsQuery);
+  assert.equal(ticketsCsvText.charCodeAt(0), 0xFEFF);
+  assert.ok(ticketsCsvText.includes('票据情况统计'));
+  assert.ok(ticketsCsvText.includes('状态'));
+  assert.ok(ticketsCsvText.includes('已开'));
+  assert.ok(ticketsCsvText.includes('5000.00'));
+
   const annual = {
     type: 'arrears',
     columns: [2011, 2014],
@@ -457,9 +497,11 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     assert.ok(await js("!!document.querySelector('[data-report-type=\"building-ledger\"]')"), '楼房台账已启用');
     assert.ok(await js("!!document.querySelector('[data-report-type=relief]')"), '减免情况统计已启用');
     assert.ok(await js("!!document.querySelector('[data-report-type=signoffs]')"), '签报情况统计已启用');
-    assert.ok(await js("document.querySelectorAll('.stats-report-pending').length >= 10"), '待接入报表要用灰字列出');
+    assert.ok(await js("!!document.querySelector('[data-report-type=\"ticket-summary\"]')"), '收款汇总表已启用');
+    assert.ok(await js("!!document.querySelector('[data-report-type=tickets]')"), '票据情况统计已启用');
+    assert.ok(await js("document.querySelectorAll('.stats-report-pending').length >= 8"), '待接入报表要用灰字列出');
     assert.equal(
-      await js("[...document.querySelectorAll('.stats-report-pending')].some((e) => ['收费汇总', '收款日报表', '欠收与溢收汇总', '收缴考核', '收款分析', '收费月报表（核心指标）', '房产汇总', '住户台账', '楼房台账', '减免情况统计', '签报情况统计'].includes(e.textContent.trim()))"),
+      await js("[...document.querySelectorAll('.stats-report-pending')].some((e) => ['收费汇总', '收款日报表', '欠收与溢收汇总', '收缴考核', '收款分析', '收费月报表（核心指标）', '房产汇总', '住户台账', '楼房台账', '减免情况统计', '签报情况统计', '收款汇总表', '票据情况统计'].includes(e.textContent.trim()))"),
       false,
       '已启用报表不能仍列在待接入',
     );
@@ -1482,6 +1524,104 @@ test('P4-A 减免情况统计/签报情况统计：日期关键词参数/合计/
     await call('Emulation.setDeviceMetricsOverride', { width: 320, height: 900, deviceScaleFactor: 1, mobile: false });
     await pause(400);
     assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '签报/减免 320 页面横向溢出');
+  });
+});
+
+test('P2-E 收款汇总表/票据情况统计：动态列/副表/状态筛选/合计/CSV/窄屏', { timeout: 180000 }, async () => {
+  await withPage(async ({ js, call, waitFor, screenshot }) => {
+    const setInput = async (selector, value) => {
+      await js(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; setter.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+      await pause(150);
+    };
+    const setSelect = async (selector, value) => {
+      await js(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set; setter.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+      await pause(150);
+    };
+    await waitFor("!!document.querySelector('.stats')", '统计页挂载', 25000);
+    await waitFor("!!document.querySelector('.stats-annual-table')", '默认年度表', 25000);
+    const today = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
+    const year = String(new Date().getFullYear());
+
+    // 收款汇总表
+    await js("document.querySelector('[data-report-type=\"ticket-summary\"]').click()");
+    await waitFor("!!document.querySelector('[data-testid=ticket-summary-table]')", '收款汇总表', 25000);
+    const summaryQuery = await js("window.__calls.filter((c) => c.url === '/statistics/ticket-summary').slice(-1)[0].query");
+    assert.ok(summaryQuery.dateFrom.endsWith('-01'), '收款日期默认本月 1 日');
+    assert.equal(summaryQuery.dateTo, today);
+    assert.ok(summaryQuery.paymentMethods.split(',').length >= 5);
+    const headers = await js("[...document.querySelectorAll('[data-testid=ticket-summary-table] thead th')].map((th) => th.textContent.trim())");
+    assert.equal(headers.length, 7, '收款汇总主表：费项 + 5 个动态方式 + 合计');
+    assert.ok(headers.includes('现金') && headers.includes('微信') && headers.includes('合计'), '动态收款方式列');
+    assert.equal(await js("document.querySelectorAll('[data-testid=ticket-summary-table] tbody tr[data-fee-code]').length"), 3);
+    assert.ok((await js("document.querySelector('[data-testid=ticket-summary-total]').textContent")).includes('¥24,850.00'), '主表合计');
+    // 票据口径副表
+    assert.ok((await js("document.querySelector('[data-testid=ticket-summary-ticket-table]').textContent")).includes('¥25,000.00'), '票据金额合计');
+    assert.ok((await js("document.querySelector('[data-testid=ticket-summary-ticket-table]').textContent")).includes('¥1,250.00'), '税额合计');
+    assert.ok((await js("document.querySelector('[data-testid=ticket-summary-ticket-table]').textContent")).includes('11'), '票据张数合计');
+    // 按收款人副表
+    assert.equal(await js("document.querySelectorAll('[data-testid=ticket-summary-cashier-table] tbody tr[data-cashier]').length"), 2);
+    assert.ok((await js("document.querySelector('[data-testid=ticket-summary-cashier-table]').textContent")).includes('张收费'));
+    assert.ok((await js("document.querySelector('[data-testid=ticket-summary-cashier-total]').textContent")).includes('¥18,000.00'), '按收款人合计');
+    await screenshot('statistics-ticket-summary-1440.png');
+    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
+    await js("document.querySelector('[data-testid=stats-export]').click()");
+    await waitFor("window.__blobs.length >= 1", '收款汇总 CSV Blob');
+    const summaryCsv = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], title: text.includes('收款汇总表'), header: text.includes('收费项目,现金'), total: text.includes('合计') }; })()");
+    assert.deepEqual(summaryCsv.bom, [0xEF, 0xBB, 0xBF]);
+    assert.ok(summaryCsv.title && summaryCsv.header && summaryCsv.total, '收款汇总 CSV 内容');
+    await pause(2600);
+
+    // 票据情况统计
+    await js("document.querySelector('[data-report-type=tickets]').click()");
+    await waitFor("!!document.querySelector('[data-testid=tickets-table]')", '票据情况表', 25000);
+    const ticketsQuery = await js("window.__calls.filter((c) => c.url === '/statistics/tickets').slice(-1)[0].query");
+    assert.equal(ticketsQuery.dateFrom, `${year}-01-01`);
+    assert.equal(ticketsQuery.status, 'all');
+    const ticketHeaders = await js("[...document.querySelectorAll('[data-testid=tickets-table] thead th')].map((th) => th.textContent.trim())");
+    assert.equal(ticketHeaders.length, 16, '票据 16 列');
+    assert.equal(await js("document.querySelectorAll('[data-testid=tickets-table] tbody tr[data-ticket-id]').length"), 4);
+    assert.equal(await js("!!document.querySelector('[data-status=\"voided\"]')"), true);
+    assert.ok((await js("document.querySelector('[data-status=\"voided\"]').textContent")).includes('作废'));
+    assert.ok((await js("document.querySelector('[data-status=\"pre_issue\"]').textContent")).includes('预开'));
+    assert.ok((await js("document.querySelector('[data-status=\"written_off\"]').textContent")).includes('已核销'));
+    const ticketTotal = await js("document.querySelector('[data-testid=tickets-total]').textContent");
+    assert.ok(ticketTotal.includes('4 件'), '票据件数');
+    assert.ok(ticketTotal.includes('¥22,000.00'), '票据金额合计');
+    assert.ok(ticketTotal.includes('¥1,100.00'), '税额合计');
+    await screenshot('statistics-tickets-1440.png');
+    await js("(() => { const el = document.querySelector('.stats-tickets-scroll'); el.scrollLeft = el.scrollWidth; })()");
+    await pause(250);
+    await screenshot('statistics-tickets-status-1440.png');
+    await js("(() => { const el = document.querySelector('.stats-tickets-scroll'); el.scrollLeft = 0; })()");
+    await setInput('[data-testid=ledger-keyword]', 'PJ202611002');
+    await js("document.querySelector('[data-testid=stats-submit]').click()");
+    await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/tickets'); const last = list[list.length - 1]; return last && last.query.keyword === 'PJ202611002'; })()", '票据关键词请求');
+    await waitFor("document.querySelectorAll('[data-testid=tickets-table] tbody tr[data-ticket-id]').length === 1", '票据关键词结果');
+    await setInput('[data-testid=ledger-keyword]', '');
+    await setSelect('[data-testid=ticket-status]', 'voided');
+    await js("document.querySelector('[data-testid=stats-submit]').click()");
+    await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/tickets'); const last = list[list.length - 1]; return last && last.query.status === 'voided'; })()", '票据作废状态请求');
+    await waitFor("document.querySelectorAll('[data-testid=tickets-table] tbody tr[data-ticket-id]').length === 1", '票据作废结果');
+    await js("(() => { window.__blobs = []; const original = window.URL.createObjectURL.bind(window.URL); window.URL.createObjectURL = (blob) => { window.__blobs.push(blob); return original(blob); }; })()");
+    await js("document.querySelector('[data-testid=stats-export]').click()");
+    await waitFor("window.__blobs.length >= 1", '票据 CSV Blob');
+    const ticketsCsv = await js("(async () => { const blob = window.__blobs[0]; const bytes = new Uint8Array(await blob.arrayBuffer()).slice(0, 3); const text = await blob.text(); return { bom: [...bytes], title: text.includes('票据情况统计'), header: text.includes('票据编号'), status: text.includes('作废') }; })()");
+    assert.deepEqual(ticketsCsv.bom, [0xEF, 0xBB, 0xBF]);
+    assert.ok(ticketsCsv.title && ticketsCsv.header && ticketsCsv.status, '票据 CSV 内容');
+    await pause(2600);
+
+    await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
+    await pause(500);
+    if (await js("!!document.querySelector('.stats-filter-float')")) {
+      await js("document.querySelector('[data-testid=stats-filter-toggle]').click()");
+      await pause(300);
+    }
+    assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '票据 390 页面横向溢出');
+    assert.ok(await js("(() => { const el = document.querySelector('.stats-tickets-scroll'); return el && el.scrollWidth > el.clientWidth; })()"), '票据宽表内部滚动');
+    await screenshot('statistics-tickets-390.png');
+    await call('Emulation.setDeviceMetricsOverride', { width: 320, height: 900, deviceScaleFactor: 1, mobile: false });
+    await pause(400);
+    assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '票据 320 页面横向溢出');
   });
 });
 

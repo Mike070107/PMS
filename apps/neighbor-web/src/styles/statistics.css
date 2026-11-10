@@ -670,6 +670,22 @@
 .stats-relief-table td.num, .stats-relief-table th.num,
 .stats-signoffs-table td.num, .stats-signoffs-table th.num { text-align: right; }
 
+/* P2-E：收款汇总表 / 票据情况统计 */
+.stats-ticket-summary-scroll, .stats-tickets-scroll { max-height: 62vh; }
+.stats-ticket-summary-table, .stats-ticket-summary-ticket-table, .stats-ticket-summary-cashier-table { min-width: 900px; }
+.stats-ticket-summary-table th, .stats-ticket-summary-table td,
+.stats-ticket-summary-ticket-table th, .stats-ticket-summary-ticket-table td,
+.stats-ticket-summary-cashier-table th, .stats-ticket-summary-cashier-table td { white-space: nowrap; }
+.stats-ticket-summary-table td.num, .stats-ticket-summary-table th.num,
+.stats-ticket-summary-ticket-table td.num, .stats-ticket-summary-ticket-table th.num,
+.stats-ticket-summary-cashier-table td.num, .stats-ticket-summary-cashier-table th.num { text-align: right; }
+.stats-subblock { margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.stats-subblock .panelHd b { margin-right: 8px; }
+.stats-subblock .panelHd .muted { font-size: 12px; }
+.stats-tickets-table { min-width: 1780px; }
+.stats-tickets-table th, .stats-tickets-table td { white-space: nowrap; }
+.stats-tickets-table td.num, .stats-tickets-table th.num { text-align: right; }
+
 .stats-received-table { min-width: 980px; }
 
 .stats-received-table tbody tr:hover td { background: var(--sunken); }

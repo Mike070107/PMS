@@ -118,10 +118,10 @@ export default function StatisticsFilters({
 
   const isLedger = reportType === 'property-summary' || reportType === 'owner-ledger' || reportType === 'building-ledger';
   const dateRequired = reportType === 'fee-nature' || reportType === 'daily' || reportType === 'collection-analysis'
-    || reportType === 'relief' || reportType === 'signoffs';
+    || reportType === 'relief' || reportType === 'signoffs' || reportType === 'ticket-summary' || reportType === 'tickets';
   const canSubmit = draft.officeCodes.length > 0
-    && (isLedger || reportType === 'signoffs'
-      || (reportType === 'relief' ? draft.feeCodes.length > 0 : (draft.feeCodes.length > 0 && draft.natures.length > 0)))
+    && (isLedger || reportType === 'signoffs' || reportType === 'tickets'
+      || (reportType === 'relief' || reportType === 'ticket-summary' ? draft.feeCodes.length > 0 : (draft.feeCodes.length > 0 && draft.natures.length > 0)))
     && (!dateRequired || (!!draft.paidDateFrom && !!draft.paidDateTo))
     && (reportType !== 'arrears-prepaid' || (!!draft.asOfPeriod && !!draft.paidDateTo))
     && (reportType !== 'assessment' || !!draft.assessmentYear)
@@ -198,8 +198,8 @@ export default function StatisticsFilters({
           </div>
         </CheckGroup>
 
-        {reportType === 'owner-ledger' || reportType === 'building-ledger' || reportType === 'relief' || reportType === 'signoffs' ? (
-          <CheckGroup title="关键词" hint={reportType === 'signoffs' ? '匹配文号/标题/地址/业主/结果' : reportType === 'relief' ? '匹配文号/地址/业主/收费项目' : '匹配地址/房号/业主/手机/电话（楼房台账匹配路/弄/楼号）'}>
+        {reportType === 'owner-ledger' || reportType === 'building-ledger' || reportType === 'relief' || reportType === 'signoffs' || reportType === 'tickets' ? (
+          <CheckGroup title="关键词" hint={reportType === 'signoffs' ? '匹配文号/标题/地址/业主/结果' : reportType === 'relief' ? '匹配文号/地址/业主/收费项目' : reportType === 'tickets' ? '匹配票据编号/入库单号/付款人/发票号' : '匹配地址/房号/业主/手机/电话（楼房台账匹配路/弄/楼号）'}>
             <div className="stats-office-search">
               <Icon name="search" size={15} />
               <input
@@ -213,7 +213,7 @@ export default function StatisticsFilters({
           </CheckGroup>
         ) : null}
 
-        {reportType !== 'property-summary' && reportType !== 'owner-ledger' && reportType !== 'building-ledger' && reportType !== 'signoffs' ? (
+        {reportType !== 'property-summary' && reportType !== 'owner-ledger' && reportType !== 'building-ledger' && reportType !== 'signoffs' && reportType !== 'tickets' ? (
         <CheckGroup title="收费项目" hint="按旧 MIS 分类树；勾选后统计仍传扁平 feeCodes" actions={groupActions('fees', options.feeItems.map((fee) => fee.code))}>
           <div className="stats-office-search">
             <Icon name="search" size={15} />
@@ -240,7 +240,7 @@ export default function StatisticsFilters({
         </CheckGroup>
         ) : null}
 
-        {reportType !== 'property-summary' && reportType !== 'building-ledger' && reportType !== 'relief' && reportType !== 'signoffs' ? (
+        {reportType !== 'property-summary' && reportType !== 'building-ledger' && reportType !== 'relief' && reportType !== 'signoffs' && reportType !== 'ticket-summary' && reportType !== 'tickets' ? (
         <CheckGroup
           title="房屋性质"
           hint="按收费发生时点性质统计；空房（06）默认不勾选，可手动勾选"
@@ -268,13 +268,15 @@ export default function StatisticsFilters({
             && reportType !== 'property-summary' && reportType !== 'owner-ledger' && reportType !== 'building-ledger' ? (
             <>
           <div className="stats-date-range-label">
-            {reportType === 'fee-nature' || reportType === 'daily' || reportType === 'collection-analysis'
+            {reportType === 'fee-nature' || reportType === 'daily' || reportType === 'collection-analysis' || reportType === 'ticket-summary'
               ? '收款日期范围（必填）'
               : reportType === 'relief'
                 ? '减免日期范围（必填）'
                 : reportType === 'signoffs'
                   ? '拟稿日期范围（必填）'
-                  : '收款日期范围'}
+                  : reportType === 'tickets'
+                    ? '开票日期范围（必填）'
+                    : '收款日期范围'}
             <span className="muted">
               {reportType === 'received'
                 ? '（仅实收；年度按应收年月归年，此范围只做筛选）'
@@ -284,7 +286,9 @@ export default function StatisticsFilters({
                     ? '（按减免日期筛选）'
                     : reportType === 'signoffs'
                       ? '（按拟稿日期筛选）'
-                      : '（按收款日期统计收款/退款/调整）'}
+                      : reportType === 'tickets'
+                        ? '（按开票日期筛选）'
+                        : '（按收款日期统计收款/退款/调整）'}
             </span>
           </div>
           <div className="stats-date-range" data-date-from={draft.paidDateFrom} data-date-to={draft.paidDateTo}>
@@ -304,6 +308,20 @@ export default function StatisticsFilters({
               onChange={(event) => onChange({ paidDateTo: event.target.value })}
             />
           </div>
+          {reportType === 'tickets' ? (
+            <div className="stats-extra-fields">
+              <label>
+                状态
+                <select className="in" data-testid="ticket-status" value={draft.ticketStatus} onChange={(event) => onChange({ ticketStatus: event.target.value as FilterDraft['ticketStatus'] })}>
+                  <option value="all">全部</option>
+                  <option value="issued">已开</option>
+                  <option value="pre_issue">预开</option>
+                  <option value="voided">作废</option>
+                  <option value="written_off">已核销</option>
+                </select>
+              </label>
+            </div>
+          ) : null}
           {reportType === 'signoffs' ? (
             <>
               <div className="stats-extra-fields">
@@ -370,6 +388,31 @@ export default function StatisticsFilters({
                 </label>
               </div>
               <div className="stats-filter-hint">按所属年月统计 1–12 月应收；已收默认截至今天，可清空为不限制。</div>
+            </>
+          ) : null}
+          {reportType === 'ticket-summary' ? (
+            <>
+              <CheckGroup title="收款方式" hint="来自收款方式字典；不勾选 = 全部">
+                <div className="stats-check-list" role="group" aria-label="收款方式">
+                  {(options.paymentMethods ?? []).map((method) => (
+                    <label key={method.id} className="stats-check">
+                      <input
+                        type="checkbox"
+                        data-payment-method={method.id}
+                        checked={draft.paymentMethods.includes(method.id)}
+                        onChange={() => onChange({ paymentMethods: toggle(draft.paymentMethods, method.id) })}
+                      />
+                      <span className="stats-check-name">{method.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </CheckGroup>
+              <div className="stats-extra-fields">
+                <label>
+                  收款人
+                  <input className="in" type="text" data-testid="cashier-input" value={draft.cashier} placeholder="全部收款人" onChange={(event) => onChange({ cashier: event.target.value })} />
+                </label>
+              </div>
             </>
           ) : null}
           {reportType === 'fee-nature' ? (
@@ -460,6 +503,10 @@ export default function StatisticsFilters({
             <div className="stats-filter-hint" data-testid="relief-filter-hint">关键词匹配文号/地址/业主/收费项目；日期按减免日期。</div>
           ) : reportType === 'signoffs' ? (
             <div className="stats-filter-hint" data-testid="signoffs-filter-hint">状态/类型不选即全部；日期按签报拟稿日期。</div>
+          ) : reportType === 'ticket-summary' ? (
+            <div className="stats-filter-hint" data-testid="ticket-summary-filter-hint">收款人/收款方式仅作收窄；主表按收款日期统计。</div>
+          ) : reportType === 'tickets' ? (
+            <div className="stats-filter-hint" data-testid="tickets-filter-hint">关键词匹配票据编号/入库单号/付款人/发票号。</div>
           ) : null}
         </div>
       </div>
@@ -490,7 +537,11 @@ export default function StatisticsFilters({
                         ? '请至少选择一个管理处，并填写拟稿日期范围。'
                         : reportType === 'relief'
                           ? '请至少选择一个管理处和一个收费项目，并填写减免日期范围。'
-                          : '请至少各选一个管理处、收费项目和房屋性质。'}
+                          : reportType === 'tickets'
+                            ? '请至少选择一个管理处，并填写开票日期范围。'
+                            : reportType === 'ticket-summary'
+                              ? '请至少选择一个管理处和一个收费项目，并填写收款日期范围。'
+                              : '请至少各选一个管理处、收费项目和房屋性质。'}
         </div>
       ) : null}
     </aside>

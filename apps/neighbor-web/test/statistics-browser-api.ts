@@ -516,6 +516,79 @@ function signoffsResponse(query: any) {
   return { rows: filtered, totals, count: filtered.length, limit: 200, offset: 0, dataAsOf: OPTIONS.dataAsOf, available: true, message: null };
 }
 
+// P2-E 收款汇总表 / 票据情况统计。
+const TICKET_SUMMARY_METHODS = [
+  { key: '现金', label: '现金' }, { key: '支付宝', label: '支付宝' }, { key: '微信', label: '微信' },
+  { key: '银联支付', label: '银联支付' }, { key: '转账', label: '转账' },
+];
+const TICKET_SUMMARY_ROWS = [
+  { feeCode: '01', feeName: '管理费', methods: { '现金': 500000, '微信': 300000, '支付宝': 200000 }, receivedCents: 1000000, refundCents: 0, netCents: 1000000, ticketAmountCents: 1000000, ticketTaxCents: 50000, ticketIncomeCents: 950000, ticketCount: 5, rows: 6 },
+  { feeCode: '04', feeName: '泊位费', methods: { '微信': 800000, '银联支付': 400000 }, receivedCents: 1200000, refundCents: 15000, netCents: 1185000, ticketAmountCents: 1200000, ticketTaxCents: 60000, ticketIncomeCents: 1140000, ticketCount: 4, rows: 5 },
+  { feeCode: '14', feeName: '停车管理费', methods: { '转账': 300000 }, receivedCents: 300000, refundCents: 0, netCents: 300000, ticketAmountCents: 300000, ticketTaxCents: 15000, ticketIncomeCents: 285000, ticketCount: 2, rows: 2 },
+];
+
+function ticketSummaryResponse() {
+  const totals = {
+    methods: Object.fromEntries(TICKET_SUMMARY_METHODS.map((column) => [column.key, TICKET_SUMMARY_ROWS.reduce((sum, row) => sum + Number(row.methods[column.key as keyof typeof row.methods] ?? 0), 0)])),
+    receivedCents: TICKET_SUMMARY_ROWS.reduce((sum, row) => sum + row.receivedCents, 0),
+    refundCents: TICKET_SUMMARY_ROWS.reduce((sum, row) => sum + row.refundCents, 0),
+    netCents: TICKET_SUMMARY_ROWS.reduce((sum, row) => sum + row.netCents, 0),
+    ticketAmountCents: TICKET_SUMMARY_ROWS.reduce((sum, row) => sum + row.ticketAmountCents, 0),
+    ticketTaxCents: TICKET_SUMMARY_ROWS.reduce((sum, row) => sum + row.ticketTaxCents, 0),
+    ticketIncomeCents: TICKET_SUMMARY_ROWS.reduce((sum, row) => sum + row.ticketIncomeCents, 0),
+    ticketCount: TICKET_SUMMARY_ROWS.reduce((sum, row) => sum + row.ticketCount, 0),
+    rows: TICKET_SUMMARY_ROWS.reduce((sum, row) => sum + row.rows, 0),
+  };
+  const cashierRows = [
+    { cashier: '张收费', methods: { '现金': 500000, '微信': 1100000 }, netCents: 1600000, rows: 7 },
+    { cashier: '李收费', methods: { '支付宝': 200000 }, netCents: 200000, rows: 2 },
+  ];
+  const cashierTotals = {
+    cashier: '',
+    methods: Object.fromEntries(TICKET_SUMMARY_METHODS.map((column) => [column.key, cashierRows.reduce((sum, row) => sum + Number((row.methods as Record<string, number>)[column.key] ?? 0), 0)])),
+    netCents: cashierRows.reduce((sum, row) => sum + row.netCents, 0),
+    rows: cashierRows.reduce((sum, row) => sum + row.rows, 0),
+  };
+  return {
+    methodColumns: TICKET_SUMMARY_METHODS, rows: TICKET_SUMMARY_ROWS, totals, cashierRows, cashierTotals,
+    dataAsOf: OPTIONS.dataAsOf, available: true, message: null,
+  };
+}
+
+const TICKET_ROWS = [
+  { id: 1, ticketNo: 'PJ202611001', warehouseNo: 'RK202611001', officeCode: '01', officeName: '枫桦景苑一期', issueDate: '2026-11-01', payer: '陆乾一', amountCents: 500000, taxCents: 25000, preIssue: false, receiptDate: '2026-11-01', issuer: '张收费', payee: '张收费', voidDate: null, voidReason: null, writeoffDate: null, paymentMethod: '现金', invoiceNo: 'FP001', status: 'issued' },
+  { id: 2, ticketNo: 'PJ202611002', warehouseNo: 'RK202611002', officeCode: '02', officeName: '枫桦景苑二期A', issueDate: '2026-11-02', payer: '杨凤林', amountCents: 800000, taxCents: 40000, preIssue: true, receiptDate: null, issuer: '李收费', payee: '李收费', voidDate: null, voidReason: null, writeoffDate: null, paymentMethod: '微信', invoiceNo: null, status: 'pre_issue' },
+  { id: 3, ticketNo: 'PJ202610009', warehouseNo: 'RK202610009', officeCode: '01', officeName: '枫桦景苑一期', issueDate: '2026-10-20', payer: '邱解平', amountCents: 300000, taxCents: 15000, preIssue: false, receiptDate: '2026-10-20', issuer: '张收费', payee: '张收费', voidDate: '2026-10-21', voidReason: '开错', writeoffDate: null, paymentMethod: '现金', invoiceNo: 'FP002', status: 'voided' },
+  { id: 4, ticketNo: 'PJ202609005', warehouseNo: 'RK202609005', officeCode: '02', officeName: '枫桦景苑二期A', issueDate: '2026-09-15', payer: '合成业主', amountCents: 600000, taxCents: 30000, preIssue: false, receiptDate: '2026-09-15', issuer: '李收费', payee: '李收费', voidDate: null, voidReason: null, writeoffDate: '2026-09-20', paymentMethod: '转账', invoiceNo: 'FP003', status: 'written_off' },
+];
+
+function ticketListResponse(query: any) {
+  const keyword = String(query?.keyword ?? '').trim();
+  const status = String(query?.status ?? 'all');
+  const dateFrom = String(query?.dateFrom ?? '');
+  const dateTo = String(query?.dateTo ?? '');
+  const rows = TICKET_ROWS.filter((row) => {
+    if (status !== 'all' && row.status !== status) return false;
+    if (keyword && ![row.ticketNo, row.warehouseNo, row.payer, row.invoiceNo].some((value) => String(value ?? '').includes(keyword))) return false;
+    if (dateFrom && String(row.issueDate) < dateFrom) return false;
+    if (dateTo && String(row.issueDate) > dateTo) return false;
+    return true;
+  });
+  return {
+    rows,
+    totals: {
+      count: rows.length,
+      amountCents: rows.reduce((sum, row) => sum + row.amountCents, 0),
+      taxCents: rows.reduce((sum, row) => sum + row.taxCents, 0),
+      voidedCount: rows.filter((row) => row.status === 'voided').length,
+      preIssueCount: rows.filter((row) => row.status === 'pre_issue').length,
+      writtenOffCount: rows.filter((row) => row.status === 'written_off').length,
+    },
+    statusCounts: Object.fromEntries(['issued', 'pre_issue', 'voided', 'written_off'].map((key) => [key, TICKET_ROWS.filter((row) => row.status === key).length])),
+    count: rows.length, limit: 200, offset: 0, dataAsOf: OPTIONS.dataAsOf, available: true, message: null,
+  };
+}
+
 export async function request<T>(options: any): Promise<T> {
   w.__calls.push({ url: options.url, method: options.method ?? 'GET', query: options.query ?? null, at: Date.now() });
   await pause(20);
@@ -641,6 +714,14 @@ export async function request<T>(options: any): Promise<T> {
 
   if (options.url === '/statistics/signoffs') {
     return signoffsResponse(options.query) as T;
+  }
+
+  if (options.url === '/statistics/ticket-summary') {
+    return ticketSummaryResponse() as T;
+  }
+
+  if (options.url === '/statistics/tickets') {
+    return ticketListResponse(options.query) as T;
   }
 
   throw Error('Unhandled synthetic request ' + String(options.url));

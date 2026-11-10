@@ -19,6 +19,8 @@ import OwnerLedgerTable from '@/components/statistics/OwnerLedgerTable';
 import BuildingLedgerTable from '@/components/statistics/BuildingLedgerTable';
 import ReliefTable from '@/components/statistics/ReliefTable';
 import SignoffsTable from '@/components/statistics/SignoffsTable';
+import TicketSummaryTable from '@/components/statistics/TicketSummaryTable';
+import TicketsTable from '@/components/statistics/TicketsTable';
 import StatisticsFilters from '@/components/statistics/StatisticsFilters';
 import { dayjs } from '@/lib/format';
 import {
@@ -28,6 +30,7 @@ import {
   collectionAnalysisCsv, collectionAnalysisParams, collectionQueryParams, dailyCsv, dailyQueryParams, downloadCsv,
   feeNatureCsv, fmtCents, monthlyReportCsv, monthlyReportParams, ownerLedgerCsv, ownerLedgerParams,
   propertySummaryCsv, propertySummaryParams, reliefCsv, reliefParams, reportName, signoffsCsv, signoffsParams,
+  ticketSummaryCsv, ticketSummaryParams, ticketsCsv, ticketsParams,
   type AnnualQuery, type AnnualReportType, type AnnualSummaryResponse, type ArrearsPrepaidDetailResponse,
   type ArrearsPrepaidQuery, type ArrearsPrepaidSummaryResponse, type ArrearsPrepaidDetailRow,
   type AssessmentQuery, type AssessmentResponse, type BuildingLedgerQuery, type BuildingLedgerResponse,
@@ -35,7 +38,8 @@ import {
   type DailyResponse, type FeeNatureResponse, type FilterDraft, type MonthlyReportQuery, type MonthlyReportResponse,
   type OwnerLedgerQuery, type OwnerLedgerResponse, type PropertySummaryQuery, type PropertySummaryResponse,
   type ReliefQuery, type ReliefResponse, type ReportQuery, type SignoffsQuery, type SignoffsResponse,
-  type StatisticsOptions, type StatisticsReportType,
+  type StatisticsOptions, type StatisticsReportType, type TicketListQuery, type TicketsResponse,
+  type TicketSummaryQuery, type TicketSummaryResponse,
 } from '@/lib/statistics';
 import '@/styles/statistics.css';
 
@@ -59,17 +63,20 @@ const DEFAULT_EXCLUDED_NATURE_BY_REPORT: Record<StatisticsReportType, Set<string
   'building-ledger': new Set(),
   relief: new Set(),
   signoffs: new Set(),
+  'ticket-summary': new Set(),
+  tickets: new Set(),
 };
 
 /** P2 报表日期区间必填，默认本月 1 日~今天；P1 报表保留原行为（日期可选）。 */
 function isDateRequired(type: StatisticsReportType): boolean {
-  return type === 'fee-nature' || type === 'daily' || type === 'collection-analysis' || type === 'relief' || type === 'signoffs';
+  return type === 'fee-nature' || type === 'daily' || type === 'collection-analysis' || type === 'relief' || type === 'signoffs'
+    || type === 'ticket-summary' || type === 'tickets';
 }
 
 function defaultDateRange(type: StatisticsReportType): { from: string; to: string } {
   if (!isDateRequired(type)) return { from: '', to: '' };
   const today = dayjs();
-  if (type === 'relief' || type === 'signoffs') {
+  if (type === 'relief' || type === 'signoffs' || type === 'tickets') {
     return { from: `${today.year()}-01-01`, to: today.format('YYYY-MM-DD') };
   }
   return { from: `${today.year()}-${String(today.month() + 1).padStart(2, '0')}-01`, to: today.format('YYYY-MM-DD') };
@@ -126,6 +133,7 @@ function defaultDraft(options: StatisticsOptions, reportType: StatisticsReportTy
     ledgerKeyword: '',
     signoffTypes: [],
     signoffStatus: 'all',
+    ticketStatus: 'all',
   };
 }
 
@@ -243,6 +251,29 @@ function buildQuery(type: StatisticsReportType, draft: FilterDraft, options: Sta
     };
     return query;
   }
+  if (type === 'ticket-summary') {
+    const query: TicketSummaryQuery = {
+      type: 'ticket-summary',
+      officeCodes: draft.officeCodes,
+      feeCodes: draft.feeCodes,
+      paymentMethods: draft.paymentMethods,
+      cashier: draft.cashier.trim(),
+      dateFrom: draft.paidDateFrom,
+      dateTo: draft.paidDateTo,
+    };
+    return query;
+  }
+  if (type === 'tickets') {
+    const query: TicketListQuery = {
+      type: 'tickets',
+      officeCodes: draft.officeCodes,
+      status: draft.ticketStatus,
+      keyword: draft.ledgerKeyword,
+      dateFrom: draft.paidDateFrom,
+      dateTo: draft.paidDateTo,
+    };
+    return query;
+  }
   const query: DailyQuery = {
     type: 'daily',
     officeCodes: draft.officeCodes,
@@ -272,7 +303,7 @@ export default function Statistics() {
   const [draft, setDraft] = useState<FilterDraft>({
     officeCodes: [], feeCodes: [], natures: [], paidDateFrom: '', paidDateTo: '', asOfPeriod: '',
     paymentMethods: [], cashier: '', subjectYearFrom: '', subjectYearTo: '', assessmentYear: String(dayjs().year()),
-    analysisSort: 'currentArrears', ledgerKeyword: '', signoffTypes: [], signoffStatus: 'all',
+    analysisSort: 'currentArrears', ledgerKeyword: '', signoffTypes: [], signoffStatus: 'all', ticketStatus: 'all',
   });
   const [reportType, setReportType] = useState<StatisticsReportType>('received');
   const reportTypeRef = useRef<StatisticsReportType>('received');
@@ -318,6 +349,12 @@ export default function Statistics() {
   const [signoffs, setSignoffs] = useState<SignoffsResponse | null>(null);
   const [signoffsLoading, setSignoffsLoading] = useState(false);
   const [signoffsError, setSignoffsError] = useState('');
+  const [ticketSummary, setTicketSummary] = useState<TicketSummaryResponse | null>(null);
+  const [ticketSummaryLoading, setTicketSummaryLoading] = useState(false);
+  const [ticketSummaryError, setTicketSummaryError] = useState('');
+  const [tickets, setTickets] = useState<TicketsResponse | null>(null);
+  const [ticketsLoading, setTicketsLoading] = useState(false);
+  const [ticketsError, setTicketsError] = useState('');
   const [reportRetry, setReportRetry] = useState(0);
   const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -432,21 +469,33 @@ export default function Statistics() {
         .then((response) => { if (!cancelled) setRelief(response); })
         .catch((error) => { if (!cancelled) setReliefError(error instanceof Error && error.message ? error.message : '减免情况读取失败'); })
         .finally(() => { if (!cancelled) setReliefLoading(false); });
-    } else {
+    } else if (applied.type === 'signoffs') {
       setSignoffsLoading(true); setSignoffsError('');
       request<SignoffsResponse>({ url: '/statistics/signoffs', query: signoffsParams(applied as SignoffsQuery) })
         .then((response) => { if (!cancelled) setSignoffs(response); })
         .catch((error) => { if (!cancelled) setSignoffsError(error instanceof Error && error.message ? error.message : '签报情况读取失败'); })
         .finally(() => { if (!cancelled) setSignoffsLoading(false); });
+    } else if (applied.type === 'ticket-summary') {
+      setTicketSummaryLoading(true); setTicketSummaryError('');
+      request<TicketSummaryResponse>({ url: '/statistics/ticket-summary', query: ticketSummaryParams(applied) })
+        .then((response) => { if (!cancelled) setTicketSummary(response); })
+        .catch((error) => { if (!cancelled) setTicketSummaryError(error instanceof Error && error.message ? error.message : '收款汇总表读取失败'); })
+        .finally(() => { if (!cancelled) setTicketSummaryLoading(false); });
+    } else {
+      setTicketsLoading(true); setTicketsError('');
+      request<TicketsResponse>({ url: '/statistics/tickets', query: ticketsParams(applied as TicketListQuery) })
+        .then((response) => { if (!cancelled) setTickets(response); })
+        .catch((error) => { if (!cancelled) setTicketsError(error instanceof Error && error.message ? error.message : '票据情况读取失败'); })
+        .finally(() => { if (!cancelled) setTicketsLoading(false); });
     }
     return () => { cancelled = true; };
   }, [applied, reportRetry]);
 
   const datesFilled = !!draft.paidDateFrom && !!draft.paidDateTo;
   const isLedger = reportType === 'property-summary' || reportType === 'owner-ledger' || reportType === 'building-ledger';
-  const hasRequiredSelections = isLedger || reportType === 'signoffs'
+  const hasRequiredSelections = isLedger || reportType === 'signoffs' || reportType === 'tickets'
     ? draft.officeCodes.length > 0
-    : reportType === 'relief'
+    : reportType === 'relief' || reportType === 'ticket-summary'
       ? draft.officeCodes.length > 0 && draft.feeCodes.length > 0
       : draft.officeCodes.length > 0 && draft.feeCodes.length > 0 && draft.natures.length > 0;
   const canSubmit = !!options
@@ -496,11 +545,15 @@ export default function Statistics() {
     // 用户手动改过就保留（实收/欠费默认差在 06 空房，P2 为 13 项全选）。
     const followsPreviousDefault = sameNatureSelection(draft.natures, defaultNatures(options, reportType));
     const nextDraft: FilterDraft = { ...draft, natures: followsPreviousDefault ? defaultNatures(options, type) : draft.natures };
-    // P2 报表日期必填：从其它报表切过来时用默认本月，避免空日期导致不能统计。
-    if (isDateRequired(type) && (!nextDraft.paidDateFrom || !nextDraft.paidDateTo)) {
-      const range = defaultDateRange(type);
-      nextDraft.paidDateFrom = range.from;
-      nextDraft.paidDateTo = range.to;
+    // P2 报表日期必填：从其它报表切过来时用新报表默认范围（避免沿用旧报表的月份/年份区间）。
+    if (isDateRequired(type)) {
+      const previousDefault = defaultDateRange(reportType);
+      const followsPreviousDefault = nextDraft.paidDateFrom === previousDefault.from && nextDraft.paidDateTo === previousDefault.to;
+      if (!nextDraft.paidDateFrom || !nextDraft.paidDateTo || followsPreviousDefault) {
+        const range = defaultDateRange(type);
+        nextDraft.paidDateFrom = range.from;
+        nextDraft.paidDateTo = range.to;
+      }
     }
     if (type === 'fee-nature' && !nextDraft.paymentMethods.length) {
       nextDraft.paymentMethods = (options.paymentMethods ?? []).map((method) => method.id);
@@ -683,6 +736,18 @@ export default function Statistics() {
     }
   };
 
+  const loadMoreTickets = async () => {
+    if (!applied || applied.type !== 'tickets' || !tickets) return;
+    try {
+      const response = await request<TicketsResponse>({ url: '/statistics/tickets', query: ticketsParams(applied as TicketListQuery, tickets.rows.length) });
+      setTickets((previous) => (previous
+        ? { ...previous, rows: [...previous.rows, ...(response.rows ?? [])], totals: response.totals ?? previous.totals, count: response.count ?? previous.count }
+        : response));
+    } catch (e) {
+      toast(e instanceof Error && e.message ? e.message : '加载更多失败');
+    }
+  };
+
   const exportCurrent = () => {
     if (!applied) return;
     const stamp = dayjs().format('YYYYMMDD');
@@ -770,6 +835,20 @@ export default function Statistics() {
       else toast('导出失败，请重试');
       return;
     }
+    if (applied.type === 'ticket-summary') {
+      if (!ticketSummary) return;
+      const name = `统计汇总-收款汇总表-${stamp}.csv`;
+      if (downloadCsv(name, ticketSummaryCsv(ticketSummary, applied))) toast('已导出收款汇总表 CSV');
+      else toast('导出失败，请重试');
+      return;
+    }
+    if (applied.type === 'tickets') {
+      if (!tickets) return;
+      const name = `统计汇总-票据情况统计-${stamp}.csv`;
+      if (downloadCsv(name, ticketsCsv(tickets, applied as TicketListQuery))) toast('已导出票据情况统计 CSV');
+      else toast('导出失败，请重试');
+      return;
+    }
     if (applied.type === 'assessment') {
       if (!assessment) return;
       const name = `统计汇总-收缴考核-${stamp}.csv`;
@@ -802,7 +881,11 @@ export default function Statistics() {
                       ? !!relief
                       : applied?.type === 'signoffs'
                         ? !!signoffs
-                        : !!annual;
+                        : applied?.type === 'ticket-summary'
+                          ? !!ticketSummary
+                          : applied?.type === 'tickets'
+                            ? !!tickets
+                            : !!annual;
   const isLoading = applied?.type === 'fee-nature'
     ? collectionLoading
     : applied?.type === 'daily'
@@ -825,7 +908,11 @@ export default function Statistics() {
                       ? reliefLoading
                       : applied?.type === 'signoffs'
                         ? signoffsLoading
-                        : annualLoading;
+                        : applied?.type === 'ticket-summary'
+                          ? ticketSummaryLoading
+                          : applied?.type === 'tickets'
+                            ? ticketsLoading
+                            : annualLoading;
   const activeError = applied?.type === 'fee-nature'
     ? collectionError
     : applied?.type === 'daily'
@@ -848,7 +935,11 @@ export default function Statistics() {
                       ? reliefError
                       : applied?.type === 'signoffs'
                         ? signoffsError
-                        : annualError;
+                        : applied?.type === 'ticket-summary'
+                          ? ticketSummaryError
+                          : applied?.type === 'tickets'
+                            ? ticketsError
+                            : annualError;
   const activeDataAsOf = applied?.type === 'fee-nature'
     ? collection?.dataAsOf
     : applied?.type === 'daily'
@@ -871,7 +962,11 @@ export default function Statistics() {
                       ? relief?.dataAsOf
                       : applied?.type === 'signoffs'
                         ? signoffs?.dataAsOf
-                        : annual?.dataAsOf;
+                        : applied?.type === 'ticket-summary'
+                          ? ticketSummary?.dataAsOf
+                          : applied?.type === 'tickets'
+                            ? tickets?.dataAsOf
+                            : annual?.dataAsOf;
   const dataAsOf = timeText(activeDataAsOf || options?.dataAsOf);
   const sourceLabel = options?.sourceMode === 'mirror' ? 'MIS 镜像' : (options?.sourceMode || '');
   const activeAvailable = applied?.type === 'fee-nature'
@@ -896,7 +991,11 @@ export default function Statistics() {
                       ? relief?.available
                       : applied?.type === 'signoffs'
                         ? signoffs?.available
-                        : annual?.available;
+                        : applied?.type === 'ticket-summary'
+                          ? ticketSummary?.available
+                          : applied?.type === 'tickets'
+                            ? tickets?.available
+                            : annual?.available;
   const activeMessage = applied?.type === 'fee-nature'
     ? collection?.message
     : applied?.type === 'daily'
@@ -919,7 +1018,11 @@ export default function Statistics() {
                       ? relief?.message
                       : applied?.type === 'signoffs'
                         ? signoffs?.message
-                        : annual?.message;
+                        : applied?.type === 'ticket-summary'
+                          ? ticketSummary?.message
+                          : applied?.type === 'tickets'
+                            ? tickets?.message
+                            : annual?.message;
 
   const dateRangeText = applied?.type === 'arrears-prepaid'
     ? `统计年月 ${applied.asOfPeriod} · 收款截止 ${applied.paidDateTo}`
@@ -1059,6 +1162,12 @@ export default function Statistics() {
                 {activeAvailable !== false && applied?.type === 'signoffs' && signoffs ? (
                   <span className="tag mute">{signoffs.count ?? signoffs.rows.length} 件</span>
                 ) : null}
+                {activeAvailable !== false && applied?.type === 'ticket-summary' && ticketSummary?.totals ? (
+                  <span className="tag acc">合计 {fmtCents(ticketSummary.totals.netCents)}</span>
+                ) : null}
+                {activeAvailable !== false && applied?.type === 'tickets' && tickets ? (
+                  <span className="tag mute">{tickets.count ?? tickets.rows.length} 张</span>
+                ) : null}
                 {applied?.type === 'received' || applied?.type === 'arrears' ? (
                   annual?.columns?.length ? <span className="muted stats-range">{annual.columns[0]}–{annual.columns[annual.columns.length - 1]} 年度</span> : null
                 ) : dateRangeText ? <span className="muted stats-range">{dateRangeText}</span> : null}
@@ -1114,6 +1223,16 @@ export default function Statistics() {
               {applied?.type === 'signoffs' && signoffs?.available !== false ? (
                 <div className="note2 stats-received-hint" data-testid="signoffs-hint">
                   <Icon name="alert" />签报按拟稿日期筛选；状态标签：生效绿/作废灰/未结束橙；合计为调整金额与件数。
+                </div>
+              ) : null}
+              {applied?.type === 'ticket-summary' && ticketSummary?.available !== false ? (
+                <div className="note2 stats-received-hint" data-testid="ticket-summary-hint">
+                  <Icon name="alert" />按收款日期统计；主表列为动态收款方式；「票据口径」为开票数据，与收款金额口径不同；另有按收款人副表。
+                </div>
+              ) : null}
+              {applied?.type === 'tickets' && tickets?.available !== false ? (
+                <div className="note2 stats-received-hint" data-testid="tickets-hint">
+                  <Icon name="alert" />按开票日期统计；状态色标：已开绿/预开蓝/作废灰/已核销；每页 200 张可加载更多。
                 </div>
               ) : null}
 
@@ -1313,6 +1432,31 @@ export default function Statistics() {
                       ) : null}
                     </>
                   ) : <div className="empty">{signoffs.message || '当前筛选没有签报记录'}</div>
+                ) : null
+              ) : applied?.type === 'ticket-summary' ? (
+                ticketSummary ? (
+                  ticketSummary.available === false ? (
+                    <div className="note2" role="status"><Icon name="alert" />{ticketSummary.message || '收款汇总表数据尚未就绪；请稍后再试。'}</div>
+                  ) : ticketSummary.rows.length ? (
+                    <TicketSummaryTable report={ticketSummary} />
+                  ) : <div className="empty">{ticketSummary.message || '当前筛选没有收款汇总数据'}</div>
+                ) : null
+              ) : applied?.type === 'tickets' ? (
+                tickets ? (
+                  tickets.available === false ? (
+                    <div className="note2" role="status"><Icon name="alert" />{tickets.message || '票据情况数据尚未就绪；请稍后再试。'}</div>
+                  ) : tickets.rows.length ? (
+                    <>
+                      <TicketsTable report={tickets} />
+                      {tickets.count != null && tickets.rows.length < tickets.count ? (
+                        <div className="stats-load-more">
+                          <button type="button" className="btn sm" onClick={() => void loadMoreTickets()}>
+                            加载更多（已显示 {tickets.rows.length}/{tickets.count}）
+                          </button>
+                        </div>
+                      ) : null}
+                    </>
+                  ) : <div className="empty">{tickets.message || '当前筛选没有票据记录'}</div>
                 ) : null
               ) : annual ? (
                 annual.available === false ? (

@@ -3,7 +3,7 @@
  * 金额一律是整数分；页面显示统一 ¥x,xxx.xx，CSV 用纯数字便于 Excel 计算。
  */
 
-export type StatisticsReportType = 'received' | 'arrears' | 'fee-nature' | 'daily' | 'arrears-prepaid' | 'assessment' | 'collection-analysis' | 'monthly-report' | 'property-summary' | 'owner-ledger' | 'building-ledger' | 'relief' | 'signoffs';
+export type StatisticsReportType = 'received' | 'arrears' | 'fee-nature' | 'daily' | 'arrears-prepaid' | 'assessment' | 'collection-analysis' | 'monthly-report' | 'property-summary' | 'owner-ledger' | 'building-ledger' | 'relief' | 'signoffs' | 'ticket-summary' | 'tickets';
 /** P1 年度报表：共用应收截止年月/收款日期等筛选。 */
 export type AnnualReportType = 'received' | 'arrears';
 
@@ -258,7 +258,27 @@ export interface SignoffsQuery {
   keyword: string;
 }
 
-export type ReportQuery = AnnualQuery | CollectionQuery | DailyQuery | ArrearsPrepaidQuery | AssessmentQuery | CollectionAnalysisQuery | MonthlyReportQuery | PropertySummaryQuery | OwnerLedgerQuery | BuildingLedgerQuery | ReliefQuery | SignoffsQuery;
+/** P2-E 收款汇总表：费项×收款方式动态列 + 票据口径/按收款人副表。 */
+export interface TicketSummaryQuery {
+  type: 'ticket-summary';
+  officeCodes: string[];
+  feeCodes: string[];
+  paymentMethods: string[];
+  cashier: string;
+  dateFrom: string;
+  dateTo: string;
+}
+/** P2-E 票据情况统计：开票日期范围 + 状态/关键词分页。 */
+export interface TicketListQuery {
+  type: 'tickets';
+  officeCodes: string[];
+  status: 'all' | 'issued' | 'pre_issue' | 'voided' | 'written_off';
+  keyword: string;
+  dateFrom: string;
+  dateTo: string;
+}
+
+export type ReportQuery = AnnualQuery | CollectionQuery | DailyQuery | ArrearsPrepaidQuery | AssessmentQuery | CollectionAnalysisQuery | MonthlyReportQuery | PropertySummaryQuery | OwnerLedgerQuery | BuildingLedgerQuery | ReliefQuery | SignoffsQuery | TicketSummaryQuery | TicketListQuery;
 
 export interface FilterDraft {
   officeCodes: string[];
@@ -284,6 +304,8 @@ export interface FilterDraft {
   signoffTypes: string[];
   /** P4-A 签报状态筛选 */
   signoffStatus: 'all' | 'effective' | 'voided' | 'open';
+  /** P2-E 票据状态筛选 */
+  ticketStatus: 'all' | 'issued' | 'pre_issue' | 'voided' | 'written_off';
 }
 
 export const REPORTS: Array<{ type: StatisticsReportType; name: string; hint: string }> = [
@@ -300,11 +322,12 @@ export const REPORTS: Array<{ type: StatisticsReportType; name: string; hint: st
   { type: 'building-ledger', name: '楼房台账', hint: '按管理处与关键词查楼栋（房屋数/业主数/面积）；分页导出' },
   { type: 'relief', name: '减免情况统计', hint: '按减免日期/管理处/收费项目查减免记录（原应收/现应收/减免金额）；分页导出' },
   { type: 'signoffs', name: '签报情况统计', hint: '按拟稿日期/管理处/状态/类型查签报；含作废/结束/调整金额与状态标签' },
+  { type: 'ticket-summary', name: '收款汇总表', hint: '费项×收款方式动态列，附票据口径与按收款人副表；按收款日期统计' },
+  { type: 'tickets', name: '票据情况统计', hint: '按开票日期/管理处/状态查票据（编号/入库单/金额/税额/作废/核销/发票号）' },
 ];
 
 /** 旧系统里尚未接入的报表：只列灰字，不做假按钮，不伪造数据。 */
 export const PENDING_REPORTS = [
-  '收款汇总表',
   '月报表',
   '综合月报表 B/C',
   '分等综合月报表',
@@ -1184,6 +1207,162 @@ export function signoffsCsv(report: SignoffsResponse, query: SignoffsQuery): str
   });
   if (report.totals) lines.push(['合计', '', '', '', '', '', '', '', '', '', '', '', centsForCsv(report.totals.adjustAmountCents)]);
   return '\uFEFF' + lines.map((line) => line.map(csvCell).join(',')).join('\r\n');
+}
+
+// ───────────────────────── P2-E：收款汇总表 / 票据情况统计 ─────────────────────────
+
+export interface TicketSummaryMethodColumn { key: string; label: string }
+export interface TicketSummaryRow {
+  feeCode: string;
+  feeName: string;
+  methods: Record<string, number>;
+  receivedCents: number;
+  refundCents: number;
+  netCents: number;
+  ticketAmountCents: number;
+  ticketTaxCents: number;
+  ticketIncomeCents: number;
+  ticketCount: number;
+  rows: number;
+}
+export interface TicketSummaryTotals {
+  methods: Record<string, number>;
+  receivedCents: number;
+  refundCents: number;
+  netCents: number;
+  ticketAmountCents: number;
+  ticketTaxCents: number;
+  ticketIncomeCents: number;
+  ticketCount: number;
+  rows: number;
+}
+export interface TicketSummaryCashierRow {
+  cashier: string;
+  methods: Record<string, number>;
+  netCents: number;
+  rows: number;
+}
+export interface TicketSummaryResponse {
+  methodColumns: TicketSummaryMethodColumn[];
+  rows: TicketSummaryRow[];
+  totals: TicketSummaryTotals | null;
+  cashierRows: TicketSummaryCashierRow[];
+  cashierTotals: TicketSummaryCashierRow | null;
+  dataAsOf?: string | null;
+  available?: boolean;
+  message?: string | null;
+}
+
+export interface TicketRow {
+  id: number | string;
+  ticketNo: string | null;
+  warehouseNo: string | null;
+  officeCode: string;
+  officeName?: string | null;
+  issueDate: string | null;
+  payer: string | null;
+  amountCents: number;
+  taxCents: number;
+  preIssue: boolean;
+  receiptDate: string | null;
+  issuer: string | null;
+  payee: string | null;
+  voidDate: string | null;
+  voidReason?: string | null;
+  writeoffDate: string | null;
+  paymentMethod: string | null;
+  invoiceNo: string | null;
+  status: 'issued' | 'pre_issue' | 'voided' | 'written_off' | string;
+}
+export interface TicketsResponse {
+  rows: TicketRow[];
+  totals: { count?: number; amountCents?: number; taxCents?: number; voidedCount?: number; preIssueCount?: number; writtenOffCount?: number } | null;
+  statusCounts?: Record<string, number>;
+  count?: number | null;
+  dataAsOf?: string | null;
+  available?: boolean;
+  message?: string | null;
+}
+
+export function ticketSummaryParams(query: TicketSummaryQuery, offset = 0, limit = 200) {
+  return {
+    dateFrom: query.dateFrom || undefined,
+    dateTo: query.dateTo || undefined,
+    officeCodes: query.officeCodes.join(','),
+    feeCodes: query.feeCodes.join(','),
+    paymentMethods: query.paymentMethods.join(','),
+    cashier: query.cashier.trim() || undefined,
+    limit,
+    offset,
+  };
+}
+export function ticketsParams(query: TicketListQuery, offset = 0, limit = 200) {
+  return {
+    dateFrom: query.dateFrom || undefined,
+    dateTo: query.dateTo || undefined,
+    officeCodes: query.officeCodes.join(','),
+    status: query.status,
+    keyword: query.keyword.trim() || undefined,
+    limit,
+    offset,
+  };
+}
+
+/** 收款汇总表主表 -> CSV（动态收款方式列 + 合计）。 */
+export function ticketSummaryCsv(report: TicketSummaryResponse, query: TicketSummaryQuery): string {
+  const lines: string[][] = [
+    ['统计汇总', '收款汇总表'],
+    ['收款日期范围', [query.dateFrom, query.dateTo].filter(Boolean).join('~')],
+    ['管理处', query.officeCodes.join('/') || '全部'],
+    ['收款方式', query.paymentMethods.join('/') || '全部'],
+    ['收款人', query.cashier || '全部'],
+    [],
+    ['收费项目', ...report.methodColumns.map((column) => column.label), '合计'],
+  ];
+  for (const row of report.rows) {
+    lines.push([
+      row.feeName || row.feeCode,
+      ...report.methodColumns.map((column) => centsForCsv(Number(row.methods?.[column.key] ?? 0))),
+      centsForCsv(row.netCents),
+    ]);
+  }
+  if (report.totals) {
+    lines.push([
+      '合计',
+      ...report.methodColumns.map((column) => centsForCsv(Number(report.totals?.methods?.[column.key] ?? 0))),
+      centsForCsv(report.totals.netCents),
+    ]);
+  }
+  return '\uFEFF' + lines.map((line) => line.map(csvCell).join(',')).join('\r\n');
+}
+
+/** 票据情况统计 -> CSV（16 列）。 */
+export function ticketsCsv(report: TicketsResponse, query: TicketListQuery): string {
+  const lines: string[][] = [
+    ['统计汇总', '票据情况统计'],
+    ['开票日期范围', [query.dateFrom, query.dateTo].filter(Boolean).join('~')],
+    ['管理处', query.officeCodes.join('/') || '全部'],
+    ['状态', query.status],
+    ['关键词', query.keyword.trim() || ''],
+    [],
+    ['序号', '票据编号', '入库单编号', '管理处', '开票日期', '付款人', '金额', '税额', '收款日期', '开票人', '收款人', '作废日期', '核销日期', '收款方式', '发票号', '状态'],
+  ];
+  report.rows.forEach((row, index) => {
+    lines.push([
+      String(index + 1), row.ticketNo || '', row.warehouseNo || '', row.officeName || row.officeCode,
+      row.issueDate || '', row.payer || '', centsForCsv(row.amountCents), centsForCsv(row.taxCents),
+      row.receiptDate || '', row.issuer || '', row.payee || '', row.voidDate || '', row.writeoffDate || '',
+      row.paymentMethod || '', row.invoiceNo || '', statusText(row.status),
+    ]);
+  });
+  if (report.totals) {
+    lines.push(['合计', '', '', '', '', `件数 ${report.totals.count ?? report.rows.length}`, centsForCsv(report.totals.amountCents), centsForCsv(report.totals.taxCents), '', '', '', '', '', '', '', '']);
+  }
+  return '\uFEFF' + lines.map((line) => line.map(csvCell).join(',')).join('\r\n');
+}
+
+export function statusText(status: string): string {
+  return ({ issued: '已开', pre_issue: '预开', voided: '作废', written_off: '已核销' } as Record<string, string>)[status] || status;
 }
 
 /** 年度汇总 -> CSV 文本（带 UTF-8 BOM，Excel 直接打开不乱码）。 */
