@@ -1517,4 +1517,8 @@ sudo docker exec -i pms-postgres psql -U pms -d pms_repair -X -P pager=off
 
 - [新增 13 项](<apps/api/src/modules/statistics/annual-id-precision.test.ts>)从旧源码 **8/8 RED** 转为 **13/13 GREEN**，覆盖两种类型真实 StatisticsService+PGlite 单元格→房屋→逐笔守恒、相邻 18 位户/账单独立、筛选与越权 403、PG 文本投影、HTTP DTO 精确文本、坏格式/unsafe Number、旧 safe-number 调用、数据库前拒绝、源 NULL 兼容。加入[常规 test:statistics](<apps/api/package.json#L27>)；旧[年度测试](<apps/api/src/modules/statistics/statistics.test.ts>)仅调整 ID 期望，不删金额/退款/日期/权限/未就绪等断言。完整年度回归 **50/50**、API `tsc --noEmit` 通过。
 - 上述为本地 PGlite 合成证据；前端浏览器、独立审查及推送后构建结果另补，不将其预先标为通过。未访问 MIS/生产，未部署、迁移、手工重灌或自动修复历史舍入数据。
+- 前端在既有浏览器 harness 上走真实组建交互：04/2020 大 ID 单元格→房屋明细→点击行→逐笔请求 query 保持 `9007199254740993`，两行 `data-bill-id` 分别为 `…993/…994` 且均可见，390 窄屏复用同场景不横向溢出；该定向用例 1/1 通过。整套 `test:statistics` 曾 56/57，唯一失败为筛选浮层用例的 `fetch failed: bad port` 端口竞态，单独重跑通过。前端 `typecheck` 通过。
+- 独立只读审查 **PASS**（API service/DTO/守卫/SQL、前端类型与通路、其他报表 DTO 未改），仅提出非阻断项：实收聚合行 zjId 应为 `string|null`、夹具通用 received 分支仍为数字、bills 绑定参数未直接断言——前两项已在推送前修正，第三项已补进回归。
+- 本轮提交 `bb7dd926` 已推送到 `main`；推送前 pre-push 的 API 类型检查通过。随后在**干净 detached worktree**（HEAD=origin/main=`bb7dd926`）里分别构建 API（`nest build`）与 neighbor-web（`tsc --noEmit && vite build`），退出码均 0，构建未改动受版本控制源码，产物哈希记录在 `.tmp/legacy-statistics-round18-annual-id/build-evidence/verification.json`（`statistics.service.js` SHA256 `29209EC5…FCEA0`、`dto.js` `2DD25600…C089C32F`、`annual-source-id.util.js` `3ADD607D…C42A03`，Web 98 个文件）。本次构建需把 `TEMP/TMP` 指到任务自建目录，宿主机默认 `%TEMP%` 下 esbuild 压缩临时文件删除被拒（`Access is denied`），属本机构建环境问题，不影响源码与产物内容。
+- 上述均为本地合成/隔离构建证据：当前没有生产授权，未连接 MIS/生产、未部署、未执行迁移或手工重灌。
 - 费用模块 houseKey 解析、其他统计菜单的 Number ID、#24 原始元数据/地址/日期/金额旧运行时语义及附录 I/K 其他边界仍未完成。整体统计汇总目标未完成，不能以本轮年度下钻精度修复声称全部菜单已生产可用。
