@@ -61,46 +61,61 @@ const RECENT_PENDING_ROW = {
   hidden: false, status: '在用', communityId: 1, communityName: '枫桦景苑一期', lane: '198',
   buildingId: 11, buildingNo: '6', houseId: 111, roomNo: '502', roomKey: '198/6/502',
   personCreatedAt: null, lastSwipeAt: null, lastDevice: null, accessSystem: 'iccard', homeBuildingNo: '6',
-  fieldsIncomplete: true,
+  // 行本身没有标记，由接口级 fieldsIncomplete=true 兜底（旧助手快照未回传字段）。
+  fieldsIncomplete: false,
 };
 // 最近 30 笔：最新在前（id 1 最新），页面第 1 页显示序号 1..10。
-const RECENT_READY_ROWS = Array.from({ length: 30 }, (_, index) => ({
-  id: index + 1,
-  personNo: `P${String(index + 1).padStart(4, '0')}`,
-  personName: `合成${index + 1}`,
-  sequence: index + 1,
-  roomLabel: '228/6/502',
-  icCardNo: `NEWA${String(index + 1).padStart(4, '0')}`,
-  wgCardNo: `00A1B2${String(index + 1).padStart(2, '0')}`,
-  issuedAt: `2026-11-${String(9 - Math.floor(index / 10)).padStart(2, '0')}T${String(20 - (index % 10)).padStart(2, '0')}:00:00+08:00`,
-  hidden: false, status: '在用', communityId: 2, communityName: '枫桦景苑二期', lane: '228',
-  buildingId: 21, buildingNo: '3', houseId: 211, roomNo: '502', roomKey: '228/6/502',
-  personCreatedAt: index % 2 === 0 ? `2026-10-${String(30 - index).padStart(2, '0')}T08:00:00+08:00` : null,
-  lastSwipeAt: index % 3 === 0 ? `2026-11-0${1 + (index % 8)}T09:00:00+08:00` : null,
-  lastDevice: index % 3 === 0 ? `228弄3号大门` : null,
-  accessSystem: 'iccard', homeBuildingNo: '6',
-  ownerName: null, ownerPhone: null, ownerId: null, fieldsIncomplete: true,
-}));
+const RECENT_READY_ROWS = Array.from({ length: 30 }, (_, index) => {
+  // id 2（index 1）模拟行级 fieldsIncomplete=true：助手仍未回传字段，空列要继续提示升级；
+  // 其余行字段已回传，lastSwipeAt/lastDevice 为空只是新卡在 .80 捷顺库没有刷卡记录。
+  const incomplete = index === 1;
+  const hasSwipe = !incomplete && index % 3 === 0;
+  const hasPersonCreatedAt = !incomplete && index % 2 === 0;
+  return {
+    id: index + 1,
+    personNo: `P${String(index + 1).padStart(4, '0')}`,
+    personName: `合成${index + 1}`,
+    sequence: index + 1,
+    roomLabel: '228/6/502',
+    icCardNo: `NEWA${String(index + 1).padStart(4, '0')}`,
+    wgCardNo: `00A1B2${String(index + 1).padStart(2, '0')}`,
+    issuedAt: `2026-11-${String(9 - Math.floor(index / 10)).padStart(2, '0')}T${String(20 - (index % 10)).padStart(2, '0')}:00:00+08:00`,
+    hidden: false, status: '在用', communityId: 2, communityName: '枫桦景苑二期', lane: '228',
+    buildingId: 21, buildingNo: '3', houseId: 211, roomNo: '502', roomKey: '228/6/502',
+    personCreatedAt: hasPersonCreatedAt ? `2026-10-${String(30 - index).padStart(2, '0')}T08:00:00+08:00` : null,
+    lastSwipeAt: hasSwipe ? `2026-11-0${1 + (index % 8)}T09:00:00+08:00` : null,
+    lastDevice: hasSwipe ? '228弄3号大门' : null,
+    accessSystem: 'iccard', homeBuildingNo: '6',
+    ownerName: null, ownerPhone: null, ownerId: null, fieldsIncomplete: incomplete,
+  };
+});
 const RECENT_REFRESHED_AT = '2026-11-09T12:30:00+08:00';
 
 // 发卡历史 30 条：personCreatedAt 递增 → 倒序后第 1 页序号应为 30..21。
-const HISTORY_ROWS = Array.from({ length: 30 }, (_, index) => ({
-  id: 101 + index,
-  personNo: `109${String(index + 1).padStart(2, '0')}`,
-  sequence: index + 1,
-  roomLabel: '198/6/502',
-  hidden: false,
-  status: '在用',
-  personCreatedAt: `2026-0${1 + Math.floor(index / 10)}-${String((index % 28) + 1).padStart(2, '0')}T08:00:00+08:00`,
-  icCardNo: `0A1B2C${String(index + 1).padStart(2, '0')}`,
-  wgCardNo: `1954${String(5700 + index)}`,
-  issuedAt: `2026-0${1 + Math.floor(index / 10)}-${String((index % 28) + 1).padStart(2, '0')}T10:00:00+08:00`,
-  lastSwipeAt: null,
-  lastDevice: null,
-  accessSystem: 'iccard',
-  homeBuildingNo: '6',
-  communityId: 1,
-}));
+// 第 1 页混三种情况：index 29 有 2020 年 .80 刷卡记录；index 28 行级 fieldsIncomplete=true；
+// index 27 字段已回传但 .80 无刷卡记录（新卡），应显示 — 而不是升级提示。
+const HISTORY_ROWS = Array.from({ length: 30 }, (_, index) => {
+  const incomplete = index === 28;
+  const hasSwipe = index === 29;
+  return {
+    id: 101 + index,
+    personNo: `109${String(index + 1).padStart(2, '0')}`,
+    sequence: index + 1,
+    roomLabel: '198/6/502',
+    hidden: false,
+    status: '在用',
+    personCreatedAt: `2026-0${1 + Math.floor(index / 10)}-${String((index % 28) + 1).padStart(2, '0')}T08:00:00+08:00`,
+    icCardNo: `0A1B2C${String(index + 1).padStart(2, '0')}`,
+    wgCardNo: `1954${String(5700 + index)}`,
+    issuedAt: `2026-0${1 + Math.floor(index / 10)}-${String((index % 28) + 1).padStart(2, '0')}T10:00:00+08:00`,
+    lastSwipeAt: hasSwipe ? '2020-07-29T12:00:00+08:00' : null,
+    lastDevice: hasSwipe ? '198弄6号大门' : null,
+    fieldsIncomplete: incomplete,
+    accessSystem: 'iccard',
+    homeBuildingNo: '6',
+    communityId: 1,
+  };
+});
 
 const GRANT_OPTIONS = {
   communityId: 2,
@@ -152,24 +167,25 @@ export async function request<T>(options: any): Promise<T> {
       await pause(200);
       return {
         status: 'pending', rows: [RECENT_PENDING_ROW], error: null,
-        refreshedAt: '2026-11-09T12:00:00+08:00', fieldsIncomplete: false, refreshing: true,
+        refreshedAt: '2026-11-09T12:00:00+08:00', fieldsIncomplete: true, refreshing: true,
       } as T;
     }
     if (w.__recentCalls === 1) {
       // 首次 pending + 旧行：页面应先显示旧行和「助手回传中…」，1.5s 后再取到 ready。
+      // 接口级 fieldsIncomplete=true（旧助手快照）：行级没有标记也要提示升级。
       await pause(900);
       return {
         status: 'pending', rows: [RECENT_PENDING_ROW], error: null,
-        refreshedAt: '2026-11-09T12:00:00+08:00', fieldsIncomplete: false, refreshing: true,
+        refreshedAt: '2026-11-09T12:00:00+08:00', fieldsIncomplete: true, refreshing: true,
       } as T;
     }
     return {
       status: 'ready', rows: RECENT_READY_ROWS, error: null,
-      refreshedAt: RECENT_REFRESHED_AT, fieldsIncomplete: true, refreshing: false,
+      refreshedAt: RECENT_REFRESHED_AT, fieldsIncomplete: false, refreshing: false,
     } as T;
   }
   if (options.url === '/access-card-issuance/cards/history') {
-    return { status: 'ready', rows: HISTORY_ROWS, refreshedAt: RECENT_REFRESHED_AT, fieldsIncomplete: true } as T;
+    return { status: 'ready', rows: HISTORY_ROWS, refreshedAt: RECENT_REFRESHED_AT, fieldsIncomplete: false } as T;
   }
   if (/^\/access-card-issuance\/cards\/\d+$/.test(options.url)) {
     return cardDetail(Number(options.url.split('/').pop())) as T;

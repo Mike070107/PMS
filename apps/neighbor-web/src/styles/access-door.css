@@ -265,6 +265,9 @@
 .ac-hidden-row td { background: #f2f4f7 !important; color: var(--ink3); }
 .ac-hidden-row td b { color: var(--ink2); }
 .ac-field-hint { margin-left: 8px; color: var(--warn); }
+/* .80 捷顺刷卡记录只到 2020 年：字段已回传但无记录时显示 —，不再误报助手未升级 */
+.ac-swipe-note { color: var(--ink3); font-size: 12.5px; }
+.ac-empty-dash { cursor: help; }
 .ac-actions { white-space: nowrap; }
 .ac-actions .btn { margin-right: 6px; }
 .ac-detail-row td { background: var(--sunken); }

@@ -238,6 +238,12 @@ test('最近 30 笔：进页即显示、10 条/页、添加到二期门禁系统
     let bodyText = await js('document.body.textContent');
     assert.ok(bodyText.includes('OLD00001'), 'pending 时应先显示旧行');
     assert.ok(!bodyText.includes('暂无最近做卡记录'), 'pending 时不得显示暂无记录');
+    // 接口级 fieldsIncomplete=true（旧助手快照）：pending 旧行的空字段仍要提示升级。
+    assert.ok(bodyText.includes('需升级现场助手（.80）'), '接口级 fieldsIncomplete=true 时旧行空字段应提示升级');
+    assert.ok(
+      (await js("document.querySelector('[data-testid=swipe-source-note]')?.textContent || ''")).includes('2021 年后二期门禁刷卡记录在 .88 系统，接入前显示 —。'),
+      '页面应说明最后刷卡/出入口来源与 .88 未接入',
+    );
     await screenshot('access-recent-pending.png');
 
     // ready 30 条：第 1 页 10 条、序号 1..10；分页到第 2/3 页。
@@ -257,6 +263,21 @@ test('最近 30 笔：进页即显示、10 条/页、添加到二期门禁系统
       ['序号', '编号', '房号', '人事资料添加时间', 'IC卡号', 'WG卡号', '发卡时间', '最后刷卡时间', '出入口', '状态', '操作'],
       '最近记录 11 列与发卡历史一致',
     );
+    // 空字段提示：只有 fieldsIncomplete 才提示升级；.80 无刷卡记录时显示 — 并带原因 title。
+    const recentCells = async (id) => js(`[...document.querySelectorAll('[data-testid=recent-block] tbody tr[data-card-id="${id}"] td')].map((td) => ({ text: td.textContent.trim(), title: td.querySelector('[title]')?.getAttribute('title') || '', upgrade: !!td.querySelector('[data-upgrade-hint]') }))`);
+    const swipeRow = await recentCells(1);
+    assert.ok(swipeRow[7].text.includes('2026-11-01'), '有 lastSwipeAt 应显示最后刷卡时间：' + swipeRow[7].text);
+    assert.equal(swipeRow[8].text, '228弄3号大门', '有 lastDevice 应显示出入口');
+    const incompleteRow = await recentCells(2);
+    assert.equal(incompleteRow[7].text, '需升级现场助手（.80）', '行级 fieldsIncomplete=true 仍应提示升级');
+    assert.equal(incompleteRow[8].text, '需升级现场助手（.80）');
+    assert.ok(incompleteRow[3].upgrade, '行级 fieldsIncomplete=true 时人事资料添加时间为空也应提示升级');
+    const noRecordRow = await recentCells(3);
+    assert.equal(noRecordRow[7].text, '—', 'fieldsIncomplete=false 且无刷卡记录应显示 —');
+    assert.equal(noRecordRow[8].text, '—');
+    assert.ok(noRecordRow[7].title.includes('2021 年后二期') && noRecordRow[8].title.includes('2021 年后二期'), '无记录 title 应说明 .88 未接入：' + JSON.stringify(noRecordRow[7]));
+    assert.ok(!noRecordRow.some((cell) => cell.text.includes('需升级现场助手')), '字段已回传时无刷卡记录不得提示升级');
+    await screenshot('access-recent-fields.png');
     await js("(() => { const buttons = [...document.querySelectorAll('[data-testid=recent-pager] button')]; buttons.find((b) => b.textContent.trim() === '2').click(); })()");
     await waitFor("document.querySelector('[data-testid=recent-block] tbody tr[data-card-id] td')?.textContent.trim() === '11'", '最近记录第 2 页');
     assert.ok((await js('document.body.textContent')).includes('NEWA0011'));
@@ -357,11 +378,31 @@ test('发卡历史：personCreatedAt 倒序、全量倒序序号 30..21/20..11�
     assert.ok((await js("document.querySelector('[data-testid=history-block] .ac-history-table').textContent")).includes('10930'), '最新（personCreatedAt 最大）的行在第一页');
     const headers = await js("[...document.querySelectorAll('[data-testid=history-block] thead th')].map((th) => ({ text: th.textContent.trim(), title: th.getAttribute('title') || '' }))");
     assert.equal(headers.length, 11);
-    for (const name of ['人事资料添加时间', '最后刷卡时间', '出入口']) {
+    for (const name of ['最后刷卡时间', '出入口']) {
       const header = headers.find((item) => item.text === name);
-      assert.ok(header && header.title.includes('需升级现场助手'), name + ' 列头应有升级说明 title');
+      assert.ok(header && header.title.includes('2021 年后二期') && header.title.includes('需升级现场助手'), name + ' 列头应同时说明 .88 未接入与升级提示');
     }
-    assert.ok((await js("document.querySelector('[data-testid=history-block] .ac-history-table').textContent")).includes('需升级现场助手（.80）'), '空字段显示升级提示');
+    const personCreatedHeader = headers.find((item) => item.text === '人事资料添加时间');
+    assert.ok(personCreatedHeader && personCreatedHeader.title.includes('现场助手'), '人事资料添加时间列头应有助手回传说明');
+    // 第 1 页混三种行：130 有 2020 年 .80 刷卡记录；129 行级 fieldsIncomplete=true；128 字段已回传但无记录。
+    const historyCells = async (id) => js(`[...document.querySelectorAll('[data-testid=history-block] tbody tr[data-card-id="${id}"] td')].map((td) => ({ text: td.textContent.trim(), title: td.querySelector('[title]')?.getAttribute('title') || '', upgrade: !!td.querySelector('[data-upgrade-hint]') }))`);
+    const swipeRow = await historyCells(130);
+    assert.ok(swipeRow[7].text.includes('2020-07-29'), '有 .80 刷卡记录应显示最后刷卡时间：' + swipeRow[7].text);
+    assert.equal(swipeRow[8].text, '198弄6号大门', '有 .80 刷卡记录应显示出入口');
+    const incompleteRow = await historyCells(129);
+    assert.equal(incompleteRow[7].text, '需升级现场助手（.80）', '行级 fieldsIncomplete=true 仍应提示升级');
+    assert.equal(incompleteRow[8].text, '需升级现场助手（.80）');
+    const noRecordRow = await historyCells(128);
+    assert.equal(noRecordRow[7].text, '—', 'fieldsIncomplete=false 且无 .80 记录应显示 —');
+    assert.equal(noRecordRow[8].text, '—');
+    assert.ok(noRecordRow[7].title.includes('2021 年后二期') && noRecordRow[8].title.includes('2021 年后二期'), '无记录 title 应说明 .88 未接入');
+    assert.ok(!noRecordRow.some((cell) => cell.text.includes('需升级现场助手')), '字段已回传时无 .80 记录不得提示升级');
+    assert.ok((await js("document.querySelector('[data-testid=history-block] .ac-history-table').textContent")).includes('需升级现场助手（.80）'), 'fieldsIncomplete 行显示升级提示');
+    await js("document.querySelector('[data-testid=history-block]').scrollIntoView({ block: 'center' })");
+    await js("new Promise((resolve) => setTimeout(resolve, 120))");
+    await screenshot('access-history-fields.png');
+    await js("scrollTo(0, 0)");
+    await js("new Promise((resolve) => setTimeout(resolve, 80))");
     await screenshot('access-history-page1.png');
     await js("(() => { const buttons = [...document.querySelectorAll('[data-testid=history-pager] button')]; buttons.find((b) => b.textContent.trim() === '2').click(); })()");
     await waitFor("document.querySelector('[data-testid=history-block] tbody tr[data-card-id] td')?.textContent.trim() === '20'", '发卡历史第 2 页');

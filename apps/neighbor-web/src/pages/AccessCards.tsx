@@ -17,6 +17,8 @@ interface CardHistoryRow {
   personCreatedAt?: string | null; icCardNo?: string | null; wgCardNo?: string | null;
   issuedAt?: string | null; lastSwipeAt?: string | null; lastDevice?: string | null;
   accessSystem?: 'iccard' | 'mjsystem' | null; homeBuildingNo?: string | null; communityId?: number | null;
+  /** 该行字段是否由现场助手完整回传；false/缺省时「空」代表该卡本来没有 .80 记录，不是助手没升级。 */
+  fieldsIncomplete?: boolean;
 }
 interface CardHistoryResp { status: 'ready' | 'pending'; rows: CardHistoryRow[]; refreshedAt?: string; fieldsIncomplete?: boolean }
 type CardRecent = {
@@ -102,6 +104,8 @@ interface CardRecordView {
   personCreatedAt?: string | null; icCardNo?: string | null; wgCardNo?: string | null;
   issuedAt?: string | null; lastSwipeAt?: string | null; lastDevice?: string | null;
   accessSystem?: 'iccard' | 'mjsystem' | null; homeBuildingNo?: string | null; communityId?: number | null;
+  /** 行级优先；缺省时回退到接口级 fieldsIncomplete。 */
+  fieldsIncomplete?: boolean;
   displayNo: number;
 }
 /** 授权楼栋可选项：来自 grant-options（优先）或门禁控制器列表。 */
@@ -110,9 +114,33 @@ interface GrantOption { buildingNo: string; doorName?: string | null; accessSyst
 const HISTORY_PAGE_SIZE = 10;
 const RECENT_PAGE_SIZE = 10;
 const UPGRADE_HINT = '需升级现场助手（.80）后由助手回传';
-const missingFieldHint = (title = UPGRADE_HINT) => (
-  <span className="ac-upgrade-hint" title={title}>需升级现场助手（.80）</span>
-);
+/**
+ * 最后刷卡时间/出入口来自 .80 捷顺库 MC.LastBrushInfo，只到 2020 年；
+ * 2021 年后二期换到 .88 Access 系统，新卡/近年卡在 .80 本来就没有刷卡记录，字段为空是正常的。
+ * 只有 fieldsIncomplete=true（助手没回传字段）才提示升级；字段已回传时显示 — 并说明原因。
+ */
+const SWIPE_EMPTY_TITLE = '该卡无 .80 捷顺刷卡记录（2021 年后二期刷卡在 .88 门禁系统，暂未接入）';
+const SWIPE_SOURCE_NOTE = '最后刷卡时间/出入口来自 .80 捷顺库最后一次刷卡；2021 年后二期门禁刷卡记录在 .88 系统，接入前显示 —。';
+const SWIPE_HEADER_TITLE = '来自 .80 捷顺库最后一次刷卡；2021 年后二期刷卡在 .88 门禁系统，暂未接入，无记录显示 —。助手未回传字段时显示「需升级现场助手（.80）」';
+const PERSON_CREATED_HEADER_TITLE = '人事资料添加时间由现场助手回传；未回传字段时显示「需升级现场助手（.80）」，本期无记录显示 —';
+const PERSON_CREATED_EMPTY_TITLE = '该卡在 .80 捷顺人事资料中没有添加时间记录';
+type CardFieldKey = 'personCreatedAt' | 'lastSwipeAt' | 'lastDevice';
+const EMPTY_FIELD_TITLE: Record<CardFieldKey, string> = {
+  personCreatedAt: PERSON_CREATED_EMPTY_TITLE,
+  lastSwipeAt: SWIPE_EMPTY_TITLE,
+  lastDevice: SWIPE_EMPTY_TITLE,
+};
+/** 空字段提示：接口/行标记 fieldsIncomplete 才提示升级助手，否则说明是 .80 无记录并显示 —。 */
+function cardFieldHint(field: CardFieldKey, incomplete: boolean) {
+  if (incomplete) {
+    return (
+      <span className="ac-upgrade-hint" title={UPGRADE_HINT} data-empty-field={field} data-upgrade-hint="true">
+        {'需升级现场助手（.80）'}
+      </span>
+    );
+  }
+  return <span className="ac-empty-dash muted" title={EMPTY_FIELD_TITLE[field]} data-empty-field={field}>—</span>;
+}
 
 /** 从房号（如 228/3/502、已隐藏228/3/502）解析楼栋号，用于默认勾选本楼栋。 */
 function buildingNoFromRoomLabel(roomLabel?: string | null): string | null {
@@ -172,8 +200,8 @@ function Pager({ page, pageCount, total, onChange, testId }: {
   );
 }
 
-/** 发卡历史 / 最近 30 笔共用 11 列表格；空字段显示升级提示，操作行内反馈。 */
-function CardRecordsTable({
+/** 发卡历史 / 最近 30 笔共用 11 列表格；空字段按 fieldsIncomplete 提示升级或显示 —，操作行内反馈。 */
+export function CardRecordsTable({
   rows, canEdit, cardDetails, applyBusyIds, applyState, onApply, onGrant,
 }: {
   rows: CardRecordView[];
@@ -192,12 +220,12 @@ function CardRecordsTable({
             <th>序号</th>
             <th>编号</th>
             <th>房号</th>
-            <th title={UPGRADE_HINT}>人事资料添加时间</th>
+            <th title={PERSON_CREATED_HEADER_TITLE}>人事资料添加时间</th>
             <th>IC卡号</th>
             <th>WG卡号</th>
             <th>发卡时间</th>
-            <th title={UPGRADE_HINT}>最后刷卡时间</th>
-            <th title={UPGRADE_HINT}>出入口</th>
+            <th title={SWIPE_HEADER_TITLE}>最后刷卡时间</th>
+            <th title={SWIPE_HEADER_TITLE}>出入口</th>
             <th>状态</th>
             <th>操作</th>
           </tr>
@@ -206,6 +234,7 @@ function CardRecordsTable({
           {rows.map((row) => {
             const detail = cardDetails[row.id];
             const hidden = !!row.hidden;
+            const incomplete = row.fieldsIncomplete === true;
             const room = String(row.roomLabel || '').replace(/已隐藏/g, '').replace(/^[\s·\-]+/, '') || '—';
             const statusText = hidden ? '已隐藏' : (row.status || '—');
             const applied = applyState[row.id];
@@ -216,12 +245,12 @@ function CardRecordsTable({
                   <td className="nw muted">{row.displayNo}</td>
                   <td className="nw">{row.personNo || '—'}</td>
                   <td className="nw"><b>{room}</b>{hidden ? <span className="tag mute" style={{ marginLeft: 6 }}>已隐藏</span> : null}</td>
-                  <td className="nw">{row.personCreatedAt ? fmtCardTime(row.personCreatedAt) : missingFieldHint()}</td>
+                  <td className="nw">{row.personCreatedAt ? fmtCardTime(row.personCreatedAt) : cardFieldHint('personCreatedAt', incomplete)}</td>
                   <td className="nw">{row.icCardNo || '—'}</td>
                   <td className="nw">{row.wgCardNo || '—'}</td>
                   <td className="nw">{fmtCardTime(row.issuedAt)}</td>
-                  <td className="nw">{row.lastSwipeAt ? fmtCardTime(row.lastSwipeAt) : missingFieldHint()}</td>
-                  <td className="nw">{row.lastDevice || missingFieldHint()}</td>
+                  <td className="nw">{row.lastSwipeAt ? fmtCardTime(row.lastSwipeAt) : cardFieldHint('lastSwipeAt', incomplete)}</td>
+                  <td className="nw">{row.lastDevice || cardFieldHint('lastDevice', incomplete)}</td>
                   <td className="nw">
                     <span className={'tag ' + (hidden ? 'mute' : 'ok')}>{statusText}</span>
                     {applied?.ok ? <span className="tag ok ac-applied-tag" style={{ marginLeft: 6 }}><Icon name="check" size={13} />已添加二期门禁系统</span> : null}
@@ -533,7 +562,9 @@ export default function AccessCards() {
   const historyRows = history?.rows ?? [];
   const recentRows = recent?.rows ?? [];
   const recentErrorText = recentError || (recent?.status === 'error' ? (recent.error || '最近做卡记录读取失败') : '');
-  const fieldsIncomplete = !!history?.fieldsIncomplete || historyRows.some((row) => !row.personNo || !row.personCreatedAt || !row.icCardNo || !row.wgCardNo || !row.lastSwipeAt || !row.lastDevice);
+  // 只有接口或行明确标记 fieldsIncomplete 才提示升级；不能再用「lastSwipeAt 为空」推断，
+  // 否则新卡/近年卡（.80 本就没有刷卡记录）会被误报成助手没升级。
+  const fieldsIncomplete = !!history?.fieldsIncomplete || historyRows.some((row) => row.fieldsIncomplete === true);
   // 发卡历史按人事资料添加时间倒序；相同时间再按发卡时间/序号倒序。
   const sortedHistoryRows = useMemo(() => [...historyRows].sort((a, b) => {
     const createdA = a.personCreatedAt && dayjs(a.personCreatedAt).isValid() ? dayjs(a.personCreatedAt).valueOf() : -Infinity;
@@ -554,12 +585,17 @@ export default function AccessCards() {
   useEffect(() => { setRecentPage((page) => Math.min(page, Math.max(0, Math.ceil(recentTotal / RECENT_PAGE_SIZE) - 1))); }, [recentTotal]);
   const historyView: CardRecordView[] = sortedHistoryRows
     .slice(safeHistoryPage * HISTORY_PAGE_SIZE, safeHistoryPage * HISTORY_PAGE_SIZE + HISTORY_PAGE_SIZE)
-    .map((row, index) => ({ ...row, displayNo: historyTotal - (safeHistoryPage * HISTORY_PAGE_SIZE + index) }));
+    .map((row, index) => ({
+      ...row,
+      fieldsIncomplete: row.fieldsIncomplete === true || !!history?.fieldsIncomplete,
+      displayNo: historyTotal - (safeHistoryPage * HISTORY_PAGE_SIZE + index),
+    }));
   const recentView: CardRecordView[] = recentRows
     .slice(safeRecentPage * RECENT_PAGE_SIZE, safeRecentPage * RECENT_PAGE_SIZE + RECENT_PAGE_SIZE)
     .map((row, index) => ({
       ...row,
       communityId: row.communityId ?? picked?.communityId ?? null,
+      fieldsIncomplete: row.fieldsIncomplete === true || !!recent?.fieldsIncomplete,
       displayNo: safeRecentPage * RECENT_PAGE_SIZE + index + 1,
     }));
   const visibleGrantOptions = grantOptions.filter((item) => (
@@ -587,6 +623,10 @@ export default function AccessCards() {
             <span className="tag mute"><Icon name="refresh" />门禁能力读取中…</span>
           )}
         </div>
+      </div>
+
+      <div className="note2 ac-swipe-note" data-testid="swipe-source-note" style={{ marginBottom: 14 }}>
+        <Icon name="alert" size={14} />{SWIPE_SOURCE_NOTE}
       </div>
 
       <div className="findBar" style={{ marginBottom: 14 }}>

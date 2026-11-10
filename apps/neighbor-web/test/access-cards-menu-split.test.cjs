@@ -113,3 +113,45 @@ test('vehicle search never requests access cards and contains no access-card tab
   assert.equal(h.requests.some(r => r.url === '/business/search'), false);
   assert.doesNotMatch(source('pages/Vehicles.tsx'), /interface AccessCard|loadCards|setCards|cardErr|setTab|serviceType: 'access_card'|\/access-cards|门禁/);
 });
+
+test('access card record empty fields: upgrade hint only for fieldsIncomplete rows, otherwise — explains .88 gap', () => {
+  const h = harness(grants(true, true));
+  const page = h.render('pages/AccessCards.tsx');
+  // 页面上方常驻来源说明：最后刷卡/出入口来自 .80，2021 年后二期在 .88，接入前显示 —。
+  assert.match(text(page), /最后刷卡时间\/出入口来自 \.80 捷顺库最后一次刷卡；2021 年后二期门禁刷卡记录在 \.88 系统，接入前显示 —。/);
+  const { CardRecordsTable } = h.load('pages/AccessCards.tsx');
+  assert.equal(typeof CardRecordsTable, 'function');
+  const record = (id, fieldsIncomplete) => ({ id, roomLabel: '198/6/502', displayNo: id, hidden: false, status: '在用', personCreatedAt: null, issuedAt: null, lastSwipeAt: null, lastDevice: null, fieldsIncomplete });
+  const ui = CardRecordsTable({
+    rows: [record(1, false), record(2, true)],
+    canEdit: false, cardDetails: {}, applyBusyIds: {}, applyState: {}, onApply() {}, onGrant() {},
+  });
+  const all = nodes(ui);
+  const headers = all.filter(node => node.type === 'th');
+  const swipeHeader = headers.find(node => text(node) === '最后刷卡时间');
+  assert.ok(swipeHeader && swipeHeader.props.title.includes('2021 年后二期') && swipeHeader.props.title.includes('需升级现场助手'), '最后刷卡时间列头 title 应说明 .88 未接入与升级提示');
+  const deviceHeader = headers.find(node => text(node) === '出入口');
+  assert.ok(deviceHeader && deviceHeader.props.title.includes('2021 年后二期'), '出入口列头 title 应说明 .88 未接入');
+  const personHeader = headers.find(node => text(node) === '人事资料添加时间');
+  assert.ok(personHeader && personHeader.props.title.includes('现场助手'), '人事资料添加时间列头 title 应说明助手回传');
+  const trs = all.filter(node => node.props && node.props['data-card-id'] !== undefined);
+  assert.equal(trs.length, 2);
+  const emptyCells = tr => nodes(tr).filter(node => node.props && node.props['data-empty-field']);
+  const complete = emptyCells(trs.find(tr => tr.props['data-card-id'] === 1));
+  assert.equal(complete.length, 3);
+  for (const cell of complete) {
+    assert.equal(text(cell), '—', 'fieldsIncomplete=false 的空字段应显示 —');
+    const field = cell.props['data-empty-field'];
+    if (field === 'personCreatedAt') {
+      assert.ok(cell.props.title.includes('人事资料'), '人事资料添加时间为空应说明 .80 无人事资料记录：' + cell.props.title);
+    } else {
+      assert.ok(cell.props.title.includes('2021 年后二期'), '无刷卡记录 title 应说明 .88 未接入：' + cell.props.title);
+    }
+  }
+  const incomplete = emptyCells(trs.find(tr => tr.props['data-card-id'] === 2));
+  assert.equal(incomplete.length, 3);
+  for (const cell of incomplete) {
+    assert.ok(text(cell).includes('需升级现场助手（.80）'), 'fieldsIncomplete=true 的空字段应提示升级');
+    assert.equal(cell.props['data-upgrade-hint'], 'true');
+  }
+});
