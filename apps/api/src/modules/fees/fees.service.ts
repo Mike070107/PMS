@@ -35,6 +35,7 @@ import {
   CreateBillDto,
   CreateStandardDto,
   FeeReportQueryDto,
+  FeeReportDetailQueryDto,
   GenerateBillsDto,
   ImportFeesDto,
   ListBillsQueryDto,
@@ -66,6 +67,12 @@ import {
   todayInTz,
   todayRange,
 } from './report.util';
+import {
+  misLabel,
+  misOfficeCommunityId,
+  misOfficeLabel,
+  misOfficesForScope,
+} from './fee-report-mis.util';
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 500;
@@ -82,6 +89,12 @@ const PAID_TXN_EXPR = `COUNT(DISTINCT COALESCE(f.receipt_no, 'bill#' || f.id))`;
 
 /** 老库导进来的流水有的没记收款方式，对账表给它单独一列，不能默默并进「其他」 */
 const UNKNOWN_METHOD = 'unknown';
+
+/** MIS 报表口径：空收款方式/收款人统一「未记录」。 */
+const MIS_UNRECORDED = '未记录';
+const METHOD_LABEL_SQL = `COALESCE(NULLIF(TRIM(b.payment_method),''),'${MIS_UNRECORDED}')`;
+const CASHIER_LABEL_SQL = `COALESCE(NULLIF(TRIM(b.cashier),''),'${MIS_UNRECORDED}')`;
+const normalizeMisLabel = misLabel;
 
 export interface PagedResult<T> {
   rows: T[];
@@ -267,12 +280,136 @@ export class FeesService {
   }
 
   /**
+   * 旧 MIS 镜像实收聚合（收费报表 additive 部分）。
+   *
+   * 口径：mis_mirror_bill 中 refund_date IS NULL 且 paid_date ∈ [from, to+1) 的 amount_cents；
+   * MIS 没有票据/欠费概念，实收即净额；method/cashier 空归「未记录」；day 按 paid_date。
+   * 与 PMS 数据互斥由调用方（同小区 PMS 优先）决定 offices 列表。
+   */
+  private async misReportPart(
+    tenantId: number,
+    query: FeeReportQueryDto,
+    offices: string[],
+    from: string,
+    to: string,
+  ) {
+    const empty = {
+      totals: {
+        netCents: 0, chargedCents: 0, refundedCents: 0, receiptCount: 0, houseCount: 0, itemCount: 0,
+      },
+      dayRows: [] as Array<{ day: string; amountCents: number; count: number }>,
+      byFee: [] as Array<{ feeCode: string; feeName: string; amountCents: number; count: number }>,
+      byMethod: [] as Array<{ method: string | null; amountCents: number; count: number }>,
+      byCashier: [] as Array<{ cashier: string | null; amountCents: number; count: number }>,
+      byOffice: [] as Array<{ officeCode: string; amountCents: number; count: number }>,
+    };
+    if (!offices.length) return empty;
+    try {
+    const params: unknown[] = [];
+    const add = (value: unknown) => {
+      params.push(value);
+      return `$${params.length}`;
+    };
+    const where = [
+      `b.office_code IN (${offices.map((office) => add(office)).join(',')})`,
+      `b.paid_date >= ${add(from)}::date`,
+      `b.paid_date < (${add(to)}::date + INTERVAL '1 day')`,
+      'b.refund_date IS NULL',
+    ];
+    if (query.feeCode) where.push(`b.fee_code = ${add(query.feeCode)}`);
+    if (query.paymentMethod) {
+      where.push(`${METHOD_LABEL_SQL} = ${add(normalizeMisLabel(query.paymentMethod))}`);
+    }
+    const whereSql = where.join(' AND ');
+    // 参数已一次性建好，Promise.all 内不再追加，避免并发共享参数数组。
+    const [totalsRaw, dayRows, feeRows, methodRows, cashierRows, officeRows, feeItems] = await Promise.all([
+      this.dataSource.query(
+        `SELECT COALESCE(SUM(b.amount_cents),0)::bigint AS "netCents",
+                COALESCE(SUM(CASE WHEN b.amount_cents > 0 THEN b.amount_cents ELSE 0 END),0)::bigint AS "chargedCents",
+                COALESCE(-SUM(CASE WHEN b.amount_cents < 0 THEN b.amount_cents ELSE 0 END),0)::bigint AS "refundedCents",
+                COUNT(*)::int AS "receiptCount",
+                COUNT(DISTINCT b.s_id)::int AS "houseCount",
+                COUNT(*)::int AS "itemCount"
+           FROM mis_mirror_bill b WHERE ${whereSql}`,
+        params,
+      ),
+      this.dataSource.query(
+        `SELECT to_char(b.paid_date,'YYYY-MM-DD') AS "day",
+                COALESCE(SUM(b.amount_cents),0)::bigint AS "amountCents", COUNT(*)::int AS "count"
+           FROM mis_mirror_bill b WHERE ${whereSql} GROUP BY 1 ORDER BY 1`,
+        params,
+      ),
+      this.dataSource.query(
+        `SELECT b.fee_code AS "feeCode",
+                COALESCE(NULLIF(MAX(fi.fee_name),''),NULLIF(MAX(b.fee_name),''),b.fee_code) AS "feeName",
+                COALESCE(SUM(b.amount_cents),0)::bigint AS "amountCents", COUNT(*)::int AS "count"
+           FROM mis_mirror_bill b
+           LEFT JOIN mis_mirror_fee_item fi ON fi.fee_code = b.fee_code
+          WHERE ${whereSql} GROUP BY b.fee_code`,
+        params,
+      ),
+      this.dataSource.query(
+        `SELECT ${METHOD_LABEL_SQL} AS "method",
+                COALESCE(SUM(b.amount_cents),0)::bigint AS "amountCents", COUNT(*)::int AS "count"
+           FROM mis_mirror_bill b WHERE ${whereSql} GROUP BY 1`,
+        params,
+      ),
+      this.dataSource.query(
+        `SELECT ${CASHIER_LABEL_SQL} AS "cashier",
+                COALESCE(SUM(b.amount_cents),0)::bigint AS "amountCents", COUNT(*)::int AS "count"
+           FROM mis_mirror_bill b WHERE ${whereSql} GROUP BY 1`,
+        params,
+      ),
+      this.dataSource.query(
+        `SELECT b.office_code AS "officeCode",
+                COALESCE(SUM(b.amount_cents),0)::bigint AS "amountCents", COUNT(*)::int AS "count"
+           FROM mis_mirror_bill b WHERE ${whereSql} GROUP BY 1`,
+        params,
+      ),
+      this.dataSource.query(`SELECT fee_code AS "feeCode", fee_name AS "feeName" FROM mis_mirror_fee_item`),
+    ]);
+    const feeNameByCode = new Map(feeItems.map((row: any) => [String(row.feeCode), String(row.feeName ?? '')]));
+    const totalsRow = totalsRaw[0] ?? {};
+    return {
+      totals: {
+        netCents: Number(totalsRow.netCents || 0),
+        chargedCents: Number(totalsRow.chargedCents || 0),
+        refundedCents: Number(totalsRow.refundedCents || 0),
+        receiptCount: Number(totalsRow.receiptCount || 0),
+        houseCount: Number(totalsRow.houseCount || 0),
+        itemCount: Number(totalsRow.itemCount || 0),
+      },
+      dayRows: dayRows.map((row: any) => ({ day: String(row.day), amountCents: Number(row.amountCents || 0), count: Number(row.count || 0) })),
+      byFee: feeRows.map((row: any) => ({
+        feeCode: row.feeCode,
+        feeName: row.feeName ?? feeNameByCode.get(String(row.feeCode)) ?? row.feeCode,
+        amountCents: Number(row.amountCents || 0),
+        count: Number(row.count || 0),
+      })),
+      byMethod: methodRows.map((row: any) => ({ method: row.method ?? null, amountCents: Number(row.amountCents || 0), count: Number(row.count || 0) })),
+      byCashier: cashierRows.map((row: any) => ({ cashier: row.cashier ?? null, amountCents: Number(row.amountCents || 0), count: Number(row.count || 0) })),
+      byOffice: officeRows.map((row: any) => ({ officeCode: String(row.officeCode), amountCents: Number(row.amountCents || 0), count: Number(row.count || 0) })),
+    };
+    } catch {
+      // mis_mirror_* 迁移未执行/镜像表缺失时，收费报表仍只展示 PMS 数据，不影响原有页面。
+      return empty;
+    }
+  }
+
+  /** 本次请求可返回的 MIS 管理处：数据范围 + communityId + 同小区 PMS 优先剔除。 */
+  private misOfficesForReport(scope: number[] | null, query: FeeReportQueryDto, pmsCommunityIds?: Set<number>) {
+    return misOfficesForScope(scope, query.communityId)
+      .filter((mapping) => !pmsCommunityIds?.has(mapping.communityId));
+  }
+
+  /**
    * 收费报表：总览（含环比）+ 趋势 + 收款方式 / 费用项目 / 小区 / 收费员分布。
    *
    * 口径只有一个：按 paid_at 落在区间内的实收明细统计，和账期无关
    * （12 月的房租 1 月才收，算 1 月的收入）。
    * 红冲的原单和负数红冲单都带 paid_at，两条相加为 0 —— 当天收完当天红冲
    * 等于没收，隔月红冲则冲减红冲发生那个月，和收费员手上的现金一致。
+   * P2-E：额外合并旧 MIS 镜像实收（同小区有 PMS 数据时只用 PMS，避免重复）。
    */
   async feeReport(query: FeeReportQueryDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
@@ -353,53 +490,406 @@ export class FeesService {
       breakdown('f.cashier', 'cashier'),
     ]);
 
-    const share = (cents: number) => shareRatio(cents, totals.netCents);
+    // ---- 旧 MIS 镜像实收合并（同 community 有 PMS 数据时只用 PMS，避免重复） ----
+    const pmsCommunityIds = new Set<number>(communityRows
+      .map((row: any) => Number(row.communityId))
+      .filter((value: number) => Number.isFinite(value) && value > 0));
+    const misMappings = this.misOfficesForReport(scope, query, pmsCommunityIds);
+    const misOffices = misMappings.map((mapping) => mapping.officeCode);
+    const [misPart, misPrevPart] = await Promise.all([
+      this.misReportPart(tenantId, query, misOffices, from, to),
+      this.misReportPart(tenantId, query, misOffices, prev.from, prev.to),
+    ]);
+    const combinedTotals = {
+      netCents: totals.netCents + misPart.totals.netCents,
+      chargedCents: totals.chargedCents + misPart.totals.chargedCents,
+      refundedCents: totals.refundedCents + misPart.totals.refundedCents,
+      receiptCount: totals.receiptCount + misPart.totals.receiptCount,
+      houseCount: totals.houseCount + misPart.totals.houseCount,
+      itemCount: totals.itemCount + misPart.totals.itemCount,
+    };
+    const combinedPrevious = {
+      netCents: previous.netCents + misPrevPart.totals.netCents,
+      chargedCents: previous.chargedCents + misPrevPart.totals.chargedCents,
+      refundedCents: previous.refundedCents + misPrevPart.totals.refundedCents,
+      receiptCount: previous.receiptCount + misPrevPart.totals.receiptCount,
+      houseCount: previous.houseCount + misPrevPart.totals.houseCount,
+      itemCount: previous.itemCount + misPrevPart.totals.itemCount,
+    };
+    const share = (cents: number) => shareRatio(cents, combinedTotals.netCents);
+    const dayMap = new Map<string, { day: string; amountCents: number; count: number }>();
+    for (const row of [...dayRows, ...misPart.dayRows]) {
+      const hit = dayMap.get(row.day) ?? { day: row.day, amountCents: 0, count: 0 };
+      hit.amountCents += Number(row.amountCents || 0);
+      hit.count += Number(row.count || 0);
+      dayMap.set(row.day, hit);
+    }
+    const feeMap = new Map<string, { feeCode: string; feeName: string; amountCents: number; count: number }>();
+    for (const row of feeRows) {
+      feeMap.set(String(row.feeCode), {
+        feeCode: row.feeCode,
+        feeName: row.feeName ?? feeItemName(row.feeCode),
+        amountCents: Number(row.amountCents || 0),
+        count: Number(row.count || 0),
+      });
+    }
+    for (const row of misPart.byFee) {
+      const hit = feeMap.get(String(row.feeCode));
+      if (hit) {
+        hit.amountCents += row.amountCents;
+        hit.count += row.count;
+        if (!hit.feeName) hit.feeName = row.feeName;
+      } else {
+        feeMap.set(String(row.feeCode), { ...row });
+      }
+    }
+    const mergeByLabel = (pmsRows: any[], misRows: Array<{ amountCents: number; count: number }>, field: 'method' | 'cashier') => {
+      const map = new Map<string, { value: string | null; amountCents: number; count: number }>();
+      for (const row of pmsRows) {
+        const key = row[field] ?? MIS_UNRECORDED;
+        const hit = map.get(key) ?? { value: row[field] ?? null, amountCents: 0, count: 0 };
+        hit.amountCents += Number(row.amountCents || 0);
+        hit.count += Number(row.count || 0);
+        map.set(key, hit);
+      }
+      for (const row of misRows as any[]) {
+        const key = row[field] ?? MIS_UNRECORDED;
+        const hit = map.get(key) ?? { value: row[field] ?? MIS_UNRECORDED, amountCents: 0, count: 0 };
+        hit.amountCents += Number(row.amountCents || 0);
+        hit.count += Number(row.count || 0);
+        map.set(key, hit);
+      }
+      return [...map.values()].map((row) => ({
+        [field]: row.value,
+        amountCents: row.amountCents,
+        count: row.count,
+        share: share(row.amountCents),
+      } as any));
+    };
+    const misCommunityRows = misPart.byOffice.map((row) => {
+      const mapping = misMappings.find((item) => item.officeCode === row.officeCode);
+      return {
+        communityId: mapping?.communityId ?? misOfficeCommunityId(row.officeCode),
+        communityName: misOfficeLabel(row.officeCode),
+        label: misOfficeLabel(row.officeCode),
+        source: 'mis' as const,
+        officeCode: row.officeCode,
+        amountCents: row.amountCents,
+        count: row.count,
+      };
+    });
+    const byCommunity = [
+      ...communityRows.map((row: any) => ({
+        communityId: row.communityId === null ? null : Number(row.communityId),
+        communityName: row.communityName ?? null,
+        source: 'pms' as const,
+        amountCents: Number(row.amountCents || 0),
+        count: Number(row.count || 0),
+      })),
+      ...misCommunityRows,
+    ]
+      .map((row) => ({ ...row, share: share(row.amountCents) }))
+      .sort((left, right) => right.amountCents - left.amountCents);
+    let message: string | null = null;
+    if (query.communityId) {
+      const hasPms = pmsCommunityIds.has(query.communityId);
+      const mapped = misOfficesForScope(scope, query.communityId).length > 0;
+      const hasMis = misPart.totals.itemCount > 0;
+      if (!hasPms && !mapped) message = '该小区无 PMS 收费数据，且不在旧系统镜像范围';
+      else if (!hasPms && mapped && !hasMis) message = '该小区无 PMS 收费数据，旧系统镜像本期暂无实收';
+    }
     return {
       range: { from, to, granularity },
       previousRange: prev,
-      totals,
-      previous,
+      totals: combinedTotals,
+      previous: combinedPrevious,
       growth: {
-        netCents: growthRate(totals.netCents, previous.netCents),
-        receiptCount: growthRate(totals.receiptCount, previous.receiptCount),
-        houseCount: growthRate(totals.houseCount, previous.houseCount),
+        netCents: growthRate(combinedTotals.netCents, combinedPrevious.netCents),
+        receiptCount: growthRate(combinedTotals.receiptCount, combinedPrevious.receiptCount),
+        houseCount: growthRate(combinedTotals.houseCount, combinedPrevious.houseCount),
       },
-      trend: foldToBuckets(
-        dayRows.map((r) => ({
-          day: r.day,
-          amountCents: Number(r.amountCents || 0),
-          count: Number(r.count || 0),
-        })),
-        from,
-        to,
-        granularity,
+      trend: foldToBuckets([...dayMap.values()], from, to, granularity),
+      byMethod: mergeByLabel(methodRows, misPart.byMethod, 'method'),
+      byFee: [...feeMap.values()]
+        .map((row) => ({ ...row, share: share(row.amountCents) }))
+        .sort((left, right) => right.amountCents - left.amountCents),
+      byCommunity,
+      byCashier: mergeByLabel(cashierRows, misPart.byCashier, 'cashier'),
+      message,
+    };
+  }
+
+  /** MIS 明细查询：dimension/key 过滤 + 分页，返回 rows/count/amountCents。 */
+  private async misDetailQuery(
+    tenantId: number,
+    query: FeeReportDetailQueryDto,
+    mappings: Array<{ officeCode: string; communityId: number; officeName: string; communityName: string }>,
+    from: string,
+    to: string,
+    limit: number,
+    offset: number,
+  ) {
+    const rows: any[] = [];
+    const empty = { rows, count: 0, amountCents: 0, totalCount: 0 };
+    let offices = mappings.map((mapping) => mapping.officeCode);
+    if (!offices.length) return empty;
+    try {
+    const params: unknown[] = [];
+    const add = (value: unknown) => {
+      params.push(value);
+      return `$${params.length}`;
+    };
+    const where: string[] = [];
+    const key = query.key?.trim();
+    if (query.dimension === 'community' && key) {
+      if (/^0\d$/.test(key)) {
+        where.push(`b.office_code = ${add(key)}`);
+      } else if (/^\d+$/.test(key)) {
+        const matched = mappings.filter((mapping) => mapping.communityId === Number(key));
+        if (!matched.length) return empty;
+        offices = matched.map((mapping) => mapping.officeCode);
+      }
+    }
+    where.push(
+      `b.office_code IN (${offices.map((office) => add(office)).join(',')})`,
+      `b.paid_date >= ${add(from)}::date`,
+      `b.paid_date < (${add(to)}::date + INTERVAL '1 day')`,
+      'b.refund_date IS NULL',
+    );
+    if (query.feeCode) where.push(`b.fee_code = ${add(query.feeCode)}`);
+    if (query.paymentMethod) where.push(`${METHOD_LABEL_SQL} = ${add(normalizeMisLabel(query.paymentMethod))}`);
+    if (query.dimension === 'fee' && key) where.push(`b.fee_code = ${add(key)}`);
+    if (query.dimension === 'method' && key) where.push(`${METHOD_LABEL_SQL} = ${add(normalizeMisLabel(key))}`);
+    if (query.dimension === 'cashier' && key) where.push(`${CASHIER_LABEL_SQL} = ${add(normalizeMisLabel(key))}`);
+    if (query.dimension === 'day' && key) where.push(`b.paid_date = ${add(key)}::date`);
+    if (query.communityId) {
+      const matched = mappings.filter((mapping) => mapping.communityId === query.communityId)
+        .map((mapping) => mapping.officeCode);
+      if (!matched.length) return empty;
+      where.push(`b.office_code IN (${matched.map((office) => add(office)).join(',')})`);
+    }
+    const whereSql = where.join(' AND ');
+    const [totalsRaw, raw] = await Promise.all([
+      this.dataSource.query(
+        `SELECT COUNT(*)::int AS "count", COALESCE(SUM(b.amount_cents),0)::bigint AS "amountCents"
+           FROM mis_mirror_bill b WHERE ${whereSql}`,
+        params,
       ),
-      byMethod: methodRows.map((r) => ({
-        method: r.method ?? null,
-        amountCents: Number(r.amountCents || 0),
-        count: Number(r.count || 0),
-        share: share(Number(r.amountCents || 0)),
+      this.dataSource.query(
+        `SELECT b.zj_id AS "id", to_char(b.paid_date,'YYYY-MM-DD') AS "day", b.office_code AS "officeCode",
+                b.address, b.owner_name AS "ownerName", b.fee_code AS "feeCode",
+                COALESCE(NULLIF(fi.fee_name,''),NULLIF(b.fee_name,''),b.fee_code) AS "feeName",
+                b.amount_cents::bigint AS "amountCents",
+                ${METHOD_LABEL_SQL} AS "method", ${CASHIER_LABEL_SQL} AS "cashier",
+                COALESCE(NULLIF(b.receipt_warehouse_no,''),NULLIF(b.invoice_no,'')) AS "receiptNo"
+           FROM mis_mirror_bill b
+           LEFT JOIN mis_mirror_fee_item fi ON fi.fee_code = b.fee_code
+          WHERE ${whereSql}
+          ORDER BY b.paid_date DESC, b.zj_id DESC
+          LIMIT ${limit} OFFSET ${offset}`,
+        params,
+      ),
+    ]);
+    const mappingByOffice = new Map(mappings.map((mapping) => [mapping.officeCode, mapping]));
+    return {
+      rows: raw.map((row: any) => {
+        const mapping = mappingByOffice.get(String(row.officeCode));
+        return {
+          id: Number(row.id),
+          source: 'mis' as const,
+          occurredAt: `${String(row.day)}T00:00:00+08:00`,
+          officeCode: String(row.officeCode),
+          officeName: mapping?.officeName ?? `管理处${row.officeCode}`,
+          communityId: mapping?.communityId ?? misOfficeCommunityId(String(row.officeCode)),
+          communityName: mapping?.communityName ?? null,
+          address: row.address ?? null,
+          ownerName: row.ownerName ?? null,
+          feeCode: row.feeCode ?? null,
+          feeName: row.feeName ?? row.feeCode ?? null,
+          amountCents: Number(row.amountCents || 0),
+          method: row.method ?? null,
+          cashier: row.cashier ?? null,
+          receiptNo: row.receiptNo ?? null,
+        };
+      }),
+      count: Number(totalsRaw[0]?.count || 0),
+      amountCents: Number(totalsRaw[0]?.amountCents || 0),
+      totalCount: Number(totalsRaw[0]?.count || 0),
+    };
+    } catch {
+      return empty;
+    }
+  }
+
+  /** PMS 明细查询：复用收费报表 paid_at 口径，返回与 MIS 一致的字段形状。 */
+  private async pmsDetailQuery(
+    tenantId: number,
+    scope: number[] | null,
+    query: FeeReportDetailQueryDto,
+    from: string,
+    to: string,
+    limit: number,
+    offset: number,
+  ) {
+    const params: unknown[] = [];
+    const add = (value: unknown) => {
+      params.push(value);
+      return `$${params.length}`;
+    };
+    const where: string[] = [
+      `f.tenant_id = ${add(tenantId)}`,
+      `f.paid_at >= ${add(dayStart(from).toISOString())}::timestamptz`,
+      `f.paid_at < ${add(nextDayStart(to).toISOString())}::timestamptz`,
+      `f.status IN ('${FeeBillStatus.PAID}','${FeeBillStatus.REFUNDED}')`,
+    ];
+    if (scope) where.push(`f.community_id IN (${scope.map((id) => add(id)).join(',')})`);
+    if (query.communityId) where.push(`f.community_id = ${add(query.communityId)}`);
+    if (query.feeCode) where.push(`f.fee_code = ${add(query.feeCode)}`);
+    if (query.paymentMethod) where.push(`COALESCE(NULLIF(TRIM(f.payment_method),''),'${MIS_UNRECORDED}') = ${add(normalizeMisLabel(query.paymentMethod))}`);
+    const key = query.key?.trim();
+    if (query.dimension === 'community' && key) {
+      if (/^0\d$/.test(key)) {
+        const mapping = misOfficesForScope(null).find((item) => item.officeCode === key);
+        if (mapping) where.push(`f.community_id = ${add(mapping.communityId)}`);
+      } else if (/^\d+$/.test(key)) {
+        where.push(`f.community_id = ${add(Number(key))}`);
+      }
+    }
+    if (query.dimension === 'fee' && key) where.push(`f.fee_code = ${add(key)}`);
+    if (query.dimension === 'method' && key) where.push(`COALESCE(NULLIF(TRIM(f.payment_method),''),'${MIS_UNRECORDED}') = ${add(normalizeMisLabel(key))}`);
+    if (query.dimension === 'cashier' && key) where.push(`COALESCE(NULLIF(TRIM(f.cashier),''),'${MIS_UNRECORDED}') = ${add(normalizeMisLabel(key))}`);
+    if (query.dimension === 'day' && key) {
+      where.push(`(f.paid_at AT TIME ZONE '${FEE_TZ}')::date = ${add(key)}::date`);
+    }
+    const whereSql = where.join(' AND ');
+    const [totalsRaw, raw] = await Promise.all([
+      this.dataSource.query(
+        `SELECT COUNT(*)::int AS "count", COALESCE(SUM(f.amount_cents),0)::bigint AS "amountCents"
+           FROM fee_bills f WHERE ${whereSql}`,
+        params,
+      ),
+      this.dataSource.query(
+        `SELECT f.id, f.paid_at AS "paidAt", f.community_id AS "communityId", c.name AS "communityName",
+                COALESCE(NULLIF(h.full_address,''), CONCAT(COALESCE(b.road_name,''),COALESCE(b.lane,''),COALESCE(b.building_no,''),COALESCE(h.room_no,''))) AS "address",
+                f.owner_name AS "ownerName", f.fee_code AS "feeCode", f.fee_name AS "feeName",
+                f.amount_cents::bigint AS "amountCents",
+                COALESCE(NULLIF(TRIM(f.payment_method),''),'${MIS_UNRECORDED}') AS "method",
+                COALESCE(NULLIF(TRIM(f.cashier),''),'${MIS_UNRECORDED}') AS "cashier",
+                f.receipt_no AS "receiptNo"
+           FROM fee_bills f
+           LEFT JOIN communities c ON c.id = f.community_id
+           LEFT JOIN houses h ON h.id = f.house_id
+           LEFT JOIN buildings b ON b.id = h.building_id
+          WHERE ${whereSql}
+          ORDER BY f.paid_at DESC, f.id DESC
+          LIMIT ${limit} OFFSET ${offset}`,
+        params,
+      ),
+    ]);
+    return {
+      rows: raw.map((row: any) => ({
+        id: Number(row.id),
+        source: 'pms' as const,
+        occurredAt: row.paidAt instanceof Date ? row.paidAt.toISOString() : String(row.paidAt),
+        officeCode: null,
+        officeName: null,
+        communityId: row.communityId == null ? null : Number(row.communityId),
+        communityName: row.communityName ?? null,
+        address: row.address ?? null,
+        ownerName: row.ownerName ?? null,
+        feeCode: row.feeCode ?? null,
+        feeName: row.feeName ?? null,
+        amountCents: Number(row.amountCents || 0),
+        method: row.method ?? null,
+        cashier: row.cashier ?? null,
+        receiptNo: row.receiptNo ?? null,
       })),
-      byFee: feeRows.map((r) => ({
-        feeCode: r.feeCode,
-        feeName: r.feeName ?? feeItemName(r.feeCode),
-        amountCents: Number(r.amountCents || 0),
-        count: Number(r.count || 0),
-        share: share(Number(r.amountCents || 0)),
-      })),
-      byCommunity: communityRows.map((r) => ({
-        communityId: r.communityId === null ? null : Number(r.communityId),
-        communityName: r.communityName ?? null,
-        amountCents: Number(r.amountCents || 0),
-        count: Number(r.count || 0),
-        share: share(Number(r.amountCents || 0)),
-      })),
-      byCashier: cashierRows.map((r) => ({
-        cashier: r.cashier ?? null,
-        amountCents: Number(r.amountCents || 0),
-        count: Number(r.count || 0),
-        share: share(Number(r.amountCents || 0)),
-      })),
+      count: Number(totalsRaw[0]?.count || 0),
+      amountCents: Number(totalsRaw[0]?.amountCents || 0),
+    };
+  }
+
+  /** 当前区间有 PMS 收款的小区集合（用于「同小区 PMS 优先」判定）。 */
+  private async pmsCommunitiesWithData(
+    tenantId: number,
+    scope: number[] | null,
+    query: FeeReportDetailQueryDto | FeeReportQueryDto,
+    from: string,
+    to: string,
+  ): Promise<Set<number>> {
+    const rows: any[] = await this.paidBillsQuery(tenantId, scope, query, from, to)
+      .select('DISTINCT f.community_id', 'communityId')
+      .getRawMany<any>();
+    return new Set(rows.map((row) => Number(row.communityId)).filter((value) => Number.isFinite(value) && value > 0));
+  }
+
+  /**
+   * POST 收费报表统一明细下钻：PMS + 旧 MIS 两源，按 dimension/key 过滤、按时间倒序分页。
+   * 同 community 有 PMS 数据时默认不返回 MIS（避免重复）；source 显式指定时可单独看某一源。
+   */
+  async feeReportDetail(query: FeeReportDetailQueryDto, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const scope = scopeCommunityIds(access);
+    const { from, to } = this.reportRange(query);
+    const limit = Math.min(Math.max(Number(query.limit) || 200, 1), 500);
+    const offset = Math.max(Number(query.offset) || 0, 0);
+    const source = query.source;
+    const pmsCommunities = await this.pmsCommunitiesWithData(tenantId, scope, query, from, to);
+    let mappings = misOfficesForScope(scope, query.communityId);
+    if (source !== 'mis') mappings = mappings.filter((mapping) => !pmsCommunities.has(mapping.communityId));
+    const wantPms = source !== 'mis' && (!scope || scope.length > 0);
+    const wantMis = source !== 'pms';
+    const fetchLimit = offset + limit;
+    const [pmsPart, misPart] = await Promise.all([
+      wantPms
+        ? this.pmsDetailQuery(tenantId, scope, query, from, to, fetchLimit, 0)
+        : Promise.resolve({ rows: [] as any[], count: 0, amountCents: 0 }),
+      wantMis
+        ? this.misDetailQuery(tenantId, query, mappings, from, to, fetchLimit, 0)
+        : Promise.resolve({ rows: [] as any[], count: 0, amountCents: 0 }),
+    ]);
+    const merged = [...pmsPart.rows, ...misPart.rows]
+      .sort((left, right) => Date.parse(right.occurredAt) - Date.parse(left.occurredAt)
+        || String(right.source).localeCompare(String(left.source))
+        || right.id - left.id);
+    const rows = merged.slice(offset, offset + limit);
+    let message: string | null = null;
+    if (query.communityId) {
+      const hasPms = pmsCommunities.has(query.communityId) || pmsPart.count > 0;
+      const mapped = misOfficesForScope(scope, query.communityId).length > 0;
+      if (!hasPms && !mapped) message = '该小区无 PMS 收费数据，且不在旧系统镜像范围';
+      else if (!hasPms && mapped && misPart.count === 0) message = '该小区无 PMS 收费数据，旧系统镜像本期暂无实收';
+    }
+    return {
+      range: { from, to },
+      rows,
+      totals: { count: pmsPart.count + misPart.count, amountCents: pmsPart.amountCents + misPart.amountCents },
+      count: pmsPart.count + misPart.count,
+      limit,
+      offset,
+      message,
+    };
+  }
+
+  /** 导出用：本次区间 MIS 逐笔明细，最多 maxRows 行（超出截断并返回 truncated）。 */
+  async feeReportMisDetail(
+    query: FeeReportDetailQueryDto,
+    user: AuthUser,
+    access?: ResolvedAccess,
+    maxRows = 50_000,
+  ) {
+    const tenantId = this.requireTenant(user);
+    const scope = scopeCommunityIds(access);
+    const { from, to } = this.reportRange(query);
+    const pmsCommunities = await this.pmsCommunitiesWithData(tenantId, scope, query, from, to);
+    const mappings = misOfficesForScope(scope, query.communityId)
+      .filter((mapping) => !pmsCommunities.has(mapping.communityId));
+    const part = await this.misDetailQuery(tenantId, { ...query, source: 'mis' }, mappings, from, to, maxRows + 1, 0);
+    return {
+      rows: part.rows.slice(0, maxRows),
+      count: part.count,
+      truncated: part.count > maxRows,
+      message: part.count > maxRows ? `旧系统明细共 ${part.count} 行，导出仅保留前 ${maxRows} 行` : null,
     };
   }
 

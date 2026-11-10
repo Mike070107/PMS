@@ -27,6 +27,7 @@ import {
   CreateBillDto,
   CreateStandardDto,
   FeeReportQueryDto,
+  FeeReportDetailQueryDto,
   GenerateBillsDto,
   ImportFeesDto,
   ListBillsQueryDto,
@@ -219,6 +220,17 @@ export class FeesController {
     return this.feesService.feeReport(query, user, access);
   }
 
+  /** 收费报表统一明细下钻：PMS + 旧系统镜像两源。 */
+  @Get('reports/detail')
+  @RequirePermission(['fees', 'apartment-cashier'], 'view')
+  feeReportDetail(
+    @Query() query: FeeReportDetailQueryDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.feesService.feeReportDetail(query, user, access);
+  }
+
   /** 收费报表 Excel 导出：与 reports/summary 完全同一套筛选与口径。 */
   @Get('reports/summary/export')
   @RequirePermission(['fees', 'apartment-cashier'], 'view')
@@ -230,6 +242,13 @@ export class FeesController {
     const data = await this.feesService.feeReport(query, user, access);
     const previous: Record<string, number> = {};
     for (const [key, value] of Object.entries(data.previous)) previous['上期' + key] = value as number;
+    const misDetail = await this.feesService.feeReportMisDetail(
+      query as FeeReportDetailQueryDto, user, access, 50_000,
+    );
+    const misDetailRows: Array<Record<string, unknown>> = misDetail.rows.map((row) => ({ ...row }));
+    if (misDetail.truncated) {
+      misDetailRows.unshift({ 说明: misDetail.message ?? '旧系统明细超过 5 万行，已截断' });
+    }
     const buffer = await buildReportWorkbook([
       { name: '汇总', meta: { from: data.range.from, to: data.range.to, granularity: data.range.granularity, ...data.totals, ...previous }, rows: [] },
       { name: '收款趋势', rows: data.trend as unknown as Record<string, unknown>[] },
@@ -237,6 +256,7 @@ export class FeesController {
       { name: '按收款方式', rows: data.byMethod as unknown as Record<string, unknown>[] },
       { name: '按小区', rows: data.byCommunity as unknown as Record<string, unknown>[] },
       { name: '按收费员', rows: data.byCashier as unknown as Record<string, unknown>[] },
+      { name: '旧系统实收明细', rows: misDetailRows },
     ]);
     const filename = '收费报表_' + data.range.from + '_' + data.range.to + '.xlsx';
     return new StreamableFile(buffer, {

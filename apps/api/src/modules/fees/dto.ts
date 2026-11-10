@@ -135,6 +135,37 @@ export class FeeReportQueryDto {
   granularity?: 'day' | 'week' | 'month';
 }
 
+export class FeeReportDetailQueryDto extends FeeReportQueryDto {
+  /** 下钻维度：community/fee/method/cashier/day。 */
+  @IsOptional()
+  @IsIn(['community', 'fee', 'method', 'cashier', 'day'])
+  dimension?: 'community' | 'fee' | 'method' | 'cashier' | 'day';
+
+  /** 维度 key：community=communityId 或管理处 officeCode；fee=feeCode；method/cashier=名称；day=YYYY-MM-DD。 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  key?: string;
+
+  /** 数据源过滤；不传时按「同小区 PMS 优先、其余取 MIS」组合两源。 */
+  @IsOptional()
+  @IsIn(['pms', 'mis'])
+  source?: 'pms' | 'mis';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(500)
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  offset?: number;
+}
+
 export class ArrearsQueryDto extends PageQueryDto {
   @IsOptional()
   @Type(() => Number)

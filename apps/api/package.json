@@ -7,6 +7,7 @@
     "test:mis-ledger": "node -r ts-node/register --test src/modules/fees/mis-ledger.query.test.ts src/modules/fees/mis-ledger.service.test.ts src/modules/fees/mis-ledger.http.test.ts",
     "test:business-ledger": "node -r ts-node/register --test src/modules/business/business-ledger.test.ts src/modules/business/business-ledger.http.test.ts",
     "test:fee-receipts": "node -r ts-node/register --test src/modules/fees/receipt-isolation.test.ts",
+    "test:fee-reports": "node -r ts-node/register --test src/modules/fees/fee-report-mis.test.ts",
     "test:parking-spaces": "node -r ts-node/register --test src/modules/business/parking-spaces.test.ts src/modules/business/parking-spaces.persistence.test.ts",
     "build": "nest build",
     "test:mis-posting": "node -r ts-node/register --test src/modules/fees/mis-collector.util.test.ts src/modules/fees/mis-posting-context.test.ts src/modules/fees/mis-posting.service.test.ts src/modules/fees/mis-posting.connector.test.ts src/modules/fees/mis-posting.persistence.test.ts src/modules/fees/mis-posting.http.test.ts src/modules/fees/mis-posting.util.test.ts",
