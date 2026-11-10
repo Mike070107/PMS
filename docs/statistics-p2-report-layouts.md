@@ -1298,4 +1298,4 @@ sudo docker exec -i pms-postgres psql -U pms -d pms_repair -X -P pager=off
 - 汇总/逐笔CSV均有UTF-8 BOM；公式式文本加单引号，负金额保持数值。前端收到null的逐行金额/税额时显示「—」、导出留空（后端当前聚合仍沿用COALESCE，源未知税额由coverage单独披露）；覆盖提示仅在行数>0且非零税额行数、未知税额行数均为0时声明全零。镜像未同步显示message且禁导出，不假造0。
 - 浏览器夹具为隔离合成数据（201行、2张票跨费项，含负数及CSV公式攻击文本），不是生产数据。覆盖分组、精确下钻、独立总计、分页/全量导出与水位变化中止、逐票、日期验证/单侧/重置、旧响应隔离、错误重试、等待、未同步、1440/390/320宽度与内部滚动。
 - 截图：`D:/pms-statistics-evidence/statistics-ticket-items-1440.png`、`statistics-ticket-items-detail-1440.png`、`statistics-ticket-items-detail-390.png`、`statistics-ticket-items-detail-320.png`、`statistics-ticket-items-320.png`，另有loading/error/逐票截图。只证明真实Chromium中的生产组件+合成API传输，不代表生产接口或公网验收。
-- 前端typecheck通过；新增P4-B定向回归2/2通过，最终完整统计浏览器回归16/16通过（138531ms）；构建结果待补。本轮不连接、不修改、不发布生产，须获当次明确授权后再上线。
+- 前端typecheck通过；新增P4-B定向回归2/2通过，最终完整统计浏览器回归16/16通过（138531ms）；前端提交`b69a911b`已合入并推送main后，本地`tsc --noEmit && vite build`通过（14.74s，只有>500KB分块提示）。构建前端源码无未提交改动，其他任务的API/文档WIP保持原样，未上传构建产物。本轮不连接、不修改、不发布生产，须获当次明确授权后再上线。
