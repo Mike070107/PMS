@@ -482,7 +482,7 @@ test('明细合计=单元格：02×2014 含宝秀路719号719（79.67㎡，20141
     assert.equal(detail.totalCents, cell);
     assert.equal(detail.rows.length, 1);
     assert.deepEqual(detail.rows[0], {
-      sId: 719,
+      sId: '719',
       address: '宝秀路719号719',
       ownerName: '宝秀路业主',
       areaSqm: 79.67,
@@ -508,7 +508,7 @@ test('明细按行级性质过滤：01×2026 商品房/商铺合计等于单元�
       type: 'arrears', officeCode: '01', year: 2026, feeCodes: ['01'], natures: NATURES_WITHOUT_VACANT,
     } as never, user, scopeAll);
     assert.equal(detail.totalCents, cell);
-    assert.deepEqual(detail.rows.map((row: any) => [row.sId, row.amountCents]), [[801, 48186870], [802, 16392120]]);
+    assert.deepEqual(detail.rows.map((row: any) => [row.sId, row.amountCents]), [['801', 48186870], ['802', 16392120]]);
     assert.equal(detail.rows.reduce((sum: number, row: any) => sum + row.amountCents, 0), cell);
 
     const bills: any = await service.annualDetailBills({
@@ -538,7 +538,7 @@ test('逐笔账单合计=房屋明细：02×2014 三笔各 15930', async () => {
     assert.equal(bills.rows[0].feeName, '管理费');
     assert.equal(bills.rows[0].paidDate, null);
     assert.equal(bills.rows[0].refundDate, null);
-    assert.ok(bills.rows[0].zjId > 0);
+    assert.match(bills.rows[0].zjId, /^[1-9]\d*$/);
 
     // 06 空房行在传 natures 时不能出现在明细/逐笔里。
     const vacantDetail: any = await service.annualDetail({
@@ -654,7 +654,7 @@ test('实收下钻按房屋×应收年月聚合：01×2004 共 23 行，金惠�
     const houseRow = detail.rows.find((row: any) => row.address === '剑川路198弄1号101' && row.period === '200401');
     assert.deepEqual(houseRow, {
       zjId: null,
-      sId: 2001,
+      sId: '2001',
       address: '剑川路198弄1号101',
       ownerName: '一期2004业主',
       areaSqm: 88.5,
@@ -672,7 +672,7 @@ test('实收下钻按房屋×应收年月聚合：01×2004 共 23 行，金惠�
     const goldRows = detail.rows.filter((row: any) => row.address === '剑川路198弄25号201');
     assert.deepEqual(goldRows.map((row: any) => row.period), ['200407', '200408', '200409', '200410', '200411', '200412']);
     assert.deepEqual(goldRows.map((row: any) => row.amountCents), [0, 0, 0, 0, 0, 0]);
-    assert.ok(goldRows.every((row: any) => row.sId === 2018 && row.ownerName === '金惠丽' && row.areaSqm === 100.5));
+    assert.ok(goldRows.every((row: any) => row.sId === '2018' && row.ownerName === '金惠丽' && row.areaSqm === 100.5));
 
     // 退款/红冲行（负数、refund_date 非空）聚合后仍在清单里，净额合计=单元格。
     const annual02: any = await service.annual({
@@ -815,7 +815,7 @@ test('asOfPeriod 过滤应收截止年月，单元格与明细同步归零', asy
       type: 'arrears', officeCode: '04', year: 2026, feeCodes: ['01'], asOfPeriod: '202611',
     } as never, user, scopeAll);
     assert.equal(detail.totalCents, annualOf(cutoff.rows, '04').cells['2026']);
-    assert.deepEqual(detail.rows.map((row: any) => row.sId), [1001]);
+    assert.deepEqual(detail.rows.map((row: any) => row.sId), ['1001']);
 
     const detailAfter2027: any = await service.annualDetail({
       type: 'arrears', officeCode: '04', year: 2027, feeCodes: ['01'], asOfPeriod: '202611',
@@ -1091,7 +1091,7 @@ for (const type of ['arrears', 'received'] as const) {
           assert.equal(detail.totalCents, row.cells[String(year)], `${row.officeCode}×${year}`);
           assert.equal(detail.rows.reduce((sum: number, item: any) => sum + item.amountCents, 0), detail.totalCents);
           // 实收明细按房屋×period；逐笔 API 是房屋×year，先逐月核对，再按房屋核对一次，不能重复累计整年账单。
-          for (const sId of new Set<number>(detail.rows.map((item: any) => item.sId))) {
+          for (const sId of new Set<string>(detail.rows.map((item: any) => item.sId))) {
             const bills: any = await service.annualDetailBills({ ...common, officeCode: row.officeCode, year, sId }, user, access);
             const houseRows = detail.rows.filter((item: any) => item.sId === sId);
             assert.equal(bills.totalCents, houseRows.reduce((sum: number, item: any) => sum + item.amountCents, 0));
@@ -1101,7 +1101,7 @@ for (const type of ['arrears', 'received'] as const) {
                 assert.equal(bills.rows.filter((bill: any) => bill.period === item.period)
                   .reduce((sum: number, bill: any) => sum + bill.amountCents, 0), item.amountCents);
               }
-              if (sId === 3201 && year === 2025) {
+              if (sId === '3201' && year === 2025) {
                 assert.deepEqual(bills.rows.map((bill: any) => bill.amountCents), [503, -37, 131]);
                 assert.equal(bills.rows[2].refundDate, '2026-03-01');
               }

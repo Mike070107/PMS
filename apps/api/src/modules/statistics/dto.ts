@@ -30,6 +30,7 @@ import {
   type ArrearsPrepaidTab,
 } from './arrears.util';
 import { STATISTICS_TYPES, type StatisticsType } from './statistics.util';
+import { annualIdInput, ANNUAL_ROOM_ID_RE } from './annual-source-id.util';
 
 const CODE_RE = /^[0-9A-Za-z]{1,20}$/;
 const OFFICE_CODE_RE = /^\d{2}$/;
@@ -150,10 +151,11 @@ export class StatisticsAnnualDetailQueryDto {
 }
 
 export class StatisticsBillsQueryDto extends StatisticsAnnualDetailQueryDto {
-  @Type(() => Number)
-  @IsInt({ message: 'sId 必须是房屋 id' })
-  @Min(1)
-  sId!: number;
+  @Transform(({ value }) => annualIdInput(value))
+  @IsString({ message: 'sId 必须是房屋 id 字符串' })
+  @Matches(ANNUAL_ROOM_ID_RE, { message: 'sId 必须是 1 至 18 位正整数字符串' })
+  // HTTP 验证后始终为 string；保留安全数字的进程内旧调用类型，服务再次守卫。
+  sId!: string | number;
 }
 
 /** P2-A 收费汇总类报表公共筛选：管理处/收费项目/房屋性质勾选与收款截止日期。 */

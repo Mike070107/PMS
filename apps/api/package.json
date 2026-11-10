@@ -24,7 +24,7 @@
     "start:prod": "node dist/main.js",
     "lint": "eslint \"src/**/*.ts\" --fix",
     "typecheck": "tsc --noEmit",
-    "test:statistics": "node -r ts-node/register --test src/modules/statistics/statistics.util.test.ts src/modules/statistics/statistics.test.ts",
+    "test:statistics": "node -r ts-node/register --test src/modules/statistics/statistics.util.test.ts src/modules/statistics/statistics.test.ts src/modules/statistics/annual-id-precision.test.ts",
     "test:statistics-p2": "node -r ts-node/register --test src/modules/statistics/collection.util.test.ts src/modules/statistics/collection.test.ts",
     "test:statistics-p3": "node -r ts-node/register --test src/modules/statistics/arrears.test.ts",
     "test:statistics-p4": "node -r ts-node/register --test src/modules/statistics/analysis.test.ts",

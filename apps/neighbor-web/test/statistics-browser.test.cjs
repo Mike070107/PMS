@@ -1070,7 +1070,7 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     );
     assert.equal(await js("document.querySelector('[data-testid=stats-bills-total]').textContent.trim()"), '¥477.90');
     const billsQuery = await js("window.__calls.filter((c) => c.url === '/statistics/annual/detail/bills').slice(-1)[0].query");
-    assert.equal(billsQuery.sId, 719, 'detail 行 sId 是数字，逐笔请求必须原样带回来');
+    assert.equal(billsQuery.sId, '719', 'detail 行 sId 是字符串，逐笔请求必须原样带回来');
     assert.equal(billsQuery.asOfPeriod, expectedAsOfPeriod, '逐笔必须带与年度表相同的应收截止');
     assert.equal(billsQuery.paidDateTo, undefined, '欠费逐笔不传收款截止日期');
     await screenshot('statistics-bills-1440.png');
@@ -2546,3 +2546,30 @@ test('GPT collection 全类型：收款/退款/调整/全部与迟到分页隔�
     assert.ok((await t.summary()).includes(expected),kind+'分类合计');
   }
 },'?detail-harness'));
+
+test('年度报表源ID：相邻大ID字符串穿透 HouseDetailSheet 与逐笔DOM', { timeout: 60000 }, async () => {
+  const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  await withPage(async ({ js, call, waitFor, screenshot }) => {
+    await waitFor("!!document.querySelector('.stats')", '统计页挂载', 25000);
+    await generateInitial(js, waitFor);
+    await selectReportAndGenerate(js, waitFor, 'arrears');
+    await js("document.querySelector('[data-report-type=arrears]').click()");
+    await waitFor("!!document.querySelector('[data-office-code=\"04\"][data-year=\"2020\"]')", '04/2020 单元格', 15000);
+    await js("document.querySelector('[data-office-code=\"04\"][data-year=\"2020\"]').click()");
+    await waitFor("!!document.querySelector('.stats-detail-table tbody tr')", '年度房屋明细', 15000);
+    await js("document.querySelector('.stats-detail-table tbody tr').click()");
+    await waitFor("!!document.querySelector('[data-testid=stats-bills-total]')", '逐笔账单', 15000);
+    const query = await js("window.__calls.filter((c) => c.url === '/statistics/annual/detail/bills').at(-1).query");
+    assert.equal(query.sId, '9007199254740993', '相邻大 ID 必须以原字符串进入 query');
+    const billIds = await js("[...document.querySelectorAll('[data-bill-id]')].map((el) => el.getAttribute('data-bill-id'))");
+    assert.deepEqual(billIds, ['9007199254740993', '9007199254740994'], '逐笔两行 key/ID 均为原字符串');
+    assert.equal(await js("[...document.querySelectorAll('[data-bill-id]')].every((el) => el.getBoundingClientRect().height > 0)"), true, '逐笔两行均可见');
+    await screenshot('statistics-annual-big-id.png');
+    // 390 窄屏复用同一大 ID 场景：页面不溢出、逐笔仍两行。
+    await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 900, deviceScaleFactor: 1, mobile: false });
+    await pause(350);
+    assert.ok(await js('document.documentElement.scrollWidth <= innerWidth + 1'), '390 页面横向溢出');
+    assert.equal(await js("document.querySelectorAll('[data-bill-id]').length"), 2, '390 逐笔两行仍渲染');
+    await screenshot('statistics-annual-big-id-390.png');
+  });
+});

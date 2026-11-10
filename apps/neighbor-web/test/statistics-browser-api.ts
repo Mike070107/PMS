@@ -85,8 +85,8 @@ function received2004Rows() {
     const last = index === count - 1;
     const paidYears = ['2006-03-15', '2009-07-01', '2013-11-20'];
     return {
-      zjId: 2004000 + index + 1,
-      sId: 800 + index,
+      zjId: String(2004000 + index + 1),
+      sId: String(800 + index),
       address: `宝秀路${719 + index}号${101 + index}室`,
       ownerName: `合成业主${index + 1}`,
       areaSqm: 79.67,
@@ -665,7 +665,7 @@ async function requestFixture<T>(options: any): Promise<T> {
       const rows = officeCode === '01' && year === 2004
         ? received2004Rows()
         : [{
-          zjId: 9000 + year, sId: 900, address: `合成地址 ${officeCode} ${year}`, ownerName: '合成业主',
+          zjId: null, sId: '900', address: `合成地址 ${officeCode} ${year}`, ownerName: '合成业主',
           areaSqm: 88.8, period: `${year}06`, amountCents: receivedCellCents(officeCode, year) || 10000,
           paidDate: `${year}-06-15`, refundDate: null, paymentMethod: '现金', cashier: '合成收费员',
           receiptNo: null, invoiceNo: null,
@@ -673,27 +673,36 @@ async function requestFixture<T>(options: any): Promise<T> {
       const totalCents = rows.reduce((sum, row) => sum + row.amountCents, 0);
       return { detailKind: 'received', rows, totalCents, count: rows.length, available: true, message: null } as T;
     }
+    const BIG_SID = '9007199254740993';
     const rows = officeCode === '02' && year === 2014
       ? [{
-        sId: 719, address: '宝秀路719号719', ownerName: '合成业主', areaSqm: 79.67,
+        sId: '719', address: '宝秀路719号719', ownerName: '合成业主', areaSqm: 79.67,
         periodRange: '201410-201412',
         amountCents: 47790,
       }]
-      : [{
-        sId: Number(`${officeCode || 9}${year}`), address: `合成地址 ${officeCode} ${year}`, ownerName: '合成业主',
-        areaSqm: 88.8, periodRange: `${year}01-${year}12`, amountCents: 10000,
-      }];
+      : officeCode === '04' && year === 2020
+        ? [{ sId: BIG_SID, address: '上海新家1号101', ownerName: '大ID业主', areaSqm: 90, periodRange: '202001-202012', amountCents: 5000 }]
+        : [{
+          sId: String(`${officeCode || 9}${year}`), address: `合成地址 ${officeCode} ${year}`, ownerName: '合成业主',
+          areaSqm: 88.8, periodRange: `${year}01-${year}12`, amountCents: 10000,
+        }];
     const totalCents = rows.reduce((sum, row) => sum + row.amountCents, 0);
     return { detailKind: 'arrears', rows, totalCents, available: true, message: null } as T;
   }
 
   if (options.url === '/statistics/annual/detail/bills') {
     if (w.__billsFail) throw Error('逐笔账单读取失败（合成）');
-    const rows = ['202410', '202411', '202412'].map((period, index) => ({
-      zjId: index + 1, feeCode: '01', feeName: '管理费', period, amountCents: 15930,
-      paidDate: null, refundDate: null, paymentMethod: null, cashier: null,
-    }));
-    return { rows, totalCents: 47790 } as T;
+    const isBig = String(options.query?.sId ?? '') === '9007199254740993';
+    const rows = isBig
+      ? [
+        { zjId: '9007199254740993', feeCode: '01', feeName: '管理费', period: '202001', amountCents: 3000, paidDate: null, refundDate: null, paymentMethod: null, cashier: null },
+        { zjId: '9007199254740994', feeCode: '01', feeName: '管理费', period: '202002', amountCents: 2000, paidDate: null, refundDate: null, paymentMethod: null, cashier: null },
+      ]
+      : ['202410', '202411', '202412'].map((period, index) => ({
+        zjId: String(index + 1), feeCode: '01', feeName: '管理费', period, amountCents: 15930,
+        paidDate: null, refundDate: null, paymentMethod: null, cashier: null,
+      }));
+    return { rows, totalCents: rows.reduce((sum, row) => sum + row.amountCents, 0) } as T;
   }
 
   if (options.url === '/statistics/collection/fee-nature') {

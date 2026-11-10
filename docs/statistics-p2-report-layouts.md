@@ -1503,3 +1503,18 @@ sudo docker exec -i pms-postgres psql -U pms -d pms_repair -X -P pager=off
 - 五套镜像回归通过常规脚本共 **33/33**（新增 11，既有 22），API `tsc --noEmit` 通过；团队另独立运行 33/33、单套 11/11 与类型检查，只读审查 **PASS**。审查及 Lead 复核[源参数绑定](<apps/api/src/modules/fees/mis-fees.service.ts#L120-L129>)：字符串传为 NVarChar(4000)，保留 `w.ZJ_ID > @lastId`，按 SQL Server 类型优先级由参数转 numeric 比较，不是词典序或对列转 varchar；没有实际执行计划证据，不能承诺索引 seek 或耗时。这些仅证明上述本地代码、静态语义与合成数据边界。
 - 已经舍入但仍符合格式的**字符串旧水位**无法自动识别；重灌收尾仍取镜像 MAX，而非本次源最后一行，旧高 ID 幻影行可能抬高水位。重灌在账单循环前仍写 initialized_at/清 last_error，后续坏批不推进 last_success 并不代表初始化元数据完全不变。坏批会阻断后续主分页而非跳过，应结合 last_error 监控和授权后的独立对账处理；不在本轮自动重置水位或清理数据。
 - 没有新增迁移、报表入口或 Web/助手变更；#24 仍灰字。未连接 MIS/生产、未部署或执行实际迁移/重灌；统计汇总整体目标仍未完成。
+
+## 附录 L：年度房屋→逐笔账单源 ID 无损传递（Round18）
+
+### L.1 契约与兼容边界
+
+- Round17 的源镜像修复不等于报表读取安全。旧[年度服务](<apps/api/src/modules/statistics/statistics.service.ts>)将 detail 的 sId 和 bills 的 zjId 再次 `Number()`，旧[年度账单 DTO](<apps/api/src/modules/statistics/dto.ts>)也先数值化 query。合成旧源码 RED 已复现：相邻 `999999999999999998` / `999999999999999999` 都返回 `1000000000000000000`，HTTP 字符串 `9007199254740993` 变成 Number `9007199254740992`；指数 `1e3` 还会被当成合法 ID。
+- 年度 `annual/detail` 与 `annual/detail/bills` 的非空 **sId/zjId 统一返回字符串，包括小 ID**；实收按户×应收月聚合的 zjId 仍为 null，原 sId:null 也保留 null。Bills 的 filters.sId 同样返回规范字符串。[SQL](<apps/api/src/modules/statistics/statistics.service.ts>)仅在 SELECT 把 ID `::text`，JOIN/GROUP BY/ORDER BY/参数与列的数值比较不改为字符串排序，不改变金额、日期、退款净额、筛选、权限或查询次数口径。
+- [年度 ID 守卫](<apps/api/src/modules/statistics/annual-source-id.util.ts>)及[DTO](<apps/api/src/modules/statistics/dto.ts>)要求逐笔请求 sId 为 1–18 位、首位非零的十进制正整数字符串，不 trim、不接受指数/小数/加号/前导零/数组/空白/19 位或已失精度 Number。HTTP query 本来就是字符串；进程内旧 safe-integer 数字调用可转字符串兼容。0/负数仍不开放（维持原 `Min(1)` 的正数范围）；非法请求 400，在数据库前拒绝。源输出守卫接受 numeric(18,0) 范围的有符号整数文本，异常/unsafe Number 503，不能用 `String(unsafeNumber)` 假装恢复精度。
+- [前端年度类型](<apps/neighbor-web/src/lib/statistics.ts>)与[房屋下钻](<apps/neighbor-web/src/components/statistics/HouseDetailSheet.tsx>)同步收紧为字符串，空/NULL ID 不发逐笔请求，不对 ID 做算术或 Number 转换。既有展示、金额、筛选和布局不变。这是年度两张报表的 API ID 类型调整，不是所有 PMS API 的 ID 迁移；发布时 API 与 neighbor-web 应同批核验，不保证外部自写客户端仍能把响应 ID 当 number 运算。
+
+### L.2 回归与未完成项
+
+- [新增 13 项](<apps/api/src/modules/statistics/annual-id-precision.test.ts>)从旧源码 **8/8 RED** 转为 **13/13 GREEN**，覆盖两种类型真实 StatisticsService+PGlite 单元格→房屋→逐笔守恒、相邻 18 位户/账单独立、筛选与越权 403、PG 文本投影、HTTP DTO 精确文本、坏格式/unsafe Number、旧 safe-number 调用、数据库前拒绝、源 NULL 兼容。加入[常规 test:statistics](<apps/api/package.json#L27>)；旧[年度测试](<apps/api/src/modules/statistics/statistics.test.ts>)仅调整 ID 期望，不删金额/退款/日期/权限/未就绪等断言。完整年度回归 **50/50**、API `tsc --noEmit` 通过。
+- 上述为本地 PGlite 合成证据；前端浏览器、独立审查及推送后构建结果另补，不将其预先标为通过。未访问 MIS/生产，未部署、迁移、手工重灌或自动修复历史舍入数据。
+- 费用模块 houseKey 解析、其他统计菜单的 Number ID、#24 原始元数据/地址/日期/金额旧运行时语义及附录 I/K 其他边界仍未完成。整体统计汇总目标未完成，不能以本轮年度下钻精度修复声称全部菜单已生产可用。
