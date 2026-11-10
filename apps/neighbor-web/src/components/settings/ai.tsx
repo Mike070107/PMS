@@ -1,8 +1,40 @@
-import { useCallback, useEffect, useState } from 'react';
-import { request } from '@pms/api-client';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { repairs, request } from '@pms/api-client';
+import { classifyRepairType } from '@pms/shared-types';
 import { ConfirmModal, toast } from '@/components/ui';
 import { FormModal, ResultNote, Row, Section, Stat, Toggle, errMsg, yuan } from './parts';
 import type { SaveSettings, TenantSettings } from './general';
+
+/** 使用正式填单解析接口和当前公司类型词表，展示两者各自结果。 */
+export function AiTrySection() {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState<{ rule: string; matched: string[]; ai: string; description: string; sample: boolean } | null>(null);
+  const input = useRef<HTMLTextAreaElement>(null);
+  const run = async () => {
+    if (!text.trim()) { setError('请输入要测试的报修原话'); input.current?.focus(); return; }
+    setBusy(true); setError(''); setResult(null);
+    try {
+      const [types, parsed] = await Promise.all([repairs.types(), repairs.parseAddress({ text: text.trim() })]);
+      const hit = classifyRepairType(text, types);
+      const aiType = types.find((type) => type.repairType === parsed.ai?.repairType);
+      setResult({ rule: hit?.label || '未识别', matched: hit?.matched || [], ai: aiType?.label || '未返回类型', description: parsed.ai?.description || '', sample: !!parsed.ai?.sampleMatched });
+    } catch (e) { setError(errMsg(e, '识别测试失败')); }
+    finally { setBusy(false); }
+  };
+  return <Section title="测试一句报修" desc="使用当前公司的类型词表和正式填单解析接口；结果仅供检查，不会创建工单。">
+    <label htmlFor="ai-try-text" className="dispatch-notice__label">报修原话 <span className="dispatch-notice__required">*</span></label>
+    <textarea id="ai-try-text" ref={input} className={`in ai-try__input ${error && !text.trim() ? 'ai-try__input--error' : ''}`} value={text} disabled={busy} aria-invalid={!!error && !text.trim()} aria-describedby="ai-try-error" onChange={(e) => { setText(e.target.value); setError(''); }} />
+    {error ? <p id="ai-try-error" className="dispatch-notice__error" role="alert">{error}</p> : null}
+    <button type="button" className="btn p" disabled={busy} onClick={() => void run()}>{busy ? '识别中…' : '开始识别'}</button>
+    {result ? <div className="ai-try__result" aria-live="polite">
+      <div><span>关键词判断</span><b>{result.rule}</b><small>{result.matched.length ? `命中 ${result.matched.join('、')}` : '没有命中关键词'}</small></div>
+      <div><span>填单解析返回</span><b>{result.ai}</b><small>{result.sample ? '命中已确认样例' : result.description || '未返回故障描述'}</small></div>
+    </div> : null}
+    <p className="muted">测试按公司词表展示。实际派单还会核对报修小区所属管理处的启用类型及维修工配置。</p>
+  </Section>;
+}
 
 /* ───────── AI 维修填单助手：接口配置 ───────── */
 export function AiConfigSection({ settings, save, canEdit }: { settings: TenantSettings; save: SaveSettings; canEdit: boolean }) {
@@ -119,7 +151,7 @@ export function AiSamplesSection({ canEdit }: { canEdit: boolean }) {
   const patch = async (r: AiSample, enabled: boolean) => { try { await request({ method: 'PATCH', url: `/settings/ai/samples/${r.id}`, data: { enabled } }); load(); } catch (e) { toast(errMsg(e, '操作失败')); } };
   const typeLabel = (v: unknown) => types.find((t) => t.repairType === v)?.label || String(v);
   return (
-    <Section title="识别样例" desc="遇到系统没认对的说法，把原话和「应该认成什么」加在这里，下一次识别就照这个口径来。每条样例都会进每一次调用，只取最近 20 条启用的——教错了先关掉，不用急着删。"
+    <Section title="识别样例" desc="保存原话和期望结果。完全相同的原话优先使用已启用样例；其他说法会优先选取相似样例供模型参考，最多 20 条。样例有误时可以先停用。"
       extra={canEdit ? <button className="btn" onClick={() => setDraft({})}>＋ 加一条样例</button> : undefined}>
       <div className="seg" style={{ marginBottom: 12 }}>
         <button className={kind === 'repair' ? 'on' : ''} onClick={() => setKind('repair')}>一句话报修</button>

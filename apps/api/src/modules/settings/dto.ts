@@ -10,8 +10,19 @@ import {
   ValidateNested,
   IsNumber,
   IsIn,
+  IsArray,
+  ArrayNotEmpty,
+  ArrayMaxSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+
+export class DispatchNoticeRecipientsDto {
+  @IsInt() @Min(1)
+  officeId: number;
+
+  @IsArray() @ArrayNotEmpty() @ArrayMaxSize(100) @IsInt({ each: true }) @Min(1, { each: true })
+  userIds: number[];
+}
 
 class OwnerPhoneAutoMatchDto {
   @IsBoolean()

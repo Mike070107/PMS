@@ -111,6 +111,16 @@ test('完全相同的原话直接采用样例，不再交给模型二次猜测',
   assert.equal(result?.contactName, '');
 });
 
+test('老样例的智能化编码按租户唯一启用类型转换', async () => {
+  const service = new RepairTextAiService(
+    { askJson: async () => { throw new Error('无需调用模型'); } } as any,
+    { findExact: async () => ({ expected: { repairType: 'smart', description: '话机没信号' } }) } as any,
+  );
+  const result = await service.parse(1, '家里话机没信号', [{ repairType: 'menjing', label: '智能化相关' }]);
+  assert.equal(result?.repairType, 'menjing');
+  assert.equal(result?.sampleMatched, true);
+});
+
 test('明确配置词优先于系统辅助关键词', () => {
   assert.equal(
     matchRepairTypeKeywords('家里门铃打不开门', [

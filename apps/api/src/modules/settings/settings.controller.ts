@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, ParseIntPipe, Patch, UseGuards } from '@nestjs/common';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { RequirePermission } from '../../common/require-permission.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../access/permissions.guard';
-import { UpdateTenantSettingsDto } from './dto';
+import { DispatchNoticeRecipientsDto, UpdateTenantSettingsDto } from './dto';
+import { AccessService } from '../access/access.service';
 import { SettingsService } from './settings.service';
 import { CollectionSmsService, CollectionSmsConfigDto } from './collection-sms.service';
 import { NoticeTemplateService, type NoticeTemplate } from './notice-template.service';
@@ -12,7 +13,44 @@ import { CollectionFollowupService, type FollowupRule } from './collection-follo
 @Controller('settings')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SettingsController {
-  constructor(private readonly settingsService: SettingsService, private readonly collectionSms: CollectionSmsService, private readonly noticeTemplate: NoticeTemplateService, private readonly collectionFollowup: CollectionFollowupService) {}
+  constructor(private readonly settingsService: SettingsService, private readonly collectionSms: CollectionSmsService, private readonly noticeTemplate: NoticeTemplateService, private readonly collectionFollowup: CollectionFollowupService, private readonly accessService: AccessService) {}
+
+  @Get('dispatch-recipients/offices')
+  @RequirePermission('settings', 'view')
+  listDispatchNoticeOffices(@CurrentUser() user: AuthUser) {
+    return this.accessService.listVisibleOffices(user);
+  }
+
+  private async dispatchNoticeOptions(user: AuthUser, officeId: number) {
+    if (!user.tenantId) throw new ForbiddenException('请先选择公司');
+    const offices = await this.accessService.listVisibleOffices(user);
+    if (!offices.some((office) => office.id === officeId)) throw new ForbiddenException('管理处不在你的工作范围内');
+    const [app, web] = await Promise.all([
+      this.accessService.userIdsWithPermission(user.tenantId, 'app:dispatch', 'edit'),
+      this.accessService.userIdsWithPermission(user.tenantId, 'work-orders', 'edit'),
+    ]);
+    const ids = [...new Set([...app, ...web])];
+    const coverage = await this.accessService.filterUsersCoveringOffice(user.tenantId, ids, officeId);
+    const users = await this.settingsService.dispatchNoticeUsers(user.tenantId, ids.filter((id) => coverage.has(id)));
+    const selected = await this.settingsService.getDispatchNoticeRecipients(user.tenantId, officeId);
+    return { officeId, users, selected };
+  }
+
+  @Get('dispatch-recipients/:officeId')
+  @RequirePermission('settings', 'view')
+  getDispatchNoticeRecipients(@Param('officeId', ParseIntPipe) officeId: number, @CurrentUser() user: AuthUser) {
+    return this.dispatchNoticeOptions(user, officeId);
+  }
+
+  @Patch('dispatch-recipients')
+  @RequirePermission('settings', 'edit')
+  async saveDispatchNoticeRecipients(@Body() dto: DispatchNoticeRecipientsDto, @CurrentUser() user: AuthUser) {
+    const options = await this.dispatchNoticeOptions(user, dto.officeId);
+    const allowed = new Set(options.users.map((candidate) => candidate.id));
+    if (dto.userIds.some((id) => !allowed.has(id))) throw new BadRequestException('所选人员必须在职、有派单权限且覆盖该管理处');
+    await this.settingsService.saveDispatchNoticeRecipients(user.tenantId!, dto.officeId, dto.userIds, user.id);
+    return this.dispatchNoticeOptions(user, dto.officeId);
+  }
 
   @Get('collection-sms')
   @RequirePermission('settings', 'view')

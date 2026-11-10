@@ -165,7 +165,7 @@ import {
   restoreStockLots,
 } from '../inventory/stock-ledger';
 import { ObjectStorageService } from '../upload/object-storage.service';
-import { buildTypeKeywords, classifyByKeywords } from './repair-classify.util';
+import { buildTypeKeywords, classifyByKeywords, resolveSubmittedRepairType } from './repair-classify.util';
 import {
   assertWorkOrderTransition,
   resolveRollback,
@@ -4943,6 +4943,7 @@ export class RepairsService implements OnModuleInit {
           workOrder.tenantId,
           workOrder.communityId,
           submittedBy,
+          true,
         )
       : candidates;
     if (!receivers.length) {
@@ -5026,6 +5027,7 @@ export class RepairsService implements OnModuleInit {
     tenantId: number,
     communityId: number,
     exceptUserId: number | null,
+    useOfficeRecipients = false,
   ): Promise<User[]> {
     const officeId = await this.accessService.officeIdOfCommunity(tenantId, communityId);
     // 没有关联管理处时不能把单广播给全公司办公室，避免跨管理处泄露报修地址与住户信息。
@@ -5037,8 +5039,15 @@ export class RepairsService implements OnModuleInit {
       this.accessService.userIdsWithPermission(tenantId, 'app:dispatch', 'edit'),
       this.accessService.userIdsWithPermission(tenantId, 'work-orders', 'edit'),
     ]);
-    const ids = [...new Set([...appDispatcherIds, ...webDispatcherIds])]
+    let ids = [...new Set([...appDispatcherIds, ...webDispatcherIds])]
       .filter((id) => id !== exceptUserId);
+    if (useOfficeRecipients) {
+      const configured = await this.settings.getDispatchNoticeRecipients(tenantId, officeId);
+      if (configured !== null) {
+        const selected = new Set(configured);
+        ids = ids.filter((id) => selected.has(id));
+      }
+    }
     if (!ids.length) return [];
     const coverage = await this.accessService.filterUsersCoveringOffice(tenantId, ids, officeId);
     const scopedIds = ids.filter((id) => coverage.has(id));
@@ -5514,8 +5523,12 @@ export class RepairsService implements OnModuleInit {
     // 端上判不出类型（或老版本没判）时服务端再用本管理处的生效关键词判一次。
     // 仍判不出就保持“未识别”，明确进入派单台；不能硬塞进「其它」—— 一旦「其它」
     // 配了默认维修工，真正未识别的单也会绕过办公室直接推给错误的人。
+    const submittedType = dto.repairType?.trim();
+    const resolvedType = submittedType === 'smart'
+      ? resolveSubmittedRepairType(submittedType, await this.rulesForCommunity(tenantId, dto.communityId))
+      : submittedType;
     const repairType =
-      dto.repairType?.trim() ||
+      resolvedType ||
       (await this.guessRepairType(dto.content, tenantId, dto.communityId)) ||
       null;
     // 类型规则只用来定时限和「该通知谁」：匹配到的维修工都收到通知、都在自己的工单池里看到，

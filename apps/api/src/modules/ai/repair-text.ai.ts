@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ExtractSamplesService } from './extract-samples.service';
 import { LlmService } from './llm.service';
 import { isPublicAreaText } from '../repairs/repair-public-area.util';
+import { resolveSubmittedRepairType } from '../repairs/repair-classify.util';
 
 /**
  * 一句话报修的语义整理。
@@ -104,7 +105,7 @@ const SYSTEM_PROMPT = `你是物业报修的填单助手。用户会说一句很
   说了"我家""家里"的一律按住户家里算。
 - repairType: 报修类型编码。必须从本提示词后面给出的「本项目可用报修类型」中选择；无法确定时给空字符串。
   先看坏的是哪一种设备，再看故障动作。明确设备词优先于泛词：门铃、门口机、可视对讲、
-  门禁属于智能化；入户门锁、锁芯、钥匙、窗户才属于门锁/门窗。
+  门禁、楼宇对讲话机属于智能化；入户门锁、锁芯、钥匙、窗户才属于门锁/门窗。
   「打不开门」「家里」只是故障/位置，不能把明确说出的「门铃」改成「门锁」。
   publicArea 和 repairType 是两件事：住户家里的门铃可以是 publicArea=false，但类型仍是智能化。
   公区报修即使说了住户房号，contactName 仍只提取明确的人名；房号联系人标识由系统撞库后按当前地址生成，模型不要照抄样例里的固定房号。
@@ -216,7 +217,11 @@ export class RepairTextAiService {
     // 不能保证它听话；精确命中若仍调用模型，就会出现同一句话依旧识别错。
     try {
       const exact = await this.samples.findExact(tenantId, value, 'repair');
-      if (exact) return repairResultFromSample(exact.expected, value, allowedTypes);
+      if (exact) {
+        const originalType = str(exact.expected.repairType);
+        const resolvedType = resolveSubmittedRepairType(originalType, repairTypes.map((type) => ({ ...type, enabled: true })));
+        return repairResultFromSample({ ...exact.expected, repairType: resolvedType }, value, allowedTypes);
+      }
     } catch {
       // 样例库不可用时继续走原来的模型链路，不影响正常报修
     }

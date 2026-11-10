@@ -3,6 +3,24 @@ import test from 'node:test';
 import { NotificationsService } from './notifications.service';
 import { NotifyChannel, NotifyStatus } from '../../common/enums';
 
+test('待办公室派单的通知仅发给本管理处配置且仍具备权限的人员', async () => {
+  const { RepairsService } = await import('../repairs/repairs.service');
+  const service: any = Object.create(RepairsService.prototype);
+  service.accessService = {
+    officeIdOfCommunity: async () => 4,
+    userIdsWithPermission: async (_tenant: number, page: string) => page === 'app:dispatch' ? [1, 2] : [2, 3],
+    filterUsersCoveringOffice: async () => new Set([1, 2, 3]),
+  };
+  service.settings = { getDispatchNoticeRecipients: async () => [2, 9] };
+  service.userRepo = { find: async (opts: any) => opts.where.id.value.map((id: number) => ({ id })) };
+  const selected = await service.dispatchersToNotify(1, 8, null, true);
+  assert.deepEqual(selected.map((user: any) => user.id), [2]);
+  service.settings.getDispatchNoticeRecipients = async () => [];
+  assert.deepEqual(await service.dispatchersToNotify(1, 8, null, true), []);
+  service.settings.getDispatchNoticeRecipients = async () => null;
+  assert.deepEqual((await service.dispatchersToNotify(1, 8, null, true)).map((user: any) => user.id), [1, 2, 3]);
+});
+
 function fixture(remaining: number, sendOk = true) {
   let row: any;
   const service: any = Object.create(NotificationsService.prototype);

@@ -2,7 +2,8 @@ import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/com
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
-import { UserRole } from '../../common/enums';
+import { UserRole, UserStatus } from '../../common/enums';
+import { In } from 'typeorm';
 import { House, TenantConfig, User } from '../../entities';
 import { UpdateTenantSettingsDto } from './dto';
 import {
@@ -28,6 +29,32 @@ export class SettingsService {
     @InjectRepository(House)
     private readonly houseRepo: Repository<House>,
   ) {}
+
+  /** null 表示该管理处尚未配置，继续使用原有派单权限规则。 */
+  async getDispatchNoticeRecipients(tenantId: number, officeId: number): Promise<number[] | null> {
+    const row = await this.configRepo.findOne({ where: { tenantId, key: `dispatch_notice_office_${officeId}` } });
+    if (!row) return null;
+    const ids = row.value?.userIds;
+    if (!Array.isArray(ids)) return [];
+    return [...new Set(ids.filter((id): id is number => Number.isSafeInteger(id) && id > 0))];
+  }
+
+  async dispatchNoticeUsers(tenantId: number, ids: number[]) {
+    if (!ids.length) return [];
+    return this.userRepo.find({ where: { tenantId, id: In(ids), status: UserStatus.ACTIVE }, select: ['id', 'name'], order: { id: 'ASC' } });
+  }
+
+  async saveDispatchNoticeRecipients(tenantId: number, officeId: number, ids: number[], userId: number) {
+    const key = `dispatch_notice_office_${officeId}`;
+    const value = { userIds: [...new Set(ids)] };
+    await this.configRepo.query(
+      `INSERT INTO tenant_configs (tenant_id, key, value, created_by, updated_by, created_at, updated_at)
+       VALUES ($1, $2, $3::jsonb, $4, $4, NOW(), NOW())
+       ON CONFLICT (tenant_id, key) DO UPDATE SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
+      [tenantId, key, JSON.stringify(value), userId],
+    );
+    return value;
+  }
 
   /** 给接口用：密钥字段脱敏后再返回 */
   async getSettings(user: AuthUser): Promise<TenantSettings> {

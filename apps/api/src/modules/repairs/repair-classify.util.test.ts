@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildTypeKeywords, classifyByKeywords } from './repair-classify.util';
+import { buildTypeKeywords, classifyByKeywords, resolveSubmittedRepairType } from './repair-classify.util';
 import { SEED_CONTENT_SUGGESTIONS } from './repair-suggestions.util';
 import { DEFAULT_REPAIR_TYPES } from './repair-type-labels';
 import { classifyRepairType } from '../../../../../packages/shared-types/src/repair-classify';
@@ -33,6 +33,22 @@ test('门禁 / 对讲 / 监控 / 道闸 仍然归智能化', () => {
   assert.equal(classify('可视对讲无画面'), 'smart');
   assert.equal(classify('监控看不了'), 'smart');
   assert.equal(classify('道闸不抬杆'), 'smart');
+});
+
+test('话机、门禁和门铃按租户实际编码识别，家用门锁不混入', () => {
+  const rules = [
+    { repairType: 'menjing', label: '智能化相关', enabled: true },
+    { repairType: 'door_window', label: '家里门锁/门窗相关', enabled: true },
+  ];
+  const tenantTypes = rules.map((rule) => ({ ...rule, keywords: buildTypeKeywords(rule) }));
+  for (const text of ['家里话机没信号', '门禁无法刷卡', '门铃不响']) {
+    assert.equal(classifyByKeywords(text, tenantTypes), 'menjing');
+    assert.equal(classifyRepairType(text, tenantTypes)?.repairType, 'menjing');
+  }
+  assert.equal(classifyByKeywords('家里门锁打不开', tenantTypes), 'door_window');
+  assert.equal(resolveSubmittedRepairType('smart', rules), 'menjing');
+  assert.equal(resolveSubmittedRepairType('menjing', rules), 'menjing');
+  assert.equal(resolveSubmittedRepairType('smart', [...rules, { repairType: 'other-smart', label: '智能设备相关', enabled: true }]), 'smart');
 });
 
 test('明确的门铃设备词压过门窗类型的模糊片段', () => {

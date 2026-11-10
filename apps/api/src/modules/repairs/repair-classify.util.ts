@@ -29,7 +29,7 @@ const SYNONYM_GROUPS: string[][] = [
   ['门禁', '刷卡', '门卡', '门禁卡', '感应卡', '磁卡', '刷不开', '刷不上', '刷不了',
     '电子门', '自动门', '电动门', '旋转门', '感应门', '平移门', '伸缩门',
     '门禁机', '门口机', '读卡器', '人脸识别', '刷脸', '梯控'],
-  ['对讲', '可视对讲', '楼宇对讲', '对讲机', '室内机', '分机'],
+  ['对讲', '可视对讲', '楼宇对讲', '对讲机', '室内机', '分机', '话机'],
   ['门铃', '按铃', '呼叫器', '门铃不响'],
   // 「摄像」一个词就盖住摄像头 / 摄像机；「图像没有」「没图像」是监控坏了最常见的说法
   // （2026-09-07 Mike 报「有 5 个摄像头图像没有」落到了「其它」）
@@ -122,6 +122,17 @@ export function buildTypeKeywords(rule: {
     }
   }
   return expandSynonyms(seeds);
+}
+
+/** 旧端内置 smart 编码仅在本处存在唯一智能化类型时转换为实际配置编码。 */
+export function resolveSubmittedRepairType(
+  submitted: string,
+  rules: Array<{ repairType: string; label: string; enabled: boolean }>,
+): string {
+  const active = rules.filter((rule) => rule.enabled);
+  if (active.some((rule) => rule.repairType === submitted) || submitted !== 'smart') return submitted;
+  const smart = active.filter((rule) => /智能|弱电/.test(rule.label));
+  return smart.length === 1 ? smart[0].repairType : submitted;
 }
 
 /**
