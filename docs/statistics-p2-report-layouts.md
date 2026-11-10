@@ -1539,3 +1539,4 @@ sudo docker exec -i pms-postgres psql -U pms -d pms_repair -X -P pager=off
 
 - 新增只读对账脚本 [parity-audit.mjs](<tools/statistics-parity-audit/parity-audit.mjs>)：`node tools/statistics-parity-audit/parity-audit.mjs --office 01 --year 2007 --detail` 输出管理处×年度的「未收(全部)/未收(不含06)/其中06」以及明细行，便于以后每份新快照复用同一口径复核。
 - 依据是本地 CSV 逻辑快照，不是执行生产 PMS SQL，也没有连接 MIS/生产；快照 CSV 未导出楼表地址分段列，脚本明细只显示室号。默认是否包含 06 属于产品口径选择：当前默认与 2026 年基线截图一致（排除 06），本轮未擅自改默认值。
+- 「已排除 06 空房」提示提交 `0e672930` 已推送，前端 `tsc --noEmit` 通过、默认年度表浏览器用例 1/1 通过；随后在同一脚本的干净 detached worktree 里重建 API 与 Web，退出码均 0，证据见 `.tmp/legacy-statistics-round18-annual-id/build-evidence-0e672930/verification.json`（API 三个产物哈希与 `bb7dd926` 一致，Web 98 个文件）。仍未部署、未连生产。
