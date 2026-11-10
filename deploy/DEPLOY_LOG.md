@@ -7081,3 +7081,10 @@
 - 自上次（dd52dda4）以来上线的相关提交：
   - ae1a0254 feat(access): 行级 appliedSystems/grantedBuildings/latestTaskAt + 详情权限读回与 verify-grant + 任务回执字段
 
+## 2026-11-10 08:38 · web · b54c2fab
+
+- 包：`pms-web-20261110-083734.tar.gz`
+- 提交：b54c2fab deploy: api → 451eef90
+- 自上次（ed557694）以来上线的相关提交：
+  - 451eef90 feat(access-ui): 门禁发卡操作区——已添加绿色按钮/授权轮询完成自动关弹窗/最新任务中文+时间+逐栋回执/权限重新核验
+
