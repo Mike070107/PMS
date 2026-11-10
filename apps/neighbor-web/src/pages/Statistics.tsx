@@ -1194,6 +1194,9 @@ export default function Statistics() {
                 {!isLoading && !activeError && (applied?.type === 'received' || applied?.type === 'arrears') && annual && annual.available !== false ? <span className="tag mute">{annual.rows.length} 个管理处</span> : null}
                 {!isLoading && !activeError && activeAvailable !== false && applied?.type === 'received' && annual?.subtotal ? <span className="tag acc">合计 {fmtCents(annual.subtotal.totalCents)}</span> : null}
                 {!isLoading && !activeError && activeAvailable !== false && applied?.type === 'arrears' && annual?.subtotal ? <span className="tag acc">合计 {fmtCents(annual.subtotal.totalCents)}</span> : null}
+                {!isLoading && !activeError && activeAvailable !== false && applied?.type === 'arrears' && applied.natures.length > 0 && !applied.natures.includes('06') ? (
+                  <span className="tag mute" data-testid="stats-arrears-nature06-hint" title="与旧系统全选性质对账时，需要手动勾选 06 空房">已排除 06 空房</span>
+                ) : null}
                 {!isLoading && !activeError && activeAvailable !== false && applied?.type === 'fee-nature' && collection?.subtotal ? <span className="tag acc">合计 {fmtCents(collection.subtotal.netCents)}</span> : null}
                 {!isLoading && !activeError && activeAvailable !== false && (applied?.type === 'daily' || applied?.type === 'daily-fees') && daily?.subtotal ? <span className="tag acc">合计 {fmtCents(daily.subtotal.totalCents)}</span> : null}
                 {!isLoading && !activeError && activeAvailable !== false && applied?.type === 'arrears-prepaid' && arrearsSummary?.total ? (

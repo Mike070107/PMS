@@ -961,6 +961,7 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
       assert.equal(await js(`document.querySelector('[data-office-code="02"][data-year="${year}"]').textContent.trim()`), amount, `02×${year} 年度金额应对上生产验收基准`);
     }
     await screenshot('statistics-arrears-1440.png');
+    assert.equal(await js("document.querySelector('[data-testid=stats-arrears-nature06-hint]')?.textContent.trim()"), '已排除 06 空房', '欠费默认排除 06 时结果头给出对账提示');
     // 报表默认房屋性质自动切换：实收 13 项（含 06）→ 欠费 12 项（排除 06）。
     await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/annual'); const last = list[list.length - 1]; return last && last.query.type === 'arrears' && last.query.natures === '" + expectedDefaultNatures + "'; })()", '欠费默认房屋性质自动排除 06');
     assert.equal(await js("document.querySelector('[data-nature-code=\"06\"]').checked"), false, '切到欠费后 06 空房不勾选');
@@ -973,6 +974,7 @@ test('统计汇总：默认年度表、筛选参数、三级下钻、错误重�
     await selectReportAndGenerate(js, waitFor, 'received');
     await waitFor("(() => { const list = window.__calls.filter((c) => c.url === '/statistics/annual'); const last = list[list.length - 1]; return last && last.query.type === 'received' && last.query.natures === '" + receivedDefaultNatures + "'; })()", '实收默认房屋性质自动包含 06');
     assert.equal(await js("document.querySelector('[data-nature-code=\"06\"]').checked"), true, '切回实收后 06 空房恢复勾选');
+    assert.equal(await js("!!document.querySelector('[data-testid=stats-arrears-nature06-hint]')"), false, '实收含 06 时不出现排除提示');
     // 用户手动改过房屋性质后切换报表：保留用户选择，不强制套默认值。
     await js("document.querySelector('[data-action=natures-clear]').click()");
     await pause(200);
