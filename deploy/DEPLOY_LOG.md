@@ -7194,3 +7194,10 @@
   - f68669af feat(statistics): enable daily fees report and classified amount drilldowns
   - f8634eae fix(repairs): scope dispatch notices and recognize intercoms
   - e93c9998 feat(statistics): add ticket item summaries and scoped ticket drilldown
+## 2026-11-11 12:44 · miniapp-staff · 1e953e2a
+
+- 包：`1.0.20261111d`
+- 提交：1e953e2a docs(inventory): record staff upload 1.0.20261111c
+- 说明：CLI上传成功；API已部署同源版本；体验版尚未核对切换，手机未验收，未提交审核或正式发布
+- 自上次（cb6dcf65）以来没有相关提交（重新部署）
+
