@@ -95,6 +95,9 @@ async function exportXlsx(js, waitFor, title, fragments = []) {
   await js("window.__blobs = []; window.__downloads = []; document.querySelector('[data-testid=stats-export]').click(); document.querySelector('[data-testid=stats-export]').click()");
   await waitFor('window.__blobs.length >= 1 && window.__downloads.length >= 1', '异步 Excel 导出');
   await waitFor("!document.querySelector('[data-testid=stats-export]').disabled", 'Excel 导出结束');
+  // Check the 1200ms cooldown before transferring/parsing the workbook. On a busy
+  // machine those operations can legitimately outlast it; a later click is not rapid.
+  await js("document.querySelector('[data-testid=stats-export]').click()");
   assert.equal(await js('window.__blobs.length'), 1, '重复点击仅创建一个 Blob');
   const downloads = await js('window.__downloads');
   assert.equal(downloads.length, 1, '只点击一个下载 anchor');
@@ -111,10 +114,6 @@ async function exportXlsx(js, waitFor, title, fragments = []) {
   const normalize = value => String(value).replace(/[¥￥,\s]/g, '');
   for (const fragment of [title, ...fragments]) assert.ok(normalize(text).includes(normalize(fragment)), `XLSX 包含 ${fragment}`);
   assert.equal(await js('window.__calls.length'), before, '主报表仅导出当前 DOM 已加载行，不另查全量或其他报表');
-  // 快速二次导出被 1200ms 门闩拒绝；不把异步导出完成当作可无限连点。
-  await js("document.querySelector('[data-testid=stats-export]').click()");
-  assert.equal(await js('window.__blobs.length'), 1);
-  assert.equal(await js('window.__downloads.length'), 1);
   return { workbook, rows, text };
 }
 
@@ -521,7 +520,7 @@ import './src/styles/calendar.css';
 import './src/styles/erp-reference.css';
 if (location.search.includes('options-unavailable')) window.__optionsUnavailable = true;
 function Fixture() {
-  return <><IconSprite /><div id="web"><aside className="side"><div className="brand">PMS · 合成验收</div></aside><section className="main"><header className="top"><div className="crumb">财务统计<b>统计汇总</b></div></header><div className="content"><div className="wrap"><Statistics /></div></div></section></div><Toaster /></>;
+  return <><IconSprite /><div id="web"><aside className="side"><div className="brand">PMS · 合成验收</div></aside><section className="main"><header className="top"><div className="crumb">财务统计<b>统计汇总</b></div></header><div className="content"><div className="wrap wrap-fluid"><Statistics /></div></div></section></div><Toaster /></>;
 }
 createRoot(document.getElementById('root')).render(<Fixture />);
 `;
@@ -2260,7 +2259,7 @@ test('真实Shell全宽与顶部抽屉：2886/1920/1440/390/320逐帧布局零�
       assert.ok(Math.abs(sizing.available-sizing.wrap)<=1, width+' stats must fill Shell available content '+JSON.stringify(sizing));
       assert.ok(sizing.padding>=16 && sizing.padding<=28, 'retain normal content padding');
       assert.ok(await js('document.documentElement.scrollWidth<=innerWidth+1'),width+' page must not horizontally overflow');
-      const ordinary = await js(`(() => {const s=document.querySelector('.stats');s.classList.remove('stats');const w=document.querySelector('.content>.wrap').getBoundingClientRect().width;s.classList.add('stats');return w;})()`);
+      const ordinary = await js(`(() => {const s=document.querySelector('.content>.wrap');s.classList.remove('wrap-fluid');const w=s.getBoundingClientRect().width;s.classList.add('wrap-fluid');return w;})()`);
       assert.ok(Math.abs(ordinary-Math.min(1460,sizing.available))<=1, 'non-stats wrap remains capped');
       // A long result page is already scrolled before opening. Keep table horizontal scroll too.
       await js(`(() => { if(!document.querySelector('[data-layout-tail]')) {const tail=document.createElement('div');tail.dataset.layoutTail='';tail.style.height='1000px';document.querySelector('.content>.wrap').append(tail);} document.querySelector('.content').scrollTop=120; const t=document.querySelector('.stats-table-scroll');t.scrollLeft=450;})()`);

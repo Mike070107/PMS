@@ -73,6 +73,8 @@ input,select,textarea{font:inherit;color:inherit}
 .dot{position:absolute;top:9px;right:10px;width:8px;height:8px;border-radius:50%;background:var(--dang);border:2px solid var(--surface)}
 .content{flex:1;overflow:auto;padding:24px 28px 80px}
 .wrap{max-width:1460px;margin:0 auto}
+/* Report routes opt in at Shell level, including lazy-loading and error states. */
+.wrap.wrap-fluid{width:100%;max-width:none;min-width:0}
 
 /* 通用组件 */
 .btn{height:40px;padding:0 16px;border-radius:9px;border:1px solid var(--line);background:#fff;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;font-size:15px;font-weight:600;color:var(--ink);transition:.12s}

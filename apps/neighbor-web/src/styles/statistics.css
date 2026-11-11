@@ -1,6 +1,4 @@
 /* 统计汇总：悬浮可收纳筛选 + 年度汇总表（编号/管理处固定列、年度横向滚动、合计高亮、表格线）+ 三级下钻 */
-/* Shell owns the cap; lift it only while this wrap hosts the statistics route. */
-.content > .wrap:has(> .stats) { max-width: none; min-width: 0; }
 .stats { min-width: 0; }
 
 /* 开票统计沿用现有表格/抽屉，超宽内容只在表内滚动。 */
