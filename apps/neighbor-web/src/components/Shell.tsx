@@ -263,7 +263,7 @@ export default function Shell() {
           </button>
         </header>
         <div className="content">
-          <div className="wrap">
+          <div className={page === 'statistics' ? 'wrap wrap-fluid' : 'wrap'}>
             <PageBoundary resetKey={loc.pathname + loc.search}><Outlet /></PageBoundary>
           </div>
         </div>
