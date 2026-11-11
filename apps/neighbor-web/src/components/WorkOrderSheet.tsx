@@ -118,10 +118,18 @@ export default function WorkOrderSheet({
   const req = detail?.request;
 
   const head = (
-    <div className="l3" style={{ marginBottom: 10 }}>
+    <div className="l3 wo-sheet-head" style={{ marginBottom: 10 }}>
       {wo ? <><Pill status={stageOf(wo)} /> {wo.urgent ? <span className="pill urg" style={{ marginLeft: 6 }}>紧急</span> : null}
         {isOverdue(wo) ? <span className="pill urg" style={{ marginLeft: 6 }}>已超时</span> : null}
-        <span style={{ marginLeft: 8 }}>{wo.summaryContent || req?.content || ''}</span></> : null}
+        <span className="wo-sheet-summary" title={wo.summaryContent || req?.content || ''}>{wo.summaryContent || req?.content || ''}</span></> : null}
+      {detail && wo && !flow ? (
+        <NextActions
+          detail={detail}
+          moreOpen={moreOpen}
+          toggleMore={() => setMoreOpen((v) => !v)}
+          onFlow={(f) => { setFlow(f); setMoreOpen(false); }}
+        />
+      ) : null}
       <div className="tabs" style={{ marginTop: 12 }}>
         {TABS.map(([k, t]) => (
           <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{t}</button>
@@ -150,12 +158,6 @@ export default function WorkOrderSheet({
           />
         ) : (
           <>
-            <NextActions
-              detail={detail}
-              moreOpen={moreOpen}
-              toggleMore={() => setMoreOpen((v) => !v)}
-              onFlow={(f) => { setFlow(f); setMoreOpen(false); }}
-            />
             {tab === 'info' ? <InfoTab detail={detail} /> : null}
             {tab === 'tl' ? <TimelineTab detail={detail} /> : null}
             {tab === 'mat' ? <MaterialTab detail={detail} onChanged={() => void afterAction('已更新')} /> : null}

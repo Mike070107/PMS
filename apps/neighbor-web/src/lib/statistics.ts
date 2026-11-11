@@ -79,18 +79,19 @@ export interface AnnualSummaryResponse {
 }
 
 export interface AnnualDetailRow {
-  /** 后端房屋 id 是数字（数据库为空时可能为 null，此时不能下钻逐笔）。 */
-  sId: number | null;
+  /** 后端房屋 id 源为字符串（避免超大数精度丢失；数据库为空时可能为 null，此时不能下钻逐笔）。 */
+  sId: string | null;
   address: string | null;
   ownerName: string | null;
   areaSqm: number | string | null;
   periodRange: string | null;
   amountCents: number;
 }
-/** 实收报表下钻的行：逐笔已收流水（旧系统「项目实收年度汇总」点单元格即逐笔清单）。 */
+/** 实收报表下钻的行：实收明细按房屋 × 应收年月聚合，点房屋再查逐笔。 */
 export interface AnnualReceivedDetailRow {
-  zjId: string | number;
-  sId?: number | null;
+  /** 实收按户×月聚合时后端固定返回 null；逐笔流水才可能有源ID。 */
+  zjId: string | null;
+  sId?: string | null;
   address: string | null;
   ownerName: string | null;
   areaSqm: number | string | null;
@@ -119,7 +120,7 @@ export interface AnnualDetailResponse {
 }
 
 export interface AnnualBillRow {
-  zjId: string | number;
+  zjId: string;
   feeCode?: string | null;
   feeName: string | null;
   period: string | null;

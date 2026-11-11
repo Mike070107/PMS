@@ -224,7 +224,8 @@ export interface ListQuery {
    */
   scope?: 'mine' | 'pool' | 'dispatch' | 'reported' | 'all' | 'done';
   activeOnly?: '1';
-  sort?: 'newest';
+  /** Web 调度台：先维修时间、再报修时间倒序。 */
+  sort?: 'repair_time_desc' | 'newest';
   /** 关键词：单号 / 报修地址 / 故障描述 */
   q?: string;
 }

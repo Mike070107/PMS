@@ -11,6 +11,7 @@ import { loadCollectionTargets } from './collection-targets.util';
 import { buildScreenSummary } from './screen-summary.util';
 import { chargeStandardMirrorParams } from './charge-standard-mirror.util';
 import { dimensionMirrorRows } from './dimension-mirror.util';
+import { billCursorId, billMirrorRows } from './bill-mirror.util';
 
 type MirrorMode = 'mis' | 'mirror';
 type MirrorCommunity = { id: number; name: string; offices: string[] };
@@ -138,7 +139,7 @@ export class MisMirrorService {
       return 0;
     }
     let lastUpdated = state.last_updated_at ? new Date(state.last_updated_at) : null;
-    let lastId = Number(state.last_id ?? 0);
+    let lastId = billCursorId(state.last_id ?? '0');
     let total = 0;
     // 主增量：ZJ_ID 主键 keyset；不碰 updatedate，保证不扫 65 万行。
     for (let i = 0; i < MAX_BATCHES_PER_TICK; i += 1) {
@@ -146,7 +147,7 @@ export class MisMirrorService {
       if (!rows.length) break;
       await this.upsertBills(rows);
       total += rows.length;
-      lastId = Number(rows[rows.length - 1].zjId);
+      lastId = rows[rows.length - 1].zjId;
       if (rows.length < BATCH_SIZE) break;
     }
     // 补漏：旧 ZJ_ID 的 updatedate 变更每 15 分钟扫一次；不能作为每 5 分钟主谓词。
@@ -193,8 +194,8 @@ export class MisMirrorService {
   }
 
   private billSelect(where: string, order: string, params: Record<string, string | number>) {
-    return `SELECT TOP (@take) w.ZJ_ID AS zjId, l.管理处 AS officeCode, l.L_ID AS lId,
-        s.S_ID AS sId, z.ZH_ID AS zhId, z.姓名 AS ownerName, s.室 AS roomNo,
+    return `SELECT TOP (@take) CONVERT(varchar(20),w.ZJ_ID) AS zjId, l.管理处 AS officeCode, CONVERT(varchar(20),l.L_ID) AS lId,
+        CONVERT(varchar(20),s.S_ID) AS sId, CONVERT(varchar(20),z.ZH_ID) AS zhId, z.姓名 AS ownerName, s.室 AS roomNo,
         ISNULL(l.地址1,N'')+ISNULL(l.字1,N'')+ISNULL(l.地址2,N'')+ISNULL(l.字2,N'')+
         ISNULL(l.地址3,N'')+ISNULL(l.字3,N'')+ISNULL(l.地址4,N'')+ISNULL(l.字4,N'')+
         ISNULL(s.室,N'')+ISNULL(s.字,N'') AS address,
@@ -202,6 +203,11 @@ export class MisMirrorService {
         CAST(ROUND(w.ZJ_JE * 100, 0) AS bigint) AS amountCents,
         CONVERT(varchar(10),w.ZJ_SKRQ,23) AS paidDate,
         CONVERT(varchar(10),w.ZJ_TKRQ,23) AS refundDate,
+        CONVERT(varchar(10),w.ZJ_Jzrq,23) AS bookDate,
+        CONVERT(varchar(10),w.ZJ_TZRQ,23) AS adjustDate,
+        CONVERT(varchar(10),w.ZJ_Bdrq,23) AS changeDate,
+        w.交易订单号 AS tradeOrderNo,
+        w.商户订单号 AS merchantOrderNo,
         COALESCE(NULLIF(w.收款方式,N''),m.收款方式) AS paymentMethod,
         w.收款人 AS cashier,
         CAST(ROUND(ISNULL(w.收入,0)*100,0) AS bigint) AS incomeCents,
@@ -219,23 +225,24 @@ export class MisMirrorService {
       ORDER BY ${order}`;
   }
 
-  private async readNewBillBatch(lastId: number) {
-    const params: Record<string, string | number> = { take: BATCH_SIZE, lastId };
+  private async readNewBillBatch(lastId: string) {
+    const params: Record<string, string | number> = { take: BATCH_SIZE, lastId: billCursorId(lastId) };
     const sql = this.billSelect('w.ZJ_ID > @lastId', 'w.ZJ_ID ASC', params);
     const result = await this.misFees.mirrorRead(sql, params, MIS_TIMEOUT);
-    return (result?.recordsets?.[0] ?? []) as any[];
+    return billMirrorRows(result, params.lastId as string);
   }
 
   private async readUpdatedBillBatch(since: Date, take = BATCH_SIZE) {
     const params: Record<string, string | number> = { take, since: this.misDateTime(since) };
     const sql = this.billSelect('w.updatedate > CONVERT(datetime,@since,126)', 'w.updatedate ASC,w.ZJ_ID ASC', params);
     const result = await this.misFees.mirrorRead(sql, params, MIS_TIMEOUT);
-    return (result?.recordsets?.[0] ?? []) as any[];
+    return billMirrorRows(result);
   }
 
   private async upsertBills(rows: any[]) {
+    rows = billMirrorRows({ recordsets: [rows] });
     if (!rows.length) return;
-    const fields = ['zjId', 'officeCode', 'lId', 'sId', 'zhId', 'ownerName', 'roomNo', 'address', 'feeCode', 'feeName', 'natureCode', 'period', 'amountCents', 'paidDate', 'refundDate', 'paymentMethod', 'cashier', 'incomeCents', 'receiptWarehouseNo', 'invoiceNo', 'receiptVoucherNo', 'sourceUpdatedAt'];
+    const fields = ['zjId', 'officeCode', 'lId', 'sId', 'zhId', 'ownerName', 'roomNo', 'address', 'feeCode', 'feeName', 'natureCode', 'period', 'amountCents', 'paidDate', 'refundDate', 'bookDate', 'adjustDate', 'changeDate', 'tradeOrderNo', 'merchantOrderNo', 'paymentMethod', 'cashier', 'incomeCents', 'receiptWarehouseNo', 'invoiceNo', 'receiptVoucherNo', 'sourceUpdatedAt'];
     const values: unknown[] = [];
     const tuples: string[] = [];
     for (const row of rows) {
@@ -246,13 +253,15 @@ export class MisMirrorService {
       tuples.push(`(${placeholders.join(',')})`);
     }
     await this.dataSource.query(
-      `INSERT INTO mis_mirror_bill(zj_id,office_code,l_id,s_id,zh_id,owner_name,room_no,address,fee_code,fee_name,nature_code,period,amount_cents,paid_date,refund_date,payment_method,cashier,income_cents,receipt_warehouse_no,invoice_no,receipt_voucher_no,source_updated_at)
+      `INSERT INTO mis_mirror_bill(zj_id,office_code,l_id,s_id,zh_id,owner_name,room_no,address,fee_code,fee_name,nature_code,period,amount_cents,paid_date,refund_date,book_date,adjust_date,change_date,trade_order_no,merchant_order_no,payment_method,cashier,income_cents,receipt_warehouse_no,invoice_no,receipt_voucher_no,source_updated_at)
        VALUES ${tuples.join(',')}
        ON CONFLICT (zj_id) DO UPDATE SET
          office_code=EXCLUDED.office_code,l_id=EXCLUDED.l_id,s_id=EXCLUDED.s_id,zh_id=EXCLUDED.zh_id,
          owner_name=EXCLUDED.owner_name,room_no=EXCLUDED.room_no,address=EXCLUDED.address,
          fee_code=EXCLUDED.fee_code,fee_name=EXCLUDED.fee_name,nature_code=EXCLUDED.nature_code,period=EXCLUDED.period,
          amount_cents=EXCLUDED.amount_cents,paid_date=EXCLUDED.paid_date,refund_date=EXCLUDED.refund_date,
+         book_date=EXCLUDED.book_date,adjust_date=EXCLUDED.adjust_date,change_date=EXCLUDED.change_date,
+         trade_order_no=EXCLUDED.trade_order_no,merchant_order_no=EXCLUDED.merchant_order_no,
          payment_method=EXCLUDED.payment_method,cashier=EXCLUDED.cashier,
          income_cents=EXCLUDED.income_cents,receipt_warehouse_no=EXCLUDED.receipt_warehouse_no,
          invoice_no=EXCLUDED.invoice_no,receipt_voucher_no=EXCLUDED.receipt_voucher_no,
@@ -540,15 +549,17 @@ export class MisMirrorService {
          ON CONFLICT (tenant_id,source_table) DO UPDATE SET initialized_at=now(),last_attempt_at=now(),last_error=NULL`,
         [tenantId],
       );
-      let lastId = 0;
+      let lastId = '0';
       let total = 0;
       for (;;) {
-        const batch = (await this.misFees.mirrorRead(
-          `SELECT TOP (@take) w.ZJ_ID AS zjId, l.管理处 AS officeCode, l.L_ID AS lId, s.S_ID AS sId, z.ZH_ID AS zhId,
+        const batch = billMirrorRows(await this.misFees.mirrorRead(
+          `SELECT TOP (@take) CONVERT(varchar(20),w.ZJ_ID) AS zjId, l.管理处 AS officeCode, CONVERT(varchar(20),l.L_ID) AS lId, CONVERT(varchar(20),s.S_ID) AS sId, CONVERT(varchar(20),z.ZH_ID) AS zhId,
              z.姓名 AS ownerName, s.室 AS roomNo,
              ISNULL(l.地址1,N'')+ISNULL(l.字1,N'')+ISNULL(l.地址2,N'')+ISNULL(l.字2,N'')+ISNULL(l.地址3,N'')+ISNULL(l.字3,N'')+ISNULL(l.地址4,N'')+ISNULL(l.字4,N'')+ISNULL(s.室,N'')+ISNULL(s.字,N'') AS address,
              w.ZJ_LX AS feeCode, f.XM AS feeName, w.FWXZ_DH AS natureCode, w.ZJ_CNY AS period, CAST(ROUND(w.ZJ_JE*100,0) AS bigint) AS amountCents,
              CONVERT(varchar(10),w.ZJ_SKRQ,23) AS paidDate, CONVERT(varchar(10),w.ZJ_TKRQ,23) AS refundDate,
+             CONVERT(varchar(10),w.ZJ_Jzrq,23) AS bookDate, CONVERT(varchar(10),w.ZJ_TZRQ,23) AS adjustDate, CONVERT(varchar(10),w.ZJ_Bdrq,23) AS changeDate,
+             w.交易订单号 AS tradeOrderNo, w.商户订单号 AS merchantOrderNo,
              COALESCE(NULLIF(w.收款方式,N''),m.收款方式) AS paymentMethod, w.收款人 AS cashier,
              CAST(ROUND(ISNULL(w.收入,0)*100,0) AS bigint) AS incomeCents,
              w.票据入库单编号 AS receiptWarehouseNo, w.发票号码 AS invoiceNo, w.凭证号码 AS receiptVoucherNo,
@@ -561,15 +572,15 @@ export class MisMirrorService {
            WHERE w.ZJ_ID > @lastId AND ISNULL(w.SC,N'0')=N'0'
            ORDER BY w.ZJ_ID`,
           { take: BATCH_SIZE, lastId }, MIS_TIMEOUT,
-        )).recordsets?.[0] ?? [];
+        ), lastId);
         await this.upsertBills(batch as any[]);
         total += batch.length;
         if (!batch.length) break;
-        lastId = Number((batch as any[])[batch.length - 1].zjId);
+        lastId = batch[batch.length - 1].zjId;
         if (batch.length < BATCH_SIZE) break;
       }
       const last = await this.dataSource.query(
-        `SELECT MAX(source_updated_at) AS lastUpdated,MAX(zj_id) AS lastId FROM mis_mirror_bill`,
+        `SELECT MAX(source_updated_at) AS lastUpdated,MAX(zj_id)::text AS lastId FROM mis_mirror_bill`,
       );
       await this.dataSource.query(
         `UPDATE mis_sync_state SET last_updated_at=$2,last_id=$3,last_success_at=now(),last_error=NULL,lag_rows=0,synced_rows=$4
@@ -850,20 +861,61 @@ export class MisMirrorService {
       params, MIS_TIMEOUT,
     );
     const sourceRow = source?.recordsets?.[0]?.[0] || {};
+    // 维度镜像（楼/室/业主）只在手工重灌时重建：每日对账同时比较维度行数，
+    // 以及镜像内房号/地址的空白规模，避免“金额对得上但房号没同步”被当成正常。
+    const dimensionSource: any = await this.misFees.mirrorRead(
+      `SELECT (SELECT COUNT_BIG(*) FROM dbo.楼表) AS buildings,
+              (SELECT COUNT_BIG(*) FROM dbo.室表) AS rooms,
+              (SELECT COUNT_BIG(*) FROM dbo.业主表) AS owners`,
+      {}, MIS_TIMEOUT,
+    );
+    const dimensionSourceRow = dimensionSource?.recordsets?.[0]?.[0] || {};
     const mirror: any[] = await this.dataSource.query(
       `SELECT COUNT(*)::int AS total,COALESCE(SUM(amount_cents),0)::bigint AS amount FROM mis_mirror_bill`,
     );
+    const dimensionMirror: any[] = await this.dataSource.query(
+      `SELECT (SELECT COUNT(*)::int FROM mis_mirror_building) AS buildings,
+              (SELECT COUNT(*)::int FROM mis_mirror_room) AS rooms,
+              (SELECT COUNT(*)::int FROM mis_mirror_owner) AS owners,
+              (SELECT COUNT(*)::int FROM mis_mirror_room WHERE room_no IS NULL OR room_no='') AS "roomsWithoutNo",
+              (SELECT COUNT(*)::int FROM mis_mirror_bill WHERE address IS NULL OR address='') AS "billsWithoutAddress"`,
+    );
     const totalDiff = Number(mirror[0]?.total || 0) - Number(sourceRow.total || 0);
     const amountDiff = Number(mirror[0]?.amount || 0) - Math.round(Number(sourceRow.amount || 0));
-    const ok = totalDiff === 0 && amountDiff === 0;
+    const dimensionDiff = {
+      buildings: Number(dimensionMirror[0]?.buildings || 0) - Number(dimensionSourceRow.buildings || 0),
+      rooms: Number(dimensionMirror[0]?.rooms || 0) - Number(dimensionSourceRow.rooms || 0),
+      owners: Number(dimensionMirror[0]?.owners || 0) - Number(dimensionSourceRow.owners || 0),
+    };
+    const dimensionMismatch = Object.values(dimensionDiff).some((diff) => diff !== 0);
+    const ok = totalDiff === 0 && amountDiff === 0 && !dimensionMismatch;
+    const quality = {
+      roomsWithoutNo: Number(dimensionMirror[0]?.roomsWithoutNo || 0),
+      billsWithoutAddress: Number(dimensionMirror[0]?.billsWithoutAddress || 0),
+    };
+    const problems = [
+      totalDiff === 0 ? null : `记录差 ${totalDiff}`,
+      amountDiff === 0 ? null : `金额差 ${amountDiff} 分`,
+      dimensionMismatch ? `维度差 楼 ${dimensionDiff.buildings}、室 ${dimensionDiff.rooms}、业主 ${dimensionDiff.owners}（维度仅在手工重灌时重建，请重灌后复核）` : null,
+    ].filter(Boolean);
     await this.dataSource.query(
       `INSERT INTO system_logs(tenant_id,category,level,source,action,success,message,detail,created_at,updated_at)
        VALUES($1,'alert',$2,'mis-mirror',$3,$4,$5,$6::jsonb,now(),now())`,
       [tenantId, ok ? 'info' : 'warning', 'mis_mirror_reconcile', ok,
-        ok ? 'MIS 镜像对账一致' : `MIS 镜像不一致：记录差 ${totalDiff}、金额差 ${amountDiff} 分`,
-        JSON.stringify({ sourceTotal: Number(sourceRow.total || 0), mirrorTotal: Number(mirror[0]?.total || 0), sourceAmountCents: Math.round(Number(sourceRow.amount || 0)), mirrorAmountCents: Number(mirror[0]?.amount || 0), totalDiff, amountDiff })],
+        ok ? 'MIS 镜像对账一致' : `MIS 镜像不一致：${problems.join('；')}`,
+        JSON.stringify({ sourceTotal: Number(sourceRow.total || 0), mirrorTotal: Number(mirror[0]?.total || 0), sourceAmountCents: Math.round(Number(sourceRow.amount || 0)), mirrorAmountCents: Number(mirror[0]?.amount || 0), totalDiff, amountDiff, dimensionDiff, quality })],
     ).catch(() => undefined);
-    return { ok, sourceTotal: Number(sourceRow.total || 0), mirrorTotal: Number(mirror[0]?.total || 0), sourceAmountCents: Math.round(Number(sourceRow.amount || 0)), mirrorAmountCents: Number(mirror[0]?.amount || 0), totalDiff, amountDiff };
+    return {
+      ok,
+      sourceTotal: Number(sourceRow.total || 0),
+      mirrorTotal: Number(mirror[0]?.total || 0),
+      sourceAmountCents: Math.round(Number(sourceRow.amount || 0)),
+      mirrorAmountCents: Number(mirror[0]?.amount || 0),
+      totalDiff,
+      amountDiff,
+      dimensionDiff,
+      quality,
+    };
   }
 
   async today(q: { date?: string; communityIds?: number[] }, user: AuthUser, access?: ResolvedAccess) {

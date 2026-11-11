@@ -93,7 +93,7 @@ export default function HouseDetailSheet({
   const mismatch = !!detail && detail.available !== false && detail.totalCents != null
     && !!target && detail.totalCents !== target.amountCents;
   const openBills = (row: AnnualDetailRow) => {
-    if (row.sId == null) { toast('该房屋缺少房屋 id，无法查看逐笔账单'); return; }
+    if (row.sId == null || row.sId === '') { toast('该房屋缺少房屋 id，无法查看逐笔账单'); return; }
     setBillsTarget(row);
   };
   const receivedCount = detail?.count ?? receivedRows.length;

@@ -6,6 +6,7 @@ import { Community } from '../../entities';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
 import { parseCollectionDate } from './collection.util';
+import { annualRoomId, annualSourceId } from './annual-source-id.util';
 import {
   StatisticsAnnualDetailQueryDto,
   StatisticsAnnualQueryDto,
@@ -183,8 +184,8 @@ export class StatisticsService {
       const raw: any[] = await this.dataSource.query(built.sql, built.params);
       const rows = raw.map((row) => ({
         // 聚合后单笔标识/收银信息无意义；收据/发票号镜像缺，一并返回 null。
-        zjId: null as number | null,
-        sId: row.sId == null ? null : Number(row.sId),
+        zjId: null as string | null,
+        sId: row.sId == null ? null : annualSourceId(row.sId),
         address: row.address == null ? null : String(row.address),
         ownerName: row.ownerName == null ? null : String(row.ownerName),
         areaSqm: row.areaSqm == null ? null : Number(row.areaSqm),
@@ -221,7 +222,7 @@ export class StatisticsService {
     );
     const raw: any[] = await this.dataSource.query(built.sql, built.params);
     const rows = raw.map((row) => ({
-      sId: row.sId == null ? null : Number(row.sId),
+      sId: row.sId == null ? null : annualSourceId(row.sId),
       address: row.address == null ? null : String(row.address),
       ownerName: row.ownerName == null ? null : String(row.ownerName),
       areaSqm: row.areaSqm == null ? null : Number(row.areaSqm),
@@ -246,11 +247,12 @@ export class StatisticsService {
   async annualDetailBills(query: StatisticsBillsQueryDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
     this.validatePaidDates(query);
+    const sId = annualRoomId(query.sId);
     const office = await this.requireOffice(tenantId, access, query.officeCode);
     const filters = {
       type: query.type,
       officeCode: office.officeCode,
-      sId: query.sId,
+      sId,
       year: query.year,
       feeCodes: query.feeCodes ?? null,
       natures: query.natures ?? null,
@@ -273,7 +275,7 @@ export class StatisticsService {
     const built = this.buildBillsSql(
       query.type,
       office.officeCode,
-      query.sId,
+      sId,
       query.year,
       query.feeCodes,
       query.natures,
@@ -283,7 +285,7 @@ export class StatisticsService {
     );
     const raw: any[] = await this.dataSource.query(built.sql, built.params);
     const rows = raw.map((row) => ({
-      zjId: Number(row.zjId),
+      zjId: annualSourceId(row.zjId),
       feeCode: row.feeCode == null ? null : String(row.feeCode),
       feeName: row.feeName == null ? null : String(row.feeName),
       period: row.period == null ? null : String(row.period),
@@ -464,7 +466,7 @@ export class StatisticsService {
     if (type === 'arrears' && asOfPeriod) where.push(`b.period <= ${add(asOfPeriod)}`);
     if (type === 'received' && paidDateTo) where.push(`b.paid_date <= ${add(paidDateTo)}`);
     if (type === 'received' && paidDateFrom) where.push(`b.paid_date >= ${add(paidDateFrom)}`);
-    const sql = `SELECT b.office_code AS "officeCode", b.s_id AS "sId",
+    const sql = `SELECT b.office_code AS "officeCode", b.s_id::text AS "sId",
         MAX(b.address) AS "address", MAX(b.owner_name) AS "ownerName",
         MAX(r.area_sqm)::float8 AS "areaSqm",
         MIN(b.period) AS "periodStart", MAX(b.period) AS "periodEnd",
@@ -506,7 +508,7 @@ export class StatisticsService {
     // 实收报表不按应收截止年月截断（旧系统列到 2027/2028）；asOfPeriod 收到也忽略。
     if (paidDateTo) where.push(`b.paid_date <= ${add(paidDateTo)}`);
     if (paidDateFrom) where.push(`b.paid_date >= ${add(paidDateFrom)}`);
-    const sql = `SELECT b.s_id AS "sId",
+    const sql = `SELECT b.s_id::text AS "sId",
         MAX(b.address) AS "address", MAX(b.owner_name) AS "ownerName",
         MAX(r.area_sqm)::float8 AS "areaSqm", b.period AS "period",
         COALESCE(SUM(b.amount_cents),0)::bigint AS "amountCents",
@@ -524,7 +526,7 @@ export class StatisticsService {
   private buildBillsSql(
     type: StatisticsType,
     officeCode: string,
-    sId: number,
+    sId: string,
     year: number,
     feeCodes: string[] | undefined,
     natures: string[] | undefined,
@@ -553,7 +555,7 @@ export class StatisticsService {
     if (type === 'arrears' && asOfPeriod) where.push(`b.period <= ${add(asOfPeriod)}`);
     if (type === 'received' && paidDateTo) where.push(`b.paid_date <= ${add(paidDateTo)}`);
     if (type === 'received' && paidDateFrom) where.push(`b.paid_date >= ${add(paidDateFrom)}`);
-    const sql = `SELECT b.zj_id AS "zjId", b.fee_code AS "feeCode", b.fee_name AS "feeName",
+    const sql = `SELECT b.zj_id::text AS "zjId", b.fee_code AS "feeCode", b.fee_name AS "feeName",
         b.period AS "period", b.amount_cents::bigint AS "amountCents",
         to_char(b.paid_date,'YYYY-MM-DD') AS "paidDate",
         to_char(b.refund_date,'YYYY-MM-DD') AS "refundDate",

@@ -1366,6 +1366,7 @@ export class RepairsService implements OnModuleInit {
     ).flat();
 
     const workOrderWhere = wheres.length === 1 ? wheres[0] : wheres;
+    const repairTimeFirst = query.sort === 'repair_time_desc';
     // 必须在数据库取前 100 条之前完成优先级排序。以前先拿最新 100 条、回来后才
     // 把急单提到前面，会漏掉更早的急单，也会让同组的新单排在老单前面。
     // 单测里的轻量仓库桩只有 find；生产仓库走带报修表联查的完整排序。
@@ -1384,7 +1385,14 @@ export class RepairsService implements OnModuleInit {
             // TypeORM 在 join + take 场景会包一层 DISTINCT 子查询。排序字段如果
             // 没进入内层 SELECT，外层会引用不存在的 request_urgent / request_created_at。
             .addSelect(['request.urgent', 'request.createdAt']);
-          if (finishedFirst) {
+          if (repairTimeFirst) {
+            // 必须先排序再 take，不能只在 Web 把旧优先级截断后的 100 条重新排序。
+            // 显式别名进入 SELECT，兼容 TypeORM join + take 的 DISTINCT 外层分页。
+            qb.addSelect('COALESCE(wo.completedAt, wo.acceptedAt)', 'dispatch_repair_time')
+              .orderBy('dispatch_repair_time', 'DESC', 'NULLS LAST')
+              .addOrderBy('request.createdAt', 'DESC')
+              .addOrderBy('wo.id', 'ASC');
+          } else if (finishedFirst) {
             qb.orderBy('wo.completedAt', 'DESC', 'NULLS LAST').addOrderBy('wo.id', 'DESC');
           } else if (query.sort === 'newest') {
             qb.orderBy('request.createdAt', 'DESC').addOrderBy('wo.id', 'DESC');
@@ -1524,10 +1532,17 @@ export class RepairsService implements OnModuleInit {
         })(),
       };
     });
-    // 工单池、在手工单和 Web 调度台统一：紧急 / 超时风险优先，
-    // 同一天内再按完整地址自然排序，让同小区、同楼栋的工单相邻，减少往返。
-    // 数据库先保证紧急与老单进入前 100 条；地址和 SLA 需要关联数据齐全后在这里精排。
-    rows.sort(compareWorkOrderPriority);
+    // 小程序默认仍按紧急 / 超时风险优先，同一天内按完整地址自然排序。
+    // Web 显式选择维修时间排序，不能被默认精排覆盖；截断前后均使用同一维修/报修时间口径。
+    rows.sort(repairTimeFirst ? (a, b) => {
+      const time = (value: Date | string | null | undefined) => value ? new Date(value).getTime() || 0 : 0;
+      const repairedAt = (o: typeof a) => time(o.completedAt) || time(o.acceptedAt);
+      return repairedAt(b) - repairedAt(a) || time(b.createdAt) - time(a.createdAt) || a.id - b.id;
+    } : query.sort === 'newest' ? (a, b) => {
+      const field = query.status === WorkOrderStatus.COMPLETED ? 'completedAt' : 'createdAt';
+      const time = (v: Date | string | null | undefined) => v ? new Date(v).getTime() || 0 : 0;
+      return time(b[field]) - time(a[field]) || b.id - a.id;
+    } : compareWorkOrderPriority);
     return rows;
   }
 

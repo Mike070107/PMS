@@ -346,9 +346,10 @@ export class WorkOrdersQueryDto {
   @IsIn(['1'])
   activeOnly?: '1';
 
+  /** Web 按维修时间，员工派单页按创建/完成时间；未传时保留默认优先级。 */
   @IsOptional()
-  @IsIn(['newest'])
-  sort?: 'newest';
+  @IsIn(['repair_time_desc', 'newest'])
+  sort?: 'repair_time_desc' | 'newest';
 
   /**
    * 关键词：单号 / 报修地址 / 故障描述。

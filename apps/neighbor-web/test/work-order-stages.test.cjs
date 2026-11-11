@@ -115,6 +115,37 @@ test('真实 WorkOrders 全部看板不漏四类；待接单列包含候选与�
   assert.deepEqual(cards(pending).sort(), ['2', '3']);
   assert.equal(text(chip(tree, '待接单')), '待接单2');
 });
+test('调度所有分类：维修时间倒序，再按报修时间倒序；派单不算维修，急单不抢序', () => {
+  const list = [
+    { ...base, id: 10, status: 'dispatched', dispatchedAt: '2026-11-10T00:00:00Z', createdAt: '2026-11-09T00:00:00Z', urgent: true },
+    { ...base, id: 11, status: 'in_progress', acceptedAt: '2026-11-07T00:00:00Z', createdAt: '2026-11-01T00:00:00Z' },
+    { ...base, id: 12, status: 'in_progress', acceptedAt: '2026-11-08T08:00:00+08:00', createdAt: '2026-11-02T00:00:00Z' },
+    { ...base, id: 13, status: 'in_progress', acceptedAt: '2026-11-08T00:00:00Z', createdAt: '2026-11-03T00:00:00Z' },
+    { ...base, id: 14, status: 'created', createdAt: '2026-11-10T00:00:00Z' },
+    { ...base, id: 15, status: 'completed', acceptedAt: '2026-11-01T00:00:00Z', completedAt: '2026-11-09T00:00:00Z' },
+  ];
+  const render = (query) => component('pages/WorkOrders.tsx', [list, ''], query).default();
+  assert.deepEqual(rows(render('view=list&filter=all')), ['15', '13', '12', '11', '14', '10']);
+  for (const filter of ['active', 'overdue']) assert.deepEqual(rows(render(`view=list&filter=${filter}`)), ['13', '12', '11', '14', '10']);
+  assert.deepEqual(rows(render('view=list&filter=in_progress')), ['13', '12', '11']);
+  const board = render('filter=active');
+  const column = nodes(board).find(n => n.props?.className === 'col' && nodes(n).some(p => p.type === ui.Pill && p.props.status === 'in_progress'));
+  assert.deepEqual(cards(column), ['13', '12', '11']);
+});
+test('详情各页签：下一步只有一份，在固定头部且位于 tabs 上方；操作表单不重复显示', () => {
+  const detail = { workOrder: orders[3], request: {}, logs: [] };
+  for (const tab of ['info', 'tl', 'mat', 'maint']) {
+    const m = component('components/WorkOrderSheet.tsx', [detail, false, '', tab, null, false]);
+    const tree = m.default({ id: 4, onClose() {}, onChanged() {} });
+    const head = nodes(tree.props.headExtra);
+    const action = head.findIndex(n => n.type?.name === 'NextActions');
+    const tabs = head.findIndex(n => n.props?.className === 'tabs');
+    assert.ok(action >= 0 && action < tabs, `tab ${tab}: 下一步在页签上面`);
+    assert.equal(nodes(tree.props.children).filter(n => n.type?.name === 'NextActions').length, 0);
+  }
+  const m = component('components/WorkOrderSheet.tsx', [detail, false, '', 'info', 'finish', false]);
+  assert.equal(nodes(m.default({ id: 4, onClose() {}, onChanged() {} })).filter(n => n.type?.name === 'NextActions').length, 0);
+});
 function today() { return component('pages/Today.tsx', [orders, []]).default(); }
 function todoCount(tree, title) { const row = nodes(tree).find(n => n.type === 'button' && text(n).includes(title)); assert.ok(row); return nodes(row).filter(n => n.type === 'b').at(-1).props.children; }
 test('真实 Today 待派单1、待接单2正确；路由环节与列表一致', () => {

@@ -1484,3 +1484,172 @@ sudo docker exec -i pms-postgres psql -U pms -d pms_repair -X -P pager=off
 
 - 四套镜像回归共 **22/22**、API `tsc --noEmit` 通过；新增 3 个测试覆盖本轮修复，既有 19 个回归继续覆盖原标准金额、迁移、日期失败、账单/补充镜像和 cron 排除行为。独立只读代码审查 PASS，保留上述 bill/分页精度边界；并将四套加入[常规 test:mis-mirror 脚本](<apps/api/package.json#L48>)，避免新增保护只靠临时手工命令。结果为本地合成数据和离线源证据，不代替真实源重灌、网页报表或生产验收。
 - 仅 API 源码/测试与本文档变更；Web/助手未变，报表 #24 仍灰字待接入，整个统计汇总目标仍未完成。未连接生产、未部署、未执行实际迁移或手工重灌。
+
+## 附录 K：账单源 ID 与同步游标精度（Round17）
+
+### K.1 修复入口与失败保护
+
+- [账单源结构](<outputs/mis-db-sync-20261106/schema-columns.csv#L3043-L3045>)的 ZJ_ID/ZH_ID 为 numeric(18,0)，楼/室/业主主键类型见 J.1。[增量/补漏 billSelect 与手工重灌](<apps/api/src/modules/fees/mis-mirror.service.ts>)均将实际投影的 `w.ZJ_ID/l.L_ID/s.S_ID/z.ZH_ID` 四列在 SQL Server 源端 `CONVERT(varchar(20),…)`，不让驱动先将 ID 变为 JS Number。
+- [账单校验](<apps/api/src/modules/fees/bill-mirror.util.ts>)要求真实数组结果集及四个必填 ID 字符串匹配 `^-?\d{1,18}$`，不 trim、不补缺值；源端即使安全范围内的 Number 也拒绝。主键分页在返回任何行/执行任何 upsert 前，用 BigInt 验证**整批**严格大于请求游标且逐行递增；相等、倒序、重复、后行损坏均 503。真实空数组可正常结束分页，缺结果集不能冒充空批。
+- 增量与重灌游标不再使用 `Number(last_id/zjId)`，源参数保持字符串；重灌收尾 `MAX(zj_id)::text` 避免聚合读回时被 PG 驱动数值化。旧安全整数数值水位仅在 `Number.isSafeInteger` 时转字符串兼容；unsafe Number、非整数或损坏文本拒绝，不能猜测恢复已经舍入的值。
+- 补漏仍保持原来的 updatedate 排序、十五分钟频率及超时降级批量。它不是 ZJ_ID 主键分页，因而只验证四个 ID 与结果结构，不强加跨时间组 ID 全局递增；合法的“较晚时间但较小 ID”仍可更新。upsert 前另做同样的结构/ID 校验，不改变金额/日期/票据字段处理、接口权限、cron 或报表 SQL 口径。
+
+### K.2 合成回归与未完成边界
+
+- [新增 11 项](<apps/api/src/modules/fees/bill-mirror.test.ts>)覆盖源结构/四 ID、游标 safe/unsafe Number、四个源 CAST、500 行满批加尾批的两次精确字符串游标、相邻 `2^53`/`2^53+1` 与 18 位维度 ID 的 PG 账单→业主→室→楼关联、账单成功水位、坏批整批拒绝、补漏非全局递增与失败保护；加入[常规 test:mis-mirror](<apps/api/package.json#L48>)。旧实现已明确复现：含被舍入 numeric18 Number 的源批未被拒绝，`assert.rejects` 报 `Missing expected rejection`；修复后的预期行为为 503。
+- 这是本地驱动桩与真实 PGlite 的合成证据，不是实际 SQL Server CONVERT/传输/执行计划或现场数据验收。手工重灌仍从原有正 ID 起点 `'0'` 扫描，未扩大到负/零 ID 的首次载入；补漏原有覆盖范围也未重设计。
+- **不是全链路 ID 重构**：住户明细 houseKey 解析及其他 API/read 路径仍可能存在 Number，不能据本轮声称所有金额下钻均支持超安全整数 ID。
+- **不是整次同步原子或历史修复**：reloadAll 的维度/标准事务先提交，账单逐批 upsert；增量也逐批提交。无效批在写入前拒绝且不推进最终账单成功水位，但更早的合法批次/维度可能已提交。既有 reloadAll 不清空账单表，因此本轮不会自动删除源已删账单或清理历史舍入造成的旧行；不能把上游结构校验文案理解为全库回滚承诺。
+- 五套镜像回归通过常规脚本共 **33/33**（新增 11，既有 22），API `tsc --noEmit` 通过；团队另独立运行 33/33、单套 11/11 与类型检查，只读审查 **PASS**。审查及 Lead 复核[源参数绑定](<apps/api/src/modules/fees/mis-fees.service.ts#L120-L129>)：字符串传为 NVarChar(4000)，保留 `w.ZJ_ID > @lastId`，按 SQL Server 类型优先级由参数转 numeric 比较，不是词典序或对列转 varchar；没有实际执行计划证据，不能承诺索引 seek 或耗时。这些仅证明上述本地代码、静态语义与合成数据边界。
+- 已经舍入但仍符合格式的**字符串旧水位**无法自动识别；重灌收尾仍取镜像 MAX，而非本次源最后一行，旧高 ID 幻影行可能抬高水位。重灌在账单循环前仍写 initialized_at/清 last_error，后续坏批不推进 last_success 并不代表初始化元数据完全不变。坏批会阻断后续主分页而非跳过，应结合 last_error 监控和授权后的独立对账处理；不在本轮自动重置水位或清理数据。
+- 没有新增迁移、报表入口或 Web/助手变更；#24 仍灰字。未连接 MIS/生产、未部署或执行实际迁移/重灌；统计汇总整体目标仍未完成。
+
+## 附录 L：年度房屋→逐笔账单源 ID 无损传递（Round18）
+
+### L.1 契约与兼容边界
+
+- Round17 的源镜像修复不等于报表读取安全。旧[年度服务](<apps/api/src/modules/statistics/statistics.service.ts>)将 detail 的 sId 和 bills 的 zjId 再次 `Number()`，旧[年度账单 DTO](<apps/api/src/modules/statistics/dto.ts>)也先数值化 query。合成旧源码 RED 已复现：相邻 `999999999999999998` / `999999999999999999` 都返回 `1000000000000000000`，HTTP 字符串 `9007199254740993` 变成 Number `9007199254740992`；指数 `1e3` 还会被当成合法 ID。
+- 年度 `annual/detail` 与 `annual/detail/bills` 的非空 **sId/zjId 统一返回字符串，包括小 ID**；实收按户×应收月聚合的 zjId 仍为 null，原 sId:null 也保留 null。Bills 的 filters.sId 同样返回规范字符串。[SQL](<apps/api/src/modules/statistics/statistics.service.ts>)仅在 SELECT 把 ID `::text`，JOIN/GROUP BY/ORDER BY/参数与列的数值比较不改为字符串排序，不改变金额、日期、退款净额、筛选、权限或查询次数口径。
+- [年度 ID 守卫](<apps/api/src/modules/statistics/annual-source-id.util.ts>)及[DTO](<apps/api/src/modules/statistics/dto.ts>)要求逐笔请求 sId 为 1–18 位、首位非零的十进制正整数字符串，不 trim、不接受指数/小数/加号/前导零/数组/空白/19 位或已失精度 Number。HTTP query 本来就是字符串；进程内旧 safe-integer 数字调用可转字符串兼容。0/负数仍不开放（维持原 `Min(1)` 的正数范围）；非法请求 400，在数据库前拒绝。源输出守卫接受 numeric(18,0) 范围的有符号整数文本，异常/unsafe Number 503，不能用 `String(unsafeNumber)` 假装恢复精度。
+- [前端年度类型](<apps/neighbor-web/src/lib/statistics.ts>)与[房屋下钻](<apps/neighbor-web/src/components/statistics/HouseDetailSheet.tsx>)同步收紧为字符串，空/NULL ID 不发逐笔请求，不对 ID 做算术或 Number 转换。既有展示、金额、筛选和布局不变。这是年度两张报表的 API ID 类型调整，不是所有 PMS API 的 ID 迁移；发布时 API 与 neighbor-web 应同批核验，不保证外部自写客户端仍能把响应 ID 当 number 运算。
+
+### L.2 回归与未完成项
+
+- [新增 13 项](<apps/api/src/modules/statistics/annual-id-precision.test.ts>)从旧源码 **8/8 RED** 转为 **13/13 GREEN**，覆盖两种类型真实 StatisticsService+PGlite 单元格→房屋→逐笔守恒、相邻 18 位户/账单独立、筛选与越权 403、PG 文本投影、HTTP DTO 精确文本、坏格式/unsafe Number、旧 safe-number 调用、数据库前拒绝、源 NULL 兼容。加入[常规 test:statistics](<apps/api/package.json#L27>)；旧[年度测试](<apps/api/src/modules/statistics/statistics.test.ts>)仅调整 ID 期望，不删金额/退款/日期/权限/未就绪等断言。完整年度回归 **50/50**、API `tsc --noEmit` 通过。
+- 上述为本地 PGlite 合成证据；前端浏览器、独立审查及推送后构建结果另补，不将其预先标为通过。未访问 MIS/生产，未部署、迁移、手工重灌或自动修复历史舍入数据。
+- 前端在既有浏览器 harness 上走真实组建交互：04/2020 大 ID 单元格→房屋明细→点击行→逐笔请求 query 保持 `9007199254740993`，两行 `data-bill-id` 分别为 `…993/…994` 且均可见，390 窄屏复用同场景不横向溢出；该定向用例 1/1 通过。整套 `test:statistics` 曾 56/57，唯一失败为筛选浮层用例的 `fetch failed: bad port` 端口竞态，单独重跑通过。前端 `typecheck` 通过。
+- 独立只读审查 **PASS**（API service/DTO/守卫/SQL、前端类型与通路、其他报表 DTO 未改），仅提出非阻断项：实收聚合行 zjId 应为 `string|null`、夹具通用 received 分支仍为数字、bills 绑定参数未直接断言——前两项已在推送前修正，第三项已补进回归。
+- 本轮提交 `bb7dd926` 已推送到 `main`；推送前 pre-push 的 API 类型检查通过。随后在**干净 detached worktree**（HEAD=origin/main=`bb7dd926`）里分别构建 API（`nest build`）与 neighbor-web（`tsc --noEmit && vite build`），退出码均 0，构建未改动受版本控制源码，产物哈希记录在 `.tmp/legacy-statistics-round18-annual-id/build-evidence/verification.json`（`statistics.service.js` SHA256 `29209EC5…FCEA0`、`dto.js` `2DD25600…C089C32F`、`annual-source-id.util.js` `3ADD607D…C42A03`，Web 98 个文件）。本次构建需把 `TEMP/TMP` 指到任务自建目录，宿主机默认 `%TEMP%` 下 esbuild 压缩临时文件删除被拒（`Access is denied`），属本机构建环境问题，不影响源码与产物内容。
+- 上述均为本地合成/隔离构建证据：当前没有生产授权，未连接 MIS/生产、未部署、未执行迁移或手工重灌。
+- 费用模块 houseKey 解析、其他统计菜单的 Number ID、#24 原始元数据/地址/日期/金额旧运行时语义及附录 I/K 其他边界仍未完成。整体统计汇总目标未完成，不能以本轮年度下钻精度修复声称全部菜单已生产可用。
+
+## 附录 M：一期 2007 年欠费「54321.80 对 0」对账（Round19）
+
+### M.1 结论：不是房号不一致，是 06 空房默认不勾
+
+- 用 [MIS 离线快照](<outputs/mis-db-sync-20261106/README.md>)（2026-11-06 15:38 导出，WYZJ 650,824 行）按镜像同一口径复算：**管理处 01 × 2007 年未收 = 54321.80 元，39 行**，与旧系统窗口截图完全一致。
+- 这 39 行**全部是房屋性质 `06`（空房）**、收费项目 `01`、涉及 5 个室号（S_ID 1663/1661/1520/1521/1517）。[欠费年度汇总默认不勾 06](<apps/neighbor-web/src/components/statistics/StatisticsFilters.tsx#L260>)，所以 PMS 该格为 0；把「06 空房」勾上后同一格即为 54321.80。为避免再被误读为漏数，结果头在欠费未勾 06 时显示「已排除 06 空房」提示（[Statistics.tsx](<apps/neighbor-web/src/pages/Statistics.tsx>)），实收报表含 06 时不显示，浏览器用例已断言这两种状态。
+- 房号并非差异来源：快照 2,346 个室**全部有室号**，2007 年这 5 户的室号/业主与截图一致（187/157-159/199-201/203/191）；镜像的 `room_no` 与 `address` 取自 `室表.室` + `楼表.地址1…字4`，本次窗口显示的“永德路187号187室”即该组合结果。没有发现漏同步或串号证据。- 06 空房并非只影响 2007：01 管理处 2008–2015 每年有约 21226.80 元、2016–2018 每年 2736.00 元是 06 部分；02/03/04 管理处在快照内没有 06 未收。与旧系统全选性质对账时，这些差额都来自这一项筛选。
+
+### M.2 其它对账缺口
+
+- 快照中有 **149 行未收（合计 20155.00 元）的 WYZJ 记录 `ZH_ID` 为空**，镜像 SQL 用 `INNER JOIN 业主表` 关联，这些行不会进入镜像，也不属于 2007。按年度：2009 750.00、2010 500.00、2015 785.00、2016 2510.00、2018 100.00、2019 320.00、2020 2940.00、2021 2700.00、2022 1200.00、2023 100.00、2025 3600.00、2026 4650.00。它们看起来是非日常/无业主账户的应收，若要完整复刻需要给镜像补一条不依赖业主表的来源（涉及改同步与生产重灌，需单独授权）。
+
+### M.3 复现方式与边界
+
+- 新增只读对账脚本 [parity-audit.mjs](<tools/statistics-parity-audit/parity-audit.mjs>)：`node tools/statistics-parity-audit/parity-audit.mjs --office 01 --year 2007 --detail` 输出管理处×年度的「未收(全部)/未收(不含06)/其中06」以及明细行，便于以后每份新快照复用同一口径复核。
+- 依据是本地 CSV 逻辑快照，不是执行生产 PMS SQL，也没有连接 MIS/生产；快照 CSV 未导出楼表地址分段列，脚本明细只显示室号。默认是否包含 06 属于产品口径选择：当前默认与 2026 年基线截图一致（排除 06），本轮未擅自改默认值。
+- 「已排除 06 空房」提示提交 `0e672930` 已推送，前端 `tsc --noEmit` 通过、默认年度表浏览器用例 1/1 通过；随后在同一脚本的干净 detached worktree 里重建 API 与 Web，退出码均 0，证据见 `.tmp/legacy-statistics-round18-annual-id/build-evidence-0e672930/verification.json`（API 三个产物哈希与 `bb7dd926` 一致，Web 98 个文件）。仍未部署、未连生产。
+
+## 附录 N：两张年度汇总 × 旧 MIS 快照的口径复核（Round20）
+
+### N.1 复核结果
+
+用同一份 2026-11-06 快照按镜像口径独立复算既有验收基准，[校验脚本](<tools/statistics-parity-audit/verify-baselines.mjs>)输出：
+
+| 项目 | 基准 | 快照复算 | 结果 |
+| --- | ---: | ---: | --- |
+| 欠费 02×2011 管理费 | 921.00 | 921.00 | 一致 |
+| 欠费 02×2012 管理费 | 307.00 | 307.00 | 一致 |
+| 欠费 02×2014 管理费 | 477.90 | 477.90 | 一致 |
+| 欠费 02×2025 管理费 | 16595.00 | 16595.00 | 一致 |
+| 实收 01×2004 | 882.40 | 882.40 | 一致 |
+
+- 口径按代码实现逐条对齐：欠费 = `paid_date IS NULL` + `period` 前四位归年 + 费项「管理费 01」+ 默认 12 项房屋性质（排除 06）；实收 = 有收款日期的流水（负数退款并入净额）+ 全部房屋性质、不按应收截止年月截断。历史年度逐分一致，说明两张年度汇总的归年、性质、费项与未收/已收判定与旧系统相符。
+- 当年（2026）不适合做固定基准：快照内 02 管理处 2026 年管理费欠费按应收年月累计为 202601–202611 `717434.20`、含 202612 为 `784869.40`，既有的 `726881.20` 基准落在两者之间，属于采集时点/账单批次差异，不是口径错误。复核脚本因此只对历史年度断言，并把 2026 作为数据时效提示。
+
+### N.2 使用方式与边界
+
+- `node tools/statistics-parity-audit/verify-baselines.mjs --data-dir outputs/mis-db-sync-20261106/data`：全部 OK 退出码 0，任一不一致退出码 1，可直接放进后续快照的核对流程。明细拆分用同目录的 `parity-audit.mjs`。
+- 复核只读本地 CSV 逻辑快照，不执行生产 PMS SQL、不连接 MIS/生产；结论是「镜像口径与旧系统一致」，不等于生产已部署或已验收。整体目标仍缺生产发布与其余菜单。
+
+## 附录 O：收费汇总块级口径复核与上线前置（Round21）
+
+### O.1 收费汇总（02 管理处 2026-10）与产线实测逐项一致
+
+用同一份快照复算[4.1 节](<docs/statistics-p2-report-layouts.md>)记录的产线实测（02 管理处，收款日期 2026-10-01~2026-10-31），[复算脚本](<tools/statistics-parity-audit/fee-summary.mjs>)输出：
+
+| 收费项目 | 收款块 | 退款块 | 调整块 | 净额 |
+| --- | ---: | ---: | ---: | ---: |
+| 01 管理费 | 11915220 | 0 | 0 | 11915220 |
+| 04 泊位费 | 3105000 | 15000 | -60000 | 3045000 |
+| 14 停车管理费 | 324000 | 0 | 0 | 324000 |
+| 16 置业泊位费 | 30000 | 0 | 0 | 30000 |
+| 合计 | 15374220 | 15000 | -60000 | 15314220 |
+
+与文档实测（15,374,220 / 15,000 / -60,000 / 15,314,220 分）逐项相同，笔数 581+213+48+2 也由脚本给出。说明「收款按收款日期、退款按退款日期、负调整并入收款日净额、退款块不重复扣减」这套实现口径与产线一致，镜像的 `paid_date/refund_date/fee_code/nature_code` 映射同样被反向验证。
+
+### O.2 上线前置（需要明确的生产授权）
+
+以下只是待执行的检查清单，本轮**没有**执行任何一项：
+
+1. 发布对象：`main` 当前提交 + 隔离构建证据（API/Web 两条构建退出码 0）；确认 `node deploy/mark-deployed.mjs status` 中 API/Web 未上线提交包含本轮统计改动。
+2. 数据前置：镜像水位 `mis_sync_state.last_success_at` 近期成功、`mis_mirror_bill` 行数非 0；知识库中 06 空房默认口径需在验收说明中写明。
+3. 发布：按 [deploy/README.md](<deploy/README.md>) 的统一入口 `./deploy/publish-production.ps1 -Target auto`，成功后用 `node deploy/mark-deployed.mjs api|web` 标记；助手与小程程序不涉及。
+4. 只读验收（发布后）：年度两张表与旧系统截图对历史年度（如 02 管理处管理费 2011=921.00、2012=307.00、2014=477.90、2025=16,595.00；实收 01×2004=882.40）逐项比对；收费汇总用 02 管理处 2026-10 的 15,314,220 分作为基准，并核对 06 空房勾选与否在 2007 等年度造成的差额。
+5. 回滚：保留上一版本 API/Web 包与 `deployed/*` 标签，按 deploy 脚本内置回退路径回滚；数据库本轮无迁移，无需数据回滚。
+6. 记录：发布后在 `deploy/DEPLOY_LOG.md` 追加版本/提交/验收结果；未完成的现场未知项（镜像更新时间、旧系统同期截图差异）单列。
+
+## 附录 P：补齐月报/合表所需的审计日期与线上订单字段（Round22）
+
+### P.1 补了什么
+
+旧「收费月报表（28 列）」「综合月报表B」「欠收/溢收」的截止判断除 `ZJ_SKRQ/ZJ_TKRQ` 外还用到 WYZJ 的 **记账日期 `ZJ_Jzrq`、调整日期 `ZJ_TZRQ`、变动日期 `ZJ_Bdrq`**；「线上收费查询」需要 **`交易订单号`/`商户订单号`**。这些字段此前没有进镜像，属于 [#25/#8/#12 的已知缺口](<docs/statistics-p2-report-layouts.md>)。
+
+本轮新增[迁移](<apps/api/src/migrations/1795800000000-MisMirrorBillAuditDates.ts>)给 `mis_mirror_bill` 加 5 列（`book_date/adjust_date/change_date/trade_order_no/merchant_order_no`，幂等、含 `book_date` 索引、提供 down），并让[增量与手工重灌两处源 SQL](<apps/api/src/modules/fees/mis-mirror.service.ts>)都用 `CONVERT(varchar(10),…,23)` 投影日期、原样带订单号；[upsert](<apps/api/src/modules/fees/mis-mirror.service.ts>) 同步写入并随冲突更新。
+
+### P.2 验证与上线注意
+
+- [账单镜像回归](<apps/api/src/modules/fees/bill-mirror.test.ts>)新增 1 项：增量 SQL 与手工重灌 SQL 都必须含这 5 个投影，落库后回读 `book_date/adjust_date/change_date/trade_order_no/merchant_order_no` 与源一致；[镜像扩展测试](<apps/api/src/modules/statistics/mirror-extra.test.ts>)也执行新迁移。常规 `test:mis-mirror` **34/34** 通过，API `tsc --noEmit` 通过。
+- 生产 `DB_SYNCHRONIZE` 不处理 `mis_mirror_*`：上线时要手工执行同一段 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...`，并跑一次手工重灌（或等增量覆盖）后新列才有历史值；未回填前报表应按「字段可空」处理，不能把空值当成 0 或忽略过滤。**本轮未连接生产、未执行迁移或重灌。**
+- 本轮只补数据底座，未新增报表入口；月报表 28 列、综合月报表B 33 列仍缺列头/公式截图，线上收费查询仍缺权限与口径定义，不能据此声称这些菜单已完成。
+- 提交 `11fa324a` 已推 `main`；随后在干净 detached worktree 中重建 API 与 Web，退出码均 0，证据见 `.tmp/legacy-statistics-round18-annual-id/build-evidence-11fa324a/verification.json`。仍未部署、未连生产。
+
+## 附录 Q：MIS 只读同步方向与「报表一致」验收方法（Round23）
+
+### Q.1 同步方向：只从 MIS 读，绝不写 MIS
+
+- MIS 是唯一原始数据源，PMS 只做**单向只读镜像**：[镜像同步](<apps/api/src/modules/fees/mis-mirror.service.ts>)对 WYZJ/楼表/室表/业主表等只发 `SELECT`，账号为只读用途（连接串 `appName: PMS-MIS-ReadOnly`）；不存在 UPDATE/INSERT/DELETE 到 MIS 的代码路径，也没有向 MIS 回填“房号”的做法。所谓“房号同步”指的是把 MIS 的楼/室/业主/账单**读进 PMS 自己的 `mis_mirror_*` 表**，供统计查询使用。
+- 周期由[定时任务](<apps/api/src/modules/tasks/tasks.service.ts>)负责：**每 5 分钟**增量同步（`ZJ_ID` keyset + 15 分钟 `updatedate` 补漏），**每天 03:00** 做一次镜像与 MIS 的总量对账并把差异写 `system_logs`；全量重灌必须管理员手工触发（不会自动清空账单）。连续 3 次同步失败才升级微信告警。
+- 历史账单改过源字段后，只有等增量按 `updatedate` 扫到或手工重灌才会回填；新加列（如本轮 5 列）也必须重灌后才补齐历史值。
+
+### Q.2 房号/地址字段的生成方式与只读自查
+
+- 镜像账单的 `room_no` 取 `室表.室`，`address` 取 `楼表.地址1+字1+…+地址4+字4 + 室 + 字`（[源 SQL](<apps/api/src/modules/fees/mis-mirror.service.ts>)），与旧 MIS 明细里“永德路187号187室”的拼装方式一致；不是靠 PMS 自己补房号。
+- 如果页面出现房号/地址空白，先在生产 PMS 执行下面三条**只读** SQL 定位，而不是去动 MIS：
+  ```sql
+  -- 1) 账单镜像里地址/房号为空的规模
+  SELECT COUNT(*) FILTER (WHERE address IS NULL OR address='') AS empty_address,
+         COUNT(*) FILTER (WHERE room_no IS NULL OR room_no='') AS empty_room_no,
+         COUNT(*) AS total FROM mis_mirror_bill;
+  -- 2) 楼表地址分段是否为空的楼（镜像表）
+  SELECT COUNT(*) FILTER (WHERE COALESCE(building_no,'')='') FROM mis_mirror_building;
+  -- 3) 最近一次成功同步水位，判断是不是“镜像过期”
+  SELECT source_table,last_success_at,synced_rows,last_error FROM mis_sync_state;
+  ```
+  若 1) 为空但页面空白，说明是页面取值/权限问题；若 3) 水位很久没更新，则先查同步告警再重灌，仍不需要碰 MIS。
+
+### Q.3 「PMS 报表 = MIS 报表」作为验收标准
+
+- 已用 2026-11-06 全库快照离线复核：项目欠费年度汇总（02 管理处管理费 2011/2012/2014/2025 与历史验收逐分一致）、项目实收年度汇总（01×2004=882.40）、收费汇总（02 管理处 2026-10 四个块 15,374,220/15,000/-60,000/15,314,220 全部一致），见附录 N/O；脚本在 `tools/statistics-parity-audit/`。
+- 新快照到手后重跑同一组脚本即可判断“是否一致”；不一致时按脚本列出的明细行定位是镜像缺失、筛选口径还是数据时效（如 2026 当年数字会随收款变化）。
+- 说明：一致性的最终确认仍需要生产上跑一次真实报表对照（需授权）；离线快照只能证明口径与代码正确，不能证明生产镜像已更新到同一时点。
+
+## 附录 R：每日镜像对账增加维度与房号体检（Round24）
+
+### R.1 改了什么
+
+原[每日 03:00 对账](<apps/api/src/modules/fees/mis-mirror.service.ts>)只比较账单**行数与金额**，所以“金额对得上、楼/室/业主维度过期（房号没更新）”会被报成一致。本轮把对账扩成三类：
+
+1. 账单行数/金额差（原有）；
+2. **维度行数差**：`楼表/室表/业主表` 源行数 vs `mis_mirror_building/room/owner`；维度只在手工重灌时重建，有差就提示「请重灌后复核」；
+3. **房号/地址体检**：镜像内 `room_no` 为空的行数、账单 `address` 为空的行数，随日志详情落库，用来区分“源/镜像缺字段”和“页面取值问题”。
+
+`ok` 现在要求账单与维度同时一致；日志 `detail` 增加 `dimensionDiff`/`quality`，消息会分别列出记录差、金额差、维度差。写入 `system_logs` 的结构未变，不影响现有日志页。
+
+### R.2 验证与边界
+
+- 新增[对账回归](<apps/api/src/modules/fees/mirror-reconcile.test.ts>) 2 项：全一致时 `ok=true` 且日志 `info`，房号/地址空白规模可回读；金额一致但室/业主维度差时 `ok=false`、消息含「维度差」「重灌」。加入常规 `test:mis-mirror`，镜像回归 **36/36** 通过。
+- 只读：对 MIS 仍只执行 `SELECT`（计数），不写 MIS；维度差只提示重灌，不自动重建，也不自动改任何数据。
+- 仍待生产确认：真实生产上跑一次对账看到 `quality` 数值，才能判定房号缺失是镜像空白还是页面问题（需要只读生产授权）。
+- 提交 `2509c4bb` 已推 `main`（pre-push 类型检查通过）；隔离 worktree 重建 API/Web 退出码均 0，证据 `.tmp/legacy-statistics-round18-annual-id/build-evidence-2509c4bb/`。未部署、未连生产。
