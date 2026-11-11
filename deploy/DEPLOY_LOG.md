@@ -7147,3 +7147,28 @@
 - 待验收：公众平台选择备注含 `0498e7f0` 的该版本为体验版，再从手机真实入口核对版本号和 hash。仅上传成功不等于体验版已经切换。
 - 范围：未部署 Web/API/助手，未提交审核或正式发布；工单调度 Web 修复需要另行获得部署授权后才能在线生效。MIS 原始数据未修改。
 
+## 2026-11-11 12:38 · miniapp-staff · cb6dcf65
+
+- 包：`1.0.20261111c`
+- 提交：cb6dcf65 docs(inventory): record confirmed production cleanup results
+- 说明：CLI上传成功；公众平台已核对体验版指向cb6dcf65，手机未验收，未提交审核或正式发布
+- 自上次（22dca7f3）以来上线的相关提交：
+  - fc6201e6 Merge remote-tracking branch 'origin/main'
+  - e4bc7b44 fix(inventory): default stock lists to available materials
+  - adba4437 merge: integrate current main while preserving dispatch sort modes
+  - afe35caf feat(repairs): persist material drafts and reserve stock for staff orders
+  - 0498e7f0 fix(repairs): order dispatch by repair time and pin next actions
+  - 05aebeab fix(staff): correct warehouse and work order flows
+  - 9917b07f fix(miniapp): require explicit inbound warehouse selection
+  - bcf058a1 fix(access): 最近30笔返回真实快照不再 pending；门禁助手在线判定按真实网关与能力分项显示
+  - 2c528b2d feat(miniapp): 员工端与业主端页面访问上报（onShow 包装、批量与后台 flush、静默失败）
+  - 23e8d11f feat(permission): 新增 intranet 页 key 并回填 settings 角色的权限；/intranet 独立授权
+  - 68140f64 feat(permission): 账单与待缴成为可授权页面(bills)并带迁移；权限界面按菜单分组排序
+  - cddcac87 feat(purchase): 审批明细展示报修地址/时间/维修工，可跳转工单详情
+  - d17ee935 fix(purchase): 申购单抬头跟来源工单管理处，备注补房号位置，照片等比嵌入
+  - a103f38e [verified] feat: unify address picking and repair intake location learning
+  - 1f034dad [verified] fix: ship completed family-car and office workflows
+  - f008ebdd fix(integration): preserve main SDK contracts and timeout feedback
+  - 72367187 feat(web): promote full neighbor UI to official homepage with personal themes
+  - c4cb9d8e feat(auth): 权限拆分——app:approve-manager 拆成 app:approve-purchase-manager(采购经理环节) 与 app:approve-business-manager(收费/车牌经理环节),旧 key 保留兼容(任一命中即放行);含亲情车待审、新办车牌待审、采购与调拨审批、待办通知与角标
+
