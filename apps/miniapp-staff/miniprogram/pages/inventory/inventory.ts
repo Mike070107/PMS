@@ -23,7 +23,7 @@ import { guideHandlers } from '../../utils/guide';
  * 又是列表上已经写着的那几行字，白点一下。
  *
  * 现在：**一屏就是库存**，只列出当前仓加入、入库、领用或报缺料过的 SKU；
- * 数量归零后仍显示。全局 SKU 只在「材料 SKU」和工单选料搜索中展开，不再铺满每个仓。
+ * 默认隐藏零库存，可取消「仅显示有货」查看。全局 SKU 在「材料 SKU」和工单选料搜索中展开。
  * 点开一行给的是列表上没有的东西 —— 分仓库存明细、别名、参数、成本，不再重复一遍。
  */
 
@@ -232,8 +232,8 @@ Page({
     warehouseNames: [] as string[],
     warehouseIndex: 0,
     keyword: '',
-    /** 默认展示本仓管理过的全部材料，用完归零也不隐藏 */
-    onlyStocked: false,
+    /** 默认仅显示有货，取消勾选可查看零库存材料 */
+    onlyStocked: true,
     /** 只因为「仅显示有货」而被藏起来的条数，列表上写清楚，别让人以为系统里没这东西 */
     hiddenByStocked: 0,
     onlyLow: false,
@@ -541,7 +541,7 @@ Page({
     const category = categoryIndex >= 0 ? this.data.categories[categoryIndex] : '';
 
     // 库存页的数据源是「仓库材料清单」（stocks 记录），不是全部 SKU。
-    // qty=0 的记录仍然 found=true，所以用完后依旧展示；只建了 SKU、从没加入这个仓的不展示。
+    // 默认仅显示有货；取消勾选可查看零库存历史，补货概览不受此筛选影响。
     const managed = (this.materials as MaterialView[])
       .map((material) => ({ material, stock: this.sumStock(material.id, warehouseId) }))
       .filter((item) => item.stock.found);
@@ -678,7 +678,7 @@ Page({
         activeMetricTitle: '',
         activeMetricHint: '',
         keyword: previous?.keyword ?? '',
-        onlyStocked: previous?.onlyStocked ?? false,
+        onlyStocked: previous?.onlyStocked ?? true,
         onlyLow: previous?.onlyLow ?? false,
         onlyIncomplete: previous?.onlyIncomplete ?? false,
         categoryIndex: previous?.categoryIndex ?? -1,

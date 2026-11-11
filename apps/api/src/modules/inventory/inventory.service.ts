@@ -1083,6 +1083,7 @@ export class InventoryService {
       const needle = query.q.trim().toLowerCase();
       mapped = mapped.filter((row) => [row.materialName, row.materialCode, row.spec, row.locationLabel].some((value) => String(value ?? '').toLowerCase().includes(needle)));
     }
+    if (query.onlyStocked) mapped = mapped.filter((row) => Number(row.qty) > 0);
     if (query.lowOnly) mapped = mapped.filter((row) => row.low);
     const sort = query.sort ?? 'updatedAt';
     const direction = query.dir === 'asc' ? 1 : -1;

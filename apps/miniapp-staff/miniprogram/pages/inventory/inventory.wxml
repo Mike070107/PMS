@@ -27,7 +27,7 @@
       <view wx:if="{{canViewStock}}" class="tab {{tab === 'purchase' ? 'tab--on' : ''}}" data-tab="purchase" bindtap="onSwitchTab">采购申请</view>
     </view>
 
-    <!-- ============ 库存：只列当前仓添加/使用过的材料，库存归零仍保留 ============ -->
+    <!-- 库存默认仅显示有货；取消勾选可查看零库存材料 -->
     <block wx:if="{{tab === 'stock'}}">
       <view class="inventory-overview">
         <view class="inventory-overview__head">

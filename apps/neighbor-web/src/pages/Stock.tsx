@@ -43,6 +43,7 @@ export default function Stock() {
   const [warehouses, setWarehouses] = useState<WarehouseView[]>([]);
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
   const [onlyLow, setOnlyLow] = useState(false);
+  const [onlyStocked, setOnlyStocked] = useState(true);
   const [q, setQ] = useState('');
   const [err, setErr] = useState('');
   const [peek, setPeek] = useState<StockView | null>(null);
@@ -89,6 +90,7 @@ export default function Stock() {
         return { s, m, qty, safe, low: qty <= safe, unitCost: Number(s.unitCostCents) || 0, amount: Number(s.amountCents) || 0, updatedAt: s.updatedAt ? Date.parse(s.updatedAt) : 0, locations: Array.isArray(s.locations) ? s.locations : [] };
       })
       .filter((r) => (onlyLow ? r.low : true))
+      .filter((r) => !onlyStocked || r.qty > 0)
       .filter((r) => (kw ? `${r.m?.name || ''}${r.m?.spec || ''}${warehouseOf(r.s.warehouseId)}`.includes(kw) : true));
     const value = (row: typeof mapped[number]) => sort === 'qty' ? row.qty : sort === 'safetyStock' ? row.safe : sort === 'unitCost' ? row.unitCost : sort === 'amount' ? row.amount : row.updatedAt;
     return mapped.sort((a, b) => {
@@ -96,7 +98,7 @@ export default function Stock() {
       const ordered = byValue || (a.m?.name || '').localeCompare(b.m?.name || '');
       return dir === 'asc' ? ordered : -ordered;
     });
-  }, [stocks, materials, warehouses, onlyLow, q, sort, dir]);
+  }, [stocks, materials, warehouses, onlyLow, onlyStocked, q, sort, dir]);
 
   const lowCount = useMemo(
     () => (stocks ?? []).filter((s) => Number(s.qty) <= Number(s.safetyQty)).length,
@@ -135,7 +137,8 @@ export default function Stock() {
       const params = new URLSearchParams();
       if (warehouseId) params.set('warehouseId', String(warehouseId));
       if (q.trim()) params.set('q', q.trim());
-      if (onlyLow) params.set('onlyLow', '1');
+      if (onlyLow) params.set('lowOnly', '1');
+      params.set('onlyStocked', onlyStocked ? '1' : '0');
       params.set('sort', sort); params.set('dir', dir);
       const token = auth.getToken();
       const tenant = auth.getActingTenant();
@@ -201,7 +204,10 @@ export default function Stock() {
         </div>
         <input className="in" style={{ width: 220, marginLeft: 'auto' }} placeholder="搜材料名称 / 规格"
           value={q} onChange={(e) => setQ(e.target.value)} />
-        <button className={`chip ${onlyLow ? 'on' : ''}`} onClick={() => setOnlyLow((v) => !v)}>
+        <button type="button" className={`chip ${onlyStocked ? 'on' : ''}`} aria-pressed={onlyStocked} onClick={() => setOnlyStocked((v) => !v)}>
+          仅显示有货
+        </button>
+        <button className={`chip ${onlyLow ? 'on' : ''}`} onClick={() => { setOnlyLow((v) => !v); if (!onlyLow) setOnlyStocked(false); }}>
           只看预警 <span className="c">{lowCount}</span>
         </button>
       </div>

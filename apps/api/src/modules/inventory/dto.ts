@@ -319,6 +319,12 @@ export class UpdateSupplierDto {
 }
 
 export class StockQueryDto extends TenantQueryDto {
+  /** 显式筛选有货库存；缺货预警等调用仍可读取零库存。 */
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true' || value === 1 || value === '1')
+  @IsBoolean()
+  onlyStocked?: boolean;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()

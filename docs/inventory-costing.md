@@ -1,5 +1,13 @@
 # 库存成本口径：同一 SKU 不同价格怎么入库、怎么出库、怎么算报表
 
+## 2026-11-11：库存清单默认仅显示有货
+
+- 现场复现：租户 1、智能化维修工仓库（id=2）的电子浮球阀（SKU 37、库存行 79）在 2026-11-11 09:24 完成调出并收货后数量为 0，旧后台仍显示该行。数量扣减正常，原因是清单未默认过滤零库存。
+- 后台和员工小程序默认「仅显示有货」，取消选择可查看零库存；缺货预警仍能查询零库存，不删除历史流水来实现隐藏。
+- `/stocks`、`/stocks/export` 支持显式 `onlyStocked=true/1`，在分页前筛选数量大于 0 的行。未指定时保留全部库存口径，避免影响缺料、补货、其他调用。后台导出与当前有货筛选一致，预警参数使用 API 的 `lowOnly`。
+- 可执行回归：`node --test apps/neighbor-web/test/stock-filter.test.cjs apps/miniapp-staff/test/inventory-stock-filter.test.cjs`；API 目录运行 `node -r ts-node/register --test src/modules/inventory/inventory-stock-filter.test.ts src/modules/inventory/inventory-export.test.ts src/modules/inventory/dto.test.ts`。覆盖转出归零、显示/隐藏切换、预警仍可见、筛选先于分页、布尔参数转换及导出。
+- 生产数据清理须独立记录具体范围、备份与执行结果；上述功能回归不代表生产数据已清理或手机已升级。
+
 > 2026-08-28 调研 + 落地。代码入口：`apps/api/src/modules/inventory/stock-ledger.ts`（唯一实现），
 > 报表：`modules/reports/reports.service.ts`，后台：`pages/InventoryPage.tsx`。
 
