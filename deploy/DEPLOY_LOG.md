@@ -7208,3 +7208,11 @@
 - 自上次（1e953e2a）以来上线的相关提交：
   - 7370c50e fix(staff): restore meter navigation and support material draft saves in WeChat
 
+## 2026-11-11 13:01 · miniapp-staff · 877f502f
+
+- 包：`1.0.20261111e`
+- 提交：877f502f deploy: api → 7370c50e
+- 说明：CLI上传成功；抄表入口缓存与微信用料PUT修复。员工端及依赖源码与提交一致；备注本地改动仅来自未跟踪的隔离验收脚本，手机未验收。
+- 自上次（1e953e2a）以来上线的相关提交：
+  - 7370c50e fix(staff): restore meter navigation and support material draft saves in WeChat
+
