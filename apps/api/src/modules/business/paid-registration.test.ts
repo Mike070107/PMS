@@ -3,6 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { BusinessExecutionService } from './business-execution.service';
 import { VehicleIntake } from '../../entities';
+import { legacyRegistrationProfile } from './parking-registration-profile';
+import { prepareFamilyRegistration } from '../access-card-issuance/parking-family';
 function fixture(){
  const txn:any={id:90,tenantId:1,createdBy:8,houseId:7,communityId:2,txnNo:'PK-TEST-REG',amountCents:30000,startDate:'2026-11-06',endDate:'2026-12-31',snapshot:{intake:{id:4},vehicle:{plateNo:'沪TEST01'},parking:{newVehicle:true,systems:[{kind:'local',database:'parking2',sourceRecordId:'',label:'二期地面'}]}}};
  const intake:any={id:4,tenantId:1,houseId:7,transactionId:90,status:'approved',kind:'paid',plate:'沪TEST01',houseLabel:'枫桦景苑二期/228弄3号502',ownerName:'合成业主',ownerPhone:'',contactPhone:'',vehicleClass:'住户车-1',garages:['local:phase2_parking'],garageNumbers:{}};
@@ -13,6 +15,27 @@ function fixture(){
  s.log=async()=>{};s.deliyun={findVehiclesByPlate:async()=>{throw Error('不应查德立云')}};
  return {s,txn,intake,ops,setQuery:(q:any)=>query=q};
 }
+test('先收款后扫码时从原收款快照取类别，四类均映射月租车且不改金额',async()=>{
+ for(const [cls,identity] of [['住户车-1','住户车'],['住户车-3','住户车'],['租户车-1','租户车'],['租户车-2','租户车'],['产权车位','住户车']]) {
+  const h=fixture();h.txn.amountCents=15000;h.intake.vehicleClass='';h.txn.snapshot.estimate={vehicleClass:cls};
+  await h.s.runOne(90);assert.equal(h.ops[0]?.kind,'add_vehicle',cls+' 应进入原新增队列');
+  assert.equal(h.ops[0].payload.carType,1,cls+' 授权类型应为月租车');assert.equal(h.ops[0].payload.identity,identity,cls);
+  assert.equal(h.ops[0].payload.amount,150);assert.equal(h.txn.amountCents,15000);
+ }
+});
+
+test('原收款快照优先于后来填写的类别，未知或冲突类别不自动猜测',async()=>{
+ const charged=fixture();charged.intake.vehicleClass='租户车-1';charged.txn.snapshot.estimate={vehicleClass:'产权车位'};await charged.s.runOne(90);assert.equal(charged.ops[0]?.payload.identity,'住户车');
+ for(const cls of ['其他','出租车','住户车/租户车','非住户车','未知住户车类别']){const h=fixture();h.txn.snapshot.estimate={vehicleClass:cls};await h.s.runOne(90);assert.equal(h.ops.length,0);assert.equal(h.txn.externalSyncStatus,'manual');}
+ const legacy=fixture();legacy.intake.vehicleClass='';legacy.txn.snapshot.ruleName='住户车-1';await legacy.s.runOne(90);assert.equal(legacy.ops[0]?.payload.identity,'住户车');
+});
+
+test('亲情车型仍须走独立凭证审核，不借付费新车绕过校验',async()=>{
+ assert.deepEqual(legacyRegistrationProfile('亲情车'),{carType:1,identity:'亲情车'});
+ assert.throws(()=>prepareFamilyRegistration({identity:'亲情车',plate:'沪TEST01'},null),/上传二维码/);
+ const h=fixture();h.txn.snapshot.estimate={vehicleClass:'亲情车'};await h.s.runOne(90);assert.equal(h.ops.length,0);assert.equal(h.txn.externalSyncStatus,'manual');assert.match(h.txn.snapshot.execution.lastError,/亲情车.*审核/);
+});
+
 test('新办已审核收款进入新增队列，旧库回读后下发设备，设备确认前不报生效',async()=>{
  const h=fixture();await h.s.runOne(90);assert.equal(h.ops[0]?.kind,'add_vehicle','不能再直接转人工');assert.equal(h.ops[0].payload.amount,300);assert.equal(h.ops[0].payload.ownerRoom,'228/3/502');assert.equal(h.ops[0].payload.effective[8],'1');assert.notEqual(h.txn.externalSyncStatus,'synced');
  h.ops[0].status='completed';h.ops[0].result={verified:true,plate:'沪TEST01',issueId:'301',endDate:'2026-12-31',effective:h.ops[0].payload.effective,state:1};await h.s.runOne(90);assert.equal(h.ops[1]?.kind,'download_vehicle');assert.notEqual(h.txn.externalSyncStatus,'synced');h.ops[1].status='completed';h.ops[1].result={verified:true,deviceVerification:'confirmed',plate:'沪TEST01',issueId:'301'};await h.s.runOne(90);assert.equal(h.txn.externalSyncStatus,'synced');assert.equal(h.ops.length,2);

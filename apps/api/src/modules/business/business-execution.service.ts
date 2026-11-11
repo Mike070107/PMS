@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, LessThan, Repository } from 'typeorm';
 import { BusinessLog, BusinessRule, BusinessTransaction, ParkingOperation, VehicleIntake } from '../../entities';
 import { findParkingTarget } from './parking-targets';
+import { legacyRegistrationProfile } from './parking-registration-profile';
 import { assertFreshParkingPlateCheck } from '../access-card-issuance/parking-query.util';
 import { BusinessServiceType } from '../../common/enums';
 import { AuthUser } from '../../common/current-user.decorator';
@@ -331,8 +332,13 @@ export class BusinessExecutionService {
       const databases = [...new Set(defs.filter(d => d!.system === 'local').map(d => d!.database!))];
       const garages = selected.flatMap(k => k === 'local:phase1_parking' ? ['phase1'] : k === 'local:phase2_parking' ? ['phase2'] : k === 'local:phase2_main_garage' ? ['phase2', 'main'] : []);
       if (garages.includes('main') && !intake.garageNumbers.main?.trim()) throw new BadRequestException('大车库新办缺少车位号，未执行');
-      const identity = intake.vehicleClass.includes('租') ? '租户车' : intake.vehicleClass.includes('产权') ? '产权车位' : intake.vehicleClass.includes('住户') || intake.vehicleClass.includes('业主') ? '住户车' : '';
-      if (!identity) throw new BadRequestException('新办车辆类别无法对应停车库授权类型，请核对');
+      // 收费在扫码前完成时，登记单类别可为空；原收款快照才是已确认收费口径。
+      const quotedClass = (txn.snapshot?.estimate as { vehicleClass?: unknown } | undefined)?.vehicleClass;
+      const vehicleClass = (typeof quotedClass === 'string' ? quotedClass.trim() : '') || intake.vehicleClass?.trim() || String(txn.snapshot?.ruleName ?? '').trim();
+      const legacyProfile = legacyRegistrationProfile(vehicleClass);
+      if (!legacyProfile) throw new BadRequestException('新办车辆类别无法对应停车库授权类型，请核对');
+      const { identity, carType } = legacyProfile;
+      if (identity === '亲情车') throw new BadRequestException('亲情车须走亲情车登记及凭证审核流程，不能按付费新车直接开通；原收款保留待核对，不会重复收费');
       const adds: Array<(Pick<ParkingOperation, 'id' | 'status' | 'result'> & { lastError?: string | null }) | null> = await Promise.all(databases.map(database => this.opRepo.findOne({ where: { tenantId: txn.tenantId, idempotencyKey: `biz:${txn.txnNo}:register:${database}` } })));
       if (mode !== 'on') return this.finish(txn, 'dry_run', { ...prev, mode, attempts, nextAt: null, lastError: null,
         result: { action: 'add_vehicle', plate, endDate, systems: defs.map(d => d!.label) } });
@@ -357,7 +363,7 @@ export class BusinessExecutionService {
         if (!add) add = await this.issuance.createParkingOperation({ database, kind: 'add_vehicle',
           idempotencyKey: `biz:${txn.txnNo}:register:${database}`,
           payload: { plate, ownerRoom, ownerName: intake.ownerName || ownerRoom, ownerAddress: ownerRoom,
-            ownerPhone: intake.contactPhone || intake.ownerPhone, identity, amount: index === 0 ? txn.amountCents / 100 : 0,
+            ownerPhone: intake.contactPhone || intake.ownerPhone, identity, carType, amount: index === 0 ? txn.amountCents / 100 : 0,
             startDate: txn.startDate, endDate, effective: bits, download: '0'.repeat(256), state: 1,
             garages: [...new Set(garages.filter(g => database === 'parking1' ? g === 'phase1' : g !== 'phase1'))],
             garageNumbers: intake.garageNumbers, spaces: database === 'parking2' ? intake.garageNumbers.main || '' : '',
