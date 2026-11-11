@@ -7238,3 +7238,12 @@
   - b69a911b feat(statistics): add ticket item reports and per-ticket detail drawer
   - f8634eae fix(repairs): scope dispatch notices and recognize intercoms
 
+## 2026-11-11 19:01 · api · 54ecc38b
+
+- 包：`pms-api-fast-20261111-190024.tar.gz`
+- 提交：54ecc38b fix(archive): preserve orphan legacy references during migration
+- 自上次（7370c50e）以来上线的相关提交：
+  - 54ecc38b fix(archive): preserve orphan legacy references during migration
+  - 8b82a46c feat: integrate property archives, apartment reconciliation and parking fixes
+  - 08365219 [verified] fix(parking): resolve paid intake class from charge snapshot
+
