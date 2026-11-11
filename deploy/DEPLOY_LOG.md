@@ -7201,3 +7201,10 @@
 - 说明：CLI上传成功；API已部署同源版本；体验版尚未核对切换，手机未验收，未提交审核或正式发布
 - 自上次（cb6dcf65）以来没有相关提交（重新部署）
 
+## 2026-11-11 12:59 · api · 7370c50e
+
+- 包：`pms-api-fast-20261111-125917.tar.gz`
+- 提交：7370c50e fix(staff): restore meter navigation and support material draft saves in WeChat
+- 自上次（1e953e2a）以来上线的相关提交：
+  - 7370c50e fix(staff): restore meter navigation and support material draft saves in WeChat
+
