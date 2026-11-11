@@ -8,6 +8,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -580,6 +581,13 @@ export class RepairsController {
   @Patch('work-orders/:id/material-draft')
   @RequirePermission(['work-orders', 'app:my-orders'], 'edit')
   saveMaterialDraft(@Param('id', ParseIntPipe) id: number, @Body() dto: SaveMaterialDraftDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.repairsService.saveMaterialDraft(id, dto, user, access);
+  }
+
+  /** 微信请求层支持 PUT；保留 PATCH 兼容已存在的其他调用端。 */
+  @Put('work-orders/:id/material-draft')
+  @RequirePermission(['work-orders', 'app:my-orders'], 'edit')
+  putMaterialDraft(@Param('id', ParseIntPipe) id: number, @Body() dto: SaveMaterialDraftDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
     return this.repairsService.saveMaterialDraft(id, dto, user, access);
   }
 

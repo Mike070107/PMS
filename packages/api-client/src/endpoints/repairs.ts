@@ -243,7 +243,7 @@ export interface MaterialDraft { version: number; rows: MaterialDraftRow[] }
 export const materialDraft = (id: number | string) =>
   request<MaterialDraft>({ url: `/work-orders/${id}/material-draft` });
 export const saveMaterialDraft = (id: number | string, data: MaterialDraft) =>
-  request<MaterialDraft>({ method: 'PATCH', url: `/work-orders/${id}/material-draft`, data });
+  request<MaterialDraft>({ method: 'PUT', url: `/work-orders/${id}/material-draft`, data });
 
 /** 底部 tab 角标一次拿齐：工单池 / 派单台 / 在手工单各几件。没权限的格给 0 */
 export interface BadgeCounts {
