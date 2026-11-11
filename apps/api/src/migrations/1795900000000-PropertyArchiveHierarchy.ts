@@ -18,7 +18,8 @@ export class PropertyArchiveHierarchy1795900000000 implements MigrationInterface
     await q.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_owner_property_shop ON owner_property_links(tenant_id, owner_id, building_id) WHERE building_id IS NOT NULL`);
     await q.query(`CREATE INDEX IF NOT EXISTS ix_owner_property_house ON owner_property_links(tenant_id,house_id)`);
     await q.query(`CREATE INDEX IF NOT EXISTS ix_owner_property_building ON owner_property_links(tenant_id,building_id)`);
-    await q.query(`INSERT INTO owner_property_links(tenant_id,owner_id,house_id) SELECT tenant_id,id,house_id FROM users WHERE role='owner' AND tenant_id IS NOT NULL AND house_id IS NOT NULL ON CONFLICT DO NOTHING`);
+    // Keep historical orphan references untouched in users; never invent a house or cross tenants.
+    await q.query(`INSERT INTO owner_property_links(tenant_id,owner_id,house_id) SELECT u.tenant_id,u.id,u.house_id FROM users u JOIN houses h ON h.id=u.house_id AND h.tenant_id=u.tenant_id WHERE u.role='owner' AND u.tenant_id IS NOT NULL AND u.house_id IS NOT NULL ON CONFLICT DO NOTHING`);
     await q.query(`CREATE TABLE IF NOT EXISTS owner_phone_activity (
       tenant_id int NOT NULL, owner_id int NOT NULL REFERENCES users(id), phone varchar(30) NOT NULL,
       status varchar(20) NOT NULL DEFAULT 'unknown', last_used_at timestamptz,

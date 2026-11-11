@@ -83,6 +83,21 @@ test('真实SQL：多对多关联、重复关联幂等、解除一处保留其�
   } finally { await f.pg.close(); }
 });
 
+test('迁移保留历史孤立房号原值，只为真实同租户房屋回填关联且可重跑', async()=>{
+  const f=await fixture();try{
+    await f.pg.exec(`INSERT INTO users(id,tenant_id,role,name,phone,house_id) VALUES
+      (901,1,'owner','历史孤立档案','13800000901',999999),
+      (902,1,'owner','历史有效档案','13800000902',1)`);
+    const migration=new PropertyArchiveHierarchy1795900000000();
+    await migration.up({query:(sql:string)=>f.pg.query(sql)} as any);
+    assert.equal((await f.pg.query<any>('SELECT house_id FROM users WHERE id=901')).rows[0].house_id,999999);
+    assert.equal((await f.pg.query<any>('SELECT COUNT(*)::int AS n FROM owner_property_links WHERE owner_id=901')).rows[0].n,0);
+    assert.equal((await f.pg.query<any>('SELECT COUNT(*)::int AS n FROM owner_property_links WHERE owner_id=902')).rows[0].n,1);
+    await migration.up({query:(sql:string)=>f.pg.query(sql)} as any);
+    assert.equal((await f.pg.query<any>('SELECT COUNT(*)::int AS n FROM owner_property_links WHERE owner_id=902')).rows[0].n,1);
+  }finally{await f.pg.close();}
+});
+
 test('真实SQL：业务使用不伪造接通时间，失败不覆盖上次成功，按号码分别留痕', async () => {
   const f = await fixture();
   try {
