@@ -14,6 +14,9 @@ import { ChangePlateSheet, DownloadSheet, DeleteSheet } from '@/components/vehic
 import { RebindSheet, GaragesSheet } from '@/components/vehicle-ops/RebindGarageSheets';
 import { HistorySheet, OwnerInfoSheet, CreatePmsOwnerSheet } from '@/components/vehicle-ops/HistoryAndOwnerSheets';
 import ToneIcon from '@/components/ToneIcon';
+import type { Intake } from '@/components/cashier/NewPlateCard';
+
+type IntakeQrResult = Pick<Intake, 'id' | 'qr'>;
 
 type CloudState = 'loading' | DeliyunVehicle | null | undefined;
 
@@ -41,7 +44,7 @@ export default function Vehicles() {
   const [newOpen, setNewOpen] = useState(false);
   const [newKind, setNewKind] = useState<'paid' | 'family'>('paid');
   const [newHouse, setNewHouse] = useState<PickedHouse | null>(null);
-  const [newQr, setNewQr] = useState<{ id: number; qr?: string } | null>(null);
+  const [newQr, setNewQr] = useState<IntakeQrResult | null>(null);
   const [newBusy, setNewBusy] = useState(false);
   const [newErr, setNewErr] = useState('');
   const createIntakeNow = async () => {
@@ -49,7 +52,7 @@ export default function Vehicles() {
     setNewBusy(true); setNewErr('');
     try {
       const formBase = `${window.location.origin}${import.meta.env.BASE_URL.replace(/\/+$/, '')}/m/plate`;
-      const r = await request<{ id: number; qr?: string }>({ method: 'POST', url: '/vehicle-intakes', data: { houseId: newHouse.houseId, kind: newKind, formBase } });
+      const r = await request<IntakeQrResult>({ method: 'POST', url: '/vehicle-intakes', data: { houseId: newHouse.houseId, kind: newKind, formBase } });
       setNewQr(r);
     } catch (e) {
       setNewErr(e instanceof Error ? e.message : '生成二维码失败');
@@ -193,7 +196,7 @@ export default function Vehicles() {
             ) : (
               <>
                 <div className="note" style={{ marginBottom: 12 }}>让业主用微信扫这个码，自己填车牌、手机号并上传资料。填完在「车牌登记审核」里审核。</div>
-                {newQr.qr ? <div style={{ textAlign: 'center' }}><img src={newQr.qr} alt="登记二维码" style={{ width: 240, height: 240 }} /></div> : null}
+                {newQr.qr?.dataUrl ? <div style={{ textAlign: 'center' }}><img src={newQr.qr.dataUrl} alt="登记二维码" style={{ width: 240, maxWidth: '100%', height: 'auto' }} /></div> : <ErrorNote>登记单已创建，但未获得二维码图片，请勿重复登记。</ErrorNote>}
                 <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
                   <button className="btn p" style={{ flex: 1 }} onClick={() => nav('/plates')}><Icon name="check" size={16} />去审核</button>
                   <button className="btn" onClick={() => { setNewQr(null); setNewHouse(null); }}>再登记一台</button>
