@@ -7255,3 +7255,10 @@
   - 8b82a46c feat: integrate property archives, apartment reconciliation and parking fixes
   - 46b4fdd3 fix(vehicles): render intake QR data URL from structured response
 
+## 2026-11-12 00:22 · api · 43d2b83a
+
+- 包：`pms-api-fast-20261112-002133.tar.gz`
+- 提交：43d2b83a fix(parking): stabilize intake review, checkout navigation and gateway heartbeat
+- 自上次（54ecc38b）以来上线的相关提交：
+  - 43d2b83a fix(parking): stabilize intake review, checkout navigation and gateway heartbeat
+
