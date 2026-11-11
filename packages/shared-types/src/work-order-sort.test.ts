@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   RECENT_LIST_LIMIT,
   compareWorkOrderNewestFirst,
+  compareWorkOrderCompletedNewestFirst,
   compareWorkOrderOldestFirst,
   compareWorkOrderRoutePriority,
 } from './work-order-sort';
@@ -18,6 +19,16 @@ test('现场工单同日按地址聚拢，但不越过紧急和超时优先级',
   ];
   rows.sort((a, b) => compareWorkOrderRoutePriority(a, b, now));
   assert.deepEqual(rows.map((row) => row.id), [4, 5, 2, 3, 1]);
+});
+
+test('已完成按完工时间倒序，缺少完工时间的排最后', () => {
+  const rows = [
+    { id: 1, createdAt: '2026-11-09', completedAt: '2026-11-10T10:00:00Z' },
+    { id: 2, createdAt: '2026-11-10', completedAt: '2026-11-10T09:00:00Z' },
+    { id: 3, createdAt: '2026-11-11', completedAt: null },
+  ];
+  rows.sort(compareWorkOrderCompletedNewestFirst);
+  assert.deepEqual(rows.map((row) => row.id), [1, 2, 3]);
 });
 
 test('工单池 / 在手工单：紧急先，其余按报修时间从早到晚，越老越靠前（2026-09-06 Mike）', () => {

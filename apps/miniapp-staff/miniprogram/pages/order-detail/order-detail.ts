@@ -80,6 +80,7 @@ interface MaterialRow {
   code: string;
   /** 选中那一刻所在仓的可用量；手填的行为 -1（= 仓里没有这个 SKU） */
   stockQty: number;
+  reserved?: boolean;
   /** 从哪个仓领的（完工时按它扣库存）。手填的行为 null。
       必须一行一个：选料途中切过仓库，整单共用一个 warehouseId 就会扣错仓。 */
   warehouseId: number | null;
@@ -185,7 +186,7 @@ function decorateRow(row: MaterialRow): MaterialRow {
       hintShort: true,
     };
   }
-  return { ...row, purchase: false, hintText: `${warehouse} · 可用 ${row.stockQty}${row.unit}`, hintShort: false };
+  return { ...row, purchase: false, hintText: `${warehouse} · ${row.reserved ? '已锁定' : '可用'} ${row.stockQty}${row.unit}`, hintShort: false };
 }
 
 /** 表单行 → 提交用的数组（去空行、数量转数字）。name 是「名称 型号」拼好的展示名（养护单印它），plainName / spec 分开给采购申请 */
@@ -520,6 +521,11 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   allSkus: [] as WorkOrderStockOption[],
   /** 当前在看的仓库 id：从这里选中的行会把它记进 row.warehouseId */
   warehouseId: null as number | null,
+  materialDraftVersion: 0,
+  materialDraftReady: false,
+  materialDraftDirty: false,
+  materialDraftGeneration: 0,
+  materialDraftSaving: null as Promise<void> | null,
   /** 已经回填过的完工草稿批次号：同一份草稿只回填一次，之后由维修工自己改 */
   appliedDraftBatchId: null as number | null,
   /** 本次完工提交的幂等令牌：连点两下或弱网重试都只扣一次库存 */
@@ -534,6 +540,11 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     // 不清理就会出现「列表缓存还有、仓库 id 已空」的半旧状态，再打开选料只剩空面板。
     this.allSkus = [];
     this.warehouseId = null;
+    this.materialDraftVersion = 0;
+    this.materialDraftReady = false;
+    this.materialDraftDirty = false;
+    this.materialDraftGeneration = 0;
+    this.materialDraftSaving = null;
     this.appliedDraftBatchId = null;
     this.completeIdempotencyKey = '';
     this.setData({ id: q.id || '' });
@@ -545,7 +556,10 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
 
   // 从通知直接打开时页面栈只有这一页，navigateBack 无处可回；goBack 会退到该去的 tab 页。
   // 四个 onSwipeBack* 是「从左边缘往右滑」的返回手势（Android 没有系统手势），见 utils/navigation.ts
-  onBack() {
+  async onBack() {
+    if (!this.data.panel && this.materialDraftReady) {
+      try { await this.flushMaterialDraft(); } catch { return; }
+    }
     this.onEdgeBack();
   },
   /**
@@ -718,6 +732,22 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
           this.data.feeYuan || (detail.workOrder.feeCents ? String(detail.workOrder.feeCents / 100) : ''),
       });
       await this.applyCompletionDraft(detail);
+      if (this.data.canComplete && !this.materialDraftReady) {
+        const draft = await repairs.materialDraft(this.data.id);
+        this.materialDraftVersion = draft.version;
+        if (draft.version > 0) {
+          this.setMaterialRows(draft.rows.map((row) => ({
+            ...emptyMaterialRow(), ...row,
+            materialId: row.materialId || null,
+            warehouseId: row.warehouseId || null,
+            name: row.name || '', spec: row.spec || '', qty: String(row.qty), unit: row.unit || '',
+            photoUrl: row.photoUrl || '', photoUrls: row.photoUrls || [], code: row.code || '',
+            warehouseName: row.warehouseName || '', note: row.note || '', stockQty: Number(row.stockQty || 0), reserved: true,
+          })), false);
+        }
+        this.materialDraftReady = true;
+        if (!draft.version && this.data.materialRows.length) this.queueMaterialDraft();
+      }
       if (buildingHistoryVisible) void this.loadBuildingHistory();
       if (this.data.canComplete) this.loadPhrases(detail.request?.repairType || '');
     } catch (e: any) {
@@ -1545,6 +1575,10 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
    */
   onOpenPanel(e: WechatMiniprogram.BaseEvent) {
     const panel = String(e.currentTarget.dataset.panel || '');
+    if ((panel === 'material' || panel === 'complete') && this.data.canComplete && !this.materialDraftReady) {
+      wx.showToast({ icon: 'none', title: '用料尚未加载，请稍后重试' });
+      return;
+    }
     this.setData({ panel, materialError: '', errorMsg: '' });
     if (panel === 'rollback') void this.loadRollbackPreview();
     if (panel === 'editIntake') {
@@ -1606,7 +1640,10 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     }
   },
 
-  onClosePanel() {
+  async onClosePanel() {
+    if (this.data.panel === 'material' && this.materialDraftReady) {
+      try { await this.flushMaterialDraft(); } catch { return; }
+    }
     if (this.data.completePickerOpen) this.closeCompletePlacePicker();
     // 维修工按着语音键时也可能直接点关闭。先结束录音，避免面板关了麦克风还在工作。
     if (this.data.recording) hold?.release();
@@ -1624,7 +1661,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
    * 用料行统一走这里写回：顺手算好每行的库存提示和「有没有缺料」，
    * wxml 里调不了函数，这些都得先算成字段。
    */
-  setMaterialRows(rows: MaterialRow[]) {
+  setMaterialRows(rows: MaterialRow[], persist = true) {
     const decorated = rows.map(decorateRow);
     const parts = splitMaterialRows(collectRows(decorated));
     const hasStockUsage = parts.used.length > 0;
@@ -1641,6 +1678,64 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
             : '记录用料',
       materialError: '',
     });
+    if (persist && this.materialDraftReady) this.queueMaterialDraft();
+  },
+
+  queueMaterialDraft() {
+    this.materialDraftDirty = true;
+    this.materialDraftGeneration += 1;
+    void this.flushMaterialDraft().catch(() => undefined);
+  },
+
+  async flushMaterialDraft() {
+    if (!this.materialDraftReady) {
+      this.setData({ materialError: '用料草稿未加载完成，请检查网络并重新打开工单' });
+      throw new Error('用料草稿尚未加载完成');
+    }
+    if (this.materialDraftSaving) return this.materialDraftSaving;
+    const save = async () => {
+      while (this.materialDraftDirty) {
+        this.materialDraftDirty = false;
+        const generation = this.materialDraftGeneration;
+        const rows = this.data.materialRows.filter((row) => row.name.trim()).map((row) => ({
+          materialId: row.materialId || undefined, warehouseId: row.warehouseId || undefined,
+          name: row.name.trim(), spec: row.spec || undefined, qty: Number(row.qty), unit: row.unit || undefined,
+          note: row.note || undefined, code: row.code || undefined, warehouseName: row.warehouseName || undefined,
+          photoUrl: row.photoUrl || undefined, photoUrls: row.photoUrls || [],
+        }));
+        try {
+          let result: repairs.MaterialDraft;
+          try {
+            result = await repairs.saveMaterialDraft(this.data.id, { version: this.materialDraftVersion, rows });
+          } catch (error) {
+            // 请求结果未知时先查询，避免成功后重试误报版本冲突或重复写入。
+            const current = await repairs.materialDraft(this.data.id).catch(() => null);
+            const comparable = (items: repairs.MaterialDraftRow[]) => JSON.stringify(items.map((row) => [
+              row.materialId || 0, row.warehouseId || 0, row.name || '', row.spec || '', Number(row.qty),
+              row.unit || '', row.note || '', row.code || '', row.warehouseName || '', row.photoUrl || '', row.photoUrls || [],
+            ]));
+            if (!current || current.version !== this.materialDraftVersion + 1 || comparable(current.rows) !== comparable(rows)) throw error;
+            result = current;
+          }
+          this.materialDraftVersion = result.version;
+          if (generation === this.materialDraftGeneration) {
+            const current = this.data.materialRows.slice();
+            let index = 0;
+            for (let i = 0; i < current.length; i += 1) {
+              if (!current[i].name.trim()) continue;
+              current[i] = { ...current[i], stockQty: Number(result.rows[index++]?.stockQty || 0), reserved: true };
+            }
+            this.setMaterialRows(current, false);
+          }
+        } catch (error: any) {
+          this.materialDraftDirty = true;
+          this.setData({ materialError: error?.message || '用料保存失败，请检查网络后重试' });
+          throw error;
+        }
+      }
+    };
+    this.materialDraftSaving = save().finally(() => { this.materialDraftSaving = null; });
+    return this.materialDraftSaving;
   },
 
   onMaterialInput(e: WechatMiniprogram.Input) {
@@ -2009,6 +2104,9 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
    * 够用的料不该混进采购申请 —— 办公室会照单去买本来就有的东西。
    */
   async onSubmitMaterial() {
+    if (this.data.busy) return;
+    try { await this.flushMaterialDraft(); } catch { return; }
+    if (this.data.busy) return;
     const rows = collectRows(this.data.materialRows);
     if (!rows.length) {
       return this.setData({ materialError: '先添加至少一项材料' });
@@ -2053,7 +2151,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         note: applicationReason,
       });
       this.setData({ panel: '', materialNote: '' });
-      this.setMaterialRows([]);
+      this.materialDraftReady = false;
+      this.setMaterialRows([], false);
       wx.showToast({ title: '已登记缺料', icon: 'success' });
       wx.switchTab({ url: '/pages/my-orders/my-orders' });
     } catch (e: any) {
@@ -2064,7 +2163,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   },
 
   /** 用料记好了就收起面板，等完工提交时随完工一起扣库存 */
-  onConfirmMaterial() {
+  async onConfirmMaterial() {
+    try { await this.flushMaterialDraft(); } catch { return; }
     const rows = collectRows(this.data.materialRows);
     const bad = rows.find((row) => !Number.isFinite(row.qty) || row.qty <= 0);
     if (bad) {
@@ -2093,10 +2193,17 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   },
 
   async onComplete() {
+    if (this.data.busy) return;
     const fee = this.data.feeYuan.trim();
     if (fee && (!Number.isFinite(Number(fee)) || Number(fee) < 0)) {
       return this.setData({ errorMsg: '收费金额填写不正确' });
     }
+    // 微信订阅授权需要在点击事件内发起，不能放在保存草稿的 await 后。
+    const subscribeSettled = askOrderSubscribe().catch(() => false);
+    if (this.materialDraftReady) {
+      try { await this.flushMaterialDraft(); } catch { return this.setData({ errorMsg: '用料尚未保存，请返回用料记录重试' }); }
+    }
+    if (this.data.busy) return;
     const shortage = this.data.materialRows.find((row) => {
       const qty = Number(row.qty);
       return !!row.materialId && Number.isFinite(qty) && qty > 0 && qty > row.stockQty;
@@ -2130,7 +2237,6 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
      * （2026-09-04 线上日志：45 号单 01:18:01 成功、:07 与 :31 各一次 400）。
      * 所以成功后先关面板给出可见反馈，再等授权框收场才弹结果。
      */
-    const subscribeSettled = askOrderSubscribe().catch(() => false);
     // 同一次填写复用同一个令牌：连点两下、弱网自动重试时服务端只认第一次，
     // 不会再扣一遍库存（库存错账事后没人对得回来）
     if (!this.completeIdempotencyKey) {

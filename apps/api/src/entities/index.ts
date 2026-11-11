@@ -15,6 +15,7 @@ import { RepairRequest } from './repair-request.entity';
 import { WorkOrder } from './work-order.entity';
 import { WorkOrderLog } from './work-order-log.entity';
 import { WorkOrderMaterial } from './work-order-material.entity';
+import { WorkOrderMaterialDraft, StockReservation } from './work-order-material-draft.entity';
 import { Review } from './review.entity';
 import { Material } from './material.entity';
 import { Warehouse } from './warehouse.entity';
@@ -135,6 +136,8 @@ export const entities = [
   WorkOrder,
   WorkOrderLog,
   WorkOrderMaterial,
+  WorkOrderMaterialDraft,
+  StockReservation,
   Review,
   Material,
   Warehouse,

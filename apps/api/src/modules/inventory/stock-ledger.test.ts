@@ -3,6 +3,7 @@ import test from 'node:test';
 import type { EntityManager } from 'typeorm';
 import { StockMovementType } from '../../common/enums';
 import { Material, Stock, StockLot, StockMovement } from '../../entities';
+import { StockReservation } from '../../entities/work-order-material-draft.entity';
 import {
   applyStockDelta,
   averageUnitCost,
@@ -30,6 +31,7 @@ function fakeManager() {
     [StockLot, []],
     [StockMovement, []],
     [Material, []],
+    [StockReservation, []],
   ]);
   let nextId = 1;
   const rows = (entity: unknown) => tables.get(entity)!;
@@ -78,6 +80,17 @@ function fakeManager() {
 }
 
 const KEY = { tenantId: 1, warehouseId: 10, materialId: 100 };
+
+test('其他工单已预留的库存不能被普通出库拿走', async () => {
+  const manager = fakeManager();
+  await manager.save(Stock, manager.create(Stock, { ...KEY, qty: 5, safetyQty: 0 }));
+  await manager.save(StockReservation, manager.create(StockReservation, { ...KEY, workOrderId: 7, qty: 3 }));
+  await assert.rejects(applyStockDelta(manager, {
+    ...KEY, deltaQty: -3, type: StockMovementType.OUTBOUND, unitCostCents: 0,
+    refType: 'manual', refId: null, operatorId: 1,
+  }), /库存不足/);
+  assert.equal(Number((await manager.findOne(Stock, { where: KEY }))?.qty), 5);
+});
 
 async function seedLot(manager: EntityManager, qty: number, unitCostCents: number, receivedAt: Date) {
   return manager.save(StockLot, manager.create(StockLot, {

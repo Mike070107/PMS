@@ -346,10 +346,10 @@ export class WorkOrdersQueryDto {
   @IsIn(['1'])
   activeOnly?: '1';
 
-  /** Web 调度台显式选择维修时间倒序；不改变小程序默认抢修优先级。 */
+  /** Web 按维修时间，员工派单页按创建/完成时间；未传时保留默认优先级。 */
   @IsOptional()
-  @IsIn(['repair_time_desc'])
-  sort?: 'repair_time_desc';
+  @IsIn(['repair_time_desc', 'newest'])
+  sort?: 'repair_time_desc' | 'newest';
 
   /**
    * 关键词：单号 / 报修地址 / 故障描述。
@@ -542,6 +542,20 @@ export class MaterialUsageDto {
   @IsString()
   @MaxLength(120)
   note?: string;
+}
+
+export class MaterialDraftRowDto extends MaterialUsageDto {
+  @IsOptional() @IsString() @MaxLength(120) spec?: string;
+  @IsOptional() @IsString() @MaxLength(100) code?: string;
+  @IsOptional() @IsString() @MaxLength(120) warehouseName?: string;
+  @IsOptional() @IsString() @MaxLength(1000) photoUrl?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(4) @IsString({ each: true }) @MaxLength(1000, { each: true }) photoUrls?: string[];
+}
+
+export class SaveMaterialDraftDto {
+  @Type(() => Number) @IsInt() @Min(0) version: number;
+  @IsArray() @ArrayMaxSize(10) @ValidateNested({ each: true }) @Type(() => MaterialDraftRowDto)
+  rows: MaterialDraftRowDto[];
 }
 
 export class CompleteWorkOrderDto {

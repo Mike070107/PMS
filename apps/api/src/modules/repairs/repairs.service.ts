@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { randomBytes } from 'crypto';
+import { WorkOrderMaterialDraft, StockReservation } from '../../entities/work-order-material-draft.entity';
 import {
   DataSource,
   EntityManager,
@@ -108,6 +109,7 @@ import {
   CreateRepairRequestDto,
   DeleteWorkOrderDto,
   MaterialUsageDto,
+  SaveMaterialDraftDto,
   NeedMaterialDto,
   MergeRepairSpeechDto,
   ParseRepairAddressDto,
@@ -1392,6 +1394,8 @@ export class RepairsService implements OnModuleInit {
               .addOrderBy('wo.id', 'ASC');
           } else if (finishedFirst) {
             qb.orderBy('wo.completedAt', 'DESC', 'NULLS LAST').addOrderBy('wo.id', 'DESC');
+          } else if (query.sort === 'newest') {
+            qb.orderBy('request.createdAt', 'DESC').addOrderBy('wo.id', 'DESC');
           } else {
             qb.orderBy('request.urgent', 'DESC')
               .addOrderBy('request.createdAt', 'ASC')
@@ -1402,7 +1406,7 @@ export class RepairsService implements OnModuleInit {
         })()
       : this.workOrderRepo.find({
           where: workOrderWhere,
-          order: { id: finishedFirst ? 'DESC' : 'ASC' },
+          order: { id: finishedFirst || query.sort === 'newest' ? 'DESC' : 'ASC' },
           take: take ?? undefined,
         });
     // 不限状态的列表（工单调度「进行中 / 全部」、小程序「全部」）：先取全部没结束的单，
@@ -1413,13 +1417,13 @@ export class RepairsService implements OnModuleInit {
       && wheres.every((w) => (w as any).status instanceof FindOperator && (w as any).status.type === 'not'
         && (w as any).status.value === WorkOrderStatus.VOIDED);
     let workOrders: WorkOrder[];
-    if (mixed) {
+    if (mixed && query.sort !== 'newest') {
       const open = await fetchOrders(wheres.map((w) => ({ ...w, status: Not(In(OPEN_EXCLUDED)) })), false, 300);
       const rest = open.length >= 100 ? [] : await fetchOrders(
         wheres.map((w) => ({ ...w, status: In([WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED]) })), true, 100 - open.length);
       workOrders = [...open, ...rest];
     } else {
-      workOrders = await fetchOrders(workOrderWhere, query.scope === 'done', query.scope === 'mine' && query.activeOnly === '1' && user.role !== UserRole.OWNER ? null : 100);
+      workOrders = await fetchOrders(workOrderWhere, query.scope === 'done' || (query.sort === 'newest' && query.status === WorkOrderStatus.COMPLETED), query.scope === 'mine' && query.activeOnly === '1' && user.role !== UserRole.OWNER ? null : 100);
     }
     const requestIds = workOrders.map((item) => item.requestId);
     if (!requestIds.length) return workOrders;
@@ -1534,6 +1538,10 @@ export class RepairsService implements OnModuleInit {
       const time = (value: Date | string | null | undefined) => value ? new Date(value).getTime() || 0 : 0;
       const repairedAt = (o: typeof a) => time(o.completedAt) || time(o.acceptedAt);
       return repairedAt(b) - repairedAt(a) || time(b.createdAt) - time(a.createdAt) || a.id - b.id;
+    } : query.sort === 'newest' ? (a, b) => {
+      const field = query.status === WorkOrderStatus.COMPLETED ? 'completedAt' : 'createdAt';
+      const time = (v: Date | string | null | undefined) => v ? new Date(v).getTime() || 0 : 0;
+      return time(b[field]) - time(a[field]) || b.id - a.id;
     } : compareWorkOrderPriority);
     return rows;
   }
@@ -1647,6 +1655,100 @@ export class RepairsService implements OnModuleInit {
    * 库存为 0 的材料也返回（标 qty=0）：现场需要它但仓里没有，正是要走缺料登记的场景，
    * 列表里看不到反而让人以为「这东西系统里不存在」。
    */
+  private async releaseMaterialDraft(manager: EntityManager, tenantId: number, id: number, items: MaterialUsageDto[], allowShortages: boolean) {
+    const draft = await manager.findOne(WorkOrderMaterialDraft, { where: { tenantId, workOrderId: id } });
+    if (!draft) return;
+    const rows = draft.rows as Array<MaterialUsageDto & { stockQty: number }>;
+    if (!allowShortages && rows.some((r) => !r.materialId || Number(r.stockQty) < Number(r.qty))) {
+      throw new BadRequestException('用料中有未锁定的缺料，请先提交申购');
+    }
+    const canonical = (lines: Array<{ materialId?: number; warehouseId?: number; qty: number; note?: string }>) => {
+      const sums = new Map<string, number>();
+      for (const line of lines) {
+        if (!line.materialId || !line.warehouseId || !Number(line.qty)) continue;
+        const key = `${line.warehouseId}:${line.materialId}:${(line.note || '').trim()}`;
+        sums.set(key, Number(((sums.get(key) ?? 0) + Number(line.qty)).toFixed(2)));
+      }
+      return JSON.stringify([...sums].sort((a, b) => a[0].localeCompare(b[0])));
+    };
+    const saved = rows.map((row) => ({ ...row, qty: Number(row.stockQty) }));
+    if (canonical(saved) !== canonical(items)) throw new BadRequestException('用料草稿已变更，请刷新核对后再提交');
+    await manager.delete(StockReservation, { tenantId, workOrderId: id });
+    await manager.delete(WorkOrderMaterialDraft, { tenantId, workOrderId: id });
+  }
+
+  private async assertNoReservedMaterial(manager: EntityManager, tenantId: number, id: number) {
+    if (await manager.count(StockReservation, { where: { tenantId, workOrderId: id } })) {
+      throw new BadRequestException('工单仍有锁定的用料，请先删除用料释放库存');
+    }
+  }
+
+  async getMaterialDraft(id: number, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.resolveTenantId(user);
+    const workOrder = await this.workOrderRepo.findOne({ where: { id, tenantId } });
+    if (!workOrder) throw new NotFoundException('工单不存在');
+    this.assertWorkOrderScope(workOrder, access);
+    await this.ensureAssigneeOrAdmin(workOrder, user);
+    const draft = await this.dataSource.getRepository(WorkOrderMaterialDraft).findOne({ where: { tenantId, workOrderId: id } });
+    return { version: draft?.version ?? 0, rows: draft?.rows ?? [] };
+  }
+
+  async saveMaterialDraft(id: number, dto: SaveMaterialDraftDto, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.resolveTenantId(user);
+    const warehouseIds = [...new Set(dto.rows.map((r) => r.warehouseId).filter((v): v is number => !!v))];
+    for (const warehouseId of warehouseIds) {
+      const option = await this.listWorkOrderStockOptions(id, user, access, warehouseId);
+      if (option.warehouseId !== warehouseId) throw new ForbiddenException('所选仓库不在可用范围内');
+    }
+    return this.dataSource.transaction(async (manager) => {
+      const workOrder = await this.lockWorkOrder(manager, id, tenantId);
+      this.assertWorkOrderScope(workOrder, access);
+      await this.ensureAssigneeOrAdmin(workOrder, user);
+      if (![WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.WAITING_MATERIAL].includes(workOrder.status)) {
+        throw new BadRequestException('当前工单状态不能修改用料');
+      }
+      let draft = await manager.findOne(WorkOrderMaterialDraft, { where: { tenantId, workOrderId: id } });
+      if ((draft?.version ?? 0) !== dto.version) throw new BadRequestException('用料已在其他设备修改，请刷新后重试');
+      for (const row of dto.rows) {
+        if (!Number.isFinite(row.qty) || row.qty <= 0 || row.qty > 999 || Math.abs(Math.round(row.qty * 100) - row.qty * 100) > 1e-8) throw new BadRequestException('用料数量必须大于 0，最多两位小数');
+        if (!!row.materialId !== !!row.warehouseId) throw new BadRequestException('库存用料必须选择材料和仓库');
+        if (row.materialId && !await manager.findOne(Material, { where: { id: row.materialId, tenantId, enabled: true } })) throw new BadRequestException('所选材料不存在或已停用');
+      }
+      const existing = await manager.find(StockReservation, { where: { tenantId, workOrderId: id } });
+      const keys = new Map<string, { warehouseId: number; materialId: number }>();
+      for (const row of [...existing, ...dto.rows]) {
+        if (row.warehouseId && row.materialId) keys.set(`${row.warehouseId}:${row.materialId}`, { warehouseId: row.warehouseId, materialId: row.materialId });
+      }
+      const stockAvailable = new Map<string, number>();
+      for (const [key, item] of [...keys].sort((a, b) => a[1].warehouseId - b[1].warehouseId || a[1].materialId - b[1].materialId)) {
+        const stock = await manager.findOne(Stock, { where: { tenantId, ...item }, lock: { mode: 'pessimistic_write' } });
+        const reservations = await manager.find(StockReservation, { where: { tenantId, ...item } });
+        const other = reservations.filter((r) => r.workOrderId !== id).reduce((sum, r) => sum + Number(r.qty), 0);
+        stockAvailable.set(key, Math.max(0, Number(((Number(stock?.qty ?? 0) - other)).toFixed(2))));
+      }
+      await manager.delete(StockReservation, { tenantId, workOrderId: id });
+      const totals = new Map<string, number>();
+      const rows = dto.rows.map((row) => {
+        const key = `${row.warehouseId}:${row.materialId}`;
+        const available = stockAvailable.get(key) ?? 0;
+        const reserved = row.materialId && row.warehouseId ? Math.min(row.qty, available) : 0;
+        stockAvailable.set(key, Number((available - reserved).toFixed(2)));
+        if (reserved) totals.set(key, Number(((totals.get(key) ?? 0) + reserved).toFixed(2)));
+        return { ...row, stockQty: reserved };
+      });
+      for (const [key, qty] of totals) {
+        const item = keys.get(key)!;
+        await manager.save(StockReservation, manager.create(StockReservation, { tenantId, workOrderId: id, ...item, qty, createdBy: user.id, updatedBy: user.id }));
+      }
+      if (!draft) draft = manager.create(WorkOrderMaterialDraft, { tenantId, workOrderId: id, createdBy: user.id, version: 0 });
+      draft.rows = rows;
+      draft.version += 1;
+      draft.updatedBy = user.id;
+      await manager.save(WorkOrderMaterialDraft, draft);
+      return { version: draft.version, rows };
+    });
+  }
+
   async listWorkOrderStockOptions(
     id: number,
     user: AuthUser,
@@ -1736,8 +1838,17 @@ export class RepairsService implements OnModuleInit {
           where: { tenantId, warehouseId: In(candidates.map((item) => item.id)) },
         })
       : [];
+    const otherReservations = candidates.length
+      ? await this.dataSource.getRepository(StockReservation).find({ where: { tenantId, warehouseId: In(candidates.map((item) => item.id)) } })
+      : [];
+    const reservedByOthers = new Map<string, number>();
+    for (const row of otherReservations) {
+      if (row.workOrderId === id) continue;
+      const key = `${row.warehouseId}:${row.materialId}`;
+      reservedByOthers.set(key, (reservedByOthers.get(key) ?? 0) + Number(row.qty));
+    }
     const stockedWarehouses = new Set(
-      allStocks.filter((row) => Number(row.qty) > 0).map((row) => row.warehouseId),
+      allStocks.filter((row) => Number(row.qty) - (reservedByOthers.get(`${row.warehouseId}:${row.materialId}`) ?? 0) > 0).map((row) => row.warehouseId),
     );
 
     // 智能化维修工首次打开默认专属仓；手动换仓后仍尊重端上传来的 warehouseId。
@@ -1752,7 +1863,7 @@ export class RepairsService implements OnModuleInit {
     const qtyByMaterial = new Map(
       allStocks
         .filter((row) => warehouse && row.warehouseId === warehouse.id)
-        .map((row) => [row.materialId, Number(row.qty) || 0]),
+        .map((row) => [row.materialId, Math.max(0, Number(row.qty) - (reservedByOthers.get(`${row.warehouseId}:${row.materialId}`) ?? 0))]),
     );
 
     return {
@@ -2392,6 +2503,7 @@ export class RepairsService implements OnModuleInit {
       if (workOrder.status === WorkOrderStatus.VOIDED) {
         throw new BadRequestException('该工单已经作废');
       }
+      await this.assertNoReservedMaterial(manager, tenantId, id);
       const fromStatus = workOrder.status;
       const repairRequest = await manager.findOne(RepairRequest, {
         where: { tenantId, id: workOrder.requestId },
@@ -2608,6 +2720,7 @@ export class RepairsService implements OnModuleInit {
     return this.dataSource.transaction(async (manager) => {
       const workOrder = await this.lockWorkOrder(manager, id, tenantId);
       this.assertWorkOrderScope(workOrder, access);
+      await this.assertNoReservedMaterial(manager, tenantId, id);
 
       // 已经冲销过的用料库存早就退回去了，再退一次就是凭空多货；这里只处理仍有效的行。
       const usages = await manager.find(WorkOrderMaterial, {
@@ -2714,6 +2827,7 @@ export class RepairsService implements OnModuleInit {
         [tenantId, id],
       );
       await manager.delete(WorkOrderLog, { tenantId, workOrderId: id });
+      await manager.delete(WorkOrderMaterialDraft, { tenantId, workOrderId: id });
       await manager.delete(WorkOrder, { tenantId, id });
       await manager.delete(RepairRequest, { tenantId, id: workOrder.requestId });
 
@@ -4071,6 +4185,8 @@ export class RepairsService implements OnModuleInit {
       const fromStatus = workOrder.status;
       const beforeSnapshot = await this.captureWorkOrderSnapshot(manager, workOrder);
 
+      await this.releaseMaterialDraft(manager, tenantId, id, inventoryMaterials, false);
+
       // 端上从库存选的行本来就带名字；万一只传了 id，去材料库把名字查出来 ——
       // 工单和养护单上印的是给人看的名称，不能落一个 #37（2026-09-01）
       const materialNames = materials.length
@@ -4255,6 +4371,7 @@ export class RepairsService implements OnModuleInit {
       workOrder.missingMaterials = missingMaterials;
       const usedMaterials =
         dto.usedMaterials?.filter((item) => item.materialId && item.warehouseId) ?? [];
+      await this.releaseMaterialDraft(manager, tenantId, id, usedMaterials, true);
       const usedMaterialNames = usedMaterials.length
         ? await this.materialNamesByIds(
             manager,
@@ -4617,6 +4734,7 @@ export class RepairsService implements OnModuleInit {
     return this.dataSource.transaction(async (manager) => {
       const workOrder = await this.lockWorkOrder(manager, id, tenantId);
       this.assertWorkOrderScope(workOrder, access);
+      await this.assertNoReservedMaterial(manager, tenantId, id);
       assertWorkOrderTransition(
         workOrder.status,
         WorkOrderStatus.CANCELLED,

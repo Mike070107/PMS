@@ -42,7 +42,7 @@ function harness() {
   });
   const user = { id: 9, tenantId: 1, role: UserRole.STAFF };
   const access = { isTenantAdmin: true, pages: {}, scopeAll: true };
-  return { service, calls, user, access };
+  return { service, calls, user, access, list };
 }
 
 test('Web 调度排序在数据库 take 之前；响应不再被急单优先排序覆盖，报修时间来自 request', async () => {
@@ -80,4 +80,15 @@ test('TypeORM 实体映射后的维修排序表达式和分页别名可生成正
   const [select, order] = (qb as any).createOrderByCombinedWithSelectExpression('distinctAlias');
   assert.match(select, /"distinctAlias"\."dispatch_repair_time"/);
   assert.deepEqual(order['"distinctAlias"."dispatch_repair_time"'], { order: 'DESC', nulls: 'NULLS LAST' });
+});
+
+test('员工派单 newest 保留报修时间倒序，已完成使用完成时间倒序', async () => {
+  const h = harness();
+  let rows = await h.service.listWorkOrders({scope:'all',status:WorkOrderStatus.IN_PROGRESS,sort:'newest'},h.user,h.access);
+  assert.deepEqual(rows.map((r:any)=>r.id),[4,3,2,1]);
+  assert.ok(h.calls.some(c=>c[0]==='orderBy' && c[1]==='request.createdAt' && c[2]==='DESC'));
+  h.list.forEach((row,i)=>{ row.completedAt = new Date(`2026-11-0${4-i}`) as any; });
+  rows = await h.service.listWorkOrders({scope:'all',status:WorkOrderStatus.COMPLETED,sort:'newest'},h.user,h.access);
+  assert.deepEqual(rows.map((r:any)=>r.id),[1,2,3,4]);
+  assert.ok(h.calls.some(c=>c[0]==='orderBy' && c[1]==='wo.completedAt' && c[2]==='DESC'));
 });

@@ -6,6 +6,7 @@ export interface RouteSortableWorkOrder {
   id?: number;
   urgent?: boolean | null;
   createdAt?: Date | string | null;
+  completedAt?: Date | string | null;
   slaDueAt?: Date | string | null;
   summaryAddress?: string | null;
 }
@@ -96,6 +97,15 @@ export function compareWorkOrderNewestFirst(
   const aMissing = !Number.isFinite(timeOf(a.createdAt));
   const bMissing = !Number.isFinite(timeOf(b.createdAt));
   if (aMissing !== bMissing) return aMissing ? 1 : -1;
+  return (b.id ?? 0) - (a.id ?? 0);
+}
+
+/** 已完成按实际完工时间排序，时间缺失放在最后。 */
+export function compareWorkOrderCompletedNewestFirst(a: RouteSortableWorkOrder, b: RouteSortableWorkOrder): number {
+  const aTime = timeOf(a.completedAt);
+  const bTime = timeOf(b.completedAt);
+  if (Number.isFinite(aTime) !== Number.isFinite(bTime)) return Number.isFinite(aTime) ? -1 : 1;
+  if (Number.isFinite(aTime) && aTime !== bTime) return bTime - aTime;
   return (b.id ?? 0) - (a.id ?? 0);
 }
 
