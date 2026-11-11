@@ -30,6 +30,7 @@ import {
   CreateRepairRequestDto,
   DeleteWorkOrderDto,
   NeedMaterialDto,
+  SaveMaterialDraftDto,
   MergeRepairSpeechDto,
   ParseRepairAddressDto,
   ReorderRepairTypeRulesDto,
@@ -568,6 +569,18 @@ export class RepairsController {
     @CurrentAccess() access: ResolvedAccess,
   ) {
     return this.repairsService.requestWorkOrderTransfer(id, dto, user, access);
+  }
+
+  @Get('work-orders/:id/material-draft')
+  @RequirePermission(['work-orders', 'app:my-orders'], 'edit')
+  getMaterialDraft(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.repairsService.getMaterialDraft(id, user, access);
+  }
+
+  @Patch('work-orders/:id/material-draft')
+  @RequirePermission(['work-orders', 'app:my-orders'], 'edit')
+  saveMaterialDraft(@Param('id', ParseIntPipe) id: number, @Body() dto: SaveMaterialDraftDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.repairsService.saveMaterialDraft(id, dto, user, access);
   }
 
   @Delete('work-orders/:id/materials/:usageId')

@@ -8,6 +8,7 @@ import {
 import {
   RECENT_LIST_LIMIT,
   compareWorkOrderNewestFirst,
+  compareWorkOrderCompletedNewestFirst,
   compareWorkOrderOldestFirst,
   WorkOrderStatus,
   type TechnicianOption,
@@ -413,6 +414,7 @@ Page({
             : {
                 scope: filter.scope || (dispatcher ? 'all' : 'pool'),
                 status: filter.status as any,
+                sort: dispatcher ? 'newest' : undefined,
                 q: keyword || undefined,
               },
       );
@@ -468,11 +470,13 @@ Page({
       //   工单池 / 派单台 / 我修的：紧急先，其余按报修时间从早到晚 —— 越老的越该先修，新单在下面；
       //   我报的 / 已完结：最近的在上面，不搜索时只展示最近 30 条，更早的靠搜索。
       // 服务端给的是 id 倒序，这里必须重排，不然四档看起来各是各的顺序。
+      const dispatchCompleted = dispatcher && mainTab === 'pool' && filter.key === 'completed';
       const recentList = mainTab === 'reported' || mainTab === 'done';
-      rows.sort(recentList ? compareWorkOrderNewestFirst : compareWorkOrderOldestFirst);
+      rows.sort(dispatchCompleted ? compareWorkOrderCompletedNewestFirst : (dispatcher || recentList) ? compareWorkOrderNewestFirst : compareWorkOrderOldestFirst);
+      const recentLimit = dispatchCompleted ? 50 : RECENT_LIST_LIMIT;
       const recentHiddenCount =
-        recentList && !keyword ? Math.max(0, rows.length - RECENT_LIST_LIMIT) : 0;
-      if (recentHiddenCount) rows.splice(RECENT_LIST_LIMIT);
+        dispatchCompleted || (recentList && !keyword) ? Math.max(0, rows.length - recentLimit) : 0;
+      if (recentHiddenCount) rows.splice(recentLimit);
 
       // 等待材料的单收成一组挂在列表最后（2026-09-07 Mike：折叠成一行文字，要看再展开）：
       // 它们眼下没活可干，散在中间只会把「先接哪一单」的顺序搅乱
@@ -487,7 +491,7 @@ Page({
       // 「紧急 / 普通」分组标题只在「先接哪一单」的池子里画；「我修的」已在自己手上，不参与；
       // 等待材料那一组有自己的标题行，不参与
       const showPriorityGroups =
-        mainTab === 'pool' && filter.key !== 'mine' && (!dispatcher || filter.key === 'pool');
+        mainTab === 'pool' && filter.key !== 'mine' && !dispatcher;
       if (showPriorityGroups) {
         rows.forEach((row, index) => {
           if (row.inWaitingGroup) {
@@ -543,7 +547,7 @@ Page({
         loaded: true,
         capped: rows.length >= PAGE_CAP,
         recentHiddenCount,
-        recentLimit: RECENT_LIST_LIMIT,
+        recentLimit,
         /* 空态要说清「空在哪一层」：搜的没有 / 这一档没有 / 真的没活。
            三种情况给同一句话，人会以为是坏了或者搜索没生效 */
         emptyText: keyword

@@ -224,6 +224,7 @@ export interface ListQuery {
    */
   scope?: 'mine' | 'pool' | 'dispatch' | 'reported' | 'all' | 'done';
   activeOnly?: '1';
+  sort?: 'newest';
   /** 关键词：单号 / 报修地址 / 故障描述 */
   q?: string;
 }
@@ -231,6 +232,17 @@ export interface ListQuery {
 /** 列表按角色收敛：pool 含公开待接单及定向派给本人的待接单，mine 从接单后开始。 */
 export const list = (query: ListQuery = {}) =>
   request<WorkOrderListItem[]>({ url: '/work-orders', query: query as any });
+
+export interface MaterialDraftRow {
+  materialId?: number; warehouseId?: number; name?: string; spec?: string;
+  qty: number; unit?: string; note?: string; code?: string; warehouseName?: string;
+  photoUrl?: string; photoUrls?: string[]; stockQty?: number;
+}
+export interface MaterialDraft { version: number; rows: MaterialDraftRow[] }
+export const materialDraft = (id: number | string) =>
+  request<MaterialDraft>({ url: `/work-orders/${id}/material-draft` });
+export const saveMaterialDraft = (id: number | string, data: MaterialDraft) =>
+  request<MaterialDraft>({ method: 'PATCH', url: `/work-orders/${id}/material-draft`, data });
 
 /** 底部 tab 角标一次拿齐：工单池 / 派单台 / 在手工单各几件。没权限的格给 0 */
 export interface BadgeCounts {

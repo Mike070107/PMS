@@ -337,7 +337,7 @@
     </view>
 
     <view class="label {{issuedMaterials.length ? 'mt' : ''}}">本次新增<text class="label__opt">可连续添加多项</text></view>
-    <view wx:if="{{!materialRows.length}}" class="mat-empty">还没添加。点下方「添加材料」先在材料库里搜：有库存直接领，没库存选中就进采购申请，搜不到再申购新材料</view>
+    <view wx:if="{{!materialRows.length}}" class="mat-empty">还没添加。点下方「添加用料」先在材料库里搜，缺少的材料可提交申购。</view>
 
     <view class="mat-item" wx:for="{{materialRows}}" wx:key="index">
       <!-- 第一行：名称 + 规格。库存 SKU 固定展示，手填行仍允许输入名称。 -->
@@ -419,10 +419,9 @@
             <text class="mat-unit">{{item.unit || ''}}</text>
           </view>
         </view>
-        <button class="btn btn--outline btn--sm mat-pick" data-index="{{index}}" bindtap="onOpenSku">
-          <view class="btn__icon icon-action--box-blue"></view><text>{{item.materialId ? '换一个' : '从库存选'}}</text>
-        </button>
       </view>
+
+      <button wx:if="{{hasSpeech}}" class="speech-mini mat-note-speech {{(recording || pressing) && speechTarget === 'materialRowNote' && speechRowIndex === index ? 'speech-mini--on' : ''}}" data-speech-target="materialRowNote" data-speech-label="用料备注" data-row-index="{{index}}" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord" catchtouchmove="onHoldMove"><view class="complete-speech__mic"></view><text>{{recording && speechTarget === 'materialRowNote' && speechRowIndex === index ? '松开结束' : (pressing && speechTarget === 'materialRowNote' && speechRowIndex === index ? '正在准备…' : '按住说备注')}}</text></button>
 
       <!-- 申购新材料的样本照片条：可删可补，最多 3 张 -->
       <view wx:if="{{!item.materialId && item.photoUrls.length}}" class="mat-samples">
@@ -443,7 +442,6 @@
           data-field="note"
           bindinput="onMaterialInput"
         />
-        <button wx:if="{{hasSpeech}}" class="speech-mini {{(recording || pressing) && speechTarget === 'materialRowNote' && speechRowIndex === index ? 'speech-mini--on' : ''}}" data-speech-target="materialRowNote" data-speech-label="用料备注" data-row-index="{{index}}" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord" catchtouchmove="onHoldMove"><view class="complete-speech__mic"></view><text>{{recording && speechTarget === 'materialRowNote' && speechRowIndex === index ? '松开' : (pressing && speechTarget === 'materialRowNote' && speechRowIndex === index ? '正在准备…' : '按住说')}}</text></button>
       </view>
       <view wx:if="{{recording && speechTarget === 'materialRowNote' && speechRowIndex === index}}" class="speech-field-listening speech-field-listening--compact">正在听：{{partial || '请继续说…'}}</view>
 
@@ -459,15 +457,15 @@
          材料库里明明有的东西又让他填型号拍照。现在统一先搜材料库（有货没货都搜得到），搜不到再申购。 -->
     <view class="btn-row mt">
       <button class="btn btn--primary" bindtap="onOpenSku">
-        <view class="btn__icon icon-action--plus-white"></view><text>添加材料</text>
+        <view class="btn__icon icon-action--plus-white"></view><text>{{materialRows.length || issuedMaterials.length ? '继续添加用料' : '添加用料'}}</text>
       </button>
     </view>
-    <view class="label mt">材料申请原因<text class="label__opt">申购时必填</text></view>
-    <button wx:if="{{hasSpeech}}" class="speech-field-button speech-field-button--compact {{(recording || pressing) && speechTarget === 'materialNote' ? 'speech-field-button--on' : ''}}" data-speech-target="materialNote" data-speech-label="缺料补充说明" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord" catchtouchmove="onHoldMove">
+    <view wx:if="{{hasShortage}}" class="label mt">材料申请原因<text class="label__opt">申购时必填</text></view>
+    <button wx:if="{{hasShortage && hasSpeech}}" class="speech-field-button speech-field-button--compact {{(recording || pressing) && speechTarget === 'materialNote' ? 'speech-field-button--on' : ''}}" data-speech-target="materialNote" data-speech-label="缺料补充说明" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord" catchtouchmove="onHoldMove">
       <view class="complete-speech__mic"></view><view><view class="speech-field-button__title">{{recording && speechTarget === 'materialNote' ? '松开结束' : (pressing && speechTarget === 'materialNote' ? '正在准备…' : '按住说申请原因')}}</view><view wx:if="{{guide}}" class="speech-field-button__desc">说明为什么要买、用于哪里</view></view>
     </button>
-    <view wx:if="{{recording && speechTarget === 'materialNote'}}" class="speech-field-listening">正在听：{{partial || '请继续说…'}}</view>
-    <textarea class="complete-textarea complete-textarea--short" maxlength="255" placeholder="例如：门口机电源板烧坏无法维修，申请同型号电源板更换" value="{{materialNote}}" bindinput="onMaterialNote"/>
+    <view wx:if="{{hasShortage && recording && speechTarget === 'materialNote'}}" class="speech-field-listening">正在听：{{partial || '请继续说…'}}</view>
+    <textarea wx:if="{{hasShortage}}" class="complete-textarea complete-textarea--short" maxlength="255" placeholder="例如：门口机电源板烧坏无法维修，申请同型号电源板更换" value="{{materialNote}}" bindinput="onMaterialNote"/>
 
     <view class="error" wx:if="{{materialError}}">{{materialError}}</view>
   </scroll-view>

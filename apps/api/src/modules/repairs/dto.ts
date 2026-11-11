@@ -346,6 +346,10 @@ export class WorkOrdersQueryDto {
   @IsIn(['1'])
   activeOnly?: '1';
 
+  @IsOptional()
+  @IsIn(['newest'])
+  sort?: 'newest';
+
   /**
    * 关键词：单号 / 报修地址 / 故障描述。
    * 办公室在派单台上查「上次那单谁修的」，只能靠这几样想起来，
@@ -537,6 +541,20 @@ export class MaterialUsageDto {
   @IsString()
   @MaxLength(120)
   note?: string;
+}
+
+export class MaterialDraftRowDto extends MaterialUsageDto {
+  @IsOptional() @IsString() @MaxLength(120) spec?: string;
+  @IsOptional() @IsString() @MaxLength(100) code?: string;
+  @IsOptional() @IsString() @MaxLength(120) warehouseName?: string;
+  @IsOptional() @IsString() @MaxLength(1000) photoUrl?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(4) @IsString({ each: true }) @MaxLength(1000, { each: true }) photoUrls?: string[];
+}
+
+export class SaveMaterialDraftDto {
+  @Type(() => Number) @IsInt() @Min(0) version: number;
+  @IsArray() @ArrayMaxSize(10) @ValidateNested({ each: true }) @Type(() => MaterialDraftRowDto)
+  rows: MaterialDraftRowDto[];
 }
 
 export class CompleteWorkOrderDto {

@@ -2,6 +2,8 @@ import { BadRequestException } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import { StockMovementType } from '../../common/enums';
 import { Material, Stock, StockLot, StockMovement } from '../../entities';
+import { StockReservation } from '../../entities/work-order-material-draft.entity';
+import { assertReservationCapacity } from './reservation-policy';
 
 /**
  * 库存台账（批次 + 先进先出）的唯一实现。
@@ -121,6 +123,13 @@ export async function applyStockDelta(
   }
   const nextQty = round2(Number(stock.qty) + input.deltaQty);
   if (nextQty < 0) throw new BadRequestException('stock is insufficient');
+  if (input.deltaQty < 0) {
+    const reservations = await manager.find(StockReservation, {
+      where: { tenantId: input.tenantId, warehouseId: input.warehouseId, materialId: input.materialId },
+    });
+    const reserved = reservations.reduce((total, row) => total + Number(row.qty), 0);
+    assertReservationCapacity(Number(stock.qty), reserved, -input.deltaQty);
+  }
   stock.qty = nextQty;
   // 库位跟着入库走：出库不改（东西还在原来那格），入库没指定也不清掉已有的
   if (input.deltaQty > 0 && input.locationId) stock.locationId = input.locationId;
