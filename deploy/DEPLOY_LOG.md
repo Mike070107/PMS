@@ -7172,3 +7172,25 @@
   - 72367187 feat(web): promote full neighbor UI to official homepage with personal themes
   - c4cb9d8e feat(auth): 权限拆分——app:approve-manager 拆成 app:approve-purchase-manager(采购经理环节) 与 app:approve-business-manager(收费/车牌经理环节),旧 key 保留兼容(任一命中即放行);含亲情车待审、新办车牌待审、采购与调拨审批、待办通知与角标
 
+## 2026-11-11 12:41 · api · 1e953e2a
+
+- 包：`pms-api-fast-20261111-124020.tar.gz`
+- 提交：1e953e2a docs(inventory): record staff upload 1.0.20261111c
+- 自上次（475b21f6）以来上线的相关提交：
+  - fc6201e6 Merge remote-tracking branch 'origin/main'
+  - e4bc7b44 fix(inventory): default stock lists to available materials
+  - adba4437 merge: integrate current main while preserving dispatch sort modes
+  - afe35caf feat(repairs): persist material drafts and reserve stock for staff orders
+  - 0498e7f0 fix(repairs): order dispatch by repair time and pin next actions
+  - 2509c4bb feat(mis-mirror): reconcile dimensions and room-number gaps daily
+  - 11fa324a feat(mis-mirror): sync bill audit dates and online order numbers
+  - bb7dd926 fix(statistics): keep annual drilldown source ids exact
+  - 64928874 fix(statistics): preserve bill IDs and sync cursors
+  - 7223fa9b fix(statistics): preserve master IDs during mirror reload
+  - 44c2fdba feat(statistics): mirror raw charge standards on manual reload
+  - 7c15cc72 fix(statistics): guard owner mirror reload before source reads
+  - 798ef23a feat(statistics): preserve legacy owner report source fields
+  - ac938af2 fix(statistics): harden drilldowns and floating filter layout
+  - f68669af feat(statistics): enable daily fees report and classified amount drilldowns
+  - f8634eae fix(repairs): scope dispatch notices and recognize intercoms
+  - e93c9998 feat(statistics): add ticket item summaries and scoped ticket drilldown
