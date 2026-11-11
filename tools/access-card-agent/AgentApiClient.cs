@@ -14,6 +14,18 @@ namespace Pms.AccessCardAgent
         private readonly string _token;
         private readonly string _version;
         private readonly JavaScriptSerializer _json = new JavaScriptSerializer();
+        private int _timeoutMs = 15000;
+        private string _connectionGroup;
+
+        // Never share the queue's JavaScriptSerializer or HTTP connection slots with a heartbeat.
+        internal AgentApiClient CreateHeartbeatClient()
+        {
+            return new AgentApiClient(_config, _token, _version)
+            {
+                _timeoutMs = 5000,
+                _connectionGroup = "parking-heartbeat-" + Guid.NewGuid().ToString("N")
+            };
+        }
 
         public AgentApiClient(AgentConfig config, string token) : this(config, token, Version)
         {
@@ -147,8 +159,9 @@ namespace Pms.AccessCardAgent
             request.ContentType = "application/json; charset=utf-8";
             request.Headers["Authorization"] = "Bearer " + _token;
             request.Headers["X-Agent-Id"] = _config.AgentId;
-            request.Timeout = 15000;
-            request.ReadWriteTimeout = 15000;
+            request.Timeout = _timeoutMs;
+            request.ReadWriteTimeout = _timeoutMs;
+            if (_connectionGroup != null) request.ConnectionGroupName = _connectionGroup;
             var bytes = Encoding.UTF8.GetBytes(_json.Serialize(body));
             request.ContentLength = bytes.Length;
             using (var stream = request.GetRequestStream()) stream.Write(bytes, 0, bytes.Length);

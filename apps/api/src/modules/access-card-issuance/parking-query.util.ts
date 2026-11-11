@@ -1,3 +1,6 @@
+import type { AccessCardAgent } from '../../entities/access-card-agent.entity';
+import { effectiveAgentStatus, orderAgentsByAvailability } from './agent-status';
+
 export type ParkingSearchKind = 'house' | 'plate' | 'plate_tail' | 'plate_phone' | 'phone' | 'resident';
 
 export interface ParsedParkingSearch {
@@ -86,6 +89,59 @@ export function supportsStructuredParkingQueries(version: string | null | undefi
   if (major > 2) return true;
   if (major === 2) return minor >= 4;
   return major === 0 && minor >= 8;
+}
+
+export interface ParkingQueryRequirement {
+  supportsVersion: (version: string | null | undefined) => boolean;
+  minimumVersion: string;
+  label: string;
+}
+
+export type ParkingQueryReadiness = {
+  ready: boolean;
+  reason: 'ready' | 'unregistered' | 'disabled' | 'no_heartbeat' | 'heartbeat_expired'
+    | 'offline' | 'degraded' | 'read_unavailable' | 'unsupported_version';
+  message: string | null;
+};
+
+type ParkingReadAgent = Pick<AccessCardAgent,
+  'tenantId' | 'kind' | 'enabled' | 'status' | 'lastSeenAt' | 'capabilities' | 'version'>;
+
+/** 查询入口与 readiness 共用同一判定；只在在线且明确上报读取能力后检查协议版本。
+ * 多条注册记录按同一个时刻评估，任一完整合格网关即可；不可拼接不同网关的能力。
+ * 过期仍复用现有 effectiveAgentStatus 的 15s 门槛，不将数据库可连等同于 PMS 心跳在线。
+ */
+export function parkingQueryReadiness(
+  agents: readonly ParkingReadAgent[],
+  tenantId: number,
+  requirement: ParkingQueryRequirement = {
+    supportsVersion: supportsStructuredParkingQueries,
+    minimumVersion: '2.4.0（独立停车代理 0.8.0）',
+    label: '车辆结构化查询',
+  },
+  now = new Date(),
+): ParkingQueryReadiness {
+  const unavailable = (reason: ParkingQueryReadiness['reason'], message: string): ParkingQueryReadiness =>
+    ({ ready: false, reason, message });
+  const registered = agents.filter((agent) => agent.tenantId === tenantId && agent.kind === 'parking_gateway');
+  if (!registered.length) return unavailable('unregistered', '当前租户未注册停车网关，请连接当前租户的 Windows 数据同步助手');
+  const enabled = orderAgentsByAvailability(registered.filter((agent) => agent.enabled === true), now);
+  if (!enabled.length) return unavailable('disabled', '停车网关已禁用，请联系管理员核对当前租户的网关配置');
+  const online = enabled.filter((agent) => effectiveAgentStatus(agent, now) === 'online');
+  if (!online.length) {
+    const latest = enabled[0];
+    if (!latest.lastSeenAt) return unavailable('no_heartbeat', '停车网关尚未收到心跳，请检查 Windows 数据同步助手到 PMS 的连接');
+    // 仅用于区分过期与助手主动上报 offline/degraded，绝不改变可查询判定。
+    if (effectiveAgentStatus({ ...latest, status: 'online' }, now) === 'offline')
+      return unavailable('heartbeat_expired', '停车网关心跳已过期，当前不可查询；请检查 Windows 数据同步助手到 PMS 的心跳连接后重试');
+    if (latest.status === 'degraded') return unavailable('degraded', '停车网关状态异常（degraded），请检查 Windows 数据同步助手的运行状态');
+    return unavailable('offline', '停车网关当前离线，请检查 Windows 数据同步助手到 PMS 的连接');
+  }
+  const readable = online.filter((agent) => agent.capabilities?.parkingDbRead === true);
+  if (!readable.length) return unavailable('read_unavailable', '在线停车网关未上报停车数据库读取能力（parkingDbRead）；请检查助手的停车数据库配置、连接与读取权限');
+  if (!readable.some((agent) => requirement.supportsVersion(agent.version)))
+    return unavailable('unsupported_version', `在线停车网关版本 ${readable[0].version || '未知'} 未确认支持${requirement.label}，请升级 Windows 数据同步助手到 ${requirement.minimumVersion} 或更新版本`);
+  return { ready: true, reason: 'ready', message: null };
 }
 
 /** 进出流水使用新版助手的精确车牌、时间区间和限量查询协议。 */

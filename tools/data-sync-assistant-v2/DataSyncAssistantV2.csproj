@@ -72,6 +72,7 @@
     <Compile Include="..\access-card-agent\IcCardNumber.cs"><Link>Adapters\IcCardNumber.cs</Link></Compile>
     <Compile Include="..\access-card-agent\AgentApiClient.cs"><Link>Adapters\AgentApiClient.cs</Link></Compile>
     <Compile Include="..\access-card-agent\AgentLoop.cs"><Link>Adapters\AgentLoop.cs</Link></Compile>
+    <Compile Include="..\access-card-agent\ParkingHeartbeat.cs"><Link>Adapters\ParkingHeartbeat.cs</Link></Compile>
     <Compile Include="..\access-card-agent\AgentStatus.cs"><Link>Adapters\AgentStatus.cs</Link></Compile>
     <Compile Include="..\access-card-agent\SecretStore.cs"><Link>Adapters\SecretStore.cs</Link></Compile>
     <Compile Include="..\access-card-agent\LegacyDatabase.cs"><Link>Adapters\LegacyDatabase.cs</Link></Compile>

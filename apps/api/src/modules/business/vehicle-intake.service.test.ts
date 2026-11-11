@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { VehicleIntakeService } from './vehicle-intake.service';
+import { VehicleIntake, BusinessTransaction, BusinessLog } from '../../entities';
 
 /** 极简内存仓库：支持 findOne/save/create、update().set().where(id + 状态).execute() */
 function repo<T extends { id?: number }>(rows: T[]) {
@@ -40,6 +41,15 @@ function setup(mode: 'queued' | 'mocked' = 'queued') {
   const intakes = repo<any>([]);
   const txns = repo<any>([]);
   const logs = repo<any>([]);
+  // Existing sequential workflow fixture now exposes the transaction-scoped repositories.
+  // Lock/race/rollback semantics are covered by vehicle-intake-kind-safety.test.ts.
+  const repositories = new Map<any, any>([[VehicleIntake, intakes], [BusinessTransaction, txns], [BusinessLog, logs]]);
+  const manager: any = {
+    save: async () => undefined, create: (_entity: any, value: any) => value,
+    getRepository: (entity: any) => { if (!repositories.has(entity)) repositories.set(entity, repo<any>([])); return repositories.get(entity); },
+    transaction: async (work: any) => work(manager),
+  };
+  for (const repository of repositories.values()) repository.manager = manager;
   const house = { id: 5, buildingId: 2, roomNo: '502', tenantId: 1 };
   const kicked: number[] = [];
   const service = new VehicleIntakeService(
@@ -63,7 +73,7 @@ const tokenOf = (url: string) => url.split('/').pop()!;
 
 test('paid intake: owner fills plate on phone, payment waits for docs, approval releases it into execution', async () => {
   const { service, intakes, txns, user, kicked } = setup();
-  const created = await service.create({ houseId: 5, kind: 'paid', formBase: 'https://prsznh.cn/beta/m/plate' }, user);
+  const created = await service.create({ houseId: 5, kind: 'paid', garages: ['local:phase2_main_garage'], formBase: 'https://prsznh.cn/beta/m/plate' }, user);
   assert.equal(created.status, 'waiting');
   assert.match(created.qr.url, /^https:\/\/prsznh\.cn\/beta\/m\/plate\/[A-Za-z0-9_-]{20,}$/);
   assert.equal(created.houseLabel, '枫桦景苑二期/228弄3号502');
@@ -74,7 +84,7 @@ test('paid intake: owner fills plate on phone, payment waits for docs, approval 
   assert.equal(claim.approved, false);
   const txn = await txns.save({ tenantId: 1, txnNo: 'P1', amountCents: 45000, externalSyncStatus: 'awaiting_docs', snapshot: { parking: { newVehicle: true } } });
   await service.attachPayment(claim.row, txn, user);
-  await assert.rejects(() => service.claimForPayment(created.id, 5, user), /已经收过款/);
+  await assert.rejects(() => service.claimForPayment(created.id, 5, user), /已关联办理或收款流水/);
 
   const opened = await service.publicSession(token);
   assert.equal(opened.ownerName, '张**');
@@ -97,7 +107,7 @@ test('paid intake: owner fills plate on phone, payment waits for docs, approval 
 
 test('reupload keeps the same QR usable; regenerating invalidates the old one', async () => {
   const { service, user } = setup();
-  const created = await service.create({ houseId: 5, kind: 'paid', formBase: 'https://prsznh.cn/beta/m/plate' }, user);
+  const created = await service.create({ houseId: 5, kind: 'paid', garages: ['local:phase2_main_garage'], formBase: 'https://prsznh.cn/beta/m/plate' }, user);
   const token = tokenOf(created.qr.url);
   await service.publicSubmit(token, [file()], { plate: '豫GQ3N07', contactName: '李四', contactPhone: '13900000000' });
   await assert.rejects(() => service.review(created.id, { decision: 'reupload' }, user), /补什么/);
@@ -139,7 +149,7 @@ test('family intake: relation required, needs duplicate check, converts to a fam
 
 test('voiding a paid intake after payment hands the money to manual handling', async () => {
   const { service, txns, user } = setup();
-  const created = await service.create({ houseId: 5, kind: 'paid', formBase: 'https://prsznh.cn/beta/m/plate' }, user);
+  const created = await service.create({ houseId: 5, kind: 'paid', garages: ['local:phase2_main_garage'], formBase: 'https://prsznh.cn/beta/m/plate' }, user);
   const claim = await service.claimForPayment(created.id, 5, user);
   const txn = await txns.save({ tenantId: 1, txnNo: 'P2', amountCents: 15000, externalSyncStatus: 'awaiting_docs', snapshot: {} });
   await service.attachPayment(claim.row, txn, user);

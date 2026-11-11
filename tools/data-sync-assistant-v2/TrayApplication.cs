@@ -90,11 +90,11 @@ namespace Pms.DataSyncAssistant
                 var root = new JavaScriptSerializer().DeserializeObject(File.ReadAllText(path)) as System.Collections.Generic.Dictionary<string, object>;
                 var values = root == null || !root.ContainsKey("connections") ? null : root["connections"] as object[];
                 if (values == null || values.Length == 0) return "没有启用的连接";
-                var online = values.Count(value =>
-                {
-                    var item = value as System.Collections.Generic.Dictionary<string, object>;
-                    return item != null && item.ContainsKey("pmsConnected") && Convert.ToBoolean(item["pmsConnected"]);
-                });
+                var now = DateTimeOffset.Now;
+                if (!RuntimeHealth.IsPublished(root, now)) return "运行状态已过期";
+                if (!UnifiedServiceManager.IsRunning()) return "后台服务未运行";
+                var online = values.Count(value => RuntimeHealth.IsPmsConnected(
+                    value as System.Collections.Generic.Dictionary<string, object>, now));
                 return online + "/" + values.Length + " 个连接在线";
             }
             catch { return "状态文件暂不可读"; }

@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),ts=require('typescript'),dayjs=require('dayjs');
 const root=path.resolve(__dirname,'../src');
 function picker(props){const module={exports:{}};const code=ts.transpileModule(fs.readFileSync(path.join(root,'components/DateInput.tsx'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
- vm.runInNewContext(code,{module,exports:module.exports,require(n){if(n==='react/jsx-runtime')return{jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})};if(n==='antd')return{DatePicker:'DatePicker'};if(n==='dayjs')return dayjs;if(n.endsWith('.css')||n.includes('locale'))return{};throw Error(n)}});return module.exports.default(props).props;
+ vm.runInNewContext(code,{module,exports:module.exports,require(n){if(n==='react')return{useMemo:fn=>fn()};if(n==='react/jsx-runtime')return{jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})};if(n==='antd')return{DatePicker:'DatePicker'};if(n==='dayjs')return dayjs;if(n.endsWith('.css')||n.includes('locale'))return{};throw Error(n)}});return module.exports.default(props).props;
 }
 test('date input reuses AntD and preserves date strings, clear and original field identity',()=>{
  const changes=[];const p=picker({type:'date',value:'2026-11-05',name:'effectiveFrom',id:'from',onChange:e=>changes.push([e.target.value,e.target.name,e.target.id])});

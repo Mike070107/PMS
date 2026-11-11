@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BusinessService } from './business.service';
+import { BusinessTransaction } from '../../entities';
 import { parkingRenewalWindow } from './parking-renewal-window';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
@@ -93,7 +94,7 @@ test('新办与已有车辆的0元/150元自定日期登记保留待审核，不
       vehicleRepo: { findOne: async () => ({ id: 3, plateNo: '沪TEST01' }), save: async (v: any) => v },
       txnRepo: { create: (v: any) => v, save: async (v: any) => { const row = { id: 40, ...v }; saved.push(row); return row; } },
       logRepo: { create: (v: any) => v, save: async (v: any) => { logs.push(...v); return v; } },
-      intakes: { claimForPayment: async () => ({ row: { id: 5, vehicleClass: '住户车-1' }, plate: '沪TEST01', approved: true }), attachPayment: async () => { attached++; } },
+      intakes: { withPaymentTransaction: async (_id: number, _user: any, _access: any, work: any) => work({ getRepository: (entity: any) => entity === BusinessTransaction ? svc.txnRepo : svc.logRepo }), claimForPayment: async () => ({ row: { id: 5, vehicleClass: '住户车-1' }, plate: '沪TEST01', approved: true }), attachPayment: async () => { attached++; } },
       execution: { initialFor: () => ({ status: 'queued' }), kick: () => { kicked++; } },
       notifyReviewers: async () => { notified++; },
     });

@@ -1,0 +1,105 @@
+/* Scoped to the formal intake card / portal. Do not change shared cashier or page styles. */
+.np-review {
+  --np-brand: var(--brand, #31558a);
+  --np-ink: var(--ink, #24344b);
+  --np-muted: var(--ink2, #536379);
+  --np-line: var(--line, #d7dfe9);
+  color: var(--np-ink);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.np-review *, .np-image-preview * { box-sizing: border-box; }
+.np-review .side-h { flex-wrap: wrap; gap: 8px; }
+.np-review .np-grid > * { min-width: 0; }
+.np-review .np-review-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 32px; margin: 16px 0 24px; }
+.np-review .np-review-steps li { position: relative; min-width: 0; padding: 12px; gap: 4px; background: var(--sunken, #f4f6f9); border: 1px solid var(--np-line); border-radius: 8px; color: var(--np-muted); }
+.np-review .np-step-heading { display: flex; align-items: center; gap: 8px; color: var(--np-ink); line-height: 1.5; }
+.np-review .np-step-number { display: grid; place-items: center; flex: 0 0 24px; width: 24px; height: 24px; border: 1px solid currentColor; border-radius: 50%; font-variant-numeric: tabular-nums; font-size: 12px; }
+.np-review li[data-state="done"] .np-step-number { color: var(--np-brand); background: var(--card, #fff); }
+.np-review li[data-state="attention"] .np-step-detail { color: var(--dang, #a63030); }
+.np-review .np-step-detail { font-size: 14px; line-height: 1.5; }
+.np-review .np-review-steps time, .np-review .np-step-time { font-size: 13px; font-variant-numeric: tabular-nums; line-height: 1.5; }
+.np-review .np-step-arrow { position: absolute; left: calc(100% + 1px); top: 50%; transform: translateY(-50%); width: 32px; text-align: center; color: var(--np-muted); font-size: 24px; }
+.np-review .np-qr-trigger { border: 0; background: transparent; padding: 0; cursor: zoom-in; max-width: 100%; border-radius: 8px; }
+.np-review .np-qr-trigger img { display: block; max-width: 100%; }
+.np-review .np-qr > div { flex-wrap: wrap; }
+.np-review .np-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.np-review .np-fields input, .np-review .np-fields select { min-width: 0; width: 100%; }
+.np-review .np-files { gap: 12px; margin: 16px 0; }
+.np-review .np-files > a, .np-review .np-file-trigger { display: flex; flex-direction: column; justify-content: start; align-items: stretch; width: 128px; height: 116px; padding: 0; overflow: hidden; border: 1px solid var(--np-line); border-radius: 8px; background: var(--card, #fff); color: var(--np-ink); text-decoration: none; cursor: pointer; }
+.np-review .np-file-trigger img, .np-review .np-pdf, .np-review .np-thumb-error { width: 100%; height: 80px; flex: 0 0 80px; object-fit: contain; background: var(--sunken, #f4f6f9); }
+.np-review .np-pdf, .np-review .np-thumb-error { display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 13px; }
+.np-review .np-file-caption { display: block; width: 100%; padding: 6px 8px; font-size: 12px; line-height: 1.5; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.np-review .np-garages { min-width: 0; margin: 16px 0 0; border: 1px solid var(--np-line); border-radius: 8px; padding: 12px 16px; }
+.np-review .np-garages legend { padding: 0 4px; font-weight: 600; font-size: 16px; }
+.np-review .np-garages legend span { margin-left: 8px; color: var(--np-muted); font-size: 14px; font-weight: 400; }
+.np-review .np-garage-help { margin: 0 0 12px; color: var(--np-muted); font-size: 14px; line-height: 1.6; }
+.np-review .np-garage-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.np-review .np-garage-option { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--np-line); border-radius: 6px; font-size: 16px; cursor: pointer; background: var(--card, #fff); }
+.np-review .np-garage-option.is-checked { border-color: var(--np-brand); }
+.np-review .np-garage-option input { width: 20px; height: 20px; margin: 0; flex: 0 0 20px; accent-color: var(--np-brand); cursor: pointer; }
+.np-review .np-garage-option:has(input:disabled) { opacity: .65; cursor: wait; }
+.np-review .np-garage-numbers { display: flex; flex-wrap: wrap; gap: 12px; }
+.np-review .np-garage-numbers label { display: grid; gap: 4px; margin-top: 12px; font-size: 14px; width: min(100%, 200px); }
+.np-review .np-garage-numbers input { min-width: 0; width: 100%; min-height: 44px; }
+.np-review .np-garage-status { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 24px; margin-top: 8px; font-size: 14px; color: var(--np-muted); }
+.np-review .btn { min-height: 44px; white-space: normal; }
+.np-review :is(button, a, input, select):focus-visible, .np-image-preview :is(button, a):focus-visible { outline: 3px solid #31558a; outline-offset: 3px; }
+.np-review :is(button, a), .np-image-preview :is(button, a) { transition: border-color 150ms ease, background-color 150ms ease; }
+.np-review .np-file-trigger:hover, .np-review .np-garage-option:hover { border-color: var(--np-brand); }
+
+/* Native modal top layer is not constrained by the table cell or parent stacking contexts. */
+.np-image-preview { --np-line: #d7dfe9; position: fixed; inset: 0; width: min(1120px, calc(100vw - 48px)); height: min(860px, calc(100dvh - 48px)); max-width: none; max-height: none; padding: 0; border: 1px solid var(--np-line); border-radius: 12px; margin: auto; background: #fff; color: #24344b; box-shadow: 0 24px 72px #0004; overflow: hidden; }
+.np-image-preview::backdrop { background: rgb(15 23 42 / 76%); }
+.np-preview-shell { height: 100%; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.np-preview-header { display: flex; gap: 16px; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--np-line); }
+.np-preview-header > div { display: grid; gap: 4px; min-width: 0; }
+.np-preview-header b { font-size: 18px; }
+.np-preview-header span { font-size: 14px; color: #536379; overflow-wrap: anywhere; }
+.np-image-preview .btn { display: inline-flex; justify-content: center; align-items: center; min-height: 44px; min-width: 44px; padding: 8px 12px; flex-shrink: 0; border: 1px solid #a8b6c9; border-radius: 6px; color: #24344b; background: #fff; font: inherit; font-size: 14px; text-decoration: none; cursor: pointer; }
+.np-image-preview .btn:hover { background: #edf2f8; }
+.np-image-preview .btn:disabled { opacity: .45; cursor: not-allowed; }
+.np-preview-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 16px; }
+.np-preview-tools output { min-width: 48px; text-align: center; font-size: 14px; font-variant-numeric: tabular-nums; }
+.np-preview-stage { min-height: 0; min-width: 0; overflow: auto; background: #e8edf3; overscroll-behavior: contain; }
+.np-preview-zoom { margin: auto; }
+.np-preview-zoom img { display: block; width: 100%; height: 100%; max-width: none; max-height: none; object-fit: contain; }
+.np-preview-error { display: flex; flex-direction: column; gap: 16px; align-items: center; justify-content: center; min-height: 100%; padding: 24px; text-align: center; color: #536379; }
+.np-preview-footer { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 8px 16px; border-top: 1px solid var(--np-line); font-size: 14px; }
+.np-preview-hint { margin-left: auto; color: #536379; font-size: 13px; }
+@media (max-width: 600px) {
+  /* Plates embeds this card in a colspan cell. Reflow only that owning table when expanded,
+     otherwise overflow:hidden can conceal half the form while the document appears to fit. */
+  .card:has(> .tbl .np-review) > .tbl,
+  .card:has(> .tbl .np-review) > .tbl > tbody { display: block; width: 100%; min-width: 0 !important; }
+  .card:has(> .tbl .np-review) > .tbl > thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .card:has(> .tbl .np-review) > .tbl > tbody > tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .card:has(> .tbl .np-review) > .tbl > tbody > tr > td { display: block; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+  .card:has(> .tbl .np-review) > .tbl > tbody > tr:has(> td > .np-review) { display: block; }
+  .card:has(> .tbl .np-review) > .tbl > tbody > tr > td:has(> .np-review) { width: 100%; padding: 8px !important; }
+  .ph:has(~ .card > .tbl .np-review) { display: flex; flex-direction: column; align-items: stretch; gap: 16px; }
+  .ph:has(~ .card > .tbl .np-review) > div { min-width: 0; flex: 0 1 auto !important; }
+  .ph:has(~ .card > .tbl .np-review) form { flex-wrap: wrap; flex: 0 1 auto !important; }
+  .ph:has(~ .card > .tbl .np-review) form input { max-width: 100%; min-width: 0; flex: 1 1 180px; }
+  .np-review.np-card { padding: 12px; }
+  .np-review .np-review-steps { grid-template-columns: 1fr; gap: 24px; margin: 16px 0; }
+  .np-review .np-review-steps li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; padding: 8px 12px; }
+  .np-review .np-step-heading { grid-column: 1 / -1; }
+  .np-review .np-step-arrow { left: 50%; top: 100%; width: 24px; height: 24px; font-size: 22px; line-height: 24px; transform: translateX(-50%) rotate(90deg); }
+  .np-review .np-step-detail { min-width: 0; }
+  .np-review .np-step-time, .np-review .np-review-steps time { text-align: right; }
+  .np-review .np-fields { grid-template-columns: 1fr; }
+  .np-review .np-fields .in { font-size: 16px; min-height: 44px; }
+  .np-review .np-garages { padding: 12px; }
+  .np-review .np-garage-options { display: grid; grid-template-columns: 1fr; }
+  .np-review .np-garage-option { width: 100%; }
+  .np-review .np-log li { flex-wrap: wrap; overflow-wrap: anywhere; }
+  .np-image-preview { width: calc(100vw - 16px); height: calc(100dvh - 24px); border-radius: 8px; }
+  .np-preview-header { gap: 8px; padding: 8px; }
+  .np-preview-header b { font-size: 16px; }
+  .np-preview-tools { padding: 8px; gap: 8px; }
+  .np-preview-tools .btn { padding: 8px; }
+  .np-preview-footer { padding: 8px; justify-content: center; }
+  .np-preview-hint { flex-basis: 100%; margin-left: 0; text-align: center; }
+}
+@media (prefers-reduced-motion: reduce) { .np-review :is(button, a), .np-image-preview :is(button, a) { transition: none; } }

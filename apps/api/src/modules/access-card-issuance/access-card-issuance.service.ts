@@ -112,6 +112,8 @@ import {
   parkingPmsHouseKey,
   parkingRoomAddress,
   parseParkingSearch,
+  parkingQueryReadiness,
+  type ParkingQueryRequirement,
   assertFreshParkingPlateCheck,
   supportsStructuredParkingQueries,
   supportsParkingMovementQueries,
@@ -1548,6 +1550,7 @@ export class AccessCardIssuanceService {
       : [];
     const simulationEnabled = this.simulationEnabled();
     const deliyun = await this.deliyun.status();
+    const parkingQuery = parkingQueryReadiness(agents, tenantId);
     const parkingDbWrite = agents.some((agent) =>
       agent.kind === 'parking_gateway' &&
       effectiveAgentStatus(agent) === 'online' &&
@@ -1582,13 +1585,14 @@ export class AccessCardIssuanceService {
         cardWrite,
         legacyDbWrite,
         accessDbWrite,
-        parkingDbRead: true,
+        parkingDbRead: parkingQuery.ready,
         parkingDbWrite,
         controllerUpload,
         historicalAccessGrant,
         accessCardQuery,
         legacyCardQuery,
       },
+      parkingQuery,
       agents: orderAgentsByAvailability(agents).map((agent) => ({
         id: agent.agentKey,
         kind: agent.kind,
@@ -1626,6 +1630,13 @@ export class AccessCardIssuanceService {
     return null;
   }
 
+  private async assertParkingQueryReady(tenantId: number, requirement?: ParkingQueryRequirement) {
+    // 保留禁用记录用于准确解释失败；是否允许查询仍由共用判定严格检查 enabled。
+    const agents = await this.agentRepo.find({ where: { tenantId, kind: 'parking_gateway' } });
+    const readiness = parkingQueryReadiness(agents, tenantId, requirement);
+    if (!readiness.ready) throw new ServiceUnavailableException(readiness.message!);
+  }
+
   async createParkingQuery(dto: CreateParkingQueryDto, user: AuthUser) {
     const tenantId = this.requireTenant(user);
     let term: string;
@@ -1637,14 +1648,7 @@ export class AccessCardIssuanceService {
       throw new BadRequestException(error instanceof Error ? error.message : '查询内容格式不正确');
     }
 
-    const agents = await this.agentRepo.find({ where: { tenantId, kind: 'parking_gateway', enabled: true } });
-    const gateway = orderAgentsByAvailability(agents).find((agent) =>
-      effectiveAgentStatus(agent) === 'online' &&
-      agent.capabilities?.parkingDbRead === true &&
-      supportsStructuredParkingQueries(agent.version));
-    if (!gateway) {
-      throw new ServiceUnavailableException('停车网关尚未连接，或 Windows 数据同步助手需要升级到 2.4.0（独立停车代理 0.8.0）');
-    }
+    await this.assertParkingQueryReady(tenantId);
 
     const query = this.parkingQueryRepo.create({
       tenantId,
@@ -1794,11 +1798,10 @@ export class AccessCardIssuanceService {
     let input: ReturnType<typeof parseParkingMovementRange>;
     try { input = parseParkingMovementRange(dto.plate, dto.startDate, dto.endDate); }
     catch (error) { throw new BadRequestException(error instanceof Error ? error.message : '进出记录查询条件不正确'); }
-    const agents = await this.agentRepo.find({ where: { tenantId, kind: 'parking_gateway', enabled: true } });
-    const gateway = orderAgentsByAvailability(agents).find((agent) =>
-      effectiveAgentStatus(agent) === 'online' && agent.capabilities?.parkingDbRead === true &&
-      supportsParkingMovementQueries(agent.version));
-    if (!gateway) throw new ServiceUnavailableException('进出记录查询需要在线的 2.5.27 或更新版本数据同步助手');
+    await this.assertParkingQueryReady(tenantId, {
+      supportsVersion: supportsParkingMovementQueries,
+      minimumVersion: '2.5.27（独立停车代理 0.9.0）', label: '进出记录查询',
+    });
     const query = this.parkingQueryRepo.create({
       tenantId, term: input.plate, queryKind: 'movement', rangeStart: input.startDate, rangeEnd: input.endDate,
       status: 'pending', rows: [], attempt: 0, requestedAt: new Date(), completedAt: null,
@@ -1819,11 +1822,9 @@ export class AccessCardIssuanceService {
     const tenantId = this.requireTenant(user);
     try { parseParkingFeeReportRange(dto.startDate, dto.endDate); }
     catch (error) { throw new BadRequestException(error instanceof Error ? error.message : '金额报表日期不正确'); }
-    const agents = await this.agentRepo.find({ where: { tenantId, kind: 'parking_gateway', enabled: true } });
-    const gateway = orderAgentsByAvailability(agents).find((agent) =>
-      effectiveAgentStatus(agent) === 'online' && agent.capabilities?.parkingDbRead === true &&
-      supportsParkingFeeReports(agent.version));
-    if (!gateway) throw new ServiceUnavailableException('金额报表需要在线的 2.5.27 或更新版本数据同步助手');
+    await this.assertParkingQueryReady(tenantId, {
+      supportsVersion: supportsParkingFeeReports, minimumVersion: '2.5.27', label: '金额报表',
+    });
     const query = this.parkingQueryRepo.create({
       tenantId, term: '停车金额报表', queryKind: 'fee_report', rangeStart: dto.startDate, rangeEnd: dto.endDate,
       status: 'pending', rows: [], attempt: 0, requestedAt: new Date(), completedAt: null,
@@ -1843,10 +1844,9 @@ export class AccessCardIssuanceService {
   /** 旧停车库按车辆授权类型拉整张清单（只读），如「亲情车」；结果在 parking_queries.rows */
   async createParkingIdentityList(identity: string, user: AuthUser) {
     const tenantId = this.requireTenant(user);
-    const agents = await this.agentRepo.find({ where: { tenantId, kind: 'parking_gateway', enabled: true } });
-    if (!orderAgentsByAvailability(agents).some((agent) => effectiveAgentStatus(agent) === 'online' &&
-      agent.capabilities?.parkingDbRead === true && supportsParkingIdentityList(agent.version)))
-      throw new ServiceUnavailableException('从旧停车库拉清单需要在线的 2.5.49 或更新版本数据同步助手（会自动升级，稍后再试）');
+    await this.assertParkingQueryReady(tenantId, {
+      supportsVersion: supportsParkingIdentityList, minimumVersion: '2.5.49', label: '从旧停车库拉清单',
+    });
     const query = this.parkingQueryRepo.create({
       tenantId, term: identity, queryKind: 'identity_list', rangeStart: null, rangeEnd: null,
       status: 'pending', rows: [], attempt: 0, requestedAt: new Date(), completedAt: null,
@@ -1869,10 +1869,9 @@ export class AccessCardIssuanceService {
     catch (error) { throw new BadRequestException(error instanceof Error ? error.message : '金额明细日期不正确'); }
     if (!['renewal', 'temporary'].includes(dto.category) || !Number.isInteger(dto.page) || dto.page < 1 || dto.page > 1000)
       throw new BadRequestException('金额明细类别或页码不正确');
-    const agents = await this.agentRepo.find({ where: { tenantId, kind: 'parking_gateway', enabled: true } });
-    if (!orderAgentsByAvailability(agents).some((agent) => effectiveAgentStatus(agent) === 'online' &&
-      agent.capabilities?.parkingDbRead === true && supportsParkingFeeDetails(agent.version)))
-      throw new ServiceUnavailableException('金额明细分页需要在线的 2.5.28 或更新版本数据同步助手');
+    await this.assertParkingQueryReady(tenantId, {
+      supportsVersion: supportsParkingFeeDetails, minimumVersion: '2.5.28', label: '金额明细分页',
+    });
     const query = this.parkingQueryRepo.create({
       tenantId, term: `${dto.category}:${dto.page}`, queryKind: 'fee_detail', rangeStart: dto.startDate, rangeEnd: dto.endDate,
       status: 'pending', rows: [], attempt: 0, requestedAt: new Date(), completedAt: null,

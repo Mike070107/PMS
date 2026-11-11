@@ -93,7 +93,8 @@ export const payCode = (label: string) => PAY_EN[label] || (/微信|wechat/i.tes
  * 停车缴费：选中住户即查出这一户在各停车系统登记的车（车牌、车库、车位号、有效期），
  * 前台点一辆车、选月数，按收费标准算钱；收款后执行层把同一辆车在各系统的有效期一起续上。
  */
-export default function ParkingTab({ house, rules, onCart, initialPlate }: { house: ParkHouse; rules: ParkRule[]; onCart: (items: ParkingCart[], ready: boolean) => void; initialPlate?: string | null }) {
+/** Deep-link integration: Cashier passes focusedIntake={linkedIntake}; keep ordinary household checkout unchanged. */
+export default function ParkingTab({ house, rules, onCart, initialPlate, focusedIntake }: { house: ParkHouse; rules: ParkRule[]; onCart: (items: ParkingCart[], ready: boolean) => void; initialPlate?: string | null; focusedIntake?: Intake }) {
   const [hh, setHh] = useState<Household | null>(null);
   const [hhErr, setHhErr] = useState('');
   const [local, setLocal] = useState<{ state: 'idle' | 'loading' | 'done' | 'failed'; rows: ParkingQuery['rows']; error?: string }>({ state: 'idle', rows: [] });
@@ -113,9 +114,18 @@ export default function ParkingTab({ house, rules, onCart, initialPlate }: { hou
   useEffect(() => {
     let alive = true;
     setIntakes([]); setNewErr('');
-    request<Intake[]>({ url: '/vehicle-intakes', query: { houseId: house.id, open: '1' } }).then((r) => { if (alive) setIntakes(r); }).catch(() => undefined);
+    // A deep link is one registration, not every unpaid registration in the house.
+    // The parent already resolved this exact ID against the authorized address tree.
+    if (focusedIntake) {
+      if (focusedIntake.houseId !== house.id) setNewErr('本次登记与所选住户不一致，不能收费');
+      else setIntakes([focusedIntake]);
+    } else {
+      request<Intake[]>({ url: '/vehicle-intakes', query: { houseId: house.id, open: '1' } })
+        .then((r) => { if (alive) setIntakes(r); })
+        .catch((e) => { if (alive) setNewErr(e instanceof Error ? e.message : '读取新办登记失败，请重试'); });
+    }
     return () => { alive = false; };
-  }, [house.id]);
+  }, [house.id, focusedIntake]);
   // 车牌分类（业主车 / 租客车 …）：决定续期按哪套收费标准
   const [tags, setTags] = useState<Record<string, string>>({});
   const setTag = useCallback(async (plate: string, cls: string) => {
@@ -251,11 +261,11 @@ export default function ParkingTab({ house, rules, onCart, initialPlate }: { hou
   // 要一起收款的新办车牌（付费、还没收过款、没作废）
   const chargeKeys = intakes.filter((i) => i.kind === 'paid' && !i.transaction && i.status !== 'void').map((i) => `新办#${i.id}`);
   useEffect(() => {
-    const keys = [...picked, ...chargeKeys];
+    const keys = [...(focusedIntake ? [] : picked), ...chargeKeys];
     const items = keys.map((pl) => carts[pl]).filter((c): c is ParkingCart => !!c);
     onCart(items, keys.length > 0 && items.length === keys.length);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [picked, carts, chargeKeys.join(',')]);
+  }, [picked, carts, chargeKeys.join(','), focusedIntake?.id]);
   const updateIntake = useCallback((x: Intake) => setIntakes((l) => l.map((i) => (i.id === x.id ? x : i))), []);
   const dropIntake = useCallback((id: number) => { setIntakes((l) => l.filter((i) => i.id !== id)); setCart(`新办#${id}`, null); }, [setCart]);
   const pickedCars = cars.filter((c) => picked.includes(c.plate));
@@ -268,6 +278,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate }: { hou
 
   return (
     <div className="parking-household" style={{ marginTop: 16 }}>
+      {focusedIntake ? <div className="note2">仅处理本次新办登记 #{focusedIntake.id}，同户其他登记及续费车辆不参与本次收款。</div> : <>
       <div className="panelHd">
         <b>这一户的车</b>
       {missPlate ? (
@@ -328,8 +339,9 @@ export default function ParkingTab({ house, rules, onCart, initialPlate }: { hou
         <button className="btn" disabled={newBusy || !hh || !hh.targets.length} onClick={() => createIntake('paid')}><Icon name="plus" size={16} />新办车牌（付费）</button>
         <button className="btn" disabled={newBusy} onClick={() => createIntake('family')}><Icon name="plus" size={16} />亲情车（免费 · 一年）</button>
         <span className="muted" style={{ fontSize: 13.5 }}>生成二维码让业主扫码填车牌、上传资料；钱可以先收</span>
-        {newErr ? <span style={{ color: 'var(--dang)', fontSize: 14 }}>{newErr}</span> : null}
       </div>
+      </>}
+      {newErr ? <div className="note2" role="alert" style={{ color: 'var(--dang)' }}>{newErr}</div> : null}
       {intakes.length ? (
         <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
           {intakes.map((i) => (

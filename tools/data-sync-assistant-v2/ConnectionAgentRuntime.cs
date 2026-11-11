@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Collections.Generic;
 using System.Threading;
 using Pms.AccessCardAgent;
 
@@ -12,6 +13,42 @@ namespace Pms.DataSyncAssistant
         public bool Connected { get; set; }
         public string Message { get; set; }
         public string UpdatedAt { get; set; }
+    }
+
+    internal static class RuntimeHealth
+    {
+        internal static readonly TimeSpan HeartbeatLifetime = TimeSpan.FromSeconds(15);
+        internal static readonly TimeSpan LocalCheckLifetime = TimeSpan.FromMinutes(2);
+
+        internal static bool IsFresh(string timestamp, DateTimeOffset now, TimeSpan lifetime)
+        {
+            DateTimeOffset updated;
+            if (!DateTimeOffset.TryParse(timestamp, out updated)) return false;
+            var age = now - updated;
+            return age >= TimeSpan.Zero && age < lifetime;
+        }
+
+        internal static bool IsPublished(Dictionary<string, object> root, DateTimeOffset now)
+        {
+            return root != null && root.ContainsKey("checkedAt") &&
+                IsFresh(Convert.ToString(root["checkedAt"]), now, HeartbeatLifetime);
+        }
+
+        internal static bool IsPmsConnected(Dictionary<string, object> state, DateTimeOffset now)
+        {
+            bool connected;
+            return state != null && state.ContainsKey("pmsConnected") &&
+                Boolean.TryParse(Convert.ToString(state["pmsConnected"]), out connected) && connected &&
+                state.ContainsKey("updatedAt") && IsFresh(Convert.ToString(state["updatedAt"]), now, HeartbeatLifetime);
+        }
+
+        internal static bool IsLocalHealthy(Dictionary<string, object> state, DateTimeOffset now)
+        {
+            bool healthy;
+            return state != null && state.ContainsKey("localHealthy") &&
+                Boolean.TryParse(Convert.ToString(state["localHealthy"]), out healthy) && healthy &&
+                state.ContainsKey("localCheckedAt") && IsFresh(Convert.ToString(state["localCheckedAt"]), now, LocalCheckLifetime);
+        }
     }
 
     /** Runs one existing PMS agent protocol session for one configured connection. */
@@ -55,14 +92,20 @@ namespace Pms.DataSyncAssistant
 
         public ConnectionAgentSnapshot Snapshot()
         {
+            return Snapshot(DateTimeOffset.Now);
+        }
+
+        internal ConnectionAgentSnapshot Snapshot(DateTimeOffset now)
+        {
             lock (_stateLock)
             {
                 return new ConnectionAgentSnapshot
                 {
                     Id = _connection.Id,
                     Name = _connection.Name,
-                    Connected = _connected,
-                    Message = _message,
+                    Connected = _connected && !_stop.WaitOne(0) && RuntimeHealth.IsFresh(_updatedAt.ToString("o"), now, RuntimeHealth.HeartbeatLifetime),
+                    Message = _connected && !RuntimeHealth.IsFresh(_updatedAt.ToString("o"), now, RuntimeHealth.HeartbeatLifetime)
+                        ? "PMS 心跳已过期，等待重新连接" : _stop.WaitOne(0) ? "代理已停止" : _message,
                     UpdatedAt = _updatedAt.ToString("o")
                 };
             }
@@ -202,7 +245,7 @@ namespace Pms.DataSyncAssistant
             return connection.Parameters != null && connection.Parameters.TryGetValue(key, out value) ? value : "";
         }
 
-        private void SetState(bool connected, string message)
+        internal void SetState(bool connected, string message)
         {
             lock (_stateLock)
             {

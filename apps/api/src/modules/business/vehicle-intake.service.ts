@@ -3,10 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import * as QRCode from 'qrcode';
-import { Brackets, Repository } from 'typeorm';
+import { Brackets, EntityManager, Like, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import {
-  Building, BusinessLog, BusinessTransaction, Community, House, Notification, ParkingPlateTag, User, VehicleIntake,
+  Building, BusinessLog, BusinessTransaction, Community, FamilyCar, House, Notification, ParkingPlateTag, User, VehicleIntake,
   type VehicleIntakeFile, type VehicleIntakeKind,
 } from '../../entities';
 import { BusinessServiceType, NotifyChannel, NotifyStatus, UserRole } from '../../common/enums';
@@ -15,6 +15,7 @@ import { scopeCommunityIds } from '../access/scope.util';
 import { FamilyCarService } from '../access-card-issuance/family-car.service';
 import { FAMILY_RELATIONS, isValidFamilyPlate, normalizeFamilyPlate } from '../access-card-issuance/family-car.util';
 import { normalizeVehicleClass } from './parking-pricing';
+import { targetsForCommunity } from './parking-targets';
 import { detectUploadContentType } from '../upload/upload.controller';
 import { ObjectStorageService } from '../upload/object-storage.service';
 import { BusinessExecutionService } from './business-execution.service';
@@ -24,6 +25,14 @@ export const INTAKE_TTL_MS = 60 * 60 * 1000;
 const PHONE = /^1\d{10}$/;
 
 export interface CreateIntakeInput { houseId: number; kind: VehicleIntakeKind; vehicleClass?: string; garages?: string[]; garageNumbers?: Record<string, string>; formBase: string }
+export interface ChangeIntakeKindInput {
+  kind: VehicleIntakeKind;
+  vehicleClass?: string;
+  relation?: string;
+  garages?: string[];
+  garageNumbers?: Record<string, string>;
+  note?: string;
+}
 export interface ReviewIntakeInput {
   decision: 'approve' | 'reupload' | 'void';
   note?: string;
@@ -42,6 +51,35 @@ export interface ReviewIntakeInput {
 @Injectable()
 export class VehicleIntakeService {
   private readonly logger = new Logger(VehicleIntakeService.name);
+  /** Request-local transaction facade, never mutable state on the singleton. */
+  private inTransaction = false;
+  private afterCommit?: Array<() => void>;
+
+  private async locked<T>(id: number, user: AuthUser, access: ResolvedAccess | undefined, work: (service: VehicleIntakeService) => Promise<T>): Promise<T> {
+    const afterCommit: Array<() => void> = [];
+    const result = await this.repo.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(VehicleIntake);
+      const row = await repo.findOne({ where: { id, tenantId: this.tenant(user) }, lock: { mode: 'pessimistic_write' } });
+      if (!row) throw new NotFoundException('登记不存在');
+      this.checkScope(row, access);
+      const service: VehicleIntakeService = Object.assign(Object.create(this), {
+        repo, txnRepo: manager.getRepository(BusinessTransaction), logRepo: manager.getRepository(BusinessLog), inTransaction: true, afterCommit,
+      });
+      return work(service);
+    });
+    afterCommit.forEach((run) => run());
+    return result;
+  }
+
+  /** Payment creation, audit and intake attachment must share this row lock and transaction. */
+  async withPaymentTransaction<T>(id: number, user: AuthUser, access: ResolvedAccess | undefined, work: (manager: EntityManager) => Promise<T>): Promise<T> {
+    return this.locked(id, user, access, (service) => work(service.repo.manager));
+  }
+
+  private async lockedToken<T>(token: string, work: (service: VehicleIntakeService) => Promise<T>): Promise<T> {
+    const row = await this.byToken(token);
+    return this.locked(row.id, { id: 0, tenantId: row.tenantId } as AuthUser, undefined, work);
+  }
 
   constructor(
     @InjectRepository(VehicleIntake) private readonly repo: Repository<VehicleIntake>,
@@ -113,7 +151,38 @@ export class VehicleIntakeService {
     await this.repo.update({ tenantId, vehicleClass: from }, { vehicleClass: to });
   }
 
+  /** Change intake workflow, not the paid pricing group. Never carry authorization across schemas. */
+  async setKind(id: number, input: ChangeIntakeKindInput, user: AuthUser, access?: ResolvedAccess) {
+    if (!this.inTransaction) return this.locked(id, user, access, (service) => service.setKind(id, input, user, access));
+    const row = await this.load(id, user, access);
+    if (input?.kind !== 'paid' && input?.kind !== 'family') throw new BadRequestException('请选择付费车或亲情车');
+    await this.assertUnlinked(row);
+    if (!['waiting', 'submitted', 'reupload', 'approved'].includes(row.status)) throw new BadRequestException('登记已作废，不能转换类型');
+    if (row.kind === 'family' && row.status === 'approved') throw new BadRequestException('已进入亲情车办理，请到「亲情车管理」处理原登记，不能转换');
+    if (input.kind === row.kind) return this.view(row);
+    const garages = input.garages === undefined ? [] : this.cleanList(input.garages);
+    if (input.garages !== undefined && !Array.isArray(input.garages)) throw new BadRequestException('车库必须为列表');
+    await this.validateGarages(row, input.kind, garages);
+    const nums = input.garages === undefined ? {} : this.numbersForGarages(garages, this.cleanNumbers(input.garageNumbers), input.kind);
+    const relation = input.kind === 'family' ? String(input.relation ?? '').trim() : '';
+    if (relation && (relation === '其他亲属' || relation.length > 12)) throw new BadRequestException('关系最多12字；其他亲属请写明具体关系');
+    const oldKind = row.kind;
+    row.kind = input.kind;
+    row.garages = garages;
+    row.garageNumbers = nums;
+    row.relation = relation;
+    row.vehicleClass = input.kind === 'paid' ? this.cls(input.vehicleClass) : '';
+    if (row.status === 'approved') row.status = 'submitted';
+    row.reviewedBy = null; row.reviewedAt = null; row.reviewNote = '';
+    row.updatedBy = user.id;
+    row.log = [...row.log, await this.entry(user, `登记类型由${oldKind === 'paid' ? '付费车' : '亲情车'}转为${row.kind === 'paid' ? '付费车' : '亲情车'}，须重新审核`,
+      [String(input.note ?? '').trim().slice(0, 500), '两类车库键不兼容，原车库及车位号不继承；未指定新车库请重新选择'].filter(Boolean).join('；'))];
+    await this.repo.save(row);
+    return this.view(row);
+  }
+
   async setClass(id: number, vehicleClass: string, user: AuthUser, access?: ResolvedAccess) {
+    if (!this.inTransaction) return this.locked(id, user, access, (service) => service.setClass(id, vehicleClass, user, access));
     const row = await this.load(id, user, access);
     if (row.kind !== 'paid' || row.transactionId || row.status === 'void') throw new BadRequestException('已收款或已作废，不能再改缴费规则分组');
     const cls = this.cls(vehicleClass);
@@ -127,12 +196,14 @@ export class VehicleIntakeService {
 
   /** 要开通的车库（付费车：停车目标 key；亲情车：phase1/phase2/main/civil + 车库号）。收款 / 审核通过前可改 */
   async setGarages(id: number, garages: unknown, garageNumbers: unknown, user: AuthUser, access?: ResolvedAccess) {
+    if (!this.inTransaction) return this.locked(id, user, access, (service) => service.setGarages(id, garages, garageNumbers, user, access));
     const row = await this.load(id, user, access);
     if (row.status === 'void' || (row.kind === 'paid' && row.transactionId) || (row.kind === 'family' && row.status === 'approved')) {
       throw new BadRequestException('已收款或已办理，不能再改车库');
     }
     const next = this.cleanList(garages);
-    const nums = this.cleanNumbers(garageNumbers);
+    await this.validateGarages(row, row.kind, next);
+    const nums = this.numbersForGarages(next, this.cleanNumbers(garageNumbers), row.kind);
     if (next.join(',') === row.garages.join(',') && JSON.stringify(nums) === JSON.stringify(row.garageNumbers)) return this.view(row);
     row.garages = next;
     row.garageNumbers = nums;
@@ -153,6 +224,7 @@ export class VehicleIntakeService {
 
   /** 换新码：旧码立即失效，新码 1 小时有效（二维码过期了、或怕旧码被别人拿到时用） */
   async regenerate(id: number, formBase: string, user: AuthUser, access?: ResolvedAccess) {
+    if (!this.inTransaction) return this.locked(id, user, access, (service) => service.regenerate(id, formBase, user, access));
     const row = await this.load(id, user, access);
     if (!['waiting', 'reupload', 'submitted'].includes(row.status)) throw new BadRequestException('这条登记已审核完成，不能再生成二维码');
     const base = this.checkFormBase(formBase);
@@ -169,13 +241,18 @@ export class VehicleIntakeService {
   }
 
   async review(id: number, input: ReviewIntakeInput, user: AuthUser, access?: ResolvedAccess) {
+    if (!this.inTransaction) return this.locked(id, user, access, (service) => service.review(id, input, user, access));
     const row = await this.load(id, user, access);
+    if (!['approve', 'reupload', 'void'].includes(input?.decision)) throw new BadRequestException('审核决定无效');
     const note = (input.note || '').trim().slice(0, 500);
     if (input.decision === 'void') {
       if (row.status === 'void') return this.view(row);
-      if (row.status === 'approved' && (row.kind === 'family' || row.transactionId)) throw new BadRequestException('已审核通过并进入办理的登记不能在这里作废，请到「车牌登记审核」处理');
+      if (row.familyCarId || (row.status === 'approved' && row.kind === 'family')) throw new BadRequestException('已进入亲情车办理，请到「亲情车管理」处理原登记；已开通车辆到「车辆管理」注销车辆');
+      if (row.status === 'approved' && row.transactionId) throw new BadRequestException('已审核并收款，不能在登记审核撤销；请在「待处理」按原收款流水核对执行及退款，已入库车辆到「车辆管理」注销车辆');
+      await this.assertVoidablePayment(row);
       if (!note) throw new BadRequestException('作废请写原因');
       row.status = 'void';
+      row.expiresAt = new Date(Math.min(row.expiresAt.getTime(), Date.now()));
       row.log = [...row.log, await this.entry(user, '作废', note)];
       row.updatedBy = user.id;
       await this.repo.save(row);
@@ -205,9 +282,15 @@ export class VehicleIntakeService {
     if (input.garageNumbers) row.garageNumbers = this.cleanNumbers(input.garageNumbers);
     if (!isValidFamilyPlate(row.plate)) throw new BadRequestException('车牌格式不正确，例如 豫GQ3N07');
     if (!PHONE.test(row.contactPhone)) throw new BadRequestException('请补全 11 位手机号');
+    await this.validateGarages(row, row.kind, row.garages);
+    if (row.kind === 'paid' && !row.garages.length) throw new BadRequestException('请选择付费车车库后重新审核');
 
     if (row.kind === 'family') {
-      if (!row.relation) throw new BadRequestException('请选择车主与业主的关系');
+      await this.assertUnlinked(row);
+      if (!row.relation || row.relation === '其他亲属' || row.relation.length > 12) throw new BadRequestException('请选择车主与业主的关系；其他亲属请写明具体关系');
+      await this.validateGarages(row, row.kind, row.garages);
+      if (!row.garages.length) throw new BadRequestException('请选择亲情车车库');
+      row.garageNumbers = this.numbersForGarages(row.garages, row.garageNumbers, row.kind);
       // 业主填「其他」时写的是自由文字（如 表哥），亲情车档案按「其他亲属」归类，原话记进备注
       const listed = (FAMILY_RELATIONS as readonly string[]).includes(row.relation);
       if (!input.duplicateCheckQueryId) throw new BadRequestException('亲情车通过前要先在旧停车库查重');
@@ -238,24 +321,36 @@ export class VehicleIntakeService {
 
   // ---------------- 与收款流水衔接（付费车） ----------------
 
-  /** 收银台收款时校验并占用办理单；返回流水应处的状态与车牌 */
-  async claimForPayment(intakeId: number, houseId: number | null | undefined, user: AuthUser) {
+  /** Validation only without a manager; money creation must use withPaymentTransaction. */
+  async claimForPayment(intakeId: number, houseId: number | null | undefined, user: AuthUser, manager?: EntityManager, access?: ResolvedAccess) {
     const tenantId = this.tenant(user);
-    const row = await this.repo.findOne({ where: { id: intakeId, tenantId } });
-    if (!row || row.kind !== 'paid') throw new BadRequestException('新办车牌登记不存在');
-    if (houseId && row.houseId !== houseId) throw new BadRequestException('新办车牌登记不属于这一户');
-    if (row.status === 'void') throw new BadRequestException('这条新办车牌登记已作废');
-    if (row.transactionId) throw new BadRequestException('这辆新车已经收过款了，请到「待处理」查看');
+    const repo = manager ? manager.getRepository(VehicleIntake) : this.repo;
+    const row = await repo.findOne({ where: { id: intakeId, tenantId }, ...(manager ? { lock: { mode: 'pessimistic_write' as const } } : {}) });
+    if (!row || row.kind !== 'paid') throw new BadRequestException('新办付费车登记不存在或已转为亲情车，请刷新后重新选择');
+    this.checkScope(row, access);
+    await this.assertNoCreatedFamily(row, repo.manager);
+    if (!houseId || row.houseId !== houseId) throw new BadRequestException('新办车牌登记不属于这一户');
+    if (!['waiting', 'submitted', 'reupload', 'approved'].includes(row.status)) throw new BadRequestException('这条新办车牌登记已作废');
+    const txns = manager ? manager.getRepository(BusinessTransaction) : this.txnRepo;
+    if (row.transactionId || row.familyCarId || await txns.findOne({ where: { tenantId, targetType: 'vehicle_intake', targetId: row.id } })) throw new BadRequestException('这辆新车已关联办理或收款流水，请到「待处理」按原流水核对，不可重复收款');
     return { row, approved: row.status === 'approved', plate: row.plate };
   }
 
-  async attachPayment(row: VehicleIntake, txn: BusinessTransaction, user: AuthUser) {
+  async attachPayment(row: VehicleIntake, txn: BusinessTransaction, user: AuthUser, manager?: EntityManager) {
+    if (!this.inTransaction && !manager) return this.locked(row.id, user, undefined, (service) => service.attachPayment(row, txn, user, service.repo.manager));
+    const repo = manager ? manager.getRepository(VehicleIntake) : this.repo;
+    // Never persist the pre-payment stale entity: conversion/void may have won the lock.
+    row = (await repo.findOne({ where: { id: row.id, tenantId: this.tenant(user) }, lock: { mode: 'pessimistic_write' } }))!;
+    if (!row || row.kind !== 'paid' || row.familyCarId || row.status === 'void' || row.transactionId) throw new BadRequestException('登记状态已改变或已收款，请刷新后核对原流水');
+    if (txn.tenantId !== row.tenantId) throw new BadRequestException('收款流水不属于当前物业公司');
+    await this.assertNoCreatedFamily(row, repo.manager);
     row.transactionId = txn.id;
     const systems = ((txn.snapshot?.parking as { systems?: Array<{ label?: string }> } | undefined)?.systems ?? []).map((s) => s.label).filter(Boolean);
     if (systems.length) row.log = [...row.log, await this.entry(user, '收款开通车库', systems.join('、'))];
     row.log = [...row.log, await this.entry(user, `已收款 ¥${(txn.amountCents / 100).toFixed(2)}`,
       txn.externalSyncStatus === 'awaiting_docs' ? '资料未齐，收款挂「待处理」，业主提交并审核通过后自动办理' : `流水 ${txn.txnNo}`)];
-    await this.repo.save(row);
+    row.updatedBy = user.id;
+    await repo.save(row);
   }
 
   /** 物业经理通过非标准金额后：资料还没过的继续等资料 */
@@ -282,7 +377,10 @@ export class VehicleIntakeService {
       .where('id = :id AND external_sync_status = :st', { id: txn.id, st: 'awaiting_docs' }).execute();
     if (!done.affected) return;
     await this.logRepo.save(this.logRepo.create({ tenantId: row.tenantId, transactionId: txn.id, action: 'docs_approved', detail: { intakeId: row.id, plate: row.plate }, createdBy: user.id, updatedBy: user.id }));
-    if (exec.status === 'queued') this.execution.kick(txn.id);
+    if (exec.status === 'queued') {
+      if (this.afterCommit) this.afterCommit.push(() => this.execution.kick(txn.id));
+      else this.execution.kick(txn.id);
+    }
   }
 
   /** 作废时已收的款转人工（退款或重办），不静默丢掉 */
@@ -290,14 +388,15 @@ export class VehicleIntakeService {
     if (!row.transactionId) return;
     const txn = await this.txnRepo.findOne({ where: { id: row.transactionId, tenantId: row.tenantId } });
     if (!txn || !['awaiting_docs', 'review'].includes(txn.externalSyncStatus)) return;
-    const execution = { ...((txn.snapshot?.execution as object) || {}), lastError: `新办车牌登记已作废：${note}；已收款请按原因退款或重办` };
-    await this.txnRepo.update({ id: txn.id }, { externalSyncStatus: 'manual', snapshot: { ...(txn.snapshot || {}), execution } as never, updatedBy: user.id });
-    await this.logRepo.save(this.logRepo.create({ tenantId: row.tenantId, transactionId: txn.id, action: 'docs_voided', detail: { intakeId: row.id, note }, createdBy: user.id, updatedBy: user.id }));
+    const execution = { ...((txn.snapshot?.execution as object) || {}), lastError: `新办车牌登记已作废：${note}；原收款保留、未自动退款，请在「待处理」按原流水联系财务核对退款或重办` };
+    await this.txnRepo.update({ id: txn.id, tenantId: row.tenantId }, { externalSyncStatus: 'manual', snapshot: { ...(txn.snapshot || {}), execution } as never, updatedBy: user.id });
+    await this.logRepo.save(this.logRepo.create({ tenantId: row.tenantId, transactionId: txn.id, action: 'docs_voided', detail: { intakeId: row.id, note, amountCents: txn.amountCents, paymentStatus: txn.status, refundPerformed: false }, createdBy: user.id, updatedBy: user.id }));
   }
 
   // ---------------- 业主手机（无登录，凭链接里的随机码） ----------------
 
   async publicSession(token: string) {
+    if (!this.inTransaction) return this.lockedToken(token, (service) => service.publicSession(token));
     const row = await this.byToken(token);
     if (!row.openedAt) {
       row.openedAt = new Date();
@@ -308,6 +407,7 @@ export class VehicleIntakeService {
   }
 
   async publicSubmit(token: string, input: Express.Multer.File[] | undefined, body: Record<string, unknown> | undefined) {
+    if (!this.inTransaction) return this.lockedToken(token, (service) => service.publicSubmit(token, input, body));
     const row = await this.byToken(token);
     if (!['waiting', 'reupload'].includes(row.status)) throw new BadRequestException(row.status === 'submitted' ? '资料已经提交，请等待物业办公室审核' : '这条登记已经办理，无需再提交');
     const read = (key: string, max: number) => String(body?.[key] ?? '').trim().slice(0, max);
@@ -402,9 +502,59 @@ export class VehicleIntakeService {
     if (!/^[A-Za-z0-9_-]{20,80}$/.test(token || '')) throw new BadRequestException('链接无效');
     const row = await this.repo.findOne({ where: { tokenHash: this.hash(token) } });
     if (!row) throw new NotFoundException('链接无效，请联系物业办公室重新生成二维码');
+    if (row.status === 'void') throw new GoneException('登记已撤销作废，二维码已失效');
     const editable = ['waiting', 'reupload'].includes(row.status);
     if (editable && row.expiresAt.getTime() <= Date.now()) throw new GoneException('二维码已过期（1 小时内有效），请联系物业办公室重新生成');
     return row;
+  }
+
+  private checkScope(row: VehicleIntake, access?: ResolvedAccess) {
+    const scope = scopeCommunityIds(access);
+    if (scope && (row.communityId == null || !scope.includes(row.communityId))) throw new ForbiddenException('不在你的管理范围内');
+  }
+
+  private async linkedTransaction(row: VehicleIntake) {
+    return row.transactionId
+      ? this.txnRepo.findOne({ where: { id: row.transactionId, tenantId: row.tenantId }, lock: { mode: 'pessimistic_write' } })
+      : this.txnRepo.findOne({ where: { tenantId: row.tenantId, targetType: 'vehicle_intake', targetId: row.id }, lock: { mode: 'pessimistic_write' } });
+  }
+
+  private async assertNoCreatedFamily(row: VehicleIntake, manager = this.repo.manager) {
+    // Family creation uses the existing downstream service. If its write survived an
+    // intake commit failure, its original audit marker still prevents paid/free reruns.
+    const marker = `收银台扫码登记 #${row.id}`;
+    const created = row.familyCarId || await manager.getRepository(FamilyCar).findOne({ where: [
+      { tenantId: row.tenantId, remark: marker },
+      { tenantId: row.tenantId, remark: Like(`${marker} ·%`) },
+    ] });
+    if (created) throw new BadRequestException('已生成亲情车登记，请到「亲情车管理」按原登记核对，不能转换、重复收款或在登记审核取消');
+  }
+
+  private async assertUnlinked(row: VehicleIntake) {
+    await this.assertNoCreatedFamily(row);
+    if (row.transactionId || await this.linkedTransaction(row)) throw new BadRequestException('已关联收款或业务流水，不能转换或转亲情车；请到「待处理」按原流水核对退款，已入库车辆到「车辆管理」注销车辆');
+  }
+
+  private async assertVoidablePayment(row: VehicleIntake) {
+    await this.assertNoCreatedFamily(row);
+    const txn = await this.linkedTransaction(row);
+    if (row.transactionId && !txn) throw new BadRequestException('原收款流水无法核对，请到「待处理」联系财务核对，不能作为取消成功');
+    if (!txn) return;
+    const execution = txn.snapshot?.execution as { attempts?: number; steps?: unknown[] } | undefined;
+    if (txn.id !== row.transactionId || !['awaiting_docs', 'review'].includes(txn.externalSyncStatus) || Number(execution?.attempts) > 0 || execution?.steps?.length) throw new BadRequestException('原流水可能已执行或已入库，请到「待处理」核对原流水及退款，已入库车辆到「车辆管理」注销车辆，不能在登记审核取消');
+  }
+
+  private async validateGarages(row: VehicleIntake, kind: VehicleIntakeKind, garages: string[]) {
+    const community = row.communityId ? await this.communityRepo.findOne({ where: { id: row.communityId, tenantId: row.tenantId } }) : null;
+    const allowed = kind === 'family'
+      ? (community && ['枫桦景苑一期', '枫桦景苑二期'].includes(community.name) ? ['phase1', 'phase2', 'main', 'civil'] : [])
+      : targetsForCommunity(community?.name ?? null).map((target) => target.key);
+    if (garages.some((g) => !allowed.includes(g))) throw new BadRequestException('车库与登记类型或房屋小区不兼容，请按新类型重新选择车库（付费车使用停车目标 key，亲情车使用 phase1/phase2/main/civil）');
+  }
+
+  private numbersForGarages(garages: string[], numbers: Record<string, string>, kind: VehicleIntakeKind) {
+    const keys = kind === 'family' ? garages : garages.map((g) => g === 'local:phase2_main_garage' ? 'main' : g === 'deliyun:枫桦景苑' ? 'civil' : '');
+    return Object.fromEntries(Object.entries(numbers).filter(([key]) => keys.includes(key)));
   }
 
   private async load(id: number, user: AuthUser, access?: ResolvedAccess) {

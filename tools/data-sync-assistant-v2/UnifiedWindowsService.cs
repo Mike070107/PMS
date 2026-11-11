@@ -25,10 +25,60 @@ namespace Pms.DataSyncAssistant
         RetryUnifiedWithoutFallback
     }
 
+    internal sealed class LocalConnectionHealth
+    {
+        internal bool Healthy;
+        internal string Summary;
+        internal DateTimeOffset CheckedAt;
+    }
+
+    internal sealed class LocalConnectionHealthCache
+    {
+        private readonly object _gate = new object();
+        private readonly Dictionary<string, LocalConnectionHealth> _values = new Dictionary<string, LocalConnectionHealth>();
+
+        internal void Refresh(string id, Func<ConnectionTestResult> probe, WaitHandle stop)
+        {
+            var started = DateTimeOffset.Now;
+            LocalConnectionHealth health;
+            try
+            {
+                // Never hold the cache lock during SQL/MDB/card-reader detection.
+                var result = probe();
+                health = new LocalConnectionHealth { Healthy = result.Success, Summary = result.Summary, CheckedAt = started };
+            }
+            catch (Exception exception)
+            {
+                health = new LocalConnectionHealth { Healthy = false, Summary = exception.Message, CheckedAt = started };
+            }
+            if (stop.WaitOne(0)) return;
+            lock (_gate) _values[id] = health;
+        }
+
+        internal LocalConnectionHealth Snapshot(string id, DateTimeOffset now)
+        {
+            lock (_gate)
+            {
+                LocalConnectionHealth health;
+                if (!_values.TryGetValue(id, out health))
+                    return new LocalConnectionHealth { Summary = "等待本地检测" };
+                var fresh = RuntimeHealth.IsFresh(health.CheckedAt.ToString("o"), now, RuntimeHealth.LocalCheckLifetime);
+                return new LocalConnectionHealth
+                {
+                    Healthy = fresh && health.Healthy,
+                    Summary = fresh ? health.Summary : "本地检测已过期，等待重新检测",
+                    CheckedAt = health.CheckedAt
+                };
+            }
+        }
+    }
+
     internal sealed class UnifiedWindowsService : ServiceBase
     {
         private readonly ManualResetEvent _stop = new ManualResetEvent(false);
         private Thread _worker;
+        private Thread _localWorker;
+        private readonly LocalConnectionHealthCache _localHealth = new LocalConnectionHealthCache();
         private readonly List<ConnectionAgentRuntime> _runtimes = new List<ConnectionAgentRuntime>();
 
         public UnifiedWindowsService()
@@ -60,11 +110,14 @@ namespace Pms.DataSyncAssistant
                 _runtimes.Add(runtime);
                 runtime.Start();
             }
-            var startupHealthDeadline = DateTime.UtcNow.AddMinutes(2);
+            _localWorker = new Thread(delegate() { RefreshLocalConnections(store, configuration); })
+                { IsBackground = true, Name = "PMS-local-connection-probes" };
+            _localWorker.Start();
             var nextUpdateCheck = DateTime.UtcNow.AddSeconds(45);
             while (!_stop.WaitOne(0))
             {
-                WriteHealth(CheckConnections(store, configuration, _runtimes));
+                try { WriteHealth(CheckConnections(configuration, _runtimes, _localHealth)); }
+                catch (Exception exception) { Trace.WriteLine("PMS health publication failed: " + exception.Message); }
                 if (DateTime.UtcNow >= nextUpdateCheck)
                 {
                     nextUpdateCheck = DateTime.UtcNow.AddHours(6);
@@ -74,43 +127,53 @@ namespace Pms.DataSyncAssistant
                         catch { }
                     });
                 }
-                // During startup the agent heartbeat may become ready just after the first
-                // health snapshot.  Refresh quickly so an upgrade is never rolled back only
-                // because the next 30-second snapshot has not been written yet.
-                var healthInterval = DateTime.UtcNow < startupHealthDeadline
-                    ? TimeSpan.FromSeconds(3)
-                    : TimeSpan.FromSeconds(30);
-                if (_stop.WaitOne(healthInterval)) break;
+                // Lightweight publication is always faster than heartbeat freshness (15s).
+                // Slow local probes run independently and cannot hold up this snapshot.
+                if (_stop.WaitOne(TimeSpan.FromSeconds(3))) break;
             }
             foreach (var runtime in _runtimes) runtime.Stop(10000);
+            if (_localWorker != null) _localWorker.Join(1000);
         }
 
-        private static object CheckConnections(ConfigurationStore store, AssistantConfiguration configuration, IEnumerable<ConnectionAgentRuntime> runtimes)
+        private void RefreshLocalConnections(ConfigurationStore store, AssistantConfiguration configuration)
         {
+            while (!_stop.WaitOne(0))
+            {
+                foreach (var item in configuration.Connections.Where(value => value.Enabled))
+                {
+                    if (_stop.WaitOne(0)) return;
+                    var connection = item;
+                    _localHealth.Refresh(item.Id, delegate
+                    {
+                        return ConnectionTester.Test(connection, store.GetSecret("connection:" + connection.Id + ":password"));
+                    }, _stop);
+                }
+                if (_stop.WaitOne(TimeSpan.FromSeconds(30))) return;
+            }
+        }
+
+        internal static object CheckConnections(AssistantConfiguration configuration, IEnumerable<ConnectionAgentRuntime> runtimes,
+            LocalConnectionHealthCache localHealth)
+        {
+            var now = DateTimeOffset.Now;
             var checks = new List<object>();
-            var runtimeStates = runtimes.ToDictionary(value => value.Snapshot().Id, value => value.Snapshot());
+            var runtimeStates = runtimes.Select(value => value.Snapshot()).ToDictionary(value => value.Id);
             foreach (var item in configuration.Connections.Where(value => value.Enabled))
             {
-                try
+                var local = localHealth.Snapshot(item.Id, now);
+                ConnectionAgentSnapshot agent;
+                runtimeStates.TryGetValue(item.Id, out agent);
+                checks.Add(new
                 {
-                    var result = ConnectionTester.Test(item, store.GetSecret("connection:" + item.Id + ":password"));
-                    ConnectionAgentSnapshot agent;
-                    runtimeStates.TryGetValue(item.Id, out agent);
-                    checks.Add(new
-                    {
-                        id = item.Id,
-                        name = item.Name,
-                        healthy = result.Success && agent != null && agent.Connected,
-                        localHealthy = result.Success,
-                        pmsConnected = agent != null && agent.Connected,
-                        message = agent == null ? result.Summary : result.Summary + "；" + agent.Message,
-                        updatedAt = agent == null ? null : agent.UpdatedAt
-                    });
-                }
-                catch (Exception exception)
-                {
-                    checks.Add(new { id = item.Id, name = item.Name, healthy = false, message = exception.Message });
-                }
+                    id = item.Id,
+                    name = item.Name,
+                    healthy = local.Healthy && agent != null && agent.Connected,
+                    localHealthy = local.Healthy,
+                    localCheckedAt = local.CheckedAt.ToString("o"),
+                    pmsConnected = agent != null && agent.Connected,
+                    message = local.Summary + "；" + (agent == null ? "PMS 代理未启动" : agent.Message),
+                    updatedAt = agent == null ? null : agent.UpdatedAt
+                });
             }
             return new { checkedAt = DateTimeOffset.Now.ToString("o"), connections = checks };
         }

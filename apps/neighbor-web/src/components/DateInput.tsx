@@ -1,4 +1,4 @@
-import type { ChangeEvent, InputHTMLAttributes } from 'react';
+import { useMemo, type ChangeEvent, type InputHTMLAttributes } from 'react';
 import { DatePicker } from 'antd';
 import dayjs from 'dayjs';
 import zhCN from 'antd/es/date-picker/locale/zh_CN';
@@ -14,7 +14,10 @@ export default function DateInput({ type = 'date', value, defaultValue, onChange
   const format = month ? 'YYYY-MM' : timestamp ? 'YYYY-MM-DD HH:mm' : 'YYYY-MM-DD';
   const wireFormat = timestamp ? 'YYYY-MM-DDTHH:mm' : format;
   const parse = (v: unknown) => v && dayjs(String(v)).isValid() ? dayjs(String(v)) : null;
-  const current = parse(value ?? defaultValue);
+  // rc-picker watches the Dayjs object identity. Re-parsing the same wire value
+  // on every parent poll resets its browsing panel to the selected date, even
+  // though the user has only flipped month/year and has not selected a day yet.
+  const current = useMemo(() => parse(value ?? defaultValue), [value, defaultValue]);
   const lower = parse(min);
   const upper = parse(max);
   const unit = month ? 'month' : 'day';

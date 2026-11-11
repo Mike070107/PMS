@@ -337,6 +337,8 @@ namespace Pms.DataSyncAssistant
         private void RefreshRuntimeStatus()
         {
             var anyPmsConnected = false;
+            var now = DateTimeOffset.Now;
+            var states = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.Dictionary<string, object>>();
             try
             {
                 var path = Path.Combine(_store.RootPath, "health.json");
@@ -344,30 +346,41 @@ namespace Pms.DataSyncAssistant
                 {
                     var root = new JavaScriptSerializer().DeserializeObject(File.ReadAllText(path)) as System.Collections.Generic.Dictionary<string, object>;
                     var values = root == null || !root.ContainsKey("connections") ? null : root["connections"] as object[];
-                    DateTimeOffset checkedAt;
-                    var fresh = root.ContainsKey("checkedAt") && DateTimeOffset.TryParse(Convert.ToString(root["checkedAt"]), out checkedAt)
-                        && DateTimeOffset.Now.Subtract(checkedAt).Duration() < TimeSpan.FromMinutes(2);
-                    if (values != null && fresh && IsServiceRunning)
+                    if (values != null && RuntimeHealth.IsPublished(root, now) && IsServiceRunning)
                     {
                         foreach (var value in values)
                         {
                             var state = value as System.Collections.Generic.Dictionary<string, object>;
-                            if (state == null || !state.ContainsKey("id")) continue;
-                            var model = _configuration.Connections.FirstOrDefault(item => item.Id == Convert.ToString(state["id"]));
-                            if (model == null) continue;
-                            var local = state.ContainsKey("localHealthy") && Convert.ToBoolean(state["localHealthy"]);
-                            var online = state.ContainsKey("pmsConnected") && Convert.ToBoolean(state["pmsConnected"]);
-                            if (online) anyPmsConnected = true;
-                            model.Status = online && local ? "在线" : local ? "PMS 未连接" : "连接异常";
-                            model.StatusTone = online && local ? "ok" : local ? "warning" : "error";
-                            if (state.ContainsKey("message")) model.Summary = Convert.ToString(state["message"]);
-                            var view = Connections.FirstOrDefault(item => item.Id == model.Id);
-                            if (view != null) view.Refresh();
+                            if (state != null && state.ContainsKey("id")) states[Convert.ToString(state["id"])] = state;
                         }
                     }
                 }
             }
             catch { }
+            foreach (var model in _configuration.Connections.Where(item => item.Enabled))
+            {
+                System.Collections.Generic.Dictionary<string, object> state;
+                if (states.TryGetValue(model.Id, out state))
+                {
+                    var local = RuntimeHealth.IsLocalHealthy(state, now);
+                    var online = RuntimeHealth.IsPmsConnected(state, now);
+                    if (online) anyPmsConnected = true;
+                    model.Status = online && local ? "在线" : local ? "PMS 未连接" : "连接异常";
+                    model.StatusTone = online && local ? "ok" : local ? "warning" : "error";
+                    model.Summary = state.ContainsKey("message") ? Convert.ToString(state["message"]) : "";
+                    if (!online) model.Summary += "；未收到有效 PMS 心跳";
+                    if (!local) model.Summary += "；本地检测尚未通过或已过期";
+                }
+                else
+                {
+                    // Never leave a previously green card behind when the file/service is stale.
+                    model.Status = "等待状态刷新";
+                    model.StatusTone = "warning";
+                    model.Summary = "后台服务未运行或运行状态已过期";
+                }
+                var view = Connections.FirstOrDefault(item => item.Id == model.Id);
+                if (view != null) view.Refresh();
+            }
             _pmsConnected = anyPmsConnected;
             RaiseStatus();
             RefreshActivities();

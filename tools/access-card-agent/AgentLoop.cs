@@ -22,6 +22,9 @@ namespace Pms.AccessCardAgent
         private readonly Func<string, string> _secretProvider;
         private readonly Action<bool, string> _connectionState;
         private readonly Action<AgentActivity> _activity;
+        private readonly Func<bool> _parkingWriteProbe;
+        private readonly Action<Dictionary<string, bool>> _parkingHeartbeat;
+        private readonly Action<WaitHandle> _parkingWork;
         private bool _accessCardQuery;
         private volatile bool _accessQueryProbeRunning;
         private DateTime _nextAccessCardQueryProbeAt = DateTime.MinValue;
@@ -36,12 +39,23 @@ namespace Pms.AccessCardAgent
         }
 
         public AgentLoop(AgentConfig config, AgentApiClient api, Func<string, string> secretProvider, Action<bool, string> connectionState, Action<AgentActivity> activity)
+            : this(config, api, secretProvider, connectionState, activity, null, null, null)
+        {
+        }
+
+        // Injectable parking-only delegates keep scheduling regressions entirely offline.
+        internal AgentLoop(AgentConfig config, AgentApiClient api, Func<string, string> secretProvider,
+            Action<bool, string> connectionState, Action<AgentActivity> activity, Func<bool> parkingWriteProbe,
+            Action<Dictionary<string, bool>> parkingHeartbeat, Action<WaitHandle> parkingWork)
         {
             _config = config;
             _api = api;
             _secretProvider = secretProvider;
             _connectionState = connectionState;
             _activity = activity;
+            _parkingWriteProbe = parkingWriteProbe ?? delegate { return ParkingDatabase.CanWriteBoth(_config, LoadSecret("parking-db-password.dat")); };
+            _parkingHeartbeat = parkingHeartbeat ?? (api == null ? null : new Action<Dictionary<string, bool>>(api.CreateHeartbeatClient().Heartbeat));
+            _parkingWork = parkingWork;
         }
 
         public void Run()
@@ -52,22 +66,22 @@ namespace Pms.AccessCardAgent
         public void Run(WaitHandle stopSignal)
         {
             Console.WriteLine("PMS 数据同步助手已启动：" + _config.Name + " / " + _config.Kind);
+            if (_config.Kind == "parking_gateway")
+            {
+                RunParking(stopSignal);
+                return;
+            }
             while (stopSignal == null || !stopSignal.WaitOne(0))
             {
                 try
                 {
                     var hasReader = _config.Kind != "issuer" || CardReader.HasAcr122();
-                    var parkingWrite = false;
                     var accessRead = false;
                     var accessWrite = false;
                     var controllerUpload = false;
                     var legacyRead = false;
                     var legacyWrite = false;
                     var accessCardQuery = false;
-                    if (_config.Kind == "parking_gateway")
-                    {
-                        parkingWrite = ParkingDatabase.CanWriteBoth(_config, LoadSecret("parking-db-password.dat"));
-                    }
                     if (_config.Kind == "access_gateway")
                     {
                         // 保持现场 2.5.50 已发布语义：accessDbRead/accessDbWrite/controllerUpload 按代理类型上报。
@@ -84,7 +98,7 @@ namespace Pms.AccessCardAgent
                         legacyRead = true;
                         legacyWrite = true;
                     }
-                    _api.Heartbeat(BuildCapabilities(_config, hasReader, parkingWrite, accessWrite,
+                    _api.Heartbeat(BuildCapabilities(_config, hasReader, false, accessWrite,
                         controllerUpload, accessRead, legacyWrite, legacyRead, accessCardQuery));
                     AgentStatus.MarkConnected();
                     SetConnectionState(true, "PMS 心跳正常");
@@ -101,30 +115,6 @@ namespace Pms.AccessCardAgent
                         if (historyTask != null)
                         {
                             HandleLegacyHistory(historyTask);
-                            if (Wait(stopSignal, _config.PollIntervalMs)) return;
-                            continue;
-                        }
-                    }
-                    if (_config.Kind == "parking_gateway")
-                    {
-                        var parkingOperationTask = _api.ClaimParkingOperation();
-                        if (parkingOperationTask != null)
-                        {
-                            HandleParkingOperation(parkingOperationTask);
-                            if (Wait(stopSignal, _config.PollIntervalMs)) return;
-                            continue;
-                        }
-                        var ownerUpdateTask = _api.ClaimParkingOwnerUpdate();
-                        if (ownerUpdateTask != null)
-                        {
-                            HandleParkingOwnerUpdate(ownerUpdateTask);
-                            if (Wait(stopSignal, _config.PollIntervalMs)) return;
-                            continue;
-                        }
-                        var parkingTask = _api.ClaimParkingQuery();
-                        if (parkingTask != null)
-                        {
-                            HandleParkingQuery(parkingTask);
                             if (Wait(stopSignal, _config.PollIntervalMs)) return;
                             continue;
                         }
@@ -156,6 +146,62 @@ namespace Pms.AccessCardAgent
                 }
                 if (Wait(stopSignal, _config.PollIntervalMs)) return;
             }
+        }
+
+        private void RunParking(WaitHandle stopSignal)
+        {
+            var heartbeat = new ParkingHeartbeat(_parkingWriteProbe, delegate(bool writable)
+            {
+                _parkingHeartbeat(BuildCapabilities(_config, true, writable, false, false, false, false, false, false));
+            }, delegate(bool connected, string message)
+            {
+                SetConnectionState(connected, message);
+                if (connected && _api != null)
+                {
+                    try { AgentStatus.MarkConnected(); } catch { }
+                }
+            }, stopSignal, Math.Max(10, Math.Min(_config.PollIntervalMs, 2500)), 30000, 60000);
+            try
+            {
+                heartbeat.Start();
+                while (stopSignal == null || !stopSignal.WaitOne(0))
+                {
+                    try
+                    {
+                        if (_parkingWork != null) _parkingWork(stopSignal);
+                        else RunParkingWork(stopSignal);
+                    }
+                    catch (Exception exception)
+                    {
+                        // Queue/SQL failures are not heartbeat failures. Individual task
+                        // handlers retain their existing result and controller semantics.
+                        Console.Error.WriteLine(DateTime.Now.ToString("s") + " " + exception.Message);
+                    }
+                    if (Wait(stopSignal, _config.PollIntervalMs)) break;
+                }
+            }
+            finally
+            {
+                heartbeat.Dispose();
+                SetConnectionState(false, "停车代理已停止");
+            }
+        }
+
+        private void RunParkingWork(WaitHandle stopSignal)
+        {
+            // One queue thread only: no concurrent writes or controller tasks.
+            if (stopSignal != null && stopSignal.WaitOne(0)) return;
+            var operation = _api.ClaimParkingOperation();
+            if (operation != null) { HandleParkingOperation(operation); return; }
+            if (stopSignal != null && stopSignal.WaitOne(0)) return;
+            var owner = _api.ClaimParkingOwnerUpdate();
+            if (owner != null) { HandleParkingOwnerUpdate(owner); return; }
+            if (stopSignal != null && stopSignal.WaitOne(0)) return;
+            var query = _api.ClaimParkingQuery();
+            if (query != null) { HandleParkingQuery(query); return; }
+            if (stopSignal != null && stopSignal.WaitOne(0)) return;
+            var task = _api.Claim();
+            if (task != null) Handle(task, true);
         }
 
         private static bool Wait(WaitHandle stopSignal, int milliseconds)

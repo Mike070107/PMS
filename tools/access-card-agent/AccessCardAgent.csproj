@@ -41,6 +41,7 @@
     <Compile Include="AgentApiClient.cs" />
     <Compile Include="AgentConfig.cs" />
     <Compile Include="AgentLoop.cs" />
+    <Compile Include="ParkingHeartbeat.cs" />
     <Compile Include="AgentManagerForm.cs" />
     <Compile Include="AgentStatus.cs" />
     <Compile Include="AccessGatewayDatabase.cs" />

@@ -46,6 +46,12 @@ namespace Pms.DataSyncAssistant
                 if (!File.Exists(Path.Combine(root, "connections.json.previous")))
                     throw new InvalidOperationException("配置备份未生成");
 
+                VerifyParkingHeartbeatScheduling();
+                VerifyParkingHeartbeatCacheAndStop();
+                VerifyParkingHeartbeatFailureRecovery();
+                VerifyHeartbeatClientIsolation();
+                VerifyRuntimeFreshness(store, config);
+                VerifyNonBlockingHealthPublication(config);
                 VerifyRuntimeMapping(store, config);
                 VerifyMjSystemSerialProtocol(root);
                 VerifyIcCardDoorCommands();
@@ -64,7 +70,13 @@ namespace Pms.DataSyncAssistant
                 VerifyProductUpdater();
                 VerifySafeUpgradeRecovery();
                 var accessQueryLog = VerifyAccessQueries();
-                WriteSelfTestLog(accessQueryLog);
+                WriteSelfTestLog(
+                    "PASS parking blocked-probe / throwing-probe / long-parking-task: >=4 read heartbeats within 1200ms each\r\n" +
+                    "PASS permission initial-false / true-cache / expiry / late-result rejection / no overlapping probes / bounded blocked-probe stop\r\n" +
+                    "PASS heartbeat transport failure -> recovery / no late callbacks or new sends after stop\r\n" +
+                    "PASS heartbeat client same token/version, independent serializer/connection group, 5000ms network timeouts\r\n" +
+                    "PASS runtime/UI/tray shared 15s freshness / fresh root cannot mask stale connection / local cache expiry\r\n" +
+                    "PASS blocked local detection does not block five health publications / stop suppresses late local result\r\n" + accessQueryLog);
             }
             finally
             {
@@ -88,6 +100,257 @@ namespace Pms.DataSyncAssistant
                         catch (UnauthorizedAccessException) { System.Threading.Thread.Sleep(300); }
                     }
                 }
+            }
+        }
+
+        private static void VerifyParkingHeartbeatScheduling()
+        {
+            var failures = new List<string>();
+            foreach (var scenario in new[] { "blocked-probe", "throwing-probe", "long-parking-task" })
+            {
+                using (var stop = new System.Threading.ManualResetEvent(false))
+                using (var release = new System.Threading.ManualResetEvent(false))
+                using (var entered = new System.Threading.ManualResetEvent(false))
+                using (var continued = new System.Threading.ManualResetEvent(false))
+                {
+                    var beats = 0;
+                    var config = AgentConfig.CreateDefaults("parking_gateway");
+                    config.PollIntervalMs = 25;
+                    var loop = new AgentLoop(config, null, null, null, null, delegate
+                    {
+                        if (scenario == "throwing-probe") throw new InvalidOperationException("fake permission failure");
+                        if (scenario == "blocked-probe") { entered.Set(); release.WaitOne(); }
+                        return true;
+                    }, delegate(Dictionary<string, bool> capabilities)
+                    {
+                        if (!capabilities["parkingDbRead"]) throw new InvalidOperationException("只读能力被写探测影响");
+                        if (scenario != "long-parking-task" && capabilities["parkingDbWrite"])
+                            throw new InvalidOperationException("未完成/失败探测不可上报写能力");
+                        if (System.Threading.Interlocked.Increment(ref beats) >= 4) continued.Set();
+                    }, delegate(System.Threading.WaitHandle ignored)
+                    {
+                        if (scenario == "long-parking-task") { entered.Set(); release.WaitOne(); }
+                    });
+                    var thread = new System.Threading.Thread(delegate() { loop.Run(stop); }) { IsBackground = true };
+                    thread.Start();
+                    try
+                    {
+                        if (scenario != "throwing-probe" && !entered.WaitOne(2000))
+                            failures.Add("停车回归未进入假阻塞：" + scenario);
+                        if (!continued.WaitOne(1200))
+                            failures.Add("停车心跳被权限探测/长任务阻断：" + scenario + ", beats=" + beats);
+                    }
+                    finally
+                    {
+                        stop.Set();
+                        release.Set();
+                        if (!thread.Join(3000)) throw new InvalidOperationException("停车循环无法停止：" + scenario);
+                    }
+                }
+            }
+            if (failures.Count != 0) throw new InvalidOperationException(String.Join("; ", failures.ToArray()));
+        }
+
+        private static void VerifyParkingHeartbeatCacheAndStop()
+        {
+            using (var stop = new System.Threading.ManualResetEvent(false))
+            using (var fresh = new System.Threading.ManualResetEvent(false))
+            using (var expired = new System.Threading.ManualResetEvent(false))
+            using (var secondEntered = new System.Threading.ManualResetEvent(false))
+            using (var releaseSecond = new System.Threading.ManualResetEvent(false))
+            using (var thirdEntered = new System.Threading.ManualResetEvent(false))
+            using (var releaseThird = new System.Threading.ManualResetEvent(false))
+            using (var thirdExited = new System.Threading.ManualResetEvent(false))
+            {
+                var calls = 0;
+                var active = 0;
+                var overlap = 0;
+                var states = 0;
+                var beats = 0;
+                var trueSeen = 0;
+                var worker = new ParkingHeartbeat(delegate
+                {
+                    if (System.Threading.Interlocked.Increment(ref active) != 1) overlap = 1;
+                    var call = System.Threading.Interlocked.Increment(ref calls);
+                    try
+                    {
+                        if (call == 2) { secondEntered.Set(); releaseSecond.WaitOne(); }
+                        if (call >= 3) { thirdEntered.Set(); releaseThird.WaitOne(); thirdExited.Set(); }
+                        return true;
+                    }
+                    finally { System.Threading.Interlocked.Decrement(ref active); }
+                }, delegate(bool writable)
+                {
+                    System.Threading.Interlocked.Increment(ref beats);
+                    if (writable) { System.Threading.Interlocked.Exchange(ref trueSeen, 1); fresh.Set(); }
+                    else if (System.Threading.Interlocked.CompareExchange(ref trueSeen, 0, 0) == 1) expired.Set();
+                }, delegate(bool connected, string message) { System.Threading.Interlocked.Increment(ref states); },
+                    stop, 15, 40, 180);
+                try
+                {
+                    if (worker.CanWrite) throw new InvalidOperationException("未探测缓存必须为false");
+                    worker.Start();
+                    worker.Start(); // Repeated starts must not create overlapping workers.
+                    if (!fresh.WaitOne(2000) || !secondEntered.WaitOne(2000))
+                        throw new InvalidOperationException("未观察到有效缓存和后续单独探测");
+                    if (!expired.WaitOne(2000) || worker.CanWrite || calls != 2 || beats < 4)
+                        throw new InvalidOperationException("阻塞探测期间缓存未保守过期/心跳停止");
+                    releaseSecond.Set();
+                    if (!thirdEntered.WaitOne(2000) || worker.CanWrite || overlap != 0)
+                        throw new InvalidOperationException("迟到权限结果恢复了过期写能力或探测重叠");
+                    var timer = Stopwatch.StartNew();
+                    worker.Dispose(); // Deliberately stop while a read-only probe is blocked.
+                    if (timer.ElapsedMilliseconds > 2500 || worker.CanWrite)
+                        throw new InvalidOperationException("阻塞只读探测使停止无界等待");
+                    var stoppedStates = states;
+                    var stoppedBeats = beats;
+                    releaseThird.Set();
+                    if (!thirdExited.WaitOne(2000)) throw new InvalidOperationException("晚到探测未释放");
+                    if (states != stoppedStates || beats != stoppedBeats || calls != 3)
+                        throw new InvalidOperationException("停止后仍发心跳/状态回写/启动探测");
+                }
+                finally
+                {
+                    stop.Set(); releaseSecond.Set(); releaseThird.Set(); worker.Dispose();
+                }
+            }
+        }
+
+        private static void VerifyParkingHeartbeatFailureRecovery()
+        {
+            using (var stop = new System.Threading.ManualResetEvent(false))
+            using (var failed = new System.Threading.ManualResetEvent(false))
+            using (var recovered = new System.Threading.ManualResetEvent(false))
+            using (var blocked = new System.Threading.ManualResetEvent(false))
+            using (var release = new System.Threading.ManualResetEvent(false))
+            {
+                var sends = 0;
+                var callbacks = 0;
+                var worker = new ParkingHeartbeat(delegate { throw new InvalidOperationException("fake permission failure"); },
+                    delegate(bool writable)
+                    {
+                        if (writable) throw new InvalidOperationException("失败探测不应上报写能力");
+                        var send = System.Threading.Interlocked.Increment(ref sends);
+                        if (send == 1) throw new IOException("fake heartbeat transport failure");
+                        if (send >= 3) { blocked.Set(); release.WaitOne(); }
+                    }, delegate(bool connected, string message)
+                    {
+                        System.Threading.Interlocked.Increment(ref callbacks);
+                        if (connected) recovered.Set(); else failed.Set();
+                    }, stop, 15, 1000, 1000);
+                try
+                {
+                    worker.Start();
+                    if (!failed.WaitOne(2000) || !recovered.WaitOne(2000) || !blocked.WaitOne(2000))
+                        throw new InvalidOperationException("心跳异常未报告离线/恢复或阻断后续调度");
+                    stop.Set();
+                    var stoppedCallbacks = callbacks;
+                    worker.Dispose();
+                    release.Set();
+                    worker.Dispose(); // Also joins/cleans up a late in-flight transport call.
+                    if (callbacks != stoppedCallbacks || sends != 3 || worker.CanWrite)
+                        throw new InvalidOperationException("停止后晚到HTTP结果仍恢复在线/继续发送");
+                }
+                finally { stop.Set(); release.Set(); worker.Dispose(); }
+            }
+        }
+
+        private static void VerifyHeartbeatClientIsolation()
+        {
+            var original = new AgentApiClient(AgentConfig.CreateDefaults("parking_gateway"), "fake-token", "test-version");
+            var heartbeat = original.CreateHeartbeatClient();
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(AgentApiClient);
+            foreach (var field in new[] { "_config", "_token", "_version" })
+                if (!Object.Equals(type.GetField(field, flags).GetValue(original), type.GetField(field, flags).GetValue(heartbeat)))
+                    throw new InvalidOperationException("心跳client未保持原配置/token/version：" + field);
+            if (Object.ReferenceEquals(type.GetField("_json", flags).GetValue(original), type.GetField("_json", flags).GetValue(heartbeat)) ||
+                (int)type.GetField("_timeoutMs", flags).GetValue(heartbeat) != 5000 ||
+                String.IsNullOrEmpty(Convert.ToString(type.GetField("_connectionGroup", flags).GetValue(heartbeat))))
+                throw new InvalidOperationException("心跳未独立serializer/连接组/有界网络超时");
+        }
+
+        private static void VerifyRuntimeFreshness(ConfigurationStore store, AssistantConfiguration config)
+        {
+            using (var stop = new System.Threading.ManualResetEvent(false))
+            {
+                var runtime = new ConnectionAgentRuntime(config.Connections[0], config.Host, store, stop);
+                runtime.SetState(true, "fake heartbeat");
+                var current = runtime.Snapshot();
+                var updated = DateTimeOffset.Parse(current.UpdatedAt);
+                if (!runtime.Snapshot(updated.AddSeconds(14)).Connected || runtime.Snapshot(updated.AddSeconds(15)).Connected ||
+                    runtime.Snapshot(updated.AddSeconds(90)).Connected)
+                    throw new InvalidOperationException("Runtime Snapshot未按真实心跳时间过期");
+                var state = new Dictionary<string, object>
+                {
+                    { "pmsConnected", true }, { "updatedAt", updated.ToString("o") },
+                    { "localHealthy", true }, { "localCheckedAt", updated.ToString("o") }
+                };
+                var root = new Dictionary<string, object> { { "checkedAt", updated.AddSeconds(30).ToString("o") } };
+                if (!RuntimeHealth.IsPublished(root, updated.AddSeconds(30)) || RuntimeHealth.IsPmsConnected(state, updated.AddSeconds(30)))
+                    throw new InvalidOperationException("新root时间掩盖了旧连接心跳（GUI/Tray共享判定）");
+                if (RuntimeHealth.IsFresh("", updated, RuntimeHealth.HeartbeatLifetime) ||
+                    RuntimeHealth.IsFresh(updated.AddSeconds(1).ToString("o"), updated, RuntimeHealth.HeartbeatLifetime) ||
+                    RuntimeHealth.IsPublished(root, updated.AddSeconds(45)) ||
+                    RuntimeHealth.IsLocalHealthy(state, updated.AddMinutes(2)))
+                    throw new InvalidOperationException("空/未来/过期状态不可显示绿色");
+                state.Remove("updatedAt");
+                if (RuntimeHealth.IsPmsConnected(state, updated)) throw new InvalidOperationException("缺少逐连接时间仍显示绿色");
+                stop.Set();
+                if (runtime.Snapshot().Connected) throw new InvalidOperationException("停止后仍显示连接正常");
+            }
+        }
+
+        private static void VerifyNonBlockingHealthPublication(AssistantConfiguration config)
+        {
+            using (var stop = new System.Threading.ManualResetEvent(false))
+            using (var entered = new System.Threading.ManualResetEvent(false))
+            using (var release = new System.Threading.ManualResetEvent(false))
+            using (var published = new System.Threading.ManualResetEvent(false))
+            {
+                var cache = new LocalConnectionHealthCache();
+                var id = config.Connections[0].Id;
+                cache.Refresh(id, delegate { return new ConnectionTestResult { Success = true, Summary = "fake local check" }; }, stop);
+                var probe = new System.Threading.Thread(delegate()
+                {
+                    cache.Refresh(id, delegate
+                    {
+                        entered.Set(); release.WaitOne();
+                        return new ConnectionTestResult { Success = true, Summary = "late fake check" };
+                    }, stop);
+                }) { IsBackground = true };
+                probe.Start();
+                try
+                {
+                    if (!entered.WaitOne(2000)) throw new InvalidOperationException("未进入慢本地探测");
+                    Exception error = null;
+                    var publisher = new System.Threading.Thread(delegate()
+                    {
+                        try
+                        {
+                            for (var i = 0; i < 5; i++)
+                            {
+                                var health = UnifiedWindowsService.CheckConnections(config, new ConnectionAgentRuntime[0], cache);
+                                var json = new JavaScriptSerializer();
+                                var root = json.DeserializeObject(json.Serialize(health)) as Dictionary<string, object>;
+                                if (!RuntimeHealth.IsPublished(root, DateTimeOffset.Now))
+                                    throw new InvalidOperationException("轻量发布不是最新状态");
+                            }
+                        }
+                        catch (Exception exception) { error = exception; }
+                        finally { published.Set(); }
+                    }) { IsBackground = true };
+                    publisher.Start();
+                    if (!published.WaitOne(1200)) throw new InvalidOperationException("慢本地SQL检测阻断轻量health发布");
+                    publisher.Join(1000);
+                    if (error != null) throw error;
+                    if (!cache.Snapshot(id, DateTimeOffset.Now).Healthy || cache.Snapshot(id, DateTimeOffset.Now.AddMinutes(3)).Healthy)
+                        throw new InvalidOperationException("本地检测缓存未正确保留/过期");
+                    stop.Set(); release.Set();
+                    if (!probe.Join(2000) || cache.Snapshot(id, DateTimeOffset.Now).Summary != "fake local check")
+                        throw new InvalidOperationException("停止后晚到本地检测仍覆盖已发布状态");
+                }
+                finally { stop.Set(); release.Set(); probe.Join(2000); }
             }
         }
 
@@ -860,6 +1123,8 @@ namespace Pms.DataSyncAssistant
          */
         private static string VerifyAccessQueries()
         {
+            if (Environment.GetEnvironmentVariable("PMS_SELFTEST_OFFLINE") == "1")
+                return "SKIP access-query：PMS_SELFTEST_OFFLINE=1，不连接任何数据库/网络/设备";
             var detail = new List<string>();
             var mjPath = FirstExistingPath(
                 Environment.GetEnvironmentVariable("PMS_SELFTEST_MJ_MDB"),

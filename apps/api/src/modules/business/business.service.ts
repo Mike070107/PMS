@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, In, IsNull, Repository } from 'typeorm';
+import { Brackets, EntityManager, In, IsNull, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
@@ -583,6 +583,25 @@ export class BusinessService {
   }
 
   async complete(dto: CompleteBusinessDto, user: AuthUser, access?: ResolvedAccess) {
+    const txn = dto.intakeId && dto.serviceType === BusinessServiceType.PARKING_MONTHLY
+      ? await this.intakes.withPaymentTransaction(dto.intakeId, user, access, async (manager) => {
+        // Only the intake path changes: create money + audit + attachment atomically under its row lock.
+        const service: BusinessService = Object.assign(Object.create(this), {
+          txnRepo: manager.getRepository(BusinessTransaction), logRepo: manager.getRepository(BusinessLog),
+        });
+        return service.completePayment(dto, user, access, manager);
+      })
+      : await this.completePayment(dto, user, access);
+    // External execution must not observe or act on uncommitted money/attachment.
+    if (txn.externalSyncStatus === 'review') {
+      const plate = (dto.plateNo || '').trim().toUpperCase() || '新办车牌';
+      await this.notifyReviewers(txn.tenantId, txn.communityId, `待审核：停车非标准续期 ${plate} ${txn.startDate}~${txn.endDate} 实收 ¥${(txn.amountCents / 100).toFixed(2)}`,
+        { transactionId: txn.id, txnNo: txn.txnNo, page: '/pending' }, user.id);
+    } else if (txn.externalSyncStatus === 'queued') this.execution.kick(txn.id);
+    return txn;
+  }
+
+  private async completePayment(dto: CompleteBusinessDto, user: AuthUser, access?: ResolvedAccess, manager?: EntityManager) {
     const tenantId = this.requireTenant(user);
     const estimate = await this.estimate(dto, user);
     const rule = await this.findRule(tenantId, dto.ruleId, dto.serviceType);
@@ -596,7 +615,7 @@ export class BusinessService {
     const amountCents = custom ? dto.manualAmountCents! : estimate.amountCents;
     // 新办车牌：车牌由业主扫码填写，可能还没填；资料没审核通过前收款挂「待业主资料」
     const intake = dto.intakeId && dto.serviceType === BusinessServiceType.PARKING_MONTHLY
-      ? await this.intakes.claimForPayment(dto.intakeId, dto.houseId, user) : null;
+      ? await this.intakes.claimForPayment(dto.intakeId, dto.houseId, user, manager, access) : null;
     if (intake) {
       dto.plateNo = intake.plate || undefined;
       dto.currentEndDate = undefined;
@@ -727,12 +746,7 @@ export class BusinessService {
       }),
     ]);
 
-    if (intake) await this.intakes.attachPayment(intake.row, txn, user);
-    if (custom) {
-      const plate = (dto.plateNo || '').trim().toUpperCase() || '新办车牌';
-      await this.notifyReviewers(tenantId, communityId, `待审核：停车非标准续期 ${plate} ${estimate.startDate}~${estimate.endDate} 实收 ¥${(amountCents / 100).toFixed(2)}`,
-        { transactionId: txn.id, txnNo: txn.txnNo, page: '/pending' }, user.id);
-    } else if (txn.externalSyncStatus === 'queued') this.execution.kick(txn.id);
+    if (intake) await this.intakes.attachPayment(intake.row, txn, user, manager);
     return txn;
   }
 

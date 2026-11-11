@@ -6,7 +6,7 @@ import { ResolvedAccess } from '../access/access.service';
 import { CurrentAccess } from '../access/current-access.decorator';
 import { PermissionsGuard } from '../access/permissions.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { CreateIntakeInput, ReviewIntakeInput, VehicleIntakeService } from './vehicle-intake.service';
+import { ChangeIntakeKindInput, CreateIntakeInput, ReviewIntakeInput, VehicleIntakeService } from './vehicle-intake.service';
 
 const VIEW = ['business', 'family-cars'] as const;
 /** 新办车牌待审的经理这一步：新 key 或拆分前的旧 key 任一命中 */
@@ -46,6 +46,12 @@ export class VehicleIntakeController {
   @RequirePermission([...VIEW], 'edit')
   regenerate(@Param('id', ParseIntPipe) id: number, @Body() body: { formBase: string }, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
     return this.service.regenerate(id, body?.formBase, user, access);
+  }
+
+  @Post(':id/kind')
+  @RequirePermission('business', 'edit')
+  setKind(@Param('id', ParseIntPipe) id: number, @Body() body: ChangeIntakeKindInput, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.service.setKind(id, body, user, access);
   }
 
   @Post(':id/class')

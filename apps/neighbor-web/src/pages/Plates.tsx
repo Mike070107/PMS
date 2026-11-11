@@ -1,7 +1,8 @@
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { request } from '@pms/api-client';
 import Icon from '@/components/Icon';
-import { Loading, toast } from '@/components/ui';
+import { ErrorNote, Loading } from '@/components/ui';
 import { dayjs } from '@/lib/format';
 import { can } from '@/lib/perm';
 import { useSession } from '@/lib/auth';
@@ -17,45 +18,100 @@ const INTAKE_FILTERS: Array<[string, string]> = [['submitted', '待审核资料'
 export default function Plates() {
   useSession();
   const canIntake = ['business', 'family-cars', 'app:approve-business-manager', 'app:approve-manager'].some(key => can(key, 'view'));
+  const [params] = useSearchParams();
+  const intakeId = params.get('intakeId') ?? params.get('id');
   const [q, setQ] = useState('');
   const [kw, setKw] = useState('');
   if (!canIntake) return null;
   return (
     <>
-      <div className="ph" style={{ marginBottom: 14 }}>
-        <div><div className="h1row"><ToneIcon kind="plates" /><h1 style={{ fontSize: 22 }}>车牌登记审核</h1></div><p>新办车牌、亲情车：业主扫码登记 → 资料审核 → 自动办理；有效期 · 授权车库 · 失败重试</p></div>
-        <form style={{ display: 'flex', gap: 8 }} onSubmit={(e) => { e.preventDefault(); setKw(q.trim()); }}>
-          <input className="in" style={{ width: 260 }} value={q} onChange={(e) => setQ(e.target.value)} placeholder="车牌 / 房号 / 姓名 / 电话" />
+      <div className="ph" style={{ marginBottom: 14, flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ flex: '1 1 300px', minWidth: 0 }}><div className="h1row"><ToneIcon kind="plates" /><h1 style={{ fontSize: 22 }}>车牌登记审核</h1></div><p>新办车牌、亲情车：业主扫码登记 → 资料审核 → 自动办理；有效期 · 授权车库 · 失败重试</p></div>
+        <form style={{ display: 'flex', flexWrap: 'nowrap', flex: '0 1 360px', gap: 8, maxWidth: '100%' }} onSubmit={(e) => { e.preventDefault(); setKw(q.trim()); }}>
+          <input className="in" style={{ width: 260, minWidth: 0 }} value={q} onChange={(e) => setQ(e.target.value)} placeholder="车牌 / 房号 / 姓名 / 电话" />
           <button className="btn p"><Icon name="search" size={16} />查询</button>
         </form>
       </div>
-      <IntakeList kw={kw} />
+      <IntakeList kw={kw} intakeId={intakeId} />
     </>
   );
 }
 
-function IntakeList({ kw }: { kw: string }) {
-  const [status, setStatus] = useState('submitted');
+function IntakeList({ kw, intakeId }: { kw: string; intakeId: string | null }) {
+  const validId = intakeId !== null && /^[1-9]\d*$/.test(intakeId) && Number.isSafeInteger(Number(intakeId));
+  const [status, setStatus] = useState(intakeId === null ? 'submitted' : '');
   const [rows, setRows] = useState<Intake[] | null>(null);
+  const [listError, setListError] = useState('');
   const [open, setOpen] = useState<Intake | null>(null);
-  const load = useCallback(() => {
-    request<Intake[]>({ url: '/vehicle-intakes', query: { ...(status ? { status } : {}), ...(kw ? { q: kw } : {}) } }).then(setRows).catch(() => setRows([]));
+  const [detailError, setDetailError] = useState('');
+  const expandRevision = useRef(0);
+  const [focused, setFocused] = useState<{ query: string; row?: Intake; error?: string } | null>(null);
+  // Exact GET is server tenant/scope checked. Never resolve a deep link by a filtered list.
+  useEffect(() => {
+    setFocused(null);
+    if (intakeId === null || !validId) return;
+    let alive = true;
+    request<Intake>({ url: `/vehicle-intakes/${intakeId}` })
+      .then(row => { if (alive) setFocused({ query: intakeId, row }); })
+      .catch(e => { if (alive) setFocused({ query: intakeId, error: e instanceof Error ? e.message : '读取本次登记失败' }); });
+    return () => { alive = false; };
+  }, [intakeId, validId]);
+  useEffect(() => {
+    let alive = true;
+    let revision = 0;
+    const load = async () => {
+      const current = ++revision;
+      try {
+        const list = await request<Intake[]>({ url: '/vehicle-intakes', query: { ...(status ? { status } : {}), ...(kw ? { q: kw } : {}) } });
+        if (alive && current === revision) { setRows(list); setListError(''); }
+      } catch (e) {
+        if (alive && current === revision) setListError(e instanceof Error ? e.message : '登记列表读取失败');
+      }
+    };
+    setRows(null); setListError(''); void load();
+    const timer = window.setInterval(() => void load(), 10000);
+    return () => { alive = false; window.clearInterval(timer); };
   }, [status, kw]);
-  useEffect(() => { setRows(null); load(); const t = window.setInterval(load, 10000); return () => window.clearInterval(t); }, [load]);
+  useEffect(() => {
+    expandRevision.current += 1; setOpen(null); setDetailError('');
+    return () => { expandRevision.current += 1; };
+  }, [intakeId]);
   const expand = async (r: Intake) => {
+    const revision = ++expandRevision.current;
+    setDetailError('');
     if (open?.id === r.id) { setOpen(null); return; }
-    try { setOpen(await request<Intake>({ url: `/vehicle-intakes/${r.id}` })); } catch (e) { toast(e instanceof Error ? e.message : '读取失败'); }
+    try {
+      const row = await request<Intake>({ url: `/vehicle-intakes/${r.id}` });
+      if (revision === expandRevision.current) setOpen(row);
+    } catch (e) { if (revision === expandRevision.current) setDetailError(e instanceof Error ? e.message : '读取失败'); }
   };
+  const update = useCallback((x: Intake) => {
+    setOpen(prev => prev?.id === x.id ? x : prev);
+    setFocused(prev => prev?.row?.id === x.id ? { ...prev, row: x } : prev);
+    setRows(prev => prev ? prev.map(y => y.id === x.id ? x : y) : prev);
+  }, []);
+  // Retain the existing review-only garage default; never use this display label for navigation or house lookup.
   const laneOf = (label: string) => (label.match(/(\d+)弄/) || [])[1] || '';
+  const card = (row: Intake) => <NewPlateCard key={row.id} manage intake={row} rules={[]} targets={[]} house={{ id: row.houseId, communityId: null, lane: laneOf(row.houseLabel), buildingNo: '', roomNo: '' }}
+    onChange={update} onDrop={() => { setOpen(prev => prev?.id === row.id ? null : prev); }} onCart={() => undefined} renewal={() => null} />;
 
   return (
     <>
+      {intakeId !== null ? <section role="region" aria-label={`本次登记 #${intakeId}`} style={{ marginBottom: 16 }}>
+        <h2 style={{ fontSize: 18, marginBottom: 10 }}>本次登记 #{intakeId}</h2>
+        {!validId ? <ErrorNote>登记编号必须是正整数</ErrorNote>
+          : focused?.query !== intakeId ? <Loading text="正在读取本次登记…" />
+            : focused.error ? <ErrorNote>{focused.error}</ErrorNote>
+              : focused.row ? card(focused.row) : null}
+      </section> : null}
       <div className="quickMonths" style={{ marginTop: 0, marginBottom: 10 }}>
         {INTAKE_FILTERS.map(([k, l]) => <button key={k} className={`chip ${status === k ? 'on' : ''}`} onClick={() => setStatus(k)}>{l}</button>)}
       </div>
-      {rows === null ? <Loading /> : (
-        <div className="card" style={{ overflow: 'hidden' }}>
-          <table className="tbl">
+      {detailError ? <ErrorNote>{detailError}</ErrorNote> : null}
+      {listError ? <ErrorNote>登记列表：{listError}</ErrorNote> : null}
+      {rows === null ? (listError ? null : <Loading />) : (
+        <div className="card" role="region" aria-label="登记列表，可左右滚动查看" tabIndex={0} style={{ overflowX: 'auto' }}>
+          <table className="tbl" style={{ minWidth: 940 }}>
             <thead><tr><th>登记时间</th><th>房号</th><th>类型</th><th>车牌</th><th>车主 · 电话</th><th>资料</th><th>状态</th><th>收款 / 办理</th></tr></thead>
             <tbody>
               {rows.map((r) => (
@@ -72,9 +128,7 @@ function IntakeList({ kw }: { kw: string }) {
                   </tr>
                   {open?.id === r.id ? (
                     <tr key={`d${r.id}`} style={{ cursor: 'default' }}><td colSpan={8} style={{ background: 'var(--sunken)', padding: 12 }}>
-                      <NewPlateCard manage intake={open} rules={[]} targets={[]} house={{ id: open.houseId, communityId: null, lane: laneOf(open.houseLabel), buildingNo: '', roomNo: '' }}
-                        onChange={(x) => { setOpen(x); setRows((l) => (l ? l.map((y) => (y.id === x.id ? x : y)) : l)); }}
-                        onDrop={() => setOpen(null)} onCart={() => undefined} renewal={() => null} />
+                      {card(open)}
                     </td></tr>
                   ) : null}
                 </Fragment>

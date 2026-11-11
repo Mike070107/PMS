@@ -16,8 +16,6 @@ import { HistorySheet, OwnerInfoSheet, CreatePmsOwnerSheet } from '@/components/
 import ToneIcon from '@/components/ToneIcon';
 import type { Intake } from '@/components/cashier/NewPlateCard';
 
-type IntakeQrResult = Pick<Intake, 'id' | 'qr'>;
-
 type CloudState = 'loading' | DeliyunVehicle | null | undefined;
 
 function go(path: string) { window.location.href = legacyUrl(path); }
@@ -44,19 +42,32 @@ export default function Vehicles() {
   const [newOpen, setNewOpen] = useState(false);
   const [newKind, setNewKind] = useState<'paid' | 'family'>('paid');
   const [newHouse, setNewHouse] = useState<PickedHouse | null>(null);
-  const [newQr, setNewQr] = useState<IntakeQrResult | null>(null);
+  const [newQr, setNewQr] = useState<Intake | null>(null);
+  const creating = useRef(false);
+  const [voidReason, setVoidReason] = useState('');
+  const [voidConfirm, setVoidConfirm] = useState(false);
   const [newBusy, setNewBusy] = useState(false);
   const [newErr, setNewErr] = useState('');
   const createIntakeNow = async () => {
-    if (!newHouse?.houseId) return;
-    setNewBusy(true); setNewErr('');
+    if (!newHouse?.houseId || creating.current || newQr) return;
+    creating.current = true;
+    setNewBusy(true); setNewErr(''); setVoidReason(''); setVoidConfirm(false);
     try {
       const formBase = `${window.location.origin}${import.meta.env.BASE_URL.replace(/\/+$/, '')}/m/plate`;
-      const r = await request<IntakeQrResult>({ method: 'POST', url: '/vehicle-intakes', data: { houseId: newHouse.houseId, kind: newKind, formBase } });
+      const r = await request<Intake>({ method: 'POST', url: '/vehicle-intakes', data: { houseId: newHouse.houseId, kind: newKind, formBase } });
       setNewQr(r);
     } catch (e) {
       setNewErr(e instanceof Error ? e.message : '生成二维码失败');
-    } finally { setNewBusy(false); }
+    } finally { creating.current = false; setNewBusy(false); }
+  };
+  const voidIntake = async () => {
+    if (!newQr || !voidReason.trim() || !voidConfirm || creating.current) return;
+    creating.current = true; setNewBusy(true); setNewErr('');
+    try {
+      const result = await request<Intake>({ method: 'POST', url: `/vehicle-intakes/${newQr.id}/review`, data: { decision: 'void', note: voidReason.trim() } });
+      setNewQr(result); setVoidReason(''); setVoidConfirm(false);
+    } catch (e) { setNewErr(e instanceof Error ? e.message : '撤销登记失败'); }
+    finally { creating.current = false; setNewBusy(false); }
   };
 
   const { communities } = useAddressTree();
@@ -175,16 +186,16 @@ export default function Vehicles() {
             <Card style={{ padding: 36 }}><div className="empty">停车库里没有查到「{query.term}」的记录</div></Card>
           ) : null}
       {newOpen ? (
-        <Sheet open onClose={() => { setNewOpen(false); setNewQr(null); }} width={520} title="新车登记" subtitle="业主扫码自己填车牌与资料">
+        <Sheet open onClose={() => { if (!creating.current) { setNewOpen(false); setNewQr(null); setNewErr(''); } }} width={520} title="新车登记" subtitle="业主扫码自己填车牌与资料">
           <div style={{ padding: '4px 2px' }}>
             {!newQr ? (
               <>
                 <div className="muted" style={{ fontSize: 13, marginBottom: 6 }}>1. 选这辆车挂在哪一户</div>
-                <HousePicker communities={communities} value={newHouse} placeholder="输入 228/5/201 或业主姓名" onPick={setNewHouse} onClear={() => setNewHouse(null)} />
+                <HousePicker communities={communities} value={newHouse} disabled={newBusy} placeholder="输入 228/5/201 或业主姓名" onPick={setNewHouse} onClear={() => setNewHouse(null)} />
                 <div className="muted" style={{ fontSize: 13, margin: '14px 0 6px' }}>2. 类型</div>
                 <div className="chips">
-                  <button className={`chip ${newKind === 'paid' ? 'on' : ''}`} onClick={() => setNewKind('paid')}>新办车牌（按月收费）</button>
-                  <button className={`chip ${newKind === 'family' ? 'on' : ''}`} onClick={() => setNewKind('family')}>亲情车（免费 · 一年）</button>
+                  <button className={`chip ${newKind === 'paid' ? 'on' : ''}`} disabled={newBusy} onClick={() => setNewKind('paid')}>新办车牌（按月收费）</button>
+                  <button className={`chip ${newKind === 'family' ? 'on' : ''}`} disabled={newBusy} onClick={() => setNewKind('family')}>亲情车（免费 · 一年）</button>
                 </div>
                 {newErr ? <div className="note" style={{ background: 'var(--dang-w)', color: 'var(--dang)', margin: '12px 0' }}>{newErr}</div> : null}
                 <div style={{ marginTop: 16 }}>
@@ -195,12 +206,22 @@ export default function Vehicles() {
               </>
             ) : (
               <>
-                <div className="note" style={{ marginBottom: 12 }}>让业主用微信扫这个码，自己填车牌、手机号并上传资料。填完在「车牌登记审核」里审核。</div>
+                <div className="note" style={{ marginBottom: 12 }}>本次登记 #{newQr.id} · {newQr.kind === 'paid' ? '付费新车' : '亲情车（免费）'}。{newQr.status === 'void' ? '已撤销，原二维码已失效。' : '让业主微信扫码填车牌、手机号并上传资料；按类型在登记详情转类 / 撤销。'}</div>
+                {newQr.status !== 'void' ? <>
                 {newQr.qr?.dataUrl ? <div style={{ textAlign: 'center' }}><img src={newQr.qr.dataUrl} alt="登记二维码" style={{ width: 240, maxWidth: '100%', height: 'auto' }} /></div> : <ErrorNote>登记单已创建，但未获得二维码图片，请勿重复登记。</ErrorNote>}
-                <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-                  <button className="btn p" style={{ flex: 1 }} onClick={() => nav('/plates')}><Icon name="check" size={16} />去审核</button>
-                  <button className="btn" onClick={() => { setNewQr(null); setNewHouse(null); }}>再登记一台</button>
+                </> : null}
+                {newErr ? <ErrorNote>{newErr}</ErrorNote> : null}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 14 }}>
+                  {newQr.kind === 'paid' && newQr.status !== 'void' && !newQr.transaction && !newQr.familyCarId ? <button className="btn p" disabled={newBusy} onClick={() => nav(`/cashier?intakeId=${newQr.id}`)}><Icon name="cash" size={16} />去收银台收费</button> : null}
+                  <button className="btn" disabled={newBusy} onClick={() => nav(`/plates?intakeId=${newQr.id}`)}><Icon name="check" size={16} />查看/处理本次登记</button>
+                  <button className="btn" disabled={newBusy} onClick={() => { setNewQr(null); setNewHouse(null); setNewErr(''); setVoidReason(''); setVoidConfirm(false); }}>再登记一台</button>
                 </div>
+                {['waiting', 'submitted', 'reupload'].includes(newQr.status) && !newQr.transaction && !newQr.familyCarId ? <div style={{ marginTop: 16 }}>
+                  <label htmlFor="intake-void-reason">撤销原因</label>
+                  <textarea id="intake-void-reason" className="in" style={{ width: '100%', marginTop: 6 }} value={voidReason} disabled={newBusy} maxLength={500} onChange={e => setVoidReason(e.target.value)} />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 0', minHeight: 44 }}><input type="checkbox" checked={voidConfirm} disabled={newBusy} onChange={e => setVoidConfirm(e.target.checked)} />确认撤销本次登记，原二维码将失效</label>
+                  <button className="btn" disabled={newBusy || !voidReason.trim() || !voidConfirm} onClick={() => void voidIntake()}>{newBusy ? '处理中…' : '撤销本次登记'}</button>
+                </div> : null}
               </>
             )}
           </div>
