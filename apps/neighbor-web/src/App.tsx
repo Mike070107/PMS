@@ -24,7 +24,7 @@ const Cashier = lazy(() => import('@/pages/Cashier'));
 const Records = lazy(() => import('@/pages/Records'));
 const Pending = lazy(() => import('@/pages/Pending'));
 const Standards = lazy(() => import('@/pages/Standards'));
-const Houses = lazy(() => import('@/pages/Houses'));
+const Houses = lazy(() => import('@/pages/PropertyArchive'));
 const Owners = lazy(() => import('@/pages/Owners'));
 const Experience = lazy(() => import('@/pages/Experience'));
 const MigratedApartment = lazy(() => import('@/pages/MigratedApartment'));

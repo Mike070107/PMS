@@ -490,7 +490,8 @@ export class BusinessService {
                 .orWhere('b.building_no ILIKE :kw', { kw: `%${q}%` })
                 .orWhere('b.lane ILIKE :kw', { kw: `%${q}%` })
                 .orWhere('u.name ILIKE :kw', { kw: `%${q}%` })
-                .orWhere('u.phone ILIKE :kw', { kw: `%${q}%` });
+                .orWhere('u.phone ILIKE :kw', { kw: `%${q}%` })
+                .orWhere('EXISTS (SELECT 1 FROM parking_vehicles pv WHERE pv.tenant_id = h.tenant_id AND pv.house_id = h.id AND pv.plate_no ILIKE :kw)', { kw: `%${q}%` });
             })
           : '1=1',
       )

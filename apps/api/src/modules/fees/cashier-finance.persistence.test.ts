@@ -50,6 +50,40 @@ async function fixture() {
   return {pg,ds,service,user,insert};
 }
 
+test('真实SQL：公寓分类隔离明细/报表/对账/下钻，金额与分页合计一致', async () => {
+  const {pg,service,user,insert}=await fixture();
+  try {
+    await new CashierReceiptLinks1792300000000().up({query:(sql:string)=>pg.query(sql)} as any);
+    await pg.exec(`ALTER TABLE communities ADD COLUMN community_type text DEFAULT 'community';
+      UPDATE communities SET community_type='apartment' WHERE id=1;
+      INSERT INTO communities VALUES(2,1,'普通小区','community');
+      ALTER TABLE buildings ADD COLUMN road_name text;
+      ALTER TABLE houses ADD COLUMN property_type text DEFAULT '住宅';
+      INSERT INTO buildings(id,tenant_id,community_id,building_no) VALUES(2,1,2,'B');
+      INSERT INTO houses(id,tenant_id,building_id,room_no) VALUES(2,1,2,'202');`);
+    await insert('APT-1',10000,'2026-11-11T10:00:00+08:00');
+    await insert('APT-REFUND',-2000,'2026-11-11T11:00:00+08:00');
+    await insert('HOME',990000,'2026-11-11T12:00:00+08:00');
+    await pg.exec(`UPDATE fee_bills SET community_id=2,house_id=2 WHERE receipt_no='HOME'`);
+    const query={from:'2026-11-11',to:'2026-11-11',communityType:'apartment' as const};
+    assert.equal((await service.billSummary({communityType:'apartment'},user)).paidCents,8000);
+    const bills=await service.listBills({communityType:'apartment'},user);
+    assert.equal(bills.total,2);
+    const report=await service.feeReport(query,user);
+    const recon=await service.feeReconciliation(query,user);
+    assert.equal(report.totals.netCents,8000);
+    assert.equal(recon.totals.amountCents,8000);
+    const detail=await service.feeReportDetail({...query,source:'pms',dimension:'day',key:'2026-11-11',limit:1},user);
+    assert.equal(detail.count,2);assert.equal(detail.rows.length,1);assert.equal(detail.totals.amountCents,8000);
+    const refund=await service.feeReportDetail({...query,source:'pms',amountKind:'refunded'},user);
+    assert.equal(refund.count,1);assert.equal(refund.totals.amountCents,-2000);
+    assert.equal((await service.feeReportDetail({...query,source:'pms',communityId:2},user)).count,0);
+    const denied={scopeAll:false,communityIds:[2]} as any;
+    assert.equal((await service.feeReconciliation(query,user,denied)).totals.amountCents,0);
+    assert.equal((await service.feeReportDetail({...query,source:'pms'},user,denied)).count,0);
+  } finally { await pg.close(); }
+});
+
 test('真实SQL：迁移回填唯一红冲关联，金额日期不变且不把独立退费当红冲',async()=>{
   const {pg,insert}=await fixture();
   try{

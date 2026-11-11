@@ -153,6 +153,7 @@ export class PropertiesService {
     const community = this.communityRepo.create({
       tenantId,
       name: dto.name,
+      communityType: dto.communityType ?? 'community',
       parentId,
       officeId: await this.resolveOfficeId(tenantId, dto.officeId, parentId),
       address: dto.address ?? null,
@@ -198,6 +199,7 @@ export class PropertiesService {
         access,
       );
     }
+    if (dto.communityType !== undefined) community.communityType = dto.communityType;
     if (dto.address !== undefined) community.address = dto.address ?? null;
     if (dto.zones !== undefined) community.zones = dto.zones;
     if (dto.enabled !== undefined) community.enabled = dto.enabled;
@@ -480,6 +482,11 @@ export class PropertiesService {
       user.id,
       dto.roadName ?? null,
     );
+    if (dto.buildingType && dto.buildingType !== building.buildingType) {
+      await this.assertBuildingTypeChange(tenantId, building, dto.buildingType);
+      building.buildingType = dto.buildingType;
+      await this.buildingRepo.save(building);
+    }
     // 新建楼栋即出码。ensureBuildingQr 内部吞掉所有异常，微信/COS 挂了也不影响建楼栋
     const qr = await this.qrService.ensureBuildingQr(tenantId, building.id, user.id);
     return {
@@ -519,12 +526,30 @@ export class PropertiesService {
       }
     }
 
+    if (dto.buildingType && dto.buildingType !== building.buildingType) {
+      await this.assertBuildingTypeChange(tenantId, building, dto.buildingType);
+      building.buildingType = dto.buildingType;
+    }
     if (dto.lane !== undefined) building.lane = dto.lane || null;
     if (dto.buildingNo !== undefined) building.buildingNo = dto.buildingNo;
     if (dto.zone !== undefined) building.zone = dto.zone || null;
     if (dto.roadName !== undefined) building.roadName = dto.roadName || null;
     building.updatedBy = user.id;
     return this.buildingRepo.save(building);
+  }
+
+  private async assertBuildingTypeChange(tenantId: number, building: Building, next: string) {
+    if (next === 'shop' && await this.houseRepo.count({ where: { tenantId, buildingId: building.id } })) {
+      throw new BadRequestException('该楼栋已有房号，不能直接改为商铺；请先核对并处理原房产关联');
+    }
+    if (next === 'residential' && await this.buildingHasOwners(tenantId, building.id)) {
+      throw new BadRequestException('该商铺已关联业主，不能直接改为住宅楼');
+    }
+  }
+
+  private async buildingHasOwners(tenantId: number, id: number): Promise<boolean> {
+    const [row] = await this.buildingRepo.query(`SELECT EXISTS(SELECT 1 FROM users WHERE tenant_id=$1 AND owner_building_id=$2) OR EXISTS(SELECT 1 FROM owner_property_links WHERE tenant_id=$1 AND building_id=$2) AS present`, [tenantId, id]);
+    return !!row?.present;
   }
 
   async deleteBuilding(id: number, user: AuthUser, access?: ResolvedAccess) {
@@ -542,6 +567,8 @@ export class PropertiesService {
         `该楼栋下还有 ${houseCount} 户房产，请先删除房产`,
       );
     }
+    const owners = await this.buildingHasOwners(tenantId, id);
+    if (owners) throw new BadRequestException('该商铺已关联业主，不能删除；请保留历史档案');
     await this.buildingRepo.remove(building);
     return { ok: true };
   }
@@ -982,6 +1009,7 @@ export class PropertiesService {
         dto.roadName ?? null,
       );
       buildingId = building.id;
+      if (building.buildingType === 'shop') throw new BadRequestException('商铺下直接管理业主，不建立房号');
       // 批量导入房产会顺带建出很多楼栋：这里只落码记录，图片留给「批量补齐」统一生成，
       // 避免一次导入把微信 getUnlimited 的频率打爆
       await this.qrService.ensureBuildingQr(tenantId, building.id, user.id, {
@@ -993,6 +1021,7 @@ export class PropertiesService {
       });
       if (!building) throw new NotFoundException('building not found');
       this.assertCommunityInScope(access, building.communityId);
+      if (building.buildingType === 'shop') throw new BadRequestException('商铺下直接管理业主，不建立房号');
       if (!building.buildingNo && dto.propertyType !== '办公楼') {
         throw new BadRequestException('无楼号的楼栋仅用于单栋办公楼，请选择办公楼类型');
       }
@@ -1402,11 +1431,13 @@ export class PropertiesService {
     const map = new Map<number, Array<{ id: number; name: string | null; phone: string | null }>>();
     const ids = Array.from(new Set(houseIds.filter((id) => !!id)));
     if (!ids.length) return map;
-    const owners = await this.userRepo.find({
-      where: { tenantId, role: UserRole.OWNER, houseId: In(ids) },
-      select: ['id', 'name', 'phone', 'houseId'],
-      order: { id: 'ASC' },
-    });
+    const owners = await this.userRepo.query(`
+      SELECT DISTINCT u.id,u.name,u.phone,p.house_id AS "houseId"
+      FROM users u JOIN (
+        SELECT tenant_id,owner_id,house_id FROM owner_property_links WHERE house_id IS NOT NULL
+        UNION SELECT tenant_id,id,house_id FROM users WHERE house_id IS NOT NULL
+      ) p ON p.owner_id=u.id AND p.tenant_id=u.tenant_id
+      WHERE u.tenant_id=$1 AND u.role=$2 AND u.status=$3 AND p.house_id=ANY($4::int[]) ORDER BY u.id`, [tenantId, UserRole.OWNER, UserStatus.ACTIVE, ids]);
     for (const item of owners) {
       if (!item.houseId) continue;
       const list = map.get(item.houseId) ?? [];

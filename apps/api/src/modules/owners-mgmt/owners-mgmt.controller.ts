@@ -21,6 +21,8 @@ import {
   ImportOwnersDto,
   ListOwnersQueryDto,
   UpdateOwnerDto,
+  OwnerPropertyDto,
+  OwnerPhoneEventDto,
 } from './dto';
 import { OwnersMgmtService } from './owners-mgmt.service';
 
@@ -34,6 +36,24 @@ import { OwnersMgmtService } from './owners-mgmt.service';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class OwnersMgmtController {
   constructor(private readonly ownersMgmtService: OwnersMgmtService) {}
+
+  @Post(':id/contact-events')
+  @RequirePermission(['owners', 'properties'], 'edit')
+  recordPhoneContact(@Param('id', ParseIntPipe) id: number, @Body() dto: OwnerPhoneEventDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.ownersMgmtService.recordPhoneContact(id, dto, user, access);
+  }
+
+  @Post(':id/properties')
+  @RequirePermission(['owners', 'properties'], 'edit')
+  linkProperty(@Param('id', ParseIntPipe) id: number, @Body() dto: OwnerPropertyDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.ownersMgmtService.linkProperty(id, dto, user, access);
+  }
+
+  @Delete(':id/properties')
+  @RequirePermission(['owners', 'properties'], 'delete')
+  unlinkProperty(@Param('id', ParseIntPipe) id: number, @Query() dto: OwnerPropertyDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.ownersMgmtService.unlinkProperty(id, dto, user, access);
+  }
 
   @Get()
   @RequirePermission(['owners', 'properties'], 'view')

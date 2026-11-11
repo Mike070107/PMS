@@ -1,4 +1,5 @@
 import { resolveAddressForTenant } from '../../common/address-lookup';
+import { recordOwnerPhoneUsage } from '../../common/owner-phone-activity';
 import {
   BadRequestException,
   ForbiddenException,
@@ -5719,6 +5720,7 @@ export class RepairsService implements OnModuleInit {
         }),
       );
 
+      await recordOwnerPhoneUsage(manager, tenantId, contact.phone);
       const workOrder = await manager.save(
         WorkOrder,
         manager.create(WorkOrder, {

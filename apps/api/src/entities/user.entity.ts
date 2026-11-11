@@ -40,6 +40,9 @@ export class User extends BaseEntity {
   @Column({ type: 'varchar', length: 30, nullable: true })
   phone: string | null;
 
+  @Column({ name: 'contact_phones', type: 'jsonb', default: () => "'[]'::jsonb" })
+  contactPhones: string[];
+
   @Column({ name: 'phone_reverification_required', type: 'boolean', default: false })
   phoneReverificationRequired: boolean;
   @Column({ name: 'credential_version', type: 'int', default: 0 })
@@ -61,6 +64,10 @@ export class User extends BaseEntity {
   // 业主关联房号
   @Column({ name: 'house_id', type: 'int', nullable: true })
   houseId: number | null;
+
+  /** 商铺业主直接归属楼栋，不创建虚拟房号。 */
+  @Column({ name: 'owner_building_id', type: 'int', nullable: true })
+  ownerBuildingId: number | null;
 
   @Column({ type: 'varchar', length: 20, default: UserStatus.ACTIVE })
   status: UserStatus;

@@ -1,6 +1,7 @@
 import {
   IsBoolean,
   IsInt,
+  IsIn,
   IsNumberString,
   IsOptional,
   IsString,
@@ -50,6 +51,9 @@ export class CommunityQueryDto extends TenantScopedQueryDto {
 
 export class CreateCommunityDto {
   @IsOptional()
+  @IsIn(['community', 'apartment'])
+  communityType?: 'community' | 'apartment';
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   tenantId?: number;
@@ -83,6 +87,9 @@ export class CreateCommunityDto {
 
 export class UpdateCommunityDto {
   @IsOptional()
+  @IsIn(['community', 'apartment'])
+  communityType?: 'community' | 'apartment';
+  @IsOptional()
   @IsString()
   @MaxLength(120)
   name?: string;
@@ -112,6 +119,9 @@ export class UpdateCommunityDto {
 // ---------------- Buildings ----------------
 
 export class CreateBuildingDto {
+  @IsOptional()
+  @IsIn(['residential', 'shop'])
+  buildingType?: 'residential' | 'shop';
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -143,6 +153,9 @@ export class CreateBuildingDto {
 }
 
 export class UpdateBuildingDto {
+  @IsOptional()
+  @IsIn(['residential', 'shop'])
+  buildingType?: 'residential' | 'shop';
   @IsOptional()
   @IsString()
   @MaxLength(30)
@@ -235,7 +248,7 @@ export class CreateHouseDto {
 
   @IsOptional()
   @IsNumberString({ no_symbols: false })
-  areaSqm?: string;
+  areaSqm?: string | null;
 }
 
 export class UpdateHouseDto {
@@ -246,7 +259,7 @@ export class UpdateHouseDto {
 
   @IsOptional()
   @IsNumberString({ no_symbols: false })
-  areaSqm?: string;
+  areaSqm?: string | null;
 
   @IsOptional()
   @IsString()

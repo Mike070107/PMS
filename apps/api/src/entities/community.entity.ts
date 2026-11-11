@@ -10,6 +10,9 @@ import { TenantEntity } from '../common/base.entity';
 @Entity('communities')
 @Index(['tenantId'])
 export class Community extends TenantEntity {
+  @Column({ name: 'community_type', type: 'varchar', length: 20, default: 'community' })
+  communityType: 'community' | 'apartment';
+
   @Column({ type: 'varchar', length: 120 })
   name: string;
 

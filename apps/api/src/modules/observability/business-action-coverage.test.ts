@@ -61,6 +61,18 @@ test('所有 Controller 写接口均有明确中文业务动作及筛选模块�
   assert.deepEqual(issues, []);
 });
 
+test('档案关联与电话联系新增写接口有独立中文动作，且不记录联系方式或联系原文', () => {
+  for (const [method,path,label] of [
+    ['POST','/owners-mgmt/31/properties','关联业主房产'],
+    ['DELETE','/owners-mgmt/31/properties','解除业主房产关联'],
+    ['POST','/owners-mgmt/31/phone-contact','登记业主电话联系结果'],
+  ]) {
+    const action=resolveBusinessAction(method,path,{phone:'SENSITIVE_PHONE',note:'SENSITIVE_NOTE'});
+    assert.equal(action.known,true);assert.equal(action.label,label);
+    assert.ok(!JSON.stringify(action).includes('SENSITIVE_'));
+  }
+});
+
 test('保留既有129规则和新增164条的历史 code（敏感参数固定模板名）', () => {
   for (const [method, template, oldCode] of LEGACY_ACTION_CODES) {
     const path = template.replace(/:[^/]+/g, '31');

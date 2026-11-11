@@ -9,6 +9,9 @@ import { Community } from './community.entity';
 @Entity('buildings')
 @Index(['tenantId', 'communityId'])
 export class Building extends TenantEntity {
+  @Column({ name: 'building_type', type: 'varchar', length: 20, default: 'residential' })
+  buildingType: 'residential' | 'shop';
+
   @Column({ name: 'community_id', type: 'int' })
   communityId: number;
 

@@ -19,9 +19,9 @@ export default function ApartmentCashierWorkspace({ preview = false }: { preview
       ]} />
       <div hidden={tab !== 'cashier'}><ApartmentCashierPage preview={preview} /></div>
       {tab !== 'cashier' && preview ? previewNotice : <>
-        {tab === 'bills' && <BillsTab readOnly onOpenHouse={setHouseId} />}
-        {tab === 'reports' && <ReportTab />}
-        {tab === 'recon' && <ReconTab />}
+        {tab === 'bills' && <BillsTab readOnly communityType="apartment" onOpenHouse={setHouseId} />}
+        {tab === 'reports' && <ReportTab communityType="apartment" />}
+        {tab === 'recon' && <ReconTab communityType="apartment" />}
       </>}
       <HouseDetailModal houseId={houseId} onClose={() => setHouseId(null)} />
     </div>

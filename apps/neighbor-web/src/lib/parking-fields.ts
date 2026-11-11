@@ -19,7 +19,8 @@ const ALIASES = {
   space: ['parkno', 'parkingno', 'spaceno', 'berth', 'garage', 'pspaces', '车位', '地库'],
   begin: ['stratime', 'sarttime', 'starttime', 'startdate', 'begindate'],
   expiry: ['enddate', 'expiredate', 'endtime', '到期', '有效期'],
-  // 顺序即优先级：Car_Brand 是真正的“车辆授权类型”，Car_Lei 只是分类码(1/2)，放在后面
+  // Car_Brand/Car_Beand是旧库车型；Car_Lei是授权类型编码，不能优先覆盖车型。
+  vehicleModel: ['carbrand', 'carbeand', '车辆身份', '车型'],
   identity: ['carbrand', 'carbeand', '车辆类型', '车辆身份', '身份', '性质', 'carlei'],
   note: ['pnote', 'remark', 'note', '备注'],
   effective: ['peffective'],
@@ -44,6 +45,12 @@ export function field(fields: Fields | undefined, group: FieldGroup, preferOwner
     return aliases.some((a) => nk === a || nk.includes(a));
   });
   if (!matches.length) return '';
+  if (group === 'identity' || group === 'vehicleModel') {
+    for (const alias of aliases) {
+      const key = matches.find(k => norm(k) === alias) ?? matches.find(k => norm(k).includes(alias));
+      if (key) return String(fields[key]);
+    }
+  }
   if (preferOwner) {
     const owned = matches.find((k) => norm(k).includes('owner'));
     if (owned) return String(fields[owned]);
@@ -69,6 +76,18 @@ export function vehicleIdentity(raw: string): string {
   if (s.includes('租')) return '租户车';
   if (s.includes('业主') || s.includes('住户')) return '住户车';
   return s ? `旧库车辆类型 ${s}` : '未标注';
+}
+
+/** 外部身份仅用于展示；月票车不直接决定住户车-1/2或价格。 */
+export function deliyunVehicleIdentity(row: { cardType?: string | null; carType?: string | null; cardPoolName?: string | null; remark?: string | null }): string | null {
+  if (row.cardType?.trim() === '月票车') return '住户车';
+  for (const raw of [row.cardType, row.cardPoolName, row.remark]) {
+    if (!raw) continue;
+    if (raw.includes('亲情车')) return '亲情车';
+    if (raw.includes('租户车')) return '租户车';
+    if (raw.includes('住户车') || raw.includes('业主车')) return '住户车';
+  }
+  return null;
 }
 
 /** 车辆类别固定配色；按可见类别而非旧库来源着色。 */

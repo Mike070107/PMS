@@ -34,6 +34,7 @@ import {
   ThunderboltOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
+import FeeReconciliationDetail, { type ReconciliationDetailQuery } from '../components/FeeReconciliationDetail';
 import dayjs from 'dayjs';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -71,6 +72,7 @@ interface Paged<T> {
 interface CommunityOption {
   id: number;
   name: string;
+  communityType?: string;
 }
 
 interface BillRow {
@@ -281,25 +283,25 @@ function usePaymentMethodOptions() {
   return methods;
 }
 
-function useCommunities() {
+function useCommunities(communityType?: 'apartment') {
   const [communities, setCommunities] = useState<CommunityOption[]>([]);
   useEffect(() => {
     request<CommunityOption[]>({ url: '/communities' })
-      .then(setCommunities)
+      .then(rows => setCommunities(communityType ? rows.filter(c => c.communityType === communityType) : rows))
       .catch(() => undefined);
-  }, []);
+  }, [communityType]);
   return communities;
 }
 
 // ====================================================================
 // 账单
 // ====================================================================
-export function BillsTab({ onOpenHouse, readOnly = false }: { onOpenHouse: (houseId: number) => void; readOnly?: boolean }) {
+export function BillsTab({ onOpenHouse, readOnly = false, communityType }: { onOpenHouse: (houseId: number) => void; readOnly?: boolean; communityType?: 'apartment' }) {
   const { message, modal } = AntdApp.useApp();
   const billPermission = usePagePerm('fees');
   const canEdit = !readOnly && billPermission.canEdit;
   const canDelete = !readOnly && billPermission.canDelete;
-  const communities = useCommunities();
+  const communities = useCommunities(communityType);
 
   const [rows, setRows] = useState<BillRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -326,6 +328,7 @@ export function BillsTab({ onOpenHouse, readOnly = false }: { onOpenHouse: (hous
 
   const query = useMemo(
     () => ({
+      communityType,
       q: q || undefined,
       communityId,
       feeCode,
@@ -336,7 +339,7 @@ export function BillsTab({ onOpenHouse, readOnly = false }: { onOpenHouse: (hous
       paidTo: paidRange?.[1] ? paidRange[1].format('YYYY-MM-DD') : undefined,
       paymentMethod,
     }),
-    [q, communityId, feeCode, status, periodRange, paidRange, paymentMethod],
+    [q, communityId, feeCode, status, periodRange, paidRange, paymentMethod, communityType],
   );
 
   const load = useCallback(async () => {
@@ -828,9 +831,9 @@ function BreakdownCard({
   );
 }
 
-export function ReportTab() {
+export function ReportTab({ communityType }: { communityType?: 'apartment' } = {}) {
   const { message } = AntdApp.useApp();
-  const communities = useCommunities();
+  const communities = useCommunities(communityType);
 
   const [range, setRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>(
     () => [dayjs().startOf('month'), dayjs()],
@@ -848,6 +851,7 @@ export function ReportTab() {
 
   const query = useMemo(
     () => ({
+      communityType,
       from: range[0].format('YYYY-MM-DD'),
       to: range[1].format('YYYY-MM-DD'),
       communityId,
@@ -855,7 +859,7 @@ export function ReportTab() {
       paymentMethod,
       granularity,
     }),
-    [range, communityId, feeCode, paymentMethod, granularity],
+    [range, communityId, feeCode, paymentMethod, granularity, communityType],
   );
 
   const load = useCallback(async () => {
@@ -1130,9 +1134,10 @@ function methodLabel(method: string) {
   return FEE_PAYMENT_METHOD_LABELS[method] || method;
 }
 
-export function ReconTab() {
+export function ReconTab({ communityType }: { communityType?: 'apartment' } = {}) {
   const { message } = AntdApp.useApp();
-  const communities = useCommunities();
+  const communities = useCommunities(communityType);
+  const [drill, setDrill] = useState<ReconciliationDetailQuery | null>(null);
 
   const [range, setRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>(
     () => [dayjs().startOf('month'), dayjs()],
@@ -1145,12 +1150,13 @@ export function ReconTab() {
 
   const query = useMemo(
     () => ({
+      communityType,
       from: range[0].format('YYYY-MM-DD'),
       to: range[1].format('YYYY-MM-DD'),
       communityId,
       feeCode,
     }),
-    [range, communityId, feeCode],
+    [range, communityId, feeCode, communityType],
   );
 
   const load = useCallback(async () => {
@@ -1174,8 +1180,9 @@ export function ReconTab() {
   const spanDays = dayjs(query.to).diff(dayjs(query.from), 'day') + 1;
 
   // 表头随区间里实际出现过的收款方式长出来：出纳只核今天真有钱进来的那几个渠道
+  const openDetail = (extra: Partial<ReconciliationDetailQuery> = {}) => setDrill({ ...query, ...extra, ...(extra.paymentMethod === 'unknown' ? { paymentMethod: '未记录' } : {}) });
   const columns = [
-    { title: '日期', dataIndex: 'day', fixed: 'left' as const, width: 118 },
+    { title: '日期', dataIndex: 'day', fixed: 'left' as const, width: 118, render: (day: string) => <Button type="link" onClick={() => openDetail({ dimension: 'day', key: day })}>{day}</Button> },
     ...methods.map((m) => ({
       title: methodLabel(m),
       key: m,
@@ -1188,9 +1195,9 @@ export function ReconTab() {
           <Tooltip
             title={`收款 ${formatFeeMoney(cell.chargedCents)}、红冲 ${formatFeeMoney(cell.refundedCents)}、${cell.count} 笔`}
           >
-            <span className={cell.amountCents < 0 ? 'is-negative' : undefined}>
+            <Button type="link" onClick={() => openDetail({ dimension: 'day', key: r.day, paymentMethod: m })} className={cell.amountCents < 0 ? 'is-negative' : undefined}>
               {formatFeeMoney(cell.amountCents)}
-            </span>
+            </Button>
           </Tooltip>
         );
       },
@@ -1200,16 +1207,16 @@ export function ReconTab() {
       dataIndex: 'refundedCents',
       width: 110,
       align: 'right' as const,
-      render: (v: number) => (v ? <span className="is-negative">{formatFeeMoney(v)}</span> : <span className="is-dim">-</span>),
+      render: (v: number, r: ReconRow) => (v ? <Button type="link" onClick={() => openDetail({ dimension: 'day', key: r.day, amountKind: 'refunded' })} className="is-negative">{formatFeeMoney(v)}</Button> : <span className="is-dim">-</span>),
     },
-    { title: '笔数', dataIndex: 'count', width: 72, align: 'right' as const },
+    { title: '笔数', dataIndex: 'count', width: 72, align: 'right' as const, render: (v: number, r: ReconRow) => <Button type="link" onClick={() => openDetail({ dimension: 'day', key: r.day })}>{v}</Button> },
     {
       title: '当日实收',
       dataIndex: 'amountCents',
       width: 130,
       align: 'right' as const,
       fixed: 'right' as const,
-      render: (v: number) => <span className={v < 0 ? 'is-negative' : 'is-money'}>{formatFeeMoney(v)}</span>,
+      render: (v: number, r: ReconRow) => <Button type="link" onClick={() => openDetail({ dimension: 'day', key: r.day })} className={v < 0 ? 'is-negative' : 'is-money'}>{formatFeeMoney(v)}</Button>,
     },
   ];
 
@@ -1315,29 +1322,29 @@ export function ReconTab() {
       <div className="fees-tiles">
         <div className="fees-tile">
           <small>区间实收</small>
-          <strong>{formatFeeMoney(totals?.amountCents)}</strong>
+          <strong><Button type="link" style={{ fontSize: 'inherit', fontWeight: 'inherit', color: 'inherit', height: 'auto', padding: 0 }} onClick={() => openDetail()}>{formatFeeMoney(totals?.amountCents)}</Button></strong>
           <span className="fees-tile__foot">
             <Text type="secondary" style={{ fontSize: 12 }}>全部收费 − 红冲 − 独立退费</Text>
           </span>
         </div>
         <div className="fees-tile">
           <small>收款小计</small>
-          <strong className="is-plain">{formatFeeMoney(totals?.chargedCents)}</strong>
+          <strong className="is-plain"><Button type="link" style={{ fontSize: 'inherit', fontWeight: 'inherit', color: 'inherit', height: 'auto', padding: 0 }} onClick={() => openDetail({ amountKind: 'charged' })}>{formatFeeMoney(totals?.chargedCents)}</Button></strong>
         </div>
         <div className="fees-tile">
           <small>红冲及退费</small>
           <strong className={totals?.refundedCents ? 'is-negative' : 'is-plain'}>
-            {formatFeeMoney(totals?.refundedCents)}
+            <Button type="link" style={{ fontSize: 'inherit', fontWeight: 'inherit', color: 'inherit', height: 'auto', padding: 0 }} onClick={() => openDetail({ amountKind: 'refunded' })}>{formatFeeMoney(totals?.refundedCents)}</Button>
           </strong>
         </div>
         <div className="fees-tile">
           <small>有流水天数</small>
           <strong className="is-plain">
-            {rows.length}
+            <Button type="link" style={{ fontSize: 'inherit', fontWeight: 'inherit', color: 'inherit', height: 'auto', padding: 0 }} onClick={() => openDetail()}>{rows.length}</Button>
             <Text type="secondary" style={{ fontSize: 13, fontWeight: 600 }}> / {spanDays} 天</Text>
           </strong>
           <span className="fees-tile__foot">
-            <Text type="secondary" style={{ fontSize: 12 }}>共 {totals?.count ?? 0} 笔收款</Text>
+            <Button type="link" onClick={() => openDetail()}>共 {totals?.count ?? 0} 笔收款 · 查看明细</Button>
           </span>
         </div>
       </div>
@@ -1363,27 +1370,28 @@ export function ReconTab() {
                 <Table.Summary.Cell index={0}>合计</Table.Summary.Cell>
                 {methods.map((m, i) => (
                   <Table.Summary.Cell key={m} index={i + 1} align="right">
-                    <span className={(totals?.byMethod[m]?.amountCents ?? 0) < 0 ? 'is-negative' : undefined}>
+                    <Button type="link" onClick={() => openDetail({ paymentMethod: m })} className={(totals?.byMethod[m]?.amountCents ?? 0) < 0 ? 'is-negative' : undefined}>
                       {formatFeeMoney(totals?.byMethod[m]?.amountCents ?? 0)}
-                    </span>
+                    </Button>
                   </Table.Summary.Cell>
                 ))}
                 <Table.Summary.Cell index={methods.length + 1} align="right">
                   {totals?.refundedCents
-                    ? <span className="is-negative">{formatFeeMoney(totals.refundedCents)}</span>
+                    ? <Button type="link" onClick={() => openDetail({ amountKind: 'refunded' })} className="is-negative">{formatFeeMoney(totals.refundedCents)}</Button>
                     : <span className="is-dim">-</span>}
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={methods.length + 2} align="right">
-                  {totals?.count ?? 0}
+                  <Button type="link" onClick={() => openDetail()}>{totals?.count ?? 0}</Button>
                 </Table.Summary.Cell>
                 <Table.Summary.Cell index={methods.length + 3} align="right">
-                  <span className="is-money">{formatFeeMoney(totals?.amountCents)}</span>
+                  <Button type="link" onClick={() => openDetail()} className="is-money">{formatFeeMoney(totals?.amountCents)}</Button>
                 </Table.Summary.Cell>
               </Table.Summary.Row>
             </Table.Summary>
           )}
         />
       </div>
+      <FeeReconciliationDetail query={drill} onClose={() => setDrill(null)} />
     </div>
   );
 }

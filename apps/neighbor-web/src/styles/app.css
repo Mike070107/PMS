@@ -215,6 +215,16 @@
 /* 收银台：历史缴费（折叠）与停车缴费表 */
 .hist-hd { display: flex; align-items: center; gap: 8px; width: 100%; padding: 12px 16px; text-align: left; font-size: 15.5px; background: none; border: 0; cursor: pointer; }
 .hist-hd:hover { background: var(--sunken); }
+.parking-household { min-width: 0; max-width: 100%; }
+.parking-household > .panelHd { flex-wrap: wrap; }
+.parking-household > .panelHd > .tag { flex: 1 1 240px; min-width: 0; height: auto; min-height: 26px; white-space: normal; overflow-wrap: anywhere; }
+.parking-household > .panelHd > button { flex-shrink: 0; }
+.parking-table-scroll { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: auto; scrollbar-color: var(--ink3) var(--sunken); }
+.parking-table-scroll:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.parking-table-scroll::-webkit-scrollbar { height: 12px; }
+.parking-table-scroll::-webkit-scrollbar-thumb { background: var(--ink3); border-radius: 6px; border: 2px solid var(--sunken); }
+.parking-table-scroll::-webkit-scrollbar-track { background: var(--sunken); }
+.parking-table-scroll > .park-tbl { min-width: 920px; }
 .park-tbl tr.sel td { background: var(--acc-w, #eef3f9); }
 .park-tbl .lot-line { line-height: 1.5; white-space: nowrap; }
 .park-tbl .plate { white-space: nowrap; font-size: 16.5px; letter-spacing: .5px; }

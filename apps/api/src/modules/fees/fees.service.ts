@@ -1,4 +1,5 @@
 import { resolveAddressForTenant, type AddressFilter } from '../../common/address-lookup';
+import { recordOwnerPhoneUsage } from '../../common/owner-phone-activity';
 import {
   BadRequestException,
   ConflictException,
@@ -128,7 +129,7 @@ export class FeesService {
     access?: ResolvedAccess,
   ): Promise<PagedResult<any>> {
     const tenantId = this.requireTenant(user);
-    const scope = scopeCommunityIds(access);
+    const scope = await this.archiveFeeScope(tenantId, query, access);
     if (scope && !scope.length) return this.emptyPage(query);
 
     const qb = this.billRepo
@@ -197,7 +198,7 @@ export class FeesService {
   /** 当前筛选条件下的应收 / 实收 / 欠费合计（分），列表页顶部四个数用 */
   async billSummary(query: ListBillsQueryDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
-    const scope = scopeCommunityIds(access);
+    const scope = await this.archiveFeeScope(tenantId, query, access);
     if (scope && !scope.length) {
       return { billCount: 0, dueCents: 0, paidCents: 0, unpaidCents: 0, unpaidCount: 0 };
     }
@@ -413,7 +414,7 @@ export class FeesService {
    */
   async feeReport(query: FeeReportQueryDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
-    const scope = scopeCommunityIds(access);
+    const scope = await this.archiveFeeScope(tenantId, query, access);
     const { from, to } = this.reportRange(query);
     const granularity: TrendGranularity = query.granularity ?? 'day';
     const prev = previousRange(from, to);
@@ -658,6 +659,8 @@ export class FeesService {
     );
     if (query.feeCode) where.push(`b.fee_code = ${add(query.feeCode)}`);
     if (query.paymentMethod) where.push(`${METHOD_LABEL_SQL} = ${add(normalizeMisLabel(query.paymentMethod))}`);
+    if (query.amountKind === 'charged') where.push('b.amount_cents > 0');
+    if (query.amountKind === 'refunded') where.push('b.amount_cents < 0');
     if (query.dimension === 'fee' && key) where.push(`b.fee_code = ${add(key)}`);
     if (query.dimension === 'method' && key) where.push(`${METHOD_LABEL_SQL} = ${add(normalizeMisLabel(key))}`);
     if (query.dimension === 'cashier' && key) where.push(`${CASHIER_LABEL_SQL} = ${add(normalizeMisLabel(key))}`);
@@ -755,6 +758,8 @@ export class FeesService {
         where.push(`f.community_id = ${add(Number(key))}`);
       }
     }
+    if (query.amountKind === 'charged') where.push('f.amount_cents > 0');
+    if (query.amountKind === 'refunded') where.push('f.amount_cents < 0');
     if (query.dimension === 'fee' && key) where.push(`f.fee_code = ${add(key)}`);
     if (query.dimension === 'method' && key) where.push(`COALESCE(NULLIF(TRIM(f.payment_method),''),'${MIS_UNRECORDED}') = ${add(normalizeMisLabel(key))}`);
     if (query.dimension === 'cashier' && key) where.push(`COALESCE(NULLIF(TRIM(f.cashier),''),'${MIS_UNRECORDED}') = ${add(normalizeMisLabel(key))}`);
@@ -817,6 +822,7 @@ export class FeesService {
     from: string,
     to: string,
   ): Promise<Set<number>> {
+    if (scope && !scope.length) return new Set();
     const rows: any[] = await this.paidBillsQuery(tenantId, scope, query, from, to)
       .select('DISTINCT f.community_id', 'communityId')
       .getRawMany<any>();
@@ -829,7 +835,7 @@ export class FeesService {
    */
   async feeReportDetail(query: FeeReportDetailQueryDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
-    const scope = scopeCommunityIds(access);
+    const scope = await this.archiveFeeScope(tenantId, query, access);
     const { from, to } = this.reportRange(query);
     const limit = Math.min(Math.max(Number(query.limit) || 200, 1), 500);
     const offset = Math.max(Number(query.offset) || 0, 0);
@@ -879,7 +885,7 @@ export class FeesService {
     maxRows = 50_000,
   ) {
     const tenantId = this.requireTenant(user);
-    const scope = scopeCommunityIds(access);
+    const scope = await this.archiveFeeScope(tenantId, query, access);
     const { from, to } = this.reportRange(query);
     const pmsCommunities = await this.pmsCommunitiesWithData(tenantId, scope, query, from, to);
     const mappings = misOfficesForScope(scope, query.communityId)
@@ -939,7 +945,7 @@ export class FeesService {
    */
   async feeReconciliation(query: FeeReportQueryDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
-    const scope = scopeCommunityIds(access);
+    const scope = await this.archiveFeeScope(tenantId, query, access);
     const { from, to } = this.reportRange(query);
     const empty = { range: { from, to }, methods: [], rows: [], totals: this.emptyReconTotals() };
     if (scope && !scope.length) return empty;
@@ -1572,6 +1578,7 @@ export class FeesService {
 
     return this.dataSource.transaction(async (manager) => {
       const owner = await this.saveCashierContact(manager, dto, user, tenantId);
+      await recordOwnerPhoneUsage(manager, tenantId, contact.phone);
       // 与模板调价、套用使用同一把锁，报价校验到保存期间不穿插改价。
       await manager.query('SELECT pg_advisory_xact_lock($1,$2)',[tenantId,place.communityId]);
       const receiptNo = await this.nextCashierVoucherNo(manager, tenantId, place.communityId, place.communityName, paidAt);
@@ -2318,6 +2325,14 @@ export class FeesService {
   }
 
   // ==================== 内部工具 ====================
+
+  /** 公寓收费台的范围取房产分类，并与当前账号授权取交集。 */
+  private async archiveFeeScope(tenantId: number, query: { communityType?: string }, access?: ResolvedAccess) {
+    const scope = scopeCommunityIds(access);
+    if (query.communityType !== 'apartment') return scope;
+    const communities = await this.communityRepo.find({ where: { tenantId, communityType: 'apartment' }, select: ['id'] });
+    return communities.map(c => c.id).filter(id => !scope || scope.includes(id));
+  }
 
   private applyBillFilters(
     qb: SelectQueryBuilder<FeeBill>,

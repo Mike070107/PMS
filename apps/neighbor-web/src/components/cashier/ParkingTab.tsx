@@ -4,16 +4,11 @@ import { accessCardIssuance, request } from '@pms/api-client';
 import type { ParkingQuery } from '@pms/api-client/src/endpoints/access-card-issuance';
 import Icon from '@/components/Icon';
 import { dayjs, money } from '@/lib/format';
-import { field as fieldOf, vehicleIdentity, identityTone } from '@/lib/parking-fields';
+import { field as fieldOf, vehicleIdentity, identityTone, deliyunVehicleIdentity as deliyunIdentity } from '@/lib/parking-fields';
 import NewPlateCard, { type Intake } from './NewPlateCard';
 import RenewalMonths from './RenewalMonths';
 
-/** 德立云的车卡类型字段名不统一：亲情车可能写在 cardType / 车池名 / 备注里 */
-const deliyunIdentity = (r: { cardType?: string | null; cardPoolName?: string | null; carType?: string | null; remark?: string | null }): string | null => {
-  const text = [r.cardType, r.cardPoolName, r.carType, r.remark].filter(Boolean).join(' ');
-  if (!text) return null;
-  return vehicleIdentity(text);
-};
+
 
 /** 旧库车辆身份：列名有 Car_Brand / Car_Beand / CarLei / 车辆类型 多种写法，走别名组读 */
 const identityOf = (f: Record<string, unknown>): string | null => {
@@ -272,7 +267,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate }: { hou
   const noSystem = hh && !hh.targets.length;
 
   return (
-    <div style={{ marginTop: 16 }}>
+    <div className="parking-household" style={{ marginTop: 16 }}>
       <div className="panelHd">
         <b>这一户的车</b>
       {missPlate ? (
@@ -287,7 +282,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate }: { hou
       {deliyunFails.map((d) => <div key={d.park} className="note2" style={{ color: 'var(--dang)', marginBottom: 6 }}><Icon name="alert" />{d.label}（德立云）没查成：{d.error}。不代表没有车，请点「重查」。</div>)}
       {local.state === 'failed' ? <div className="note2" style={{ color: 'var(--dang)', marginBottom: 6 }}><Icon name="alert" />本地停车库没查成：{local.error}。不代表没有车。</div> : null}
 
-      <div className="card" style={{ overflow: 'hidden' }}>
+      <div className="card parking-table-scroll" role="region" aria-label="这一户的车辆列表，可左右滚动查看" tabIndex={0}>
         <table className="tbl park-tbl">
           <thead><tr><th style={{ width: 40 }}>{cars.length > 1 ? <input type="checkbox" className="ck-lg" checked={allOn} onChange={() => setPicked(allOn ? [] : cars.map((c) => c.plate))} title="全选" /> : null}</th><th>车牌</th><th>车辆类别</th><th>停车场 / 车库</th><th>车位号</th><th>有效期至</th><th>状态</th></tr></thead>
           <tbody>

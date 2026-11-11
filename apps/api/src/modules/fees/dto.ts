@@ -48,6 +48,9 @@ export class PageQueryDto {
 
 export class ListBillsQueryDto extends PageQueryDto {
   @IsOptional()
+  @IsIn(['apartment'])
+  communityType?: 'apartment';
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   communityId?: number;
@@ -107,6 +110,9 @@ export class ListBillsQueryDto extends PageQueryDto {
  * 红冲产生的负数收据也在统计范围内，金额相加能自动把误收那笔抵掉。
  */
 export class FeeReportQueryDto {
+  @IsOptional()
+  @IsIn(['apartment'])
+  communityType?: 'apartment';
   @Matches(DATE_RE, { message: '开始日期格式应为 YYYY-MM-DD' })
   from: string;
 
@@ -136,6 +142,9 @@ export class FeeReportQueryDto {
 }
 
 export class FeeReportDetailQueryDto extends FeeReportQueryDto {
+  @IsOptional()
+  @IsIn(['charged', 'refunded'])
+  amountKind?: 'charged' | 'refunded';
   /** 下钻维度：community/fee/method/cashier/day。 */
   @IsOptional()
   @IsIn(['community', 'fee', 'method', 'cashier', 'day'])

@@ -7,6 +7,7 @@ import { CommunitySpot } from './community-spot.entity';
 import { House } from './house.entity';
 import { QrCode } from './qr-code.entity';
 import { User } from './user.entity';
+import { OwnerPropertyLink, OwnerPhoneActivity, OwnerPhoneEvent } from './owner-property.entity';
 import { StaffProfile } from './staff-profile.entity';
 import { StaffAssignment } from './staff-assignment.entity';
 import { UserAudit } from './user-audit.entity';
@@ -98,6 +99,7 @@ import { MeterCharge } from './meter-charge.entity';
 import { MeterOcrSample } from './meter-ocr-sample.entity';
 
 export const entities = [
+  OwnerPropertyLink, OwnerPhoneActivity, OwnerPhoneEvent,
   Tenant,
   ManagementOffice,
   Role,
@@ -199,6 +201,7 @@ export const entities = [
 ];
 
 export {
+  OwnerPropertyLink, OwnerPhoneActivity, OwnerPhoneEvent,
   Tenant,
   ManagementOffice,
   Role,

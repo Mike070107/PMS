@@ -8,7 +8,7 @@ import { useAddressTree } from '@/lib/address-tree';
 import { Btn, Card, ErrorNote, Loading, Sheet, toast } from '@/components/ui';
 import HousePicker, { type PickedHouse } from '@/components/HousePicker';
 import Icon from '@/components/Icon';
-import { field, vehicleIdentity, identityTone, GARAGES, garageState, groupByPlate, normPlate } from '@/lib/parking-fields';
+import { field, vehicleIdentity, identityTone, deliyunVehicleIdentity, GARAGES, garageState, groupByPlate, normPlate } from '@/lib/parking-fields';
 import RenewSheet from '@/components/vehicle-ops/RenewSheet';
 import { ChangePlateSheet, DownloadSheet, DeleteSheet } from '@/components/vehicle-ops/OtherOpSheets';
 import { RebindSheet, GaragesSheet } from '@/components/vehicle-ops/RebindGarageSheets';
@@ -273,10 +273,18 @@ function VehicleCard({ plate, rows, cloud, onChanged }: { plate: string; rows: P
             <dl key={r.database} className="veh-dl">
               <dt>{dbLabel(r.database)} 房号</dt><dd>{field(r.fields, 'room', true) || '—'}</dd>
               <dt>电话</dt><dd>{field(r.fields, 'phone', true) || '缺电话'}</dd>
+              <dt>旧库车型</dt><dd>{field(r.fields, 'vehicleModel') || '未读取'}</dd>
               <dt>车位</dt><dd>{field(r.fields, 'space') || '—'}</dd>
               <dt>有效期</dt><dd>{(field(r.fields, 'begin') || '—')} ~ {(field(r.fields, 'expiry') || '—')}</dd>
             </dl>
           ))}
+          {cloud && cloud !== 'loading' ? (
+            <dl className="veh-dl">
+              <dt>德立云计费类型</dt><dd>{cloud.cardType?.trim() || '未读取'}</dd>
+              <dt>对应PMS身份</dt><dd>{deliyunVehicleIdentity(cloud) || '待确认'}</dd>
+              <dt>德立云车型</dt><dd>{cloud.carType?.trim() || '未读取'}</dd>
+            </dl>
+          ) : null}
           {note ? <div className="veh-note">备注：{note}</div> : null}
         </div>
         <div className="veh-panel">

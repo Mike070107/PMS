@@ -6,11 +6,27 @@ import {
   IsOptional,
   IsString,
   MaxLength,
+  ArrayMaxSize,
+  Matches,
 } from 'class-validator';
 import { IsArray, ValidateNested } from 'class-validator';
 import { UserStatus } from '../../common/enums';
 
 export class ListOwnersQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  id?: number;
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  houseId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  buildingId?: number;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -33,6 +49,16 @@ export class ListOwnersQueryDto {
 }
 
 export class CreateOwnerDto {
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsString({ each: true })
+  @Matches(/^[+\d][\d\s()+-]{4,29}$/, { each: true, message: '联系电话格式不正确' })
+  contactPhones?: string[];
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  ownerBuildingId?: number | null;
   @IsString()
   @MaxLength(60)
   name: string;
@@ -55,6 +81,16 @@ export class CreateOwnerDto {
 }
 
 export class UpdateOwnerDto {
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsString({ each: true })
+  @Matches(/^[+\d][\d\s()+-]{4,29}$/, { each: true, message: '联系电话格式不正确' })
+  contactPhones?: string[];
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  ownerBuildingId?: number | null;
   @IsOptional()
   @IsString()
   @MaxLength(60)
@@ -81,6 +117,32 @@ export class UpdateOwnerDto {
 }
 
 // ---------------- 批量导入 ----------------
+
+export class OwnerPropertyDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  houseId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  ownerBuildingId?: number;
+}
+
+export class OwnerPhoneEventDto {
+  @IsString()
+  @MaxLength(30)
+  phone: string;
+
+  @IsIn(['connected', 'no_answer', 'invalid', 'inactive'])
+  result: 'connected' | 'no_answer' | 'invalid' | 'inactive';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  note?: string;
+}
 
 /**
  * 业主档案批量导入的一行。房号定位用「小区/弄/号/室」四段文字（与物业费导入同一套规则，
