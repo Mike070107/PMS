@@ -7,6 +7,7 @@
 - `/stocks`、`/stocks/export` 支持显式 `onlyStocked=true/1`，在分页前筛选数量大于 0 的行。未指定时保留全部库存口径，避免影响缺料、补货、其他调用。后台导出与当前有货筛选一致，预警参数使用 API 的 `lowOnly`。
 - 可执行回归：`node --test apps/neighbor-web/test/stock-filter.test.cjs apps/miniapp-staff/test/inventory-stock-filter.test.cjs`；API 目录运行 `node -r ts-node/register --test src/modules/inventory/inventory-stock-filter.test.ts src/modules/inventory/inventory-export.test.ts src/modules/inventory/dto.test.ts`。覆盖转出归零、显示/隐藏切换、预警仍可见、筛选先于分页、布尔参数转换及导出。
 - 生产数据清理须独立记录具体范围、备份与执行结果；上述功能回归不代表生产数据已清理或手机已升级。
+- 2026-11-11 09:53（北京时间）单独执行最初明确授权的电子浮球阀零库存移除：事务锁定并核对租户 1、仓 2、SKU 37、行 79，数量及安全库存均为 0，所有同仓批次剩余为 0；删除该库存行，保留 SKU、调拨单、流水及批次。执行后仓 2 有 17 条库存记录、12 项有货，数量合计 18，数量未扣减。执行前全库备份在当前生产 `/opt/pms-repair/backups/inventory-cleanup-20261111/database.dump`，SHA-256 `3e638004457ca13049670595cf94e3fade26b61892a229a645b18b623c3f3dba`，已核对 `pg_restore -l` 可读取。备份仅用于按行恢复依据，不得覆盖其他后续业务数据。其他仓库的历史数据删除范围尚待确认，未执行。
 
 > 2026-08-28 调研 + 落地。代码入口：`apps/api/src/modules/inventory/stock-ledger.ts`（唯一实现），
 > 报表：`modules/reports/reports.service.ts`，后台：`pages/InventoryPage.tsx`。
