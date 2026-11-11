@@ -7216,3 +7216,25 @@
 - 自上次（1e953e2a）以来上线的相关提交：
   - 7370c50e fix(staff): restore meter navigation and support material draft saves in WeChat
 
+## 2026-11-11 13:09 · web · ec05a8d7
+
+- 包：`pms-web-20261111-130821.tar.gz`
+- 提交：ec05a8d7 docs(staff): record meter regression and WeChat draft transport release
+- 自上次（665a99e8）以来上线的相关提交：
+  - 7370c50e fix(staff): restore meter navigation and support material draft saves in WeChat
+  - fc6201e6 Merge remote-tracking branch 'origin/main'
+  - e4bc7b44 fix(inventory): default stock lists to available materials
+  - baaeceec Merge remote-tracking branch 'origin/main' into codex/material-reservation
+  - 3ec5cef5 fix(web): make statistics route fluid across shell states
+  - adba4437 merge: integrate current main while preserving dispatch sort modes
+  - afe35caf feat(repairs): persist material drafts and reserve stock for staff orders
+  - 0498e7f0 fix(repairs): order dispatch by repair time and pin next actions
+  - 0e672930 feat(statistics): show excluded-06 hint on arrears results
+  - bb7dd926 fix(statistics): keep annual drilldown source ids exact
+  - f514cdd3 fix(statistics): generate explicitly and export one styled workbook
+  - d34adedb fix(statistics): preserve floating filter card elevation
+  - ac938af2 fix(statistics): harden drilldowns and floating filter layout
+  - f68669af feat(statistics): enable daily fees report and classified amount drilldowns
+  - b69a911b feat(statistics): add ticket item reports and per-ticket detail drawer
+  - f8634eae fix(repairs): scope dispatch notices and recognize intercoms
+
