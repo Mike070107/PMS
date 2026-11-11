@@ -7247,3 +7247,11 @@
   - 8b82a46c feat: integrate property archives, apartment reconciliation and parking fixes
   - 08365219 [verified] fix(parking): resolve paid intake class from charge snapshot
 
+## 2026-11-11 19:03 · web · fdf18806
+
+- 包：`pms-web-20261111-190239.tar.gz`
+- 提交：fdf18806 deploy: api → 54ecc38b
+- 自上次（ec05a8d7）以来上线的相关提交：
+  - 8b82a46c feat: integrate property archives, apartment reconciliation and parking fixes
+  - 46b4fdd3 fix(vehicles): render intake QR data URL from structured response
+
