@@ -7289,3 +7289,10 @@
 - 自上次（6ca4519b）以来上线的相关提交：
   - 8ac12560 fix(parking): finish scoped space renewals and property contact archive with verified release gates
 
+## 2026-11-12 19:22 · api · 5632a0b6
+
+- 包：`pms-api-fast-20261112-192004.tar.gz`
+- 提交：5632a0b6 [verified] fix(api): wake parking execution on committed receipts
+- 自上次（8ac12560）以来上线的相关提交：
+  - 5632a0b6 [verified] fix(api): wake parking execution on committed receipts
+
