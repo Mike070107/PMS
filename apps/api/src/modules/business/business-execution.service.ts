@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -11,6 +11,7 @@ import { BusinessServiceType } from '../../common/enums';
 import { AuthUser } from '../../common/current-user.decorator';
 import { DeliyunParkingService, shanghaiDateOnly } from '../access-card-issuance/deliyun-parking.service';
 import { AccessCardIssuanceService } from '../access-card-issuance/access-card-issuance.service';
+import { ParkingReceipt, subscribeParkingReceipts } from '../access-card-issuance/parking-receipts';
 import {
   aggregateSteps,
   ExecutionStep,
@@ -50,7 +51,7 @@ const STALE_RUNNING_MS = 5 * 60_000;
 /**
  * 收费后的执行层（P1：停车月租 → 德立云有效期续期）。
  *
- * - 收银确认后排队（queued），立即在后台执行一次，另有每分钟一次的兜底扫描；
+ * - 收银确认后排队（queued），立即在后台执行一次；现场回执提交后唤醒，另有每5秒一次的兜底扫描；
  * - 多进程安全：靠 UPDATE ... WHERE external_sync_status IN (queued, retry) 原子领取；
  * - 写入走既有 DeliyunParkingService.renewVehicle（自带幂等：已是目标即成功；写后回读校验）；
  * - 每次真实写入在 parking_operations 留一条 database='deliyun' 记录，与旧页续期同一本账。
@@ -58,9 +59,10 @@ const STALE_RUNNING_MS = 5 * 60_000;
  * - BUSINESS_DELIYUN_SYNC 默认 dry-run：只读查车、记下「将要写什么」，不写入。
  */
 @Injectable()
-export class BusinessExecutionService {
+export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BusinessExecutionService.name);
   private sweeping = false;
+  private unsubscribeReceipts?: () => void;
 
   constructor(
     @InjectRepository(BusinessTransaction) private readonly txnRepo: Repository<BusinessTransaction>,
@@ -71,6 +73,39 @@ export class BusinessExecutionService {
     private readonly config: ConfigService,
     private readonly issuance: AccessCardIssuanceService,
   ) {}
+
+  onModuleInit() {
+    this.unsubscribeReceipts?.();
+    this.unsubscribeReceipts = subscribeParkingReceipts(receipt => {
+      this.resumeAfterParkingReceipt(receipt).catch(error => this.logger.error(`receipt wakeup failed: ${error?.message || error}`));
+    });
+    this.logger.log('Parking execution receipt wakeups active; fallback scan every 5 seconds');
+  }
+
+  onModuleDestroy() {
+    this.unsubscribeReceipts?.();
+    this.unsubscribeReceipts = undefined;
+  }
+
+  /** 回执只推进关联的等待中流水，不重排 manual/failed，也不越过 retry 退避。 */
+  async resumeAfterParkingReceipt(receipt: ParkingReceipt) {
+    if (this.mode() === 'off' || !Number.isSafeInteger(receipt.tenantId) || receipt.tenantId <= 0 ||
+        !Number.isSafeInteger(receipt.id) || receipt.id <= 0 || !['operation', 'query'].includes(receipt.kind)) return;
+    const due = this.txnRepo.createQueryBuilder('t').select('t.id', 'id')
+      .where('t.tenant_id = :tenantId', { tenantId: receipt.tenantId })
+      .andWhere('t.service_type = :st', { st: BusinessServiceType.PARKING_MONTHLY })
+      .andWhere('t.external_sync_status = :status', { status: 'queued' });
+    if (receipt.kind === 'query') {
+      due.andWhere("t.snapshot->'execution'->>'registrationQueryId' = :receiptId", { receiptId: String(receipt.id) });
+    } else {
+      due.andWhere("(t.snapshot->'execution'->>'operationId' = :receiptId OR t.snapshot->'execution'->'steps' @> CAST(:step AS jsonb))",
+        { receiptId: String(receipt.id), step: JSON.stringify([{ operationId: receipt.id }]) });
+    }
+    // nextAt 是等待轮询时间；已收到对应回执即可继续。runOne 仍按原子状态条件领取。
+    for (const { id } of await due.orderBy('t.id', 'ASC').limit(20).getRawMany<{ id: number }>()) {
+      await this.runOne(Number(id), true);
+    }
+  }
 
   mode(): SyncMode {
     return parseSyncMode(this.config.get<string>('BUSINESS_DELIYUN_SYNC'));
@@ -89,7 +124,7 @@ export class BusinessExecutionService {
     setImmediate(() => { this.runOne(id).catch((e) => this.logger.error(`execution ${id} crashed: ${e?.message || e}`)); });
   }
 
-  @Cron(CronExpression.EVERY_MINUTE)
+  @Cron(CronExpression.EVERY_5_SECONDS)
   async sweep() {
     if (this.sweeping || this.mode() === 'off') return;
     this.sweeping = true;
@@ -150,11 +185,11 @@ export class BusinessExecutionService {
     return { id, externalSyncStatus: 'queued' };
   }
 
-  async runOne(id: number) {
+  async runOne(id: number, queuedOnly = false) {
     // 原子领取：同一笔只会有一个进程执行
     const claimed = await this.txnRepo.createQueryBuilder().update(BusinessTransaction)
       .set({ externalSyncStatus: 'running' })
-      .where('id = :id AND external_sync_status IN (:...ss)', { id, ss: ['queued', 'retry'] })
+      .where('id = :id AND external_sync_status IN (:...ss)', { id, ss: queuedOnly ? ['queued'] : ['queued', 'retry'] })
       .execute();
     if (!claimed.affected) return;
 

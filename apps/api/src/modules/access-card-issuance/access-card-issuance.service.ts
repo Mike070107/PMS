@@ -1,3 +1,4 @@
+import { parkingReceiptCommitted } from './parking-receipts';
 import { loadAddressTreeLite, resolveAddressForTenant } from '../../common/address-lookup';
 import {
   BadRequestException,
@@ -2380,6 +2381,7 @@ export class AccessCardIssuanceService {
       }
       task.leaseAgentKey = null; task.leaseExpiresAt = null; task.updatedBy = null; await repo.save(task);
     });
+    parkingReceiptCommitted({ tenantId: agent.tenantId, kind: 'operation', id: dto.taskId });
     return { ok: true };
   }
 
@@ -2420,6 +2422,7 @@ export class AccessCardIssuanceService {
       query.updatedBy = null;
       await repo.save(query);
     });
+    parkingReceiptCommitted({ tenantId: agent.tenantId, kind: 'query', id: dto.queryId });
     return { ok: true };
   }
 
