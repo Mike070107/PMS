@@ -215,6 +215,13 @@
 /* 收银台：历史缴费（折叠）与停车缴费表 */
 .hist-hd { display: flex; align-items: center; gap: 8px; width: 100%; padding: 12px 16px; text-align: left; font-size: 15.5px; background: none; border: 0; cursor: pointer; }
 .hist-hd:hover { background: var(--sunken); }
+/* MIS办理区不是商品清单：提示/合计/确认不参与清单的280px内部滚动。 */
+.mis-collection-panel { min-width: 0; }
+.mis-collection-panel > .cartBody { padding: 16px 20px; max-height: none; overflow: visible; }
+.mis-collection-panel > .cartBody > p { margin: 0 0 12px; line-height: 1.65; overflow-wrap: anywhere; }
+.mis-collection-panel > .cartBody > p:last-child { margin: 14px 0 0; }
+.mis-collection-bills { max-height: 280px; overflow-y: auto; margin: 0 -20px 14px; }
+.mis-collection-bills:focus-visible { outline: 2px solid var(--acc); outline-offset: -2px; }
 .parking-household { min-width: 0; max-width: 100%; }
 .parking-household > .panelHd { flex-wrap: wrap; }
 .parking-household > .panelHd > .tag { flex: 1 1 240px; min-width: 0; height: auto; min-height: 26px; white-space: normal; overflow-wrap: anywhere; }
