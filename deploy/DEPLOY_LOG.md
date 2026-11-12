@@ -7275,3 +7275,10 @@
 - 自上次（cf44af3f）以来上线的相关提交：
   - 43d2b83a fix(parking): stabilize intake review, checkout navigation and gateway heartbeat
 
+## 2026-11-12 11:54 · api · 8ac12560
+
+- 包：`pms-api-fast-20261112-115358.tar.gz`
+- 提交：8ac12560 fix(parking): finish scoped space renewals and property contact archive with verified release gates
+- 自上次（43d2b83a）以来上线的相关提交：
+  - 8ac12560 fix(parking): finish scoped space renewals and property contact archive with verified release gates
+
