@@ -152,7 +152,11 @@ test('两库正式卡片：独立类别/完整字段、hover及focus清晰动效
     await card(1).screenshot({ path: path.join(evidence, 'civil-card-390.png') });
     await page.getByRole('button', { name: '表格', exact: true }).click(); await page.locator('table').waitFor(); await noOverflow('civil390-table');
     await page.getByRole('button', { name: '卡片', exact: true }).click(); await waitCards();
-    await page.evaluate(() => window.__setParkingGarage('main')); await waitCards(); await noOverflow('main390'); await completeFields();
+    // 两库都有8张同名车位卡；先确认旧DOM已卸载，不能把旧库数量当作新库加载完成。
+    const previousCivilCard = await card(1).elementHandle();
+    await page.evaluate(() => window.__setParkingGarage('main'));
+    await page.waitForFunction(previous => !previous.isConnected, previousCivilCard);
+    await waitCards(); await noOverflow('main390'); await completeFields();
     await page.screenshot({ path: path.join(evidence, 'main-390.png') }); await card(1).screenshot({ path: path.join(evidence, 'main-card-390.png') });
     await page.getByLabel('车位类别', { exact: true }).selectOption('unset');
     await page.waitForFunction(() => document.querySelectorAll('.sp-card').length === 3); await noOverflow('main390-filter');
