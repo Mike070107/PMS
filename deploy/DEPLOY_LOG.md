@@ -7296,3 +7296,11 @@
 - 自上次（8ac12560）以来上线的相关提交：
   - 5632a0b6 [verified] fix(api): wake parking execution on committed receipts
 
+## 2026-11-12 23:08 · web · 0a8260ed
+
+- 包：`pms-web-20261112-230231.tar.gz`
+- 提交：0a8260ed [verified] test(web): wait for old parking cards to unmount on garage switch
+- 自上次（8ac12560）以来上线的相关提交：
+  - 0a8260ed [verified] test(web): wait for old parking cards to unmount on garage switch
+  - 91aab309 [verified] fix(web): isolate MIS collection form from cart scrolling
+
