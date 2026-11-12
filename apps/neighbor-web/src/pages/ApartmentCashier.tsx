@@ -1,3 +1,4 @@
+import OwnerBusinessContact from '@/components/OwnerBusinessContact';
 import { PaymentMethodIcon as LegacyPaymentIcon } from '@/components/PaymentMethodIcon';
 import {
   ApartmentOutlined,
@@ -492,11 +493,15 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
               <label><b>小区</b><Select value={communityId} onChange={(value) => { if (!contactSaving.current) setCommunityId(value); }} options={communities.map((item) => ({ value: item.id, label: item.name }))} placeholder="选择小区" showSearch optionFilterProp="label" /></label>
               <label><b>楼栋</b><Select loading={loadingBuildings} value={buildingId} onChange={(value) => { if (!contactSaving.current) setBuildingId(value); }} options={buildingOptions} placeholder={communityId ? '选择楼栋' : '请先选择小区'} disabled={!communityId} showSearch optionFilterProp="label" /></label>
               <label><b>房号</b><Select loading={loadingHouses} value={houseId} onChange={(value) => { if (!contactSaving.current) setHouseId(value); }} options={houses.map((item) => ({ value: item.id, label: roomLabel(item.roomNo) }))} placeholder={buildingId ? '选择房号' : '请先选择楼栋'} disabled={!buildingId} showSearch optionFilterProp="label" /></label>
-              <label><b>姓名</b><Input value={ownerName} disabled={!canEdit || !house || savingContact || submitting} maxLength={60} status={contactError?.field === 'name' ? 'error' : undefined} onBlur={() => void saveContact('name')} onPressEnter={(event) => event.currentTarget.blur()} onChange={(event) => setOwnerName(event.target.value)} prefix={<UserOutlined />} placeholder="PMS 暂无姓名，可在此补录" />{contactError?.field === 'name' && <small role="alert">{contactError.message}</small>}</label>
+              {(!house?.owner || preview) && <><label><b>姓名</b><Input value={ownerName} disabled={!canEdit || !house || savingContact || submitting} maxLength={60} status={contactError?.field === 'name' ? 'error' : undefined} onBlur={() => void saveContact('name')} onPressEnter={(event) => event.currentTarget.blur()} onChange={(event) => setOwnerName(event.target.value)} prefix={<UserOutlined />} placeholder="PMS 暂无姓名，可在此补录" />{contactError?.field === 'name' && <small role="alert">{contactError.message}</small>}</label>
               <label><b>手机号</b><Input value={ownerPhone} disabled={!canEdit || !house || savingContact || submitting} status={contactError?.field === 'phone' ? 'error' : undefined} onBlur={() => void saveContact('phone')} onPressEnter={(event) => event.currentTarget.blur()} onChange={(event) => setOwnerPhone(event.target.value)} prefix={<PhoneOutlined />} placeholder="PMS 暂无手机号，可在此补录" maxLength={30} />{contactError?.field === 'phone' && <small role="alert">{contactError.message}</small>}</label>
-              {savingContact && <span role="status">正在保存用户信息…</span>}
+              {savingContact && <span role="status">正在保存用户信息…</span>}</>}
             </div>
-            <p className="cashier-owner-hint"><UserOutlined />姓名、手机号修改后，离开输入框或按回车自动保存到 PMS 业主资料。</p>
+            {(!house?.owner || preview) && <p className="cashier-owner-hint"><UserOutlined />暂无绑定业主时可补录基本资料；补录和收费均不会自动确认电话。</p>}
+            {house && !preview && <OwnerBusinessContact key={house.id} houseId={house.id} preferredOwnerId={house.owner?.id} source="cashier" disabled={submitting || savingContact} onSaved={owner => {
+              setHouses(current => current.map(row => row.id === house.id ? { ...row, owner: row.owner?.id === owner.id ? owner : row.owner, owners: row.owners.map(o => o.id === owner.id ? owner : o) } : row));
+              if (house.owner?.id === owner.id) { setOwnerName(owner.name || ''); setOwnerPhone(owner.phone || ''); savedContact.current = { name: owner.name || '', phone: owner.phone || '' }; }
+            }} />}
 
             {house && <div className="cashier-selected-room">
               <HomeOutlined /><div><small>当前房间</small><strong>{placeLabel(house.buildingNo, house.roomNo)}</strong></div>

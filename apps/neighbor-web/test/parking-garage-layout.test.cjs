@@ -48,7 +48,7 @@ test('大车库 182 个车位：双排布局、每排 27、7 排、3 条车道',
   assert.ok(Math.max(...zs) <= out.depth / 2 + 0.001);
 });
 
-test('人防车库 94 个车位：每排 19、5 排、最后一排为余数', () => {
+test('通用布局94个车位的余数排，不代表人防有3D入口', () => {
   const out = layout.layoutGarage(makeRows(94));
   assert.equal(out.perRow, 19);
   assert.equal(out.rowCount, 5);
@@ -90,4 +90,30 @@ test('日期只认自然日：非法值按「未登记到期」处理，不冒�
   assert.equal(layout.parseSpaceDate('待定'), null);
   assert.equal(layout.spaceStatus({ plate: '沪A12345', endDate: '待定' }, new Date(2026, 10, 8)), 'bound');
   assert.equal(layout.parseSpaceDate('2026-02-31'), new Date(2026, 2, 3).getTime());
+});
+
+const source = (file) => fs.readFileSync(path.join(__dirname, '..', 'src', file), 'utf8');
+test('仅大车库保留车位图；3D组件不保留人防分支', () => {
+  const page = source('pages/ParkingSpaces.tsx');
+  assert.match(page, /garage === 'main' && <button[^\n]+车位图/);
+  assert.match(page, /garage === 'main' && view === 'iso'/);
+  assert.doesNotMatch(source('components/parking/ParkingGarage3D.tsx'), /civil|人防/);
+});
+test('hover只做整数位移/阴影、不缩放或强制合成，并覆盖键盘焦点与减少动效', () => {
+  const css = source('styles/parking-glass.css');
+  assert.doesNotMatch(css, /scale\(|will-change|backdrop-filter|filter\s*:/);
+  assert.match(css, /\.sp-card:focus-within/);
+  assert.match(css, /translateY\(-4px\)/);
+  assert.match(css, /prefers-reduced-motion:\s*reduce/);
+  assert.match(css, /transform:\s*none/);
+});
+test('两库复用编辑器和完整卡片字段，类别与绑定分开', () => {
+  const page = source('pages/ParkingSpaces.tsx');
+  assert.match(page, /import ParkingSpaceEditor, \{ type ParkingSpaceRow \}/);
+  assert.doesNotMatch(page, /function EditSheet|import DateInput/);
+  assert.match(page, /<dt>业主<\/dt><dd>\{r\.ownerName \|\| '—'\}/);
+  assert.match(page, /<dt>电话<\/dt><dd>\{r\.ownerTel \|\| '—'\}/);
+  assert.match(page, /aria-label="车位类别"/);
+  for (const label of ['产权', '租赁', '空', '未设置']) assert.ok(page.includes(`label: '${label}'`));
+  assert.doesNotMatch(page, /note\.includes\('租赁'\)/);
 });

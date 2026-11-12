@@ -8,6 +8,8 @@ import {
   MaxLength,
   ArrayMaxSize,
   Matches,
+  IsDateString,
+  Min,
 } from 'class-validator';
 import { IsArray, ValidateNested } from 'class-validator';
 import { UserStatus } from '../../common/enums';
@@ -48,7 +50,14 @@ export class ListOwnersQueryDto {
   unbound?: boolean;
 }
 
-export class CreateOwnerDto {
+export class OwnerPropertyDatesDto {
+  @IsOptional() @IsDateString({ strict: true }) @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  moveInDate?: string | null;
+  @IsOptional() @IsDateString({ strict: true }) @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  billingStartDate?: string | null;
+}
+
+export class CreateOwnerDto extends OwnerPropertyDatesDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(10)
@@ -80,7 +89,12 @@ export class CreateOwnerDto {
   contactNote?: string | null;
 }
 
-export class UpdateOwnerDto {
+export class UpdateOwnerDto extends OwnerPropertyDatesDto {
+  /** Editing one association must explicitly name it; other associations remain untouched. */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1)
+  currentHouseId?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1)
+  currentOwnerBuildingId?: number;
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(10)
@@ -114,6 +128,28 @@ export class UpdateOwnerDto {
   @IsString()
   @MaxLength(255)
   contactNote?: string | null;
+}
+
+export class BusinessContactsQueryDto {
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1)
+  houseId?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1)
+  buildingId?: number;
+}
+
+export class UpdateBusinessContactDto {
+  @IsOptional() @IsString() @MaxLength(60) @Matches(/\S/)
+  name?: string;
+  @IsOptional() @IsString() @Matches(/^[+\d][\d\s()+-]{4,29}$/)
+  phone?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsString({ each: true })
+  @Matches(/^[+\d][\d\s()+-]{4,29}$/, { each: true })
+  contactPhones?: string[];
+  @IsArray() @ArrayMaxSize(10) @IsString({ each: true })
+  @Matches(/^[+\d][\d\s()+-]{4,29}$/, { each: true })
+  confirmedPhones: string[];
+  @IsIn(['cashier', 'parking'])
+  source: 'cashier' | 'parking';
 }
 
 // ---------------- 批量导入 ----------------

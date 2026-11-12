@@ -1,8 +1,10 @@
 import { Transform } from 'class-transformer';
 import { IsDateString, IsString, Matches, MaxLength, ValidateBy, ValidateIf } from 'class-validator';
 import { isValidFamilyPlate } from '../access-card-issuance/family-car.util';
+import { PARKING_SPACE_CATEGORIES, type ParkingSpaceCategory } from '../../entities/parking-space.entity';
 
-// 不将 null/数字/对象强转字符串；省略=不修改，空字符串=清空，null=非法输入。
+// 普通文本字段不将 null/数字/对象强转字符串；省略=不修改，空字符串=清空，null=非法。
+// 独立category例外：只接受严格枚举或null清空，不接受空字符串。
 const Trim = () => Transform(({ value }) => typeof value === 'string' ? value.trim() : value);
 const Present = () => ValidateIf((_object, value) => value !== undefined);
 
@@ -35,6 +37,14 @@ export class UpdateParkingSpaceDto {
   @IsString({ message: '电话必须为字符串' })
   @MaxLength(30, { message: '电话不能超过30字，多个号码请用 / 分隔' })
   ownerTel?: string;
+
+  /** 省略保持，null清空；严格枚举，不归一化或从备注推断。 */
+  @Present()
+  @ValidateBy({ name: 'parkingSpaceCategory', validator: {
+    validate: (value: unknown) => value === null || (typeof value === 'string' && PARKING_SPACE_CATEGORIES.includes(value as ParkingSpaceCategory)),
+    defaultMessage: () => '车位类别必须为 property、rental、vacant 或 null',
+  } })
+  category?: ParkingSpaceCategory | null;
 
   @Present()
   @Trim()

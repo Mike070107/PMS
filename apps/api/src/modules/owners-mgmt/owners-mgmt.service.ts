@@ -19,6 +19,8 @@ import {
   UpdateOwnerDto,
   OwnerPropertyDto,
   OwnerPhoneEventDto,
+  BusinessContactsQueryDto,
+  UpdateBusinessContactDto,
 } from './dto';
 
 @Injectable()
@@ -72,7 +74,7 @@ export class OwnersMgmtService {
       ])
       .distinctOn(['u.id'])
       .orderBy('u.id', 'DESC')
-      .limit(500);
+      .limit(query.houseId || query.buildingId ? undefined : 500);
 
     if (scope) {
       // 未绑房号的业主没有可判断的管理处归属，只能由全公司范围账号处理。
@@ -130,16 +132,17 @@ export class OwnersMgmtService {
     }
 
     const ownerIds = rows.map(r => Number(r.id));
-    const activity = rows.length ? await this.dataSource.query(`SELECT owner_id,phone,status,last_used_at,last_contacted_at,last_attempted_at,last_result FROM owner_phone_activity WHERE tenant_id=$1 AND owner_id=ANY($2::int[])`, [tenantId, ownerIds]) : [];
+    const activity = rows.length ? await this.dataSource.query(`SELECT owner_id,phone,status,last_used_at,last_contacted_at,last_attempted_at,last_result,last_confirmed_at,confirmation_source FROM owner_phone_activity WHERE tenant_id=$1 AND owner_id=ANY($2::int[])`, [tenantId, ownerIds]) : [];
     const phones = Array.from(new Set(rows.flatMap(r => this.phones(r.phone, r.contactPhones))));
     // Historical repair intake is real usage evidence, including a contact first registered by that repair.
     const repairUsage = phones.length ? await this.dataSource.query(`SELECT contact_phone AS phone,MAX(created_at) AS last_used_at FROM repair_requests WHERE tenant_id=$1 AND contact_phone=ANY($2::text[]) GROUP BY contact_phone`, [tenantId, phones]) : [];
-    const properties = rows.length ? await this.dataSource.query(`SELECT DISTINCT p.owner_id,p.house_id,p.building_id,c.name AS community_name,b.building_no,h.room_no
+    const properties = rows.length ? await this.dataSource.query(`SELECT DISTINCT p.owner_id,p.house_id,p.building_id,c.id AS community_id,c.name AS community_name,b.id AS resolved_building_id,b.building_no,h.room_no,links.move_in_date::text AS move_in_date,links.billing_start_date::text AS billing_start_date
       FROM (SELECT tenant_id,owner_id,house_id,building_id FROM owner_property_links
         UNION SELECT tenant_id,id,house_id,owner_building_id FROM users WHERE house_id IS NOT NULL OR owner_building_id IS NOT NULL) p
       LEFT JOIN houses h ON h.id=p.house_id AND h.tenant_id=p.tenant_id
       JOIN buildings b ON b.id=COALESCE(p.building_id,h.building_id) AND b.tenant_id=p.tenant_id
       JOIN communities c ON c.id=b.community_id AND c.tenant_id=p.tenant_id
+      LEFT JOIN owner_property_links links ON links.tenant_id=p.tenant_id AND links.owner_id=p.owner_id AND (links.house_id=p.house_id OR links.building_id=p.building_id)
       WHERE p.tenant_id=$1 AND p.owner_id=ANY($2::int[]) ${scope ? 'AND c.id=ANY($3::int[])' : ''}`, scope ? [tenantId, ownerIds, scope] : [tenantId, ownerIds]) : [];
     return rows.map((r) => ({
       id: Number(r.id),
@@ -219,6 +222,7 @@ export class OwnersMgmtService {
         updatedBy: user.id,
       }));
       if (dto.houseId || dto.ownerBuildingId) await manager.query(`INSERT INTO owner_property_links(tenant_id,owner_id,house_id,building_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING`, [tenantId, created.id, dto.houseId ?? null, dto.ownerBuildingId ?? null]);
+      if (dto.moveInDate !== undefined || dto.billingStartDate !== undefined) await manager.query(`UPDATE owner_property_links SET move_in_date=$3,billing_start_date=$4 WHERE tenant_id=$1 AND owner_id=$2`, [tenantId,created.id,dto.moveInDate??null,dto.billingStartDate??null]);
       return created;
     });
     return this.fetchOne(owner.id, tenantId, access);
@@ -231,11 +235,12 @@ export class OwnersMgmtService {
     access?: ResolvedAccess,
   ) {
     const tenantId = this.requireTenant(user);
-    const owner = await this.userRepo.findOne({
-      where: { id, tenantId, role: UserRole.OWNER },
+    await this.dataSource.transaction(async manager => {
+    const owner = await manager.findOne(User, {
+      where: { id, tenantId, role: UserRole.OWNER }, lock: { mode: 'pessimistic_write' },
     });
     if (!owner) throw new NotFoundException('owner not found');
-    await this.assertOwnerInScope(tenantId, id, access);
+    await this.assertOwnerInScope(tenantId, id, access, manager);
     const before = {
       name: owner.name,
       phone: owner.phone,
@@ -247,7 +252,7 @@ export class OwnersMgmtService {
     };
 
     if (dto.phone && dto.phone !== owner.phone) {
-      const dup = await this.userRepo.findOne({
+      const dup = await manager.findOne(User, {
         where: { tenantId, phone: dto.phone, role: UserRole.OWNER },
       });
       if (dup && dup.id !== id) {
@@ -257,14 +262,37 @@ export class OwnersMgmtService {
     }
     if (dto.name !== undefined) owner.name = dto.name;
     if (dto.contactPhones !== undefined || dto.phone !== undefined) owner.contactPhones = this.phones(owner.phone, dto.contactPhones ?? owner.contactPhones);
-    if (dto.status !== undefined) { await this.assertFullOwnerScope(tenantId, id, access); owner.status = dto.status; }
+    if (dto.status !== undefined) { await this.assertFullOwnerScope(tenantId, id, access, manager); owner.status = dto.status; }
     if (dto.contactNote !== undefined) owner.contactNote = dto.contactNote || null;
-    if (dto.houseId !== undefined || dto.ownerBuildingId !== undefined) {
-      const houseId = dto.houseId !== undefined ? dto.houseId : owner.houseId;
-      const buildingId = dto.ownerBuildingId !== undefined ? dto.ownerBuildingId : owner.ownerBuildingId;
-      await this.assertOwnerPlace(tenantId, houseId, buildingId, access);
-      owner.houseId = houseId;
-      owner.ownerBuildingId = buildingId;
+    const replacing = dto.currentHouseId !== undefined || dto.currentOwnerBuildingId !== undefined;
+    let associationChange: { before: string; after: string } | null = null;
+    if (replacing || dto.houseId !== undefined || dto.ownerBuildingId !== undefined || dto.moveInDate !== undefined || dto.billingStartDate !== undefined) {
+      const fromHouse = replacing ? dto.currentHouseId ?? null : owner.houseId;
+      const fromBuilding = replacing ? dto.currentOwnerBuildingId ?? null : owner.ownerBuildingId;
+      if (dto.currentHouseId && dto.currentOwnerBuildingId) throw new BadRequestException('当前关联必须二选一');
+      if (replacing) {
+        await this.assertOwnerPlace(tenantId, fromHouse, fromBuilding, access, manager);
+        const current = await manager.query(`SELECT 1 FROM owner_property_links WHERE tenant_id=$1 AND owner_id=$2 AND (house_id=$3 OR building_id=$4) UNION SELECT 1 FROM users WHERE tenant_id=$1 AND id=$2 AND (house_id=$3 OR owner_building_id=$4)`, [tenantId,id,fromHouse,fromBuilding]);
+        if (!current.length) throw new BadRequestException('当前关联已变化，请刷新后重试');
+      }
+      const houseId = dto.houseId !== undefined ? dto.houseId : fromHouse;
+      const buildingId = dto.ownerBuildingId !== undefined ? dto.ownerBuildingId : fromBuilding;
+      await this.assertOwnerPlace(tenantId, houseId, buildingId, access, manager);
+      if (replacing && !houseId && !buildingId) throw new BadRequestException('请选择目标房号或商铺');
+      // Persist legacy associations before replacing only the selected link.
+      if (before.houseId || before.ownerBuildingId) await manager.query(`INSERT INTO owner_property_links(tenant_id,owner_id,house_id,building_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING`, [tenantId,id,before.houseId,before.ownerBuildingId]);
+      const moved = fromHouse !== houseId || fromBuilding !== buildingId;
+      if (houseId || buildingId) {
+        await manager.query(`INSERT INTO owner_property_links(tenant_id,owner_id,house_id,building_id,move_in_date,billing_start_date) SELECT $1,$2,$3,$4,move_in_date,billing_start_date FROM (SELECT 1) seed LEFT JOIN owner_property_links old ON old.tenant_id=$1 AND old.owner_id=$2 AND (old.house_id=$5 OR old.building_id=$6) ON CONFLICT DO NOTHING`, [tenantId,id,houseId,buildingId,fromHouse,fromBuilding]);
+        if (dto.moveInDate !== undefined || dto.billingStartDate !== undefined) await manager.query(`UPDATE owner_property_links SET move_in_date=CASE WHEN $5::boolean THEN $6::date ELSE move_in_date END,billing_start_date=CASE WHEN $7::boolean THEN $8::date ELSE billing_start_date END WHERE tenant_id=$1 AND owner_id=$2 AND (house_id=$3 OR building_id=$4)`, [tenantId,id,houseId,buildingId,dto.moveInDate!==undefined,dto.moveInDate??null,dto.billingStartDate!==undefined,dto.billingStartDate??null]);
+      }
+      if (replacing && moved) {
+        await manager.query(`DELETE FROM owner_property_links WHERE tenant_id=$1 AND owner_id=$2 AND (house_id=$3 OR building_id=$4)`, [tenantId,id,fromHouse,fromBuilding]);
+        associationChange = { before: JSON.stringify({houseId:fromHouse,buildingId:fromBuilding}), after:JSON.stringify({houseId,buildingId}) };
+      }
+      if (!replacing || before.houseId === fromHouse && before.ownerBuildingId === fromBuilding) {
+        owner.houseId = houseId; owner.ownerBuildingId = buildingId ?? null;
+      }
     }
     // 身份转换（业主 → 保安/居委会/业委会/物业工作人员）不在业主档案做：
     // 去「用户管理」新增工作人员并填同一手机号，会就地转换、不建重复档案。
@@ -281,9 +309,7 @@ export class OwnersMgmtService {
         before: before[field] === null ? null : String(before[field]),
         after: owner[field] === null ? null : String(owner[field]),
       }));
-    await this.dataSource.transaction(async (manager) => {
-      if (before.houseId || before.ownerBuildingId) await manager.query(`INSERT INTO owner_property_links(tenant_id,owner_id,house_id,building_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING`, [tenantId, id, before.houseId ?? null, before.ownerBuildingId ?? null]);
-      if (owner.houseId || owner.ownerBuildingId) await manager.query(`INSERT INTO owner_property_links(tenant_id,owner_id,house_id,building_id) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING`, [tenantId, id, owner.houseId ?? null, owner.ownerBuildingId ?? null]);
+      if (associationChange) changes.push({ field: 'houseId', label: '当前房产关联', ...associationChange });
       await manager.save(User, owner);
       if (changes.length) {
         await manager.save(ParkingHistory, manager.create(ParkingHistory, {
@@ -469,6 +495,52 @@ export class OwnersMgmtService {
     return Array.from(new Set([primary, ...values].map(v => v?.trim()).filter((v): v is string => !!v)));
   }
 
+  private assertBusinessPermission(access: ResolvedAccess | undefined, action: 'view' | 'edit', source?: 'cashier' | 'parking') {
+    const keys = source === 'parking' ? ['business'] : ['business', 'fees', 'apartment-cashier', 'app:apartment-cashier'];
+    if (!access || !keys.some(key => access.pages?.[key]?.[action])) throw new ForbiddenException('没有对应业务页面权限');
+  }
+
+  async businessContacts(query: BusinessContactsQueryDto, user: AuthUser, access?: ResolvedAccess) {
+    this.assertBusinessPermission(access, 'view');
+    const tenantId = this.requireTenant(user);
+    if ((!query.houseId && !query.buildingId) || query.houseId && query.buildingId) throw new BadRequestException('请选择一个房号或商铺（二选一）');
+    await this.assertOwnerPlace(tenantId, query.houseId ?? null, query.buildingId, access);
+    return this.list({ ...query, status: UserStatus.ACTIVE }, user, access);
+  }
+
+  async updateBusinessContact(id: number, dto: UpdateBusinessContactDto, user: AuthUser, access?: ResolvedAccess) {
+    if (!['cashier','parking'].includes(dto.source)) throw new BadRequestException('确认来源不正确');
+    this.assertBusinessPermission(access, 'edit', dto.source);
+    const tenantId = this.requireTenant(user);
+    await this.dataSource.transaction(async manager => {
+      const owner = await manager.findOne(User, { where: { id, tenantId, role: UserRole.OWNER }, lock: { mode: 'pessimistic_write' } });
+      if (!owner) throw new NotFoundException('owner not found');
+      await this.assertOwnerInScope(tenantId,id,access,manager);
+      if (dto.name !== undefined) {
+        if (typeof dto.name !== 'string' || !dto.name.trim()) throw new BadRequestException('请填写业主姓名');
+        owner.name = dto.name.trim();
+      }
+      if (dto.phone !== undefined) {
+        if (typeof dto.phone !== 'string' || !/^[+\d][\d\s()+-]{4,29}$/.test(dto.phone.trim())) throw new BadRequestException('联系电话格式不正确');
+        const phone = dto.phone.trim();
+        const duplicate = await manager.findOne(User, { where: { tenantId, phone, role: UserRole.OWNER } });
+        if (duplicate && duplicate.id !== id) throw new BadRequestException('该手机号已存在业主档案');
+        owner.phone = phone;
+      }
+      if (dto.contactPhones !== undefined && !Array.isArray(dto.contactPhones)) throw new BadRequestException('联系电话格式不正确');
+      const phones = this.phones(owner.phone, dto.contactPhones ?? owner.contactPhones);
+      if (phones.length > 10 || phones.some(p => !/^[+\d][\d\s()+-]{4,29}$/.test(p))) throw new BadRequestException('联系电话格式不正确，最多10个');
+      if (!Array.isArray(dto.confirmedPhones) || dto.confirmedPhones.some(p => typeof p !== 'string' || !phones.includes(p.trim()))) throw new BadRequestException('确认号码必须属于保存后的业主电话');
+      owner.contactPhones = phones; owner.updatedBy = user.id;
+      await manager.save(User, owner);
+      for (const phone of [...new Set(dto.confirmedPhones.map(p => p.trim()))]) {
+        await manager.query(`INSERT INTO owner_phone_activity(tenant_id,owner_id,phone,last_confirmed_at,confirmation_source,updated_by) VALUES($1,$2,$3,now(),$4,$5) ON CONFLICT(tenant_id,owner_id,phone) DO UPDATE SET last_confirmed_at=EXCLUDED.last_confirmed_at,confirmation_source=EXCLUDED.confirmation_source,updated_by=EXCLUDED.updated_by`, [tenantId,id,phone,dto.source,user.id]);
+        await manager.query(`INSERT INTO owner_phone_events(tenant_id,owner_id,phone,result,operator_id,confirmation_source) VALUES($1,$2,$3,'confirmed',$4,$5)`, [tenantId,id,phone,user.id,dto.source]);
+      }
+    });
+    return this.fetchOne(id,tenantId,access);
+  }
+
   async recordPhoneContact(id: number, dto: OwnerPhoneEventDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
     await this.assertOwnerInScope(tenantId, id, access);
@@ -486,16 +558,17 @@ export class OwnersMgmtService {
     return { ok: true };
   }
 
-  private async assertOwnerInScope(tenantId: number, id: number, access?: ResolvedAccess) {
-    if (!scopeCommunityIds(access)) return;
-    const visible = await this.list({ id }, { tenantId } as AuthUser, access);
-    if (!visible.some(r => r.id === id)) throw new ForbiddenException('业主不在授权范围');
-  }
-
-  private async assertFullOwnerScope(tenantId: number, id: number, access?: ResolvedAccess) {
+  private async assertOwnerInScope(tenantId: number, id: number, access?: ResolvedAccess, db: Pick<DataSource, 'query'> = this.dataSource) {
     const scope = scopeCommunityIds(access);
     if (!scope) return;
-    const outside = await this.dataSource.query(`SELECT 1 FROM (
+    const visible = await db.query(`SELECT 1 FROM (SELECT tenant_id,owner_id,house_id,building_id FROM owner_property_links UNION SELECT tenant_id,id,house_id,owner_building_id FROM users) p LEFT JOIN houses h ON h.id=p.house_id AND h.tenant_id=p.tenant_id JOIN buildings b ON b.id=COALESCE(p.building_id,h.building_id) AND b.tenant_id=p.tenant_id WHERE p.tenant_id=$1 AND p.owner_id=$2 AND b.community_id=ANY($3::int[]) LIMIT 1`, [tenantId,id,scope]);
+    if (!visible.length) throw new ForbiddenException('业主不在授权范围');
+  }
+
+  private async assertFullOwnerScope(tenantId: number, id: number, access?: ResolvedAccess, db: Pick<DataSource, 'query'> = this.dataSource) {
+    const scope = scopeCommunityIds(access);
+    if (!scope) return;
+    const outside = await db.query(`SELECT 1 FROM (
       SELECT tenant_id,owner_id,house_id,building_id FROM owner_property_links
       UNION SELECT tenant_id,id,house_id,owner_building_id FROM users WHERE house_id IS NOT NULL OR owner_building_id IS NOT NULL
       ) p LEFT JOIN houses h ON h.id=p.house_id AND h.tenant_id=p.tenant_id
@@ -534,17 +607,20 @@ export class OwnersMgmtService {
     return { ok: true };
   }
 
-  private async assertOwnerPlace(tenantId: number, houseId: number | null, buildingId: number | null | undefined, access?: ResolvedAccess) {
+  private async assertOwnerPlace(tenantId: number, houseId: number | null, buildingId: number | null | undefined, access?: ResolvedAccess, db: Pick<DataSource, 'getRepository'> = this.dataSource) {
     if (houseId && buildingId) throw new BadRequestException('房号和商铺不能同时绑定');
+    let building: Building | null = null;
     if (buildingId) {
-      const building = await this.dataSource.getRepository(Building).findOne({ where: { id: buildingId, tenantId } });
+      building = await db.getRepository(Building).findOne({ where: { id: buildingId, tenantId } });
       if (!building || building.buildingType !== 'shop') throw new BadRequestException('请选择本公司的商铺');
-      const scope = scopeCommunityIds(access);
-      if (scope && !scope.includes(building.communityId)) throw new ForbiddenException('商铺不在授权范围');
-      return;
+    } else if (houseId) {
+      const house = await db.getRepository(House).findOne({ where: { id: houseId, tenantId } });
+      if (!house) throw new NotFoundException('house not found');
+      building = await db.getRepository(Building).findOne({ where: { id: house.buildingId, tenantId } });
+      if (!building) throw new NotFoundException('building not found');
     }
-    if (houseId) await this.assertHouseAvailable(tenantId, houseId, null);
-    await this.assertHouseInScope(tenantId, houseId, access);
+    const scope = scopeCommunityIds(access);
+    if (scope && (!building || !scope.includes(building.communityId))) throw new ForbiddenException('房产不在授权范围');
   }
 
   private async assertHouseInScope(

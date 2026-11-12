@@ -1,36 +1,42 @@
-import DateInput from '@/components/DateInput';
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { request } from '@pms/api-client';
 import { dayjs } from '@/lib/format';
 import Icon from '@/components/Icon';
 import ToneIcon from '@/components/ToneIcon';
-import { Loading, Sheet, toast } from '@/components/ui';
+import { Loading } from '@/components/ui';
+import ParkingSpaceEditor, { type ParkingSpaceRow } from '@/components/parking/ParkingSpaceEditor';
 import '@/styles/parking-glass.css';
 
-/** 3D 视图单独分包：three.js 只在切到「车位图」时下载。 */
+/** 仅大车库提供示意图，three.js 在切换到该视图时才下载。人防业务/授权保留。 */
 const ParkingGarage3D = lazy(() => import('@/components/parking/ParkingGarage3D'));
-
-interface SpaceRow {
-  id: number; garage: 'main' | 'civil'; spaceNo: string; houseNo: string | null; areaSqm: string | null;
-  /** 后端若已返回拼好的地址/房号，优先使用，不自己发明 */
-  address?: string | null; roomLabel?: string | null; buildingNo?: string | null;
-  plate: string | null; ownerName: string | null; ownerTel: string | null; note: string | null; source: string | null; endDate: string | null;
+type SpaceRow = ParkingSpaceRow;
+type Category = 'property' | 'rental' | 'vacant' | 'unset';
+const CATEGORIES: Record<Category, { label: string }> = {
+  property: { label: '产权' }, rental: { label: '租赁' }, vacant: { label: '空' }, unset: { label: '未设置' },
+};
+/** 只读兼容精确旧备注，不猜测、不改写 category，也不把未绑车牌当作类别「空」。 */
+function categoryOf(row: SpaceRow): Category {
+  if (row.category === 'property' || row.category === 'rental' || row.category === 'vacant') return row.category;
+  if (row.note?.trim() === '产权车位') return 'property';
+  if (row.note?.trim() === '租赁车位') return 'rental';
+  return 'unset';
 }
-
+function CategoryTag({ row }: { row: SpaceRow }) {
+  const category = categoryOf(row);
+  return <span className={`sp-category category-${category}`} title={!row.category && category !== 'unset' ? '来自精确旧备注，仅只读兼容；类别字段尚未设置' : undefined}>{CATEGORIES[category].label}</span>;
+}
 
 const PLATE_NEV_RE = /^[\u4e00-\u9fa5][A-Z][DF]/;
 const compactPlate = (raw: string) => raw.replace(/[·\s.．]/g, '').toUpperCase();
-/** 新能源牌：8 位车牌或第 3 位为 D/F；拿不准按蓝牌。 */
 function isNewEnergyPlate(raw: string) {
   const plate = compactPlate(raw);
   return plate.length >= 8 || PLATE_NEV_RE.test(plate);
 }
 type RoomParts = { lane?: string; building: string; room: string };
-/** 解析房号：228弄26号203室 / 228-21-801 / 51/1101 / 228/6/301。 */
+/** 解析真实地址，不从另一车位推断当前车位的弄号。 */
 function parseRoomText(raw?: string | null): RoomParts | null {
   if (!raw) return null;
   const text = String(raw).trim();
-  if (!text) return null;
   let m = text.match(/(\d{1,4})\s*弄\s*(\d{1,4})\s*号?\s*(\d{2,5})\s*室?/);
   if (m) return { lane: m[1], building: m[2], room: m[3] };
   m = text.match(/(\d{1,4})\s*栋\s*(\d{1,4})\s*室?/);
@@ -38,240 +44,118 @@ function parseRoomText(raw?: string | null): RoomParts | null {
   m = text.match(/^(\d{1,4})\s*[-/]\s*(\d{1,4})\s*[-/]\s*(\d{2,5})$/);
   if (m) return { lane: m[1], building: m[2], room: m[3] };
   m = text.match(/^(\d{1,4})\s*[-/]\s*(\d{2,5})$/);
-  if (m) return { building: m[1], room: m[2] };
-  return null;
+  return m ? { building: m[1], room: m[2] } : null;
 }
-/** 统一显示 管理处号/楼栋号/室号；拿不到管理处号或解析不出时保留原值。 */
-function formatRoomNo(row: SpaceRow, fallbackLane?: string) {
+function formatRoomNo(row: SpaceRow) {
   const candidates = [row.roomLabel, row.address, row.houseNo];
-  let lane = fallbackLane;
-  let buildingRoom: { building: string; room: string } | null = null;
   for (const candidate of candidates) {
     const parts = parseRoomText(candidate);
-    if (!parts) continue;
-    if (parts.lane) {
-      lane = parts.lane;
-      buildingRoom = { building: parts.building, room: parts.room };
-      break;
-    }
-    if (!buildingRoom) buildingRoom = { building: parts.building, room: parts.room };
+    if (parts?.lane) return `${parts.lane}/${parts.building}/${parts.room}`;
   }
-  if (buildingRoom && lane) return lane + '/' + buildingRoom.building + '/' + buildingRoom.room;
-  return row.houseNo ? String(row.houseNo).trim() : '—';
+  return candidates.find((value) => value?.trim())?.trim() || '—';
 }
-
+const dateLabel = (value: string | null) => value && dayjs(value).isValid() ? dayjs(value).format('YYYY-MM-DD') : '—';
 const META = {
-  main: { title: '二期大车库', sub: '地库车位清单 · 按车位收费 67.50 元/位·月', tone: 'slate' as const },
-  civil: { title: '二期人防车库', sub: '人防车位清单 · 德立云系统 · 进库需先授权二期地面', tone: 'blue' as const },
+  main: { title: '二期大车库', sub: '地库车位清单 · 按车位收费 67.50 元/位·月' },
+  civil: { title: '二期人防车库', sub: '人防车位清单 · 德立云系统 · 进库需先授权二期地面' },
 };
 
-/**
- * 车位管理：一个车库一页，车位卡片网格。
- * 数据 GET /business/parking-spaces?garage=main|civil（来源：43号地库清单 / 44号人防清单）。
- */
+/** GET /business/parking-spaces?garage=main|civil；两库共用卡片及正式编辑器。 */
 export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) {
   const meta = META[garage];
   const [rows, setRows] = useState<SpaceRow[] | null>(null);
   const [err, setErr] = useState('');
   const [q, setQ] = useState('');
   const [only, setOnly] = useState<'all' | 'bound' | 'free'>('all');
+  const [category, setCategory] = useState<Category | 'all'>('all');
   const [view, setView] = useState<'card' | 'table' | 'iso'>('card');
   const [edit, setEdit] = useState<SpaceRow | null>(null);
-
+  const sequence = useRef(0);
   const load = useCallback(async () => {
+    const current = ++sequence.current;
     setRows(null); setErr('');
     try {
       const r = await request<{ rows: SpaceRow[] }>({ url: '/business/parking-spaces', query: { garage } });
-      setRows(r?.rows ?? []);
+      if (current === sequence.current) setRows((r?.rows ?? []).filter((row) => row.garage === garage));
     } catch (e) {
-      setRows([]); setErr(e instanceof Error ? e.message : '加载失败');
+      if (current === sequence.current) { setRows([]); setErr(e instanceof Error ? e.message : '加载失败'); }
     }
   }, [garage]);
+  useEffect(() => {
+    setView('card'); setEdit(null); setQ(''); setOnly('all'); setCategory('all');
+    void load();
+    return () => { sequence.current += 1; };
+  }, [load]);
 
-  useEffect(() => { void load(); }, [load]);
-
+  const currentRows = useMemo(() => (rows ?? []).filter((row) => row.garage === garage), [rows, garage]);
   const shown = useMemo(() => {
     const kw = q.trim().toUpperCase();
-    return (rows ?? []).filter((r) => {
-      const bound = !!(r.plate && r.plate.trim());
+    return currentRows.filter((r) => {
+      const bound = !!r.plate?.trim();
       if (only === 'bound' && !bound) return false;
       if (only === 'free' && bound) return false;
-      if (!kw) return true;
-      return [r.spaceNo, r.plate, r.houseNo, r.ownerName].some((v) => (v || '').toUpperCase().includes(kw));
+      if (category !== 'all' && categoryOf(r) !== category) return false;
+      return !kw || [r.spaceNo, r.plate, r.houseNo, r.roomLabel, r.address, r.ownerName, r.ownerTel].some((v) => (v || '').toUpperCase().includes(kw));
     });
-  }, [rows, q, only]);
-
-  /** 车位图用：搜索/筛选命中的车位；全部命中传 null，避免每个车位都做一次判断。 */
-  const matchIds = useMemo(() => {
-    if (only === 'all' && !q.trim()) return null;
-    return new Set(shown.map((r) => r.id));
-  }, [only, q, shown]);
-
-  const bound = (rows ?? []).filter((r) => r.plate && r.plate.trim()).length;
-  const total = rows?.length ?? 0;
-  const roomLane = (rows ?? []).map((row) => parseRoomText(row.roomLabel || row.address || row.houseNo)).find((parts) => parts?.lane)?.lane;
+  }, [currentRows, q, only, category]);
+  const matchIds = useMemo(() => only === 'all' && category === 'all' && !q.trim() ? null : new Set(shown.map((r) => r.id)), [only, category, q, shown]);
+  const bound = currentRows.filter((r) => r.plate?.trim()).length;
+  const total = currentRows.length;
+  // 即使从大车库图直接切换人防，也不在effect执行前短暂挂载人防3D。
+  const activeView = garage === 'civil' && view === 'iso' ? 'card' : view;
 
   return (
-    <>
+    <section className="parking-spaces" aria-label={meta.title}>
       <div className="ph" style={{ marginBottom: 14 }}>
-        <div>
-          <div className="h1row">
-            <ToneIcon kind={garage === 'main' ? 'vehicles' : 'cards'} />
-            <h1 style={{ fontSize: 22 }}>{meta.title}</h1>
-          </div>
-          <p>{meta.sub}</p>
+        <div><div className="h1row"><ToneIcon kind={garage === 'main' ? 'vehicles' : 'cards'} /><h1 style={{ fontSize: 22 }}>{meta.title}</h1></div><p>{meta.sub}</p></div>
+        <div className="act"><button className="btn" onClick={() => void load()}><Icon name="refresh" size={16} />刷新</button></div>
+      </div>
+      <div className="sp-toolbar">
+        <div className="chips" role="group" aria-label="车牌绑定筛选">
+          {([['all', '全部'], ['bound', '已绑车牌'], ['free', '未绑车牌']] as const).map(([k, l]) => <button key={k} className={`chip ${only === k ? 'on' : ''}`} aria-pressed={only === k} onClick={() => setOnly(k)}>{l}</button>)}
         </div>
-        <div className="act">
-          <button className="btn" onClick={() => void load()}><Icon name="refresh" size={16} />刷新</button>
+        <label className="sp-category-filter">车位类别<select className="in" aria-label="车位类别" value={category} onChange={(e) => setCategory(e.target.value as Category | 'all')}>
+          <option value="all">全部类别</option>{(Object.keys(CATEGORIES) as Category[]).map((key) => <option key={key} value={key}>{CATEGORIES[key].label}</option>)}
+        </select></label>
+        <input className="in sp-search" aria-label="搜索车位" value={q} placeholder="车位号 / 车牌 / 房号 / 业主 / 电话" onChange={(e) => setQ(e.target.value)} />
+        <span className="tag mute" aria-live="polite">{rows === null ? '车位加载中' : err ? '未取得车位数据' : `${total} 个车位 · 已绑 ${bound} · 未绑 ${total - bound}`}</span>
+        <div className="chips sp-view-switch" role="group" aria-label="车位视图">
+          <button className={`chip ${activeView === 'card' ? 'on' : ''}`} aria-pressed={activeView === 'card'} onClick={() => setView('card')}><Icon name="apps" size={14} />卡片</button>
+          <button className={`chip ${activeView === 'table' ? 'on' : ''}`} aria-pressed={activeView === 'table'} onClick={() => setView('table')}><Icon name="kanban" size={14} />表格</button>
+          {garage === 'main' && <button className={`chip ${view === 'iso' ? 'on' : ''}`} aria-pressed={view === 'iso'} onClick={() => setView('iso')}><Icon name="layers" size={14} />车位图</button>}
         </div>
       </div>
-
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
-        <div className="chips" style={{ display: 'flex', gap: 6 }}>
-          {([['all', '全部'], ['bound', '已绑车牌'], ['free', '空车位']] as const).map(([k, l]) => (
-            <button key={k} className={`chip ${only === k ? 'on' : ''}`} onClick={() => setOnly(k)}>{l}</button>
-          ))}
-        </div>
-        <input className="in" style={{ width: 260 }} value={q} placeholder="车位号 / 车牌 / 房号 / 业主" onChange={(e) => setQ(e.target.value)} />
-        <span className="tag mute">{total} 个车位 · 已绑 {bound} · 空 {total - bound}</span>
-        <div className="chips" style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
-          <button className={`chip ${view === 'card' ? 'on' : ''}`} onClick={() => setView('card')}><Icon name="apps" size={14} />卡片</button>
-          <button className={`chip ${view === 'table' ? 'on' : ''}`} onClick={() => setView('table')}><Icon name="kanban" size={14} />表格</button>
-          <button className={`chip ${view === 'iso' ? 'on' : ''}`} onClick={() => setView('iso')}><Icon name="layers" size={14} />车位图</button>
-        </div>
-      </div>
-
-      {err ? <div className="note2" style={{ background: 'var(--dang-w)', color: 'var(--dang)', marginBottom: 12 }}><Icon name="alert" />{err}</div> : null}
-
-      {rows === null ? <Loading /> : view === 'iso' ? (
-        <Suspense
-          fallback={(
-            <div style={{ minHeight: 420, display: 'grid', placeItems: 'center', borderRadius: 20, border: '1px solid #e2e8f1', background: '#f4f8fc', color: '#6b7890' }}>
-              <Loading text="正在加载车位示意图…" />
-            </div>
-          )}
-        >
-          <ParkingGarage3D
-            rows={rows}
-            garage={garage}
-            matchIds={matchIds}
-            selectedId={edit?.id ?? null}
-            onSelect={(row) => {
-              const full = rows.find((item) => item.id === row.id);
-              if (full) setEdit(full);
-            }}
-          />
+      {err ? <div className="note2" role="alert" style={{ background: 'var(--dang-w)', color: 'var(--dang)', marginBottom: 12 }}><Icon name="alert" />{err}</div> : null}
+      {rows === null ? <Loading /> : err ? null : garage === 'main' && view === 'iso' ? (
+        <Suspense fallback={<div className="sp-map-loading"><Loading text="正在加载车位示意图…" /></div>}>
+          <ParkingGarage3D rows={currentRows.filter((r): r is SpaceRow & { garage: 'main' } => r.garage === 'main')} matchIds={matchIds} selectedId={edit?.id ?? null} onSelect={(row) => { const full = currentRows.find((r) => r.id === row.id); if (full) setEdit(full); }} />
         </Suspense>
-      ) : shown.length === 0 ? (
-        <div className="card" style={{ padding: 42, textAlign: 'center' }}><span className="muted">没有符合条件的车位</span></div>
+      ) : shown.length === 0 ? <div className="card" style={{ padding: 42, textAlign: 'center' }}><span className="muted">没有符合条件的车位</span></div> : activeView === 'table' ? (
+        <div className="card t-scroll"><table className="t" style={{ minWidth: 800 }}>
+          <thead><tr><th className="nw">车位号</th><th>类别</th><th className="nw">车牌</th><th>房号</th><th>业主</th><th>电话</th><th className="nw">有效期</th><th>备注</th><th>操作</th></tr></thead>
+          <tbody>{shown.map((r) => <tr key={r.id}>
+            <td className="nw"><b>{r.spaceNo}</b></td><td><CategoryTag row={r} /></td>
+            <td className="nw">{r.plate || <span className="muted">未绑车牌</span>}</td><td>{formatRoomNo(r)}</td><td>{r.ownerName || '—'}</td><td>{r.ownerTel || '—'}</td><td className="nw">{dateLabel(r.endDate)}</td><td>{r.note || '—'}</td>
+            <td><button className="btn sm" aria-label={`编辑车位 ${r.spaceNo}`} onClick={() => setEdit(r)}>编辑</button></td>
+          </tr>)}</tbody>
+        </table></div>
       ) : (
-        view === 'table' ? (
-          <div className="card t-scroll">
-            <table className="t" style={{ minWidth: 720 }}>
-              <thead>
-                <tr><th style={{ width: 90 }} className="nw">车位号</th><th className="nw">车牌</th><th>房号</th><th className="nw">业主</th><th className="nw">电话</th><th className="nw" style={{ width: 110 }}>有效期</th><th className="nw" style={{ width: 120 }}>备注</th><th className="nw" style={{ width: 70 }}>操作</th></tr>
-              </thead>
-              <tbody>
-                {shown.map((r) => (
-                  <tr key={r.id}>
-                    <td className="nw"><b>{r.spaceNo}</b></td>
-                    <td className="nw">{r.plate || <span className="muted">空车位</span>}</td>
-                    <td className="sub">{formatRoomNo(r, roomLane)}</td>
-                    <td className="nw">{r.ownerName || '—'}</td>
-                    <td className="nw">{r.ownerTel || '—'}</td>
-                    <td className="nw">{r.endDate ? dayjs(r.endDate).format('YYYY-MM-DD') : '—'}</td>
-                    <td className="nw">{r.note ? <span className={`tag ${r.note.includes('租赁') ? 'warn' : (r.note.includes('来源') ? 'mute' : 'ok')}`}>{r.note}</span> : '—'}</td>
-                    <td className="nw"><button className="btn sm" onClick={() => setEdit(r)}>编辑</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-        <div className="sp-glass-wrap">
-          <div className="sp-grid">
-          {shown.map((r) => {
-            const hasPlate = !!(r.plate && r.plate.trim());
-            const abnormal = !!r.note && /异常|停用|故障|损坏/.test(r.note);
-            return (
-              <div key={r.id} className={`sp-card ${hasPlate ? '' : 'is-free'}${abnormal ? ' is-abnormal' : ''}`} data-state={hasPlate ? 'bound' : 'free'}>
-                <div className="sp-top">
-                  <span className="ic-tile t-slate" style={{ width: 34, height: 34 }}>
-                    <Icon name="car" size={18} />
-                  </span>
-                  <div className="sp-no">{r.spaceNo}<small>号位</small></div>
-                  {r.note ? <span className={`tag ${r.note.includes('租赁') ? 'warn' : (r.note.includes('来源') ? 'mute' : 'ok')}`}>{r.note}</span> : null}
-                </div>
-                <div className="sp-plate" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ flex: 1, minWidth: 0 }}>{hasPlate ? (
-                    <span className={`sp-plate-tag ${isNewEnergyPlate(r.plate!) ? 'nev' : 'blue'}`} title={r.plate || undefined}>{compactPlate(r.plate!)}</span>
-                  ) : <span className="sp-empty">空车位</span>}</span>
-                  <button className="btn sm" onClick={() => setEdit(r)}>编辑</button>
-                </div>
-                <dl className="sp-kv">
-                  <dt>有效期</dt><dd>{r.endDate ? dayjs(r.endDate).format('YYYY-MM-DD') : '—'}</dd>
-                  <dt>房号</dt><dd title={r.houseNo || undefined}>{formatRoomNo(r, roomLane)}</dd>
-                  {r.ownerName ? <><dt>业主</dt><dd>{r.ownerName}</dd></> : null}
-                  {r.ownerTel ? <><dt>电话</dt><dd>{r.ownerTel}</dd></> : null}
-                </dl>
-              </div>
-            );
-          })}
-          </div>
-        </div>
-        )
+        <div className="sp-glass-wrap"><div className="sp-grid">{shown.map((r) => {
+          const hasPlate = !!r.plate?.trim();
+          const abnormal = !!r.note && /异常|停用|故障|损坏/.test(r.note);
+          return <article key={r.id} aria-label={`车位 ${r.spaceNo}`} className={`sp-card ${hasPlate ? '' : 'is-free'}${abnormal ? ' is-abnormal' : ''}`} data-state={hasPlate ? 'bound' : 'free'}>
+            <div className="sp-top"><span className="ic-tile t-slate"><Icon name="car" size={18} /></span><div className="sp-no">{r.spaceNo}<small>号位</small></div><CategoryTag row={r} /></div>
+            <div className="sp-plate"><span>{hasPlate ? <span className={`sp-plate-tag ${isNewEnergyPlate(r.plate!) ? 'nev' : 'blue'}`}>{compactPlate(r.plate!)}</span> : <span className="sp-empty">未绑车牌</span>}</span><button className="btn sm" aria-label={`编辑车位 ${r.spaceNo}`} onClick={() => setEdit(r)}>编辑</button></div>
+            <dl className="sp-kv">
+              <dt>有效期</dt><dd>{dateLabel(r.endDate)}</dd><dt>房号</dt><dd>{formatRoomNo(r)}</dd>
+              <dt>业主</dt><dd>{r.ownerName || '—'}</dd><dt>电话</dt><dd>{r.ownerTel || '—'}</dd>
+            </dl>
+            {r.note ? <p className="sp-note"><span>备注</span>{r.note}</p> : null}
+          </article>;
+        })}</div></div>
       )}
-
-      {edit ? <EditSheet row={edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); void load(); }} /> : null}
-
-      <div className="note2" style={{ marginTop: 16 }}>
-        <Icon name="alert" />
-        {garage === 'main'
-          ? '大车库按车位收费（67.50 元/位·月），车牌从老系统备注（地库/DK+车位号）回填；空车位等登记后再绑车牌。'
-          : '人防车库在德立云系统，进库必须先授权二期地面；授权依赖已在车库授权里做了自动联动。'}
-      </div>
-    </>
-  );
-}
-
-function EditSheet({ row, onClose, onDone }: { row: SpaceRow; onClose: () => void; onDone: () => void }) {
-  const [plate, setPlate] = useState(row.plate ?? '');
-  const [houseNo, setHouseNo] = useState(row.houseNo ?? '');
-  const [ownerName, setOwnerName] = useState(row.ownerName ?? '');
-  const [ownerTel, setOwnerTel] = useState(row.ownerTel ?? '');
-  const [note, setNote] = useState(row.note ?? '');
-  const [area, setArea] = useState(row.areaSqm ?? '');
-  const [endDate, setEndDate] = useState(row.endDate ? dayjs(row.endDate).format('YYYY-MM-DD') : '');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-
-  const save = async () => {
-    setBusy(true); setErr('');
-    try {
-      await request({ method: 'PATCH', url: `/business/parking-spaces/${row.id}`, data: { plate, houseNo, ownerName, ownerTel: ownerTel.split(/[\/,，、;；\s]+/).filter(Boolean).join('/'), note, areaSqm: area, endDate } });
-      toast('已保存');
-      onDone();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : '保存失败');
-    } finally { setBusy(false); }
-  };
-
-  return (
-    <Sheet open onClose={onClose} width={460} title={`车位 ${row.spaceNo}`} subtitle={row.garage === 'main' ? '二期大车库' : '二期人防车库'}>
-      <div style={{ display: 'grid', gap: 10, padding: '4px 2px' }}>
-        <label className="fl">车牌<input className="in" value={plate} onChange={(e) => setPlate(e.target.value.toUpperCase().replace(/\s/g, ''))} placeholder="空着表示未绑车牌" /></label>
-        <label className="fl">房号<input className="in" value={houseNo} onChange={(e) => setHouseNo(e.target.value)} /></label>
-        <label className="fl">业主<input className="in" value={ownerName} onChange={(e) => setOwnerName(e.target.value)} /></label>
-        <label className="fl">电话<input className="in" value={ownerTel} onChange={(e) => setOwnerTel(e.target.value)} placeholder="多个电话用 / 隔开" /></label>
-        <label className="fl">车牌续费有效期<DateInput className="in" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></label>
-        <label className="fl">面积（㎡）<input className="in" value={area} onChange={(e) => setArea(e.target.value.replace(/[^\d.]/g, ''))} /></label>
-        <label className="fl">备注<input className="in" value={note} onChange={(e) => setNote(e.target.value)} placeholder="如：产权 / 租赁车位 / 来源停车系统" /></label>
-        {err ? <div className="note" style={{ background: 'var(--dang-w)', color: 'var(--dang)' }}>{err}</div> : null}
-        <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-          <button className="btn p" style={{ flex: 1 }} disabled={busy} onClick={() => void save()}>{busy ? '保存中…' : '保存'}</button>
-          <button className="btn" onClick={onClose}>取消</button>
-        </div>
-      </div>
-    </Sheet>
+      {edit?.garage === garage ? <ParkingSpaceEditor key={`${garage}:${edit.id}`} row={edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); void load(); }} /> : null}
+      <div className="note2" style={{ marginTop: 16 }}><Icon name="alert" />{garage === 'main' ? '大车库按车位收费（67.50 元/位·月），车牌从老系统备注（地库/DK+车位号）回填；未绑车牌不代表车位类别为空。' : '人防车库在德立云系统，进库必须先授权二期地面；授权依赖已在车库授权里做了自动联动。'}</div>
+    </section>
   );
 }

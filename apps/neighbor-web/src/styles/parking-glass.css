@@ -1,127 +1,63 @@
-/* 大车库 / 人防车位：纯色底 + 白色悬浮卡片（只被 ParkingSpaces 引入，作用域限定 .sp-glass-wrap） */
-.sp-glass-wrap {
-  position: relative;
-  padding: 18px;
-  border-radius: 22px;
-  /* 页面底：与主页面一致的浅灰蓝纯色 */
-  background: #f4f7fb;
-}
-
-.sp-glass-wrap .sp-grid {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-}
-
+/* 两库共用卡片；仅影响ParkingSpaces，不修改全局视觉。 */
+.parking-spaces { min-width: 0; }
+.parking-spaces .sp-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; }
+.parking-spaces .sp-toolbar .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.parking-spaces .sp-toolbar .chip,
+.parking-spaces .sp-toolbar .in { min-height: 44px; }
+.parking-spaces .sp-category-filter { display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--ink2); }
+.parking-spaces .sp-category-filter select { width: 130px; }
+.parking-spaces .sp-search { width: 280px; max-width: 100%; }
+.parking-spaces .sp-view-switch { margin-left: auto; }
+.parking-spaces .sp-map-loading { min-height: 420px; display: grid; place-items: center; border-radius: 20px; border: 1px solid var(--line); background: #f4f8fc; }
+.sp-glass-wrap { position: relative; padding: 18px; border-radius: 22px; background: #f4f7fb; }
+.sp-glass-wrap .sp-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 292px), 1fr)); }
 .sp-glass-wrap .sp-card {
-  position: relative;
-  border: 1px solid rgba(255, 255, 255, 0.9);
-  border-radius: 20px;
-  padding: 14px;
-  /* 卡片底：比页面底更亮的白，形成「浮在页面上」的层次 */
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 1px 2px rgba(60, 90, 130, 0.05), 0 6px 16px rgba(60, 90, 130, 0.06);
-  transition:
-    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    box-shadow 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    border-color 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    background-color 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
-  content-visibility: auto;
-  contain-intrinsic-size: 230px;
+  position: relative; min-width: 0; border: 1px solid #dce5ef; border-radius: 20px; padding: 16px;
+  background: #fff; box-shadow: 0 1px 2px rgba(60, 90, 130, 0.05), 0 6px 16px rgba(60, 90, 130, 0.06);
+  transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
 }
-
-/* 只在 hover 的卡上启用合成层，避免全页每张卡都常驻 will-change */
-.sp-glass-wrap .sp-card:hover {
-  transform: translateY(-4px) scale(1.012);
-  will-change: transform;
-  border-color: rgba(255, 255, 255, 1);
+/* 不缩放文本、不强制分层；停留后使用整数像素位移，保留可感知的悬浮反馈。 */
+.sp-glass-wrap .sp-card:hover,
+.sp-glass-wrap .sp-card:focus-within {
+  transform: translateY(-4px); border-color: #9bb4cf;
   box-shadow: 0 3px 8px rgba(60, 90, 130, 0.09), 0 20px 40px rgba(60, 90, 130, 0.14);
 }
-
-/* 空车位减淡后退：更浅灰的底 + --ink3 文字 + 更淡边框 */
-.sp-glass-wrap .sp-card.is-free {
-  border-style: solid;
-  background: #eef3f9;
-  border-color: rgba(180, 200, 220, 0.45);
-  color: var(--ink3);
-}
-
-.sp-glass-wrap .sp-card.is-free .sp-no,
-.sp-glass-wrap .sp-card.is-free .sp-kv dt,
-.sp-glass-wrap .sp-card.is-free .sp-kv dd {
-  color: var(--ink3);
-}
-
-/* 已绑车牌：正常白底 + 冷色边框，比空车位更突出 */
-.sp-glass-wrap .sp-card[data-state='bound']:not(.is-abnormal) {
-  background: #ffffff;
-  border-color: rgba(90, 150, 220, 0.35);
-}
-
-/* 异常/停用：保留红调边框 */
-.sp-glass-wrap .sp-card.is-abnormal {
-  border-color: rgba(200, 90, 80, 0.4);
-}
-
-/* 卡片里的车辆图标瓦片 */
-.sp-glass-wrap .sp-card .ic-tile {
-  background: rgba(90, 150, 220, 0.1);
-  color: #3a648f;
-}
-
-.sp-glass-wrap .sp-card.is-free .ic-tile {
-  background: rgba(168, 188, 205, 0.18);
-  color: var(--ink3);
-}
-
+.sp-glass-wrap .sp-card:focus-within { outline: 2px solid var(--brand, #31558a); outline-offset: 3px; }
+.sp-glass-wrap .sp-card .btn:focus-visible { outline: 2px solid var(--brand, #31558a); outline-offset: 2px; }
+/* 未绑车牌是绑定状态，不是产权/租赁/空类别；不降低文字可读性。 */
+.sp-glass-wrap .sp-card.is-free { background: #f7f9fc; border-style: dashed; border-color: #b8c7d8; }
+.sp-glass-wrap .sp-card.is-abnormal { border-color: #b7675e; }
+.sp-glass-wrap .sp-top { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+.sp-glass-wrap .sp-top .ic-tile { width: 34px; height: 34px; flex-shrink: 0; background: #edf2f8; color: #31558a; }
+.sp-glass-wrap .sp-no { min-width: 0; flex: 1; font-size: 22px; font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
+.sp-glass-wrap .sp-no small { font-size: 12px; font-weight: 400; }
+.sp-glass-wrap .sp-plate { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.sp-glass-wrap .sp-plate > span { flex: 1; min-width: 0; }
+.sp-glass-wrap .sp-plate .btn { min-width: 52px; min-height: 44px; flex-shrink: 0; }
+.sp-glass-wrap .sp-empty { color: var(--ink2); font-size: 14px; }
+.sp-glass-wrap .sp-kv { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 8px 12px; margin: 0; font-size: 14px; line-height: 1.6; }
+.sp-glass-wrap .sp-kv dt { color: var(--ink3); }
+.sp-glass-wrap .sp-kv dd { margin: 0; min-width: 0; color: var(--ink2); overflow: visible; white-space: normal; overflow-wrap: anywhere; }
+.sp-glass-wrap .sp-note { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line); color: var(--ink2); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.sp-glass-wrap .sp-note > span { color: var(--ink3); margin-right: 12px; }
+/* 文字+描边表达类别；不依赖颜色识别，也不以备注任意子串当类别。 */
+.parking-spaces .sp-category { display: inline-flex; align-items: center; flex-shrink: 0; border: 1px solid currentColor; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 600; line-height: 1.7; white-space: nowrap; }
+.parking-spaces .category-property { color: #31558a; background: #f1f5fc; }
+.parking-spaces .category-rental { color: #855409; background: #fff9ec; }
+.parking-spaces .category-vacant { color: #2a6548; background: #f1f8f4; }
+.parking-spaces .category-unset { color: #555f6d; background: #f2f4f6; }
+/* 蓝牌/绿牌保留既有辨识；长数据允许完整换行，不省略住户电话。 */
+.sp-glass-wrap .sp-plate-tag { display: inline-flex; align-items: center; justify-content: center; max-width: 100%; padding: 4px 8px; border-radius: 6px; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(20, 40, 80, 0.2); font-size: 18px; font-weight: 800; letter-spacing: .1em; line-height: 1.4; color: #fff; white-space: normal; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.sp-glass-wrap .sp-plate-tag.blue { background: #1a4fbf; }
+.sp-glass-wrap .sp-plate-tag.nev { background: #24744b; }
 @media (prefers-reduced-motion: reduce) {
-  .sp-glass-wrap .sp-card {
-    transition: none;
-  }
-  .sp-glass-wrap .sp-card:hover {
-    transform: none;
-    will-change: auto;
-  }
+  .sp-glass-wrap .sp-card { transition: none; }
+  .sp-glass-wrap .sp-card:hover,
+  .sp-glass-wrap .sp-card:focus-within { transform: none; }
 }
-
 @media (max-width: 700px) {
-  .sp-glass-wrap {
-    padding: 12px;
-    border-radius: 18px;
-  }
-  .sp-glass-wrap .sp-grid {
-    gap: 12px;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  }
-}
-
-/* 真实车牌样式：蓝牌 / 新能源绿牌 */
-.sp-glass-wrap .sp-plate-tag {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  max-width: 100%;
-  min-width: 0;
-  padding: 3px 10px;
-  border-radius: 6px;
-  border: 2px solid rgba(255, 255, 255, 0.95);
-  box-shadow: 0 2px 6px rgba(20, 40, 80, 0.2);
-  font-size: 18px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  line-height: 1.2;
-  color: #fff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-variant-numeric: tabular-nums;
-}
-
-.sp-glass-wrap .sp-plate-tag.blue {
-  background: linear-gradient(160deg, #1a4fbf, #15419f);
-}
-
-.sp-glass-wrap .sp-plate-tag.nev {
-  background: linear-gradient(160deg, #3aa36a, #2b8a55);
-  color: #fff;
+  .sp-glass-wrap { padding: 12px; border-radius: 18px; }
+  .sp-glass-wrap .sp-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .parking-spaces .sp-search { width: 100%; }
+  .parking-spaces .sp-view-switch { margin-left: 0; }
 }

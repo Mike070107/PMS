@@ -21,6 +21,6 @@ test('date-time returns original local timestamp without timezone conversion',()
  const changes=[];const p=picker({type:'datetime-local',value:'2026-11-05T13:20',onChange:e=>changes.push(e.target.value)});assert.ok(p.showTime);p.onChange(dayjs('2026-11-06T14:30'));assert.deepEqual(changes,['2026-11-06T14:30']);
 });
 test('all native calendar fields use the shared component',()=>{
- const files=['pages/ParkingSpaces.tsx','pages/Reports.tsx','pages/ResidentialBills.tsx','components/cashier/ParkingTab.tsx','components/settings/feeTemplates.tsx','components/vehicle-ops/RenewSheet.tsx'];
+ const files=['components/parking/ParkingSpaceEditor.tsx','pages/Reports.tsx','pages/ResidentialBills.tsx','components/cashier/ParkingTab.tsx','components/settings/feeTemplates.tsx','components/vehicle-ops/RenewSheet.tsx'];
  for(const file of files){const s=fs.readFileSync(path.join(root,file),'utf8');assert.ok(s.includes("import DateInput from '@/components/DateInput'"),file);assert.doesNotMatch(s,/<input\b[^>]*type=["'](?:date|month|datetime-local)["']/m,file)}
 });

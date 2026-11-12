@@ -1,6 +1,10 @@
 import { Column, Entity, Index } from 'typeorm';
 import { TenantEntity } from '../common/base.entity';
 
+/** 车位类别：产权 / 租赁 / 空置；NULL = 未登记（旧数据不回填推断）。 */
+export const PARKING_SPACE_CATEGORIES = ['property', 'rental', 'vacant'] as const;
+export type ParkingSpaceCategory = (typeof PARKING_SPACE_CATEGORIES)[number];
+
 /**
  * 车位档案：大车库 / 二期人防车库的车位清单。
  *
@@ -35,6 +39,10 @@ export class ParkingSpace extends TenantEntity {
 
   @Column({ name: 'owner_tel', type: 'varchar', length: 30, nullable: true })
   ownerTel: string | null;
+
+  /** 独立车位类别；null=未登记。改类别不解绑车辆、不清备注/来源/车牌。 */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  category: ParkingSpaceCategory | null;
 
   /** 产权 / 租赁车位 / 公司 … */
   /** 车牌续费有效期（旧停车系统的 End_Time） */

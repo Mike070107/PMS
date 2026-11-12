@@ -24,7 +24,7 @@ import '@/styles/parking-garage.css';
 
 export interface GarageRow {
   id: number;
-  garage: 'main' | 'civil';
+  garage: 'main';
   spaceNo: string;
   houseNo?: string | null;
   roomLabel?: string | null;
@@ -39,17 +39,13 @@ export interface GarageRow {
 interface Props {
   /** 全部车位（筛选只改变视觉，不重排列，位置保持稳定） */
   rows: GarageRow[];
-  garage: 'main' | 'civil';
   /** 搜索/筛选命中的车位 id；null 表示全部命中 */
   matchIds: Set<number> | null;
   selectedId: number | null;
   onSelect: (row: GarageRow) => void;
 }
 
-const GARAGE_LABEL: Record<'main' | 'civil', string> = {
-  main: '二期大车库',
-  civil: '二期人防车库',
-};
+const GARAGE_LABEL = '二期大车库';
 
 const STATUS_ORDER: SpaceStatus[] = ['bound', 'free', 'expiring', 'expired'];
 
@@ -59,7 +55,7 @@ function compactPlate(plate?: string | null) {
   return String(plate ?? '').replace(/[·\s.．]/g, '').toUpperCase();
 }
 
-export default function ParkingGarage3D({ rows, garage, matchIds, selectedId, onSelect }: Props) {
+export default function ParkingGarage3D({ rows, matchIds, selectedId, onSelect }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const tipRef = useRef<HTMLDivElement>(null);
   const ctlRef = useRef<GarageController | null>(null);
@@ -152,7 +148,7 @@ export default function ParkingGarage3D({ rows, garage, matchIds, selectedId, on
     if (!host) return;
     let controller: GarageController;
     try {
-      controller = createGarageScene(host, layout, garage, {
+      controller = createGarageScene(host, layout, {
         onHover: handleHover,
         onSelect: (row) => selectRef.current(row),
         onReady: () => setReady(true),
@@ -170,7 +166,7 @@ export default function ParkingGarage3D({ rows, garage, matchIds, selectedId, on
       controller.dispose();
       setReady(false);
     };
-  }, [layout, garage, handleHover]);
+  }, [layout, handleHover]);
 
   useEffect(() => {
     ctlRef.current?.setMatch(matchIds);
@@ -187,7 +183,7 @@ export default function ParkingGarage3D({ rows, garage, matchIds, selectedId, on
     <div
       className="pgarage"
       role="group"
-      aria-label={`${GARAGE_LABEL[garage]}车位 2.5D 示意图，可拖动旋转、滚轮缩放、点击车位编辑`}
+      aria-label={`${GARAGE_LABEL}车位 2.5D 示意图，可拖动旋转、滚轮缩放、点击车位编辑`}
     >
       <div className="pgarage__stage" ref={hostRef} aria-hidden="true" />
 
@@ -283,7 +279,6 @@ const DIM_COLOR = '#d3dce7';
 function createGarageScene(
   host: HTMLDivElement,
   layout: GarageLayout<GarageRow>,
-  garage: 'main' | 'civil',
   callbacks: GarageCallbacks,
 ): GarageController {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
@@ -321,7 +316,7 @@ function createGarageScene(
   fill.position.set(halfW * 0.9, 16, -halfD * 0.9);
   scene.add(fill);
 
-  const floorTexture = track(new THREE.CanvasTexture(paintFloor(layout, garage)));
+  const floorTexture = track(new THREE.CanvasTexture(paintFloor(layout)));
   floorTexture.colorSpace = THREE.SRGBColorSpace;
   floorTexture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
   const floorGeometry = track(new THREE.PlaneGeometry(halfW * 2, halfD * 2));
@@ -730,7 +725,7 @@ function fittedFont(ctx: CanvasRenderingContext2D, label: string, maxWidth: numb
   return size;
 }
 
-function paintFloor(layout: GarageLayout<GarageRow>, garage: 'main' | 'civil'): HTMLCanvasElement {
+function paintFloor(layout: GarageLayout<GarageRow>): HTMLCanvasElement {
   const spec = garageCanvas(layout);
   if (!spec) {
     const empty = document.createElement('canvas');
@@ -817,7 +812,7 @@ function paintFloor(layout: GarageLayout<GarageRow>, garage: 'main' | 'civil'): 
   ctx.fillStyle = 'rgba(126, 141, 163, .75)';
   ctx.font = `500 ${Math.round(scale * 0.5)}px ${FONT_FAMILY}`;
   ctx.textAlign = 'left';
-  ctx.fillText(`${GARAGE_LABEL[garage]} · 车位示意`, X(-spanX / 2 + 1.2), Z(-spanZ / 2 + 1.4));
+  ctx.fillText(`${GARAGE_LABEL} · 车位示意`, X(-spanX / 2 + 1.2), Z(-spanZ / 2 + 1.4));
 
   return canvas;
 }

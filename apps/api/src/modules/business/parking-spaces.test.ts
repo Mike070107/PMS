@@ -13,7 +13,8 @@ const user = { id: 7, tenantId: 1, role: 'staff' };
 const scoped = { scopeAll: false, communityIds: [10], pages: { business: { view: true, edit: true, delete: false } } };
 const all = { ...scoped, scopeAll: true };
 const fixtures = [
-  { id: 1, tenantId: 1, communityId: 10, garage: 'main', spaceNo: '1', plate: '沪A12345' },
+  { id: 1, tenantId: 1, communityId: 10, garage: 'main', spaceNo: '1', plate: '沪A12345', category: null,
+    note: '产权（历史备注不推断）', source: '历史导入', endDate: '2028-02-29', houseNo: '228/6/502' },
   { id: 2, tenantId: 1, communityId: 20, garage: 'main', spaceNo: '2' },
   { id: 3, tenantId: 2, communityId: 10, garage: 'main', spaceNo: '3' },
   { id: 4, tenantId: 1, communityId: null, garage: 'civil', spaceNo: '4' },
@@ -109,7 +110,7 @@ test('A01: controller 必须向两个 service 方法传递 user/access', async (
 
 // 隔离 HTTP 应用：只有真实 controller/guard/service 与内存仓储，无 AppModule、dotenv 或数据库连接。
 import { BusinessExecutionService } from './business-execution.service';
-async function httpHarness() {
+async function httpHarness(httpAccess: any = scoped) {
   const h = harness();
   @Module({
     controllers: [BusinessController],
@@ -126,18 +127,105 @@ async function httpHarness() {
   // 仅替换此隔离应用的认证实例，不修改生产类/原型；页面权限守卫仍执行真实逻辑。
   app.get(JwtAuthGuard).canActivate = (ctx: any) => {
     const req = ctx.switchToHttp().getRequest();
-    req.user = user; req.access = scoped; return true;
+    req.user = user; req.access = httpAccess; return true;
   };
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   await app.listen(0, '127.0.0.1');
   const url = await app.getUrl();
-  return { ...h, app, patch: async (body: any, id: string = '1') => {
+  return { ...h, app, get: async () => {
+    const res = await fetch(url + '/business/parking-spaces');
+    return { status: res.status, body: await res.json() as any };
+  }, patch: async (body: any, id: string = '1') => {
     const res = await fetch(url + '/business/parking-spaces/' + id, {
       method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
     });
     return { status: res.status, body: await res.json() as any };
   } };
 }
+
+test('T75 HTTP: category严格拒绝非法值，且原档案完全不变', async () => {
+  const h = await httpHarness();
+  try {
+    const before = structuredClone(h.rows);
+    for (const category of ['', ' property', 'rental ', 'PROPERTY', '产权', 'unknown', 0, 1, true, false, {}, [], ['property']]) {
+      const result = await h.patch({ category, note: '非法类别不能附带覆盖备注', plate: '' });
+      assert.equal(result.status, 400, JSON.stringify({ category, result }));
+    }
+    assert.equal(h.saves(), 0);
+    assert.deepEqual(h.rows, before);
+  } finally { await h.app.close(); }
+});
+
+test('T75 HTTP: GET/PATCH回category和communityId，枚举/省略/null清空独立于旧字段', async () => {
+  const h = await httpHarness();
+  try {
+    const preserved = Object.fromEntries(['plate', 'note', 'source', 'endDate', 'houseNo'].map(key => [key, h.rows[0][key]]));
+    const initial = await h.get();
+    assert.equal(initial.status, 200);
+    assert.equal(initial.body.rows[0].category, null, '旧备注不推断类别');
+    assert.equal(initial.body.rows[0].communityId, 10);
+    for (const category of ['property', 'rental', 'vacant', null]) {
+      const result = await h.patch({ category });
+      assert.equal(result.status, 200);
+      assert.equal(result.body.category, category);
+      assert.equal(result.body.communityId, 10);
+      const readback = (await h.get()).body.rows[0];
+      assert.equal(readback.category, category);
+      assert.equal(readback.communityId, 10);
+      for (const [key, value] of Object.entries(preserved)) {
+        assert.equal(h.rows[0][key], value, key + '必须保持');
+        assert.equal(readback[key], value, key + 'GET必须保持');
+      }
+      const omitted = await h.patch({ ownerName: '独立编辑' });
+      assert.equal(omitted.status, 200);
+      assert.equal(omitted.body.category, category, '省略category保持原值');
+    }
+  } finally { await h.app.close(); }
+});
+
+test('T75 HTTP: 类别更新不绕过只读/跨租户/跨小区/未归属/空scope权限', async () => {
+  const readonly = await httpHarness({ ...scoped, pages: { business: { view: true, edit: false } } });
+  try {
+    assert.equal((await readonly.get()).status, 200);
+    assert.equal((await readonly.patch({ category: 'property' })).status, 403);
+    assert.equal(readonly.saves(), 0);
+  } finally { await readonly.app.close(); }
+  for (const access of [scoped, { ...scoped, communityIds: [] }]) {
+    const h = await httpHarness(access);
+    try {
+      const before = structuredClone(h.rows);
+      const expectedIds = access.communityIds.length ? [1] : [];
+      assert.deepEqual((await h.get()).body.rows.map((row: any) => row.id), expectedIds);
+      for (const id of (access.communityIds.length ? ['2', '3', '4', '999'] : ['1', '2', '3', '4'])) {
+        assert.equal((await h.patch({ category: null }, id)).status, 404);
+      }
+      assert.equal(h.saves(), 0);
+      assert.deepEqual(h.rows, before);
+    } finally { await h.app.close(); }
+  }
+  const full = await httpHarness(all);
+  try {
+    const rows = (await full.get()).body.rows;
+    assert.deepEqual(rows.map((row: any) => row.id), [1, 2, 4], '全scope仍不跨租户');
+    const unassigned = rows.find((row: any) => row.id === 4);
+    assert.equal(unassigned.category, null);
+    assert.equal(unassigned.communityId, null, '不按civil车库猜小区');
+    const patched = await full.patch({ category: 'rental' }, '4');
+    assert.equal(patched.status, 200);
+    assert.equal(patched.body.category, 'rental');
+    assert.equal(patched.body.communityId, null);
+  } finally { await full.app.close(); }
+});
+
+test('T75 service: 非HTTP调用非法category仍400且不修改旧行', async () => {
+  const h = harness();
+  const before = structuredClone(h.rows);
+  for (const category of ['', 'PROPERTY', ' rental ', 1, {}, []]) {
+    await assert.rejects(() => h.service.updateParkingSpace(1, { category }, user, scoped), { status: 400 });
+  }
+  assert.equal(h.saves(), 0);
+  assert.deepEqual(h.rows, before);
+});
 
 test('A02: 非字符串/超长字段经真实 ValidationPipe 返回400且不保存', async () => {
   const h = await httpHarness();
@@ -179,7 +267,7 @@ test('A02: 合法部分更新、空字符串清空、归一化与只允许白名
   try {
     const result = await h.patch({ plate: ' 沪a 12345 ', houseNo: ' 228/6/502 ', ownerName: ' 张三 ',
       ownerTel: '13800000000，13900000000', areaSqm: ' 99999.99 ', endDate: '2028-02-29', note: ' 产权 ',
-      tenantId: 2, communityId: 20, garage: 'civil', spaceNo: '999', updatedBy: 888 });
+      tenantId: 2, communityId: 20, garage: 'civil', spaceNo: '999', source: '不得覆写来源', updatedBy: 888 });
     assert.equal(result.status, 200);
     assert.equal(result.body.plate, '沪A12345');
     assert.equal(result.body.ownerTel, '13800000000/13900000000');
@@ -190,6 +278,7 @@ test('A02: 合法部分更新、空字符串清空、归一化与只允许白名
     assert.equal(h.rows[0].communityId, 10);
     assert.equal(h.rows[0].garage, 'main');
     assert.equal(h.rows[0].spaceNo, '1');
+    assert.equal(h.rows[0].source, '历史导入');
     assert.equal(h.rows[0].updatedBy, 7);
     assert.equal((await h.patch({ plate: '', areaSqm: '', endDate: '', ownerName: '   ' })).status, 200);
     assert.equal(h.rows[0].plate, null);

@@ -13,6 +13,7 @@ export const TARGETS = {
   'miniapp-staff': { label: '员工端小程序', paths: ['apps/miniapp-staff', 'packages/shared-types', 'packages/api-client'] },
   'miniapp-owner': { label: '业主端小程序', paths: ['apps/miniapp-owner', 'packages/shared-types', 'packages/api-client'] },
 };
+const RECOVERY_INPUTS = ['deploy/property-archive-details-migration.cjs', 'deploy/property-archive-details-migration.test.cjs', 'deploy/release-check.mjs', 'deploy/release-check.test.mjs'];
 const EVIDENCE = join(ROOT, 'artifacts/release-checks');
 const sha = value => createHash('sha256').update(value).digest('hex');
 const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).trim();
@@ -20,7 +21,7 @@ export const productionInput = path => !(/\.md$|\.tsbuildinfo$/.test(path));
 export const assistantInput = path => /\.(cs|csproj|xaml|ico|png|manifest)$/.test(path);
 const paths = target => {
   if (!TARGETS[target]) throw new Error(`Unknown release target: ${target}`);
-  return TARGETS[target].paths;
+  return [...TARGETS[target].paths, ...(['api','web'].includes(target) ? RECOVERY_INPUTS : [])];
 };
 export function deploymentCommit(target, read = git) {
   try { read('show-ref', '--verify', '--quiet', `refs/tags/deployed/${target}`); }
@@ -34,14 +35,14 @@ export function changed(target, commit = 'HEAD') {
     .filter(target === 'assistant' ? assistantInput : productionInput);
 }
 function fingerprint(target) {
-  const files = git('ls-files', '--', ...paths(target), 'deploy/release-check.mjs', 'deploy/release-check.test.mjs', 'package.json')
+  const files = git('ls-files', '--', ...paths(target), ...RECOVERY_INPUTS, 'package.json')
     .split('\n').filter(Boolean).filter(productionInput).sort();
   return sha(JSON.stringify([process.version, files.map(file => [file, existsSync(join(ROOT, file)) ? sha(readFileSync(join(ROOT, file))) : 'missing'])]));
 }
 export function assertSource(target, commit) {
   if (!/^[a-f0-9]{40}$/.test(commit || '')) throw new Error('需要冻结的完整源码提交');
   if (git('branch', '--show-current') !== 'main') throw new Error('生产只能从 main 发布');
-  const dirty = git('status', '--porcelain', '--', ...paths(target), 'deploy/release-check.mjs', 'deploy/publish-production.ps1');
+  const dirty = git('status', '--porcelain', '--', ...paths(target), ...RECOVERY_INPUTS, 'deploy/publish-production.ps1');
   if (dirty) throw new Error(`发布目标有未提交改动：\n${dirty}`);
   git('merge-base', '--is-ancestor', commit, 'origin/main');
   // 不能从一个较旧但已推送的 main 提交覆盖另一任务刚上线的版本。
@@ -59,6 +60,41 @@ function record(file, data) {
 export function evidenceMatches(evidence, hash) { return evidence?.passed === true && evidence.inputHash === hash; }
 export function parkingChanges(files) { return files.some(file => /Parking|parking|access-card|shared-types|api-client/.test(file)); }
 export function feeChanges(files) { return files.some(file => /FeeTemplate|FeesPage|ApartmentCashier|modules\/fees\/|FeeTemplates|apartment-cashier/.test(file)); }
+const sharedRecoveryInput = file => /^(pnpm-lock\.yaml|package\.json|packages\/(shared-types|api-client)\/|apps\/(api|neighbor-web)\/package\.json|deploy\/release-check\.)/.test(file);
+export function propertyArchiveChanges(files) {
+  return files.some(file => productionInput(file) && (sharedRecoveryInput(file) || /apps\/api\/src\/(modules\/(owners-mgmt|properties|access|auth)\/|entities\/(house|owner-property)\.entity\.ts|common\/owner-phone-activity\.ts|migrations\/1796000000000-)/.test(file) || /apps\/neighbor-web\/(src\/.*(PropertyArchive|OwnerBusinessContact|Cashier|Vehicles|RenewSheet|lib\/(auth|perm))|test\/(property-archive|business-owner-contact|apartment-reconciliation))/.test(file)));
+}
+export function parkingSpaceChanges(files) {
+  return files.some(file => productionInput(file) && (sharedRecoveryInput(file) || /apps\/api\/src\/(entities\/parking-space\.entity\.ts|modules\/business\/(parking|business\.(service|controller)|dto\.)|migrations\/1796100000000-)/.test(file) || /apps\/neighbor-web\/(src\/.*(ParkingSpaces|ParkingGarage3D|ParkingSpaceEditor|RenewSheet|parking-glass|parking-garage-layout)|test\/parking-(spaces|space-renewal|garage|renewal))/.test(file)));
+}
+/** Plans are exported for regression tests; an absent new test is a hard command failure, never skipped. */
+export function recoveryRegressionGroups(target, changes) {
+  if (!['api','web'].includes(target)) return [];
+  const unmarked=changes.includes('unmarked'), archive=unmarked||propertyArchiveChanges(changes), parking=unmarked||parkingSpaceChanges(changes);
+  const migration=archive||parking||changes.some(f=>/deploy\/property-archive-details-migration\./.test(f)||/apps\/api\/src\/migrations\/1796(00|10)0000000-/.test(f));
+  const groups=[];
+  if(migration)groups.push({id:'additive-migrations',webBuild:false,commands:['node --test deploy/property-archive-details-migration.test.cjs deploy/release-check.test.mjs']});
+  if(archive)groups.push({id:'property-archive',webBuild:true,commands:[
+    'pnpm --filter @pms/api test:property-archive',
+    'pnpm --filter @pms/api exec node -r ts-node/register --test src/modules/owners-mgmt/property-archive.integration.test.ts',
+    'pnpm --filter @pms/neighbor-web test:property-archive',
+    'node --test apps/neighbor-web/test/property-archive-real-api.test.cjs',
+  ]});
+  if(parking)groups.push({id:'parking-spaces',webBuild:true,commands:[
+    'pnpm --filter @pms/api test:parking-spaces',
+    'node --test apps/neighbor-web/test/parking-garage-layout.test.cjs apps/neighbor-web/test/parking-spaces-browser.test.cjs apps/neighbor-web/test/parking-space-renewal-browser.test.cjs',
+  ]});
+  return groups;
+}
+export function executeRecoveryGroups(groups, { inputHash, load, save, execute }) {
+  const pending=groups.filter(group=>!evidenceMatches(load(group.id),inputHash));
+  if(pending.some(group=>group.webBuild))execute('pnpm --filter @pms/neighbor-web build');
+  for(const group of pending) {
+    for(const command of group.commands)execute(command); // throws on failure: do not record or continue
+    save(group.id,{passed:true,inputHash,testedAt:new Date().toISOString(),scope:'isolated application/SQL/browser regression; not production schema, device or cashier acceptance'});
+  }
+  return pending.map(group=>group.id);
+}
 export function assertVersionIncrease(current, published) {
   const parse = value => {
     if (!/^\d+\.\d+\.\d+$/.test(value)) throw new Error(`无效助手版本：${value}`);
@@ -85,6 +121,16 @@ async function check(target, commit) {
     }
   }
   const changes = changed(target, commit);
+  const recoveryGroups=recoveryRegressionGroups(target,changes);
+  if(recoveryGroups.some(group=>group.webBuild))assertSource(target==='api'?'web':'api',commit);
+  if(recoveryGroups.length) {
+    const inputHash=sha(fingerprint('api')+fingerprint('web'));
+    const evidenceFile=id=>join(EVIDENCE,`${id}-${inputHash}.json`);
+    const executed=executeRecoveryGroups(recoveryGroups,{inputHash,
+      load:id=>existsSync(evidenceFile(id))?JSON.parse(readFileSync(evidenceFile(id),'utf8')):null,
+      save:(id,data)=>record(evidenceFile(id),{...data,commit}),execute:run});
+    console.log(executed.length?`完成定点回归 ${executed.join(', ')}`:'复用同源码档案/车位迁移回归证据');
+  }
   if ((target==='api'||target==='web') && (feeChanges(changes)||changes.includes('unmarked'))) {
     const hash=sha(fingerprint('api')+fingerprint('web'));
     const file=join(EVIDENCE,`fee-templates-${hash}.json`);

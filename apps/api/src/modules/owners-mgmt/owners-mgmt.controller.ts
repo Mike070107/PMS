@@ -23,6 +23,8 @@ import {
   UpdateOwnerDto,
   OwnerPropertyDto,
   OwnerPhoneEventDto,
+  BusinessContactsQueryDto,
+  UpdateBusinessContactDto,
 } from './dto';
 import { OwnersMgmtService } from './owners-mgmt.service';
 
@@ -36,6 +38,18 @@ import { OwnersMgmtService } from './owners-mgmt.service';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class OwnersMgmtController {
   constructor(private readonly ownersMgmtService: OwnersMgmtService) {}
+
+  @Get('business-contacts')
+  @RequirePermission(['business', 'fees', 'apartment-cashier', 'app:apartment-cashier'], 'view')
+  businessContacts(@Query() query: BusinessContactsQueryDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.ownersMgmtService.businessContacts(query, user, access);
+  }
+
+  @Patch(':id/business-contact')
+  @RequirePermission(['business', 'fees', 'apartment-cashier', 'app:apartment-cashier'], 'edit')
+  updateBusinessContact(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateBusinessContactDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.ownersMgmtService.updateBusinessContact(id, dto, user, access);
+  }
 
   @Post(':id/contact-events')
   @RequirePermission(['owners', 'properties'], 'edit')

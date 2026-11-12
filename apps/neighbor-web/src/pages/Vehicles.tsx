@@ -10,6 +10,7 @@ import HousePicker, { type PickedHouse } from '@/components/HousePicker';
 import Icon from '@/components/Icon';
 import { field, vehicleIdentity, identityTone, deliyunVehicleIdentity, GARAGES, garageState, groupByPlate, normPlate } from '@/lib/parking-fields';
 import RenewSheet from '@/components/vehicle-ops/RenewSheet';
+import OwnerBusinessContact from '@/components/OwnerBusinessContact';
 import { ChangePlateSheet, DownloadSheet, DeleteSheet } from '@/components/vehicle-ops/OtherOpSheets';
 import { RebindSheet, GaragesSheet } from '@/components/vehicle-ops/RebindGarageSheets';
 import { HistorySheet, OwnerInfoSheet, CreatePmsOwnerSheet } from '@/components/vehicle-ops/HistoryAndOwnerSheets';
@@ -192,6 +193,7 @@ export default function Vehicles() {
               <>
                 <div className="muted" style={{ fontSize: 13, marginBottom: 6 }}>1. 选这辆车挂在哪一户</div>
                 <HousePicker communities={communities} value={newHouse} disabled={newBusy} placeholder="输入 228/5/201 或业主姓名" onPick={setNewHouse} onClear={() => setNewHouse(null)} />
+                {newHouse?.houseId ? <OwnerBusinessContact key={newHouse.houseId} houseId={newHouse.houseId} preferredOwnerId={newHouse.ownerId ?? undefined} source="parking" disabled={newBusy} onSaved={owner => setNewHouse(current => current && current.ownerId === owner.id ? { ...current, ownerName: owner.name, ownerPhone: owner.phone } : current)} /> : null}
                 <div className="muted" style={{ fontSize: 13, margin: '14px 0 6px' }}>2. 类型</div>
                 <div className="chips">
                   <button className={`chip ${newKind === 'paid' ? 'on' : ''}`} disabled={newBusy} onClick={() => setNewKind('paid')}>新办车牌（按月收费）</button>
@@ -323,6 +325,7 @@ function VehicleCard({ plate, rows, cloud, onChanged }: { plate: string; rows: P
         </div>
       </div>
 
+      {pms?.houseId ? <OwnerBusinessContact key={pms.houseId} houseId={pms.houseId} preferredOwnerId={pms.userId} source="parking" onSaved={() => onChanged()} /> : null}
       <div className="veh-ops">
         <button className="btn p sm" onClick={() => setOp('renew')}><Icon name="cash" size={15} />续期收费</button>
         <button className="btn sm" onClick={() => setOp('changePlate')}><Icon name="edit" size={15} />变更车牌</button>

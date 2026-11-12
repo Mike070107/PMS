@@ -186,7 +186,18 @@ export class UpdateBuildingDto {
  * 后端按 (community, lane, buildingNo) upsert 楼栋，前端无需先建楼栋。
  * 老流程兼容：也可以直接传 buildingId。
  */
-export class CreateHouseDto {
+export class ArchiveHouseDetailsDto {
+  @IsOptional() @IsString() @MaxLength(30)
+  floor?: string | null;
+  @IsOptional() @IsString() @MaxLength(60)
+  propertyNature?: string | null;
+  @IsOptional() @IsString() @MaxLength(60)
+  roomLayout?: string | null;
+  @IsOptional() @IsString() @MaxLength(500)
+  remark?: string | null;
+}
+
+export class CreateHouseDto extends ArchiveHouseDetailsDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -251,7 +262,7 @@ export class CreateHouseDto {
   areaSqm?: string | null;
 }
 
-export class UpdateHouseDto {
+export class UpdateHouseDto extends ArchiveHouseDetailsDto {
   @IsOptional()
   @IsString()
   @MaxLength(30)
@@ -290,6 +301,8 @@ export class UpdateHouseDto {
 // ---------------- Query DTOs ----------------
 
 export class BuildingQueryDto extends TenantScopedQueryDto {
+  @IsOptional() @IsIn(['1'])
+  archiveDetails?: string;
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -357,6 +370,10 @@ export class UpdateCommunitySpotDto {
 }
 
 export class HouseQueryDto extends TenantScopedQueryDto {
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1)
+  id?: number;
+  @IsOptional() @IsString() @MaxLength(60)
+  propertyNature?: string;
   @IsOptional()
   @Type(() => Number)
   @IsInt()

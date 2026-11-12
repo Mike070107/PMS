@@ -455,6 +455,15 @@ export class PropertiesService {
       where.communityId = query.communityId;
     }
     const rows = await this.buildingRepo.find({ where });
+    if (query.archiveDetails === '1' && rows.length) {
+      const counts = await this.buildingRepo.query(`SELECT b.id,
+        (SELECT COUNT(*)::int FROM houses h WHERE h.tenant_id=b.tenant_id AND h.building_id=b.id AND h.archived_at IS NULL) AS "houseCount",
+        (SELECT COUNT(DISTINCT u.id)::int FROM users u WHERE u.tenant_id=b.tenant_id AND u.role='owner' AND u.status='active' AND (
+          u.owner_building_id=b.id OR EXISTS(SELECT 1 FROM houses h WHERE h.tenant_id=b.tenant_id AND h.id=u.house_id AND h.building_id=b.id AND h.archived_at IS NULL)
+          OR EXISTS(SELECT 1 FROM owner_property_links p LEFT JOIN houses h ON h.id=p.house_id AND h.tenant_id=p.tenant_id WHERE p.tenant_id=b.tenant_id AND p.owner_id=u.id AND (p.building_id=b.id OR h.building_id=b.id AND h.archived_at IS NULL))
+        )) AS "ownerCount" FROM buildings b WHERE b.tenant_id=$1 AND b.id=ANY($2::int[])`, [tenantId, rows.map(r => r.id)]);
+      for (const row of rows) Object.assign(row, counts.find((c: { id: number }) => Number(c.id) === row.id) || {});
+    }
     // 楼号是 varchar，按 id 出会变成建库顺序、按字符串出 10 号会跑到 2 号前
     return rows.sort(
       (a, b) => a.communityId - b.communityId || compareBuildingLike(a, b),
@@ -760,6 +769,10 @@ export class PropertiesService {
         'h.full_address AS "fullAddress"',
         'h.shop_name AS "shopName"',
         'h.area_sqm AS "areaSqm"',
+        'h.floor AS floor',
+        'h.property_nature AS "propertyNature"',
+        'h.room_layout AS "roomLayout"',
+        'h.remark AS remark',
         'h.archived_at AS "archivedAt"',
         'b.lane AS lane',
         'b.building_no AS "buildingNo"',
@@ -787,6 +800,8 @@ export class PropertiesService {
     }
 
     if (query.q) this.applyHouseKeyword(qb, query.q);
+    if (query.id) qb.andWhere('h.id = :houseId', { houseId: query.id });
+    if (query.propertyNature) qb.andWhere('h.property_nature = :nature', { nature: query.propertyNature });
 
     // 默认只看未归档；archived=1 只看已归档
     if (query.archived) qb.andWhere('h.archived_at IS NOT NULL');
@@ -824,6 +839,10 @@ export class PropertiesService {
       lane: r.lane,
       buildingNo: r.buildingNo,
       communityName: r.communityName,
+      floor: r.floor ?? null,
+      propertyNature: r.propertyNature ?? null,
+      roomLayout: r.roomLayout ?? null,
+      remark: r.remark ?? null,
       archivedAt: r.archivedAt ?? null,
       // 原来的字段保持不变：绑了好几个业主时给第一个（按 id，稳定）
       owner: ownersByHouse.get(Number(r.id))?.[0] ?? null,
@@ -867,10 +886,10 @@ export class PropertiesService {
           .orWhere(
             `EXISTS (
               SELECT 1 FROM users u
-               WHERE u.house_id = h.id
+               WHERE (u.house_id = h.id OR EXISTS (SELECT 1 FROM owner_property_links p WHERE p.tenant_id=h.tenant_id AND p.owner_id=u.id AND p.house_id=h.id))
                  AND u.tenant_id = h.tenant_id
                  AND u.role = '${UserRole.OWNER}'
-                 AND (u.name ILIKE :kw OR u.phone ILIKE :kw)
+                 AND (u.name ILIKE :kw OR u.phone ILIKE :kw OR CAST(u.contact_phones AS text) ILIKE :kw)
             )`,
             { kw: `%${rawQ}%` },
           )
@@ -1056,6 +1075,10 @@ export class PropertiesService {
       fullAddress: dto.fullAddress || null,
       shopName: dto.shopName || null,
       areaSqm: dto.areaSqm ?? null,
+      floor: dto.floor?.trim() || null,
+      propertyNature: dto.propertyNature?.trim() || null,
+      roomLayout: dto.roomLayout?.trim() || null,
+      remark: dto.remark?.trim() || null,
       createdBy: user.id,
       updatedBy: user.id,
     });
@@ -1095,7 +1118,11 @@ export class PropertiesService {
       }
       house.roomNo = roomNo;
     }
-    if (dto.areaSqm !== undefined) house.areaSqm = dto.areaSqm || null;
+    if (dto.areaSqm !== undefined) {
+      if (dto.areaSqm !== null && (Number(dto.areaSqm) < 0 || !Number.isFinite(Number(dto.areaSqm)))) throw new BadRequestException('面积不能为负数');
+      house.areaSqm = dto.areaSqm || null;
+    }
+    for (const key of ['floor', 'propertyNature', 'roomLayout', 'remark'] as const) if (dto[key] !== undefined) house[key] = dto[key]?.trim() || null;
     if (dto.propertyType !== undefined) house.propertyType = dto.propertyType || '住宅';
     if (dto.roadName !== undefined) house.roadName = dto.roadName || null;
     if (dto.fullAddress !== undefined) house.fullAddress = dto.fullAddress || null;
@@ -1427,12 +1454,12 @@ export class PropertiesService {
   private async ownersByHouse(
     tenantId: number,
     houseIds: number[],
-  ): Promise<Map<number, Array<{ id: number; name: string | null; phone: string | null }>>> {
-    const map = new Map<number, Array<{ id: number; name: string | null; phone: string | null }>>();
+  ): Promise<Map<number, Array<{ id: number; name: string | null; phone: string | null; contactPhones: string[]; contactNote: string | null }>>> {
+    const map = new Map<number, Array<{ id: number; name: string | null; phone: string | null; contactPhones: string[]; contactNote: string | null }>>();
     const ids = Array.from(new Set(houseIds.filter((id) => !!id)));
     if (!ids.length) return map;
     const owners = await this.userRepo.query(`
-      SELECT DISTINCT u.id,u.name,u.phone,p.house_id AS "houseId"
+      SELECT DISTINCT u.id,u.name,u.phone,u.contact_phones AS "contactPhones",u.contact_note AS "contactNote",p.house_id AS "houseId"
       FROM users u JOIN (
         SELECT tenant_id,owner_id,house_id FROM owner_property_links WHERE house_id IS NOT NULL
         UNION SELECT tenant_id,id,house_id FROM users WHERE house_id IS NOT NULL
@@ -1441,7 +1468,7 @@ export class PropertiesService {
     for (const item of owners) {
       if (!item.houseId) continue;
       const list = map.get(item.houseId) ?? [];
-      list.push({ id: item.id, name: item.name, phone: item.phone });
+      list.push({ id: item.id, name: item.name, phone: item.phone, contactPhones: item.contactPhones ?? [], contactNote: item.contactNote ?? null });
       map.set(item.houseId, list);
     }
     return map;

@@ -41,6 +41,18 @@ export class House extends TenantEntity {
   @Column({ name: 'area_sqm', type: 'numeric', precision: 7, scale: 2, nullable: true })
   areaSqm: string | null;
 
+  @Column({ type: 'varchar', length: 30, nullable: true })
+  floor: string | null;
+
+  @Column({ name: 'property_nature', type: 'varchar', length: 60, nullable: true })
+  propertyNature: string | null;
+
+  @Column({ name: 'room_layout', type: 'varchar', length: 60, nullable: true })
+  roomLayout: string | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  remark: string | null;
+
   /** 归档时间：非空=已归档（软删除，可恢复）。默认清单只看未归档。 */
   @Column({ name: 'archived_at', type: 'timestamptz', nullable: true })
   archivedAt: Date | null;

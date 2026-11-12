@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import OwnerBusinessContact from '@/components/OwnerBusinessContact';
 import ParkingTab, { payCode, type ParkingCart } from '@/components/cashier/ParkingTab';
 import PaidHistory from '@/components/cashier/PaidHistory';
 import { accessCardIssuance, address, request } from '@pms/api-client';
@@ -516,6 +517,7 @@ export default function Cashier() {
               </div>
             </div>
 
+            <OwnerBusinessContact key={house.id} houseId={house.id} preferredOwnerId={house.owner?.id} source="cashier" onSaved={owner => { setHouse(h => h && h.id === house.id && h.owner?.id === owner.id ? { ...h, owner: {id:owner.id,name:owner.name,phone:owner.phone} } : h); }} />
             <div className="projTabs" style={{ marginTop: 18 }}>
               <button className={`projTab ${tab === 'wy' ? 'on' : ''}`} onClick={() => { setTab('wy'); if (bills === null) loadBills(house); }}>
                 <Icon name="home" /><b>物业费</b><small>{bills === null ? '查询中' : billErr ? '查询失败' : wyBills.length ? `待缴 ${wyBills.length} 笔` : '无待缴'}</small>

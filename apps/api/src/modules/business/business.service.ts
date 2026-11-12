@@ -45,7 +45,7 @@ import { DEFAULT_GROUP, STANDARD_MONTHS, MissingParkingPriceError, normalizeTier
 import { Notification } from '../../entities';
 import { NotifyChannel, NotifyStatus } from '../../common/enums';
 import { DeliyunParkingService } from '../access-card-issuance/deliyun-parking.service';
-import { ParkingSpace } from '../../entities/parking-space.entity';
+import { ParkingSpace, PARKING_SPACE_CATEGORIES } from '../../entities/parking-space.entity';
 import { UpdateParkingSpaceDto } from './parking-space.dto';
 
 @Injectable()
@@ -227,7 +227,7 @@ export class BusinessService {
 
 
 
-  /** 编辑车位：只覆盖传进来的字段（车牌/房号/业主/电话/备注/面积） */
+  /** 编辑本地车位：只覆盖传入字段，独立类别不触发车辆解绑或续期。 */
   async updateParkingSpace(id: number, dto: UpdateParkingSpaceDto, user: AuthUser, access: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
     if (!access) throw new ForbiddenException('缺少车位访问范围');
@@ -236,6 +236,12 @@ export class BusinessService {
     if (!Number.isSafeInteger(id) || id < 1 || id > 2147483647) throw new BadRequestException('车位编号必须为有效的正整数');
     const row = await this.spaceRepo.findOne({ where: { id, tenantId, ...(scope ? { communityId: In(scope) } : {}) } });
     if (!row) throw new NotFoundException('车位不存在');
+    // 同时约束非HTTP调用；在任何行内字段修改前拒绝非法类别。
+    if (dto.category !== undefined && dto.category !== null &&
+      !PARKING_SPACE_CATEGORIES.includes(dto.category)) {
+      throw new BadRequestException('车位类别必须为 property、rental、vacant 或 null');
+    }
+    if (dto.category !== undefined) row.category = dto.category;
     const clean = (v?: string) => (v === undefined ? undefined : (v.trim() === '' ? null : v.trim()));
     const plate = clean(dto.plate);
     if (plate !== undefined) row.plate = plate ? plate.toUpperCase().replace(/\s/g, '') : null;
@@ -249,7 +255,7 @@ export class BusinessService {
     const end = clean(dto.endDate); if (end !== undefined) row.endDate = end;
     row.updatedBy = user.id;
     await this.spaceRepo.save(row);
-    return { id: row.id, plate: row.plate, houseNo: row.houseNo, ownerName: row.ownerName, ownerTel: row.ownerTel, note: row.note, areaSqm: row.areaSqm, endDate: row.endDate };
+    return { id: row.id, communityId: row.communityId ?? null, category: row.category ?? null, plate: row.plate, houseNo: row.houseNo, ownerName: row.ownerName, ownerTel: row.ownerTel, note: row.note, areaSqm: row.areaSqm, endDate: row.endDate };
   }
   /** 车位清单：大车库 / 人防车库。按车位号自然序，可按车位号或车牌搜。 */
   async listParkingSpaces(garage: string | undefined, q: string | undefined, user: AuthUser, access: ResolvedAccess) {
@@ -269,7 +275,7 @@ export class BusinessService {
     const rows = await qb.getMany();
     return {
       rows: rows.map((r) => ({
-        id: r.id, garage: r.garage, spaceNo: r.spaceNo, houseNo: r.houseNo,
+        id: r.id, communityId: r.communityId ?? null, category: r.category ?? null, garage: r.garage, spaceNo: r.spaceNo, houseNo: r.houseNo,
         areaSqm: r.areaSqm, plate: r.plate, ownerName: r.ownerName, ownerTel: r.ownerTel,
         note: r.note, source: r.source, endDate: r.endDate,
       })),
