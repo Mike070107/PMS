@@ -9,7 +9,7 @@ const { createRequire } = require('node:module');
 const { chromium } = require('playwright-core');
 const app = path.resolve(__dirname, '..');
 const esbuild = createRequire(require.resolve('vite'))('esbuild');
-const evidence = path.resolve(app, '../../outputs/parking-spaces-recovery');
+const evidence = path.resolve(app, '../../outputs/parking-cards-20261112', process.env.PARKING_CAPTURE_BEFORE ? 'before' : 'after');
 
 test('两库正式卡片：独立类别/完整字段、hover及focus清晰动效、减少动效/窄屏、人防无图及大车库真实3D', { timeout: 90000 }, async () => {
   fs.mkdirSync(evidence, { recursive: true });
@@ -33,7 +33,7 @@ test('两库正式卡片：独立类别/完整字段、hover及focus清晰动效
           const main=[
             make(1,{category:'property',plate:'沪A12345',address:'228弄26号203室',ownerName:'测试业主甲与共同业主乙',ownerTel:'13800000001/021-12345678/13900000002',endDate:'2099-12-31'}),
             make(2,{category:'rental'}),
-            make(3,{category:'vacant',plate:'沪AD12345',houseNo:'228/6/301'}),
+            make(3,{category:'vacant',plate:'沪AD12345',houseNo:'228/6/301',ownerName:'测试乙',ownerTel:'13800000003',endDate:'2099-12-31'}),
             make(4,{}),
             make(5,{plate:'沪B12345',note:'历史租赁资料待核实'}),
             make(6,{note:'产权车位'}),
@@ -58,7 +58,7 @@ test('两库正式卡片：独立类别/完整字段、hover及focus清晰动效
   const server = http.createServer((req, res) => {
     if (req.url === '/fixture.js') { res.setHeader('content-type', 'text/javascript; charset=utf-8'); res.end(js); }
     else if (req.url === '/fixture.css') { res.setHeader('content-type', 'text/css; charset=utf-8'); res.end(css); }
-    else { res.setHeader('content-type', 'text/html; charset=utf-8'); res.end('<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/fixture.css"><style>body{margin:0}.pms-content{max-width:1600px;margin:0 auto;padding:26px 28px 44px}@media(max-width:900px){.pms-content{padding:18px 14px 34px}}</style></head><body><div id="root"></div><script src="/fixture.js"></script></body></html>'); }
+    else { res.setHeader('content-type', 'text/html; charset=utf-8'); res.end('<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/fixture.css"><style>body{margin:0}@media(min-width:901px){body{padding-left:236px}}.pms-content{max-width:1600px;margin:0 auto;padding:26px 28px 44px}@media(max-width:900px){.pms-content{padding:18px 14px 34px}}</style></head><body><div id="root"></div><script src="/fixture.js"></script></body></html>'); }
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   let browser;
@@ -73,14 +73,16 @@ test('两库正式卡片：独立类别/完整字段、hover及focus清晰动效
     await page.route('**/*', route => route.request().url().startsWith(origin) ? route.continue() : route.abort());
     const cards = page.locator('.sp-card');
     const card = n => page.getByRole('article', { name: `车位 ${String(n).padStart(3, '0')}`, exact: true });
-    const waitCards = async () => { await page.waitForFunction(() => document.querySelectorAll('.sp-card').length === 8); };
+    // Both garages have eight fixture rows: wait for the requested region too, not stale rows before React commits.
+    const waitCards = garage => page.waitForFunction(garage => document.querySelectorAll('.sp-card').length === 8 && (!garage || document.querySelector('.parking-spaces')?.getAttribute('aria-label') === (garage === 'main' ? '二期大车库' : '二期人防车库')), garage);
     const noOverflow = async label => {
-      const m = await page.evaluate(() => ({ viewport: innerWidth, scroll: document.documentElement.scrollWidth, clippedFields: [...document.querySelectorAll('.sp-kv dd')].filter(el => el.scrollWidth > el.clientWidth + 1).length }));
+      const m = await page.evaluate(() => ({ viewport: innerWidth, scroll: document.documentElement.scrollWidth, clippedFields: [...document.querySelectorAll('.sp-kv dd')].filter(el => el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1).length }));
       measurements.push({ label, ...m }); assert.ok(m.scroll <= m.viewport + 1, label + ' no page overflow'); assert.equal(m.clippedFields, 0, label + ' all card fields readable');
     };
     const completeFields = async () => {
       for (let i = 1; i <= 8; i++) assert.deepEqual(await card(i).locator('dt').allTextContents(), ['有效期', '房号', '业主', '电话']);
       assert.deepEqual(await card(2).locator('dd').allTextContents(), ['—', '—', '—', '—']);
+      assert.deepEqual(await card(3).locator('dd').allTextContents(), ['2099-12-31', '228/6/301', '测试乙', '13800000003']);
       assert.equal(await card(1).locator('dd').nth(1).innerText(), '228/26/203');
       assert.equal(await card(1).locator('dd').nth(3).innerText(), '13800000001/021-12345678/13900000002');
       assert.equal(await card(2).locator('.sp-category').innerText(), '租赁'); assert.equal(await card(2).locator('.sp-empty').innerText(), '未绑车牌');
@@ -90,6 +92,36 @@ test('两库正式卡片：独立类别/完整字段、hover及focus清晰动效
       assert.equal(await card(8).locator('.sp-category').innerText(), '未设置');
     };
     await page.goto(origin + '/main'); await waitCards(); await completeFields(); await noOverflow('main1920');
+    // Match the production 236px desktop rail and content cap, not a full-width standalone page.
+    // Capture every baseline before enforcing density, so a red run still leaves comparable evidence.
+    const density = [];
+    for (const garage of ['main', 'civil']) {
+      await page.evaluate(garage => window.__setParkingGarage(garage), garage); await waitCards(garage);
+      for (const width of [1920, 1440, 1280, 768, 390, 320]) {
+        await page.setViewportSize({ width, height: width > 900 ? 1080 : 844 });
+        await completeFields(); await noOverflow(`${garage}-${width}-compact`);
+        const m = await page.evaluate(() => {
+          const rect = selector => { const r = document.querySelector(selector).getBoundingClientRect(); return { width: r.width, height: r.height }; };
+          return { columns: getComputedStyle(document.querySelector('.sp-grid')).gridTemplateColumns.split(' ').length,
+            free: rect('[aria-label="车位 002"]'), normal: rect('[aria-label="车位 003"]'), long: rect('[aria-label="车位 001"]'), phone: rect('[aria-label="车位 003"] dd:last-of-type'),
+            edit: rect('[aria-label="车位 003"] button'), metadataColumns: getComputedStyle(document.querySelector('.sp-kv')).gridTemplateColumns.split(' ').length };
+        });
+        density.push({ garage, viewport: width, ...m });
+        await page.screenshot({ path: path.join(evidence, `${garage}-compact-${width}.png`), fullPage: true, animations: 'disabled' });
+        if (width === 390) await card(3).screenshot({ path: path.join(evidence, `${garage}-normal-card-390.png`), animations: 'disabled' });
+      }
+    }
+    fs.writeFileSync(path.join(evidence, 'density.json'), JSON.stringify(density, null, 2));
+    for (const m of density) {
+      assert.ok(m.free.height <= 180 && m.normal.height <= 180, '普通/未绑车位卡片应紧凑，不能保留大片空白：' + JSON.stringify(m));
+      assert.ok(m.long.height <= 240, '长业主/多电话完整换行，不靠裁切变矮：' + JSON.stringify(m));
+      assert.equal(m.metadataColumns, 4, '四个资料字段按两组同行排列');
+      assert.ok(m.phone.height <= 24, '普通手机号不应把最后一位单独折行：' + JSON.stringify(m));
+      assert.ok(m.edit.width >= 44 && m.edit.height >= 44, '编辑操作仍有44px触控目标');
+      if (m.viewport === 1920) assert.equal(m.columns, 5, '标准桌面内容区一行五个车位');
+      if (m.viewport <= 390) assert.equal(m.columns, 1, '手机保留单列可读卡片');
+    }
+    await page.evaluate(() => window.__setParkingGarage('main')); await waitCards('main'); await page.setViewportSize({ width: 1920, height: 1080 });
     assert.ok(await card(1).locator('.icon').evaluate(el => el.getBBox().width > 0), 'production IconSprite renders actual vehicle glyph');
     assert.equal(await page.getByRole('button', { name: '车位图', exact: true }).count(), 1);
     await page.screenshot({ path: path.join(evidence, 'main-1920.png'), fullPage: true });
@@ -129,7 +161,7 @@ test('两库正式卡片：独立类别/完整字段、hover及focus清晰动效
     assert.equal(await page.locator('.pgarage__status.is-error').count(), 0);
     assert.ok(await page.locator('.pgarage__canvas').evaluate(el => el.width > 0 && el.height > 0));
     await page.screenshot({ path: path.join(evidence, 'main-3d-1920.png'), fullPage: true });
-    await page.evaluate(() => window.__setParkingGarage('civil')); await waitCards();
+    await page.evaluate(() => window.__setParkingGarage('civil')); await waitCards('civil');
     assert.equal(await page.locator('.pgarage').count(), 0); assert.equal(await page.getByRole('button', { name: '车位图', exact: true }).count(), 0);
     await completeFields(); await noOverflow('civil1920'); await page.screenshot({ path: path.join(evidence, 'civil-1920.png'), fullPage: true });
     assert.match(await page.getByRole('region', { name: '二期人防车库', exact: true }).innerText(), /进库必须先授权二期地面/);
@@ -143,7 +175,7 @@ test('两库正式卡片：独立类别/完整字段、hover及focus清晰动效
     await page.screenshot({ path: path.join(evidence, 'civil-loading.png'), fullPage: true }); await waitCards();
     // A late main response cannot overwrite the new civil view.
     await page.evaluate(() => { window.__delayNextGarage = 'main'; window.__setParkingGarage('main'); });
-    await page.waitForFunction(() => !window.__delayFinished); await page.evaluate(() => window.__setParkingGarage('civil')); await waitCards();
+    await page.waitForFunction(() => !window.__delayFinished); await page.evaluate(() => window.__setParkingGarage('civil')); await waitCards('civil');
     await page.waitForFunction(() => window.__delayFinished);
     assert.equal(await page.getByRole('button', { name: '车位图', exact: true }).count(), 0);
     assert.equal(await page.getByRole('heading', { name: '二期人防车库' }).count(), 1);
@@ -156,7 +188,7 @@ test('两库正式卡片：独立类别/完整字段、hover及focus清晰动效
     const previousCivilCard = await card(1).elementHandle();
     await page.evaluate(() => window.__setParkingGarage('main'));
     await page.waitForFunction(previous => !previous.isConnected, previousCivilCard);
-    await waitCards(); await noOverflow('main390'); await completeFields();
+    await waitCards('main'); await noOverflow('main390'); await completeFields();
     await page.screenshot({ path: path.join(evidence, 'main-390.png') }); await card(1).screenshot({ path: path.join(evidence, 'main-card-390.png') });
     await page.getByLabel('车位类别', { exact: true }).selectOption('unset');
     await page.waitForFunction(() => document.querySelectorAll('.sp-card').length === 3); await noOverflow('main390-filter');
@@ -166,7 +198,7 @@ test('两库正式卡片：独立类别/完整字段、hover及focus清晰动效
     await page.screenshot({ path: path.join(evidence, 'main-3d-390.png') });
     await page.getByRole('button', { name: '卡片', exact: true }).click(); await waitCards();
     for (const garage of ['main', 'civil']) {
-      await page.evaluate(garage => window.__setParkingGarage(garage), garage); await waitCards();
+      await page.evaluate(garage => window.__setParkingGarage(garage), garage); await waitCards(garage);
       await page.evaluate(() => { window.__emptyNext = true; }); await page.getByRole('button', { name: '刷新', exact: true }).click();
       await page.getByText('没有符合条件的车位', { exact: true }).waitFor();
       assert.equal(await page.getByRole('alert').count(), 0); assert.equal(await page.getByText('0 个车位 · 已绑 0 · 未绑 0', { exact: true }).count(), 1);

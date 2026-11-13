@@ -9,10 +9,11 @@
 .parking-spaces .sp-search { width: 280px; max-width: 100%; }
 .parking-spaces .sp-view-switch { margin-left: auto; }
 .parking-spaces .sp-map-loading { min-height: 420px; display: grid; place-items: center; border-radius: 20px; border: 1px solid var(--line); background: #f4f8fc; }
-.sp-glass-wrap { position: relative; padding: 18px; border-radius: 22px; background: #f4f7fb; }
-.sp-glass-wrap .sp-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 292px), 1fr)); }
+.sp-glass-wrap { position: relative; padding: 12px; border-radius: 16px; background: #f4f7fb; }
+/* 收紧外框与列距；长资料自然增高，不把同排普通卡片一起撑高。 */
+.sp-glass-wrap .sp-grid { display: grid; align-items: start; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); }
 .sp-glass-wrap .sp-card {
-  position: relative; min-width: 0; border: 1px solid #dce5ef; border-radius: 20px; padding: 16px;
+  position: relative; min-width: 0; border: 1px solid #dce5ef; border-radius: 12px; padding: 12px;
   background: #fff; box-shadow: 0 1px 2px rgba(60, 90, 130, 0.05), 0 6px 16px rgba(60, 90, 130, 0.06);
   transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
 }
@@ -27,18 +28,20 @@
 /* 未绑车牌是绑定状态，不是产权/租赁/空类别；不降低文字可读性。 */
 .sp-glass-wrap .sp-card.is-free { background: #f7f9fc; border-style: dashed; border-color: #b8c7d8; }
 .sp-glass-wrap .sp-card.is-abnormal { border-color: #b7675e; }
-.sp-glass-wrap .sp-top { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
-.sp-glass-wrap .sp-top .ic-tile { width: 34px; height: 34px; flex-shrink: 0; background: #edf2f8; color: #31558a; }
-.sp-glass-wrap .sp-no { min-width: 0; flex: 1; font-size: 22px; font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
+.sp-glass-wrap .sp-top { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.sp-glass-wrap .sp-top .ic-tile { width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0; background: #edf2f8; color: #31558a; }
+.sp-glass-wrap .sp-no { min-width: 0; flex: 1; font-size: 20px; font-weight: 700; line-height: 1.4; color: var(--ink); overflow-wrap: anywhere; }
 .sp-glass-wrap .sp-no small { font-size: 12px; font-weight: 400; }
-.sp-glass-wrap .sp-plate { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.sp-glass-wrap .sp-top .sp-category { padding: 1px 8px; line-height: 1.6; }
+.sp-glass-wrap .sp-plate { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .sp-glass-wrap .sp-plate > span { flex: 1; min-width: 0; }
 .sp-glass-wrap .sp-plate .btn { min-width: 52px; min-height: 44px; flex-shrink: 0; }
 .sp-glass-wrap .sp-empty { color: var(--ink2); font-size: 14px; }
-.sp-glass-wrap .sp-kv { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 8px 12px; margin: 0; font-size: 14px; line-height: 1.6; }
+/* 有效期/房号、业主/电话各占一行；不隐藏字段，长地址和多电话仍完整换行。 */
+.sp-glass-wrap .sp-kv { display: grid; grid-template-columns: 42px minmax(0, 1fr) 28px minmax(88px, 1fr); gap: 4px 6px; margin: 0; font-size: 13px; line-height: 1.6; font-variant-numeric: tabular-nums; }
 .sp-glass-wrap .sp-kv dt { color: var(--ink3); }
 .sp-glass-wrap .sp-kv dd { margin: 0; min-width: 0; color: var(--ink2); overflow: visible; white-space: normal; overflow-wrap: anywhere; }
-.sp-glass-wrap .sp-note { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line); color: var(--ink2); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.sp-glass-wrap .sp-note { margin: 6px 0 0; padding-top: 6px; border-top: 1px solid var(--line); color: var(--ink2); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
 .sp-glass-wrap .sp-note > span { color: var(--ink3); margin-right: 12px; }
 /* 文字+描边表达类别；不依赖颜色识别，也不以备注任意子串当类别。 */
 .parking-spaces .sp-category { display: inline-flex; align-items: center; flex-shrink: 0; border: 1px solid currentColor; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 600; line-height: 1.7; white-space: nowrap; }
@@ -47,7 +50,7 @@
 .parking-spaces .category-vacant { color: #2a6548; background: #f1f8f4; }
 .parking-spaces .category-unset { color: #555f6d; background: #f2f4f6; }
 /* 蓝牌/绿牌保留既有辨识；长数据允许完整换行，不省略住户电话。 */
-.sp-glass-wrap .sp-plate-tag { display: inline-flex; align-items: center; justify-content: center; max-width: 100%; padding: 4px 8px; border-radius: 6px; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(20, 40, 80, 0.2); font-size: 18px; font-weight: 800; letter-spacing: .1em; line-height: 1.4; color: #fff; white-space: normal; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.sp-glass-wrap .sp-plate-tag { display: inline-flex; align-items: center; justify-content: center; max-width: 100%; padding: 4px 8px; border-radius: 6px; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(20, 40, 80, 0.2); font-size: 16px; font-weight: 700; letter-spacing: .06em; line-height: 1.4; color: #fff; white-space: normal; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .sp-glass-wrap .sp-plate-tag.blue { background: #1a4fbf; }
 .sp-glass-wrap .sp-plate-tag.nev { background: #24744b; }
 @media (prefers-reduced-motion: reduce) {
@@ -56,8 +59,9 @@
   .sp-glass-wrap .sp-card:focus-within { transform: none; }
 }
 @media (max-width: 700px) {
-  .sp-glass-wrap { padding: 12px; border-radius: 18px; }
-  .sp-glass-wrap .sp-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .sp-glass-wrap { padding: 8px; border-radius: 14px; }
+  .sp-glass-wrap .sp-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .sp-glass-wrap .sp-card { padding: 10px; }
   .parking-spaces .sp-search { width: 100%; }
   .parking-spaces .sp-view-switch { margin-left: 0; }
 }
