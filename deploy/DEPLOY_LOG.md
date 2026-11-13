@@ -7304,3 +7304,10 @@
   - 0a8260ed [verified] test(web): wait for old parking cards to unmount on garage switch
   - 91aab309 [verified] fix(web): isolate MIS collection form from cart scrolling
 
+## 2026-11-13 14:51 · web · 1f715fc5
+
+- 包：`pms-web-20261113-144722.tar.gz`
+- 提交：1f715fc5 [verified] fix(web): compact shared garage parking cards
+- 自上次（0a8260ed）以来上线的相关提交：
+  - 1f715fc5 [verified] fix(web): compact shared garage parking cards
+
