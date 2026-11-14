@@ -7325,3 +7325,10 @@
 - 自上次（1f715fc5）以来上线的相关提交：
   - 5b22c1a8 feat(apartment): scoped fee standards and staff cashier details
 
+## 2026-11-14 16:50 · api · 36abf6fb
+
+- 包：`pms-api-fast-20261114-164629.tar.gz`
+- 提交：36abf6fb test(parking): align card contract with default ownership and full titles
+- 自上次（5b22c1a8）以来上线的相关提交：
+  - a1e54443 fix(pms): Beijing time display and consistent parking-space cards
+
