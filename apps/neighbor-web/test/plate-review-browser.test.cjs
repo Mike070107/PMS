@@ -120,20 +120,24 @@ test('image lightbox zoom, gallery, broken image, PDF original, Escape/backdrop/
       assert.ok((await page.locator('.ph').boundingBox()).height < 280, 'responsive header must not turn horizontal flex bases into hundreds of pixels of blank height');
       assert.ok(await page.locator('.np-review, .np-garage-options, .np-review-steps').evaluateAll(nodes=>nodes.every(n=>{const r=n.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth;})),width+' formal card must not be clipped by parent table');
       assert.ok(await page.locator('.np-review .np-garage-option').evaluateAll(nodes=>nodes.every(n=>{const r=n.getBoundingClientRect();return r.height>=44&&r.left>=0&&r.right<=innerWidth;})),width+' checkbox touch targets visible');
+      if(width===1440){const boxes=await page.locator('.np-fields label').evaluateAll(ns=>ns.slice(0,3).map(n=>{const r=n.getBoundingClientRect();return {y:r.y,width:r.width};}));assert.equal(boxes.length,3);assert.ok(boxes.every(b=>Math.abs(b.y-boxes[0].y)<1&&b.width<=221),'three compact aligned fields');}
       await page.screenshot({path:path.join(evidence,`review-${width}.png`),fullPage:true});
       const opener=page.getByRole('button',{name:'预览图片：示例资料正面.svg',exact:true});await opener.click();
       const dialog=page.getByRole('dialog',{name:'登记资料图片预览'});await dialog.waitFor();
       const before=await dialog.locator('.np-preview-zoom').boundingBox();
-      await page.getByRole('button',{name:'放大图片',exact:true}).click();assert.equal(await dialog.locator('output').innerText(),'125%');
-      assert.ok((await dialog.locator('.np-preview-zoom').boundingBox()).width>before.width*1.2,'zoom changes actual image geometry');
-      await page.getByRole('button',{name:'缩小图片',exact:true}).click();assert.equal(await dialog.locator('output').innerText(),'100%');
-      for(let i=0;i<8;i++)await page.getByRole('button',{name:'放大图片',exact:true}).click();
-      assert.equal(await dialog.locator('output').innerText(),'300%');assert.equal(await page.getByRole('button',{name:'放大图片',exact:true}).isDisabled(),true);
-      assert.ok(await dialog.locator('.np-preview-stage').evaluate(e=>e.scrollWidth>e.clientWidth));
-      await page.getByRole('button',{name:'适应窗口',exact:true}).click();
-      await page.getByRole('button',{name:'缩小图片',exact:true}).click();await page.getByRole('button',{name:'缩小图片',exact:true}).click();
-      assert.equal(await dialog.locator('output').innerText(),'50%');assert.equal(await page.getByRole('button',{name:'缩小图片',exact:true}).isDisabled(),true);
-      await page.getByRole('button',{name:'适应窗口',exact:true}).click();
+      assert.equal(await dialog.locator('.np-preview-tools').count(),0,'no toolbar');
+      const stage=dialog.locator('.np-preview-stage');await stage.hover();await page.mouse.wheel(0,-100);
+      await page.waitForFunction(()=>document.querySelector('.np-preview-footer output').textContent==='120%');
+      assert.ok((await dialog.locator('.np-preview-zoom').boundingBox()).width>before.width*1.19,'wheel changes actual image geometry');
+      const area=await stage.boundingBox();await page.mouse.move(area.x+area.width/2,area.y+area.height/2);await page.mouse.down();await page.mouse.move(area.x+area.width/2+40,area.y+area.height/2+25);await page.mouse.up();
+      const moved=await dialog.locator('.np-preview-zoom').boundingBox();assert.ok(moved.x>before.x-0.1*before.width+35,'pointer drag pans image');
+      await page.keyboard.press('0');assert.equal(await dialog.locator('output').innerText(),'100%');
+      assert.ok(Math.abs((await dialog.locator('.np-preview-zoom').boundingBox()).x-before.x)<1,'reset clears pan');
+      for(let i=0;i<30;i++)await page.keyboard.press('+');assert.equal(await dialog.locator('output').innerText(),'500%');
+      for(let i=0;i<30;i++)await page.keyboard.press('-');assert.equal(await dialog.locator('output').innerText(),'50%');
+      await page.keyboard.press('0');
+      const nav=await dialog.getByRole('button',{name:'下一张',exact:true}).boundingBox();assert.ok(nav.y>area.y&&nav.y<area.y+area.height,'navigation floats over image');
+      assert.ok((await dialog.boundingBox()).width>width-65,'large preview fills viewport');
       await page.getByRole('button',{name:'下一张',exact:true}).click();assert.ok((await dialog.innerText()).includes('示例资料背面.svg'));
       await page.keyboard.press('ArrowLeft');assert.ok((await dialog.innerText()).includes('示例资料正面.svg'));
       await noOverflow(page);
@@ -147,7 +151,7 @@ test('image lightbox zoom, gallery, broken image, PDF original, Escape/backdrop/
     }
     await page.getByRole('button',{name:'预览图片：示例损坏图片.png',exact:true}).click();
     await page.getByRole('alert').filter({hasText:'图片加载失败'}).waitFor();
-    assert.equal(await page.getByRole('link',{name:'打开原图',exact:true}).getAttribute('href'),'/broken.png');
+    assert.equal(await page.getByRole('link',{name:'打开原图',exact:true}).count(),0);
     await page.screenshot({path:path.join(evidence,'preview-error-390.png')});await page.keyboard.press('Escape');
     const pdf=page.getByRole('link',{name:'打开原附件：示例原始附件.pdf',exact:true});assert.equal(await pdf.getAttribute('href'),'/original.pdf?token=fixture');assert.equal(await pdf.getAttribute('target'),'_blank');assert.equal(await pdf.getAttribute('rel'),'noreferrer');
     await page.goto(origin+'/?state=waiting');
