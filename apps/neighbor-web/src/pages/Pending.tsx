@@ -9,6 +9,10 @@ import type { IconName } from '@/components/Icon';
 import { Loading, toast } from '@/components/ui';
 import { can } from '@/lib/perm';
 import { money } from '@/lib/format';
+import { useSession } from '@/lib/auth';
+import type { Intake } from '@/components/cashier/NewPlateCard';
+
+const INTAKE_PERMISSIONS = ['business', 'family-cars', 'app:approve-business-manager', 'app:approve-manager'];
 
 interface Execution {
   mode?: 'off' | 'dry-run' | 'on'; attempts?: number; nextAt?: string | null; lastError?: string | null;
@@ -46,7 +50,38 @@ const MODE: Record<Mode, string> = {
  * 数据来自 /business/execution/pending；「重试」走 /business/transactions/:id/retry-sync（后端幂等：已是目标即成功，不会续两次）。
  */
 export default function Pending() {
+  useSession();
   const nav = useNavigate();
+  const canViewIntakes = INTAKE_PERMISSIONS.some(key => can(key, 'view'));
+  const canReviewIntakes = INTAKE_PERMISSIONS.some(key => can(key, 'edit'));
+  const [intakes, setIntakes] = useState<Intake[] | null>(null);
+  const [intakeError, setIntakeError] = useState('');
+  const [intakeLoading, setIntakeLoading] = useState(canViewIntakes);
+  const [intakeRefresh, setIntakeRefresh] = useState(0);
+  useEffect(() => {
+    if (!canViewIntakes) { setIntakes(null); setIntakeError(''); setIntakeLoading(false); return; }
+    let alive = true;
+    let revision = 0;
+    const loadIntakes = async () => {
+      const current = ++revision;
+      setIntakeLoading(true);
+      try {
+        const rows = await request<Intake[]>({ url: '/vehicle-intakes', query: { status: 'submitted' } });
+        if (alive && current === revision) {
+          setIntakes(rows.filter(row => row.status === 'submitted'));
+          setIntakeError('');
+        }
+      } catch (e) {
+        if (alive && current === revision) setIntakeError(e instanceof Error ? e.message : '待审核车牌读取失败');
+      } finally {
+        if (alive && current === revision) setIntakeLoading(false);
+      }
+    };
+    void loadIntakes();
+    const timer = setInterval(loadIntakes, 15000);
+    window.addEventListener('focus', loadIntakes);
+    return () => { alive = false; clearInterval(timer); window.removeEventListener('focus', loadIntakes); };
+  }, [canViewIntakes, intakeRefresh]);
   const [txns, setTxns] = useState<Txn[] | null>(null);
   const [mode, setMode] = useState<Mode | null>(null);
   const [ready, setReady] = useState<AccessCardReadiness | null>(null);
@@ -75,9 +110,11 @@ export default function Pending() {
       review: [...new Map([...l.filter((t) => t.externalSyncStatus === 'review'), ...reviews].map((t) => [t.id, t])).values()],
       inFlight: l.filter((t) => ['queued', 'running', 'retry'].includes(t.externalSyncStatus)),
       dry: l.filter((t) => t.externalSyncStatus === 'dry_run'),
-      docs: l.filter((t) => t.externalSyncStatus === 'awaiting_docs'),
+      // Same paid intake may still have an awaiting_docs transaction after upload.
+      // Only deduplicate against a successfully refreshed submitted-intake list.
+      docs: l.filter((t) => t.externalSyncStatus === 'awaiting_docs' && (intakeError || !canViewIntakes || !intakes?.some(i => i.id === t.snapshot?.intake?.id))),
     };
-  }, [txns, reviews]);
+  }, [txns, reviews, intakes, intakeError, canViewIntakes]);
   const badAgents = useMemo(() => (ready?.agents ?? []).filter((a) => a.status !== 'online'), [ready]);
   const deliyunDown = ready?.deliyun && ready.deliyun.configured && !ready.deliyun.connected;
 
@@ -109,6 +146,7 @@ export default function Pending() {
   if (txns === null && ready === null) return <Loading />;
 
   const stats = [
+    ...(canViewIntakes ? [{ icon: 'file' as IconName, tone: 'amber', v: intakeError ? '—' : intakes === null ? '…' : intakes.length, k: '当前显示待审车牌' }] : []),
     { icon: 'clock' as IconName, tone: 'amber', v: groups.review.length, k: '待经理审核' },
     { icon: 'file' as IconName, tone: 'amber', v: groups.docs.length, k: '新办等业主资料' },
     { icon: 'alert' as IconName, tone: 'red', v: groups.needHand.length, k: '需人工处理' },
@@ -116,7 +154,7 @@ export default function Pending() {
     { icon: 'check' as IconName, tone: 'amber', v: groups.dry.length, k: '演练待正式写入' },
     { icon: 'cpu' as IconName, tone: 'red', v: badAgents.length + (deliyunDown ? 1 : 0), k: '设备 / 助手异常' },
   ];
-  const hasAny = groups.review.length || groups.docs.length || groups.needHand.length || groups.inFlight.length || groups.dry.length || badAgents.length || deliyunDown;
+  const hasAny = (canViewIntakes && (intakeLoading || intakeError || intakes?.length)) || groups.review.length || groups.docs.length || groups.needHand.length || groups.inFlight.length || groups.dry.length || badAgents.length || deliyunDown;
 
   const row = (t: Txn) => {
     const s = ST[t.externalSyncStatus] || ST.queued;
@@ -178,11 +216,35 @@ export default function Pending() {
         </div>
       ) : null}
 
-      <div className="pendGrid">
+      <div className="pendGrid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 145px), 1fr))' }}>
         {stats.map((s) => (
           <div key={s.k} className="stat"><div className={`ic ${s.tone}`} style={{ width: 44, height: 44 }}><Icon name={s.icon} /></div><div className="v">{s.v}</div><div className="k">{s.k}</div></div>
         ))}
       </div>
+
+      {canViewIntakes ? (
+        <section aria-label="新办车牌待审核资料" style={{ marginBottom: 18 }}>
+          <div className="secTitle" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+            <Icon name="file" size={18} style={{ color: 'var(--warn)' }} />新办车牌待审核资料
+            <button className="btn sm" aria-label="刷新待审核车牌" disabled={intakeLoading} onClick={() => setIntakeRefresh(n => n + 1)}><Icon name="refresh" size={16} />刷新</button>
+            <button className="btn sm" onClick={() => nav('/plates')}>全部登记</button>
+          </div>
+          <p className="muted">业主已提交的付费新车及亲情车资料，不限是否收款；每 15 秒刷新，最多显示最近 200 条。资料通过不代表停车授权已生效。</p>
+          {intakeLoading && intakes === null ? <div role="status" className="muted">正在读取待审核车牌…</div> : null}
+          {intakeError ? <div className="note2" role="alert" style={{ color: 'var(--dang)' }}>{intakeError}。请刷新重试；{intakes === null ? '尚不能确认待审数量。' : '下方保留上次读取结果，进入登记后以最新状态为准。'}</div> : null}
+          {(intakes ?? []).map(i => (
+            <div className="pendRow" key={`intake-${i.id}`} style={{ flexWrap: 'wrap' }}>
+              <div className="pi ic amber"><Icon name="car" /></div>
+              <div className="pm" style={{ flex: '1 1 220px', minWidth: 0, overflowWrap: 'anywhere' }}>
+                <b style={{ flexWrap: 'wrap' }}>{i.plate || '未填车牌'} <span className="tag warn">待审核资料</span></b>
+                <small>{i.kind === 'family' ? '亲情车' : '付费新车'} · 登记 #{i.id} · {i.houseLabel} · {i.contactName || i.ownerName || '未填车主'} · 提交 {formatBeijingDateTime(i.submittedAt || i.createdAt, 'MM-DD HH:mm')}{i.kind === 'paid' ? i.transaction ? ' · 已收款' : ' · 未收款' : ''}</small>
+              </div>
+              <button className="btn sm p" style={{ marginLeft: 'auto' }} aria-label={`${canReviewIntakes ? '查看并审核' : '查看'}登记 #${i.id}`} onClick={() => nav(`/plates?intakeId=${i.id}`)}>{canReviewIntakes ? '查看并审核' : '查看资料'}<Icon name="search" size={16} /></button>
+            </div>
+          ))}
+          {!intakeLoading && !intakeError && intakes?.length === 0 ? <p className="muted">暂无待审核的车牌资料</p> : null}
+        </section>
+      ) : null}
 
       {!hasAny ? (
         <div className="card" style={{ padding: '56px 20px', textAlign: 'center' }}>

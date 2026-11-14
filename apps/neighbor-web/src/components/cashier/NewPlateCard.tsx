@@ -131,6 +131,7 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
   const savingGarage = useRef(false);
   const allowInitialPaidDefault = useRef(it.kind === 'paid');
   const finalized = it.status === 'approved' && (it.kind === 'family' || !!it.transaction);
+  const canReview = ['business', 'family-cars', 'app:approve-business-manager', 'app:approve-manager'].some(key => can(key, 'edit'));
   const canConvert = can('business', 'edit') && it.status !== 'void' && !finalized && !it.transaction && !it.familyCarId;
   const handedOff = !!it.familyCarId || finalized || (!!it.transaction && !['awaiting_docs', 'review'].includes(it.transaction.externalSyncStatus));
   const canVoid = can('business', 'edit') && it.status !== 'void' && !handedOff;
@@ -150,7 +151,7 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
   }, [catalog, community, targetsProp]);
   const [picked, setPicked] = useState<string[]>(() => (it.garages.length ? it.garages : it.kind === 'family' ? [String(house.lane || '').includes('198') ? 'phase1' : 'phase2'] : []));
   const [nums, setNums] = useState<Record<string, string>>(it.garageNumbers || {});
-  const canEditGarages = it.status !== 'void' && !(it.kind === 'family' && it.status === 'approved') && !(it.kind === 'paid' && it.transaction);
+  const canEditGarages = ['business', 'family-cars'].some(key => can(key, 'edit')) && it.status !== 'void' && !(it.kind === 'family' && it.status === 'approved') && !(it.kind === 'paid' && it.transaction);
   const [savingGarages, setSavingGarages] = useState(false);
   const [garageError, setGarageError] = useState('');
   // 选的车库存到登记单上：收银台和车牌登记审核看到的是同一份。
@@ -408,7 +409,7 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
           ) : null}
 
           {/* 审核 */}
-          {['submitted', 'reupload'].includes(it.status) && it.submittedAt ? (
+          {canReview && ['submitted', 'reupload'].includes(it.status) && it.submittedAt ? (
             <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
               <button className="btn p" disabled={!!busy || savingGarages || !!garageError || !picked.length || (it.kind === 'family' && (!edit.relation.trim() || edit.relation === '其他亲属'))} onClick={approve}><Icon name="check" size={16} />{busy === '旧库查重' ? '旧库查重中…' : busy === '审核' ? '提交中…' : '资料无误，通过'}</button>
               <button className="btn" disabled={!!busy} onClick={() => setAsk(ask === 'reupload' ? '' : 'reupload')}>退回重传</button>

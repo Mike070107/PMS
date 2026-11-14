@@ -2,6 +2,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { normalizeTiers, normalizeVehicleClass, priceParking, priceRule, priceTable, targetsOverlap, upgradeToTable } from './parking-pricing';
 
+test('历史分组自定义11个月按同组月价计算，显式套餐不变', () => {
+  const cfg = { priceMode: 'table' as const, tiers: [1, 2, 3, 6, 12].map(months => ({ months, amountCents: months === 12 ? 150000 : months * 15000 })) };
+  assert.equal(priceRule(11, 0, cfg).amountCents, 165000);
+  assert.match(priceRule(11, 0, cfg).breakdown, /11个月 × 150元\/月/);
+  assert.equal(priceRule(12, 0, cfg).amountCents, 150000);
+  assert.equal(priceRule(13, 999999, cfg).amountCents, 195000, '缺档仅按月价，不擅自重复套餐优惠');
+  assert.equal(priceRule(11, 999999, { priceMode: 'table', tiers: [{ months: 1, amountCents: 0 }] }).amountCents, 0);
+  assert.throws(() => priceRule(11, 15000, { priceMode: 'table', tiers: [{ months: 12, amountCents: 150000 }] }), /没有定/);
+});
+
 test('owner car: 150/month, 12 months package 1500', () => {
   const tiers = normalizeTiers([{ months: 12, amountCents: 150000 }]);
   const at = (m: number) => priceParking(m, 15000, tiers).amountCents / 100;
@@ -20,6 +30,16 @@ test('tenant car: 180/month, no package → 2160 a year', () => {
   assert.equal(priceParking(1, 18000).breakdown, '1 个月按月');
 });
 
+test('月档金额只接受明确金额，空白和布尔值不得变成免费', () => {
+  for (const amountCents of [null, undefined, '', '  ', false, true, [], {}, Number.MAX_SAFE_INTEGER + 1]) {
+    const tiers: any = [{ months: 1, amountCents }];
+    assert.throws(() => normalizeTiers(tiers), /金额不对/);
+    assert.throws(() => priceRule(11, 15000, { priceMode: 'table', tiers }), /金额不对/);
+  }
+  assert.equal(priceRule(11, 15000, { priceMode: 'table', tiers: [{ months: 1, amountCents: 0 }] }).amountCents, 0);
+  assert.deepEqual(normalizeTiers([{ months: '1', amountCents: '15000' }]), [{ months: 1, amountCents: 15000 }]);
+});
+
 test('tier validation', () => {
   assert.throws(() => normalizeTiers([{ months: 0, amountCents: 1 }]), /1~60/);
   assert.throws(() => normalizeTiers([{ months: 12, amountCents: 1 }, { months: 12, amountCents: 2 }]), /重复/);
@@ -29,12 +49,13 @@ test('tier validation', () => {
   assert.throws(() => priceParking(0, 100), /1~60/);
 });
 
-test('缴费规则分组：按价格表精确取价，表里没有的月数不能收', () => {
+test('缴费规则分组：精确取价优先，缺档按月价，无月价拒绝推导', () => {
   const tiers = normalizeTiers([{ months: 12, amountCents: 150000 }, { months: 1, amountCents: 15000 }, { months: 3, amountCents: 45000 }]);
   assert.deepEqual(tiers.map((t) => t.months), [1, 3, 12]);
   assert.equal(priceTable(12, tiers).amountCents, 150000);
   assert.equal(priceTable(3, tiers).amountCents, 45000);
-  assert.throws(() => priceTable(4, tiers), /没有定 4 个月的价格，可选：1、3、12 个月/);
+  assert.equal(priceTable(4, tiers).amountCents, 60000);
+  assert.throws(() => priceTable(4, tiers.filter(t => t.months !== 1)), /没有定 4 个月的价格，可选：3、12 个月/);
   assert.throws(() => priceTable(1, []), /还没有设价格/);
   assert.equal(priceRule(12, 0, { priceMode: 'table', tiers }).amountCents, 150000);
   // 旧规则仍按单价+套餐
@@ -60,11 +81,12 @@ test('适用车库重叠判断：空 = 全部车库', () => {
   assert.equal(targetsOverlap(['a'], ['c']), false);
 });
 
-test('价格表只允许显式配置档位，月价不授权推导或重复套餐', () => {
+test('价格表缺档按明确月价计算，不拼接套餐，也不使用旧unitPrice', () => {
   const cfg = { priceMode: 'table' as const, tiers: [{ months: 1, amountCents: 18000 }, { months: 3, amountCents: 50000 }, { months: 12, amountCents: 200000 }] };
   assert.equal(priceRule(3, 100, cfg).amountCents, 50000);
   assert.equal(priceRule(12, 100, cfg).amountCents, 200000);
-  for (const months of [2, 4, 13, 24, 60]) assert.throws(() => priceRule(months, 100, cfg), /没有定/);
+  for (const months of [2, 4, 13, 24, 60]) assert.equal(priceRule(months, 100, cfg).amountCents, months * 18000);
+  for (const amountCents of [-1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER]) assert.throws(() => priceRule(11, 0, { priceMode: 'table', tiers: [{ months: 1, amountCents }] }));
   assert.throws(() => priceRule(1, 999999, { priceMode: 'table', tiers: [] }), /还没有设价格/);
   for (const months of [0, 1.5, 61]) assert.throws(() => priceRule(months, 100, cfg), /1~60/);
 });

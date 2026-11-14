@@ -63,10 +63,12 @@ test('manual month input permits empty draft but blocks invalid collection until
   for(const text of ['0','-1','1.5','1e1','abc','61']){input().props.onChange({target:{value:text}});input().props.onBlur();assert.equal(valid.at(-1),false,text);assert.equal(value,6,text)}
   input().props.onChange({target:{value:'17'}});assert.equal(value,17);assert.equal(valid.at(-1),true);
 });
-test('browser preview preserves exact table prices and does not infer missing tiers',()=>{
+test('browser preview preserves exact table prices and uses only same-group monthly price for gaps',()=>{
   const {priceRule}=load('lib/parking-pricing.ts');
   const cfg={priceMode:'table',tiers:[{months:1,amountCents:15000},{months:3,amountCents:50000},{months:12,amountCents:150000}]};
   assert.equal(priceRule(3,999999,cfg).amountCents,50000);
-  for(const m of [2,6,11,13,24]) assert.throws(()=>priceRule(m,999999,cfg),/没有定/);
+  for(const m of [2,6,11,13,24]) assert.equal(priceRule(m,999999,cfg).amountCents,m*15000);
+  assert.throws(()=>priceRule(11,999999,{...cfg,tiers:cfg.tiers.filter(t=>t.months!==1)}),/没有定/);
+  assert.equal(priceRule(11,999999,{priceMode:'table',tiers:[{months:1,amountCents:0}]}).amountCents,0);
   assert.equal(priceRule(13,15000,{tiers:[{months:12,amountCents:150000}]}).amountCents,165000);
 });

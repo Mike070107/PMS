@@ -16,7 +16,7 @@ export interface ParkingRuleConfig {
   vehicleClass?: string;
   /** 价格表：每个可选月数一个金额 */
   tiers?: PriceTier[];
-  /** monthly=月单价+每满完整周期重复减免；table=明确指定档位；无字段为旧套餐算法 */
+  /** monthly=月单价+完整周期减免；table=显式档位优先、缺档按1月价；无字段为旧套餐算法 */
   priceMode?: 'table' | 'monthly';
   monthlyPriceCents?: number;
   discountCycleMonths?: number;
@@ -32,9 +32,16 @@ export class MissingParkingPriceError extends Error {
   name = 'MissingParkingPriceError';
 }
 
-/** 缴费规则分组：月数必须在价格表里，金额就是表里那格 */
+/** 显式月档优先；自定义缺档月份仅按同分组的1月价计算，不推导或重复套餐优惠。 */
 export function priceTable(months: number, tiers: PriceTier[]): { amountCents: number; breakdown: string } {
+  if (!Number.isInteger(months) || months < 1 || months > MAX_MONTHS) throw new Error(`缴费月数要在 1~${MAX_MONTHS} 之间`);
   const hit = tiers.find((t) => t.months === months);
+  const monthly = tiers.find((t) => t.months === 1);
+  if (!hit && monthly) {
+    const amountCents = monthly.amountCents * months;
+    if (!Number.isSafeInteger(monthly.amountCents) || monthly.amountCents < 0 || !Number.isSafeInteger(amountCents) || amountCents < 0) throw new Error('按月计费金额超出合法范围');
+    return { amountCents, breakdown: `${months}个月 × ${monthly.amountCents / 100}元/月（同分组月单价）` };
+  }
   if (!hit) {
     const list = tiers.map((t) => t.months).sort((a, b) => a - b).join('、');
     throw new MissingParkingPriceError(list ? `这个缴费规则分组没有定 ${months} 个月的价格，可选：${list} 个月` : '这个缴费规则分组还没有设价格');
@@ -100,9 +107,11 @@ export function normalizeTiers(value: unknown): PriceTier[] {
   const out: PriceTier[] = [];
   for (const raw of value) {
     const months = Number((raw as PriceTier)?.months);
-    const amountCents = Number((raw as PriceTier)?.amountCents);
+    const amount: unknown = (raw as PriceTier)?.amountCents;
+    if (typeof amount !== 'number' && (typeof amount !== 'string' || !amount.trim())) throw new Error(`${months} 个月的金额不对`);
+    const amountCents = Number(amount);
     if (!Number.isInteger(months) || months < 1 || months > MAX_MONTHS) throw new Error(`缴费月数要在 1~${MAX_MONTHS} 之间`);
-    if (!Number.isInteger(amountCents) || amountCents < 0) throw new Error(`${months} 个月的金额不对`);
+    if (!Number.isSafeInteger(amountCents) || amountCents < 0) throw new Error(`${months} 个月的金额不对`);
     if (out.some((t) => t.months === months)) throw new Error(`${months} 个月重复了`);
     out.push({ months, amountCents });
   }

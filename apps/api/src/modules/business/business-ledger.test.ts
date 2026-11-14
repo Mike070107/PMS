@@ -27,5 +27,36 @@ test('ledger uses SQL scope, whole-filter aggregates, stable 20/50/100 paging an
  assert.equal(parking.detail.amountCents,150000);
  assert.equal(parking.detail.extra.parkingSystems.length,2);
  assert.equal(parking.detail.extra.vehicleClass,'住户车-1');
+ // 同名车库按精确步骤key匹配；总synced不推定每步成功。
+ await db.query(`UPDATE business_transactions SET snapshot=$1 WHERE id=200`,[JSON.stringify({parking:{plate:'TEST123',systems:[{kind:'local',database:'parking1',sourceRecordId:'1',label:'同名车库',previousEndDate:'2026-10-31'},{kind:'local',database:'parking2',sourceRecordId:'2',label:'同名车库',previousEndDate:'2026-11-30'}]},estimate:{endDate:'2027-10-31'},execution:{finishedAt:'2026-11-06T02:00:00Z',steps:[{key:'local:parking2:2',label:'同名车库',kind:'local',status:'waiting',operationId:72,note:'等待现场助手'},{key:'local:parking1:1',label:'同名车库',kind:'local',status:'done',operationId:71,note:'到期日已是目标'}]}})]);
+ const detailed:any=(await service.list({...q,serviceType:'parking_monthly'},user,access)).rows[0];
+ assert.equal(detailed.detail.parkingOperations[0].operationId,71);
+ assert.equal(detailed.detail.parkingOperations[0].status,'done');
+ assert.equal(detailed.detail.parkingOperations[1].operationId,72);
+ assert.equal(detailed.detail.parkingOperations[1].status,'waiting');
+ assert.equal(detailed.detail.parkingOperations[1].previousEndDate,'2026-11-30');
+ assert.equal(detailed.detail.parkingOperations[0].targetEndDate,'2027-10-30');
+ assert.equal(detailed.detail.execution.finishedAt,'2026-11-06T02:00:00.000Z');
+ assert.ok(!('finishedAt' in detailed.detail.parkingOperations[0]));
+ assert.ok(sqls.some(s=>/end_date::text/.test(s)),'数据库日期直接返回文本，不转UTC导致日期前移');
+ await db.query(`UPDATE business_transactions SET snapshot=$1 WHERE id=200`,[JSON.stringify({parking:{plate:'TEST123',newVehicle:true},execution:{manualDone:{at:'2026-11-06T03:00:00Z',by:7,note:'人工核查登记'},steps:[{key:'registration:check',label:'一期、二期车牌查重',kind:'local',status:'waiting',note:'尚未新增'},{key:'registration:parking1',label:'一期地面',kind:'local',status:'manual',operationId:88,note:'设备确认缺失'}]}})]);
+ const registration:any=(await service.list({...q,serviceType:'parking_monthly'},user,access)).rows[0];
+ assert.equal(registration.detail.parkingOperations[0].action,'check');
+ assert.equal(registration.detail.parkingOperations[1].action,'register');
+ assert.equal(registration.detail.execution.manualDone.note,'人工核查登记');
+ assert.equal(registration.detail.execution.status,'synced');
+ await db.query(`UPDATE business_transactions SET snapshot=$1 WHERE id=200`,[JSON.stringify({parking:{systems:[{label:'旧登记',database:'parking1',sourceRecordId:'7'}]}})]);
+ const legacy:any=(await service.list({...q,serviceType:'parking_monthly'},user,access)).rows[0];
+ assert.equal(legacy.detail.parkingOperations[0].status,'unrecorded');
+ await db.query(`UPDATE business_transactions SET snapshot=$1 WHERE id=200`,[JSON.stringify({parking:{},execution:{target:'deliyun:枫桦景苑',operationId:99,planned:{previousEndDate:'2026-10-01',endDate:'2027-10-30'},finishedAt:'2026-11-06T03:00:00Z'}})]);
+ const cloudLegacy:any=(await service.list({...q,serviceType:'parking_monthly'},user,access)).rows[0];
+ assert.equal(cloudLegacy.detail.parkingOperations[0].plannedPreviousEndDate,'2026-10-01');
+ assert.equal(cloudLegacy.detail.parkingOperations[0].previousEndDate,null,'执行计划不得冒充收款时快照');
+ assert.equal(cloudLegacy.detail.parkingOperations[0].plannedTargetEndDate,'2027-10-30');
+ assert.equal(cloudLegacy.detail.execution.operationId,99);
+ await db.query(`UPDATE business_transactions SET snapshot=$1 WHERE id=200`,[JSON.stringify({parking:{systems:[null,false,'bad',{label:'不完整旧快照'}]},execution:{steps:[null,false,'bad']}})]);
+ const partial:any=(await service.list({...q,serviceType:'parking_monthly'},user,access)).rows[0];
+ assert.equal(partial.detail.parkingOperations.length,1);
+ assert.equal(partial.detail.parkingOperations[0].status,'unrecorded');
  }finally{await db.close()}
 });
