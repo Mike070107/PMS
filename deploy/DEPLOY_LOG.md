@@ -7390,3 +7390,10 @@
 - 自上次（6ca4519b）以来上线的相关提交：
   - e0e79509 fix(parking): preserve source vehicle values on plate changes and add independent type updates
 
+## 2026-11-15 01:52 · api · c0dcec1a
+
+- 包：`pms-api-fast-20261115-014925.tar.gz`
+- 提交：c0dcec1a fix(parking): expose pending reviews, price custom months and explain system operations
+- 自上次（b34f7a0a）以来上线的相关提交：
+  - c0dcec1a fix(parking): expose pending reviews, price custom months and explain system operations
+
