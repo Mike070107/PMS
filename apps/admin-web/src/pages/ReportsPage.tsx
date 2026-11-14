@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import {
   DownloadOutlined,
   InfoCircleOutlined,
@@ -243,8 +244,7 @@ function fmtPct(part: number, total: number): string {
 }
 
 function fmtDateTime(iso: string): string {
-  const d = dayjs(iso);
-  return d.isValid() ? d.format('YYYY-MM-DD HH:mm') : iso;
+  return formatBeijingDateTime(iso, 'YYYY-MM-DD HH:mm') || iso;
 }
 
 function cellEllipsis(text: string | null | undefined, max = 220) {

@@ -114,7 +114,7 @@ function PwdPanel({ onSuccess }: { onSuccess: (t: string, u: AdminLoginResp['use
     setErr('');
   }, [now, lockUntil]);
   const lockLeft = lockUntil ? Math.max(0, Math.ceil((lockUntil - now) / 1000)) : 0;
-  const lockClock = lockUntil ? new Date(lockUntil).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '';
+  const lockClock = lockUntil ? new Date(lockUntil).toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false, hour: '2-digit', minute: '2-digit' }) : '';
 
   const submit = async () => {
     if (lockLeft > 0) return;

@@ -157,7 +157,7 @@ function formatTime(value: string | null): string {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime())
     ? value
-    : parsed.toLocaleString('zh-CN', { hour12: false });
+    : parsed.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false });
 }
 
 function systemLabel(value: AccessCardHouseContext['accessSystem']): string {

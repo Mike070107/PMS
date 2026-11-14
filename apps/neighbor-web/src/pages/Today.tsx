@@ -5,7 +5,7 @@ import type { WorkOrderListItem } from '@pms/shared-types';
 import { WorkOrderStatus } from '@pms/shared-types';
 import { repairs, request } from '@pms/api-client';
 import { useSession } from '@/lib/auth';
-import { dayjs, isActive, isOverdue, money, stageOf } from '@/lib/format';
+import { dayjs, formatBeijingDateTime, isActive, isOverdue, money, stageOf } from '@/lib/format';
 import Icon from '@/components/Icon';
 import { Sheet } from '@/components/ui';
 import type { IconName } from '@/components/Icon';
@@ -261,8 +261,7 @@ export default function Today() {
   const recentPages = Math.max(1, Math.ceil(recentTotal / 10));
   const recentHouseCount = recentReady?.houseCount ?? (recentReady?.seenHouses.length || new Set(recentDisplayRows.map((row) => row.address).filter(Boolean)).size);
   const recentClock = (row: RecentPayment) => {
-    const matched = row.recordedAt ? /T(\d{2}:\d{2})/.exec(row.recordedAt) : null;
-    return matched?.[1] ?? (row.recordedAt ? dayjs(row.recordedAt).format('HH:mm') : '');
+    return formatBeijingDateTime(row.recordedAt, 'HH:mm');
   };
   const pmsPaidCents = data?.summary.paidCents ?? 0;
   const pmsFallback = misReady === null && data !== null;
@@ -317,7 +316,7 @@ export default function Today() {
       <div className="ph" style={{ marginBottom: 14 }}>
         <div>
           <h1 style={{ fontSize: 22 }}>今日工作</h1>
-          <p>{dayjs().format('YYYY 年 M 月 D 日 dddd')}{officeName ? ` · ${officeName}` : ''} · 实时数据来自正式库（MIS 收款 + PMS 流水）</p>
+          <p>{formatBeijingDateTime(new Date(), 'YYYY 年 M 月 D 日 ddd')}{officeName ? ` · ${officeName}` : ''} · 实时数据来自正式库（MIS 收款 + PMS 流水）</p>
           {dataAsOfClock ? <p style={{ margin: '4px 0 0', fontSize: 13, color: mirrorStale ? 'var(--warn)' : 'var(--muted)' }}>数据截至 {dataAsOfClock}{mirrorStale ? ' · 已滞后，镜像同步异常' : '（MIS 镜像）'}</p> : null}
         </div>
         <div className="act">
@@ -414,7 +413,7 @@ export default function Today() {
                           const clock = recentClock(row);
                           return (
                             <div key={row.paidAt + row.address + index} className="today-recent-row">
-                              <span className="today-recent-time"><b>{row.paidAt ? row.paidAt.slice(5) : '日期未记录'}</b><small>{clock ? '登记 ' + clock : '登记 —'}</small></span>
+                              <span className="today-recent-time"><b>{row.paidAt ? row.paidAt.slice(5) : '日期未记录'}</b><small title="MIS记录更新时间（北京时间），非实际收款时刻">{clock ? '更新 ' + clock : '更新时间 —'}</small></span>
                               <span className="today-recent-addr" title={row.address || undefined}>{row.address || '房号未记录'}</span>
                               <span className="today-recent-owner" title={row.ownerName || undefined}>{row.ownerName || '—'}</span>
                               <span className="today-recent-channel">{channelLabel(row.channel)}</span>
@@ -460,7 +459,7 @@ export default function Today() {
                   <tbody>
                     {detail.rows.map((row) => (
                       <tr key={row.id}>
-                        <td className="nw">{row.recordedAt ? <>{dayjs(row.recordedAt).format('MM-DD HH:mm')}<small className="muted"> 登记</small></> : '—'}</td>
+                        <td className="nw">{row.recordedAt ? <>{formatBeijingDateTime(row.recordedAt, 'MM-DD HH:mm')}<small className="muted"> 登记</small></> : '—'}</td>
                         <td>{row.roomNo || '—'}</td>
                         <td>{row.ownerName || '—'}</td>
                         <td>{channelLabel(row.channel)}</td>

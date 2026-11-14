@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import OwnerBusinessContact from '@/components/OwnerBusinessContact';
 import ParkingTab, { payCode, type ParkingCart } from '@/components/cashier/ParkingTab';
@@ -599,7 +600,7 @@ export default function Cashier() {
                                   <b>{h.icCardNo || h.wgCardNo || '—'}</b>
                                   {h.icCardNo && h.wgCardNo ? <small className="muted"> · WG {h.wgCardNo}</small> : null}
                                 </td>
-                                <td>{h.issuedAt ? dayjs(h.issuedAt).format('YYYY-MM-DD HH:mm') : '—'}</td>
+                                <td>{h.issuedAt ? formatBeijingDateTime(h.issuedAt, 'YYYY-MM-DD HH:mm') : '—'}</td>
                                 <td><span className={`tag ${accessStatusLabel(h.accessStatus).tone}`} title={rawTitle(h.accessStatus)}>{accessStatusLabel(h.accessStatus).text}</span></td>
                                 <td><span className={`tag ${legacyStatusLabel(h.legacySyncStatus).tone}`} title={rawTitle(h.legacySyncStatus)}>{legacyStatusLabel(h.legacySyncStatus).text}</span></td>
                               </tr>

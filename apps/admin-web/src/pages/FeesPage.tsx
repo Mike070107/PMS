@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import {
   App as AntdApp,
   Alert,
@@ -417,7 +418,7 @@ export function BillsTab({ onOpenHouse, readOnly = false, communityType }: { onO
             { title: '服务期间', key: 'service', render: (r: BillRow) => serviceText(r) },
             { title: '车牌', key: 'vehiclePlate', render: (r: BillRow) => r.vehiclePlate || '' },
             { title: '状态', key: 'statusLabel', render: (r: BillRow) => billStatusLabel(r) },
-            { title: '收款时间', key: 'paidAt', render: (r: BillRow) => (r.paidAt ? dayjs(r.paidAt).format('YYYY-MM-DD HH:mm') : '') },
+            { title: '收款时间', key: 'paidAt', render: (r: BillRow) => (r.paidAt ? formatBeijingDateTime(r.paidAt, 'YYYY-MM-DD HH:mm') : '') },
             { title: '收款方式', key: 'paymentMethodLabel', render: (r: BillRow) => (r.paymentMethod ? FEE_PAYMENT_METHOD_LABELS[r.paymentMethod] || r.paymentMethod : '') },
             { title: '收费员', key: 'cashier', render: (r: BillRow) => r.cashier || '' },
             { title: '发票号', key: 'invoiceNo', render: (r: BillRow) => r.invoiceNo || '' },
@@ -687,7 +688,7 @@ export function BillsTab({ onOpenHouse, readOnly = false, communityType }: { onO
             },
             {
               title: '收款时间', dataIndex: 'paidAt', width: 150,
-              render: (v: string | null) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-'),
+              render: (v: string | null) => (v ? formatBeijingDateTime(v, 'YYYY-MM-DD HH:mm') : '-'),
             },
             {
               title: '收款方式', dataIndex: 'paymentMethod', width: 110,
@@ -2290,7 +2291,7 @@ export function HouseDetailModal({ houseId, onClose }: { houseId: number | null;
                   },
                   {
                     title: '收款时间', dataIndex: 'paidAt', width: 150,
-                    render: (v: string | null) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-'),
+                    render: (v: string | null) => (v ? formatBeijingDateTime(v, 'YYYY-MM-DD HH:mm') : '-'),
                   },
                   { title: '收据号 / 关联单号', dataIndex: 'receiptNo', width: 200, render: (v, r) => <span>{v || '-'}{r.originalReceiptNo && <><br />原收据 {r.originalReceiptNo}</>}{r.reversalReceiptNo && <><br />红冲单 {r.reversalReceiptNo}</>}</span> },
                 ]}

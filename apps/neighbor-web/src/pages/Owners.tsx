@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import { useEffect, useMemo, useState } from 'react';
 import { address, request } from '@pms/api-client';
 import type { AddressCommunity } from '@pms/shared-types';
@@ -108,7 +109,7 @@ export default function Owners() {
                   <div className="li ic amber"><Icon name="users" /></div>
                   <div className="lt">
                     <b>{a.name || '（未填名）'} · {maskPhone(a.phone)}</b>
-                    <small>自报地址：{a.address || a.roomNo || '—'} · 登记于 {dayjs(a.createdAt).format('MM-DD HH:mm')}</small>
+                    <small>自报地址：{a.address || a.roomNo || '—'} · 登记于 {formatBeijingDateTime(a.createdAt, 'MM-DD HH:mm')}</small>
                   </div>
                   <button className="btn sm" disabled={busy === a.id} onClick={() => reject(a)}><Icon name="x" size={16} />驳回</button>
                   <button className="btn p sm" disabled={busy === a.id} onClick={() => approve(a)}><Icon name="check" size={16} />{busy === a.id ? '…' : '通过并绑房'}</button>

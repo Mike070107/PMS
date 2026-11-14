@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import {
   App as AntdApp,
   Badge,
@@ -65,13 +66,7 @@ const statusText: Record<AuditStatus, string> = {
 };
 
 function formatTime(value?: string) {
-  if (!value) return '-';
-  // 标准 ISO 直接交给 Date，别先做 replace(/-/g,'/')：那会把 2026-08-09T10:30:00Z
-  // 变成 2026/08/09T10:30:00，V8 和 iOS 都判 Invalid Date，时间列整列变空
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '-';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return formatBeijingDateTime(value) || '-';
 }
 
 export default function OwnerAuditPage() {

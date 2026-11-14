@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import { Fragment, useEffect, useState } from 'react';
 import dayjs from 'dayjs';
 import { request } from '@pms/api-client';
@@ -159,7 +160,7 @@ export default function Logs() {
                       <p>动作代码：{technical.action} · 日志 #{l.id}</p>
                     </details>
                   </div>
-                  <span className="muted log-time" style={{ fontSize: 14, whiteSpace: 'nowrap' }}>{dayjs(l.createdAt).format('YYYY-MM-DD HH:mm:ss')}</span>
+                  <span className="muted log-time" style={{ fontSize: 14, whiteSpace: 'nowrap' }}>{formatBeijingDateTime(l.createdAt, 'YYYY-MM-DD HH:mm:ss')}</span>
                 </div>
               );
             })}
@@ -202,7 +203,7 @@ function IntroViewsPanel({ retry }: { retry: number }) {
   }, [page, retry, localRetry]);
   const pages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
   const max = Math.max(1, ...(data?.daily || []).map((d) => d.count));
-  const last = data?.summary.lastViewedAt ? dayjs(data.summary.lastViewedAt).format('MM-DD HH:mm') : '—';
+  const last = data?.summary.lastViewedAt ? formatBeijingDateTime(data.summary.lastViewedAt, 'MM-DD HH:mm') : '—';
   const device = (ua: string | null) => {
     if (!ua) return '—';
     const phone = /Mobile|Android|iPhone|MicroMessenger/i.test(ua);
@@ -242,7 +243,7 @@ function IntroViewsPanel({ retry }: { retry: number }) {
               <tbody>
                 {data.list.map((row) => (
                   <tr key={row.id}>
-                    <td style={{ whiteSpace: 'nowrap' }}>{dayjs(row.viewedAt).format('YYYY-MM-DD HH:mm:ss')}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{formatBeijingDateTime(row.viewedAt, 'YYYY-MM-DD HH:mm:ss')}</td>
                     <td className="intro-ip">{row.ip || '—'}</td>
                     <td>{row.entry || '直接打开'}</td>
                     <td className="intro-referrer" title={row.referrer || undefined}>{row.referrer || '—'}</td>
@@ -596,7 +597,7 @@ function UsagePanel({ scopeKey }: { scopeKey: string }) {
                     <tbody>
                       {visibleLogin.map((row) => (
                         <tr key={row.id}>
-                          <td style={{ whiteSpace: 'nowrap' }}>{row.time ? dayjs(row.time).format('YYYY-MM-DD HH:mm:ss') : '—'}</td>
+                          <td style={{ whiteSpace: 'nowrap' }}>{row.time ? formatBeijingDateTime(row.time, 'YYYY-MM-DD HH:mm:ss') : '—'}</td>
                           <td>{row.user}</td>
                           <td>{LOGIN_METHOD[row.method] || row.method || '—'}</td>
                           <td>{row.status === 'success' ? <span className="tag ok">成功</span> : row.status === 'failed' ? <span className="tag dang" title={row.reason || undefined}>失败{row.reason ? ' · ' + row.reason : ''}</span> : <span className="tag">未知</span>}</td>
@@ -829,7 +830,7 @@ function FeedbackPanel({ scopeKey }: { scopeKey: string }) {
                   const files = fbAttachments(row);
                   const errors = fbRecentErrors(row);
                   const handled = fbStatus(row) === '已处理';
-                  const trace = handled ? [row.handledByName || row.resolvedByName || row.processorName, row.handledAt ? dayjs(row.handledAt).format('YYYY-MM-DD HH:mm') : row.resolvedAt ? dayjs(row.resolvedAt).format('YYYY-MM-DD HH:mm') : null].filter(Boolean).join(' · ') : '';
+                  const trace = handled ? [row.handledByName || row.resolvedByName || row.processorName, row.handledAt ? formatBeijingDateTime(row.handledAt, 'YYYY-MM-DD HH:mm') : row.resolvedAt ? formatBeijingDateTime(row.resolvedAt, 'YYYY-MM-DD HH:mm') : null].filter(Boolean).join(' · ') : '';
                   return (
                     <Fragment key={key}>
                       <tr className="fb-row" onClick={() => setExpanded(open ? null : key)}>
@@ -838,7 +839,7 @@ function FeedbackPanel({ scopeKey }: { scopeKey: string }) {
                         </td>
                         <td className="nw"><span className={'tag ' + (/异常|bug|error|issue/.test(String(row.type || row.kind)) ? 'warn' : 'acc')}>{fbType(row)}</span>{row.origin === 'legacy' ? <small className="fb-origin">历史</small> : row.origin === 'unified' ? <small className="fb-origin">统一</small> : null}</td>
                         <td className="nw">{row.userName || '未记录'}{row.userPhone ? <small className="muted"> · {row.userPhone}</small> : null}</td>
-                        <td className="nw">{row.createdAt || row.time ? dayjs(row.createdAt || row.time).format('YYYY-MM-DD HH:mm') : '—'}</td>
+                        <td className="nw">{row.createdAt || row.time ? formatBeijingDateTime(row.createdAt || row.time, 'YYYY-MM-DD HH:mm') : '—'}</td>
                         <td><span className="fb-summary">{String(row.content || '—')}</span></td>
                         <td className="nw" onClick={(event) => event.stopPropagation()}>
                           {files.length ? files.map((file) => (
@@ -860,7 +861,7 @@ function FeedbackPanel({ scopeKey }: { scopeKey: string }) {
                               {errors.length ? (
                                 <div className="fb-detail-errors">
                                   <b>最近的系统报错（{errors.length} 条）</b>
-                                  <ul className="fb-errors">{errors.map((item, index) => <li key={index}><time>{item.at ? dayjs(item.at).format('YYYY-MM-DD HH:mm:ss') : '时间未知'}</time><span>{item.message}</span>{item.page ? <small>{item.page}</small> : null}</li>)}</ul>
+                                  <ul className="fb-errors">{errors.map((item, index) => <li key={index}><time>{item.at ? formatBeijingDateTime(item.at, 'YYYY-MM-DD HH:mm:ss') : '时间未知'}</time><span>{item.message}</span>{item.page ? <small>{item.page}</small> : null}</li>)}</ul>
                                 </div>
                               ) : null}
                               {files.length ? (

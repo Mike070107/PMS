@@ -1,7 +1,9 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/zh-cn';
 import { WorkOrderStatus } from '@pms/shared-types';
+export { formatBeijingDateTime } from '@pms/shared-types';
 
 dayjs.extend(relativeTime);
 dayjs.locale('zh-cn');
@@ -67,12 +69,16 @@ export function ago(iso?: string | null) {
 
 export function dueText(iso?: string | null) {
   if (!iso) return '—';
-  const d = dayjs(iso);
-  const today = dayjs().endOf('day');
-  if (d.isBefore(dayjs())) return `${d.format('MM-DD HH:mm')} · 已超时`;
-  if (d.isBefore(today)) return `今天 ${d.format('HH:mm')}`;
-  if (d.isBefore(today.add(1, 'day'))) return `明天 ${d.format('HH:mm')}`;
-  return d.format('MM-DD HH:mm');
+  // 无偏移旧墙钟也按北京时间比较；显式offset保留原时间点和毫秒。
+  const raw = iso.trim();
+  const localClock = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(raw);
+  const d = dayjs(localClock ? raw.replace(' ', 'T') + '+08:00' : raw);
+  const today = formatBeijingDateTime(new Date(), 'YYYY-MM-DD');
+  const dueDay = formatBeijingDateTime(iso, 'YYYY-MM-DD');
+  if (d.isBefore(dayjs())) return `${formatBeijingDateTime(iso, 'MM-DD HH:mm')} · 已超时`;
+  if (dueDay === today) return `今天 ${formatBeijingDateTime(iso, 'HH:mm')}`;
+  if (dueDay === dayjs(today).add(1, 'day').format('YYYY-MM-DD')) return `明天 ${formatBeijingDateTime(iso, 'HH:mm')}`;
+  return formatBeijingDateTime(iso, 'MM-DD HH:mm');
 }
 
 export function money(v?: number | string | null) {

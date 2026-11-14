@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { maintenance, request } from '@pms/api-client';
@@ -190,7 +191,7 @@ function WorkOrderPick({ onClose, onPick }: { onClose: () => void; onPick: (id: 
                   <td>{r.summaryAddress || '—'}</td>
                   <td style={{ maxWidth: 240 }}>{r.summaryContent || '—'}</td>
                   <td className="muted" style={{ fontSize: 13.5 }}>{r.usedMaterials?.length ? r.usedMaterials.map((m) => `${m.name || '未命名'}×${m.qty ?? 0}${m.unit || ''}`).join('、') : '未登记用料'}</td>
-                  <td className="muted">{r.completedAt ? dayjs(r.completedAt).format('MM-DD HH:mm') : '未完工'}</td>
+                  <td className="muted">{r.completedAt ? formatBeijingDateTime(r.completedAt, 'MM-DD HH:mm') : '未完工'}</td>
                 </tr>
               )) : <tr><td colSpan={5} className="muted" style={{ textAlign: 'center', padding: 30 }}>没有匹配的工单</td></tr>}
             </tbody>

@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import { useEffect, useMemo, useState } from 'react';
 import { stocktakes, inventory } from '@pms/api-client';
 import type { StocktakeTaskView, StocktakeStatus, WarehouseView } from '@pms/shared-types';
@@ -73,7 +74,7 @@ export default function Stocktakes() {
                   <div className={`li ic ${t.status === 'approved' ? 'green' : t.status === 'rejected' ? 'red' : 'amber'}`}><Icon name="clipboard" /></div>
                   <div className="lt">
                     <b>{t.title || t.taskNo} <span className={`tag ${TAG[t.status]}`} style={{ marginLeft: 6 }}>{STOCKTAKE_STATUS_LABELS[t.status]}</span></b>
-                    <small>{t.warehouseName} · 已盘 {t.countedCount}/{t.totalCount}（{pct}%）{t.differenceCount ? ` · 差异 ${t.differenceCount} 项` : ''} · {dayjs(t.createdAt).format('MM-DD HH:mm')}</small>
+                    <small>{t.warehouseName} · 已盘 {t.countedCount}/{t.totalCount}（{pct}%）{t.differenceCount ? ` · 差异 ${t.differenceCount} 项` : ''} · {formatBeijingDateTime(t.createdAt, 'MM-DD HH:mm')}</small>
                   </div>
                   {t.differenceCount ? <span className="tag warn"><Icon name="alert" size={14} />差异 {t.differenceCount}</span> : t.status === 'approved' ? <span className="tag ok"><Icon name="check" size={14} />无差异</span> : null}
                 </div>

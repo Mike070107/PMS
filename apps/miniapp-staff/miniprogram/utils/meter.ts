@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 /** 抄表页面共用的小工具：类型名、读数格式化、错误文案。 */
 
 export const METER_TYPE_LABELS: Record<string, string> = {
@@ -32,11 +33,7 @@ export function formatMeterValue(
 }
 
 export function formatMeterTime(value: string | Date | null | undefined): string {
-  if (!value) return '';
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return formatBeijingDateTime(value);
 }
 
 export function meterErrText(error: unknown): string {

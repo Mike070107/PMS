@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 /**
  * 公寓收费工作台（员工端）。
  *
@@ -517,10 +518,7 @@ function money(cents: number): string {
 
 /** 历史缴费只要「几月几号几点」，年份同年就省掉 */
 function formatPaidAt(iso: string): string {
-  const date = new Date(String(iso).replace(/-/g, '/').replace(/\..*$/, ''));
-  if (Number.isNaN(date.getTime())) return String(iso || '');
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const sameYear = date.getFullYear() === new Date().getFullYear();
-  const head = sameYear ? '' : `${date.getFullYear()}/`;
-  return `${head}${date.getMonth() + 1}/${date.getDate()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const year = formatBeijingDateTime(iso, 'YYYY');
+  const sameYear = year === formatBeijingDateTime(new Date(), 'YYYY');
+  return formatBeijingDateTime(iso, sameYear ? 'M/D HH:mm' : 'YYYY/M/D HH:mm');
 }

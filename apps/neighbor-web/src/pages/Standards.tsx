@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import { identityTone } from '@/lib/parking-fields';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { request } from '@pms/api-client';
@@ -278,7 +279,7 @@ function PlatesTab({ groupNames, canEdit, onChanged }: { groupNames: string[]; c
                   <td className="nw muted">{i + 1}</td>
                   <td className="nw"><b className="plate">{r.plate}</b></td>
                   <td className="nw">{r.vehicleClass}{groupNames.includes(r.vehicleClass) ? null : <span className="tag warn" style={{ marginLeft: 6 }}>分组已停用</span>}</td>
-                  <td className="nw muted">{(r.updatedAt || '').slice(0, 16).replace('T', ' ')}</td>
+                  <td className="nw muted">{formatBeijingDateTime(r.updatedAt)}</td>
                   {canEdit ? <td className="nw"><span className="set-inline">
                     <select className="in" style={{ width: 150 }} value={r.vehicleClass} onChange={(e) => void setTag(r.plate, e.target.value)}>
                       {[...new Set([r.vehicleClass, ...groupNames])].map((g) => <option key={g}>{g}</option>)}</select>

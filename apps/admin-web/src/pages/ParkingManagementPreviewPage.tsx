@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import {
   Alert,
   App as AntdApp,
@@ -535,7 +536,7 @@ function NewVehicleDrawer({ open, onClose, onQueryPlate }: { open: boolean; onCl
         <div className="parking-new-form-section">
           <label>PMS 房号<Select showSearch value={householdKey} optionFilterProp="label" onChange={chooseHousehold} options={SEARCH_RESULTS.map((item) => ({ value: item.key, label: `${item.title} · ${item.resident}` }))} /></label>
           <div className="parking-pms-resident-card"><span className="parking-pms-resident-icon"><HomeOutlined /></span><div><strong>{household.title}</strong><Text>{household.subtitle}</Text></div><div><small>姓名</small><strong>{household.resident}</strong></div><div><small>电话</small><strong>{household.phone}</strong></div></div>
-          {!phoneOverride ? <Button type="link" icon={<PhoneOutlined />} onClick={() => setPhoneOverride(true)}>现场电话不一致？填写停车登记电话</Button> : <div className="parking-phone-override"><label>现场登记电话<Input value={fieldPhone} onChange={(event) => setFieldPhone(event.target.value)} placeholder="输入现场提供的新电话" /></label><Text type="secondary">将记录为“{dayjs().format('YYYY-MM-DD HH:mm')} 停车登记电话”；写入旧库时房号统一规范为 {household.title}。</Text></div>}
+          {!phoneOverride ? <Button type="link" icon={<PhoneOutlined />} onClick={() => setPhoneOverride(true)}>现场电话不一致？填写停车登记电话</Button> : <div className="parking-phone-override"><label>现场登记电话<Input value={fieldPhone} onChange={(event) => setFieldPhone(event.target.value)} placeholder="输入现场提供的新电话" /></label><Text type="secondary">将记录为“{formatBeijingDateTime(new Date(), 'YYYY-MM-DD HH:mm')} 停车登记电话”；写入旧库时房号统一规范为 {household.title}。</Text></div>}
         </div>
         <Divider orientation="left">2 · 车辆授权类型</Divider>
         <div className="parking-new-form-section"><Text type="secondary">授权类型决定收费规则，默认按住户车计价。</Text><Radio.Group className="parking-horizontal-options" value={identity} onChange={(event) => setIdentity(event.target.value)} optionType="button" buttonStyle="solid" options={['住户车', '亲情车', '租户车', '小区服务车', '小区工作车'].map((value) => ({ value, label: value }))} /></div>

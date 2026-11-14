@@ -65,3 +65,18 @@
   .parking-spaces .sp-search { width: 100%; }
   .parking-spaces .sp-view-switch { margin-left: 0; }
 }
+
+/* 两库统一卡片规格：先给资料更多宽度，仍超长的值以省略号呈现，title/编辑保留全文。 */
+.sp-glass-wrap .sp-grid { align-items: stretch; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); }
+.sp-glass-wrap .sp-card { box-sizing: border-box; height: 328px; padding: 16px; display: grid; grid-template-rows: 32px 44px 112px minmax(0, 1fr); gap: 10px; }
+.sp-glass-wrap .sp-top, .sp-glass-wrap .sp-plate { margin: 0; min-width: 0; }
+.sp-glass-wrap .sp-no { display: flex; align-items: baseline; gap: 2px; white-space: nowrap; }
+.sp-glass-wrap .sp-no > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sp-glass-wrap .sp-no small { flex-shrink: 0; }
+.sp-glass-wrap .sp-kv { grid-template-columns: 60px minmax(0, 1fr); grid-auto-rows: 25px; gap: 4px 10px; font-size: 15px; line-height: 25px; }
+.sp-glass-wrap .sp-kv dd { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; overflow-wrap: normal; }
+.sp-glass-wrap .sp-note { display: grid; grid-template-columns: 60px minmax(0, 1fr); gap: 10px; margin: 0; padding-top: 10px; font-size: 15px; line-height: 24px; min-height: 0; }
+.sp-glass-wrap .sp-note > span { margin: 0; }
+.sp-glass-wrap .sp-note .sp-note-value { color: var(--ink2); overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; max-height: 48px; overflow-wrap: anywhere; }
+.sp-glass-wrap .sp-plate-tag { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 700px) { .sp-glass-wrap .sp-grid { grid-template-columns: minmax(0, 1fr); } }

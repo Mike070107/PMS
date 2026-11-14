@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { WorkOrderStatus, REPAIR_TYPE_OPTIONS } from '@pms/shared-types';
@@ -249,7 +250,7 @@ function InfoTab({ detail }: { detail: WorkOrderDetail }) {
         ) : null}
         <dt>联系人</dt><dd>{req?.contactName || wo.contactName || '—'} · {req?.contactPhone || '—'}</dd>
         <dt>报修来源</dt><dd>{wo.sourceLabel || '—'}{wo.submittedByName ? `（${wo.submittedByName} 提交）` : ''}</dd>
-        <dt>登记时间</dt><dd>{dayjs(wo.createdAt).format('YYYY-MM-DD HH:mm')}</dd>
+        <dt>登记时间</dt><dd>{formatBeijingDateTime(wo.createdAt, 'YYYY-MM-DD HH:mm')}</dd>
       </dl>
 
       <div className="sec-t">派单匹配</div>
@@ -303,7 +304,7 @@ function TimelineTab({ detail }: { detail: WorkOrderDetail }) {
       {logs.map((l, i) => (
         <div key={l.id} className={`e ${i === logs.length - 1 ? 'cur' : ''}`}>
           <b>{ACTION_LABEL[l.action] || l.action}</b>
-          <span className="w" style={{ float: 'right' }}>{dayjs(l.createdAt).format('MM-DD HH:mm')}</span>
+          <span className="w" style={{ float: 'right' }}>{formatBeijingDateTime(l.createdAt, 'MM-DD HH:mm')}</span>
           <div className="w">
             {l.fromStatus && l.toStatus && l.fromStatus !== l.toStatus
               ? `${statusOf(l.fromStatus).name} → ${statusOf(l.toStatus).name}`

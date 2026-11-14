@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { request } from '@pms/api-client';
@@ -117,7 +118,7 @@ function IntakeList({ kw, intakeId }: { kw: string; intakeId: string | null }) {
               {rows.map((r) => (
                 <Fragment key={r.id}>
                   <tr key={r.id} className={open?.id === r.id ? 'sel' : ''} onClick={() => void expand(r)}>
-                    <td>{dayjs(r.createdAt).format('MM-DD HH:mm')}</td>
+                    <td>{formatBeijingDateTime(r.createdAt, 'MM-DD HH:mm')}</td>
                     <td>{r.houseLabel}</td>
                     <td>{r.kind === 'family' ? '亲情车' : <>付费{r.vehicleClass ? <span className="tag acc" style={{ marginLeft: 4 }}>{r.vehicleClass}</span> : null}</>}</td>
                     <td>{r.plate ? <b className="plate">{r.plate}</b> : <span className="muted">未填</span>}</td>

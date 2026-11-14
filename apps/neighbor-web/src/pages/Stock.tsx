@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { MaterialView, StockMovementView, StockView, WarehouseView } from '@pms/shared-types';
 import { inventory, request } from '@pms/api-client';
@@ -310,7 +311,7 @@ export default function Stock() {
                     const amount = mv.amountCents ?? Math.round(unit * Math.abs(qty));
                     return (
                       <tr key={mv.id}>
-                        <td className="muted">{mv.createdAt ? dayjs(mv.createdAt).format('MM-DD HH:mm') : '—'}</td>
+                        <td className="muted">{mv.createdAt ? formatBeijingDateTime(mv.createdAt, 'MM-DD HH:mm') : '—'}</td>
                         <td>{MOVEMENT_LABEL[mv.type] || mv.type}</td>
                         <td style={{ textAlign: 'right', fontWeight: 600 }} className={qty < 0 ? 'over' : ''}>{qty > 0 ? `+${qty}` : qty}</td>
                         <td style={{ textAlign: 'right' }}>{money(unit / 100)}</td>

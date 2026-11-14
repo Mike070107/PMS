@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { request } from '@pms/api-client';
 import Icon from '@/components/Icon';
@@ -109,7 +110,7 @@ function LocalFees() {
                 return (
                   <tr key={r.id} onClick={() => setActive(r)} style={{ cursor: 'pointer' }}>
                     <td className="nw"><b>{r.receiptNo || '—'}</b>{r.originalReceiptNo ? <div className="sub2">原 {r.originalReceiptNo}</div> : null}</td>
-                    <td className="nw">{r.paidAt ? dayjs(r.paidAt).format('MM-DD HH:mm') : '—'}</td>
+                    <td className="nw">{r.paidAt ? formatBeijingDateTime(r.paidAt, 'MM-DD HH:mm') : '—'}</td>
                     <td><b>{place(r) || '—'}</b><div className="sub2">{r.ownerName || ''}</div></td>
                     <td><span className="feeCell"><FeeIcon name={r.feeName || r.feeCode} size={26} />{r.feeName || r.feeCode || '—'}</span>{r.period ? <span className="muted"> · {r.period}</span> : null}{r.vehiclePlate ? <span className="muted"> · {r.vehiclePlate}</span> : null}</td>
                     <td className="nw" style={{ textAlign: 'right' }}><b>{money(r.amountCents / 100)}</b></td>
@@ -175,7 +176,7 @@ function BillSheet({ row, onClose, onChanged }: { row: BillRow; onClose: () => v
           {row.vehiclePlate ? <><dt>车牌</dt><dd>{row.vehiclePlate}</dd></> : null}
           <dt>金额</dt><dd><b>{money(row.amountCents / 100)}</b>{row.quantity ? `（${row.quantity}${row.unit || ''}）` : ''}</dd>
           <dt>收款方式</dt><dd>{payLabel(row.paymentMethod)}</dd>
-          <dt>收款时间</dt><dd>{row.paidAt ? dayjs(row.paidAt).format('YYYY-MM-DD HH:mm') : '—'}</dd>
+          <dt>收款时间</dt><dd>{row.paidAt ? formatBeijingDateTime(row.paidAt, 'YYYY-MM-DD HH:mm') : '—'}</dd>
           <dt>收费员</dt><dd>{row.cashier || '—'}</dd>
           {row.serviceFrom || row.serviceTo ? <><dt>服务期</dt><dd>{row.serviceFrom || '—'} ~ {row.serviceTo || '—'}</dd></> : null}
           {row.originalReceiptNo ? <><dt>原收据</dt><dd>{row.originalReceiptNo}</dd></> : null}

@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 /**
  * 养护单查验签字：把《房屋修理养护任务单》正反面按**纸上的格子**画出来，签字落在纸上对应的格。
  *
@@ -30,10 +31,7 @@ const ZOOMS = [1, 1.4, 1.8, 2.4, 3.2];
 const DEFAULT_ZOOM_INDEX = 2;
 
 function dateTimeText(value: unknown): string {
-  const date = parseDate(value);
-  if (!date) return '有效期未知';
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())} ${p(date.getHours())}:${p(date.getMinutes())}`;
+  return formatBeijingDateTime(typeof value === 'string' || value instanceof Date || typeof value === 'number' ? value : null) || '有效期未知';
 }
 
 /**

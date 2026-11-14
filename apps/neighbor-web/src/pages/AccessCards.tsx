@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { accessCardIssuance, address, request } from '@pms/api-client';
 import type { AccessCardIssueBatch, AccessCardIssueItem, AccessCardReadiness } from '@pms/api-client/src/endpoints/access-card-issuance';
@@ -181,7 +182,7 @@ const CARD_STATUS: Record<string, { text: string; tone: string }> = {
 };
 const cardStatusLabel = (v?: string | null) => CARD_STATUS[v || ''] ?? { text: v ? '处理中' : '—', tone: 'mute' };
 
-const fmtCardTime = (value?: string | null) => value && dayjs(value).isValid() ? dayjs(value).format('YYYY-MM-DD HH:mm') : '—';
+const fmtCardTime = (value?: string | null) => value && dayjs(value).isValid() ? formatBeijingDateTime(value, 'YYYY-MM-DD HH:mm') : '—';
 const actionText = (value: unknown) => typeof value === 'string' ? value : value == null ? '' : JSON.stringify(value);
 const cardActionResults = (raw: any): Array<{ name: string; ok: boolean; detail: string }> => {
   const source = raw?.systems ?? raw?.results ?? raw;
@@ -1086,7 +1087,7 @@ export default function AccessCards() {
               <Icon name="refresh" size={14} />重试
             </button>
           ) : null}
-          {recent?.status === 'ready' && recent.refreshedAt ? <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>更新于 {dayjs(recent.refreshedAt).format('HH:mm')}</span> : null}
+          {recent?.status === 'ready' && recent.refreshedAt ? <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>更新于 {formatBeijingDateTime(recent.refreshedAt, 'HH:mm')}</span> : null}
           {recent?.fieldsIncomplete ? <span className="ac-field-hint">部分字段需升级现场助手后显示</span> : null}
           <button type="button" className="btn sm" data-testid="recent-toggle" style={{ marginLeft: 'auto' }} aria-expanded={recentOpen} onClick={(event) => { event.stopPropagation(); toggleRecent(); }}>
             {recentOpen ? '收起 ▾' : '展开 ▸'}

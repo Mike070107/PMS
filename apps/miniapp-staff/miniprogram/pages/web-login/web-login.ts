@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import { ApiError, auth } from '@pms/api-client';
 import type { QrLoginScanInfo } from '@pms/api-client/src/endpoints/auth';
 
@@ -196,8 +197,5 @@ function describeUserAgent(ua: string | null): string {
 
 /** 标准 ISO 直接交给 Date：先 replace(/-/g,'/') 会把带 T 的串弄成 Invalid Date */
 function formatTime(value: string): string {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return formatBeijingDateTime(value, 'MM-DD HH:mm');
 }

@@ -23,7 +23,7 @@ const statusOptions:Array<[FollowupStatus,string]>=[['all','全部'],['never','�
 const PAGE_SIZE=20,defaultRule:Rule={amountCents:180000,inactiveDays:7,enabled:true},emptyStats:Stats={avgAmountCents:0,hitCount:0,hitAmountCents:0,thresholdCents:0,inactiveDays:0};
 function friendly(e:unknown){return e instanceof Error&&/[\u4e00-\u9fff]/.test(e.message)?e.message:'跟进查询未完成，可重试'}
 function dayText(row:QueueRow){if(row.never)return '从未';const days=row.days??0;return days<=0?'今天':days+' 天前'}
-function dateText(iso:string|null){if(!iso)return '';const d=new Date(iso);return Number.isFinite(d.getTime())?d.toLocaleDateString('zh-CN'):''}
+function dateText(iso:string|null){if(!iso)return '';const d=new Date(iso);return Number.isFinite(d.getTime())?d.toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' }):''}
 export function FollowupCell({houseKey}:{houseKey:string}){
   const c=useContext(Context),p=c.data?.promises.filter(p=>p.houseKey===houseKey&&!p.fulfilled)||[],h=c.data?.holds.filter(h=>h.houseKey===houseKey)||[];
   return <details className="rb-more" onClick={e=>{const d=e.currentTarget;if(d.open)return;const r=d.getBoundingClientRect(),m=d.querySelector('.rb-more-menu') as HTMLElement|null;if(!m)return;const below=r.bottom+6,menuHeight=240;m.style.position='fixed';m.style.top=(below+menuHeight>window.innerHeight?Math.max(8,r.top-menuHeight):below)+'px';m.style.right=Math.max(12,window.innerWidth-r.right)+'px'}}>

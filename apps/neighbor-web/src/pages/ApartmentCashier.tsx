@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import OwnerBusinessContact from '@/components/OwnerBusinessContact';
 import { PaymentMethodIcon as LegacyPaymentIcon } from '@/components/PaymentMethodIcon';
 import {
@@ -515,7 +516,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
                 {history.length ? <div className="cashier-history__table cashier-history__table--history">
                   <div className="cashier-history__head"><span>收费时间</span><span>凭证号</span><span>收费项目</span><span>金额</span><span>方式</span><span>备注</span><span>操作</span></div>
                   {history.map((row) => <div className="cashier-history__row" key={row.receiptNo}>
-                    <span>{dayjs(row.paidAt).format('YYYY-MM-DD HH:mm')}</span><span>{row.receiptNo}</span>
+                    <span>{formatBeijingDateTime(row.paidAt, 'YYYY-MM-DD HH:mm')}</span><span>{row.receiptNo}</span>
                     <span>{row.items.map((item) => item.feeName).join('、')}</span><strong>{money(row.amountCents)}</strong>
                     <span>{FEE_PAYMENT_METHOD_LABELS[row.paymentMethod] || row.paymentMethod}</span>
                     <span title={row.remark || undefined}>{row.remark || '-'}</span>
@@ -532,7 +533,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
               </Spin>
               {historyTotal > 10 && <Pagination size="small" current={historyPage} pageSize={10} total={historyTotal} showSizeChanger={false} onChange={setHistoryPage} />}
             </div>}
-            {backfillMode && <div className="cashier-history"><header><span><HistoryOutlined /> 今日补录流水</span></header>{backfillRows.length ? <div className="cashier-history__table cashier-history__table--backfill"><div className="cashier-history__head"><span>收款时间</span><span>凭证号</span><span>房号</span><span>金额</span><span>方式</span><span>备注</span></div>{backfillRows.map((row) => <div className="cashier-history__row" key={row.receiptNo}><span>{dayjs(row.paidAt).format('YYYY-MM-DD HH:mm')}</span><span>{row.receiptNo}</span><span>{placeLabel(row.buildingNo, row.roomNo)}</span><strong>{money(row.amountCents)}</strong><span>{FEE_PAYMENT_METHOD_LABELS[row.paymentMethod] || row.paymentMethod}</span><span title={row.remark || undefined}>{row.remark || '-'}</span></div>)}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="今天还没有补录收费" />}</div>}
+            {backfillMode && <div className="cashier-history"><header><span><HistoryOutlined /> 今日补录流水</span></header>{backfillRows.length ? <div className="cashier-history__table cashier-history__table--backfill"><div className="cashier-history__head"><span>收款时间</span><span>凭证号</span><span>房号</span><span>金额</span><span>方式</span><span>备注</span></div>{backfillRows.map((row) => <div className="cashier-history__row" key={row.receiptNo}><span>{formatBeijingDateTime(row.paidAt, 'YYYY-MM-DD HH:mm')}</span><span>{row.receiptNo}</span><span>{placeLabel(row.buildingNo, row.roomNo)}</span><strong>{money(row.amountCents)}</strong><span>{FEE_PAYMENT_METHOD_LABELS[row.paymentMethod] || row.paymentMethod}</span><span title={row.remark || undefined}>{row.remark || '-'}</span></div>)}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="今天还没有补录收费" />}</div>}
           </section>
 
           <section className="cashier-card">
@@ -577,7 +578,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
               {todayRows.length ? <div className="cashier-today__scroll"><div className="cashier-history__table cashier-today__table">
                 <div className="cashier-history__head"><span>收费员</span><span>收费时间</span><span>凭证号</span><span>房号</span><span>住户姓名</span><span>收费项目</span><span>金额</span><span>方式</span><span>备注</span><span>操作</span></div>
                 {todayRows.map((row) => <div className="cashier-history__row" key={row.receiptNo}>
-                  <span>{row.cashier || '-'}</span><span>{dayjs(row.paidAt).format('HH:mm')}</span><span>{row.receiptNo}</span>
+                  <span>{row.cashier || '-'}</span><span>{formatBeijingDateTime(row.paidAt, 'HH:mm')}</span><span>{row.receiptNo}</span>
                   <span>{placeLabel(row.buildingNo, row.roomNo)}</span><span>{row.ownerName || '-'}</span>
                   <span>{row.items.map((item) => item.feeName).join('、')}</span>
                   <strong className={row.amountCents < 0 ? 'is-negative' : undefined}>{money(row.amountCents)}</strong>
@@ -672,7 +673,7 @@ function ReceiptPaper({ data }: { data: ReceiptPaperData | null }) {
     <article className="cashier-receipt">
       <header><h2>物业收费凭证</h2><strong>{data.communityName || '公寓收费'}</strong>{data.refunded && <em>（已被红冲）</em>}</header>
       <section>
-        <div><span>收费时间</span><b>{data.paidAt ? dayjs(data.paidAt).format('YYYY-MM-DD HH:mm') : '提交时自动记录'}</b></div>
+        <div><span>收费时间</span><b>{data.paidAt ? formatBeijingDateTime(data.paidAt, 'YYYY-MM-DD HH:mm') : '提交时自动记录'}</b></div>
         <div><span>地址</span><b>{data.place || '-'}</b></div>
         <div><span>姓名</span><b>{data.ownerName || '-'}</b></div>
         <div><span>收款方式</span><b>{data.paymentMethod ? FEE_PAYMENT_METHOD_LABELS[data.paymentMethod] || data.paymentMethod : '待选择'}</b></div>

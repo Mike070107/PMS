@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import {
   App as AntdApp,
   Alert,
@@ -1574,7 +1575,7 @@ function RepairSubmitDock({
                   <div><dt>报修内容</dt><dd>{confirmValues.content}</dd></div>
                   <div><dt>报修类型</dt><dd>{getRepairTypeLabel(confirmValues.repairType, repairTypeRules)}</dd></div>
                   <div><dt>紧急程度</dt><dd>{confirmValues.urgent ? '紧急，需要优先处理' : '普通'}</dd></div>
-                  <div><dt>完成时限</dt><dd>{confirmValues.slaEnabled && confirmValues.slaDueAt ? confirmValues.slaDueAt.format('YYYY-MM-DD HH:mm') : '按报修类型默认时限'}</dd></div>
+                  <div><dt>完成时限</dt><dd>{confirmValues.slaEnabled && confirmValues.slaDueAt ? formatBeijingDateTime(confirmValues.slaDueAt.toDate(), 'YYYY-MM-DD HH:mm') : '按报修类型默认时限'}</dd></div>
                   <div><dt>附件资料</dt><dd>{fileList.length ? `${fileList.length} 个照片或视频` : '未添加附件'}</dd></div>
                 </dl>
                 <Alert type="info" showIcon message="提交后自动进入待派单列表，并根据工种推荐维修人员。" />

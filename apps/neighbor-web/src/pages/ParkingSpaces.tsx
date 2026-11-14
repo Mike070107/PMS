@@ -10,20 +10,20 @@ import '@/styles/parking-glass.css';
 /** 仅大车库提供示意图，three.js 在切换到该视图时才下载。人防业务/授权保留。 */
 const ParkingGarage3D = lazy(() => import('@/components/parking/ParkingGarage3D'));
 type SpaceRow = ParkingSpaceRow;
-type Category = 'property' | 'rental' | 'vacant' | 'unset';
+type Category = 'property' | 'rental' | 'vacant';
 const CATEGORIES: Record<Category, { label: string }> = {
-  property: { label: '产权' }, rental: { label: '租赁' }, vacant: { label: '空' }, unset: { label: '未设置' },
+  property: { label: '产权' }, rental: { label: '租赁' }, vacant: { label: '空' },
 };
 /** 只读兼容精确旧备注，不猜测、不改写 category，也不把未绑车牌当作类别「空」。 */
 function categoryOf(row: SpaceRow): Category {
   if (row.category === 'property' || row.category === 'rental' || row.category === 'vacant') return row.category;
   if (row.note?.trim() === '产权车位') return 'property';
   if (row.note?.trim() === '租赁车位') return 'rental';
-  return 'unset';
+  return 'property';
 }
 function CategoryTag({ row }: { row: SpaceRow }) {
   const category = categoryOf(row);
-  return <span className={`sp-category category-${category}`} title={!row.category && category !== 'unset' ? '来自精确旧备注，仅只读兼容；类别字段尚未设置' : undefined}>{CATEGORIES[category].label}</span>;
+  return <span className={`sp-category category-${category}`} title={!row.category ? (category === 'rental' ? '沿用原档案租赁类别' : '默认产权车位') : undefined}>{CATEGORIES[category].label}</span>;
 }
 
 const PLATE_NEV_RE = /^[\u4e00-\u9fa5][A-Z][DF]/;
@@ -144,13 +144,13 @@ export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) 
           const hasPlate = !!r.plate?.trim();
           const abnormal = !!r.note && /异常|停用|故障|损坏/.test(r.note);
           return <article key={r.id} aria-label={`车位 ${r.spaceNo}`} className={`sp-card ${hasPlate ? '' : 'is-free'}${abnormal ? ' is-abnormal' : ''}`} data-state={hasPlate ? 'bound' : 'free'}>
-            <div className="sp-top"><span className="ic-tile t-slate"><Icon name="car" size={18} /></span><div className="sp-no">{r.spaceNo}<small>号位</small></div><CategoryTag row={r} /></div>
+            <div className="sp-top"><span className="ic-tile t-slate"><Icon name="car" size={18} /></span><div className="sp-no"><span title={r.spaceNo}>{r.spaceNo}</span><small>号位</small></div><CategoryTag row={r} /></div>
             <div className="sp-plate"><span>{hasPlate ? <span className={`sp-plate-tag ${isNewEnergyPlate(r.plate!) ? 'nev' : 'blue'}`}>{compactPlate(r.plate!)}</span> : <span className="sp-empty">未绑车牌</span>}</span><button className="btn sm" aria-label={`编辑车位 ${r.spaceNo}`} onClick={() => setEdit(r)}>编辑</button></div>
             <dl className="sp-kv">
-              <dt>有效期</dt><dd>{dateLabel(r.endDate)}</dd><dt>房号</dt><dd>{formatRoomNo(r)}</dd>
-              <dt>业主</dt><dd>{r.ownerName || '—'}</dd><dt>电话</dt><dd>{r.ownerTel || '—'}</dd>
+              <dt>有效期</dt><dd title={dateLabel(r.endDate)}>{dateLabel(r.endDate)}</dd><dt>房号</dt><dd title={formatRoomNo(r)}>{formatRoomNo(r)}</dd>
+                            <dt>业主</dt><dd title={r.ownerName || '—'}>{r.ownerName || '—'}</dd><dt>电话</dt><dd title={r.ownerTel || '—'}>{r.ownerTel || '—'}</dd>
             </dl>
-            {r.note ? <p className="sp-note"><span>备注</span>{r.note}</p> : null}
+            <p className="sp-note"><span>备注</span><span className="sp-note-value" title={r.note || '—'}>{r.note || '—'}</span></p>
           </article>;
         })}</div></div>
       )}

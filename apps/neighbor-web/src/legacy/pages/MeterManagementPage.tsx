@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import { makeMeterQrLabel, meterQrFilename } from '../lib/meter-qr-label';
 import { captureLocationLabel, captureTimeLabel } from '@pms/shared-types';
 import { wgs84ToGcj02 } from '../lib/meter-geo';
@@ -84,7 +85,7 @@ const CHARGE_STATUS: Record<string, { label: string; color: string }> = {
 
 
 const money = (cents: number | string | null | undefined) => (Number(cents || 0) / 100).toFixed(2);
-const timeText = (value: string | null | undefined) => (value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '—');
+const timeText = (value: string | null | undefined) => (value ? formatBeijingDateTime(value, 'YYYY-MM-DD HH:mm') : '—');
 const confidenceText = (value: string | number | null | undefined) =>
   value === null || value === undefined || value === '' ? '—' : `${Math.round(Number(value))}%`;
 
@@ -502,7 +503,7 @@ export default function MeterManagementPage() {
       if (failures.length) zip.file('未成功生成的表码.txt',failures.join('\n'));
       const blob=await zip.generateAsync({type:'blob'});
       const url=URL.createObjectURL(blob); const link=document.createElement('a'); link.href=url;
-      link.download=`仪表表码-${dayjs().format('YYYYMMDD-HHmm')}-${completed}张.zip`; link.click();
+      link.download=`仪表表码-${formatBeijingDateTime(new Date(), 'YYYYMMDD-HHmm')}-${completed}张.zip`; link.click();
       setTimeout(()=>URL.revokeObjectURL(url),60000);
       if (failures.length) message.warning(`已下载${completed}张，另有${failures.length}张失败，详见ZIP中的失败清单`);
       else message.success(`已下载${completed}张带信息的设备表码`);
@@ -982,7 +983,7 @@ export default function MeterManagementPage() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = `meter-ocr-samples-${dayjs().format('YYYYMMDD-HHmm')}.csv`;
+    anchor.download = `meter-ocr-samples-${formatBeijingDateTime(new Date(), 'YYYYMMDD-HHmm')}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
   };

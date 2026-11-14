@@ -40,8 +40,8 @@ export class ParkingSpace extends TenantEntity {
   @Column({ name: 'owner_tel', type: 'varchar', length: 30, nullable: true })
   ownerTel: string | null;
 
-  /** 独立车位类别；null=未登记。改类别不解绑车辆、不清备注/来源/车牌。 */
-  @Column({ type: 'varchar', length: 20, nullable: true })
+  /** 独立车位类别；新增默认产权。改类别不解绑车辆、不清备注/来源/车牌。 */
+  @Column({ type: 'varchar', length: 20, nullable: true, default: 'property' })
   category: ParkingSpaceCategory | null;
 
   /** 产权 / 租赁车位 / 公司 … */

@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { accessCardIssuance, request } from '@pms/api-client';
 import Icon from '@/components/Icon';
@@ -217,7 +218,7 @@ function FamilyList({ kw }: { kw: string }) {
       {qr ? (
         <div className="card np-card" style={{ marginBottom: 12, display: 'flex', gap: 16, alignItems: 'center' }}>
           <img src={qr.dataUrl} alt="" style={{ width: 160, height: 160 }} />
-          <div><b>{qr.plate} 续登：请业主扫码上传今年的资料</b><div className="muted">有效至 {dayjs(qr.expiresAt).format('HH:mm')}（1 小时）· 业主可拍下二维码回家再扫</div>
+          <div><b>{qr.plate} 续登：请业主扫码上传今年的资料</b><div className="muted">有效至 {formatBeijingDateTime(qr.expiresAt, 'HH:mm')}（1 小时）· 业主可拍下二维码回家再扫</div>
             <button className="btn sm" style={{ marginTop: 8 }} onClick={() => setQr(null)}>收起</button></div>
         </div>
       ) : null}
@@ -271,7 +272,7 @@ function FamilyList({ kw }: { kw: string }) {
                         {canEdit && (open.status === 'expired' || (open.status === 'active' && open.expiringSoon)) ? <button className="btn sm" disabled={busy} onClick={() => renew(open)}>{busy ? '处理中…' : '续登一年'}</button> : null}
                         {canEdit && open.status === 'active' ? <button className="btn sm d" disabled={busy || !note.trim()} onClick={() => act('停用', () => request({ method: 'POST', url: `/family-cars/${open.id}/stop`, data: { note } }))}>停用</button> : null}
                       </div>
-                      <ol className="np-log">{[...(open.log ?? [])].reverse().map((l, i) => <li key={i}><time>{dayjs(l.at).format('MM-DD HH:mm')}</time><b>{l.userName}</b>{l.action}{l.note ? <small> · {l.note}</small> : null}</li>)}</ol>
+                      <ol className="np-log">{[...(open.log ?? [])].reverse().map((l, i) => <li key={i}><time>{formatBeijingDateTime(l.at, 'MM-DD HH:mm')}</time><b>{l.userName}</b>{l.action}{l.note ? <small> · {l.note}</small> : null}</li>)}</ol>
                     </td></tr>
                   ) : null}
                 </Fragment>

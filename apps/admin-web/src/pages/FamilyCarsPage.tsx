@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import {
   App as AntdApp,
   Alert,
@@ -605,7 +606,7 @@ function DetailDrawer({ id, canEdit, canApprove, onClose, onChanged, onShowQr, o
   </section>;
 
   const logSec = <section className="family-sec"><h3>处理记录</h3><div className="family-tl">{car.log.map((entry, index) => <div key={index} className={index === car.log.length - 1 ? 'is-last' : ''}>
-    {entry.action}{entry.note ? `：${entry.note}` : ''}<small>{entry.userName} · {dayjs(entry.at).format('MM-DD HH:mm')}</small></div>)}</div></section>;
+    {entry.action}{entry.note ? `：${entry.note}` : ''}<small>{entry.userName} · {formatBeijingDateTime(entry.at, 'MM-DD HH:mm')}</small></div>)}</div></section>;
 
   let body: React.ReactNode;
   let foot: React.ReactNode = <Button onClick={onClose}>关闭</Button>;
@@ -656,8 +657,8 @@ function DetailDrawer({ id, canEdit, canApprove, onClose, onChanged, onShowQr, o
       </div>
       <div>
         <section className="family-sec"><h3>审核意见</h3>
-          {car.officeReviewedAt && <div className="family-opinion"><b>办公室</b> <Text type="secondary">{dayjs(car.officeReviewedAt).format('MM-DD HH:mm')}</Text><br />{car.officeNote}</div>}
-          {car.managerReviewedAt && status === 'returned' && <div className="family-opinion is-bad"><b>物业经理（退回）</b> <Text type="secondary">{dayjs(car.managerReviewedAt).format('MM-DD HH:mm')}</Text><br />{car.managerNote}</div>}
+          {car.officeReviewedAt && <div className="family-opinion"><b>办公室</b> <Text type="secondary">{formatBeijingDateTime(car.officeReviewedAt, 'MM-DD HH:mm')}</Text><br />{car.officeNote}</div>}
+          {car.managerReviewedAt && status === 'returned' && <div className="family-opinion is-bad"><b>物业经理（退回）</b> <Text type="secondary">{formatBeijingDateTime(car.managerReviewedAt, 'MM-DD HH:mm')}</Text><br />{car.managerNote}</div>}
           {can ? <><label className="family-label">{isOffice ? '办公室' : '经理'}意见（{isOffice ? '作废' : '退回'}时必填）</label><Input.TextArea rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder={isOffice ? '例如：资料齐全，户口本可证明关系' : '例如：同意'} /></>
             : <Alert type="info" showIcon message={isOffice ? '等待办公室审核' : '等待物业经理审核；经理也可以在员工小程序「审批」里处理'} />}
         </section>

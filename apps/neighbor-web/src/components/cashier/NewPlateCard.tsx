@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
@@ -37,7 +38,7 @@ const isImg = (f: IntakeFile) => f.contentType.startsWith('image/');
 let targetsCache: Promise<ParkTarget[]> | null = null;
 /** 停车场目录（静态，按小区过滤），整个页面只拉一次 */
 const loadTargets = () => (targetsCache ??= request<ParkTarget[]>({ url: '/business/parking-targets' }).catch((e) => { targetsCache = null; throw e; }));
-export const hm = (v: string | null) => (v ? dayjs(v).format('HH:mm') : '');
+export const hm = (v: string | null) => (v ? formatBeijingDateTime(v, 'HH:mm') : '');
 
 /** 原附件不改写；只有图片进入预览，PDF 等仍直接打开原 URL。 */
 function FileThumb({ file }: { file: IntakeFile }) {
@@ -320,7 +321,7 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
         {steps.map((step, i) => <li key={step.label} data-state={step.state}>
           <span className="np-step-heading"><span className="np-step-number" aria-hidden="true">{i + 1}</span><b>{step.label}</b></span>
           <span className="np-step-detail">{step.detail}</span>
-          {step.at ? <time dateTime={step.at} title={dayjs(step.at).format('YYYY-MM-DD HH:mm:ss')}>{dayjs(step.at).format('MM-DD HH:mm')}</time> : <span className="np-step-time">{i === 3 && sync === 'synced' ? '接口未提供开通时间' : '—'}</span>}
+          {step.at ? <time dateTime={step.at} title={formatBeijingDateTime(step.at, 'YYYY-MM-DD HH:mm:ss')}>{formatBeijingDateTime(step.at, 'MM-DD HH:mm')}</time> : <span className="np-step-time">{i === 3 && sync === 'synced' ? '接口未提供开通时间' : '—'}</span>}
           {i < 3 ? <span className="np-step-arrow" aria-hidden="true">→</span> : null}
         </li>)}
       </ol>
@@ -432,7 +433,7 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
 
       {/* 付费车：选月数收款（资料没齐也可以先收，挂待处理） */}
       {manage && it.log?.length ? (
-        <ol className="np-log">{[...it.log].reverse().map((l, i) => <li key={i}><time>{dayjs(l.at).format('MM-DD HH:mm')}</time><b>{l.userName}</b>{l.action}{l.note ? <small> · {l.note}</small> : null}</li>)}</ol>
+        <ol className="np-log">{[...it.log].reverse().map((l, i) => <li key={i}><time>{formatBeijingDateTime(l.at, 'MM-DD HH:mm')}</time><b>{l.userName}</b>{l.action}{l.note ? <small> · {l.note}</small> : null}</li>)}</ol>
       ) : null}
       {manage && it.kind === 'paid' && !it.transaction && it.status !== 'void' ? <div className="muted" style={{ marginTop: 8 }}>还没收款：<Link className="btn sm" to={`/cashier?intakeId=${it.id}`}>去收银台处理此登记</Link>（定位原登记，不新建计费业务）</div> : null}
       {!manage && it.kind === 'paid' && !it.transaction && it.status !== 'void' ? (

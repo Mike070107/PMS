@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import { useEffect, useRef, useState } from 'react';
 import { request } from '@pms/api-client';
 import ToneIcon from '@/components/ToneIcon';
@@ -296,8 +297,7 @@ function buildQuery(type: StatisticsReportType, draft: FilterDraft, options: Sta
 
 function timeText(value?: string | null): string {
   if (!value) return '';
-  const parsed = dayjs(value);
-  return parsed.isValid() ? parsed.format('YYYY-MM-DD HH:mm') : String(value);
+  return formatBeijingDateTime(value, 'YYYY-MM-DD HH:mm') || String(value);
 }
 
 /** 收缴率阈值色：≥95 绿 / 80–95 琥珀 / <80 红 / 无应收灰（低饱和）。 */

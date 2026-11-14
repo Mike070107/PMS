@@ -77,9 +77,11 @@ test('两库正式卡片：独立类别/完整字段、hover及focus清晰动效
     const waitCards = garage => page.waitForFunction(garage => document.querySelectorAll('.sp-card').length === 8 && (!garage || document.querySelector('.parking-spaces')?.getAttribute('aria-label') === (garage === 'main' ? '二期大车库' : '二期人防车库')), garage);
     const noOverflow = async label => {
       const m = await page.evaluate(() => ({ viewport: innerWidth, scroll: document.documentElement.scrollWidth, clippedFields: [...document.querySelectorAll('.sp-kv dd')].filter(el => el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1).length }));
-      measurements.push({ label, ...m }); assert.ok(m.scroll <= m.viewport + 1, label + ' no page overflow'); assert.equal(m.clippedFields, 0, label + ' all card fields readable');
+      measurements.push({ label, ...m }); assert.ok(m.scroll <= m.viewport + 1, label + ' no page overflow'); const missingTitles = await page.locator('.sp-kv dd').evaluateAll(els => els.filter(el => el.scrollWidth > el.clientWidth + 1 && el.title !== el.textContent.trim()).length); assert.equal(missingTitles, 0, label + ' clipped fields preserve complete accessible titles');
     };
     const completeFields = async () => {
+      assert.equal(await page.locator('.sp-note').count(), 8, '所有车位均保留备注区，空值显示—');
+      assert.equal(await card(2).locator('.sp-note').innerText(), '备注\n—');
       for (let i = 1; i <= 8; i++) assert.deepEqual(await card(i).locator('dt').allTextContents(), ['有效期', '房号', '业主', '电话']);
       assert.deepEqual(await card(2).locator('dd').allTextContents(), ['—', '—', '—', '—']);
       assert.deepEqual(await card(3).locator('dd').allTextContents(), ['2099-12-31', '228/6/301', '测试乙', '13800000003']);
@@ -87,9 +89,9 @@ test('两库正式卡片：独立类别/完整字段、hover及focus清晰动效
       assert.equal(await card(1).locator('dd').nth(3).innerText(), '13800000001/021-12345678/13900000002');
       assert.equal(await card(2).locator('.sp-category').innerText(), '租赁'); assert.equal(await card(2).locator('.sp-empty').innerText(), '未绑车牌');
       assert.equal(await card(3).locator('.sp-category').innerText(), '空'); assert.equal(await card(3).getAttribute('data-state'), 'bound');
-      assert.equal(await card(4).locator('.sp-category').innerText(), '未设置'); assert.equal(await card(5).locator('.sp-category').innerText(), '未设置');
-      assert.equal(await card(6).locator('.sp-category').innerText(), '产权'); assert.match(await card(6).locator('.sp-category').getAttribute('title'), /旧备注/);
-      assert.equal(await card(8).locator('.sp-category').innerText(), '未设置');
+      assert.equal(await card(4).locator('.sp-category').innerText(), '产权'); assert.equal(await card(5).locator('.sp-category').innerText(), '产权');
+      assert.equal(await card(6).locator('.sp-category').innerText(), '产权');
+      assert.equal(await card(8).locator('.sp-category').innerText(), '产权');
     };
     await page.goto(origin + '/main'); await waitCards(); await completeFields(); await noOverflow('main1920');
     // Match the production 236px desktop rail and content cap, not a full-width standalone page.
@@ -113,19 +115,19 @@ test('两库正式卡片：独立类别/完整字段、hover及focus清晰动效
     }
     fs.writeFileSync(path.join(evidence, 'density.json'), JSON.stringify(density, null, 2));
     for (const m of density) {
-      assert.ok(m.free.height <= 180 && m.normal.height <= 180, '普通/未绑车位卡片应紧凑，不能保留大片空白：' + JSON.stringify(m));
-      assert.ok(m.long.height <= 240, '长业主/多电话完整换行，不靠裁切变矮：' + JSON.stringify(m));
-      assert.equal(m.metadataColumns, 4, '四个资料字段按两组同行排列');
-      assert.ok(m.phone.height <= 24, '普通手机号不应把最后一位单独折行：' + JSON.stringify(m));
+      assert.equal(m.free.height, m.normal.height, '普通/未绑车位等高'); assert.equal(m.free.height, 328, '两库所有卡片使用统一高度');
+      assert.equal(m.long.height, m.normal.height, '长资料不能撑高单张卡片');
+      assert.equal(m.metadataColumns, 2, '四个资料字段分别一行，尽量保留完整内容');
+      assert.ok(m.phone.height <= 26, '普通手机号不单独折行：' + JSON.stringify(m));
       assert.ok(m.edit.width >= 44 && m.edit.height >= 44, '编辑操作仍有44px触控目标');
-      if (m.viewport === 1920) assert.equal(m.columns, 5, '标准桌面内容区一行五个车位');
+      if (m.viewport === 1920) assert.equal(m.columns, 4, '卡片适当放大，标准桌面内容区一行四个车位');
       if (m.viewport <= 390) assert.equal(m.columns, 1, '手机保留单列可读卡片');
     }
     await page.evaluate(() => window.__setParkingGarage('main')); await waitCards('main'); await page.setViewportSize({ width: 1920, height: 1080 });
     assert.ok(await card(1).locator('.icon').evaluate(el => el.getBBox().width > 0), 'production IconSprite renders actual vehicle glyph');
     assert.equal(await page.getByRole('button', { name: '车位图', exact: true }).count(), 1);
     await page.screenshot({ path: path.join(evidence, 'main-1920.png'), fullPage: true });
-    for (const [category, count] of [['property', 2], ['rental', 2], ['vacant', 1], ['unset', 3]]) {
+    for (const [category, count] of [['property', 5], ['rental', 2], ['vacant', 1]]) {
       await page.getByLabel('车位类别', { exact: true }).selectOption(category);
       await page.waitForFunction(n => document.querySelectorAll('.sp-card').length === n, count);
     }
@@ -190,8 +192,8 @@ test('两库正式卡片：独立类别/完整字段、hover及focus清晰动效
     await page.waitForFunction(previous => !previous.isConnected, previousCivilCard);
     await waitCards('main'); await noOverflow('main390'); await completeFields();
     await page.screenshot({ path: path.join(evidence, 'main-390.png') }); await card(1).screenshot({ path: path.join(evidence, 'main-card-390.png') });
-    await page.getByLabel('车位类别', { exact: true }).selectOption('unset');
-    await page.waitForFunction(() => document.querySelectorAll('.sp-card').length === 3); await noOverflow('main390-filter');
+    await page.getByLabel('车位类别', { exact: true }).selectOption('property');
+    await page.waitForFunction(() => document.querySelectorAll('.sp-card').length === 5); await noOverflow('main390-filter');
     await page.getByLabel('车位类别', { exact: true }).selectOption('all'); await waitCards();
     await page.getByRole('button', { name: '车位图', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('.pgarage__canvas') && !document.querySelector('.pgarage__status')); await noOverflow('main390-3d');

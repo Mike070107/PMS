@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { accessCardIssuance, request } from '@pms/api-client';
@@ -130,14 +131,14 @@ export default function Pending() {
     else if (t.externalSyncStatus === 'dry_run' && ex?.result?.action === 'add_vehicle') why = `演练：将在 ${(ex.result.systems || []).join('、') || '所选车库'} 新增车牌，有效期至 ${ex.result.endDate || t.endDate}`;
     else if (t.externalSyncStatus === 'dry_run' && ex?.planned) why = `将把德立云到期日 ${ex.planned.previousEndDate} → ${ex.planned.endDate}`;
     else if (ex?.lastError) why = ex.lastError;
-    else if (t.externalSyncStatus === 'retry' && ex?.nextAt) why = `第 ${ex.attempts} 次未成功，${dayjs(ex.nextAt).format('HH:mm')} 自动再试`;
+    else if (t.externalSyncStatus === 'retry' && ex?.nextAt) why = `第 ${ex.attempts} 次未成功，${formatBeijingDateTime(ex.nextAt, 'HH:mm')} 自动再试`;
     else if (t.externalSyncStatus === 'queued' || t.externalSyncStatus === 'running') why = '正在写入停车库（本次勾选的车库系统），完成后自动回读核对到期日';
     return (
       <div key={t.id} className="pendRow">
         <div className={`pi ic ${s.tone}`}><Icon name="car" /></div>
         <div className="pm">
           <b>{t.snapshot?.intake ? '新办车牌' : '停车续期'} {plate} <span className={`tag ${s.tag}`}>{s.t}</span></b>
-          <small>{t.txnNo} · 续至 {t.endDate || '—'} · 收款 {dayjs(t.createdAt).format('MM-DD HH:mm')}{why ? <> · <span className="why">{why}</span></> : null}</small>
+          <small>{t.txnNo} · 续至 {t.endDate || '—'} · 收款 {formatBeijingDateTime(t.createdAt, 'MM-DD HH:mm')}{why ? <> · <span className="why">{why}</span></> : null}</small>
         </div>
         {t.externalSyncStatus === 'review' && canReview ? (
           rejecting?.id === t.id ? (

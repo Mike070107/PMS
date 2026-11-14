@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import {
   AlertOutlined, ApiOutlined, BugOutlined, ClockCircleOutlined, EyeOutlined,
   PaperClipOutlined, ReloadOutlined, SafetyCertificateOutlined, UserOutlined, WarningOutlined,
@@ -167,7 +168,7 @@ export default function LogsPage() {
   };
 
   const operationColumns = useMemo(() => [
-    { title: '时间', dataIndex: 'createdAt', width: 154, render: (v: string) => dayjs(v).format('MM-DD HH:mm:ss') },
+    { title: '时间', dataIndex: 'createdAt', width: 154, render: (v: string) => formatBeijingDateTime(v, 'MM-DD HH:mm:ss') },
     { title: '业务', width: 92, render: (_: unknown, r: LogRow) => <Tag color="blue">{businessArea(r)}</Tag> },
     { title: '操作类型', width: 190, render: (_: unknown, r: LogRow) => <Text strong>{operationLabel(r)}</Text> },
     { title: '业务对象', width: 150, render: (_: unknown, r: LogRow) => r.detail?.businessNo || (r.detail?.objectId ? `#${r.detail.objectId}` : '—') },
@@ -177,7 +178,7 @@ export default function LogsPage() {
     { title: '查看', width: 78, fixed: 'right' as const, render: (_: unknown, r: LogRow) => <Button type="link" icon={<EyeOutlined />} onClick={() => setDetailRow(r)}>详情</Button> },
   ], []);
   const feedbackColumns = useMemo(() => [
-    { title: '时间', dataIndex: 'createdAt', width: 154, render: (v: string) => dayjs(v).format('MM-DD HH:mm:ss') },
+    { title: '时间', dataIndex: 'createdAt', width: 154, render: (v: string) => formatBeijingDateTime(v, 'MM-DD HH:mm:ss') },
     { title: '状态', width: 96, render: (_: unknown, r: LogRow) => { const m = feedbackStatusMeta[feedbackStatus(r)]; return <Tag color={m?.color}>{m?.label}</Tag>; } },
     { title: '类型', width: 108, render: (_: unknown, r: LogRow) => { const m = feedbackTypeMeta[String(r.detail?.feedbackType || 'other')]; return <Tag color={m?.color}>{m?.label}</Tag>; } },
     { title: '反馈内容', dataIndex: 'message', width: 360, ellipsis: { showTitle: false }, render: (v: string, r: LogRow) => <div className="pms-log-message"><Text ellipsis={{ tooltip: v }}>{v}</Text>{Array.isArray(r.detail?.attachments) && r.detail.attachments.length > 0 && <Text type="secondary"><PaperClipOutlined /> {r.detail.attachments.length} 个附件</Text>}</div> },
@@ -191,7 +192,7 @@ export default function LogsPage() {
     </Space> },
   ], [canManageFeedback, logs.page]);
   const logColumns = useMemo(() => [
-    { title: '时间', dataIndex: 'createdAt', width: 154, render: (v: string) => dayjs(v).format('MM-DD HH:mm:ss') },
+    { title: '时间', dataIndex: 'createdAt', width: 154, render: (v: string) => formatBeijingDateTime(v, 'MM-DD HH:mm:ss') },
     { title: '类型', dataIndex: 'category', width: 110, render: (v: string) => <Tag color={categoryMeta[v]?.color}>{categoryMeta[v]?.label || v}</Tag> },
     { title: '来源', dataIndex: 'source', width: 126, render: (v: string) => sourceLabels[v] || v },
     { title: '操作人', dataIndex: 'actorName', width: 126, ellipsis: true },
@@ -225,7 +226,7 @@ export default function LogsPage() {
       </Row>
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={15}><Card title="24小时访问与异常趋势" className="pms-panel-card">
-          {overview?.hours?.length ? <div className="pms-hourly-chart">{overview.hours.map((row) => <div className="pms-hourly-column" key={row.hour} title={`${row.requests}次 / ${row.errors}异常`}><div className="pms-hourly-bars"><span style={{ height: `${Math.max(6, num(row.requests) / maxHourlyRequests * 100)}%` }} /><i style={{ height: `${row.errors ? Math.max(8, num(row.errors) / maxHourlyRequests * 100) : 0}%` }} /></div><small>{dayjs(row.hour).format('HH')}</small></div>)}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无访问数据" />}
+          {overview?.hours?.length ? <div className="pms-hourly-chart">{overview.hours.map((row) => <div className="pms-hourly-column" key={row.hour} title={`${row.requests}次 / ${row.errors}异常`}><div className="pms-hourly-bars"><span style={{ height: `${Math.max(6, num(row.requests) / maxHourlyRequests * 100)}%` }} /><i style={{ height: `${row.errors ? Math.max(8, num(row.errors) / maxHourlyRequests * 100) : 0}%` }} /></div><small>{formatBeijingDateTime(row.hour, 'HH')}</small></div>)}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无访问数据" />}
           <div className="pms-chart-legend"><span><i className="is-request" />请求量</span><span><i className="is-error" />异常</span></div>
         </Card></Col>
         <Col xs={24} xl={9}><Card title="服务运行状态" className="pms-panel-card"><Descriptions column={1} size="small">
@@ -299,7 +300,7 @@ function LogDetailDrawer({ row, onClose, canManageFeedback, onStatus }: { row: L
     <Space direction="vertical" size={18} style={{ width: '100%' }}>
       {row.category === 'feedback' && <div className="pms-feedback-detail-head"><Space><Tag color={feedbackStatusMeta[status]?.color}>{feedbackStatusMeta[status]?.label}</Tag><Tag color={feedbackTypeMeta[String(detail.feedbackType || 'other')]?.color}>{feedbackTypeMeta[String(detail.feedbackType || 'other')]?.label}</Tag></Space>{canManageFeedback && <Space><Button disabled={status === 'processing'} onClick={() => void onStatus(row, 'processing')}>标记处理中</Button><Button type="primary" disabled={status === 'resolved'} onClick={() => void onStatus(row, 'resolved')}>标记已解决</Button></Space>}</div>}
       <Descriptions bordered size="small" column={1}>
-        <Descriptions.Item label="时间">{dayjs(row.createdAt).format('YYYY-MM-DD HH:mm:ss')}</Descriptions.Item>
+        <Descriptions.Item label="时间">{formatBeijingDateTime(row.createdAt, 'YYYY-MM-DD HH:mm:ss')}</Descriptions.Item>
         <Descriptions.Item label={row.category === 'feedback' ? '反馈内容' : '操作类型'}><Text strong>{row.category === 'operation' ? operationLabel(row) : row.message}</Text></Descriptions.Item>
         {row.category === 'operation' && <Descriptions.Item label="业务模块">{businessArea(row)}</Descriptions.Item>}
         <Descriptions.Item label="操作人">{row.actorName}</Descriptions.Item><Descriptions.Item label="来源">{sourceLabels[row.source] || row.source}</Descriptions.Item>

@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import {Alert,Button,Card,Col,DatePicker,Descriptions,Empty,Form,Row,Select,Space,Spin,Table,Tag,Typography} from 'antd';
 import {ReloadOutlined,SearchOutlined} from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -66,7 +67,7 @@ export default function MisPropertyFees(){
     {key:'unpaid',label:'未缴金额',children:money(result.summary.unpaidCents)},
     {key:'total',label:'符合条件明细',children:`${result.total.toLocaleString()} 笔`},
    ]} />
-   <Typography.Text type="secondary">以上为全部筛选结果汇总，非当前页合计。核对欠费时请将结束账期设为本月，未来账期未缴不代表逾期。有效应缴不含退款和负数调整；退款记录 {result.summary.refundedCount} 笔保留在明细中，金额汇总不作为财务净收入报表。查询时间：{dayjs(result.queriedAt).format('YYYY-MM-DD HH:mm:ss')}；明细最近更新：{result.summary.latestUpdatedAt||'未提供'}。</Typography.Text>
+   <Typography.Text type="secondary">以上为全部筛选结果汇总，非当前页合计。核对欠费时请将结束账期设为本月，未来账期未缴不代表逾期。有效应缴不含退款和负数调整；退款记录 {result.summary.refundedCount} 笔保留在明细中，金额汇总不作为财务净收入报表。查询时间：{formatBeijingDateTime(result.queriedAt, 'YYYY-MM-DD HH:mm:ss')}；明细最近更新：{result.summary.latestUpdatedAt||'未提供'}。</Typography.Text>
   </>}
   <Table<MisRow> size="small" rowKey="id" loading={loading} dataSource={result?.rows||[]} scroll={{x:1550}} locale={{emptyText:<Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={error?'查询失败，修正后重试':!filters?.houseId?'先选择小区和房号，再查询该户账单':'当前筛选条件下没有账单'} />}}
    columns={[

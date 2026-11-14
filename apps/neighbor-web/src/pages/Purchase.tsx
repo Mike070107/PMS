@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { inventory, purchases, request } from '@pms/api-client';
@@ -202,7 +203,7 @@ export default function Purchase() {
       <p className="muted" style={{ fontSize: 14, marginTop: 10 }}>审批环节跟随「系统设置 → 采购审批链」；金额低于阈值的环节服务端自动跳过，这里显示的就是真实结果。</p>
 
       {/* 申请详情 */}
-      <Sheet open={!!detail} onClose={() => setDetail(null)} width={1020} title={detail?.requestNo || ''} subtitle={detail ? `${detail.applicantName || '—'} · ${detail.createdAt ? dayjs(detail.createdAt).format('YYYY-MM-DD HH:mm') : ''}` : ''}>
+      <Sheet open={!!detail} onClose={() => setDetail(null)} width={1020} title={detail?.requestNo || ''} subtitle={detail ? `${detail.applicantName || '—'} · ${detail.createdAt ? formatBeijingDateTime(detail.createdAt, 'YYYY-MM-DD HH:mm') : ''}` : ''}>
         {detail ? (
           <>
             <div className="facts">
@@ -235,7 +236,7 @@ export default function Purchase() {
                         ) : null}
                       </td>
                       <td className="sub" style={{ whiteSpace: 'nowrap' }}>
-                        {i.sourceReportedAt ? <><div>{dayjs(i.sourceReportedAt).format('YYYY-MM-DD')}</div><div className="muted" style={{ fontSize: 12.5 }}>{dayjs(i.sourceReportedAt).format('HH:mm')}</div></> : '—'}
+                        {i.sourceReportedAt ? <><div>{formatBeijingDateTime(i.sourceReportedAt, 'YYYY-MM-DD')}</div><div className="muted" style={{ fontSize: 12.5 }}>{formatBeijingDateTime(i.sourceReportedAt, 'HH:mm')}</div></> : '—'}
                       </td>
                       <td>{i.sourceAssigneeName || <span className="muted">未指派</span>}</td>
                       <td className="sub">{i.spec || '—'}</td>
@@ -255,7 +256,7 @@ export default function Purchase() {
                   {detail.steps.map((s) => (
                     <div key={s.key} className={`e ${s.state === 'current' ? 'cur' : ''}`}>
                       <b>{s.label}</b>
-                      <div className="w">{s.state === 'done' ? '✓ 已完成' : s.state === 'current' ? '当前环节' : s.state === 'skipped' ? '跳过' : '等待'}{s.by ? ` · ${s.by}` : ''}{s.at ? ` · ${dayjs(s.at).format('MM-DD HH:mm')}` : ''}{s.note ? ` · ${s.note}` : ''}</div>
+                      <div className="w">{s.state === 'done' ? '✓ 已完成' : s.state === 'current' ? '当前环节' : s.state === 'skipped' ? '跳过' : '等待'}{s.by ? ` · ${s.by}` : ''}{s.at ? ` · ${formatBeijingDateTime(s.at, 'MM-DD HH:mm')}` : ''}{s.note ? ` · ${s.note}` : ''}</div>
                     </div>
                   ))}
                 </div>

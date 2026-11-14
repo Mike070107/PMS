@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import {useEffect,useRef,useState} from 'react';
 import {request} from '@pms/api-client';import {useNavigate} from 'react-router-dom';import {useSession} from '@/lib/auth';
 import {dayjs,money,payLabel} from '@/lib/format';import DateInput from '@/components/DateInput';import Icon from '@/components/Icon';
@@ -123,7 +124,7 @@ export default function Records(){
       <td><b>{LABEL[t.serviceType]||'其他业务'} {t.plateNo||t.address||'—'}</b><div className="muted" style={{fontSize:13}}>单号 {t.txnNo}</div></td>
       <td className="nw"><b className="money">{money(t.amountCents/100)}</b></td>
       <td className="nw">{payText(t.detail?.paymentMethod??t.paymentMethod)}</td>
-      <td className="nw">{dayjs(t.createdAt).format('YYYY-MM-DD HH:mm')}</td>
+      <td className="nw">{formatBeijingDateTime(t.createdAt, 'YYYY-MM-DD HH:mm')}</td>
       <td className="nw">{blank(t.detail?.operatorName??t.cashier)}</td>
       <td className="nw">{t.status==='paid'?'已登记收款':t.status==='refunded'?'已退款':t.status==='cancelled'?'已取消':'待核实'}</td>
       <td><span className={`tag ${t.externalSyncStatus==='synced'?'ok':/unknown|failed|manual/.test(t.externalSyncStatus)?'warn':'mute'}`}>{syncLabel(t.externalSyncStatus)}</span></td>

@@ -1164,10 +1164,11 @@ function parseTime(value?: string | null): Date | null {
  * 与有没有接单无关：业主感知到的等待就是从他提交那一刻开始的。
  */
 export function stayDays(from?: string | null, now: Date = new Date()): number {
-  const start = parseTime(from);
-  if (!start) return 0;
-  const a = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
-  const b = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startDay = formatBeijingDateTime(from, 'YYYY-MM-DD');
+  const nowDay = formatBeijingDateTime(now, 'YYYY-MM-DD');
+  if (!startDay || !nowDay) return 0;
+  const a = Date.parse(`${startDay}T00:00:00Z`);
+  const b = Date.parse(`${nowDay}T00:00:00Z`);
   return Math.max(0, Math.round((b - a) / 86400000));
 }
 
@@ -1209,7 +1210,8 @@ export function formatDuration(fromIso?: string | null, toIso?: string | null): 
 }
 
 /** 星期几，进度时间轴里用 —— 物业和业主对「周几」比对日期敏感 */
-const WEEKDAY_CN = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+import { formatBeijingDateTime } from './beijing-time';
+export { formatBeijingDateTime, DISPLAY_TIME_ZONE } from './beijing-time';
 
 /**
  * 进度节点的时间：`2026/8/9 17:07 周日`。
@@ -1218,11 +1220,7 @@ const WEEKDAY_CN = ['周日', '周一', '周二', '周三', '周四', '周五', 
  * web 与两个小程序都用这一个函数，不要各写各的格式。
  */
 export function formatDateTimeCn(value?: string | null): string {
-  const d = parseTime(value);
-  if (!d) return '';
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${hh}:${mm} ${WEEKDAY_CN[d.getDay()]}`;
+  return formatBeijingDateTime(value, 'YYYY/M/D HH:mm ddd');
 }
 
 /** 报修附件的数量上限：三端同一份，别再各写一套（后台原来自己定义了一份） */
@@ -1247,13 +1245,7 @@ export function isVideoUrl(value?: string | null): boolean {
  * 折一次这一行就断成两截，整齐就没了。详情页和时间轴仍然用完整格式。
  */
 export function formatDateShortCn(value?: string | null): string {
-  const d = parseTime(value);
-  if (!d) return '';
-  const mo = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return `${mo}/${dd} ${hh}:${mm}`;
+  return formatBeijingDateTime(value, 'MM/DD HH:mm');
 }
 
 /**

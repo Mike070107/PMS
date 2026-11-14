@@ -26,7 +26,7 @@ export default function ParkingSpaceEditor({ row, onClose, onDone }: {
   const [ownerTel, setOwnerTel] = useState(row.ownerTel ?? '');
   const [note, setNote] = useState(row.note ?? '');
   const [area, setArea] = useState(row.areaSqm ?? '');
-  const [category, setCategory] = useState(row.category ?? '');
+  const [category, setCategory] = useState(row.category ?? (row.note?.trim() === '租赁车位' ? 'rental' : 'property'));
   const [savedPlate, setSavedPlate] = useState(row.plate ?? '');
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
@@ -96,7 +96,7 @@ export default function ParkingSpaceEditor({ row, onClose, onDone }: {
       <fieldset disabled={busy} style={{ display: 'grid', gap: 12, border: 0, margin: 0, padding: 0, minWidth: 0 }}>
         <label className="fl">车牌<input className="in" value={plate} onChange={e => setPlate(e.target.value.toUpperCase().replace(/\s/g, ''))} placeholder="空着表示未绑车牌" /></label>
         <label className="fl">类别<select className="in" aria-label="车位类别" value={category} onChange={e => setCategory(e.target.value as typeof category)}>
-          <option value="">未设置</option><option value="property">产权</option><option value="rental">租赁</option><option value="vacant">空</option>
+          <option value="property">产权</option><option value="rental">租赁</option><option value="vacant">空</option>
         </select></label>
         <label className="fl">房号<input className="in" value={houseNo} onChange={e => setHouseNo(e.target.value)} /></label>
         <label className="fl">业主<input className="in" value={ownerName} onChange={e => setOwnerName(e.target.value)} /></label>

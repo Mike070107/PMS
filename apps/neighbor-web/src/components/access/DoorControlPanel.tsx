@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import { useEffect, useRef, useState } from 'react';
 import { request } from '@pms/api-client';
 import Icon from '@/components/Icon';
@@ -60,7 +61,7 @@ function gatewayAtLeast(version: string | null, min: string) {
 function newIdempotencyKey() {
   try { return crypto.randomUUID(); } catch { return 'door-' + Date.now() + '-' + Math.random().toString(16).slice(2); }
 }
-const fmtDoorTime = (value: string | null | undefined) => (value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '—');
+const fmtDoorTime = (value: string | null | undefined) => (value ? formatBeijingDateTime(value, 'YYYY-MM-DD HH:mm:ss') : '—');
 
 /** 门禁设备管理：控制器在线状态、重新检查、立即开门 / 常开。从门禁发卡页拆出。 */
 export default function DoorControlPanel({ communities, loaded, loadError, onReloadScope, canEdit }: {

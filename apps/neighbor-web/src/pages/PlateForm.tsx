@@ -109,7 +109,7 @@ export default function PlateForm() {
           <h1>{s.kind === 'family' ? '亲情车登记' : '新车登记'}</h1>
           <p className="pf-line">{s.houseLabel}</p>
           {s.ownerName ? <p className="pf-line">业主 {s.ownerName}</p> : null}
-          <p className="pf-muted">请在 {new Date(s.expiresAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })} 前提交</p>
+          <p className="pf-muted">请在 {new Date(s.expiresAt).toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false })} 前提交</p>
         </div>
         {s.status === 'reupload' && s.reviewNote ? <div className="pf-warn">物业退回：{s.reviewNote}</div> : null}
 

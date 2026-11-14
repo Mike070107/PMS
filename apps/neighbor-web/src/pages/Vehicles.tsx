@@ -174,7 +174,7 @@ export default function Vehicles() {
           {groups.length ? (
             <div style={{ marginBottom: 16 }}>
               <div className="muted" style={{ margin: '0 0 10px', fontSize: 14 }}>
-                查询「{query?.term}」· {groups.length} 张车牌 · 完成于 {query?.completedAt ? new Date(query.completedAt).toLocaleTimeString('zh-CN') : '—'}
+                查询「{query?.term}」· {groups.length} 张车牌 · 完成于 {query?.completedAt ? new Date(query.completedAt).toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) : '—'}
               </div>
               {groups.map((g) => (
                 <VehicleCard key={normPlate(g.plate) || g.plate} plate={g.plate} rows={g.rows}

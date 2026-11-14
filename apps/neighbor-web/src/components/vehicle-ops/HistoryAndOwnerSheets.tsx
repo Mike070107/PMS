@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import { useEffect, useMemo, useState } from 'react';
 import { accessCardIssuance, request } from '@pms/api-client';
 import type {
@@ -66,7 +67,7 @@ export function HistorySheet({ plate, rows, onClose }: OpProps) {
         <b style={{ fontSize: 14 }}>{EVENT_LABEL[h.eventType] || h.eventType}</b>
         {h.plateBefore && h.plateAfter && h.plateBefore !== h.plateAfter
           ? <span className="tag acc">{h.plateBefore} → {h.plateAfter}</span> : null}
-        <span className="muted" style={{ fontSize: 13, marginLeft: 'auto' }}>{dayjs(h.occurredAt).format('YYYY-MM-DD HH:mm')}</span>
+        <span className="muted" style={{ fontSize: 13, marginLeft: 'auto' }}>{formatBeijingDateTime(h.occurredAt, 'YYYY-MM-DD HH:mm')}</span>
       </div>
       <div style={{ fontSize: 13.5, lineHeight: 1.8 }}>
         {h.summary}

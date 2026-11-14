@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import { useEffect, useMemo, useState } from 'react';
 import { inventory, request } from '@pms/api-client';
 import type { MaterialView, StockView, WarehouseView } from '@pms/shared-types';
@@ -287,7 +288,7 @@ export function StockDocs({ onClose, onChanged }: { onClose: () => void; onChang
                   <td className="muted">{r.purchaseOrderId ? '采购到货' : r.sourceText || '一般入库'}</td>
                   <td className="muted" style={{ maxWidth: 300 }}>{itemsText(r.items)}</td>
                   <td style={{ textAlign: 'right' }}>{money(r.items.reduce((s, i) => s + i.qty * i.unitCostCents, 0) / 100)}</td>
-                  <td className="muted">{dayjs(r.createdAt).format('MM-DD HH:mm')}</td>
+                  <td className="muted">{formatBeijingDateTime(r.createdAt, 'MM-DD HH:mm')}</td>
                 </tr>
               )) : <tr><td colSpan={6} className="muted" style={{ textAlign: 'center', padding: 24 }}>还没有入库记录</td></tr>}
             </tbody>
@@ -299,7 +300,7 @@ export function StockDocs({ onClose, onChanged }: { onClose: () => void; onChang
         <div className="cmdk" style={{ alignItems: 'center', paddingTop: 0 }} onClick={() => setOpen(null)}>
           <div className="box" style={{ width: 640, padding: 20 }} onClick={(e) => e.stopPropagation()}>
             <h3 style={{ margin: '0 0 6px', fontSize: 18 }}>{open.transferNo} <span className={`pill ${TR_TEXT[open.status].c}`}>{TR_TEXT[open.status].t}</span></h3>
-            <div className="muted" style={{ marginBottom: 10 }}>{wName(open.fromWarehouseId)} → {wName(open.toWarehouseId)} · 发起 {dayjs(open.createdAt).format('MM-DD HH:mm')}{open.approvedAt ? ` · 审批 ${dayjs(open.approvedAt).format('MM-DD HH:mm')}` : ''}{open.receivedAt ? ` · 收货 ${dayjs(open.receivedAt).format('MM-DD HH:mm')}` : ''}</div>
+            <div className="muted" style={{ marginBottom: 10 }}>{wName(open.fromWarehouseId)} → {wName(open.toWarehouseId)} · 发起 {formatBeijingDateTime(open.createdAt, 'MM-DD HH:mm')}{open.approvedAt ? ` · 审批 ${formatBeijingDateTime(open.approvedAt, 'MM-DD HH:mm')}` : ''}{open.receivedAt ? ` · 收货 ${formatBeijingDateTime(open.receivedAt, 'MM-DD HH:mm')}` : ''}</div>
             {open.rejectReason ? <div className="note2" style={{ marginBottom: 10 }}><Icon name="alert" />驳回原因：{open.rejectReason}</div> : null}
             <table className="tbl">
               <thead><tr><th>材料</th><th style={{ textAlign: 'right' }}>调拨数</th><th style={{ width: 130 }}>{open.status === 'approved' ? '实收' : '已收'}</th></tr></thead>

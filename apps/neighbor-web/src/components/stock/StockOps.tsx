@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import { useEffect, useMemo, useState } from 'react';
 import { inventory, request } from '@pms/api-client';
 import type { MaterialCategoryView, MaterialView, StockView, WarehouseView } from '@pms/shared-types';
@@ -165,7 +166,7 @@ export function InboundList({ warehouses, materials }: { warehouses: WarehouseVi
           ))}
         </tbody>
       </table>
-      <Sheet open={!!open} onClose={() => setOpen(null)} title={open?.receiptNo || ''} subtitle={open ? `${open.purchaseOrderId ? '采购入库' : '一般入库'} · ${whName(warehouses, open.warehouseId)} · ${dayjs(open.createdAt).format('YYYY-MM-DD HH:mm')}` : ''}>
+      <Sheet open={!!open} onClose={() => setOpen(null)} title={open?.receiptNo || ''} subtitle={open ? `${open.purchaseOrderId ? '采购入库' : '一般入库'} · ${whName(warehouses, open.warehouseId)} · ${formatBeijingDateTime(open.createdAt, 'YYYY-MM-DD HH:mm')}` : ''}>
         {open ? (
           <>
             {open.sourceText ? <div className="note2" style={{ marginBottom: 12 }}><Icon name="file" />{open.sourceText}</div> : null}
@@ -304,14 +305,14 @@ export function TransferList({ warehouses, materials, refreshKey }: { warehouses
         </table>
       ) : <Empty>这一栏没有调拨单</Empty>}
 
-      <Sheet open={!!open} onClose={() => setOpen(null)} width={720} title={open?.transferNo || ''} subtitle={open ? `${whName(warehouses, open.fromWarehouseId)} → ${whName(warehouses, open.toWarehouseId)} · ${dayjs(open.createdAt).format('YYYY-MM-DD HH:mm')}` : ''}>
+      <Sheet open={!!open} onClose={() => setOpen(null)} width={720} title={open?.transferNo || ''} subtitle={open ? `${whName(warehouses, open.fromWarehouseId)} → ${whName(warehouses, open.toWarehouseId)} · ${formatBeijingDateTime(open.createdAt, 'YYYY-MM-DD HH:mm')}` : ''}>
         {open ? (
           <>
             <div className="facts">
               <div><small>状态</small><b>{T_STATUS[open.status].text}</b></div>
-              <div><small>提交</small><b>{dayjs(open.createdAt).format('MM-DD HH:mm')}</b></div>
-              <div><small>审批</small><b>{open.approvedAt ? dayjs(open.approvedAt).format('MM-DD HH:mm') : '—'}</b></div>
-              <div><small>收货</small><b>{open.receivedAt ? dayjs(open.receivedAt).format('MM-DD HH:mm') : '—'}</b></div>
+              <div><small>提交</small><b>{formatBeijingDateTime(open.createdAt, 'MM-DD HH:mm')}</b></div>
+              <div><small>审批</small><b>{open.approvedAt ? formatBeijingDateTime(open.approvedAt, 'MM-DD HH:mm') : '—'}</b></div>
+              <div><small>收货</small><b>{open.receivedAt ? formatBeijingDateTime(open.receivedAt, 'MM-DD HH:mm') : '—'}</b></div>
             </div>
             {open.note ? <div className="note2" style={{ marginBottom: 10 }}><Icon name="file" />{open.note}</div> : null}
             {open.rejectReason ? <div className="note2" style={{ marginBottom: 10, color: 'var(--dang)' }}><Icon name="alert" />驳回原因：{open.rejectReason}</div> : null}

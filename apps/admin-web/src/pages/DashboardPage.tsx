@@ -1,3 +1,4 @@
+import { formatBeijingDateTime } from '@pms/shared-types';
 import {
   ApartmentOutlined,
   AuditOutlined,
@@ -89,7 +90,7 @@ const statusColor: Record<WorkOrderStatus, string> = {
 };
 
 function getGreeting(): string {
-  const hour = new Date().getHours();
+  const hour = Number(formatBeijingDateTime(new Date(), 'HH'));
   if (hour < 6) return '夜深了';
   if (hour < 9) return '早上好';
   if (hour < 12) return '上午好';

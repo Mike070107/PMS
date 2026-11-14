@@ -6,6 +6,7 @@
  * 尺寸表来自 @pms/shared-types 的 maintenance-sheet-geometry，和 Web 打印稿同一份。
  */
 import {
+  formatBeijingDateTime,
   ADDR_SLOTS,
   BACK_COLS,
   BACK_ROW_H,
@@ -106,14 +107,12 @@ export function parseDate(value: unknown): Date | null {
 }
 /** 纸上写「8/11」 */
 function md(value: unknown): string {
-  const date = parseDate(value);
-  return date ? `${date.getMonth() + 1}/${date.getDate()}` : '';
+  return formatBeijingDateTime(value instanceof Date || typeof value === 'string' || typeof value === 'number' ? value : null, 'M/D');
 }
 function ymd(value: unknown): { y: string; m: string; d: string } {
-  const date = parseDate(value);
-  return date
-    ? { y: String(date.getFullYear()), m: String(date.getMonth() + 1), d: String(date.getDate()) }
-    : { y: '', m: '', d: '' };
+  const formatted = formatBeijingDateTime(value instanceof Date || typeof value === 'string' || typeof value === 'number' ? value : null, 'YYYY-M-D');
+  const [y = '', m = '', d = ''] = formatted.split('-');
+  return { y, m, d };
 }
 /** 竖排字段名：小程序不认 writing-mode，一个字一行 */
 function vertical(label: string): string {
@@ -164,9 +163,8 @@ function signCell(
     name: nameKey ? text(order[nameKey]) : '',
   };
   if (kind === 'inspector') {
-    const at = parseDate(order.inspectedAt);
-    cell.m = at ? String(at.getMonth() + 1) : '';
-    cell.d = at ? String(at.getDate()) : '';
+    cell.m = formatBeijingDateTime(order.inspectedAt, 'M');
+    cell.d = formatBeijingDateTime(order.inspectedAt, 'D');
   }
   return cell;
 }
