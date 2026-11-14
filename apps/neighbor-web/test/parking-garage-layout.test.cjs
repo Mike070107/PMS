@@ -111,9 +111,11 @@ test('两库复用编辑器和完整卡片字段，类别与绑定分开', () =>
   const page = source('pages/ParkingSpaces.tsx');
   assert.match(page, /import ParkingSpaceEditor, \{ type ParkingSpaceRow \}/);
   assert.doesNotMatch(page, /function EditSheet|import DateInput/);
-  assert.match(page, /<dt>业主<\/dt><dd>\{r\.ownerName \|\| '—'\}/);
-  assert.match(page, /<dt>电话<\/dt><dd>\{r\.ownerTel \|\| '—'\}/);
+  assert.match(page, /<dt>业主<\/dt><dd title=\{r\.ownerName \|\| '—'\}>\{r\.ownerName \|\| '—'\}/);
+  assert.match(page, /<dt>电话<\/dt><dd title=\{r\.ownerTel \|\| '—'\}>\{r\.ownerTel \|\| '—'\}/);
   assert.match(page, /aria-label="车位类别"/);
-  for (const label of ['产权', '租赁', '空', '未设置']) assert.ok(page.includes(`label: '${label}'`));
+  for (const label of ['产权', '租赁', '空']) assert.ok(page.includes(`label: '${label}'`));
+  assert.doesNotMatch(page, /unset:\s*\{ label:/);
+  assert.match(page, /return 'property';/);
   assert.doesNotMatch(page, /note\.includes\('租赁'\)/);
 });
