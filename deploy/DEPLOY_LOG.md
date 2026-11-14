@@ -7361,3 +7361,10 @@
 - 自上次（6f5707bc）以来上线的相关提交：
   - debda532 feat: archive and restore fee templates with future schedule safeguards
 
+## 2026-11-14 19:40 · web · be5efcca
+
+- 包：`pms-web-20261114-193941.tar.gz`
+- 提交：be5efcca deploy: api → debda532
+- 自上次（f5228cc3）以来上线的相关提交：
+  - debda532 feat: archive and restore fee templates with future schedule safeguards
+
