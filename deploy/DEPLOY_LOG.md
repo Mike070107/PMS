@@ -7397,3 +7397,10 @@
 - 自上次（b34f7a0a）以来上线的相关提交：
   - c0dcec1a fix(parking): expose pending reviews, price custom months and explain system operations
 
+## 2026-11-15 01:55 · web · c0dcec1a
+
+- 包：`pms-web-20261115-014925.tar.gz`
+- 提交：c0dcec1a fix(parking): expose pending reviews, price custom months and explain system operations
+- 自上次（d075f81d）以来上线的相关提交：
+  - c0dcec1a fix(parking): expose pending reviews, price custom months and explain system operations
+
