@@ -85,7 +85,9 @@ test('旧助手领取查询的 OR 条件必须括起，不能绕过租户或换�
   });
   assert.deepEqual(await service.claimParkingOperation('old', ''), { task: null });
   const orConditions = conditions.filter((sql) => sql.includes(' OR '));
-  assert.equal(orConditions.length, 2);
+  assert.ok(orConditions.length >= 2, '租户/租约和换绑版本限制必须存在；允许新增有括号的车辆保护门槛');
+  assert.ok(orConditions.some(sql => sql.includes('task.status')));
+  assert.ok(orConditions.some(sql => sql.includes('canRebind')));
   for (const sql of orConditions) assert.ok(sql.startsWith('(') && sql.endsWith(')'), sql);
 });
 

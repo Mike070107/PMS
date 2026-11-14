@@ -4,6 +4,8 @@
 
 ## 已接入能力
 
+- 2.5.54（换牌原值保护，现场安装以实际版本为准）：换牌逐库保留原车型、授权及完整业务原值；独立修改车辆类型仅改所选库的身份字段。写前保存本机 DPAPI typed 原值快照，完整读回校验后才成功；丢回执只能由原助手使用原快照恢复。新增 `parkingVehiclePreservationV1` 能力，须配套本批 API/Web。更新包发布不等于现场已安装，真实 SQL 事务、现场跨进程恢复与设备仍须单独验收。
+
 - 2.5.53（停车心跳修复，现场安装以实际版本为准）：停车只读心跳独立于慢权限探测和最长 60 秒的业务任务；写权限缓存保守过期，窗口与托盘按 15 秒真实心跳新鲜度显示。不会放宽 API 在线阈值，也不把旧库写队列当设备完成。Release/x86 与离线自检通过；本机构建缺 .NET 4 targeting pack，使用 GAC 引用，不代替真正 .NET 4 现场兼容性、停车 SQL 或设备验收。发布证据见既有停车实施文档；现有每 6 小时客户端自动检查行为不变。
 
 - 2.5.52（源码待现场部署）：`.80` 捷顺发卡历史与最近 30 笔补报`HR.Person.OptDate`（人事资料添加时间）、`MC.LastBrushInfo.LastBrushCardTime`（最后刷卡时间）、`MC.Device.Name`（最后刷卡出入口）和 `MC.CardInfo.ID`；JSON 字段 `personCreatedAt`/`lastSwipeAt`/`lastDevice`/`cardInfoId` 与 API `LegacyHistoryEntryDto` 一致，后端快照与页面按 `personCreatedAt`/`lastSwipeAt`/`lastDevice` 显示。取数口径对齐旧页面 `htdocs/htdocs/Bottom_MJ_CardQty.php`（`LastBrushInfo.CardInfoID = CardInfo.ID`、`LastBrushCardDeviceId = Device.ID`，每张卡取最后一次刷卡）。**现场 `.80` 必须升级本助手的 V2 2.5.52**；旧单机 `Pms.DataSyncAssistant.exe` 0.10.0 的心跳版本是 0.10.0，低于 API 要求的 2.5.28，不能用于“最近 30 笔”。本地自检只验证字段契约，字段有值仍须现场看到真实刷卡记录才算完成。

@@ -827,27 +827,9 @@ ORDER BY COALESCE([out_Time], [Int_Time]) DESC;";
                 }
                 if (task.kind == "rebind_owner") return RebindParkingOwner(connection, task, payload);
                 if (task.kind == "update_garages") return UpdateGarageAuthorizations(config, password, task, payload, plate, admin);
-                if (task.kind == "update_vehicle_type") return UpdateVehicleType(connection, task, payload, plate, admin);
+                if (task.kind == "update_vehicle_type") return UpdateVehicleType(config, connection, task, payload, plate, admin);
                 if (task.kind == "change_plate")
-                {
-                    var targetPlate = task.kind == "change_plate" ? newPlate : plate;
-                    using (var command = Procedure(connection, "Up_PakIssue"))
-                    {
-                        Add(command, "@Pak_plate", SqlDbType.VarChar, 50, targetPlate);
-                        Add(command, "@y_Pak_plate", SqlDbType.VarChar, 50, plate);
-                        Add(command, "@P_Color", SqlDbType.VarChar, 10, Value(payload, "color") ?? "蓝");
-                        Add(command, "@Car_Lei", SqlDbType.Int, 0, Number(payload, "carType", 1));
-                        Add(command, "@owner_Name", SqlDbType.VarChar, 20, LegacyOwnerRoom(payload));
-                        Add(command, "@Car_Brand", SqlDbType.VarChar, 20, Value(payload, "identity") ?? "住户车");
-                        Add(command, "@P_note", SqlDbType.VarChar, 200, Value(payload, "note") ?? "操作来源：PMS系统");
-                        Add(command, "@admin", SqlDbType.VarChar, 20, admin);
-                        Add(command, "@P_Spaces", SqlDbType.VarChar, 20, Value(payload, "spaces") ?? "");
-                        Add(command, "@P_Effective", SqlDbType.VarChar, 256, Value(payload, "effective") ?? ZeroBits());
-                        Add(command, "@P_Download", SqlDbType.VarChar, 256, Value(payload, "download") ?? ZeroBits());
-                        command.ExecuteNonQuery();
-                    }
-                    return VerifyVehicle(connection, targetPlate, "变更车牌");
-                }
+                    return ChangePlatePreservingVehicle(config, connection, task, plate, newPlate);
                 if (task.kind == "delete_vehicle")
                 {
                     using (var command = Procedure(connection, "Add_Del_Plate"))
@@ -1306,29 +1288,192 @@ SELECT id FROM @created;";
             Add(command, "@P_Download", SqlDbType.VarChar, 256, current["P_Download"]);
         }
 
-        private static Dictionary<string, object> UpdateVehicleType(SqlConnection connection, ParkingOperationTask task,
+        // Never derive an existing vehicle's classification from a page label or another database.
+        internal static object RawVehicleIdentity(Dictionary<string, object> row)
+        {
+            if (row.ContainsKey("Car_Beand") && row.ContainsKey("Car_Brand") &&
+                !Object.Equals(row["Car_Beand"], row["Car_Brand"]))
+                throw new InvalidOperationException("旧库车型双列不一致，已停止操作；不能自动互补或覆盖");
+            if (row.ContainsKey("Car_Beand")) return row["Car_Beand"];
+            if (row.ContainsKey("Car_Brand")) return row["Car_Brand"];
+            throw new InvalidOperationException("旧库缺少车型原始字段，已停止操作");
+        }
+
+        internal static bool VehicleValueEquals(object first, object second)
+        {
+            var firstBytes = first as byte[]; var secondBytes = second as byte[];
+            return firstBytes != null && secondBytes != null ? firstBytes.SequenceEqual(secondBytes) : Object.Equals(first, second);
+        }
+
+        internal static void AssertVehiclePreserved(Dictionary<string, object> before,
+            Dictionary<string, object> after, bool changingIdentity)
+        {
+            foreach (var key in before.Keys)
+            {
+                if (String.Equals(key, "P_Admin", StringComparison.OrdinalIgnoreCase)) continue;
+                if (!changingIdentity && String.Equals(key, "P_plate", StringComparison.OrdinalIgnoreCase)) continue;
+                if (changingIdentity && (String.Equals(key, "Car_Beand", StringComparison.OrdinalIgnoreCase) ||
+                    String.Equals(key, "Car_Brand", StringComparison.OrdinalIgnoreCase))) continue;
+                if (!after.ContainsKey(key) || !VehicleValueEquals(before[key], after[key]))
+                    throw new InvalidOperationException("存储过程意外改变车辆字段 " + key + "，已撤销本次操作");
+            }
+        }
+
+        internal static void AssertVehicleRecord(ParkingOperationTask task, Dictionary<string, object> row)
+        {
+            if (String.IsNullOrWhiteSpace(task.sourceRecordId) || task.sourceRecordId != Value(row, "P_id"))
+                throw new InvalidOperationException("车辆记录已变化或缺少编号，请重新查询；没有修改旧库");
+        }
+
+        internal static void AddPreservedVehicleParameters(SqlCommand command, Dictionary<string, object> before,
+            object ownerRoom, string newPlate)
+        {
+            Add(command, "@Pak_plate", SqlDbType.VarChar, 50, newPlate);
+            Add(command, "@y_Pak_plate", SqlDbType.VarChar, 50, before["P_plate"]);
+            Add(command, "@P_Color", SqlDbType.VarChar, 10, before["P_Color"]);
+            Add(command, "@Car_Lei", SqlDbType.Int, 0, before["Car_Lei"]);
+            Add(command, "@owner_Name", SqlDbType.VarChar, 20, ownerRoom);
+            Add(command, "@Car_Brand", SqlDbType.VarChar, 20, RawVehicleIdentity(before));
+            Add(command, "@P_note", SqlDbType.VarChar, 200, before["P_note"]);
+            Add(command, "@admin", SqlDbType.VarChar, 20, "PMS");
+            Add(command, "@P_Spaces", SqlDbType.VarChar, 20, before["P_Spaces"]);
+            Add(command, "@P_Effective", SqlDbType.VarChar, 256, before["P_Effective"]);
+            Add(command, "@P_Download", SqlDbType.VarChar, 256, before["P_Download"]);
+        }
+
+        internal static void SaveVehicleSnapshot(string path, Dictionary<string, object> row)
+        {
+            var table = new DataTable("Vehicle");
+            foreach (var pair in row) table.Columns.Add(pair.Key, pair.Value == null ? typeof(string) : pair.Value.GetType());
+            var record = table.NewRow();
+            foreach (var pair in row) record[pair.Key] = pair.Value ?? DBNull.Value;
+            table.Rows.Add(record);
+            string xml;
+            using (var writer = new System.IO.StringWriter(CultureInfo.InvariantCulture)) { table.WriteXml(writer, XmlWriteMode.WriteSchema); xml = writer.ToString(); }
+            var encrypted = System.Security.Cryptography.ProtectedData.Protect(System.Text.Encoding.UTF8.GetBytes(xml), null,
+                System.Security.Cryptography.DataProtectionScope.LocalMachine);
+            using (var stream = new System.IO.FileStream(path, System.IO.FileMode.CreateNew, System.IO.FileAccess.Write, System.IO.FileShare.None))
+            { stream.Write(encrypted, 0, encrypted.Length); stream.Flush(true); }
+        }
+
+        internal static Dictionary<string, object> LoadVehicleSnapshot(string path)
+        {
+            if (!System.IO.File.Exists(path)) return null;
+            var decrypted = System.Security.Cryptography.ProtectedData.Unprotect(System.IO.File.ReadAllBytes(path), null,
+                System.Security.Cryptography.DataProtectionScope.LocalMachine);
+            var table = new DataTable();
+            using (var reader = new System.IO.StringReader(System.Text.Encoding.UTF8.GetString(decrypted))) table.ReadXml(reader);
+            if (table.Rows.Count != 1) throw new InvalidOperationException("原任务车辆快照损坏，禁止重办，请人工核对");
+            var result = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            foreach (DataColumn column in table.Columns) result[column.ColumnName] = table.Rows[0][column] == DBNull.Value ? null : table.Rows[0][column];
+            return result;
+        }
+
+        private static string VehicleSnapshotPath(AgentConfig config, SqlConnection connection, ParkingOperationTask task)
+        {
+            var context = String.Join("\n", new[] { config.BaseUrl, config.AgentId, connection.DataSource, connection.Database,
+                task.database, task.kind, task.taskId.ToString(CultureInfo.InvariantCulture), task.sourceRecordId,
+                Value(task.payload, "plate"), Value(task.payload, "newPlate"), Value(task.payload, "identity") });
+            string key;
+            using (var hash = System.Security.Cryptography.SHA256.Create()) key = BitConverter.ToString(hash.ComputeHash(System.Text.Encoding.UTF8.GetBytes(context))).Replace("-", "");
+            var root = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PmsDataSyncAssistant", "vehicle-preservation-v1");
+            System.IO.Directory.CreateDirectory(root);
+            return System.IO.Path.Combine(root, key + ".dat");
+        }
+
+        private static Dictionary<string, object> ChangePlatePreservingVehicle(AgentConfig config, SqlConnection connection,
+            ParkingOperationTask task, string plate, string newPlate)
+        {
+            if (String.IsNullOrWhiteSpace(newPlate) || NormalizePlate(plate) == NormalizePlate(newPlate))
+                throw new InvalidOperationException("新旧车牌不能为空或相同");
+            using (var transaction = connection.BeginTransaction(IsolationLevel.Serializable))
+            {
+                var journal = VehicleSnapshotPath(config, connection, task);
+                var snapshot = LoadVehicleSnapshot(journal);
+                var before = TryReadBindingVehicle(connection, transaction, plate);
+                if (before == null && snapshot != null)
+                {
+                    // Commit may have succeeded before a network/process failure. Only this exact task's
+                    // durable pre-write snapshot permits recovery; new-plate existence alone proves nothing.
+                    AssertVehicleRecord(task, snapshot);
+                    var recovered = ReadBindingVehicle(connection, transaction, newPlate);
+                    AssertVehiclePreserved(snapshot, recovered, false);
+                    if (Value(snapshot, "P_plate") != plate || Value(recovered, "P_plate") != newPlate)
+                        throw new InvalidOperationException("原任务换牌读回不一致，请人工核对");
+                    transaction.Commit();
+                    return new Dictionary<string, object> { { "verified", true }, { "preservationContract", 1 },
+                        { "preserved", true }, { "database", task.database }, { "issueId", Value(recovered, "P_id") },
+                        { "previousPlate", plate }, { "plate", newPlate }, { "before", snapshot }, { "after", recovered }, { "recovered", true } };
+                }
+                if (before == null) throw new InvalidOperationException("原牌不存在且没有本任务原值快照，禁止推断换牌成功");
+                AssertVehicleRecord(task, before);
+                if (snapshot != null) { AssertVehiclePreserved(snapshot, before, false); if (Value(snapshot, "P_plate") != plate) throw new InvalidOperationException("原任务车牌快照不匹配"); }
+                if (TryReadBindingVehicle(connection, transaction, newPlate) != null)
+                    throw new InvalidOperationException("新车牌已存在，未修改旧库");
+                var owner = ReadBindingOwner(connection, transaction, Value(before, "Owner_ID"));
+                using (var command = Procedure(connection, transaction, "Up_PakIssue"))
+                {
+                    AddPreservedVehicleParameters(command, before, owner["owner_Name"], newPlate);
+                    if (snapshot == null) SaveVehicleSnapshot(journal, before);
+                    command.ExecuteNonQuery();
+                }
+                var after = ReadBindingVehicle(connection, transaction, newPlate);
+                AssertVehiclePreserved(before, after, false);
+                if (!String.Equals(Value(after, "P_plate"), newPlate, StringComparison.Ordinal) ||
+                    TryReadBindingVehicle(connection, transaction, plate) != null)
+                    throw new InvalidOperationException("换牌后原牌或新牌读回不一致，已撤销本次操作");
+                transaction.Commit();
+                return new Dictionary<string, object> { { "verified", true }, { "preservationContract", 1 },
+                    { "preserved", true }, { "database", task.database }, { "issueId", Value(after, "P_id") },
+                    { "previousPlate", plate }, { "plate", newPlate }, { "before", before }, { "after", after } };
+            }
+        }
+
+        private static Dictionary<string, object> UpdateVehicleType(AgentConfig config, SqlConnection connection, ParkingOperationTask task,
             Dictionary<string, object> payload, string plate, string admin)
         {
             var identity = Clean(Value(payload, "identity"));
-            if (identity == null) throw new InvalidOperationException("车辆授权类型不能为空");
+            if (identity != "住户车" && identity != "租户车" && identity != "亲情车")
+                throw new InvalidOperationException("车型只接受住户车、租户车或亲情车文字值");
             using (var transaction = connection.BeginTransaction(IsolationLevel.Serializable))
             {
                 var before = ReadBindingVehicle(connection, transaction, plate);
+                AssertVehicleRecord(task, before);
+                var journal = VehicleSnapshotPath(config, connection, task);
+                var snapshot = LoadVehicleSnapshot(journal);
+                if (snapshot != null)
+                {
+                    AssertVehicleRecord(task, snapshot);
+                    AssertVehiclePreserved(snapshot, before, true);
+                    if (String.Equals(Convert.ToString(RawVehicleIdentity(before), CultureInfo.InvariantCulture), identity, StringComparison.Ordinal))
+                    {
+                        transaction.Commit();
+                        return new Dictionary<string, object> { { "verified", true }, { "preservationContract", 1 }, { "preserved", true },
+                            { "database", task.database }, { "before", snapshot }, { "after", before }, { "plate", plate },
+                            { "issueId", Value(before, "P_id") }, { "previousIdentity", RawVehicleIdentity(snapshot) }, { "identity", identity }, { "recovered", true } };
+                    }
+                    if (!Object.Equals(RawVehicleIdentity(snapshot), RawVehicleIdentity(before)))
+                        throw new InvalidOperationException("原任务车型已发生其他变化，禁止重办，请重新查询");
+                }
+                var owner = ReadBindingOwner(connection, transaction, Value(before, "Owner_ID"));
                 using (var command = Procedure(connection, transaction, "Up_PakIssue"))
                 {
-                    AddBindingProcedureParameters(command, before, LegacyOwnerRoom(payload));
+                    AddPreservedVehicleParameters(command, before, owner["owner_Name"], plate);
+                    if (snapshot == null) SaveVehicleSnapshot(journal, before);
                     command.Parameters["@Car_Brand"].Value = identity;
                     command.Parameters["@admin"].Value = admin;
                     command.ExecuteNonQuery();
                 }
                 var after = ReadBindingVehicle(connection, transaction, plate);
-                var afterIdentity = Value(after, "Car_Beand") ?? Value(after, "Car_Brand");
+                AssertVehiclePreserved(before, after, true);
+                var afterIdentity = Convert.ToString(RawVehicleIdentity(after), CultureInfo.InvariantCulture);
                 if (!String.Equals(afterIdentity, identity, StringComparison.Ordinal))
                     throw new InvalidOperationException("车辆授权类型写入后读回不一致，已撤销本次操作");
                 transaction.Commit();
                 return new Dictionary<string, object> {
-                    { "verified", true }, { "plate", Value(after, "P_plate") }, { "issueId", Value(after, "P_id") },
-                    { "previousIdentity", Value(before, "Car_Beand") ?? Value(before, "Car_Brand") },
+                    { "verified", true }, { "preservationContract", 1 }, { "preserved", true }, { "database", task.database },
+                    { "before", before }, { "after", after }, { "plate", Value(after, "P_plate") }, { "issueId", Value(after, "P_id") },
+                    { "previousIdentity", RawVehicleIdentity(before) },
                     { "identity", afterIdentity }
                 };
             }

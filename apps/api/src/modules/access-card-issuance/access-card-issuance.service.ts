@@ -1,4 +1,7 @@
 import { parkingReceiptCommitted } from './parking-receipts';
+import { requiresVehiclePreservation, validatePreservedOperation, assertPreservedReceipt, plateKey } from './parking-vehicle-preservation';
+import { preservePlateBilling } from './parking-plate-billing';
+import { ParkingPlateTag } from '../../entities/parking-plate-tag.entity';
 import { loadAddressTreeLite, resolveAddressForTenant } from '../../common/address-lookup';
 import {
   BadRequestException,
@@ -1969,24 +1972,68 @@ export class AccessCardIssuanceService {
   async createParkingOperation(dto: CreateParkingOperationDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
     const idempotencyKey = dto.idempotencyKey.trim();
+    validatePreservedOperation(dto.kind, { ...dto.payload }, dto.sourceRecordId);
     const existing = await this.parkingOperationRepo.findOne({ where: { tenantId, idempotencyKey } });
-    if (existing) return this.parkingOperationResponse(existing);
+    if (existing) {
+      const supplied = normalizeParkingOperationPayload(dto.payload);
+      if ((requiresVehiclePreservation(dto.kind) || requiresVehiclePreservation(existing.kind)) && (existing.kind !== dto.kind || existing.database !== dto.database || existing.sourceRecordId !== dto.sourceRecordId ||
+          Object.keys(existing.payload).length !== Object.keys(supplied).length || Object.keys(existing.payload).some(key => existing.payload[key] !== supplied[key])))
+        throw new BadRequestException('原幂等编号已绑定其他车辆请求，不能覆盖原任务');
+      return this.parkingOperationResponse(existing);
+    }
+    const payload = normalizeParkingOperationPayload(dto.payload);
+    validatePreservedOperation(dto.kind, payload, dto.sourceRecordId);
     const agents = await this.agentRepo.find({ where: { tenantId, kind: 'parking_gateway', enabled: true } });
     const gateway = orderAgentsByAvailability(agents).find((agent) =>
       effectiveAgentStatus(agent) === 'online' && agent.capabilities?.parkingDbWrite === true && supportsParkingOwnerUpdates(agent.version) &&
       (!(dto.payload?.identity === '亲情车' || dto.payload?.familyReviewId) || supportsFamilyActivation(agent.version)) &&
+      (!requiresVehiclePreservation(dto.kind) || agent.capabilities?.parkingVehiclePreservationV1 === true) &&
       (dto.kind !== 'rebind_owner' || supportsParkingOwnerRebind(agent.version)) &&
       (dto.kind !== 'sync_vehicle_info' || supportsParkingVehicleSync(agent.version)) &&
       (!['update_garages', 'update_vehicle_type', 'download_vehicle'].includes(dto.kind) || supportsParkingAuthorizationFixes(agent.version)) &&
       (dto.kind !== 'download_vehicle' || supportsParkingDeviceConfirmation(agent.version)));
-    if (!gateway) throw new ServiceUnavailableException(dto.payload?.identity === '亲情车' || dto.payload?.familyReviewId ? '亲情车待审核登记与自动开通需要现场助手升级到 2.5.40' : dto.kind === 'rebind_owner'
+    if (!gateway) throw new ServiceUnavailableException(requiresVehiclePreservation(dto.kind) ? '换牌和修改车型需要现场助手具备 parkingVehiclePreservationV1 原值保护能力，请先升级现场助手' : dto.payload?.identity === '亲情车' || dto.payload?.familyReviewId ? '亲情车待审核登记与自动开通需要现场助手升级到 2.5.40' : dto.kind === 'rebind_owner'
       ? '变更绑定用户需要 PMS 数据同步助手 2.5.20 及以上版本，请先更新现场助手'
       : dto.kind === 'sync_vehicle_info' ? '车辆资料复用需要 PMS 数据同步助手 2.5.23 及以上版本，请先在现场电脑升级'
       : dto.kind === 'download_vehicle' ? '停车设备下发需要 PMS 数据同步助手 2.5.47 或更新版本，旧版只能写入队列、不能确认设备完成'
       : ['update_garages', 'update_vehicle_type'].includes(dto.kind) ? '车库授权和车辆类型修改需要 PMS 数据同步助手 2.5.21 及以上版本，请先更新现场助手'
       : '停车网关尚未就绪：请安装 2.4.0 及以上助手并确认旧库存储过程写入权限');
-    const payload = normalizeParkingOperationPayload(dto.payload);
-    const expected = normalizeParkingOperationPayload(dto.expected ?? {});
+    const expected: Record<string, unknown> = requiresVehiclePreservation(dto.kind) ? { preservationContract: 1 } : normalizeParkingOperationPayload(dto.expected ?? {});
+    if (dto.kind === 'change_plate') {
+      const tags = this.parkingOperationRepo.manager.getRepository(ParkingPlateTag);
+      const oldTag = await tags.findOne({ where: { tenantId, plate: String(payload.plate) } });
+      const newTag = await tags.findOne({ where: { tenantId, plate: String(payload.newPlate) } });
+      // Same batch, next database: retain the first task's server-owned snapshot after its tag moved.
+      const sibling = payload.batchId ? await this.parkingOperationRepo.createQueryBuilder('task')
+        .where('task.tenant_id = :tenantId AND task.kind = :kind AND task.created_by = :userId', { tenantId, kind: 'change_plate', userId: user.id })
+        .andWhere("task.payload->>'batchId' = :batchId AND task.payload->>'plate' = :plate AND task.payload->>'newPlate' = :newPlate", { batchId: String(payload.batchId), plate: payload.plate, newPlate: payload.newPlate })
+        .orderBy('task.id', 'ASC').getOne() : null;
+      const original = sibling ? sibling.expected.billingTag : oldTag ? { id: oldTag.id, vehicleClass: oldTag.vehicleClass, houseId: oldTag.houseId } : null;
+      expected.billingTag = original;
+      expected.billingTargetTagId = sibling?.expected?.billingTargetTagId ?? null;
+      if (sibling) expected.batchTargets = sibling.expected.batchTargets;
+      else {
+        const sourceQuery = await this.parkingQueryRepo.findOne({ where: { id: Number(payload.sourceQueryId), tenantId } });
+        if (!sourceQuery || sourceQuery.database || sourceQuery.status !== 'completed' || sourceQuery.queryKind !== 'vehicle' ||
+            plateKey(sourceQuery.term) !== payload.plate || !sourceQuery.completedAt || Date.now() - sourceQuery.completedAt.getTime() > 300_000)
+          throw new BadRequestException('换牌前必须重新按原车牌完整查询双库，不能使用过期或其他条件的查询');
+        const targets = (sourceQuery.rows ?? []).filter(row => plateKey(parkingSnapshotValues(row.fields).plate) === payload.plate)
+          .map(row => ({ database: row.database, sourceRecordId: parkingSourceRecordId(row.fields) }));
+        if (!targets.length || targets.some(target => !target.sourceRecordId || !['parking1', 'parking2'].includes(target.database)) || new Set(targets.map(target => target.database)).size !== targets.length)
+          throw new BadRequestException('原车牌存在同库多条或缺少记录编号，已停止换牌');
+        expected.batchTargets = targets;
+      }
+      const targets = expected.batchTargets as Array<{ database: string; sourceRecordId: string }>;
+      if (!Array.isArray(targets) || !targets.some(target => target.database === dto.database && target.sourceRecordId === dto.sourceRecordId))
+        throw new BadRequestException('换牌目标不属于原查询批次，请恢复原任务，不要另建目标');
+      const duplicateTarget = await this.parkingOperationRepo.createQueryBuilder('task')
+        .where('task.tenant_id = :tenantId AND task.kind = :kind AND task.created_by = :userId', { tenantId, kind: 'change_plate', userId: user.id })
+        .andWhere("task.payload->>'batchId' = :batchId AND task.payload->>'plate' = :plate AND task.payload->>'newPlate' = :newPlate", { batchId: String(payload.batchId), plate: payload.plate, newPlate: payload.newPlate })
+        .andWhere('task.database = :database AND task.source_record_id = :recordId', { database: dto.database, recordId: dto.sourceRecordId }).getOne();
+      if (duplicateTarget) throw new BadRequestException(`该来源已存在原任务 #${duplicateTarget.id}，请恢复原幂等请求，不要另建任务`);
+      if (newTag && (!sibling || !original || (newTag.id !== (original as any).id && newTag.id !== expected.billingTargetTagId)))
+        throw new BadRequestException('新车牌已有其他 PMS 计费类别，不能覆盖；请先核对冲突');
+    }
     let familyProof: ParkingProofUpload | null = null;
     if (dto.kind === 'add_vehicle' && payload.identity === '亲情车') {
       familyProof = await this.parkingOperationRepo.manager.getRepository(ParkingProofUpload).findOne({ where: { id: Number(payload.proofUploadId) || 0, tenantId } });
@@ -2129,7 +2176,7 @@ export class AccessCardIssuanceService {
     let kind: CreateParkingOperationDto['kind'];
     if (source.kind === 'add_vehicle') kind = 'delete_vehicle';
     else if (source.kind === 'delete_vehicle') kind = 'add_vehicle';
-    else if (source.kind === 'change_plate') { kind = 'change_plate'; reverse.plate = payload.newPlate; reverse.newPlate = payload.plate; }
+    else if (source.kind === 'change_plate') throw new BadRequestException('换牌回退必须先重新查询新牌，再从变更车牌入口提交，保留当前旧库原值及 PMS 类别');
     else if (source.kind === 'renew_vehicle') { kind = 'renew_vehicle'; reverse.endDate = payload.previousEndDate; }
     else if (source.kind === 'rebind_owner') {
       if (!source.result?.previousOwnerId || !source.result?.targetOwnerId || !source.result?.previousRoom) {
@@ -2294,13 +2341,22 @@ export class AccessCardIssuanceService {
         .andWhere(canSyncVehicleInfo ? '1=1' : "task.kind <> 'sync_vehicle_info'")
         .andWhere(canUseAuthorizationFixes ? '1=1' : "task.kind NOT IN ('update_garages', 'update_vehicle_type', 'download_vehicle')")
         .andWhere(canConfirmParkingDevice ? '1=1' : "task.kind <> 'download_vehicle'")
+        .andWhere(agent.capabilities?.parkingVehiclePreservationV1 === true ? '1=1' : "task.kind NOT IN ('change_plate', 'update_vehicle_type')")
+        .andWhere("(task.kind NOT IN ('change_plate', 'update_vehicle_type') OR (task.expected->>'preservationContract' = '1' AND (task.attempt = 0 OR task.expected->>'preservationAgentKey' = :preservationAgentKey)))", { preservationAgentKey: agent.agentKey })
+        .andWhere("(task.kind <> 'change_plate' OR (task.expected ? 'billingTag' AND task.expected ? 'batchTargets' AND task.payload ? 'sourceQueryId' AND task.source_record_id IS NOT NULL))")
         .andWhere(supportsFamilyActivation(agent.version) ? '1=1' : "NOT (task.payload ? 'familyReviewId')")
         .andWhere(supportsFamilyActivation(agent.version) ? '1=1' : "NOT (task.kind = 'add_vehicle' AND task.payload->>'requiresProofReview' = 'true')")
         .orderBy('task.created_at', 'ASC').setLock('pessimistic_write').setOnLocked('skip_locked').getOne();
       if (!item) return null;
-      if (item.attempt >= 3) {
+      if (item.attempt >= 3 && !requiresVehiclePreservation(item.kind)) {
         item.status = 'failed'; item.lastError = item.lastError || '停车操作连续失败，请检查旧库日志后重试'; item.completedAt = now;
         item.leaseAgentKey = null; item.leaseExpiresAt = null; await repo.save(item); return null;
+      }
+      if (requiresVehiclePreservation(item.kind)) {
+        // Local immutable snapshots must only be recovered by their original registered assistant.
+        if (item.attempt > 0 && item.expected.preservationAgentKey !== agent.agentKey)
+          throw new BadRequestException('车辆原值快照属于原助手，不能换助手重领未知结果任务');
+        item.expected = { ...item.expected, preservationAgentKey: agent.agentKey };
       }
       item.status = 'running'; item.attempt += 1; item.leaseAgentKey = agent.agentKey;
       item.leaseExpiresAt = new Date(now.getTime() + 90_000); item.updatedBy = null; await repo.save(item);
@@ -2314,11 +2370,32 @@ export class AccessCardIssuanceService {
     if (agent.kind !== 'parking_gateway') throw new ForbiddenException('当前代理不是停车系统网关');
     await this.parkingOperationRepo.manager.transaction(async (manager) => {
       const repo = manager.getRepository(ParkingOperation);
-      const task = await repo.findOne({ where: { id: dto.taskId, tenantId: agent.tenantId } });
+      const task = await repo.findOne({ where: { id: dto.taskId, tenantId: agent.tenantId }, lock: { mode: 'pessimistic_write' } });
       if (!task) throw new NotFoundException('停车操作任务不存在');
+      if (requiresVehiclePreservation(task.kind) && agent.capabilities?.parkingVehiclePreservationV1 !== true)
+        throw new BadRequestException('当前助手没有原值保护能力，不能上报敏感车辆任务');
+      if (requiresVehiclePreservation(task.kind) && task.expected.preservationAgentKey !== agent.agentKey)
+        throw new BadRequestException('此车辆任务必须由保存原值快照的原助手上报');
+      if (task.status === 'completed' && dto.result === 'success' && requiresVehiclePreservation(task.kind)) {
+        assertPreservedReceipt(task, dto.values ?? {});
+        for (const section of ['before', 'after']) {
+          const original = task.result?.[section] as Record<string, unknown> | undefined;
+          const repeated = dto.values?.[section] as Record<string, unknown> | undefined;
+          if (!original || !repeated || Object.keys(original).length !== Object.keys(repeated).length ||
+              Object.keys(original).some(key => JSON.stringify(original[key]) !== JSON.stringify(repeated[key])))
+            throw new BadRequestException('重复回执与已完成任务不一致');
+        }
+        return; // HTTP response loss: acknowledge without a second history/tag mutation.
+      }
       if (task.status !== 'running' || task.leaseAgentKey !== agent.agentKey) throw new BadRequestException('停车操作任务不属于当前网关或已经结束');
       const now = new Date();
       if (dto.result === 'success') {
+        if (requiresVehiclePreservation(task.kind)) {
+          if (agent.capabilities?.parkingVehiclePreservationV1 !== true)
+            throw new BadRequestException('当前助手没有车辆原值保护能力');
+          assertPreservedReceipt(task, dto.values ?? {});
+        }
+        if (task.kind === 'change_plate') await preservePlateBilling(task, manager.getRepository(ParkingPlateTag), repo);
         if (task.kind === 'add_vehicle' && task.payload.requiresProofReview) {
           const values = dto.values ?? {};
           if (values.verified !== true || Number(values.state) !== 0 || String(values.effective || '') !== '0'.repeat(256))
@@ -4673,7 +4750,7 @@ function validateParkingOperation(
   const requireValue = (key: string, label: string) => { if (!textValue(payload[key])) throw new BadRequestException(`${label}不能为空`); };
   if (kind === 'add_vehicle') { requireValue('plate', '车牌'); requireValue('ownerName', '住户姓名'); requireValue('endDate', '到期日期'); validateRegistrationGarageNumbers(payload); }
   if (kind === 'renew_vehicle') { requireValue('plate', '车牌'); requireValue('endDate', '到期日期'); }
-  if (kind === 'change_plate') { requireValue('plate', '原车牌'); requireValue('newPlate', '新车牌'); requireValue('ownerName', '住户姓名'); }
+  if (kind === 'change_plate') { requireValue('plate', '原车牌'); requireValue('newPlate', '新车牌'); }
   if (kind === 'rebind_owner') { requireValue('plate', '车牌'); requireValue('ownerRoom', '新绑定房号'); requireValue('previousOwnerId', '当前旧库住户编号，请重新查询车辆'); }
   if (kind === 'update_garages') {
     requireValue('plate', '车牌'); requireValue('ownerRoom', '房号');

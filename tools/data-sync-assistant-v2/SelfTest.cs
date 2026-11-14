@@ -14,6 +14,51 @@ namespace Pms.DataSyncAssistant
 {
     internal static class SelfTest
     {
+        private static void VerifyVehiclePreservation()
+        {
+            foreach (var identity in new object[] { null, "历史 非标准", "1", "租户车" })
+            {
+                var before = new Dictionary<string, object> {
+                    { "P_id", 5045 }, { "P_plate", "测试A12345" }, { "Car_Lei", null },
+                    { "Car_Beand", identity }, { "Owner_ID", 8 }, { "P_Color", null }, { "P_note", null },
+                    { "P_Spaces", null }, { "P_Effective", "01010" }, { "P_Download", null },
+                    { "End_Time", new DateTime(2027, 1, 1) }, { "Car_Money", 300.0 }, { "Car_Deposit", null } };
+                using (var command = new System.Data.SqlClient.SqlCommand())
+                {
+                    ParkingDatabase.AddPreservedVehicleParameters(command, before, "228/1/101", "测试B12345");
+                    if (!Object.Equals(command.Parameters["@Car_Brand"].Value, identity ?? DBNull.Value) ||
+                        command.Parameters["@Car_Lei"].Value != DBNull.Value || command.Parameters["@P_note"].Value != DBNull.Value)
+                        throw new InvalidOperationException("换牌参数必须保留原空值及非标准文本，不能使用默认类型");
+                }
+                var after = new Dictionary<string, object>(before); after["P_plate"] = "测试B12345";
+                ParkingDatabase.AssertVehiclePreserved(before, after, false);
+                foreach (var key in new[] { "Car_Lei", "Car_Beand", "Owner_ID", "End_Time", "Car_Money", "Car_Deposit", "P_Effective", "P_Download", "P_Spaces" })
+                {
+                    var changed = new Dictionary<string, object>(after); changed[key] = "unexpected";
+                    var rejected = false;
+                    try { ParkingDatabase.AssertVehiclePreserved(before, changed, false); }
+                    catch (InvalidOperationException) { rejected = true; }
+                    if (!rejected) throw new InvalidOperationException("换牌必须拒绝字段漂移：" + key);
+                }
+                var typeAfter = new Dictionary<string, object>(before); typeAfter["Car_Beand"] = "住户车";
+                ParkingDatabase.AssertVehiclePreserved(before, typeAfter, true);
+                typeAfter["Car_Lei"] = 99;
+                var typeRejected = false;
+                try { ParkingDatabase.AssertVehiclePreserved(before, typeAfter, true); }
+                catch (InvalidOperationException) { typeRejected = true; }
+                if (!typeRejected) throw new InvalidOperationException("独立改车型不能改变授权编码");
+            }
+            var dual = new Dictionary<string, object> { { "Car_Beand", null }, { "Car_Brand", "住户车" } };
+            var conflictRejected = false;
+            try { ParkingDatabase.RawVehicleIdentity(dual); }
+            catch (InvalidOperationException) { conflictRejected = true; }
+            if (!conflictRejected) throw new InvalidOperationException("车型双列空值冲突不能互补");
+            var p1 = new Dictionary<string, object> { { "Car_Brand", "租户车" } };
+            var p2 = new Dictionary<string, object> { { "Car_Beand", "历史原文" } };
+            if (!Object.Equals(ParkingDatabase.RawVehicleIdentity(p1), "租户车") || !Object.Equals(ParkingDatabase.RawVehicleIdentity(p2), "历史原文"))
+                throw new InvalidOperationException("两库车型必须独立保留");
+        }
+
         public static void Run()
         {
             var root = Path.Combine(Path.GetTempPath(), "PmsDataSyncAssistantV2Test-" + Guid.NewGuid().ToString("N"));
@@ -65,6 +110,24 @@ namespace Pms.DataSyncAssistant
                 VerifyParkingFeeSource();
                 VerifyParkingDownloadParameters();
                 VerifyParkingOwnerRebind();
+                VerifyVehiclePreservation();
+                var preservationSnapshot = new Dictionary<string, object> { { "P_id", 5045 }, { "P_plate", "测试A12345" },
+                    { "Null", null }, { "Decimal", 7.20m }, { "Double", 7.0 }, { "Car_Brand", "历史 非标准" },
+                    { "Expiry", new DateTime(2027, 1, 2, 3, 4, 5, DateTimeKind.Unspecified) }, { "Image", new byte[] { 1, 2, 3 } } };
+                var preservationPath = Path.Combine(root, "preservation-snapshot.dat");
+                ParkingDatabase.SaveVehicleSnapshot(preservationPath, preservationSnapshot);
+                var restoredSnapshot = ParkingDatabase.LoadVehicleSnapshot(preservationPath);
+                ParkingDatabase.AssertVehiclePreserved(preservationSnapshot, restoredSnapshot, false);
+                var immutable = false;
+                try { ParkingDatabase.SaveVehicleSnapshot(preservationPath, new Dictionary<string, object>()); }
+                catch (IOException) { immutable = true; }
+                if (!immutable) throw new InvalidOperationException("原任务提交前快照禁止覆盖");
+                var corruptPath = Path.Combine(root, "corrupt-preservation-snapshot.dat");
+                File.WriteAllBytes(corruptPath, new byte[] { 1, 2, 3 });
+                var corruptRejected = false;
+                try { ParkingDatabase.LoadVehicleSnapshot(corruptPath); }
+                catch (System.Security.Cryptography.CryptographicException) { corruptRejected = true; }
+                if (!corruptRejected) throw new InvalidOperationException("损坏原值快照必须停止恢复，不能猜测成功");
                 VerifyActivityHistory(root);
                 VerifyAssistantUpdater(root);
                 VerifyProductUpdater();

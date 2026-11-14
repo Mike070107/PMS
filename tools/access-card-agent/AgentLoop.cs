@@ -261,6 +261,7 @@ namespace Pms.AccessCardAgent
                 { "accessCardQuery", config.Kind == "access_gateway" && accessCardQuery },
                 { "parkingDbRead", config.Kind == "parking_gateway" },
                 { "parkingDbWrite", config.Kind == "parking_gateway" && parkingWrite },
+                { "parkingVehiclePreservationV1", config.Kind == "parking_gateway" && parkingWrite },
                 { "controllerUpload", config.Kind == "access_gateway" && controllerUpload },
                 { "historicalAccessGrant", config.Kind == "access_gateway" && accessWrite && controllerUpload },
                 { "remoteDoorControl", config.Kind == "access_gateway" && accessWrite && controllerUpload }
@@ -400,11 +401,10 @@ namespace Pms.AccessCardAgent
         private void HandleParkingOperation(ParkingOperationTask task)
         {
             var target = task.database + " " + task.kind + " " + (Value(task.payload, "plate") ?? Value(task.payload, "newPlate") ?? "车牌");
+            Dictionary<string, object> result;
             try
             {
-                var result = ParkingDatabase.ExecuteOperation(_config, LoadSecret("parking-db-password.dat"), task);
-                _api.ReportParkingOperation(new ParkingOperationReport { taskId = task.taskId, result = "success", values = result });
-                RecordActivity("停车业务操作", target, true, "已调用旧系统存储过程并读回验证");
+                result = ParkingDatabase.ExecuteOperation(_config, LoadSecret("parking-db-password.dat"), task);
             }
             catch (Exception exception)
             {
@@ -415,7 +415,12 @@ namespace Pms.AccessCardAgent
                     errorMessage = exception.Message
                 });
                 RecordActivity("停车业务操作", target, false, exception.Message);
+                return;
             }
+            // A lost/rejected receipt after commit is an unknown report outcome, never an execution failure.
+            // Preservation operations recover only against their durable pre-write task snapshot.
+            _api.ReportParkingOperation(new ParkingOperationReport { taskId = task.taskId, result = "success", values = result });
+            RecordActivity("停车业务操作", target, true, "已调用旧系统存储过程并读回验证");
         }
 
         private static string Value(Dictionary<string, object> values, string key)

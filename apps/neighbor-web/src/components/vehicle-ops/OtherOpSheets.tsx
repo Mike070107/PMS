@@ -27,70 +27,7 @@ function normalizePlate(s: string) {
   return s.toUpperCase().replace(/[\s·.．・\-]/g, '');
 }
 
-/** 变更车牌：原牌→新牌，保留原授权/车位/备注；一二期一起换，人防随后同步，成功后按新牌重查 */
-export function ChangePlateSheet({ plate, rows, cloud, onClose, onDone }: OpProps) {
-  const [newPlate, setNewPlate] = useState('');
-  const [running, setRunning] = useState(false);
-  const [log, setLog] = useState<string[]>([]);
-  const [err, setErr] = useState('');
-  const targets = targetsOf(rows);
-  const civil = cloudVehicle(cloud);
-  const cloudKnown = cloud !== undefined && cloud !== 'loading';
-
-  const run = async () => {
-    setErr('');
-    const np = normalizePlate(newPlate);
-    if (np.length < 6) { setErr('请输入新车牌'); return; }
-    if (np === normPlate(plate)) { setErr('新车牌和原车牌一样'); return; }
-    if (!targets.length) { setErr('这张车牌不在一期/二期旧库里'); return; }
-    if (!cloudKnown) { setErr('人防状态还在查，请稍候'); return; }
-    setRunning(true); setLog([]);
-    const batch = createIdempotencyKey();
-    const r = await runOnTargets(targets, 'change_plate', (row) => ({
-      plate,
-      newPlate: np,
-      ownerName: field(row.fields, 'room', true) || plate,
-      endDate: ymd(field(row.fields, 'expiry')),
-      previousEndDate: ymd(field(row.fields, 'expiry')),
-      ...passthroughFields(row),
-    }), { batchKey: batch, onLog: (l) => setLog((x) => [...x, l]) });
-    if (!r.ok) { setErr(r.error || '换牌失败'); setRunning(false); return; }
-    if (civil) {
-      setLog((x) => [...x, '正在同步人防（德立云）车牌…']);
-      try {
-        await accessCardIssuance.changeDeliyunPlate({ vehicleId: civil.id, plate, newPlate: np, idempotencyKey: `${batch}-deliyun` });
-        setLog((x) => [...x, '✓ 人防已换牌']);
-      } catch (e) {
-        setErr(`旧库换牌已完成，但人防换牌未完成：${e instanceof Error ? e.message : '失败'}，请在办理记录只重试人防`);
-        setRunning(false); return;
-      }
-    }
-    toast(`已换牌为 ${np}`);
-    onDone(np);
-  };
-
-  return (
-    <Sheet open onClose={() => (running ? null : onClose())} title={`变更车牌 · ${plate}`}
-      subtitle={targets.map((t) => dbShort(t.database)).join(' + ')} width={520}>
-      <div style={{ padding: '4px 2px' }}>
-        <div className="note" style={{ marginBottom: 12, fontSize: 13 }}>换牌会保留原车库授权、车位和到期日，只改车牌号。换完会按新牌重新查询。</div>
-        <div className="muted" style={{ fontSize: 13, marginBottom: 6 }}>新车牌</div>
-        <input className="in" value={newPlate} onChange={(e) => setNewPlate(e.target.value.toUpperCase())}
-          placeholder="沪A·····" style={{ fontSize: 18, letterSpacing: 2, marginBottom: 14, textTransform: 'uppercase' }} />
-        {!cloudKnown ? <div className="note" style={{ background: 'var(--warn-w)', color: 'var(--warn)', marginBottom: 12, fontSize: 13 }}>人防状态还在查，查明前不能换牌</div>
-          : civil ? <div className="note" style={{ marginBottom: 12, fontSize: 13 }}>人防已授权，换牌后会一并同步人防车牌</div> : null}
-        {log.length ? <div className="card" style={{ padding: '10px 12px', marginBottom: 12, background: 'var(--bg)' }}>{log.map((l, i) => <div key={i} style={{ fontSize: 13, lineHeight: 1.9 }}>{l}</div>)}</div> : null}
-        {err ? <div className="note" style={{ background: 'var(--dang-w)', color: 'var(--dang)', marginBottom: 12 }}>{err}</div> : null}
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn p" style={{ flex: 1 }} disabled={running || !cloudKnown} onClick={() => void run()}>
-            <Icon name="edit" size={16} />{running ? '现场执行中…' : '确认换牌'}
-          </button>
-          <button className="btn" disabled={running} onClick={onClose}>取消</button>
-        </div>
-      </div>
-    </Sheet>
-  );
-}
+export { ChangePlateSheet } from './PlateChangeSheet';
 
 /** 下发设备：按当前授权通道重新生成下载任务，等旧系统确认（最多 60 秒） */
 export function DownloadSheet({ plate, rows, onClose, onDone }: OpProps) {

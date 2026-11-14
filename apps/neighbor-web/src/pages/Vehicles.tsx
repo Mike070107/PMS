@@ -11,6 +11,8 @@ import Icon from '@/components/Icon';
 import { field, vehicleIdentity, identityTone, deliyunVehicleIdentity, GARAGES, garageState, groupByPlate, normPlate } from '@/lib/parking-fields';
 import RenewSheet from '@/components/vehicle-ops/RenewSheet';
 import OwnerBusinessContact from '@/components/OwnerBusinessContact';
+import VehicleTypeSheet from '@/components/vehicle-ops/VehicleTypeSheet';
+import { can } from '@/lib/perm';
 import { ChangePlateSheet, DownloadSheet, DeleteSheet } from '@/components/vehicle-ops/OtherOpSheets';
 import { RebindSheet, GaragesSheet } from '@/components/vehicle-ops/RebindGarageSheets';
 import { HistorySheet, OwnerInfoSheet, CreatePmsOwnerSheet } from '@/components/vehicle-ops/HistoryAndOwnerSheets';
@@ -131,10 +133,11 @@ export default function Vehicles() {
       setCloud((c) => ({ ...c, [key]: 'loading' }));
       accessCardIssuance.deliyunVehiclesByPlate(g.plate)
         .then((r) => {
-          const hit = (r.rows || []).find((v) => normPlate(v.plate) === key) || null;
-          setCloud((c) => ({ ...c, [key]: hit }));
+          const hits = (r.rows || []).filter((v) => normPlate(v.plate) === key);
+          if (hits.length > 1) throw new Error('人防同牌记录不唯一，请核对后再换牌');
+          setCloud((c) => ({ ...c, [key]: hits[0] || null }));
         })
-        .catch(() => setCloud((c) => ({ ...c, [key]: null })));
+        .catch((e) => { setCloud((c) => ({ ...c, [key]: undefined })); setErr(e instanceof Error ? e.message : '人防查询失败，不能当成无授权，请重新查询'); });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query?.status, groups]);
@@ -236,7 +239,7 @@ export default function Vehicles() {
 
 /** 单张车牌的完整档案卡：车库授权清单 + 旧库 vs PMS 信息 + 写操作入口 */
 function VehicleCard({ plate, rows, cloud, onChanged }: { plate: string; rows: ParkingQueryRow[]; cloud: CloudState; onChanged: (requeryTerm?: string) => void }) {
-  const [op, setOp] = useState<'renew' | 'changePlate' | 'rebind' | 'garages' | 'download' | 'delete' | 'history' | 'ownerInfo' | 'pmsOwner' | null>(null);  const first = rows[0];
+  const [op, setOp] = useState<'renew' | 'changePlate' | 'vehicleType' | 'rebind' | 'garages' | 'download' | 'delete' | 'history' | 'ownerInfo' | 'pmsOwner' | null>(null);  const first = rows[0];
   const identity = vehicleIdentity(field(first?.fields, 'identity'));
   const note = rows.map((r) => field(r.fields, 'note', true)).find(Boolean) || '';
   const expiry = rows.map((r) => field(r.fields, 'expiry')).find(Boolean) || '';
@@ -328,7 +331,8 @@ function VehicleCard({ plate, rows, cloud, onChanged }: { plate: string; rows: P
       {pms?.houseId ? <OwnerBusinessContact key={pms.houseId} houseId={pms.houseId} preferredOwnerId={pms.userId} source="parking" onSaved={() => onChanged()} /> : null}
       <div className="veh-ops">
         <button className="btn p sm" onClick={() => setOp('renew')}><Icon name="cash" size={15} />续期收费</button>
-        <button className="btn sm" onClick={() => setOp('changePlate')}><Icon name="edit" size={15} />变更车牌</button>
+        <button className="btn sm" disabled={!can('business', 'edit')} onClick={() => setOp('vehicleType')}><Icon name="edit" size={15} />修改车辆类型</button>
+        <button className="btn sm" disabled={!can('business', 'edit')} onClick={() => setOp('changePlate')}><Icon name="edit" size={15} />变更车牌</button>
         <button className="btn sm" onClick={() => setOp('rebind')}><Icon name="users" size={15} />变更绑定用户</button>
         <button className="btn sm" onClick={() => setOp('garages')}><Icon name="car" size={15} />调整车库授权</button>
         <button className="btn sm" onClick={() => setOp('history')}><Icon name="clock" size={15} />变更历史</button>
@@ -343,6 +347,7 @@ function VehicleCard({ plate, rows, cloud, onChanged }: { plate: string; rows: P
         <RenewSheet plate={plate} rows={rows} cloud={cloud}
           onClose={() => setOp(null)} onDone={() => { setOp(null); onChanged(); }} />
       ) : null}
+      {op === 'vehicleType' ? <VehicleTypeSheet plate={plate} rows={rows} onClose={() => setOp(null)} onDone={() => { setOp(null); onChanged(); }} /> : null}
       {op === 'changePlate' ? (
         <ChangePlateSheet plate={plate} rows={rows} cloud={cloud}
           onClose={() => setOp(null)} onDone={(t) => { setOp(null); onChanged(t); }} />
