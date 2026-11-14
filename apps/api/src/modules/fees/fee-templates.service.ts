@@ -10,7 +10,10 @@ import { AssignTemplateDto, LegacyTemplateImportDto, SaveTemplateDto, TemplateLi
 import { normalizeOverrides, normalizeTemplateItems, resolveTemplateItems, standardSignature, TemplateItem } from './fee-templates.util';
 
 type Queryable = Pick<EntityManager,'query'>;
-const kindSql = `(CASE WHEN EXISTS(SELECT 1 FROM houses kh JOIN buildings kb ON kb.id=kh.building_id WHERE kb.community_id=c.id AND kh.tenant_id=c.tenant_id AND kh.property_type='公寓') THEN 'apartment' ELSE 'residential' END)`;
+// 收费目录与房产档案使用同一分类；房号旧 property_type 不覆盖已明确的小区/公寓类型。
+const kindSql = `(CASE WHEN c.community_type='apartment' THEN 'apartment' ELSE 'residential' END)`;
+// 模板kind是旧分类快照；访问分类以scope中的房产档案为准。按租户/社区/模板ID定位旧标准，不迁移价格或绑定。
+const configurableSql = `c.enabled=true AND NOT EXISTS(SELECT 1 FROM communities child WHERE child.tenant_id=c.tenant_id AND child.parent_id=c.id)`;
 
 @Injectable()
 export class FeeTemplatesService {
@@ -27,7 +30,7 @@ export class FeeTemplatesService {
   private async scope(dto: TemplateScopeDto,user:AuthUser,access?:ResolvedAccess,q:Queryable=this.db) {
     const tenantId=this.tenant(user), allowed=scopeCommunityIds(access);
     if (allowed && !allowed.includes(dto.communityId)) throw new ForbiddenException('无权管理该门店或小区');
-    const rows=await q.query(`SELECT c.id,c.name,${kindSql} kind FROM communities c WHERE c.tenant_id=$1 AND c.id=$2`,[tenantId,dto.communityId]);
+    const rows=await q.query(`SELECT c.id,c.name,${kindSql} kind FROM communities c WHERE c.tenant_id=$1 AND c.id=$2 AND ${configurableSql}`,[tenantId,dto.communityId]);
     if (!rows.length) throw new NotFoundException('门店或小区不存在');
     if (rows[0].kind!==dto.kind) throw new BadRequestException('公寓与小区标准不能跨类别使用');
     return tenantId;
@@ -35,17 +38,17 @@ export class FeeTemplatesService {
   async communities(user:AuthUser,access?:ResolvedAccess) {
     const tenantId=this.tenant(user), allowed=scopeCommunityIds(access);
     if (allowed && !allowed.length) return [];
-    return this.db.query(`SELECT c.id,c.name,${kindSql} kind FROM communities c WHERE c.tenant_id=$1 AND c.enabled=true
-      AND ($2::int[] IS NULL OR c.id=ANY($2::int[])) AND EXISTS(SELECT 1 FROM buildings b JOIN houses h ON h.building_id=b.id WHERE b.community_id=c.id AND h.tenant_id=$1) ORDER BY c.id`,[tenantId,allowed]);
+    return this.db.query(`SELECT c.id,c.name,${kindSql} kind FROM communities c WHERE c.tenant_id=$1 AND ${configurableSql}
+      AND ($2::int[] IS NULL OR c.id=ANY($2::int[])) ORDER BY c.id`,[tenantId,allowed]);
   }
   async list(dto:TemplateScopeDto,user:AuthUser,access?:ResolvedAccess) {
     const tenantId=await this.scope(dto,user,access);
     const templates=await this.db.query(`SELECT t.*,COALESCE((SELECT count(DISTINCT house_id) FROM (
       (SELECT DISTINCT ON(house_id) house_id,template_id FROM fee_template_assignments WHERE tenant_id=t.tenant_id AND community_id=t.community_id ORDER BY house_id,effective_from DESC,id DESC)
-      UNION (SELECT DISTINCT ON(house_id) house_id,template_id FROM fee_template_assignments WHERE tenant_id=t.tenant_id AND community_id=t.community_id AND effective_from<=$4 ORDER BY house_id,effective_from DESC,id DESC)) a WHERE a.template_id=t.id),0)::int assigned_count
-      FROM fee_templates t WHERE t.tenant_id=$1 AND t.community_id=$2 AND t.kind=$3 ORDER BY t.enabled DESC,t.id`,[tenantId,dto.communityId,dto.kind,todayInTz(new Date())]);
+      UNION (SELECT DISTINCT ON(house_id) house_id,template_id FROM fee_template_assignments WHERE tenant_id=t.tenant_id AND community_id=t.community_id AND effective_from<=$3 ORDER BY house_id,effective_from DESC,id DESC)) a WHERE a.template_id=t.id),0)::int assigned_count
+      FROM fee_templates t WHERE t.tenant_id=$1 AND t.community_id=$2 ORDER BY t.enabled DESC,t.id`,[tenantId,dto.communityId,todayInTz(new Date())]);
     const versions=templates.length?await this.db.query(`SELECT id,template_id,version,to_char(effective_from,'YYYY-MM-DD') effective_from,items FROM fee_template_versions WHERE template_id=ANY($1::int[]) ORDER BY version DESC`,[templates.map((t:any)=>t.id)]):[];
-    for(const template of templates) template.versions=versions.filter((v:any)=>v.template_id===template.id);
+    for(const template of templates) { template.kind=dto.kind; template.versions=versions.filter((v:any)=>v.template_id===template.id); }
     const buildings=await this.db.query(`SELECT b.id,b.building_no,b.lane FROM buildings b WHERE b.tenant_id=$1 AND b.community_id=$2 ORDER BY b.id`,[tenantId,dto.communityId]);
     return {templates,buildings};
   }
@@ -72,11 +75,11 @@ export class FeeTemplatesService {
     return this.db.transaction(async manager=>{
       const tenantId=await this.scope(dto,user,access,manager);
       await manager.query(`SELECT pg_advisory_xact_lock($1,$2)`,[tenantId,dto.communityId]);
-      const duplicates=await manager.query(`SELECT id FROM fee_templates WHERE tenant_id=$1 AND community_id=$2 AND kind=$3 AND name=$4 AND ($5::int IS NULL OR id<>$5)`,[tenantId,dto.communityId,dto.kind,dto.name.trim(),id??null]);
+      const duplicates=await manager.query(`SELECT id FROM fee_templates WHERE tenant_id=$1 AND community_id=$2 AND name=$3 AND ($4::int IS NULL OR id<>$4)`,[tenantId,dto.communityId,dto.name.trim(),id??null]);
       if(duplicates.length) throw new ConflictException('当前门店已有同名模板，请使用不同名称');
       let template;
       if(id) {
-        [template]=await manager.query(`SELECT * FROM fee_templates WHERE id=$1 AND tenant_id=$2 AND community_id=$3 AND kind=$4 FOR UPDATE`,[id,tenantId,dto.communityId,dto.kind]);
+        [template]=await manager.query(`SELECT * FROM fee_templates WHERE id=$1 AND tenant_id=$2 AND community_id=$3 FOR UPDATE`,[id,tenantId,dto.communityId]);
         if(!template) throw new NotFoundException('模板不存在');
         if(!template.enabled) throw new BadRequestException('模板已停用');
         if(dto.expectedRevision!==template.revision) throw new ConflictException('模板已被修改，请刷新后重试');
@@ -101,7 +104,7 @@ export class FeeTemplatesService {
     return this.db.transaction(async manager=>{
       const tenantId=await this.scope(dto,user,access,manager);
       await manager.query(`SELECT pg_advisory_xact_lock($1,$2)`,[tenantId,dto.communityId]);
-      const [template]=await manager.query(`SELECT id FROM fee_templates WHERE id=$1 AND tenant_id=$2 AND community_id=$3 AND kind=$4 FOR UPDATE`,[id,tenantId,dto.communityId,dto.kind]);
+      const [template]=await manager.query(`SELECT id FROM fee_templates WHERE id=$1 AND tenant_id=$2 AND community_id=$3 FOR UPDATE`,[id,tenantId,dto.communityId]);
       if(!template) throw new NotFoundException('模板不存在');
       const [{count}]=await manager.query(`SELECT count(DISTINCT house_id)::int count FROM ((SELECT DISTINCT ON(house_id) house_id,template_id FROM fee_template_assignments WHERE tenant_id=$1 AND community_id=$2 ORDER BY house_id,effective_from DESC,id DESC)
         UNION (SELECT DISTINCT ON(house_id) house_id,template_id FROM fee_template_assignments WHERE tenant_id=$1 AND community_id=$2 AND effective_from<=$4 ORDER BY house_id,effective_from DESC,id DESC)) a WHERE template_id=$3`,[tenantId,dto.communityId,id,todayInTz(new Date())]);
@@ -116,7 +119,7 @@ export class FeeTemplatesService {
     return this.db.transaction(async manager=>{
       const tenantId=await this.scope(dto,user,access,manager);
       await manager.query(`SELECT pg_advisory_xact_lock($1,$2)`,[tenantId,dto.communityId]);
-      const [template]=await manager.query(`SELECT * FROM fee_templates WHERE id=$1 AND tenant_id=$2 AND community_id=$3 AND kind=$4 AND enabled=true FOR UPDATE`,[dto.templateId,tenantId,dto.communityId,dto.kind]);
+      const [template]=await manager.query(`SELECT * FROM fee_templates WHERE id=$1 AND tenant_id=$2 AND community_id=$3 AND enabled=true FOR UPDATE`,[dto.templateId,tenantId,dto.communityId]);
       if(!template) throw new BadRequestException('所选模板不属于当前门店或已停用');
       if(template.revision!==dto.expectedRevision) throw new ConflictException('模板价格已变化，请刷新后重新确认');
       const [version]=await manager.query(`SELECT items FROM fee_template_versions WHERE template_id=$1 AND effective_from<=$2 ORDER BY effective_from DESC,version DESC LIMIT 1`,[template.id,dto.effectiveFrom]);

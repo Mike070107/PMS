@@ -189,3 +189,17 @@
   #web .content { padding: 18px 16px 80px; }
   #web .erp-toolbar { gap: 8px; }
 }
+
+/* 父/子层级显式作用于实际包裹层，不再依赖失配的标题~链接兄弟选择器。 */
+@media screen {
+  #web .side .navGroupTitle { font-size: 16px; font-weight: 700; }
+  #web .side .nav .navGroupItems { position: relative; }
+  #web .side .nav .navGroupItems:not(:empty)::before { content: ''; position: absolute; left: 22px; top: 4px; bottom: 4px; width: 1px; background: var(--line); pointer-events: none; }
+  #web .side .nav .navGroupItems > a { min-height: 44px; padding: 9px 10px 9px 38px; gap: 10px; font-size: 16px; }
+  #web .side .nav .navGroupItems > a > .icon { width: 22px; height: 22px; flex-shrink: 0; }
+  #web.sidebar-compact:not(.menu-open) .side .nav .navGroupItems > a { padding: 9px 0; justify-content: center; gap: 0; }
+  #web.sidebar-compact:not(.menu-open) .side .nav .navGroupItems::before { display: none; }
+}
+@media screen and (max-width: 900px) {
+  #web .side .nav .navGroupItems > a { padding-left: 44px; }
+}

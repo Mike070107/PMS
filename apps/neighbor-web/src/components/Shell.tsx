@@ -210,7 +210,7 @@ export default function Shell() {
                 <span className="navGroupText">{g.title}</span>
                 <Icon name="chev" size={14} className="navGroupChev" />
               </button>
-              <div id={`nav-group-${g.title}`} role="group" aria-label={g.title}>{!openGroups.includes(g.title) ? null : g.keys.map((k) => {
+              <div className="navGroupItems" id={`nav-group-${g.title}`} role="group" aria-label={g.title}>{!openGroups.includes(g.title) ? null : g.keys.map((k) => {
                 const item = NAV.find((n) => n.key === k);
                 if (!item || !item.to || !canViewPath(item.to,session.access) || (item.permissionKey && !can(item.permissionKey, 'view'))) return null;
                 const on = item.key === page;

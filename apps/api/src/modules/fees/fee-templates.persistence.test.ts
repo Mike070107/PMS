@@ -82,3 +82,66 @@ test('隔离PostgreSQL：旧标准精确归并，模板绑定不复制标准，�
     assert.equal(generated.standards[0].templateSnapshot.version,1);
   }finally{await pg.close();}
 });
+
+test('公寓目录与作用域以房产档案分类为准，不由旧房号类型反推',async()=>{
+  const {pg,service,db}=await fixture();
+  try {
+    await db.query(`UPDATE houses SET property_type=CASE WHEN id IN(101,102) THEN '住宅' ELSE '公寓' END`);
+    const catalog=await service.communities(user);
+    assert.equal(catalog.find((c:any)=>c.id===1)?.kind,'apartment');
+    assert.equal(catalog.find((c:any)=>c.id===2)?.kind,'residential');
+    const created=await service.save({...scope,name:'档案公寓标准',effectiveFrom:today,items:[item()]},user);
+    assert.equal((await service.list(scope,user)).templates[0].id,created.id);
+    assert.equal((await service.houses(scope,user)).total,2);
+    assert.equal((await service.assign({...scope,templateId:created.id,expectedRevision:1,expectedCount:2,all:true,effectiveFrom:today},user)).changed,2);
+    assert.equal((await service.resolve(1,101,today)).items[0].amountCents,80000);
+    await assert.rejects(service.list({...scope,kind:'residential'},user),/跨类别/);
+    await assert.rejects(service.list({...scope,communityId:2},user),/跨类别/);
+    assert.equal((await db.query('SELECT property_type FROM houses WHERE id=101'))[0].property_type,'住宅');
+  }finally{await pg.close();}
+});
+
+test('房产分类纠正后保留旧类别模板及绑定，不隐式改价或复制标准',async()=>{
+  const {pg,service,db}=await fixture();
+  try {
+    await db.query("UPDATE communities SET community_type='community' WHERE id=1");
+    const oldScope={...scope,kind:'residential' as const};
+    const created=await service.save({...oldScope,name:'既有标准',effectiveFrom:today,items:[item()]},user);
+    await service.assign({...oldScope,templateId:created.id,expectedRevision:1,expectedCount:2,all:true,effectiveFrom:today},user);
+    const previous=await service.resolve(1,101,today);
+    await db.query("UPDATE communities SET community_type='apartment' WHERE id=1");
+    const listed=await service.list(scope,user);
+    assert.equal(listed.templates.length,1);assert.equal(listed.templates[0].id,created.id);
+    assert.equal(listed.templates[0].kind,'apartment');
+    assert.deepEqual(await service.resolve(1,101,today),previous);
+    await assert.rejects(service.save({...scope,name:'既有标准',effectiveFrom:today,items:[item()]},user),/同名/);
+    assert.equal((await service.assign({...scope,templateId:created.id,expectedRevision:1,expectedCount:2,all:true,effectiveFrom:today},user)).changed,0);
+    await assert.rejects(service.disable(created.id,scope,user),/仍有2户/);
+    assert.equal((await db.query('SELECT kind FROM fee_templates WHERE id=$1',[created.id]))[0].kind,'residential');
+    assert.equal((await db.query('SELECT count(*)::int n FROM fee_template_versions'))[0].n,1);
+    await service.save({...scope,name:'既有标准',expectedRevision:1,effectiveFrom:today,items:[item()]},user,undefined,created.id);
+    assert.equal((await service.list(scope,user)).templates[0].revision,2);
+  }finally{await pg.close();}
+});
+
+test('空叶子公寓可配置；分组和停用项不入目录且直传不能写入',async()=>{
+  const {pg,service,db}=await fixture();
+  try {
+    await db.query(`INSERT INTO communities(id,tenant_id,name,enabled,community_type,parent_id) VALUES
+      (4,1,'空顶层公寓',true,'apartment',NULL),(5,1,'公寓分组',true,'apartment',NULL),
+      (6,1,'子公寓',true,'apartment',5),(7,1,'停用公寓',false,'apartment',NULL),
+      (8,2,'跨租户子节点',true,'apartment',4)`);
+    const catalog=await service.communities(user);
+    assert.deepEqual(catalog.map((c:any)=>c.id),[1,2,4,6]);
+    const emptyScope={...scope,communityId:4};
+    const created=await service.save({...emptyScope,name:'预配置标准',effectiveFrom:today,items:[item()]},user);
+    assert.equal((await service.list(emptyScope,user)).templates[0].id,created.id);
+    assert.equal((await service.houses(emptyScope,user)).total,0);
+    await assert.rejects(service.assign({...emptyScope,templateId:created.id,expectedRevision:1,expectedCount:0,all:true,effectiveFrom:today},user),/1—5000/);
+    for(const id of [5,7]) await assert.rejects(service.save({...scope,communityId:id,name:'不可配置',effectiveFrom:today,items:[item()]},user),/不存在|分组|停用/);
+    const access={scopeAll:false,communityIds:[4,5,7,8]} as unknown as ResolvedAccess;
+    assert.deepEqual((await service.communities(user,access)).map((c:any)=>c.id),[4]);
+    await assert.rejects(service.list({...scope,communityId:6},user,access),/无权/);
+    assert.equal((await db.query('SELECT count(*)::int n FROM fee_templates'))[0].n,1);
+  }finally{await pg.close();}
+});
