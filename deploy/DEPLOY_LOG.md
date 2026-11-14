@@ -7354,3 +7354,10 @@
 - 自上次（4677c606）以来上线的相关提交：
   - 6f5707bc fix: align apartment catalog with archive and clarify navigation hierarchy
 
+## 2026-11-14 19:39 · api · debda532
+
+- 包：`pms-api-fast-20261114-193534.tar.gz`
+- 提交：debda532 feat: archive and restore fee templates with future schedule safeguards
+- 自上次（6f5707bc）以来上线的相关提交：
+  - debda532 feat: archive and restore fee templates with future schedule safeguards
+
