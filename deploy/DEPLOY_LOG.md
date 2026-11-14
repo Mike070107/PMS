@@ -7368,3 +7368,11 @@
 - 自上次（f5228cc3）以来上线的相关提交：
   - debda532 feat: archive and restore fee templates with future schedule safeguards
 
+## 2026-11-14 23:07 · api · b34f7a0a
+
+- 包：`pms-api-fast-20261114-230532.tar.gz`
+- 提交：b34f7a0a chore(release): retain dependency manifests and run preservation regression explicitly
+- 自上次（debda532）以来上线的相关提交：
+  - b34f7a0a chore(release): retain dependency manifests and run preservation regression explicitly
+  - e0e79509 fix(parking): preserve source vehicle values on plate changes and add independent type updates
+
