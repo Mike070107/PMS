@@ -7311,3 +7311,10 @@
 - 自上次（0a8260ed）以来上线的相关提交：
   - 1f715fc5 [verified] fix(web): compact shared garage parking cards
 
+## 2026-11-14 15:15 · api · 5b22c1a8
+
+- 包：`pms-api-fast-20261114-151035.tar.gz`
+- 提交：5b22c1a8 feat(apartment): scoped fee standards and staff cashier details
+- 自上次（5632a0b6）以来上线的相关提交：
+  - 5b22c1a8 feat(apartment): scoped fee standards and staff cashier details
+
