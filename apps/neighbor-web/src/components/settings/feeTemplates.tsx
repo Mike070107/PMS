@@ -24,8 +24,8 @@ const owns = (o: Record<string, number>, k: string) => Object.prototype.hasOwnPr
 const activeVersion = (t: Template, date: string) => t.versions.filter((v) => v.effective_from <= date).sort((a, b) => b.effective_from.localeCompare(a.effective_from) || b.version - a.version)[0];
 const bLabel = (b: { lane: string | null; building_no: string }) => `${b.lane ? `${b.lane}弄` : ''}${b.building_no}号`;
 
-export function FeeTemplatesSection({ canEdit }: { canEdit: boolean }) {
-  const [kind, setKind] = useState<Kind>('residential');
+export function FeeTemplatesSection({ canEdit, initialKind='residential', onlyKind=false }: { canEdit: boolean; initialKind?:Kind; onlyKind?:boolean }) {
+  const [kind, setKind] = useState<Kind>(initialKind);
   const [communities, setCommunities] = useState<Community[]>([]);
   const [communityId, setCommunityId] = useState<number>();
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -87,7 +87,7 @@ export function FeeTemplatesSection({ canEdit }: { canEdit: boolean }) {
       id: edit ? template?.id : undefined,
       name: edit ? template?.name ?? '' : copy ? `${template?.name} 副本` : '',
       effectiveFrom: src?.effective_from && src.effective_from > today() ? src.effective_from : today(),
-      items: src?.items.map((i) => ({ ...i, priceYuan: String(i.unitPriceCents / 100) })) ?? [{ feeCode: kind === 'apartment' ? 'rent' : 'management', priceYuan: '0', unit: '月', calculation: 'fixed', cycle: 'month' }],
+      items: src?.items.map((i) => ({ ...i, priceYuan: String(i.unitPriceCents / 100) })) ?? [{ feeCode: kind === 'apartment' ? 'rent' : 'management', priceYuan: '', unit: '月', calculation: 'fixed', cycle: 'month' }],
     });
   };
   const editorErr = editor ? (!editor.name.trim() ? '请输入模板名称' : !editor.items.length ? '至少添加一个项目'
@@ -146,12 +146,12 @@ export function FeeTemplatesSection({ canEdit }: { canEdit: boolean }) {
   const allPicked = rows.length > 0 && rows.every((r) => picked.includes(r.id));
 
   return (
-    <Section title="物业费收费标准" desc="公寓门店与小区分开配置。住户关联模板、不复制标准：改模板保存为新版本并选生效日，已生成的账单和历史收款保持原价。">
+    <Section title={onlyKind && kind==='apartment'?'公寓收费标准':'物业费收费标准'} desc="公寓门店与小区分开配置。住户关联模板、不复制标准：改模板保存为新版本并选生效日，已生成的账单和历史收款保持原价。">
       <div className="set-inline" style={{ marginBottom: 12 }}>
-        <div className="seg">
+        {!onlyKind ? <div className="seg">
           <button className={kind === 'residential' ? 'on' : ''} onClick={() => changeScope(undefined, 'residential')}>小区收费标准</button>
           <button className={kind === 'apartment' ? 'on' : ''} onClick={() => changeScope(undefined, 'apartment')}>公寓收费标准</button>
-        </div>
+        </div> : null}
         <select className="in" style={{ width: 240 }} value={communityId ?? ''} onChange={(e) => changeScope(e.target.value ? Number(e.target.value) : undefined)}>
           <option value="">选择{kind === 'apartment' ? '公寓门店' : '小区'}</option>
           {communities.filter((c) => c.kind === kind).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -253,7 +253,7 @@ export function FeeTemplatesSection({ canEdit }: { canEdit: boolean }) {
               <button className="btn d sm" onClick={() => setEditor({ ...editor, items: editor.items.filter((_, j) => j !== i) })}>移除</button>
             </div>
           ))}
-          <div><button className="btn" disabled={editor.items.length >= 20} onClick={() => setEditor({ ...editor, items: [...editor.items, { feeCode: FEE_ITEMS.find((f) => !editor.items.some((x) => x.feeCode === f.code))?.code ?? FEE_ITEMS[0].code, priceYuan: '0', unit: '月', calculation: 'fixed', cycle: 'month' }] })}>＋ 添加收费项目</button></div>
+          <div><button className="btn" disabled={editor.items.length >= 20} onClick={() => setEditor({ ...editor, items: [...editor.items, { feeCode: FEE_ITEMS.find((f) => !editor.items.some((x) => x.feeCode === f.code))?.code ?? FEE_ITEMS[0].code, priceYuan: '', unit: '月', calculation: 'fixed', cycle: 'month' }] })}>＋ 添加收费项目</button></div>
           {editorErr ? <ResultNote ok={false}>{editorErr}</ResultNote> : null}
         </> : null}
       </FormModal>

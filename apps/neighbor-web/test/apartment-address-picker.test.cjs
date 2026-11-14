@@ -22,7 +22,7 @@ function harness() {
   const request=o=>new Promise((resolve,reject)=>requests.push({o,resolve,reject}));
   const module={exports:{}};
   const antd=new Proxy({App:{useApp:()=>({message})},Input:Object.assign(function Input(){},{TextArea:'TextArea'}),Empty:Object.assign(function Empty(){},{PRESENTED_IMAGE_SIMPLE:'empty'})},{get:(o,k)=>o[k]||String(k)});
-  vm.runInNewContext(ts.transpileModule(read('legacy/pages/ApartmentCashierPage.tsx'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{module,exports:module.exports,console,require(id){
+  vm.runInNewContext(ts.transpileModule(read('legacy/pages/ApartmentCashierPage.tsx'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText+'\nmodule.exports.__receipt=ReceiptPaper;',{module,exports:module.exports,console,require(id){
     if(id==='react')return react;
     if(id==='react/jsx-runtime')return require(id);
     if(id==='antd')return antd;
@@ -38,13 +38,17 @@ function harness() {
   async function settle(){await new Promise(r=>setImmediate(r));return render();}
   function picker(){const p=nodes().find(n=>n.type==='HouseAddressPicker');assert.ok(p,'reachable apartment cashier must use shared HouseAddressPicker');return p.props;}
   function choose(value){picker().onChange(value);render();}
-  return {render,nodes,requests,errors,settle,picker,choose,access};
+  return {render,nodes,requests,errors,settle,picker,choose,access,receipt:data=>module.exports.__receipt({data})};
 }
 const communityRows=[{id:20,name:'门店A'},{id:21,name:'门店B'}];
 const building=(id,communityId=20)=>({id,communityId,buildingNo:String(id)});
 const house=(id,buildingId=34,communityId=20)=>({id,buildingId,communityId,communityName:'门店A',buildingNo:String(buildingId),roomNo:String(id),fullAddress:null,owner:{id:1,name:'原联系人',phone:'13800000000'},owners:[]});
 async function start(){const h=harness();h.render();h.requests.find(r=>r.o.url==='/communities').resolve(communityRows);await h.settle();return h;}
 
+test('真实公寓收据首次打印和补打共用票面保留车牌及完整服务期',()=>{
+ const h=harness(),paper=h.receipt({receiptNo:'SYN-APARTMENT',communityName:'甲公寓',place:'1号-101室',ownerName:null,paidAt:null,paymentMethod:'cash',remark:null,amountCents:30000,refunded:false,items:[{feeCode:'parking',feeName:'停车费',quantity:1,unit:'月',amountCents:30000,vehiclePlate:'沪A00001',serviceFrom:'2026-11-14',serviceTo:'2026-12-13'}]});
+ const text=JSON.stringify(paper);assert.match(text,/沪A00001/);assert.match(text,/2026-11-14/);assert.match(text,/2026-12-13/);
+});
 test('actual apartment route imports legacy cashier, not the unused page/MIS default export',()=>{
  assert.match(read('App.tsx'),/path="\/apartment"[^\n]*MigratedApartment/);
  assert.match(read('pages/MigratedApartment.tsx'),/legacy\/pages\/ApartmentCashierWorkspace/);

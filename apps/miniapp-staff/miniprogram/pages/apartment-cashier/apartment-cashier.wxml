@@ -17,7 +17,7 @@
   <block wx:else>
     <view class="screen-head screen-head--help">
       <view class="screen-head__title">公寓收费工作台</view>
-      <view wx:if="{{guide}}" class="screen-head__desc">先选房间 → 点要收的项目 → 填数量单价 → 选收款方式收款</view>
+      <view wx:if="{{guide}}" class="screen-head__desc">所属公寓默认带入 → 选房间 → 点项目自动带价 → 核对收款</view>
       <view class="head-help {{guide ? 'head-help--on' : ''}}" bindtap="onToggleGuide">?</view>
     </view>
 
@@ -26,7 +26,7 @@
     <!-- ============ 1 选房间 ============ -->
     <view class="card">
       <view class="field">
-        <view class="label">小区</view>
+        <view class="label">公寓<text class="label__opt">唯一所属自动选择，多公寓记住本人上次选择</text></view>
         <picker mode="selector" range="{{communityNames}}" value="{{communityIndex}}" bindchange="onPickCommunity">
           <view class="picker {{communityIndex < 0 ? 'placeholder' : ''}}">
             {{communityIndex < 0 ? '选择小区' : communityNames[communityIndex]}}
@@ -88,6 +88,9 @@
       <!-- ============ 2 点要收的项目 ============ -->
       <view class="card">
         <view class="label">收什么<text class="label__opt">点一下加一项，再点取消</text></view>
+        <view wx:if="{{ratesLoading}}" class="muted">正在读取本房间收费标准…</view>
+        <view wx:if="{{ratesError}}" class="field-error">{{ratesError}}</view>
+        <button wx:if="{{ratesError}}" class="btn" disabled="{{submitting || ratesLoading}}" bindtap="onRetryRates">重新读取标准</button>
         <view class="fee-grid">
           <view
             wx:for="{{feeTypes}}"
@@ -110,6 +113,11 @@
             <text class="fee-row__name">{{item.feeName}}</text>
             <text class="fee-row__del" data-code="{{item.feeCode}}" catchtap="onRemoveFee">删除</text>
           </view>
+          <view wx:if="{{item.feeCode === 'parking'}}" class="parking-details">
+            <view class="field"><view class="label">车牌号</view><input class="input" placeholder="请输入完整车牌号" maxlength="30" value="{{item.vehiclePlate}}" disabled="{{submitting}}" data-code="{{item.feeCode}}" data-field="vehiclePlate" bindinput="onRowInput" /></view>
+            <view class="field"><view class="label">开始日期</view><picker mode="date" data-field="serviceFrom" data-code="{{item.feeCode}}" value="{{item.serviceFrom}}" disabled="{{submitting}}" bindchange="onRowInput"><view class="picker">{{item.serviceFrom || '选择开始日期'}}</view></picker></view>
+            <view class="field"><view class="label">结束日期</view><picker mode="date" data-field="serviceTo" data-code="{{item.feeCode}}" value="{{item.serviceTo}}" start="{{item.serviceFrom}}" disabled="{{submitting}}" bindchange="onRowInput"><view class="picker">{{item.serviceTo || '选择结束日期'}}</view></picker></view>
+          </view>
           <view class="fee-row__inputs">
             <view class="fee-row__field">
               <text class="fee-row__label">数量（{{item.unit}}）</text>
@@ -123,7 +131,7 @@
               />
             </view>
             <view class="fee-row__field">
-              <text class="fee-row__label">单价（元）</text>
+              <text class="fee-row__label">{{item.priceHint || '单价（元）'}}</text>
               <input
                 class="input"
                 type="digit"
@@ -205,7 +213,7 @@
       wx:if="{{canCharge}}"
       class="btn btn--primary"
       loading="{{submitting}}"
-      disabled="{{submitting || !rows.length}}"
+      disabled="{{submitting || ratesLoading || !rows.length}}"
       bindtap="onSubmit"
     >
       <view class="btn__icon icon-action--check-white"></view><text>收款</text>
@@ -228,9 +236,9 @@
     <view class="kv"><text class="kv__k">收费对象</text><text class="kv__v">{{communityText}} {{placeText}}</text></view>
     <view class="kv"><text class="kv__k">住户</text><text class="kv__v">{{ownerName || '未填'}}</text></view>
     <view class="label mt">明细</view>
-    <view wx:for="{{receiptItems}}" wx:key="feeName" class="kv">
-      <text class="kv__k">{{item.feeName}} {{item.qtyText}}</text>
-      <text class="kv__v">{{item.amountText}}</text>
+    <view wx:for="{{receiptItems}}" wx:key="feeName">
+      <view class="kv"><text class="kv__k">{{item.feeName}} {{item.qtyText}}</text><text class="kv__v">{{item.amountText}}</text></view>
+      <view wx:if="{{item.vehiclePlate}}" class="receipt-parking"><view>车牌：{{item.vehiclePlate}}</view><view>开始：{{item.serviceFrom}}</view><view>结束：{{item.serviceTo}}</view></view>
     </view>
   </scroll-view>
 

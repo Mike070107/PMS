@@ -60,6 +60,7 @@ export const NAV: NavItem[] = [
   { key: 'statistics', name: '统计汇总', rail: '统计', icon: 'chart', to: '/statistics', group: '统计分析' },
   { key: 'screen', permissionKey: 'fees', name: '收费大屏', rail: '大屏', icon: 'chart', to: '/screen', newTab: '/screen', group: '统计分析' },
   { key: 'screen-settings', permissionKey: 'fees', name: '大屏设置', rail: '大屏设置', icon: 'gear', to: '/screen-settings', group: '统计分析' },
+  { key: 'apartment-standards', name: '公寓收费标准', permissionKey:'settings', icon:'book', to:'/apartment-standards', group:'收费' },
   { key: 'standards', name: '收费标准', rail: '收费标准', icon: 'wallet', to: '/standards', group: '收费' },
   { key: 'houses', name: '房产', rail: '房产', icon: 'home', to: '/houses', group: '档案' },
   { key: 'owners', name: '业主', rail: '业主', icon: 'users', to: '/owners', group: '档案' },
@@ -76,7 +77,7 @@ export const NAV: NavItem[] = [
  *  例外：用户要求把「分析」「统计」合并成「统计分析」菜单分组（纯前端菜单展示，权限分组仍为「分析」）。 */
 export const GROUPS: Array<{ title: string; keys: string[]; icon: IconName; tone: string }> = [
   { title: '总览', keys: ['today'], icon: 'today', tone: 'green' },
-  { title: '收费办理', keys: ['cashier', 'meters', 'apartment', 'bills', 'records', 'pending', 'standards'], icon: 'wallet', tone: 'blue' },
+  { title: '收费办理', keys: ['cashier', 'meters', 'apartment', 'bills', 'records', 'pending', 'standards', 'apartment-standards'], icon: 'wallet', tone: 'blue' },
   { title: '车辆管理', keys: ['vehicles', 'plates', 'family-cars', 'garage-main', 'garage-civil'], icon: 'car', tone: 'slate' },
   { title: '门禁管理', keys: ['access-cards', 'access-devices'], icon: 'key', tone: 'blue' },
   { title: '报修养护', keys: ['work-orders', 'maint', 'notes'], icon: 'wrench', tone: 'orange' },

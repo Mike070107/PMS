@@ -49,7 +49,7 @@ type FeeItem = {
 };
 type ReceiptItem = {
   feeCode: string; feeName: string; quantity: number | null; unit: string | null;
-  unitPriceCents: number | null; amountCents: number;
+  unitPriceCents: number | null; amountCents: number; serviceFrom?:string|null; serviceTo?:string|null; vehiclePlate?:string|null;
 };
 type ReceiptLinks = { originalReceiptNo?: string | null; reversalReceiptNo?: string | null };
 type HistoryRow = ReceiptLinks & {
@@ -65,7 +65,7 @@ type ReceiptPaperData = ReceiptLinks & {
   receiptNo: string | null; communityName: string | null; place: string;
   ownerName: string | null; paidAt: string | null; paymentMethod: string | null;
   remark: string | null; amountCents: number; refunded: boolean;
-  items: Array<{ feeCode: string; feeName: string; quantity: number | null; unit: string | null; amountCents: number }>;
+  items: Array<{ feeCode: string; feeName: string; quantity: number | null; unit: string | null; amountCents: number; serviceFrom?:string|null; serviceTo?:string|null; vehiclePlate?:string|null }>;
 };
 
 /** 图标是各端自己的事；code / 名称 / 单位一律取 shared-types 的 APARTMENT_FEE_TYPES */
@@ -478,7 +478,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
     amountCents: total,
     refunded: false,
     items: items.map((item) => ({
-      feeCode: item.feeCode, feeName: item.feeName, quantity: item.quantity, unit: item.unit, amountCents: item.amountCents,
+      feeCode: item.feeCode, feeName: item.feeName, quantity: item.quantity, unit: item.unit, amountCents: item.amountCents, serviceFrom:item.serviceFrom,serviceTo:item.serviceTo,vehiclePlate:item.vehiclePlate,
     })),
   } : null);
 
@@ -708,7 +708,11 @@ function ReceiptPaper({ data }: { data: ReceiptPaperData | null }) {
       <section className="cashier-receipt__items">
         <h3>收费项目</h3>
         {data.items.map((item) => <div key={item.feeCode}>
-          <span>{item.feeName}{item.quantity ? ` × ${item.quantity}${item.unit || ''}` : ''}</span>
+          <span>{item.feeName}{item.quantity ? ` × ${item.quantity}${item.unit || ''}` : ''}
+            {item.vehiclePlate ? <small style={{display:'block'}}>车牌：{item.vehiclePlate}</small> : null}
+            {item.serviceFrom ? <small style={{display:'block',whiteSpace:'nowrap'}}>开始：{item.serviceFrom}</small> : null}
+            {item.serviceTo ? <small style={{display:'block',whiteSpace:'nowrap'}}>结束：{item.serviceTo}</small> : null}
+          </span>
           <b>{money(item.amountCents)}</b>
         </div>)}
       </section>

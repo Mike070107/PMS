@@ -5,6 +5,8 @@ import { createRequire } from 'node:module';
 import vm from 'node:vm';
 const requireApi = createRequire(new URL('../../api/package.json', import.meta.url));
 const ts = requireApi('typescript');
+const feeExports={};
+vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../../../packages/shared-types/src/fees.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{exports:feeExports});
 const source = readFileSync(new URL('../miniprogram/pages/apartment-cashier/apartment-cashier.ts', import.meta.url), 'utf8');
 test('公寓收费底部入口按权限展示，不再放更多；收费页复用底栏', () => {
   const rolesSource = readFileSync(new URL('../miniprogram/utils/roles.ts', import.meta.url), 'utf8');
@@ -18,15 +20,15 @@ test('公寓收费底部入口按权限展示，不再放更多；收费页复�
 });
 function fixture({ confirm = true, fail = false } = {}) {
   let page, modalCalls = 0; const charges = [];
-  const shared = { APARTMENT_FEE_TYPES: [{ code: 'rent', name: '房租', unit: '月' }], FEE_PAYMENT_METHOD_LABELS: { cash: '现金' },
-    formatFeeMoney: (n) => String(n / 100), buildingLabel: (n) => n, roomLabel: (n) => n, placeLabel: (b, r) => `${b}-${r}` };
+  const shared = { ...feeExports, APARTMENT_FEE_TYPES: [{ code: 'rent', name: '房租', unit: '月' }], FEE_PAYMENT_METHOD_LABELS: { cash: '现金' },
+    cashierQuantityFromAmount: (amount, price) => price > 0 ? Number((Math.abs(amount) / price).toFixed(3)) : null, formatFeeMoney: (n) => String(n / 100), buildingLabel: (n) => n, roomLabel: (n) => n, placeLabel: (b, r) => `${b}-${r}` };
   const cashier = { charge: async (payload) => { charges.push(payload); if (fail) throw new Error('写入失败'); return { receiptNo: 'TEST-001' }; }, history: async () => ({ rows: [] }) };
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, {
     exports: {}, Page: (value) => { page = value; }, require: (name) => name === '@pms/api-client' ? { apartmentCashier: cashier }
       : name === '@pms/shared-types' ? shared : name.includes('guide') ? { guideHandlers: () => ({}) } : {},
     wx: { showModal: async () => { modalCalls++; return { confirm }; } },
   });
-  page.data = JSON.parse(JSON.stringify(page.data)); page.setData = (patch) => Object.assign(page.data, patch);
+  page.rateQuote = null; page.data = JSON.parse(JSON.stringify(page.data)); page.setData = (patch) => Object.assign(page.data, patch);
   Object.assign(page.data, { canCharge: true, houses: [{ id: 42 }], houseIndex: 0, placeText: '13号-130室',
     paymentMethod: 'cash', rows: [{ feeCode: 'rent', feeName: '房租', unit: '月', quantity: 1, quantityText: '1', unitPriceYuan: '180', amountYuan: '180', amountCents: 18000 }], totalCents: 18000, totalText: '180', remark: '测试备注' });
   return { page, charges, modalCalls: () => modalCalls };

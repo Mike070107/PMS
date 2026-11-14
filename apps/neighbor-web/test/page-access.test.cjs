@@ -9,7 +9,7 @@ function load(file,access,pathname='/houses',options={}){
  const source=fs.readFileSync(path.join(root,file),'utf8').replaceAll('import.meta.env.BASE_URL',JSON.stringify('/'));
  vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{module,exports:module.exports,sessionStorage:{getItem:()=>null},window:{location:{pathname}},require(id){
   if(id==='react')return react;if(id==='react/jsx-runtime')return{jsx,jsxs:jsx};
-  if(id==='react-router-dom')return{Navigate:'Navigate',Route:'Route',Routes:'Routes',Outlet:'Outlet',useLocation:()=>({pathname}),useNavigate:()=>()=>{}};
+  if(id==='react-router-dom')return{Navigate:'Navigate',Route:'Route',Routes:'Routes',Outlet:'Outlet',useLocation:()=>({pathname}),useNavigate:()=>()=>{},useSearchParams:()=>[{get:()=>null},()=>{}]};
   if(id==='@/lib/auth')return{useSession:()=>session,auth:{getAccess:()=>access,captureIdentity:()=>identity,isCurrent:()=>false,...options.auth}};
   if(id==='@/lib/perm')return{can:k=>!!(access?.isTenantAdmin||access?.isPlatformAdmin||access?.pages?.[k]?.view)};
   if(id==='@/lib/page-access')return load('lib/page-access.ts',access,pathname);
@@ -28,6 +28,12 @@ function load(file,access,pathname='/houses',options={}){
 }
 function nodes(n){if(!n||typeof n!=='object')return[];return[n,...[n.props?.children,n.props?.element].flat(Infinity).flatMap(nodes)]}
 function text(n){if(n==null||typeof n==='boolean')return'';if(typeof n==='string'||typeof n==='number')return String(n);if(Array.isArray(n))return n.map(text).join('');return text(n.props?.children)}
+test('公寓收费标准独立入口复用settings权限，不授予收费员配置权限',()=>{
+ const nav=load('components/Shell.tsx',{pages:{}}).NAV,map=load('lib/page-access.ts',{});
+ const item=nav.find(x=>x.key==='apartment-standards');assert.ok(item,'收费办理需要可发现的公寓标准入口');assert.equal(item.name,'公寓收费标准');assert.equal(item.to,'/apartment-standards');
+ assert.equal(map.canViewPath(item.to,{pages:{settings:{view:true}}}),true);assert.equal(map.canViewPath(item.to,{pages:{'apartment-cashier':{view:true,edit:true}}}),false);assert.equal(map.canViewPath(item.to,{pages:{business:{view:true}}}),false);
+ assert.ok(load('components/Shell.tsx',{}).GROUPS.find(g=>g.title==='收费办理').keys.includes(item.key));
+});
 test('ordinary user with no grants sees no business menu or group titles',()=>{
  const ui=load('components/Shell.tsx',{pages:{}}).default();
  const nav=nodes(ui).find(n=>n.type==='nav');assert.ok(nav);

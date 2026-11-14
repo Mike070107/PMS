@@ -143,6 +143,19 @@ export function formatFeeMoney(cents?: number | null): string {
   return `¥${yuan.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/** 公寓收费服务期校验。可选字段不凭空补日期，已填日期必须是有效日历且不倒置。 */
+export function cashierServicePeriodError(from?:string|null,to?:string|null):string|null {
+  const valid=(value:string)=>{
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;
+    const date=new Date(`${value}T00:00:00.000Z`);
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0,10)===value;
+  };
+  if(from && !valid(from))return '开始日期无效，请选择完整有效日期';
+  if(to && !valid(to))return '结束日期无效，请选择完整有效日期';
+  if(from && to && to<from)return '结束日期不能早于开始日期';
+  return null;
+}
+
 /** 实收为准反推用量；金额按分、数量保留数据库支持的三位小数。无有效单价时不覆盖数量。 */
 export function cashierQuantityFromAmount(amountCents: number, unitPriceCents: number): number | null {
   if (!Number.isSafeInteger(amountCents) || !Number.isSafeInteger(unitPriceCents) || unitPriceCents <= 0) return null;

@@ -24,6 +24,7 @@ const Cashier = lazy(() => import('@/pages/Cashier'));
 const Records = lazy(() => import('@/pages/Records'));
 const Pending = lazy(() => import('@/pages/Pending'));
 const Standards = lazy(() => import('@/pages/Standards'));
+const ApartmentStandards = lazy(() => import('@/pages/ApartmentStandards'));
 const Houses = lazy(() => import('@/pages/PropertyArchive'));
 const Owners = lazy(() => import('@/pages/Owners'));
 const Experience = lazy(() => import('@/pages/Experience'));
@@ -217,6 +218,7 @@ export default function App() {
             <Route path="/records" element={<Records />} />
             <Route path="/pending" element={<Pending />} />
             <Route path="/standards" element={<Standards />} />
+            <Route path="/apartment-standards" element={<ApartmentStandards />} />
             <Route path="/houses" element={<Houses />} />
             <Route path="/owners" element={<Owners />} />
             <Route path="/experience" element={<Experience />} />

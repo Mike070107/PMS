@@ -14,6 +14,10 @@ import {
   reversalRemark,
 } from './cashier.util';
 
+test('收费服务期验证真实日历和先后顺序，合法停车字段不丢失',()=>{
+ for(const dates of [{serviceFrom:'2026-02-30'},{serviceTo:'2026-13-01'},{serviceFrom:'2026-11-14',serviceTo:'2026-11-13'}])assert.throws(()=>normalizeCashierItems([{feeCode:'parking',amountCents:30000,...dates}]),/日期/);
+ const row=normalizeCashierItems([{feeCode:'parking',amountCents:30000,vehiclePlate:' 沪A00001 ',serviceFrom:'2024-02-29',serviceTo:'2024-03-28'}])[0];assert.equal(row.vehiclePlate,'沪A00001');assert.equal(row.serviceFrom,'2024-02-29');assert.equal(row.serviceTo,'2024-03-28');
+});
 test('退费项目允许负数金额，普通收费与退费可同单保存', () => {
   const refund = Object.assign(new CashierChargeItemDto(), { feeCode: 'deposit', quantity: 1, unitPriceCents: 3000, amountCents: -3000 });
   assert.deepEqual(validateSync(refund), []);

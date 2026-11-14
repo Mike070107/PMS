@@ -20,6 +20,7 @@ import {
   FEE_PAYMENT_METHOD_LABELS,
   buildingLabel,
   cashierQuantityFromAmount,
+  cashierServicePeriodError,
   formatFeeMoney,
   placeLabel,
   roomLabel,
@@ -45,6 +46,10 @@ interface FeeRow {
   unitPriceYuan: string;
   amountYuan: string;
   amountCents: number;
+  priceHint?: string;
+  vehiclePlate?: string;
+  serviceFrom?: string;
+  serviceTo?: string;
 }
 
 /** 元（用户输入的文本）→ 分。空串、乱填一律当 0，不让 NaN 流进金额 */
@@ -93,6 +98,8 @@ Page({
     rows: [] as FeeRow[],
     totalText: formatFeeMoney(0),
     totalCents: 0,
+    ratesLoading: false,
+    ratesError: '',
 
     paymentMethods: PAYMENT_METHODS,
     paymentMethod: '',
@@ -103,7 +110,7 @@ Page({
     /** 收完款弹出的小票 */
     receiptOpen: false,
     receiptNo: '',
-    receiptItems: [] as Array<{ feeName: string; qtyText: string; amountText: string }>,
+    receiptItems: [] as Array<{ feeName: string; qtyText: string; amountText: string; vehiclePlate?:string; serviceFrom?:string; serviceTo?:string }>,
     receiptAmountText: '',
 
     historyLoading: false,
@@ -137,14 +144,12 @@ Page({
       // 范围是多个（或全公司）时不替他猜，让他自己点。
       const scoped = session.me?.access?.communityIds || [];
       const mine = scoped.length ? rows.filter((item) => scoped.indexOf(item.id) >= 0) : rows;
-      this.setData({
-        communities: rows,
-        communityNames: rows.map((item) => item.name),
-        loading: false,
-      });
-      if (mine.length === 1) {
-        await this.pickCommunity(rows.findIndex((item) => item.id === mine[0].id));
-      }
+      this.communityPreferenceKey=session.me?.id ? `pms.apartment.community:${session.me.tenantId}:${session.me.id}` : '';
+      this.setData({communities:mine,communityNames:mine.map(item=>item.name),loading:false});
+      let remembered:unknown;
+      try{if(this.communityPreferenceKey)remembered=wx.getStorageSync(this.communityPreferenceKey);}catch{/* preference is optional */}
+      const preferred=mine.length===1?0:mine.findIndex(item=>item.id===remembered);
+      if(preferred>=0)await this.pickCommunity(preferred);
     } catch (e: any) {
       this.setData({ loading: false, error: e?.message || '小区加载失败，下拉重试或稍后再进来' });
     }
@@ -156,9 +161,13 @@ Page({
     void this.pickCommunity(Number(e.detail.value));
   },
 
+  communityPreferenceKey: '',
+
   async pickCommunity(index: number) {
+    if(this.data.submitting)return;
     const community = this.data.communities[index];
     if (!community) return;
+    try{if(this.communityPreferenceKey)wx.setStorageSync(this.communityPreferenceKey,community.id);}catch{/* 不影响正常选房 */}
     this.setData({
       communityIndex: index,
       communityText: community.name,
@@ -228,7 +237,10 @@ Page({
 
   /** 换楼栋 / 换小区时，房间和这一单全部清掉 —— 不能把上一间的费用带过去 */
   clearedHouse() {
+    ++this.ratesRequest;
+    this.rates={};this.rateMeta={};this.rateQuote=undefined;this.ratesDraftInvalidated=false;
     return {
+      ratesLoading:false,ratesError:'',
       houses: [] as CashierHouse[],
       houseNames: [] as string[],
       houseIndex: -1,
@@ -253,25 +265,41 @@ Page({
   // ---------------- 单价与历史 ----------------
 
   rates: {} as Record<string, number>,
+  rateMeta: {} as Record<string,{unit?:string;calculation?:string;cycle?:string}>,
   rateQuote: undefined as string | null | undefined,
   ratesRequest: 0,
+  ratesDraftInvalidated: false,
 
   async loadRates(houseId: number) {
     const requestId=++this.ratesRequest;
-    this.rates = {};
+    if(this.data.rows.length){this.ratesDraftInvalidated=true;this.replaceRows([]);}
+    this.rates = {};this.rateMeta={};
     this.rateQuote=undefined;
+    this.setData({ratesLoading:true,ratesError:''});
     try {
       const data = await apartmentCashier.standards(houseId);
       if(requestId!==this.ratesRequest)return;
-      this.rateQuote=data.rateQuote;
+      if(data.rateQuote!==null && typeof data.rateQuote!=='string')throw new Error('收费标准版本缺失，请重试');
       const map: Record<string, number> = {};
       for (const item of data.standards || []) {
-        if (item.status === 'active') map[item.feeCode] = item.amountCents;
+        if (item.status === 'active') {
+          if(!Number.isSafeInteger(item.amountCents)||item.amountCents<0||Object.prototype.hasOwnProperty.call(map,item.feeCode))throw new Error('收费标准金额无效或项目重复，请核对配置');
+          map[item.feeCode] = item.amountCents;
+          this.rateMeta[item.feeCode]={unit:item.unit,calculation:item.calculation,cycle:item.cycle};
+        }
       }
-      this.rates = map;
-    } catch {
-      // 拿不到标准不算错：单价留空让收费员自己填，不要把人卡在这
+      this.rates = map;this.rateQuote=data.rateQuote;
+      this.setData({ratesLoading:false,ratesError:this.ratesDraftInvalidated?'收费标准已重新读取，请重新选择收费项目并核对金额':''});
+    } catch (e: any) {
+      if(requestId!==this.ratesRequest)return;
+      this.setData({ratesLoading:false,ratesError:e?.message || '收费标准读取失败，请重试'});
     }
+  },
+
+  async onRetryRates() {
+    if(this.data.submitting)return;
+    const house=this.data.houses[this.data.houseIndex];
+    if(house)await this.loadRates(house.id);
   },
 
   async loadHistory(houseId: number) {
@@ -298,6 +326,8 @@ Page({
   // ---------------- 费用明细 ----------------
 
   onToggleFee(e: WechatMiniprogram.BaseEvent) {
+    if(this.data.submitting)return;
+    if(this.data.ratesLoading || this.rateQuote===undefined){this.setData({ratesError:this.data.ratesError || '收费标准尚未读到，请等待或重试'});return;}
     const code = String(e.currentTarget.dataset.code);
     const exists = this.data.rows.some((row) => row.feeCode === code);
     if (exists) {
@@ -306,17 +336,25 @@ Page({
     }
     const def = APARTMENT_FEE_TYPES.find((item) => item.code === code);
     if (!def) return;
-    const unitPriceCents = this.rates[code] || 0;
+    if(!Object.prototype.hasOwnProperty.call(this.rates,code)){
+      this.setData({ratesError:`${def.name}未配置收费标准，请在网页「公寓收费标准」配置并套用当前房间`});return;
+    }
+    this.ratesDraftInvalidated=false;
+    this.setData({ratesError:''});
+    const unitPriceCents = this.rates[code];
+    const meta=this.rateMeta[code];
+    const area=meta?.calculation==='area';
     this.replaceRows([
       ...this.data.rows,
       {
         feeCode: def.code,
         feeName: def.name,
-        unit: def.unit,
+        unit: area?(meta.cycle==='month'?'月':'次'):(meta?.unit || def.unit),
+        priceHint: area?'本房金额（按面积已计算，不再乘面积）':'标准单价（元）',
         quantity: 1,
         quantityText: '1',
-        unitPriceYuan: unitPriceCents ? (unitPriceCents / 100).toFixed(2) : '',
-        amountYuan: unitPriceCents ? (unitPriceCents / 100).toFixed(2) : '',
+        unitPriceYuan: (unitPriceCents / 100).toFixed(2),
+        amountYuan: (unitPriceCents / 100).toFixed(2),
         amountCents: unitPriceCents,
       },
     ]);
@@ -330,13 +368,16 @@ Page({
   /**
    * 数量、单价改了重算金额；手填实收金额反推三位小数的数量，金额保持手填值。
    */
-  onRowInput(e: WechatMiniprogram.Input) {
+  onRowInput(e: WechatMiniprogram.Input | WechatMiniprogram.PickerChange) {
+    if(this.data.submitting)return;
     const code = String(e.currentTarget.dataset.code);
-    const field = String(e.currentTarget.dataset.field) as 'quantityText' | 'unitPriceYuan' | 'amountYuan';
+    const field = String(e.currentTarget.dataset.field) as 'quantityText' | 'unitPriceYuan' | 'amountYuan' | 'vehiclePlate' | 'serviceFrom' | 'serviceTo';
+    if(!['quantityText','unitPriceYuan','amountYuan','vehiclePlate','serviceFrom','serviceTo'].includes(field))return;
     const text = String(e.detail.value);
     const rows = this.data.rows.map((row) => {
       if (row.feeCode !== code) return row;
       const next = { ...row, [field]: text } as FeeRow;
+      if(['vehiclePlate','serviceFrom','serviceTo'].includes(field))return row.feeCode==='parking'?next:row;
       if (field === 'quantityText') next.quantity = numberOf(text);
       if (field === 'amountYuan') {
         next.amountCents = yuanToCents(text);
@@ -395,6 +436,11 @@ Page({
     if (this.data.rows.some((row) => row.amountCents <= 0)) {
       return this.setData({ submitError: '每一项都要填出金额，0 元的项先删掉' });
     }
+    for(const row of this.data.rows){
+      if(row.feeCode==='parking' && (!row.vehiclePlate?.trim() || !row.serviceFrom || !row.serviceTo))return this.setData({submitError:'停车费请填写车牌号、开始日期和结束日期'});
+      const dateError=cashierServicePeriodError(row.serviceFrom,row.serviceTo);
+      if(dateError)return this.setData({submitError:dateError});
+    }
     if (!this.data.paymentMethod) return this.setData({ submitError: '选一个收款方式' });
 
     this.setData({ submitting: true, submitError: '' });
@@ -429,6 +475,7 @@ Page({
           unit: row.unit,
           unitPriceCents: yuanToCents(row.unitPriceYuan),
           amountCents: row.amountCents,
+          ...(row.feeCode==='parking'?{vehiclePlate:row.vehiclePlate?.trim(),serviceFrom:row.serviceFrom,serviceTo:row.serviceTo}:{}),
         })),
       });
       this.setData({
@@ -440,6 +487,7 @@ Page({
           feeName: row.feeName,
           qtyText: row.quantity ? `×${row.quantity}${row.unit}` : '',
           amountText: money(row.amountCents),
+          ...(row.feeCode==='parking'?{vehiclePlate:row.vehiclePlate?.trim(),serviceFrom:row.serviceFrom,serviceTo:row.serviceTo}:{}),
         })),
         rows: [],
         feeTypes: this.data.feeTypes.map((item) => ({ ...item, active: false })),

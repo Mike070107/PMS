@@ -81,7 +81,7 @@ export const houses = (buildingId: number) =>
 
 /** 这个房间当前生效的收费标准，用来预填单价 */
 export const standards = (houseId: number) =>
-  request<{ rateQuote?: string | null; standards: Array<{ feeCode: string; amountCents: number; status: string }> }>({
+  request<{ rateQuote?: string | null; standards: Array<{ feeCode: string; amountCents: number; status: string; unit?: string; calculation?: 'fixed'|'quantity'|'area'; cycle?: 'month'|'once' }> }>({
     url: `/fees/houses/${houseId}`,
   });
 

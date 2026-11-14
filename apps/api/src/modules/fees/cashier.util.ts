@@ -1,4 +1,16 @@
 import { BadRequestException } from '@nestjs/common';
+// API does not depend on the frontend workspace package; keep calendar checks equivalent.
+function cashierServicePeriodError(from?:string|null,to?:string|null):string|null {
+  const valid=(value:string)=>{
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(value))return false;
+    const date=new Date(`${value}T00:00:00.000Z`);
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0,10)===value;
+  };
+  if(from && !valid(from))return '开始日期无效，请选择完整有效日期';
+  if(to && !valid(to))return '结束日期无效，请选择完整有效日期';
+  if(from && to && to<from)return '结束日期不能早于开始日期';
+  return null;
+}
 import { FeeBillStatus } from '../../common/enums';
 
 export interface CashierItemInput {
@@ -58,6 +70,8 @@ export function markRefundedRemark(remark: string | null) {
 export function normalizeCashierItems(items: CashierItemInput[]) {
   if (!items.length) throw new BadRequestException('请至少添加一个收费项目');
   return items.map((item) => {
+    const dateError=cashierServicePeriodError(item.serviceFrom,item.serviceTo);
+    if(dateError)throw new BadRequestException(dateError);
     const quantity = item.quantity === undefined ? null : Number(item.quantity.toFixed(3));
     const unitPriceCents = item.unitPriceCents ?? null;
     if (!Number.isSafeInteger(item.amountCents)) throw new BadRequestException('收费或退费金额必须为整数分');

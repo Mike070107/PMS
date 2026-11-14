@@ -27,7 +27,7 @@ export const PAGE_ACCESS = [
   { paths: ['/offices'], keys: ['offices'] },
   { paths: ['/qr'], keys: ['qr'] },
   { paths: ['/logs'], keys: ['logs'] },
-  { paths: ['/settings'], keys: ['settings'] },
+  { paths: ['/settings', '/apartment-standards'], keys: ['settings'] },
   // 「内网应用」独立成可授权页面；只有 settings 权限不再自动放行 /intranet。
   { paths: ['/intranet'], keys: ['intranet'] },
   // 收费大屏是独立全屏页，复用 fees 查看权限，不新增页面 key。
