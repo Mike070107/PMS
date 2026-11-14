@@ -7318,3 +7318,10 @@
 - 自上次（5632a0b6）以来上线的相关提交：
   - 5b22c1a8 feat(apartment): scoped fee standards and staff cashier details
 
+## 2026-11-14 15:16 · web · cbb26e39
+
+- 包：`pms-web-20261114-151542.tar.gz`
+- 提交：cbb26e39 deploy: api → 5b22c1a8
+- 自上次（1f715fc5）以来上线的相关提交：
+  - 5b22c1a8 feat(apartment): scoped fee standards and staff cashier details
+
