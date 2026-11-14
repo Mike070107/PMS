@@ -51,8 +51,13 @@ export function FeeTemplatesSection({ canEdit, initialKind='residential', onlyKi
   const [overrides, setOverrides] = useState<Record<string, number>>({});
   const [legacy, setLegacy] = useState<LegacyPreview | null>(null);
   const [legacyDate, setLegacyDate] = useState(today());
-  const [disabling, setDisabling] = useState(false);
-  const template = templates.find((t) => t.id === selected);
+  const [archived, setArchived] = useState(false);
+  const [archiveAction, setArchiveAction] = useState<{id:number;name:string;restore:boolean;scope:{communityId:number|undefined;kind:Kind}} | null>(null);
+  const archiveBusy = useRef(false);
+  const archiveScope = useRef(0);
+  const [archiving, setArchiving] = useState(false);
+  const visibleTemplates = templates.filter((t) => t.enabled !== archived);
+  const template = visibleTemplates.find((t) => t.id === selected);
   const version = template?.versions.find((v) => v.version === versionNo) ?? template?.versions[0];
   const scope = useMemo(() => ({ communityId, kind }), [communityId, kind]);
   const reload = () => setRefresh((v) => v + 1);
@@ -76,9 +81,10 @@ export function FeeTemplatesSection({ canEdit, initialKind='residential', onlyKi
     return () => { seq.current++; };
   }, [scope, communityId, page, q, buildingId, filter, refresh]);
   useEffect(() => setVersionNo(undefined), [selected, communityId]);
+  useEffect(() => { setSelected((cur) => visibleTemplates.some((t) => t.id === cur) ? cur : visibleTemplates[0]?.id); }, [templates, archived]);
 
   const changeScope = (id: number | undefined, nextKind = kind) => {
-    seq.current++; setCommunityId(id); setKind(nextKind); setPage(1); setQ(''); setBuildingId(undefined); setFilter('all');
+    seq.current++; archiveScope.current++; setArchived(false); setArchiveAction(null); setSaving(false); setCommunityId(id); setKind(nextKind); setPage(1); setQ(''); setBuildingId(undefined); setFilter('all');
     setTemplates([]); setRows([]); setSelected(undefined); setPicked([]); setEditor(null); setAssignment(null); setException(null); setLegacy(null);
   };
   const openEditor = (edit: boolean, copy = false) => {
@@ -165,11 +171,12 @@ export function FeeTemplatesSection({ canEdit, initialKind='residential', onlyKi
         <div style={{ opacity: loading ? 0.6 : 1 }}>
           <div className="ft-cols">
             <div>
-              <div className="set-sub" style={{ marginTop: 0 }}>收费模板 <span className="muted" style={{ fontWeight: 400 }}>{templates.length}</span></div>
-              {templates.length ? <div className="ft-list">{templates.map((t) => (
+              <div className="set-sub" style={{ marginTop: 0 }}>收费模板 <span className="muted" style={{ fontWeight: 400 }}>{visibleTemplates.length}</span></div>
+              <div className="seg" style={{marginBottom:8}}><button className={!archived ? 'on' : ''} onClick={() => setArchived(false)}>在用</button><button className={archived ? 'on' : ''} onClick={() => setArchived(true)}>已归档</button></div>
+              {visibleTemplates.length ? <div className="ft-list">{visibleTemplates.map((t) => (
                 <button key={t.id} className={t.id === selected ? 'on' : ''} onClick={() => setSelected(t.id)}>
-                  <b>{t.name}</b><small>{t.assigned_count} 户套用 · V{t.revision}{!t.enabled ? ' · 已停用' : ''}</small>
-                </button>))}</div> : <div className="empty">暂无模板，可新建或归并原标准</div>}
+                  <b>{t.name}</b><small>{t.assigned_count} 户套用 · V{t.revision}{!t.enabled ? ' · 已归档' : ''}</small>
+                </button>))}</div> : <div className="empty">{archived ? '暂无已归档模板' : '暂无模板，可新建或归并原标准'}</div>}
             </div>
             <div style={{ minWidth: 0 }}>
               {template && version ? <>
@@ -180,14 +187,14 @@ export function FeeTemplatesSection({ canEdit, initialKind='residential', onlyKi
                   </select>
                   <span className={`tag ${version.effective_from > today() ? 'warn' : 'mute'}`}>{version.effective_from > today() ? '待生效' : '版本快照'}</span>
                 </div>
-                <table className="t">
+                <div className="t-scroll" tabIndex={0} role="region" aria-label="收费模板版本项目"><table className="t" style={{minWidth:480}}>
                   <thead><tr><th>收费项目</th><th style={{ textAlign: 'right' }}>单价</th><th>单位</th><th>计费方式</th><th>周期</th></tr></thead>
                   <tbody>{version.items.map((i) => <tr key={i.feeCode}><td className="nw"><b>{LABELS[i.feeCode] ?? i.feeCode}</b></td><td className="nw" style={{ textAlign: 'right' }}>{formatFeeMoney(i.unitPriceCents)}</td><td className="nw">{i.unit}</td><td className="nw">{CALC[i.calculation]}</td><td className="nw">{i.cycle === 'month' ? '每月' : '按次 / 用量'}</td></tr>)}</tbody>
-                </table>
+                </table></div>
                 {canEdit ? <div className="set-actions">
                   <button className="btn" disabled={!template.enabled} onClick={() => openEditor(true)}>修改模板 · 影响 {template.assigned_count} 户</button>
-                  <button className="btn" onClick={() => openEditor(false, true)}>复制为新模板</button>
-                  <button className="btn d" disabled={!template.enabled} onClick={() => setDisabling(true)}>停用</button>
+                  <button className="btn" disabled={!template.enabled || saving || loading} onClick={() => openEditor(false, true)}>复制为新模板</button>
+                  <button className={template.enabled ? 'btn d' : 'btn'} disabled={archiving || saving || loading} onClick={() => setArchiveAction({id:template.id,name:template.name,restore:!template.enabled,scope:{...scope}})}>{template.enabled ? '归档' : '恢复'}</button>
                 </div> : null}
               </> : <div className="empty">选择左侧模板查看收费项目</div>}
             </div>
@@ -296,9 +303,18 @@ export function FeeTemplatesSection({ canEdit, initialKind='residential', onlyKi
         </> : null}
       </FormModal>
 
-      <ConfirmModal open={disabling} onClose={() => setDisabling(false)} title={`停用模板「${template?.name ?? ''}」？`} danger confirmText="停用" busy={saving}
-        onConfirm={async () => { setSaving(true); try { await request({ method: 'POST', url: `/fees/templates/${template!.id}/disable`, data: scope }); toast('模板已停用'); setDisabling(false); reload(); } catch (e) { toast(errMsg(e, '停用失败')); } finally { setSaving(false); } }}>
-        停用后不能再分配给住户；仍有住户在用时，需要先给他们换模板。
+      <ConfirmModal open={!!archiveAction} onClose={() => setArchiveAction(null)} title={`${archiveAction?.restore ? '恢复' : '归档'}模板「${archiveAction?.name ?? ''}」？`} danger={!archiveAction?.restore} confirmText={archiveAction?.restore ? '恢复' : '归档'} busy={archiving}
+        onConfirm={async () => {
+          const action=archiveAction, run=archiveScope.current;
+          if(!action || !canEdit || archiveBusy.current) return;
+          archiveBusy.current=true; setArchiving(true);
+          try {
+            await request({method:'POST',url:`/fees/templates/${action.id}/${action.restore ? 'restore' : 'disable'}`,data:action.scope});
+            if(run===archiveScope.current) { toast(action.restore ? '模板已恢复，未自动套用住户' : '模板已归档，历史标准和账单保留'); setArchiveAction(null); reload(); }
+          } catch(e) { if(run===archiveScope.current) toast(errMsg(e,action.restore ? '恢复失败' : '归档失败')); }
+          finally { archiveBusy.current=false; setArchiving(false); }
+        }}>
+        {archiveAction?.restore ? '恢复后可重新使用，原版本和历史记录保留，不会自动给住户套用。' : '归档后从在用清单移除，可在已归档中恢复；仍有当前或未来计划使用时，须先更换模板。'}
       </ConfirmModal>
     </Section>
   );

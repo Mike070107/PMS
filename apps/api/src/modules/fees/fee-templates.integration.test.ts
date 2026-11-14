@@ -15,7 +15,8 @@ test('模板接口实际权限守卫：设置查看可查询，不得修改价�
   const guard=new PermissionsGuard(new Reflector(),Object.create(AccessService.prototype));
   const context=(method:string):any=>({getHandler:()=>FeeTemplatesController.prototype[method],getClass:()=>FeeTemplatesController,switchToHttp:()=>({getRequest:()=>({user:{id:7},access})})});
   for(const method of ['communities','list','houses','preview'])assert.equal(await guard.canActivate(context(method)),true);
-  for(const method of ['create','update','disable','assign','migrate'])await assert.rejects(guard.canActivate(context(method)),/权限不足/);
+  assert.equal(typeof FeeTemplatesController.prototype['restore'],'function','恢复路由缺失');
+  for(const method of ['create','update','disable','restore','assign','migrate'])await assert.rejects(guard.canActivate(context(method)),/权限不足/);
   access.pages.settings.edit=true;
   assert.equal(await guard.canActivate(context('assign')),true);
 });

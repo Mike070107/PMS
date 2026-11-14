@@ -28,6 +28,8 @@ export class FeeTemplatesController {
   create(@Body() dto:SaveTemplateDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess) { return this.service.save(dto,user,access); }
   @Patch(':id') @RequirePermission('settings','edit')
   update(@Param('id',ParseIntPipe) id:number,@Body() dto:SaveTemplateDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess) { return this.service.save(dto,user,access,id); }
+  @Post(':id/restore') @RequirePermission('settings','edit')
+  restore(@Param('id',ParseIntPipe) id:number,@Body() dto:TemplateScopeDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess) { return this.service.restore(id,dto,user,access); }
   @Post(':id/disable') @RequirePermission('settings','edit')
   disable(@Param('id',ParseIntPipe) id:number,@Body() dto:TemplateScopeDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess) { return this.service.disable(id,dto,user,access); }
 }

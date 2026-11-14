@@ -15,6 +15,14 @@ const kindSql = `(CASE WHEN c.community_type='apartment' THEN 'apartment' ELSE '
 // 模板kind是旧分类快照；访问分类以scope中的房产档案为准。按租户/社区/模板ID定位旧标准，不迁移价格或绑定。
 const configurableSql = `c.enabled=true AND NOT EXISTS(SELECT 1 FROM communities child WHERE child.tenant_id=c.tenant_id AND child.parent_id=c.id)`;
 
+// 同日最高id为赢家；有效区间尚未结束的绑定包含当前与全部未来计划。
+function liveAssignmentsSql(tenant:string,community:string,date:string) {
+  return `SELECT * FROM (SELECT a.*,LEAD(effective_from) OVER(PARTITION BY house_id ORDER BY effective_from,id) next_from
+    FROM (SELECT DISTINCT ON(house_id,effective_from) id,house_id,template_id,overrides,effective_from
+      FROM fee_template_assignments WHERE tenant_id=${tenant} AND community_id=${community}
+      ORDER BY house_id,effective_from,id DESC) a) live WHERE next_from IS NULL OR next_from>${date}::date`;
+}
+
 @Injectable()
 export class FeeTemplatesService {
   constructor(private readonly db: DataSource) {}
@@ -43,9 +51,7 @@ export class FeeTemplatesService {
   }
   async list(dto:TemplateScopeDto,user:AuthUser,access?:ResolvedAccess) {
     const tenantId=await this.scope(dto,user,access);
-    const templates=await this.db.query(`SELECT t.*,COALESCE((SELECT count(DISTINCT house_id) FROM (
-      (SELECT DISTINCT ON(house_id) house_id,template_id FROM fee_template_assignments WHERE tenant_id=t.tenant_id AND community_id=t.community_id ORDER BY house_id,effective_from DESC,id DESC)
-      UNION (SELECT DISTINCT ON(house_id) house_id,template_id FROM fee_template_assignments WHERE tenant_id=t.tenant_id AND community_id=t.community_id AND effective_from<=$3 ORDER BY house_id,effective_from DESC,id DESC)) a WHERE a.template_id=t.id),0)::int assigned_count
+    const templates=await this.db.query(`SELECT t.*,COALESCE((SELECT count(DISTINCT house_id) FROM (${liveAssignmentsSql('t.tenant_id','t.community_id','$3')}) a WHERE a.template_id=t.id),0)::int assigned_count
       FROM fee_templates t WHERE t.tenant_id=$1 AND t.community_id=$2 ORDER BY t.enabled DESC,t.id`,[tenantId,dto.communityId,todayInTz(new Date())]);
     const versions=templates.length?await this.db.query(`SELECT id,template_id,version,to_char(effective_from,'YYYY-MM-DD') effective_from,items FROM fee_template_versions WHERE template_id=ANY($1::int[]) ORDER BY version DESC`,[templates.map((t:any)=>t.id)]):[];
     for(const template of templates) { template.kind=dto.kind; template.versions=versions.filter((v:any)=>v.template_id===template.id); }
@@ -86,8 +92,7 @@ export class FeeTemplatesService {
         const [{last_date}]=await manager.query(`SELECT to_char(max(effective_from),'YYYY-MM-DD') last_date FROM fee_template_versions WHERE template_id=$1`,[id]);
         if(dto.effectiveFrom<last_date) throw new BadRequestException('已有更晚生效的版本，请选择相同或更晚日期，避免覆盖调价安排');
         // 不允许删去仍被个别住户覆盖的项目，避免后续计费隐式丢失。
-        const overrides=await manager.query(`SELECT overrides FROM ((SELECT DISTINCT ON(house_id) house_id,template_id,overrides FROM fee_template_assignments WHERE tenant_id=$1 AND community_id=$2 ORDER BY house_id,effective_from DESC,id DESC)
-          UNION (SELECT DISTINCT ON(house_id) house_id,template_id,overrides FROM fee_template_assignments WHERE tenant_id=$1 AND community_id=$2 AND effective_from<=$4 ORDER BY house_id,effective_from DESC,id DESC)) a WHERE template_id=$3`,[tenantId,dto.communityId,id,todayInTz(new Date())]);
+        const overrides=await manager.query(`SELECT overrides FROM (${liveAssignmentsSql('$1','$2','$4')}) a WHERE template_id=$3`,[tenantId,dto.communityId,id,todayInTz(new Date())]);
         overrides.forEach((row:any)=>normalizeOverrides(row.overrides,items));
         const [previousVersion]=await manager.query(`SELECT items FROM fee_template_versions WHERE template_id=$1 ORDER BY version DESC LIMIT 1`,[id]);
         for(const row of overrides) for(const code of Object.keys(row.overrides)) {
@@ -106,10 +111,19 @@ export class FeeTemplatesService {
       await manager.query(`SELECT pg_advisory_xact_lock($1,$2)`,[tenantId,dto.communityId]);
       const [template]=await manager.query(`SELECT id FROM fee_templates WHERE id=$1 AND tenant_id=$2 AND community_id=$3 FOR UPDATE`,[id,tenantId,dto.communityId]);
       if(!template) throw new NotFoundException('模板不存在');
-      const [{count}]=await manager.query(`SELECT count(DISTINCT house_id)::int count FROM ((SELECT DISTINCT ON(house_id) house_id,template_id FROM fee_template_assignments WHERE tenant_id=$1 AND community_id=$2 ORDER BY house_id,effective_from DESC,id DESC)
-        UNION (SELECT DISTINCT ON(house_id) house_id,template_id FROM fee_template_assignments WHERE tenant_id=$1 AND community_id=$2 AND effective_from<=$4 ORDER BY house_id,effective_from DESC,id DESC)) a WHERE template_id=$3`,[tenantId,dto.communityId,id,todayInTz(new Date())]);
+      const [{count}]=await manager.query(`SELECT count(DISTINCT house_id)::int count FROM (${liveAssignmentsSql('$1','$2','$4')}) a WHERE template_id=$3`,[tenantId,dto.communityId,id,todayInTz(new Date())]);
       if(count) throw new BadRequestException(`仍有${count}户使用该模板，请先批量更换模板`);
       await manager.query(`UPDATE fee_templates SET enabled=false,updated_by=$1,updated_at=now() WHERE id=$2`,[user.id,id]);
+      return {ok:true};
+    });
+  }
+  async restore(id:number,dto:TemplateScopeDto,user:AuthUser,access?:ResolvedAccess) {
+    return this.db.transaction(async manager=>{
+      const tenantId=await this.scope(dto,user,access,manager);
+      await manager.query(`SELECT pg_advisory_xact_lock($1,$2)`,[tenantId,dto.communityId]);
+      const [template]=await manager.query(`SELECT id,enabled FROM fee_templates WHERE id=$1 AND tenant_id=$2 AND community_id=$3 FOR UPDATE`,[id,tenantId,dto.communityId]);
+      if(!template) throw new NotFoundException('模板不存在');
+      if(!template.enabled) await manager.query(`UPDATE fee_templates SET enabled=true,updated_by=$1,updated_at=now() WHERE id=$2`,[user.id,id]);
       return {ok:true};
     });
   }
