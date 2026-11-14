@@ -7340,3 +7340,10 @@
   - 36abf6fb test(parking): align card contract with default ownership and full titles
   - a1e54443 fix(pms): Beijing time display and consistent parking-space cards
 
+## 2026-11-14 18:52 · api · 6f5707bc
+
+- 包：`pms-api-fast-20261114-185139.tar.gz`
+- 提交：6f5707bc fix: align apartment catalog with archive and clarify navigation hierarchy
+- 自上次（36abf6fb）以来上线的相关提交：
+  - 6f5707bc fix: align apartment catalog with archive and clarify navigation hierarchy
+
