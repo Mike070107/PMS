@@ -7376,3 +7376,11 @@
   - b34f7a0a chore(release): retain dependency manifests and run preservation regression explicitly
   - e0e79509 fix(parking): preserve source vehicle values on plate changes and add independent type updates
 
+## 2026-11-15 00:43 · web · d075f81d
+
+- 包：`pms-web-20261115-003929.tar.gz`
+- 提交：d075f81d fix(web): simplify intake image preview and compact registration fields
+- 自上次（be5efcca）以来上线的相关提交：
+  - d075f81d fix(web): simplify intake image preview and compact registration fields
+  - e0e79509 fix(parking): preserve source vehicle values on plate changes and add independent type updates
+
