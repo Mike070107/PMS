@@ -9,7 +9,11 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "rootDir": "src",
-    "outDir": "miniprogram_dist"
+    "outDir": "miniprogram_dist",
+    "baseUrl": ".",
+    "paths": {
+      "@pms/shared-types": ["../shared-types/miniprogram_dist/index.d.ts"]
+    }
   },
   "include": ["src"]
 }
