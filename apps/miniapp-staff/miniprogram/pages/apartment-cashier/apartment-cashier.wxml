@@ -96,10 +96,15 @@
             wx:for="{{feeTypes}}"
             wx:key="code"
             class="fee-tile {{item.active ? 'fee-tile--on' : ''}}"
+            role="checkbox"
+            aria-label="{{item.name}}，按{{item.unit}}，{{item.active ? '已选择' : '未选择'}}"
+            aria-checked="{{item.active}}"
             data-code="{{item.code}}"
             bindtap="onToggleFee"
           >
+            <view class="fee-icon fee-icon--{{item.code}}" aria-hidden="true"></view>
             <text class="fee-tile__name">{{item.name}}</text>
+            <text class="fee-tile__selected">{{item.active ? '✓ 已选择' : '点击添加'}}</text>
             <text class="fee-tile__unit">按{{item.unit}}</text>
           </view>
         </view>
@@ -181,9 +186,11 @@
 
       <!-- ============ 5 这间房交过什么 ============ -->
       <view class="card">
-        <view class="label">历史缴费</view>
+        <view class="label">本户历史缴费记录</view>
         <view wx:if="{{historyLoading}}" class="muted">加载中…</view>
-        <pms-empty wx:elif="{{!history.length}}" text="这间房还没有缴费记录" />
+        <view wx:if="{{historyError}}" class="field-error">{{historyError}}（下方如有记录为上次读取结果）</view>
+        <button wx:if="{{historyError}}" class="btn btn--ghost" disabled="{{historyLoading}}" bindtap="onRetryHistory">重新读取历史记录</button>
+        <pms-empty wx:if="{{!historyLoading && !historyError && !history.length}}" text="这间房还没有缴费记录" />
         <block wx:else>
           <view wx:for="{{history}}" wx:key="receiptNo" class="his-row">
             <view class="his-row__main">
@@ -191,15 +198,47 @@
               <text class="his-row__amount {{item.refunded ? 'his-row__amount--off' : ''}}">{{item.amountText}}</text>
             </view>
             <view class="meta">
-              {{item.timeText}} · {{item.methodText}} · {{item.receiptNo}}{{item.refunded ? ' · 已红冲' : ''}}
+              {{item.timeText}} · {{item.methodText}}{{item.statusText ? ' · ' + item.statusText : ''}}
             </view>
           </view>
         </block>
+        <view wx:if="{{history.length}}" class="muted mt-sm">已显示 {{history.length}} / {{historyTotal}} 笔</view>
+        <button wx:if="{{history.length < historyTotal}}" class="btn btn--ghost mt-sm" loading="{{historyLoading}}" disabled="{{historyLoading}}" bindtap="onMoreHistory">查看更多历史记录</button>
         <view wx:if="{{guide}}" class="muted mt-sm">要补打小票或红冲，请在网站后台「收费业务 → 公寓收费工作台」里办。</view>
       </view>
     </block>
 
     <pms-empty wx:else text="先选房间，再收费" />
+
+    <!-- 今日收费：独立于选房，展示本人权限范围内全部公寓，不随当前房间筛选 -->
+    <view class="card daily-card">
+      <view class="daily-head">
+        <view class="label">今日收费汇总</view>
+        <button class="daily-refresh" disabled="{{todayLoading}}" loading="{{todayLoading}}" bindtap="onRefreshToday">刷新</button>
+      </view>
+      <view class="muted">{{todayDate}} 北京时间 · 本人可见公寓范围，不随选房切换</view>
+      <view wx:if="{{todayLoading}}" class="muted mt-sm">正在读取今日收费…</view>
+      <view wx:if="{{todayError}}" class="field-error mt-sm">{{todayError}}。请点刷新重试{{todayLoaded ? '，下方为上次读取结果' : ''}}。</view>
+      <block wx:if="{{todayLoaded}}">
+        <view class="daily-summary">
+          <view class="muted">今日净收款</view>
+          <view class="daily-summary__amount">{{todayAmountText}}</view>
+          <view class="muted">共 {{todayTotal}} 笔流水 · 净额含红冲负数</view>
+        </view>
+        <view class="label daily-details-title">今日收费明细</view>
+        <pms-empty wx:if="{{!todayRows.length && !todayLoading && !todayError}}" text="今日暂无收费记录" />
+        <view wx:for="{{todayRows}}" wx:key="key" class="his-row">
+          <view class="daily-place">{{item.placeText}}</view>
+          <view class="his-row__main">
+            <text class="his-row__items">{{item.itemsText || '—'}}</text>
+            <text class="his-row__amount {{item.refunded ? 'his-row__amount--off' : ''}}">{{item.amountText}}</text>
+          </view>
+          <view class="meta">{{item.timeText}} · {{item.methodText}}{{item.statusText ? ' · ' + item.statusText : ''}}</view>
+        </view>
+        <view wx:if="{{todayRows.length}}" class="muted mt-sm">已显示 {{todayRows.length}} / {{todayTotal}} 笔，汇总为全部流水净额</view>
+        <button wx:if="{{todayRows.length < todayTotal}}" class="btn btn--ghost mt-sm" loading="{{todayLoading}}" disabled="{{todayLoading}}" bindtap="onMoreToday">查看更多今日明细</button>
+      </block>
+    </view>
   </block>
 </view>
 

@@ -7,6 +7,7 @@ const requireApi = createRequire(new URL('../../api/package.json', import.meta.u
 const ts = requireApi('typescript');
 const feeExports={};
 vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../../../packages/shared-types/src/fees.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{exports:feeExports});
+vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../../../packages/shared-types/src/beijing-time.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{exports:feeExports});
 const source = readFileSync(new URL('../miniprogram/pages/apartment-cashier/apartment-cashier.ts', import.meta.url), 'utf8');
 test('公寓收费底部入口按权限展示，不再放更多；收费页复用底栏', () => {
   const rolesSource = readFileSync(new URL('../miniprogram/utils/roles.ts', import.meta.url), 'utf8');
@@ -22,7 +23,7 @@ function fixture({ confirm = true, fail = false } = {}) {
   let page, modalCalls = 0; const charges = [];
   const shared = { ...feeExports, APARTMENT_FEE_TYPES: [{ code: 'rent', name: '房租', unit: '月' }], FEE_PAYMENT_METHOD_LABELS: { cash: '现金' },
     cashierQuantityFromAmount: (amount, price) => price > 0 ? Number((Math.abs(amount) / price).toFixed(3)) : null, formatFeeMoney: (n) => String(n / 100), buildingLabel: (n) => n, roomLabel: (n) => n, placeLabel: (b, r) => `${b}-${r}` };
-  const cashier = { charge: async (payload) => { charges.push(payload); if (fail) throw new Error('写入失败'); return { receiptNo: 'TEST-001' }; }, history: async () => ({ rows: [] }) };
+  const cashier = { charge: async (payload) => { charges.push(payload); if (fail) throw new Error('写入失败'); return { receiptNo: 'TEST-001' }; }, history: async () => ({ rows: [], total: 0 }), today: async () => ({ rows: [], total: 0, totalCents: charges.length * 18000 }) };
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, {
     exports: {}, Page: (value) => { page = value; }, require: (name) => name === '@pms/api-client' ? { apartmentCashier: cashier }
       : name === '@pms/shared-types' ? shared : name.includes('guide') ? { guideHandlers: () => ({}) } : {},
@@ -41,6 +42,7 @@ test('仅查看权限和提交中不能发起收款', async () => {
 test('连点收款只打开一次确认、只提交一次；取消后解除锁', async () => {
   const f = fixture(); await Promise.all([f.page.onSubmit(), f.page.onSubmit()]);
   assert.equal(f.modalCalls(), 1); assert.equal(f.charges.length, 1); assert.equal(f.page.data.receiptNo, 'TEST-001');
+  assert.equal(f.page.data.submitError, ''); assert.equal(f.page.data.todayLoaded, true); assert.equal(f.page.data.todayAmountText, '180');
   const cancelled = fixture({ confirm: false }); await cancelled.page.onSubmit();
   assert.equal(cancelled.charges.length, 0); assert.equal(cancelled.page.data.submitting, false); assert.equal(cancelled.page.data.rows.length, 1);
 });

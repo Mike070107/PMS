@@ -6,9 +6,10 @@ import vm from 'node:vm';
 const ts=createRequire(new URL('../../api/package.json',import.meta.url))('typescript');
 const read=p=>readFileSync(new URL(p,import.meta.url),'utf8');
 const shared={};vm.runInNewContext(ts.transpileModule(read('../../../packages/shared-types/src/fees.ts'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{exports:shared});
+vm.runInNewContext(ts.transpileModule(read('../../../packages/shared-types/src/beijing-time.ts'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{exports:shared});
 function fixture(api={},session={canSeeCashier:true,canCharge:true,me:{id:1,tenantId:7,access:{communityIds:[3]}}},storage=new Map()){
  let page;const charges=[],toasts=[];
- const cashier={communities:async()=>[{id:3,name:'甲公寓'}],buildings:async()=>[],history:async()=>({rows:[]}),charge:async p=>{charges.push(p);return{receiptNo:'SYNTHETIC-APARTMENT'}},...api};
+ const cashier={communities:async()=>[{id:3,name:'甲公寓'}],buildings:async()=>[],history:async()=>({rows:[],total:0}),today:async()=>({rows:[],total:0,totalCents:0}),charge:async p=>{charges.push(p);return{receiptNo:'SYNTHETIC-APARTMENT'}},...api};
  vm.runInNewContext(ts.transpileModule(read('../miniprogram/pages/apartment-cashier/apartment-cashier.ts'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText,{exports:{},Page:p=>page=p,require:n=>n==='@pms/shared-types'?shared:n==='@pms/api-client'?{apartmentCashier:cashier}:n.endsWith('/session')?{getSession:async()=>session}:n.endsWith('/guide')?{guideHandlers:()=>({})}:n.endsWith('/tabbar')?{rememberAccess(){},syncTabBar(){}}:{},wx:{getStorageSync:k=>storage.get(k),setStorageSync:(k,v)=>storage.set(k,v),showToast:o=>toasts.push(o),showModal:async()=>({confirm:true})}});
  page.data=JSON.parse(JSON.stringify(page.data));page.setData=p=>Object.assign(page.data,p);
  Object.assign(page.data,{canCharge:true,houses:[{id:42,buildingNo:'1',roomNo:'101'}],houseIndex:0,placeText:'1号-101室',paymentMethod:'cash'});

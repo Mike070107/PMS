@@ -45,7 +45,7 @@ export interface CashierHistoryRow {
   remark: string | null;
   amountCents: number;
   status: string;
-  items: Array<{ feeName: string }>;
+  items: Array<{ feeName: string; quantity?: number | null; unit?: string | null }>;
 }
 
 export interface CashierChargeItem {
@@ -93,7 +93,7 @@ export const history = (houseId: number, page = 1) =>
 
 export const today = (page = 1) =>
   request<{
-    rows: Array<CashierHistoryRow & { buildingNo: string; roomNo: string; ownerName: string | null }>;
+    rows: Array<CashierHistoryRow & { houseId: number; communityName: string; lane?: string | null; buildingNo: string; roomNo: string; ownerName: string | null }>;
     total: number;
     totalCents: number;
   }>({ url: '/fees/cashier/today', query: { page } });

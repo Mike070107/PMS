@@ -114,20 +114,34 @@ Page({
     receiptItems: [] as Array<{ feeName: string; qtyText: string; amountText: string; vehiclePlate?:string; serviceFrom?:string; serviceTo?:string }>,
     receiptAmountText: '',
 
+    todayLoading: false,
+    todayLoaded: false,
+    todayError: '',
+    todayRows: [] as Array<CashierRecordView & { key: string; placeText: string }>,
+    todayPage: 0,
+    todayDate: '',
+    todayTotal: 0,
+    todayAmountText: '',
     historyLoading: false,
-    history: [] as Array<{
-      receiptNo: string;
-      timeText: string;
-      itemsText: string;
-      amountText: string;
-      methodText: string;
-      refunded: boolean;
-    }>,
+    historyError: '',
+    historyPage: 0,
+    historyTotal: 0,
+    history: [] as CashierRecordView[],
   },
 
   onShow() {
     this.syncGuide();
     syncTabBar(this, 'cashier');
+    if (!this.data.loading && this.data.canSeeCashier) void this.loadToday();
+  },
+
+  async onPullDownRefresh() {
+    try {
+      if (!this.data.loading && this.data.canSeeCashier) {
+        const house = this.data.houses[this.data.houseIndex];
+        await Promise.all([this.loadToday(), ...(house ? [this.loadHistory(house.id)] : [])]);
+      }
+    } finally { wx.stopPullDownRefresh(); }
   },
 
   async onLoad() {
@@ -140,6 +154,7 @@ Page({
         return;
       }
       this.setData({ canCharge: session.canCharge });
+      void this.loadToday();
       const rows = await apartmentCashier.communities();
       // 他的数据范围只有一个小区时，那就是「他自己的小区」，直接选上。
       // 范围是多个（或全公司）时不替他猜，让他自己点。
@@ -239,6 +254,7 @@ Page({
   /** 换楼栋 / 换小区时，房间和这一单全部清掉 —— 不能把上一间的费用带过去 */
   clearedHouse() {
     ++this.ratesRequest;
+    ++this.historyRequest;
     this.rates={};this.rateMeta={};this.rateQuote=undefined;this.ratesDraftInvalidated=false;
     return {
       ratesLoading:false,ratesError:'',
@@ -255,7 +271,7 @@ Page({
       submitError: '',
       totalCents: 0,
       totalText: formatFeeMoney(0),
-      history: [],
+      history: [], historyLoading: false, historyError: '', historyPage: 0, historyTotal: 0,
     };
   },
 
@@ -303,25 +319,72 @@ Page({
     if(house)await this.loadRates(house.id);
   },
 
-  async loadHistory(houseId: number) {
-    this.setData({ historyLoading: true });
+  historyRequest: 0,
+  historyHouseId: 0,
+  async loadHistory(houseId: number, page = 1): Promise<void> {
+    const requestId = ++this.historyRequest;
+    const changedHouse = this.historyHouseId !== houseId;
+    this.historyHouseId = houseId;
+    this.setData({ historyLoading: true, historyError: '', ...(changedHouse ? { history: [], historyPage: 0, historyTotal: 0 } : {}) });
     try {
-      const data = await apartmentCashier.history(houseId, 1);
+      const data = await apartmentCashier.history(houseId, page);
+      if (requestId !== this.historyRequest) return;
+      // offset分页期间有新收费时回到第一页，避免同笔重复或漏项。
+      if (page > 1 && data.total !== this.data.historyTotal) return this.loadHistory(houseId);
+      const records = [...(page > 1 ? this.data.history : []), ...(data.rows || []).map(recordView)];
       this.setData({
-        historyLoading: false,
-        history: (data.rows || []).map((row) => ({
-          receiptNo: row.receiptNo,
-          timeText: formatPaidAt(row.paidAt),
-          itemsText: (row.items || []).map((item) => item.feeName).join('、'),
-          amountText: money(row.amountCents),
-          methodText: FEE_PAYMENT_METHOD_LABELS[row.paymentMethod] || row.paymentMethod,
-          refunded: row.status === 'refunded',
-        })),
+        historyLoading: false, historyPage: page, historyTotal: data.total,
+        history: records.filter((row, index) => records.findIndex((item) => item.receiptNo === row.receiptNo) === index),
       });
     } catch (e: any) {
-      this.setData({ historyLoading: false, history: [] });
-      wx.showToast({ icon: 'none', title: e?.message || '历史缴费加载失败' });
+      if (requestId !== this.historyRequest) return;
+      this.setData({ historyLoading: false, historyError: e?.message || '历史缴费加载失败，请重试' });
     }
+  },
+
+  async onRetryHistory() {
+    const house = this.data.houses[this.data.houseIndex];
+    if (house && !this.data.historyLoading) await this.loadHistory(house.id);
+  },
+
+  async onMoreHistory() {
+    const house = this.data.houses[this.data.houseIndex];
+    if (house && !this.data.historyLoading && this.data.history.length < this.data.historyTotal) {
+      await this.loadHistory(house.id, this.data.historyPage + 1);
+    }
+  },
+
+  todayRequest: 0,
+  async loadToday(page = 1): Promise<void> {
+    if (!this.data.canSeeCashier) return;
+    const day = formatBeijingDateTime(new Date(), 'YYYY-MM-DD');
+    const changedDay = !!this.data.todayDate && this.data.todayDate !== day;
+    if (changedDay) page = 1;
+    const requestId = ++this.todayRequest;
+    this.setData({ todayLoading: true, todayError: '', todayDate: day, ...(changedDay ? { todayLoaded: false, todayRows: [], todayTotal: 0, todayPage: 0 } : {}) });
+    try {
+      const data = await apartmentCashier.today(page);
+      if (requestId !== this.todayRequest) return;
+      if (day !== formatBeijingDateTime(new Date(), 'YYYY-MM-DD') || (page > 1 && data.total !== this.data.todayTotal)) return this.loadToday();
+      const records = [...(page > 1 ? this.data.todayRows : []), ...(data.rows || []).map((row) => ({
+        ...recordView(row), key: `${row.houseId}:${row.receiptNo}`,
+        placeText: [row.communityName, row.lane, placeLabel(row.buildingNo, row.roomNo)].filter(Boolean).join(' '),
+      }))];
+      this.setData({
+        todayLoading: false, todayLoaded: true, todayPage: page, todayDate: day, todayTotal: data.total,
+        // 汇总是后端按北京时间及完整权限范围计算的净额，不能累加第一页替代。
+        todayAmountText: money(data.totalCents),
+        todayRows: records.filter((row, index) => records.findIndex((item) => item.key === row.key) === index),
+      });
+    } catch (e: any) {
+      if (requestId !== this.todayRequest) return;
+      this.setData({ todayLoading: false, todayError: e?.message || '今日收费读取失败，请重试' });
+    }
+  },
+
+  async onRefreshToday() { if (!this.data.todayLoading) await this.loadToday(); },
+  async onMoreToday() {
+    if (!this.data.todayLoading && this.data.todayRows.length < this.data.todayTotal) await this.loadToday(this.data.todayPage + 1);
   },
 
   // ---------------- 费用明细 ----------------
@@ -497,7 +560,7 @@ Page({
         totalCents: 0,
         totalText: formatFeeMoney(0),
       });
-      await this.loadHistory(house.id);
+      await Promise.all([this.loadHistory(house.id), this.loadToday()]);
     } catch (e: any) {
       // 失败保留输入：这一单是现场对着住户填的，清掉等于让人从头来一遍
       this.setData({ submitting: false, submitError: e?.message || '收款失败，刚填的内容已保留，可以直接重试' });
@@ -510,6 +573,31 @@ Page({
 
   noop() {},
 });
+
+interface CashierRecordView {
+  receiptNo: string;
+  timeText: string;
+  itemsText: string;
+  amountText: string;
+  methodText: string;
+  refunded: boolean;
+  statusText: string;
+}
+
+function recordView(row: apartmentCashier.CashierHistoryRow): CashierRecordView {
+  return {
+    receiptNo: row.receiptNo,
+    timeText: formatPaidAt(row.paidAt),
+    itemsText: (row.items || []).map((item) => {
+      const quantity = item.quantity;
+      return `${item.feeName}${typeof quantity === 'number' && Number.isFinite(quantity) ? ` ×${quantity}${item.unit || ''}` : '（数量未记录）'}`;
+    }).join('、'),
+    amountText: money(row.amountCents),
+    methodText: FEE_PAYMENT_METHOD_LABELS[row.paymentMethod] || row.paymentMethod || '收款方式未记录',
+    refunded: row.status === 'refunded' && row.amountCents >= 0,
+    statusText: row.amountCents < 0 ? '红冲退款' : row.status === 'refunded' ? '已红冲' : '',
+  };
+}
 
 /** 负数金额按中文习惯写成 -¥1,500.00 */
 function money(cents: number): string {
