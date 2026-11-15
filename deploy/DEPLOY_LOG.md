@@ -7404,3 +7404,12 @@
 - 自上次（d075f81d）以来上线的相关提交：
   - c0dcec1a fix(parking): expose pending reviews, price custom months and explain system operations
 
+## 2026-11-15 13:42 · miniapp-staff · aa674ca2
+
+- 状态：**开发版本上传成功**，版本`1.0.20261115a`，AppID `wx002fde4bfaa4c7d9`，包大小1,114,840字节。公众平台体验版指向、手机原生UI/业务验收未做；未提交审核/正式发布，不更新正式发布标记。
+- 源码：功能提交`4c1a25ed`；标准miniapp-ui声明解析修复及默认CLI上传偏好`aa674ca2`，已推送main后构建。未改API/Web/助手生产，未写收费数据。
+- 验证：23/23收费回归、标准三包构建、微信CLI真实`build-npm`及`√ upload`；本地57/57运行文件SHA与本树构建一致，独立复核252份源码哈希，构建标记已还原。此SHA不是微信云端包校验。
+- 上传备注的「+本地改动」只因未跟踪outputs触发脚本全树dirty检测，应用及三包相关源码无差异。
+- [CLI回执](<../outputs/apartment-cashier-20261115/cli-upload.log>)、[制品审计](<../outputs/apartment-cashier-20261115/upload-audit.json>)、[完整验收](<../outputs/apartment-cashier-20261115/verification.md>)。
+- 下一步：公众平台版本管理中将`1.0.20261115a（aa674ca2）`选为体验版，并在手机我的页核对；未经另行授权不代设体验指向、不审核/正式发布。
+
