@@ -7455,3 +7455,9 @@
 - 自上次（3e4b37d8）以来上线的相关提交：
   - 147e4537 feat: publish repair inventory media and private experience notebook batch
 
+## 2026-11-17 00:31 · api · 091d92df
+
+- 包：`pms-api-fast-20261117-002737.tar.gz`
+- 提交：091d92df fix: distinguish native stderr from failed production release commands
+- 自上次（147e4537）以来没有相关提交（重新部署）
+
