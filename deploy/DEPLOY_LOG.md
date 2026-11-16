@@ -7461,3 +7461,9 @@
 - 提交：091d92df fix: distinguish native stderr from failed production release commands
 - 自上次（147e4537）以来没有相关提交（重新部署）
 
+## 2026-11-17 00:31 · web · 091d92df
+
+- 包：`pms-web-20261117-002737.tar.gz`
+- 提交：091d92df fix: distinguish native stderr from failed production release commands
+- 自上次（147e4537）以来没有相关提交（重新部署）
+
