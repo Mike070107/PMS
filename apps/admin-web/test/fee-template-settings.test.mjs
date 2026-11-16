@@ -17,7 +17,7 @@ test('实收金额反推数量：200元按0.8元计算250度，循环小数保�
  for(const price of [0,-80,NaN,Infinity])assert.equal(feeExports.cashierQuantityFromAmount(20000,price),null);
  assert.equal(feeExports.cashierQuantityFromAmount(NaN,80),null);
 });
-test('小程序真实输入处理器同步数量文字、实收、合计，改数量仍可正向计算',()=>{
+test('小程序实收反推数量、数量正向计算，标准单价拒绝编辑',()=>{
  let page;
  vm.runInNewContext(ts.transpileModule(read('../../miniapp-staff/miniprogram/pages/apartment-cashier/apartment-cashier.ts'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{
   exports:{},Page:value=>{page=value;},require:name=>name==='@pms/shared-types'?feeExports:name==='@pms/api-client'?{apartmentCashier:{}}:name.endsWith('/guide')?{guideHandlers:()=>({})}:{},wx:{},
@@ -26,11 +26,14 @@ test('小程序真实输入处理器同步数量文字、实收、合计，改�
  const input=(field,value)=>context.onRowInput({currentTarget:{dataset:{code:'electricity',field}},detail:{value}});
  input('amountYuan','200');
  assert.equal(context.data.rows[0].quantity,250);assert.equal(context.data.rows[0].quantityText,'250');assert.equal(context.data.rows[0].amountYuan,'200');assert.equal(context.data.totalCents,20000);
- input('unitPriceYuan','1.20');input('amountYuan','200');
- assert.equal(context.data.rows[0].quantity,166.667);assert.equal(context.data.rows[0].amountCents,20000);
- input('quantityText','10');assert.equal(context.data.rows[0].amountCents,1200);
+ const quotedRow={...context.data.rows[0]};
+ input('unitPriceYuan','1.20');assert.deepEqual({...context.data.rows[0]},quotedRow);
+ input('amountYuan','200');
+ assert.equal(context.data.rows[0].quantity,250);assert.equal(context.data.rows[0].amountCents,20000);
+ input('quantityText','10');assert.equal(context.data.rows[0].amountCents,800);assert.equal(context.data.totalCents,800);
  input('amountYuan','');assert.equal(context.data.rows[0].quantity,0);assert.equal(context.data.totalCents,0);
- input('unitPriceYuan','0');input('amountYuan','200');assert.equal(context.data.rows[0].quantity,0);assert.equal(context.data.rows[0].amountCents,20000);
+ input('unitPriceYuan','0');assert.equal(context.data.rows[0].unitPriceYuan,'0.80');
+ input('amountYuan','200');assert.equal(context.data.rows[0].quantity,250);assert.equal(context.data.rows[0].amountCents,20000);assert.equal(context.data.totalCents,20000);
 });
 test('正式系统设置复用收费模板，不再读取全公司房产选项',()=>{
  const page=read('../src/pages/FeesPage.tsx');
