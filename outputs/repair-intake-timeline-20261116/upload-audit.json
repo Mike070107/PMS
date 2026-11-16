@@ -1,0 +1,500 @@
+{
+  "checkedAt": "2026-11-16T02:36:41.446Z",
+  "sourceFreeze": "74e332d00514b17ee2f753f76a8a498628781bf2",
+  "sourceUnchanged": true,
+  "scope": "Development upload only; API/Web not deployed; experience selection/review/release and native phone acceptance not performed",
+  "apps": [
+    {
+      "app": "staff",
+      "appid": "wx002fde4bfaa4c7d9",
+      "version": "1.0.20261116b",
+      "uploadedAt": "2026-11-16T02:33:30.161Z",
+      "sourceCommit": "74e332d00514b17ee2f753f76a8a498628781bf2",
+      "explicitCliSuccess": true,
+      "sourceUnchanged": true,
+      "buildStampRestored": true,
+      "compiledAddressAndTimelinePassed": true,
+      "runtimeFileCount": 58,
+      "runtimeArtifacts": [
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/shared-types/address.js",
+          "sha256": "ee5ae1e37594cfb781f18ab0f58ae56be37e65df305f46ee91bf5da0efc71b58"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/shared-types/beijing-time.js",
+          "sha256": "cfee0ae8a4694acf5c6835e5f992159e3689ce6f744e555089c75cbfd7a5a996"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/shared-types/fees.js",
+          "sha256": "27551140cefb35764a8b2d3012541f063d57c8a32fd292a7e3fbbe0219dccfb9"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/shared-types/geo.js",
+          "sha256": "5435cd045276afbea6c26585772eb09386b349bbb08ca274af7732fca3366417"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/shared-types/index.js",
+          "sha256": "3de25ac2f54cdfef9bfbd8c2ba4b37e5bfe47782e8ffc1781aef874bd9565747"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/shared-types/maintenance-sheet-geometry.js",
+          "sha256": "2b8e6d34cf0e61793c66763d0c72d4089bcaed9061cb32e1347a863cb7921584"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/shared-types/meter-capture.js",
+          "sha256": "41e1af4a068c6a6a4e1165c00a9d607498d16073e31f353ad6b230235b43e10e"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/shared-types/natural-order.js",
+          "sha256": "539902169872b808d4d1feeb70b7ff276ca98cba747e234ef7123a6c4112e58b"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/shared-types/notification.js",
+          "sha256": "a12281ed69fd74d74f51a9c9f5a26d2ee58b53980b4d817ed3cd5907df618d09"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/shared-types/pages.js",
+          "sha256": "652b935f1ffa77106f68ed1f94ba0294e3aaab9a46a2fad4ee2874de351ce887"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/shared-types/property-address.js",
+          "sha256": "022bb5eb8586246aa0ef51d63e2019680e59035b479e46793a9d13782b42925e"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/shared-types/repair-classify.js",
+          "sha256": "45809b974926f604aba375be49a731795ea1dc89930a61aa4a9c51dd078853dd"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/shared-types/repair-experience-markdown.js",
+          "sha256": "bee02491f9fe2ce5335e1021c060fd7d186b7f8a8bc67a7bc8943cc980b5ccfa"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/shared-types/repair-experience.js",
+          "sha256": "70208df5e336cec68460941b0c1ffc22aec1f42b5ff751c672339a071cce1e8a"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/shared-types/timeline.js",
+          "sha256": "5ff0a54df7376de883571626f0f1932e8d4fa7bf60052eb4c70beeae9be9208b"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/shared-types/urgency.js",
+          "sha256": "4cff2cd8e37986249875b4169af90498b36055359690b791fcc67b861fa0ff3c"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/shared-types/voice-extract.js",
+          "sha256": "69b79e8ac78e3257cdac7fcc157c52bd5b9f90b657ce0e70ffa18a9d9554606e"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/shared-types/work-order-sort.js",
+          "sha256": "3eeb37f544c86f1904621e4e807854fd442a16673ca829986846167cfcd4cf13"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/compress.js",
+          "sha256": "99e0649e198a599d69cfaafb6161016f473594568ac13d7d272182c5a5684522"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/endpoints/access-card-issuance.js",
+          "sha256": "1babc40df82a742386e27d4008f6010a833606ed2be3fb3f972a9801b391f352"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/endpoints/address.js",
+          "sha256": "0c8ba59b8f9e6f70c5b13f0619e389840b8ec8b4dfb126e132e77fd1cb41aae1"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/endpoints/ai.js",
+          "sha256": "3987710244cfe72f786e9249a31bff5dd6250771ea96e3c1f675f52847d53207"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/endpoints/apartment-cashier.js",
+          "sha256": "6bfd1a9e2c275840d137b58e95d5dedb97af20784c05394998fa3d5823ab5d81"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/endpoints/auth.js",
+          "sha256": "d1e4475ac53d3386a7862715826d8e8ae80c800d1ac88d16eb7dc002c31ca1c8"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/endpoints/family-cars.js",
+          "sha256": "e13ac34e25b894df9371bee02f6ca81b38310a5202f46db5e8616d59c31005eb"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/endpoints/feedback.js",
+          "sha256": "5e8fd210be675739f0717fd232653b5dc4c02b9bdece0e629edbabeadc9af8b5"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/endpoints/inventory.js",
+          "sha256": "69d69cb69a0942485294dcd970a2492f766a5b7103c11f6da24757b799a90c60"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/endpoints/maintenance.js",
+          "sha256": "3635ac8b963dc6d9a873f7a596f9bc2a80856bf5e5a81ff6dd57222b1e5384bd"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/endpoints/material-ai.js",
+          "sha256": "a9ae77597d40bd500775e00a2afe810c54ecf584cb01d977687d886c6d852d37"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/endpoints/meters.js",
+          "sha256": "30d51c04e3e345b074395ed7faaf8afe1f044dc35f3bba20d993b3384eb6cd57"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/endpoints/notifications.js",
+          "sha256": "136263019a852406886d8adbebcef316d93d5e10cf773c8047d9e39c39dbeb8f"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/endpoints/observability.js",
+          "sha256": "9cec83b4231200528eaf5ee02dbfcacd93431995748f54afcc3a5fad7481bc7d"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/endpoints/purchases.js",
+          "sha256": "42c4b311484c96f73a24deee6dcc91dd8959732a0b7e115530da6df69945d4d3"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/endpoints/qr.js",
+          "sha256": "29c0ca1830c50b3b5466837ceaf622a7d76130951b9cb119291f42957b7071f4"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/endpoints/repair-experiences.js",
+          "sha256": "b2f8a5b3a4c17e3e5a0a59e73c3b3db8e0e3a0e733bd6e9560caa0c4a5c068d1"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/endpoints/repairs.js",
+          "sha256": "f789b3b068b2437b68d319b3c9ec85f627b9dff2fafff2f5aa27a9fb41f1b0a1"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/endpoints/stocktakes.js",
+          "sha256": "4be8995a420dc190e0ab16061cab23956250ba298a3c0fb10487ee14a4ae6c69"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/endpoints/upload.js",
+          "sha256": "45c942f54f99a4216a5272c07ecb7497d7d43f590274fe0abe0a73397d8d9f1f"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/envelope.js",
+          "sha256": "edf9029d0fe1c2077d04d1b82b3ab64b107cfedae537be39225ca30953db144a"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/index.js",
+          "sha256": "5f19d04eababa3a7d6e4f484d75a1796d6b6a6f75dee6cda657d60dcd82976c2"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/request-diagnostic.js",
+          "sha256": "6ef0ea2093e57be0321989c4cb3b93852a2766dd2da131ea2ac5931f0829fcd8"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client/request.js",
+          "sha256": "accd2db626fc43e9e76c6d67ff32453f5213c817f2892511dc407b7464a23669"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/miniapp-ui/autoUpdate.js",
+          "sha256": "c3b88d3532d51a4e1442732a3a7a191d8eaf72921d79320669cbba41644b62d5"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/miniapp-ui/components/empty/index.js",
+          "sha256": "c9155712bd48fdb59e63b380793cca500cb4d7742dbb75b03caf939f1095ac3b"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/miniapp-ui/components/empty/index.json",
+          "sha256": "a86141b3fc9036835f80ed60a03bec91271f26da944e18c7ead57ce95dd9ad67"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/miniapp-ui/components/empty/index.wxml",
+          "sha256": "7649fb83a11d069ed896a0dd7e7f11aba0f483f9256585b739b7e5bbfc9b3e3c"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/miniapp-ui/components/empty/index.wxss",
+          "sha256": "126d553d4a1d001541f94a1aa39b1949b7f108d666918d10979b38663231f16e"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/miniapp-ui/components/status-tag/index.js",
+          "sha256": "e46ccbffc30a5525cd162aa639a9686172aaa047e642c7eeafada6367471ed46"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/miniapp-ui/components/status-tag/index.json",
+          "sha256": "a86141b3fc9036835f80ed60a03bec91271f26da944e18c7ead57ce95dd9ad67"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/miniapp-ui/components/status-tag/index.wxml",
+          "sha256": "5bc330aa1f656d3099ba54411e584d64b4a3772fc8d969c99dd2ce7b0aec1f47"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/miniapp-ui/components/status-tag/index.wxss",
+          "sha256": "eeaec762c2d6e3c858f1dbd19c4fd913496ec56f3107767458504d4c437a1010"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/miniapp-ui/format.js",
+          "sha256": "eb492765a25f6a4e1042e8167244178003c6bc2e50f4a1afb4a381f433d9ffbc"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/miniapp-ui/index.js",
+          "sha256": "d53e9da3ea20ef7301689cf376e514bf669823a28d92afe8bd5f1d10012b05d5"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/miniapp-ui/pageTelemetry.js",
+          "sha256": "6e51b08d6179d512fa15be7a80a189c4a4ad32b91cad09999e96409c6164cf2e"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/miniapp-ui/speech.js",
+          "sha256": "40126d950a35c8acae15c379ba217fb044cd01f3eb9ca846addad1a8ac29a8c9"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/miniapp-ui/status.js",
+          "sha256": "3069b1961f1d132acb9398531fe4be5ff603c95e689b27996a18d18e8e22f538"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/miniapp-ui/tokens.js",
+          "sha256": "1791ab4ce29cf01de65dbf4fd07a26887cca222cd8767cad3fb0cd825ebb0aea"
+        },
+        {
+          "path": "apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/miniapp-ui/tokens.wxss",
+          "sha256": "7e9725be204ede26322435bcb6b713324b52ed14d6609aa2a102c13fc86f6907"
+        }
+      ]
+    },
+    {
+      "app": "owner",
+      "appid": "wx8ef4de0e498064c4",
+      "version": "1.0.20261116b",
+      "uploadedAt": "2026-11-16T02:33:55.602Z",
+      "sourceCommit": "74e332d00514b17ee2f753f76a8a498628781bf2",
+      "explicitCliSuccess": true,
+      "sourceUnchanged": true,
+      "buildStampRestored": true,
+      "compiledAddressAndTimelinePassed": true,
+      "runtimeFileCount": 58,
+      "runtimeArtifacts": [
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/shared-types/address.js",
+          "sha256": "ee5ae1e37594cfb781f18ab0f58ae56be37e65df305f46ee91bf5da0efc71b58"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/shared-types/beijing-time.js",
+          "sha256": "cfee0ae8a4694acf5c6835e5f992159e3689ce6f744e555089c75cbfd7a5a996"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/shared-types/fees.js",
+          "sha256": "27551140cefb35764a8b2d3012541f063d57c8a32fd292a7e3fbbe0219dccfb9"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/shared-types/geo.js",
+          "sha256": "5435cd045276afbea6c26585772eb09386b349bbb08ca274af7732fca3366417"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/shared-types/index.js",
+          "sha256": "3de25ac2f54cdfef9bfbd8c2ba4b37e5bfe47782e8ffc1781aef874bd9565747"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/shared-types/maintenance-sheet-geometry.js",
+          "sha256": "2b8e6d34cf0e61793c66763d0c72d4089bcaed9061cb32e1347a863cb7921584"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/shared-types/meter-capture.js",
+          "sha256": "41e1af4a068c6a6a4e1165c00a9d607498d16073e31f353ad6b230235b43e10e"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/shared-types/natural-order.js",
+          "sha256": "539902169872b808d4d1feeb70b7ff276ca98cba747e234ef7123a6c4112e58b"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/shared-types/notification.js",
+          "sha256": "a12281ed69fd74d74f51a9c9f5a26d2ee58b53980b4d817ed3cd5907df618d09"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/shared-types/pages.js",
+          "sha256": "652b935f1ffa77106f68ed1f94ba0294e3aaab9a46a2fad4ee2874de351ce887"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/shared-types/property-address.js",
+          "sha256": "022bb5eb8586246aa0ef51d63e2019680e59035b479e46793a9d13782b42925e"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/shared-types/repair-classify.js",
+          "sha256": "45809b974926f604aba375be49a731795ea1dc89930a61aa4a9c51dd078853dd"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/shared-types/repair-experience-markdown.js",
+          "sha256": "bee02491f9fe2ce5335e1021c060fd7d186b7f8a8bc67a7bc8943cc980b5ccfa"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/shared-types/repair-experience.js",
+          "sha256": "70208df5e336cec68460941b0c1ffc22aec1f42b5ff751c672339a071cce1e8a"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/shared-types/timeline.js",
+          "sha256": "5ff0a54df7376de883571626f0f1932e8d4fa7bf60052eb4c70beeae9be9208b"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/shared-types/urgency.js",
+          "sha256": "4cff2cd8e37986249875b4169af90498b36055359690b791fcc67b861fa0ff3c"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/shared-types/voice-extract.js",
+          "sha256": "69b79e8ac78e3257cdac7fcc157c52bd5b9f90b657ce0e70ffa18a9d9554606e"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/shared-types/work-order-sort.js",
+          "sha256": "3eeb37f544c86f1904621e4e807854fd442a16673ca829986846167cfcd4cf13"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/compress.js",
+          "sha256": "99e0649e198a599d69cfaafb6161016f473594568ac13d7d272182c5a5684522"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/endpoints/access-card-issuance.js",
+          "sha256": "1babc40df82a742386e27d4008f6010a833606ed2be3fb3f972a9801b391f352"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/endpoints/address.js",
+          "sha256": "0c8ba59b8f9e6f70c5b13f0619e389840b8ec8b4dfb126e132e77fd1cb41aae1"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/endpoints/ai.js",
+          "sha256": "3987710244cfe72f786e9249a31bff5dd6250771ea96e3c1f675f52847d53207"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/endpoints/apartment-cashier.js",
+          "sha256": "6bfd1a9e2c275840d137b58e95d5dedb97af20784c05394998fa3d5823ab5d81"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/endpoints/auth.js",
+          "sha256": "d1e4475ac53d3386a7862715826d8e8ae80c800d1ac88d16eb7dc002c31ca1c8"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/endpoints/family-cars.js",
+          "sha256": "e13ac34e25b894df9371bee02f6ca81b38310a5202f46db5e8616d59c31005eb"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/endpoints/feedback.js",
+          "sha256": "5e8fd210be675739f0717fd232653b5dc4c02b9bdece0e629edbabeadc9af8b5"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/endpoints/inventory.js",
+          "sha256": "69d69cb69a0942485294dcd970a2492f766a5b7103c11f6da24757b799a90c60"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/endpoints/maintenance.js",
+          "sha256": "3635ac8b963dc6d9a873f7a596f9bc2a80856bf5e5a81ff6dd57222b1e5384bd"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/endpoints/material-ai.js",
+          "sha256": "a9ae77597d40bd500775e00a2afe810c54ecf584cb01d977687d886c6d852d37"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/endpoints/meters.js",
+          "sha256": "30d51c04e3e345b074395ed7faaf8afe1f044dc35f3bba20d993b3384eb6cd57"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/endpoints/notifications.js",
+          "sha256": "136263019a852406886d8adbebcef316d93d5e10cf773c8047d9e39c39dbeb8f"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/endpoints/observability.js",
+          "sha256": "9cec83b4231200528eaf5ee02dbfcacd93431995748f54afcc3a5fad7481bc7d"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/endpoints/purchases.js",
+          "sha256": "42c4b311484c96f73a24deee6dcc91dd8959732a0b7e115530da6df69945d4d3"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/endpoints/qr.js",
+          "sha256": "29c0ca1830c50b3b5466837ceaf622a7d76130951b9cb119291f42957b7071f4"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/endpoints/repair-experiences.js",
+          "sha256": "b2f8a5b3a4c17e3e5a0a59e73c3b3db8e0e3a0e733bd6e9560caa0c4a5c068d1"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/endpoints/repairs.js",
+          "sha256": "f789b3b068b2437b68d319b3c9ec85f627b9dff2fafff2f5aa27a9fb41f1b0a1"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/endpoints/stocktakes.js",
+          "sha256": "4be8995a420dc190e0ab16061cab23956250ba298a3c0fb10487ee14a4ae6c69"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/endpoints/upload.js",
+          "sha256": "45c942f54f99a4216a5272c07ecb7497d7d43f590274fe0abe0a73397d8d9f1f"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/envelope.js",
+          "sha256": "edf9029d0fe1c2077d04d1b82b3ab64b107cfedae537be39225ca30953db144a"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/index.js",
+          "sha256": "5f19d04eababa3a7d6e4f484d75a1796d6b6a6f75dee6cda657d60dcd82976c2"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/request-diagnostic.js",
+          "sha256": "6ef0ea2093e57be0321989c4cb3b93852a2766dd2da131ea2ac5931f0829fcd8"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client/request.js",
+          "sha256": "accd2db626fc43e9e76c6d67ff32453f5213c817f2892511dc407b7464a23669"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/miniapp-ui/autoUpdate.js",
+          "sha256": "c3b88d3532d51a4e1442732a3a7a191d8eaf72921d79320669cbba41644b62d5"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/miniapp-ui/components/empty/index.js",
+          "sha256": "c9155712bd48fdb59e63b380793cca500cb4d7742dbb75b03caf939f1095ac3b"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/miniapp-ui/components/empty/index.json",
+          "sha256": "a86141b3fc9036835f80ed60a03bec91271f26da944e18c7ead57ce95dd9ad67"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/miniapp-ui/components/empty/index.wxml",
+          "sha256": "7649fb83a11d069ed896a0dd7e7f11aba0f483f9256585b739b7e5bbfc9b3e3c"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/miniapp-ui/components/empty/index.wxss",
+          "sha256": "126d553d4a1d001541f94a1aa39b1949b7f108d666918d10979b38663231f16e"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/miniapp-ui/components/status-tag/index.js",
+          "sha256": "e46ccbffc30a5525cd162aa639a9686172aaa047e642c7eeafada6367471ed46"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/miniapp-ui/components/status-tag/index.json",
+          "sha256": "a86141b3fc9036835f80ed60a03bec91271f26da944e18c7ead57ce95dd9ad67"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/miniapp-ui/components/status-tag/index.wxml",
+          "sha256": "5bc330aa1f656d3099ba54411e584d64b4a3772fc8d969c99dd2ce7b0aec1f47"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/miniapp-ui/components/status-tag/index.wxss",
+          "sha256": "eeaec762c2d6e3c858f1dbd19c4fd913496ec56f3107767458504d4c437a1010"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/miniapp-ui/format.js",
+          "sha256": "eb492765a25f6a4e1042e8167244178003c6bc2e50f4a1afb4a381f433d9ffbc"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/miniapp-ui/index.js",
+          "sha256": "d53e9da3ea20ef7301689cf376e514bf669823a28d92afe8bd5f1d10012b05d5"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/miniapp-ui/pageTelemetry.js",
+          "sha256": "6e51b08d6179d512fa15be7a80a189c4a4ad32b91cad09999e96409c6164cf2e"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/miniapp-ui/speech.js",
+          "sha256": "40126d950a35c8acae15c379ba217fb044cd01f3eb9ca846addad1a8ac29a8c9"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/miniapp-ui/status.js",
+          "sha256": "3069b1961f1d132acb9398531fe4be5ff603c95e689b27996a18d18e8e22f538"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/miniapp-ui/tokens.js",
+          "sha256": "1791ab4ce29cf01de65dbf4fd07a26887cca222cd8767cad3fb0cd825ebb0aea"
+        },
+        {
+          "path": "apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/miniapp-ui/tokens.wxss",
+          "sha256": "7e9725be204ede26322435bcb6b713324b52ed14d6609aa2a102c13fc86f6907"
+        }
+      ]
+    }
+  ]
+}

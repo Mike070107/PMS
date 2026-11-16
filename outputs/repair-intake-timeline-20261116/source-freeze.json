@@ -1,0 +1,2578 @@
+{
+  "head": "74e332d00514b17ee2f753f76a8a498628781bf2",
+  "frozenAt": "2026-11-16T02:32:22.156Z",
+  "sourceFiles": [
+    {
+      "path": "CLAUDE.md",
+      "sha256": "13b5f217d19c2203e592b14cd9d2f80dbd10797aed3f482d4484b49ca3fee774"
+    },
+    {
+      "path": "apps/admin-web/src/App.tsx",
+      "sha256": "59638120d284fa0d373022c00f00876a66d12e1580655ec4272e249342a15309"
+    },
+    {
+      "path": "apps/admin-web/src/buildInfo.ts",
+      "sha256": "211c9b100fbe47d5589f2c2e936bf52f79b90aaa16e170a3ff5d9fb473a51708"
+    },
+    {
+      "path": "apps/admin-web/src/components/AiLearningPanel.tsx",
+      "sha256": "057bafee513c18db99c3ba950daabe2f7d70e965ad0e6e12837c594b0b675a30"
+    },
+    {
+      "path": "apps/admin-web/src/components/AiSamplesPanel.tsx",
+      "sha256": "78d2950678e34f35495c7737254b2526979fde9ba5ca36836e97a21bc88caa85"
+    },
+    {
+      "path": "apps/admin-web/src/components/AiUsagePanel.tsx",
+      "sha256": "69d63fe44731b0944b4bf7a5bcd04521cd135ee1e5296def10e9f58d2b8d5a9a"
+    },
+    {
+      "path": "apps/admin-web/src/components/AppLayout.tsx",
+      "sha256": "e666790762e15b175d4c94460ae3d2c280fa6e7ae6ba59d3b1ed9379b0fce8f4"
+    },
+    {
+      "path": "apps/admin-web/src/components/BrandLogo.tsx",
+      "sha256": "6074285caa626e4cc3f773cdc4279e05d805a467f586cbbc1fbe4182547dc00b"
+    },
+    {
+      "path": "apps/admin-web/src/components/CopyableSecret.css",
+      "sha256": "1b53c861d0714fba6a94ce22e31e26e40e014ee99c8ff8b82388ed9bba05f7d4"
+    },
+    {
+      "path": "apps/admin-web/src/components/CopyableSecret.tsx",
+      "sha256": "6a637e294828449823b197a5f6b42478b07388ae193536c94ffe06581993184c"
+    },
+    {
+      "path": "apps/admin-web/src/components/DetailPrimitives.tsx",
+      "sha256": "de213e2cc738cc0562d3f614cb4f51af234105633e4d8f5fc83b1e538e3d9b41"
+    },
+    {
+      "path": "apps/admin-web/src/components/FeeReconciliationDetail.tsx",
+      "sha256": "0302eaba0259067faa448b236d28e1974370260427cfbff5363b507c3e3a482c"
+    },
+    {
+      "path": "apps/admin-web/src/components/FeeReportCharts.tsx",
+      "sha256": "825f5bc8668bc91d609eefd97ddeae570f7e23639200b4f7a69892bc8ba36816"
+    },
+    {
+      "path": "apps/admin-web/src/components/FeedbackButton.tsx",
+      "sha256": "22843f9f47caf2a863729166d7208bc5927341c46f7fe806c5651d14a7294e17"
+    },
+    {
+      "path": "apps/admin-web/src/components/HouseAddressPicker.css",
+      "sha256": "d10b94b69b8250c91c711b3f3c224ca600d9743e3e110a4066788bb7c662710a"
+    },
+    {
+      "path": "apps/admin-web/src/components/HouseAddressPicker.tsx",
+      "sha256": "8a3adcd3309202a53efbbfaa25aa57283f8ba484e5ad239a601b7ace1a91ef96"
+    },
+    {
+      "path": "apps/admin-web/src/components/MaterialPhotos.tsx",
+      "sha256": "e1bdd5d36ec6b69937a4d2b4476f0f562ebc06de8182b43f44a6b99c399a9b2b"
+    },
+    {
+      "path": "apps/admin-web/src/components/MeterPaymentMethods.css",
+      "sha256": "061edf2fec5c349c36c068e9f2d12ce31fc92e2fc7c0f70b775523a9a1d732d7"
+    },
+    {
+      "path": "apps/admin-web/src/components/MeterPaymentMethods.tsx",
+      "sha256": "8ac3249e49cccef0526d51fa63b2a8e7841ee9d0bf3687613f8a84eaf2ddcfc9"
+    },
+    {
+      "path": "apps/admin-web/src/components/MeterVisionSettings.tsx",
+      "sha256": "5ca770731a40125b5299521a531991afe18f295d6d3147772fc7f3fc1cb5c5a4"
+    },
+    {
+      "path": "apps/admin-web/src/components/MisPropertyFees.tsx",
+      "sha256": "f7019b470015dbc7cda249378e65b9c83600574722c14bf7d98d0937b44bcd6d"
+    },
+    {
+      "path": "apps/admin-web/src/components/MissingMaterialsInput.tsx",
+      "sha256": "c819d89c84f8868a55c424613075cc75050ba0de0ae5c1c65b569f4ba6688e1b"
+    },
+    {
+      "path": "apps/admin-web/src/components/NotificationBell.tsx",
+      "sha256": "9c11389f2c4f6df74d0d91223fffeef0874e471a70a5544e21b9b6f3842ad768"
+    },
+    {
+      "path": "apps/admin-web/src/components/ParkingFeeFields.tsx",
+      "sha256": "14c4a63f0964723de722f58bf27d750d5ec1442c4e12f35b8e520996c2f57493"
+    },
+    {
+      "path": "apps/admin-web/src/components/ParkingProofReviewModal.tsx",
+      "sha256": "bb4f30427cce4371c71f1a40be25dd461b0cbc1f728509a498b66d9c6ebafa97"
+    },
+    {
+      "path": "apps/admin-web/src/components/PaymentMethodIcon.tsx",
+      "sha256": "abece866d940f0473ddd26cbce6e861c10c2dcc60e21cb2442493a3f2f102687"
+    },
+    {
+      "path": "apps/admin-web/src/components/PurchaseRequestCreateModal.tsx",
+      "sha256": "11b5269b0207696a6690828fecc4f035559267782b2c489daef0b789eeb90909"
+    },
+    {
+      "path": "apps/admin-web/src/components/ReadingLocationMap.tsx",
+      "sha256": "2949125f94b9e783ca6e505c510a2cd13ffa2aa3fcbf8784d4e2dafb4b951a77"
+    },
+    {
+      "path": "apps/admin-web/src/components/SelfProfileModal.tsx",
+      "sha256": "cda1ea399b5dac83f9ae041089b3e667c5c99732aa2cb8989b82f1aba659c5fe"
+    },
+    {
+      "path": "apps/admin-web/src/components/SignatureCanvas.tsx",
+      "sha256": "e5d343c78b87df6f8e3f7f34cd8b968e2641896e6df173c9424801a917c29488"
+    },
+    {
+      "path": "apps/admin-web/src/components/SignaturePad.tsx",
+      "sha256": "bdab22d6da8f7dd67fabf53678483db2f9a1a6a9a1c52042adc57c6a1f02b11d"
+    },
+    {
+      "path": "apps/admin-web/src/components/StocktakePanel.css",
+      "sha256": "b084e969675e8f83fb65a55d34b07d1dd5aa6a6d4eaac39294d9e6db4a52ebeb"
+    },
+    {
+      "path": "apps/admin-web/src/components/StocktakePanel.tsx",
+      "sha256": "ce4b4ebf4550add22e9226f3691a1adb26a96f6e563e66830d35075f3968ce25"
+    },
+    {
+      "path": "apps/admin-web/src/components/UnitSelect.tsx",
+      "sha256": "aab7e522f4c35372f0e061dd5984a062cfa89db3ac12e33a8c2b7cf4f14aa20a"
+    },
+    {
+      "path": "apps/admin-web/src/components/WorkOrderPeekDrawer.tsx",
+      "sha256": "a7d9d096610b8a53337ad41b34204ed8c97e7a9ace424db8e710d70d85b8bd94"
+    },
+    {
+      "path": "apps/admin-web/src/components/tableColumnPrefs.tsx",
+      "sha256": "559ffaccc6ca9dc719c15b8d5999da54826739ec5d66c39275d0f6a06d982b00"
+    },
+    {
+      "path": "apps/admin-web/src/components/tableSeqColumn.tsx",
+      "sha256": "ef960d338c2eb3d6cf35229090c058eb4dc20f1a6e05720b7488c7b0ba63631e"
+    },
+    {
+      "path": "apps/admin-web/src/components/useUploadPasteTarget.ts",
+      "sha256": "c73b5d04f490022c9eb9eab6a1552cf39bfb67286f195c86e10b15a8cf4307b3"
+    },
+    {
+      "path": "apps/admin-web/src/fonts/coverage.ts",
+      "sha256": "da29c919678ffd3ef5c126932e05e7317ae93e5395da8500c47e8284ce7350ea"
+    },
+    {
+      "path": "apps/admin-web/src/fonts/shoushu-preview.woff2",
+      "sha256": "2f456d8783d694646aac255e405b35f9eb5602d1b1dc09a1e95b68d2311b90b4"
+    },
+    {
+      "path": "apps/admin-web/src/fonts/shoushu.woff2",
+      "sha256": "57807816654d3ff972ad71fe494d639574f8817eccfb68386c4207a3693d3b17"
+    },
+    {
+      "path": "apps/admin-web/src/fonts/wanweiwei-preview.woff2",
+      "sha256": "a0641a70eadfaedd18b949e43daea6f42622a2630583fd99bd21e169dfd6a7fd"
+    },
+    {
+      "path": "apps/admin-web/src/fonts/wanweiwei.woff2",
+      "sha256": "a92d2b66cebd0f69e0dbb6749dcffe77370b4e64d8f396528761fd9f9d701e04"
+    },
+    {
+      "path": "apps/admin-web/src/fonts/zhaizaijia-preview.woff2",
+      "sha256": "bbde81494ce54fae503fdebf6bdba9ed40d993fe5c6447a8bfa73e28b765d94c"
+    },
+    {
+      "path": "apps/admin-web/src/fonts/zhaizaijia.woff2",
+      "sha256": "1de0df91d0fb25b83542a0da670e593d419f05af8ef36b94f0a4e39720eb1899"
+    },
+    {
+      "path": "apps/admin-web/src/fonts/zhangqingping-preview.woff2",
+      "sha256": "86e73f8179de884892d8e72d8fa712eca1dcac3aa6b5a30f43686911ca315037"
+    },
+    {
+      "path": "apps/admin-web/src/fonts/zhangqingping.woff2",
+      "sha256": "58171f5269fce1ed9492dfd2c26908e4abaf7547d1c3fc04f7712b768786ceb5"
+    },
+    {
+      "path": "apps/admin-web/src/lib/api.ts",
+      "sha256": "816867568aac77d97c9703aabe8dbac94930946932d149684a8c03009f61d223"
+    },
+    {
+      "path": "apps/admin-web/src/lib/auth.ts",
+      "sha256": "de143efdce75c7b498704e9905b517391a0c994cdb48b9d37d82e1ad46a9f904"
+    },
+    {
+      "path": "apps/admin-web/src/lib/compressImage.ts",
+      "sha256": "15909d72cf748c7169e3a87cee6fa5ddd915e363eb2f1b8ed8c3c49c197ff2c8"
+    },
+    {
+      "path": "apps/admin-web/src/lib/displayName.ts",
+      "sha256": "0de87f4943e1541e54aebaccf716aa8ba0d909fe75f67740e1ad4fea966e82a1"
+    },
+    {
+      "path": "apps/admin-web/src/lib/exportXlsx.ts",
+      "sha256": "4b1d61b09aeb2dfa4c60b1934b9ee85913f9a89e2dd4890729796f4055cb8564"
+    },
+    {
+      "path": "apps/admin-web/src/lib/gone.ts",
+      "sha256": "25998ac4bf17b979fdbf55ce4056f7d5195c4b74d1528004bc0f9f370bc0baaf"
+    },
+    {
+      "path": "apps/admin-web/src/lib/materialUnits.ts",
+      "sha256": "c7b695fb99a54f6f5af0bff00df2875625904af0ec4e2aa19dfdddefbd8c36ba"
+    },
+    {
+      "path": "apps/admin-web/src/lib/meter-geo.ts",
+      "sha256": "bfb297fe565b2e985884a34057bc2e2f5583aa45a649d12ab590936baaea0a5e"
+    },
+    {
+      "path": "apps/admin-web/src/lib/meter-qr-label.ts",
+      "sha256": "9a893d4b2b4c26c4edc97212e83d450b02c15a93f6060d6b2946a8b3209f1d3a"
+    },
+    {
+      "path": "apps/admin-web/src/lib/parkingPreservation.ts",
+      "sha256": "0b0c85132326e2621c4276804aa4a59ab5287500145c037ed2f4000100e84cf7"
+    },
+    {
+      "path": "apps/admin-web/src/lib/parkingRenewal.ts",
+      "sha256": "1efaac180046d53a672ed26e92b7adb01485d30281d65b6cec516202dd1ec9cb"
+    },
+    {
+      "path": "apps/admin-web/src/lib/parkingVehicleMerge.ts",
+      "sha256": "47d1a73ceb4704ad812edcc9860177dda7280c2aceb821bd73ba4a0206d38034"
+    },
+    {
+      "path": "apps/admin-web/src/lib/printSheet.ts",
+      "sha256": "82d2bd6521760f52403b3342c7047cd67811c9d38820abf04c7b713c036b250e"
+    },
+    {
+      "path": "apps/admin-web/src/lib/purchaseRequestForm.ts",
+      "sha256": "c61216b2d83526f53df682a51673481e045c2aa836a2f6f89eee6a995910a108"
+    },
+    {
+      "path": "apps/admin-web/src/lib/selectProps.ts",
+      "sha256": "275a064609953b527c5a80f7c56d94573e74ad731aba98c2c740a01b50dfa88b"
+    },
+    {
+      "path": "apps/admin-web/src/lib/staffRoleRules.ts",
+      "sha256": "4112fc29dc4eba0be4cba53b8626afa4cf75af58a0780bbc16a2884f108ba286"
+    },
+    {
+      "path": "apps/admin-web/src/lib/wechatLaunch.ts",
+      "sha256": "deff6b863d82941ab2ec134ddb0149fc9e753e6edd8dad4f747cc775c8e8e53e"
+    },
+    {
+      "path": "apps/admin-web/src/main.tsx",
+      "sha256": "f12e8724c67bb9249d7ce5bad282828b96747c250900aa305e6889b7f60651b1"
+    },
+    {
+      "path": "apps/admin-web/src/pages/AccessCardIssuancePage.tsx",
+      "sha256": "9a5107dff7d7575907d4e9c253fddce76116f358f26fb664bc6b00a4973ba89a"
+    },
+    {
+      "path": "apps/admin-web/src/pages/ApartmentCashierPage.css",
+      "sha256": "a53e65c48ade9db6427428bdd22a379daff59e04c765e8361e5d478961fe444d"
+    },
+    {
+      "path": "apps/admin-web/src/pages/ApartmentCashierPage.tsx",
+      "sha256": "54fcb6ff639025676c5cc316083e3eafd53f5d977180933f7137949ed292cb69"
+    },
+    {
+      "path": "apps/admin-web/src/pages/ApartmentCashierWorkspace.tsx",
+      "sha256": "85aade705a31997b7f76bae189b42864a0cfa155337842d5891d21f2b5a5c775"
+    },
+    {
+      "path": "apps/admin-web/src/pages/BusinessPage.tsx",
+      "sha256": "0691d9bdb33c2b95a5f4138f67ecbc185e27d69d58e9cda6ba57fb182df44a16"
+    },
+    {
+      "path": "apps/admin-web/src/pages/DashboardPage.tsx",
+      "sha256": "9593963b96bb431b8be0d1883765978e02f845ddcd5df2d50f3bb1a056501ec0"
+    },
+    {
+      "path": "apps/admin-web/src/pages/DataSyncAssistantPreviewPage.css",
+      "sha256": "4060a882371eee39aec69f891ebe18f74919a13c4fac408b950e9e4061b31acb"
+    },
+    {
+      "path": "apps/admin-web/src/pages/DataSyncAssistantPreviewPage.tsx",
+      "sha256": "368e179cf897187fdb08c5852ec348ecc53699ec9e132a8042c848939e3a145c"
+    },
+    {
+      "path": "apps/admin-web/src/pages/ExperienceNotesPage.css",
+      "sha256": "b2b9facd08aa1160bcf71686b63c0938ddd44db25c1610299cfeaabc2a34002a"
+    },
+    {
+      "path": "apps/admin-web/src/pages/ExperienceNotesPage.tsx",
+      "sha256": "39c9b45c4bdd49c622418b7386ea7647abf4b7b315103691fd6b123369a5e1a9"
+    },
+    {
+      "path": "apps/admin-web/src/pages/ExternalAccessPage.css",
+      "sha256": "74833b7b37a4c5e2daaf594e1c39a2dcc4cbc4b13b8c2759d4496887e8edaf7a"
+    },
+    {
+      "path": "apps/admin-web/src/pages/ExternalAccessPage.tsx",
+      "sha256": "86dbc511ffba416586d3cc5bc613facfdf39d2cdb643162ae7ddc73e94ca4978"
+    },
+    {
+      "path": "apps/admin-web/src/pages/FamilyCarsPage.css",
+      "sha256": "d325384d566461421ccfc8d8fd94f53b9717e642cf62d3c33250118c2f2b755a"
+    },
+    {
+      "path": "apps/admin-web/src/pages/FamilyCarsPage.tsx",
+      "sha256": "326e6598c49a9d627dcc9facdef8bdc3e975f3622f36a759859446f93e54eda6"
+    },
+    {
+      "path": "apps/admin-web/src/pages/FeeTemplateSettings.css",
+      "sha256": "b9b8121d72aa2e24db192b268667a87c14e83462b2d8571096368874f46a18b0"
+    },
+    {
+      "path": "apps/admin-web/src/pages/FeeTemplateSettings.tsx",
+      "sha256": "39847e25c97fe584b2a385b272525fc869c702a08b08383e9477992b6275c718"
+    },
+    {
+      "path": "apps/admin-web/src/pages/FeesPage.tsx",
+      "sha256": "8e535ba215bdc50dd6a17aac5ef366c7b7dc249dc53da833873383cfe9d3a00d"
+    },
+    {
+      "path": "apps/admin-web/src/pages/FeesReportShell.css",
+      "sha256": "3f0eb77d44e1d4b7c5f600c7a267e03c454fe202677442472157ced1293b0c51"
+    },
+    {
+      "path": "apps/admin-web/src/pages/InventoryPage.tsx",
+      "sha256": "baff75be043d7983c0a24ac82b86754d57b5f3cc2aad8a23991971067976aeb1"
+    },
+    {
+      "path": "apps/admin-web/src/pages/LoginPage.tsx",
+      "sha256": "ffddc61e180f9ef9ca57750e51df91f400e8143d1081dc1c6581967ae4e824fc"
+    },
+    {
+      "path": "apps/admin-web/src/pages/LogsPage.tsx",
+      "sha256": "b5f4b172e7ad424bc71161af4ddbeb494bd673576523ebb71eaed41cb347cd3a"
+    },
+    {
+      "path": "apps/admin-web/src/pages/MaintenanceOrdersPage.tsx",
+      "sha256": "5ebfe9d306a7d301d356cbc655ceefe5a8fb78045eba965983438f1493c111be"
+    },
+    {
+      "path": "apps/admin-web/src/pages/MaterialsPage.tsx",
+      "sha256": "693616b5738652cfa3679664689a72f4406e15dd301420fe49fb4c03aa60d8aa"
+    },
+    {
+      "path": "apps/admin-web/src/pages/MeterManagementPage.css",
+      "sha256": "f605723223c3b6b774460ae2829c7e58340895509c93c44948b0280bad69fd9e"
+    },
+    {
+      "path": "apps/admin-web/src/pages/MeterManagementPage.tsx",
+      "sha256": "a6403704f73870d79e39b3744bfaa4423e3f5fec5938bdaa4e4afc000434df8d"
+    },
+    {
+      "path": "apps/admin-web/src/pages/OfficesPage.tsx",
+      "sha256": "913df0ea66bb5c7abb9bc60b9939d33af623f3475be81d160d9e20c4efde7dce"
+    },
+    {
+      "path": "apps/admin-web/src/pages/OwnerAuditPage.tsx",
+      "sha256": "a02149af3209c582c090f054e7dff976bb85f8918c803e512b67e2573d24af44"
+    },
+    {
+      "path": "apps/admin-web/src/pages/OwnerFormModal.tsx",
+      "sha256": "7aeabee47624ab55f2aed0bd011df2fc2572ce0a3f30c9427cc664b7c610fcba"
+    },
+    {
+      "path": "apps/admin-web/src/pages/ParkingLegacyOwnerModal.tsx",
+      "sha256": "1c7b1287e54c5c02e10664a172c5fd247e9788396350c16130fb6c0eeaad52a5"
+    },
+    {
+      "path": "apps/admin-web/src/pages/ParkingManagementLivePreviewPage.tsx",
+      "sha256": "7834f692ee6fceb7cbeb98773738fa154f5aa237c57a7ec860a4552a15904973"
+    },
+    {
+      "path": "apps/admin-web/src/pages/ParkingManagementPage.css",
+      "sha256": "ff7ad77ac2a5cf87b1f98514ae37f0583ddad6e8a9587d215ded6ac9fd4116dc"
+    },
+    {
+      "path": "apps/admin-web/src/pages/ParkingManagementPage.tsx",
+      "sha256": "31747450e10cc8cb0167db8bbd892f20edfaaa31b6f1aec57f1fdda7101dafe2"
+    },
+    {
+      "path": "apps/admin-web/src/pages/ParkingManagementPreviewPage.tsx",
+      "sha256": "7e42c9183ff0c1d54a3be2ffc49356b88ba64822f651e48da5db328ff339ea6c"
+    },
+    {
+      "path": "apps/admin-web/src/pages/ParkingProofUploadPage.css",
+      "sha256": "fef24e1aed22f92601274a6affbb76df08f6b9eb1734d5d9177687a1773a6122"
+    },
+    {
+      "path": "apps/admin-web/src/pages/ParkingProofUploadPage.tsx",
+      "sha256": "c98e403c9ad48f64667880cfeb9f7b90e7e106e69caacd067335a716c6298b8b"
+    },
+    {
+      "path": "apps/admin-web/src/pages/PlatformTenantsPage.tsx",
+      "sha256": "d7d66a059e4a7f01ad52e57604f2ef52850ccdc91159838d14ea869250e63ae6"
+    },
+    {
+      "path": "apps/admin-web/src/pages/PropertiesImportModal.tsx",
+      "sha256": "58daf247893a97aa8742786e0f25e9a0285884d89b7f23ea7a260540c125bc45"
+    },
+    {
+      "path": "apps/admin-web/src/pages/PropertiesPage.tsx",
+      "sha256": "054bd8f6999a4e594e3e4e2fca1c94cfa7b961a07a2e443468898b6b5be35797"
+    },
+    {
+      "path": "apps/admin-web/src/pages/QrPage.tsx",
+      "sha256": "055a2a1dfca90f0afda17b41024111e96940d16d6f1ae2c3e7612dfdea89c37d"
+    },
+    {
+      "path": "apps/admin-web/src/pages/ReportsPage.tsx",
+      "sha256": "ad374f7599587fbe68a9f989931453a2fe03fe483bd0601d4d5268f86828a696"
+    },
+    {
+      "path": "apps/admin-web/src/pages/RolesPage.tsx",
+      "sha256": "3bb39bef23e340b647fa657ffa7e2452fc907c10746262dd732cc6307f14997f"
+    },
+    {
+      "path": "apps/admin-web/src/pages/SettingsPage.tsx",
+      "sha256": "5e7d53d0c20ca41dde008d8112b6dd042022fd1d7b4e96253f0c49ecde8b805d"
+    },
+    {
+      "path": "apps/admin-web/src/pages/SignPage.tsx",
+      "sha256": "b17048ee19b852f101c3a3d466d67b05186f97682276f67ca3d51d646ac294f4"
+    },
+    {
+      "path": "apps/admin-web/src/pages/StaffPage.tsx",
+      "sha256": "386abf9c72153d30164652adce81e2c9e9a65e13f8f055e58cf8468030d06260"
+    },
+    {
+      "path": "apps/admin-web/src/pages/StocktakePage.tsx",
+      "sha256": "bd8de50d6d0f8346cee75694a51bb3f17273d515c2512ea64a1d46133c3f789b"
+    },
+    {
+      "path": "apps/admin-web/src/pages/WorkOrdersPage.tsx",
+      "sha256": "c5fa6b174247892728438109ddf3860507a649bbdfe28eafdcdfa3b4bfa73606"
+    },
+    {
+      "path": "apps/admin-web/src/pages/access-card-controller-state.ts",
+      "sha256": "ba6ecd9880a8c80340005e42c9cdea7f9c99f08c3f260b35ff3e1a53c2533fe0"
+    },
+    {
+      "path": "apps/admin-web/src/pages/maintenance/MaintenanceSheet.tsx",
+      "sha256": "452b7715a4e2e3018dc468e122d4451332e5e499cc2de4aa437a9863217463e6"
+    },
+    {
+      "path": "apps/admin-web/src/pages/maintenance/handwriting.ts",
+      "sha256": "41d64af21d72bbcfa0c11ffb1cb6610e227a793782cccf50a646f2277fd95582"
+    },
+    {
+      "path": "apps/admin-web/src/pages/maintenance/maintenance-sheet.css",
+      "sha256": "b215cba45a5c12964383539ae77f5ed69ca20f8eae263117450ce5a8342821da"
+    },
+    {
+      "path": "apps/admin-web/src/pages/maintenance/print-offset.ts",
+      "sha256": "7c2a055d6098805ba8c9e59b251f6d1565a52e9552955c13daec402f32621fa6"
+    },
+    {
+      "path": "apps/admin-web/src/pages/maintenance/sheet-geometry.ts",
+      "sha256": "49c0ec02b418d29d625c28afec661406eca67e7645737872ece42c6c06595b35"
+    },
+    {
+      "path": "apps/admin-web/src/pages/maintenance/types.ts",
+      "sha256": "3d6130d4258b18f3e87ae28b5cdf9fce699db23df60c5acbc4b7d66680415f47"
+    },
+    {
+      "path": "apps/admin-web/src/styles.css",
+      "sha256": "af442ed5028d7b2f9ca52f91f2a3e835ef78e1727d89a1cf17bda6a22f75d765"
+    },
+    {
+      "path": "apps/admin-web/src/theme.ts",
+      "sha256": "04db1e76cdb0c1fd366bc53cf3cd026e4de7e9e0a7f28a19d43d2a87701e0d58"
+    },
+    {
+      "path": "apps/admin-web/src/vite-env.d.ts",
+      "sha256": "5e53acf7c77805278f13f589b2ae8a190e1a1af1b05e714c48d25d9730bf7345"
+    },
+    {
+      "path": "apps/api/src/common/address.shared.ts",
+      "sha256": "b6a210d5329fa3c95fc5431061274b830f8042fa62836461024a249104cde1d7"
+    },
+    {
+      "path": "apps/miniapp-owner/.gitignore",
+      "sha256": "877d92031ed8651167f85b7ecccead0ab45ca660d439e8507c74a4a74a83ebbe"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/app.json",
+      "sha256": "38cf26dac614d007b3d37edcd132f85fcda673c583a98c30c51016e5a950aaf6"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/app.ts",
+      "sha256": "b4aef3a1eec6a1e5200fb99322d09b0ee823c22ff223cd4a8cd34d36c96d1bef"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/app.wxss",
+      "sha256": "5bb0f9210cefd289c60fa2f667a36549eb9dc1886b916259da0b1ee3e0ff05dd"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/assets/brand-icon.png",
+      "sha256": "ba748f202cb207de1933e22faf110f13dc7ae894fa15d8fbdf8bd067f49643bb"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/components/place-picker/index.json",
+      "sha256": "a86141b3fc9036835f80ed60a03bec91271f26da944e18c7ead57ce95dd9ad67"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/components/place-picker/index.ts",
+      "sha256": "c61cba0bc74dbbeb47d3f392e98a50a3f52fa0d3301b86ef6c94a84d0dbe775d"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/components/place-picker/index.wxml",
+      "sha256": "42be84e292caaa49dee8b8be32bdd03968f258ca4db3e4fde1877b9b8cf57fb1"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/components/place-picker/index.wxss",
+      "sha256": "773ff1357740f7f6192e5384df714eb86091c76ee6270a1ab6d8aa6a4ed3fce1"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/index/index.json",
+      "sha256": "8fbf691e2967dae8c7d7ea29a448e14d8aebc199b52c61dbd9fda1ee16ff248d"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/index/index.ts",
+      "sha256": "8330a58c414f62b223b81e4725ccf0f2b4a416ec72a116c698edbf41b9e32553"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/index/index.wxml",
+      "sha256": "89b2a9931e5e539e1d5fcdc6520010ae038cfc53d6881b6ed7ca6eb9bd0140a8"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/index/index.wxss",
+      "sha256": "7d3fda82d681d0870c0ec6dbad61f84e41b3910b5f024f3cb568ae70aaef9bde"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/login/login.json",
+      "sha256": "1082a497affe8294b76cacc00bc6df6fc7db37e76f4561eb2e8fcfc491dea325"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/login/login.ts",
+      "sha256": "6ef03cf44e9857c9d96a24ef060972708e5243864cc9fc9ec6133d0bf05f9b69"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/login/login.wxml",
+      "sha256": "48657af5957b0aae788c694865f1a0c90c6faac37d7f56a5b39e3ecbd226a093"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/login/login.wxss",
+      "sha256": "148af370c568d64a58aaa39a4d9443ad3fd18c4e7add4cfd7e1b226d420cdf31"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/me/me.json",
+      "sha256": "13dafb04008fface28b125da44691fbbdfc356ae60312d754503fb239347ec05"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/me/me.ts",
+      "sha256": "7df4275bf8ab3711c48c1bd2049c9904719ba77e4a1cd0e28b8c0cb4d8f42800"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/me/me.wxml",
+      "sha256": "69dbaf8b0fe5bc9ad390ea4899ca85153b8f1b51e7d2fb067b5f22162d2d6a60"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/me/me.wxss",
+      "sha256": "ca514012d2f3c245d660e682b20d310e5f1c7b0af428db62e3c40f1ca0e918d7"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/messages/messages.json",
+      "sha256": "7754b9ff0172c4284291ca77266b36a729802af057d36429b0b55bd4cabbccaf"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/messages/messages.ts",
+      "sha256": "f2af2753760e0e4e7d36a53088432a159ca7160df45dc8b5fc0719a665c9baea"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/messages/messages.wxml",
+      "sha256": "45f50975b261772b2c7efdd18e10aa9abdd49103bed656c965312f6880cf4ab8"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/messages/messages.wxss",
+      "sha256": "af9f3389e55d79a964c10bff002911cbc500facaff8ab3454fae0b84a30930eb"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/onboard/onboard.json",
+      "sha256": "6a2cd8ed9df16b8513c2eba5618a4dd3c9d2809bad6dc46582e369868571d05b"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/onboard/onboard.ts",
+      "sha256": "a4d43bf545c65a51a43ef8cf797077222bb0e046d2530e507a71b15fe0fabb14"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/onboard/onboard.wxml",
+      "sha256": "354fd5709da81a72bf8086af2800eca9bb8da78efc5cd974614aee472ad47f5d"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/onboard/onboard.wxss",
+      "sha256": "2b61bfe9200c91392121d659e2ca5debea8990b1789ac1c8251f324e2f03b17d"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/order-detail/order-detail.json",
+      "sha256": "57a6e57c23facbfda579225ed9d2a7468ae56d08fcac35d295da38ed680a8ec7"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/order-detail/order-detail.ts",
+      "sha256": "0fbff34b61c863f640b639178c19b18f0b6b01a25e7200df9cda50a183f6644d"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/order-detail/order-detail.wxml",
+      "sha256": "d512600a06a85f26fe082f2fa1387f71e357161d1895e2f67468f60b71e6e30d"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/order-detail/order-detail.wxss",
+      "sha256": "8a1408892616e1be327e7b80de4e42971a2c4ff29e0a68ebbe3ea8288de20138"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/orders/orders.json",
+      "sha256": "ed46acaf21670d7e09d4ae89c17c65b36217b0b722250aa5b03894c599bc037e"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/orders/orders.ts",
+      "sha256": "ddf03b8303dfd94bff0e805cb089649f71d4f8270f5c08302a1df3fb28e9b645"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/orders/orders.wxml",
+      "sha256": "168de26c3ed514ee764006b27256b6bf23c047d3e05c76d1f7f7528e8fc86c28"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/orders/orders.wxss",
+      "sha256": "797b2407d63d6801e17ede701276e95fc8677e43f567f8234553b5d854e7238e"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/quick-repair/quick-repair.json",
+      "sha256": "95a8f98c26618721ed2997e663d43900c68bb420acbc8b2a04a4534aa67eae5c"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/quick-repair/quick-repair.ts",
+      "sha256": "5ed92ddb7a78b984bf0a64313b0c20e8311f4a28015bda63e3e328f59131fb05"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/quick-repair/quick-repair.wxml",
+      "sha256": "6ccfa63e462097024cefb8863d4399c046f032b8366fedbba8a6c0adde088b42"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/quick-repair/quick-repair.wxss",
+      "sha256": "1068590d46f2b7e7772c523da045a50af9938a1cc00ca8ab3ada714ef0406aab"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/repair-create/repair-create.json",
+      "sha256": "346cda006530f7a118932c4bda4eccef114e6defba1291a48b29b27f087fc083"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/repair-create/repair-create.ts",
+      "sha256": "90ab821eb29464acf69f9c255a691a5256b2936f6974765ae39a686ddde81425"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/repair-create/repair-create.wxml",
+      "sha256": "8cb8151372f347dab16afc4e88d9742221e76243883a340a1dcb10cdb621ea74"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/pages/repair-create/repair-create.wxss",
+      "sha256": "8f1a0988a821beae6ff116fb2634d690e63d5585dba7095d7a86bd9a05392bcf"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/sitemap.json",
+      "sha256": "93546b310e40bbb357745f5f6aa246dff741a0d7bd9f75fcdaad8d8ab2630a8b"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/utils/address-detect.ts",
+      "sha256": "32b3479eab517015c75ca227d8ca753b73422846ff596b7d57df1421f943624a"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/utils/address-picker.ts",
+      "sha256": "cfae93f7a5f0a3d29937c0f4192f32fe037b09bdb55086e5768067a11bfc55d4"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/utils/buildStamp.ts",
+      "sha256": "9a5d6569baf56bc0410493809fe7f5b701463734e23080da2ef4d3a22530f912"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/utils/feedback.ts",
+      "sha256": "24436cfcc1f3ec102170be6af4ded68ea0001461671b1ebb691fe6445b328bc8"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/utils/place-scope.ts",
+      "sha256": "288558ea9da6afdd85834e3d2b0796db49146d2b63b4d0ff9b7a35ff30105c12"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/utils/scan.ts",
+      "sha256": "128d5a7d659ddd91f897e1cf1a4a8dff769ddb11d9ac1a6aa9cf95a387dfc1f2"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/utils/session.ts",
+      "sha256": "f3c1595be08ec34fa485a242bbc695477508aa33a02912118045b26c63249f8c"
+    },
+    {
+      "path": "apps/miniapp-owner/miniprogram/utils/unread.ts",
+      "sha256": "dd544b13db4fe5ba36fe49552cbc753866884b30f82372e96e6cf90ff75c4541"
+    },
+    {
+      "path": "apps/miniapp-owner/package.json",
+      "sha256": "d1255148263a58fb7b834170c3e9861bad125d0da48a39f9aeb8dfad29ec18b9"
+    },
+    {
+      "path": "apps/miniapp-owner/project.config.json",
+      "sha256": "dc7859fd4a4458326c7aefee8f344985b372877a68985f2d91fb0600c7167e23"
+    },
+    {
+      "path": "apps/miniapp-owner/tsconfig.json",
+      "sha256": "d44a33e030c9a98df4c5e25ea5f49713e5c27b7d2f7e22d4fe2114e9001b81bc"
+    },
+    {
+      "path": "apps/miniapp-staff/.gitignore",
+      "sha256": "877d92031ed8651167f85b7ecccead0ab45ca660d439e8507c74a4a74a83ebbe"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/app.json",
+      "sha256": "83b5ee684a6c7c7e85b417b978a85d3528635dbaad75f4da902cbcf820dfb620"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/app.ts",
+      "sha256": "85a4ebc7d970ab0617d13b1eede4ff3b2d5442dd4e19b23a892ab60409ff200d"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/app.wxss",
+      "sha256": "27c2479c8a6476134d740a1a685af13a880e28ecc36015a31966ef2b88b6b6b7"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/assets/brand-icon.png",
+      "sha256": "358ab18d8ba74da40fb007c4c0c2b37110f92f9cab7ae6b62b1d89143794df32"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/assets/location-pin.svg",
+      "sha256": "34e316a2cba2a027e63594ea62fed2da21a09b806fc2f1c290835ef3ea1513e2"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/assets/payment/alipay.svg",
+      "sha256": "0221b0a2d13edacef066bae77dcfa50295469d7a56b42a790e62666899f9f4d2"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/assets/payment/cash.svg",
+      "sha256": "e929d430a71db0c4c2c3d5bac5da82fbd2e9c37d7376d1f7a5011a326be3b5db"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/assets/payment/wechat.svg",
+      "sha256": "8d98f2100a0237fe855de56d1f6841c09b224a85cd5b0cbbdac6efa77f5db721"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/components/place-picker/index.json",
+      "sha256": "a86141b3fc9036835f80ed60a03bec91271f26da944e18c7ead57ce95dd9ad67"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/components/place-picker/index.ts",
+      "sha256": "e1cd4301f1704b1fc1d620c889e82d08b6d80e84d7ca5a4da3e312650dc306c1"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/components/place-picker/index.wxml",
+      "sha256": "d6fc6913627e5be0d36b6ef13ef3f8f562505f94027f854ba356f7989197e67f"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/components/place-picker/index.wxss",
+      "sha256": "efb19efa99d5c09e9eba4418a01fcb06ec1383bc8e56d59160325bd97421a2d1"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/custom-tab-bar/index.json",
+      "sha256": "8d7520a0c2b604d4fe0197e9f82e3c1cc9f4b96e0712724e71a8d3cd863f51f2"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/custom-tab-bar/index.ts",
+      "sha256": "6797dc116c450fe359522f1581f345ca1d2a8b3f94fcb11f890c8dfe1939056b"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/custom-tab-bar/index.wxml",
+      "sha256": "e5208f1072e1dbecc03bf28ce48dfc158627587d623072b38bf3089be6900b68"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/custom-tab-bar/index.wxss",
+      "sha256": "3d61fa3bd7f0db877d3ec017dd5836b67eafbee99cde55863bee9f1ca62b0fad"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/apartment-cashier/apartment-cashier.json",
+      "sha256": "3783ca3c82dc3f5f3de8ba00cc3fad494d5b9369954f65aa31d142e450c9a0b9"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/apartment-cashier/apartment-cashier.ts",
+      "sha256": "4efbe05f019b398c346f46ff098455b582f11e96c71daaa2b1fdb205670b1e45"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/apartment-cashier/apartment-cashier.wxml",
+      "sha256": "3318a4585b003b8ae27c3b02c89dd83b8e440165b9d72c9ef24d810900f1dac5"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/apartment-cashier/apartment-cashier.wxss",
+      "sha256": "fd78f27ab3f1d701542c6bb2e69fad0a8aae53aa2e0e090fbb762fbf2d953c9e"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/approvals/approvals.json",
+      "sha256": "e2c72545fad05553f36b848d604b4effa28dadd85e4a535e4e8f3d571661a2ab"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/approvals/approvals.ts",
+      "sha256": "10db55c43103bddd8872b1e309679a424faef64db9d3e7a8b94adaba2f4ad62c"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/approvals/approvals.wxml",
+      "sha256": "9ddf93ebe2dd14b0d7ad5018349719682f345067a79ad81de9eb55e7ecf6dd12"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/approvals/approvals.wxss",
+      "sha256": "5687411a20720e42bbab9ddd374817806fdff8e70d793b9572c007cacaebc210"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.json",
+      "sha256": "7e30ff468111dfa177004da28369b86ba51670182c523f38495e2a256b68f07c"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.ts",
+      "sha256": "98d1ca7d3cfabaad8c1215714d15f6c165a8b9dc19cc0e957da20f9ad34dade4"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxml",
+      "sha256": "21004c05d79e8eb89acc8b99c03a733595ab358dc78a3c096d457c56f6ad5c27"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/experience-note/experience-note.wxss",
+      "sha256": "b8e69d26614ef061540ebd2dd784dea23507d0dd9cbf09b3ca2fdb82f3098bc9"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.json",
+      "sha256": "4351db0cd2e3bd72c811db5fefefe0d9862d6f091b0e726875a5f78d32780ab2"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.ts",
+      "sha256": "e1bc0eb6d9a73af3674e57b1ec7be6120d21b847acdd8c6d4b7ba89b32ce7d77"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxml",
+      "sha256": "73d11e8b6d8493dc37de449dca52fae617a6741838c6758a73227cb8cbd5a2c4"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/experience-notes/experience-notes.wxss",
+      "sha256": "b1ea38eb8e06e495399b9c46e96cd5e921f78554f41abb1bf2e5eb491bb63efa"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/external-access/external-access.ts",
+      "sha256": "314d4a8c6f7a3b8a8313120bc64172a1aa31e31caa7ecfafc1083aa9b1fcd4a8"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/external-access/external-access.wxml",
+      "sha256": "589923d7dd706a91d178eeea12a62ac824e804f93855d9edee8730aef639076d"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/external-access/external-access.wxss",
+      "sha256": "4adcde45f6377fab3d2fe2d64200b382153da3bef6fd7d6d20be8f2b6688eec0"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/feedback/feedback.json",
+      "sha256": "105963147771b586d51cd36803189e7ba0e5392dcf9f1c4d5be40ffe1bf35f17"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/feedback/feedback.ts",
+      "sha256": "be70c7769f2e7fcce7a4337cfedc911ee4254bd422024589c8869b443adba4be"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/feedback/feedback.wxml",
+      "sha256": "ff35be7dc087efad9db4ccbaf054cbe2c323f5fd91d85dd73a8ab91ecee248f3"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/feedback/feedback.wxss",
+      "sha256": "bb3a73e3235920dd140cf7221c0545ce25d74a15946645566984e033ef2177b9"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/index/index.json",
+      "sha256": "103dd27c8da4f4c35243e4e40618ed217ac3aca31c4f1e6992a845a90f733f14"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/index/index.ts",
+      "sha256": "c9d95a44fd4534a1d50500abfe644b40914288a77937b6ef7ca0b12c71c6b7bd"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/index/index.wxml",
+      "sha256": "906bcbbfb8c868643a1c7568370a03ec2f2fea61e6154fa5086050abeaca297a"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/index/index.wxss",
+      "sha256": "148af370c568d64a58aaa39a4d9443ad3fd18c4e7add4cfd7e1b226d420cdf31"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/inventory/inventory.json",
+      "sha256": "becec53dba0c1a20754de93a34153107a8f81732a651620ed269d562794eefb4"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/inventory/inventory.ts",
+      "sha256": "0bf4c8f0089c3137b376f5025dbe7fd36951196c83f5d51cde110c6a54ab16e6"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/inventory/inventory.wxml",
+      "sha256": "3673c6ae7742da2cf3bfc0f5e52f482c078e6e044244c75ee1a58dc33a9d11dd"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/inventory/inventory.wxss",
+      "sha256": "d9ffc3b98f0561cee4676171b827ca961fd89a4788c2d5b09755af22a85fcbb9"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/login/login.json",
+      "sha256": "5a6c83589c707e5589caf500ff084d84665b84fb912fe4b25dbeefa706929efb"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/login/login.ts",
+      "sha256": "ecdfab300ea7d4da6508224535710ba5f03647c5ee739c36a715135c444f0eac"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/login/login.wxml",
+      "sha256": "f4f910239791a52f806d8b990afa2e71b577fe56c6b3a333fe01b00b3b61eff5"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/login/login.wxss",
+      "sha256": "bcae6dc089e57cc41defab4e1135f9bb5650db6f93d1571c108036c306148532"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/maintenance-sign/maintenance-sign.json",
+      "sha256": "4931d58d307075891e675341d8c854968375fab6595ce587f7a03b463f68f2ed"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/maintenance-sign/maintenance-sign.ts",
+      "sha256": "5c76f47844a681e0096afa96cbb6d98ed4a03ea83658d6e05369e2733c1486bc"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/maintenance-sign/maintenance-sign.wxml",
+      "sha256": "3e3e1c2686f33a779143a8b820ffaa6f40ffa3f714618f884295488884792f54"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/maintenance-sign/maintenance-sign.wxss",
+      "sha256": "97c73d09324fa35279d5f29eafc8ef8ba50f784d98bff614f87fdcf29960b4d1"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/maintenance-sign/sheet-model.ts",
+      "sha256": "ca098bec05ee26029b574b33d2149e2887d37e9a575d42f3b6b385b55aac0f14"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/material-inbound/material-inbound.json",
+      "sha256": "458f26650d980847131165fb6a4f34357807aa0e4531bf82282cc8d177eea317"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/material-inbound/material-inbound.ts",
+      "sha256": "0193b611198712790db69621dd324befa1a7ed635334f6d576666eddc3dcfeb0"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/material-inbound/material-inbound.wxml",
+      "sha256": "6d02d5358cf5b073c822ac3c0bcbc775d4e82a3c7887302a0dae8784a99004a7"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/material-inbound/material-inbound.wxss",
+      "sha256": "d87e8a39391d708f73e13bbea07516ce6dc7278b56de29eebf39e6002fa06705"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/me/me.json",
+      "sha256": "13dafb04008fface28b125da44691fbbdfc356ae60312d754503fb239347ec05"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/me/me.ts",
+      "sha256": "c42ed1934fdddb85547f4326964db4071536de579f607f19364bbaabfc983405"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/me/me.wxml",
+      "sha256": "3c22d20100198e4b25accaf6aae180203995c3395a5ecea88899833b9d674c6e"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/me/me.wxss",
+      "sha256": "db90f0aa8b68cff3d19bf5d5e48b9f94421fe2145339a2bb77b74dca29e056bb"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/messages/messages.json",
+      "sha256": "7754b9ff0172c4284291ca77266b36a729802af057d36429b0b55bd4cabbccaf"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/messages/messages.ts",
+      "sha256": "f7f11b51cfc64099cc63b794a4106fcb6819e7d6acbf2dc627115bb05472a672"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/messages/messages.wxml",
+      "sha256": "ca69bbf390cf5cb45a3368525abbc7947c7e121e7c61c2cd8e9497c5723aa730"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/messages/messages.wxss",
+      "sha256": "9c3d34def3dfb3c0eca956f04dec4611f3620e57bc54e998cf4e50873509a3aa"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/meter-detail/meter-detail.json",
+      "sha256": "6b5287d2ba100ceaf3cab0cc83420a244c134ba648d2e9283fd499150bedb6df"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/meter-detail/meter-detail.ts",
+      "sha256": "e7853dfaf817c0fb9026696be74e773fccfd7e132b27f4c7942cee2d1dab9e1a"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/meter-detail/meter-detail.wxml",
+      "sha256": "36173f785ff5a16b579923e4cebfc5a7aacba68dd5fddbc284847e5b4f06cfd1"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/meter-detail/meter-detail.wxss",
+      "sha256": "7f9df0756c8f59b927ac05c2926642c5066fc6069df5be38b6c088f3174720e4"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/meter-read/meter-read.json",
+      "sha256": "df97aee8a8c25aaba1feacbf3aa75184fa3e61cc19316e5626d56c9cd8b02fe4"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/meter-read/meter-read.ts",
+      "sha256": "d6466bf5a27eb7099b1341b118f8c2ba4ac2057e866778b4bb5d655144debd86"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/meter-read/meter-read.wxml",
+      "sha256": "66c4219e4562641d4580a5698b4756a69169f0805defef625b4eb0bae315e523"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/meter-read/meter-read.wxss",
+      "sha256": "854f3347bb7ff5f2ba14343c69ced0051e38695c487afc21878646551694f616"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/meters/meters.json",
+      "sha256": "d4d7057d257901dbdaf4bfc5091e7b0c061285f16f20a07c447666628ede144d"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/meters/meters.ts",
+      "sha256": "ff82e2d19ec33a0fcca7ddc3f9c9ade66ad29238c6db0ecc914f26a74126f086"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/meters/meters.wxml",
+      "sha256": "9c1703ca8687178120b41b1b947cf8c070d1bb54cce2416eec33e644753f3747"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/meters/meters.wxss",
+      "sha256": "6b5a7832f2ce172be46e2a4b8603e91180304eab93a7f9f2119d57beb7230f49"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/my-orders/my-orders.json",
+      "sha256": "c2424f70184448a6872e97c932112623017b15d070912a26b166891c469b9e58"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/my-orders/my-orders.ts",
+      "sha256": "d7f1c495298fcc11055ff76a3625ff90bb38c20491b3f0373ea9c4e1036eef4e"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/my-orders/my-orders.wxml",
+      "sha256": "e44202e8be9dcf6e8920755943790c24c883d5d75a57fc54d2715c2ebb0ee383"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/my-orders/my-orders.wxss",
+      "sha256": "351dcfae6456488c924d78c491689fb604f3832fd96241e00741c6a8d181be68"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/order-detail/order-detail.json",
+      "sha256": "9cdd2e768f47b91ff028595dc2713eb8806aa03b53064c6ac0f81754cb131686"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/order-detail/order-detail.ts",
+      "sha256": "1f38e1eb3e2fc4625a670ab7953fc3d505b6ae5d05922c23714cd7e80b66ff84"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/order-detail/order-detail.wxml",
+      "sha256": "ef382e1e6260d504d38a1c912512f50d713d71b22532d06df7c500d81210b6e1"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/order-detail/order-detail.wxss",
+      "sha256": "d356da6de87b2b10096cf668c7769c7d0ea7c7d690073f5a6afaac44aa8e379c"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/pool/pool.json",
+      "sha256": "f1d9baa25c9e5c8075402886bff1f2a6a973b91af04b11c19271e04f53d69178"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/pool/pool.ts",
+      "sha256": "e13277c89131c8104885032f8bf56913d6edd264163072919d1d90ce06d18d7b"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/pool/pool.wxml",
+      "sha256": "4b53fbe22417d4d251b7189034f2c6a2f11759e11d799611d2732122e98f2b8e"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/pool/pool.wxss",
+      "sha256": "ef7e3f77505ef935cf8ebab26faaca10d8e7acc77e82d73d8502aee7c3435b68"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/purchase-request/purchase-request.json",
+      "sha256": "00e72f1e830ee549fdf553aba45fdb20bdd43eb17b32e5e7f2d15ce98c4997c6"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/purchase-request/purchase-request.ts",
+      "sha256": "b2222e2a28c5c9c7a137f5513522ae6eb9aac460685ea361efa405cf8c56be1a"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/purchase-request/purchase-request.wxml",
+      "sha256": "f511c427b7cfcdfb34e0f9064421169f86f19858e86befcaf0252cd435a50126"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/purchase-request/purchase-request.wxss",
+      "sha256": "d075023c07276f7390d9f9ea22374aa2dd4125333fd57a677b0d474161bd176e"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/quick-repair/quick-repair.json",
+      "sha256": "48c90959d4dc9b52b993bd914a6db3a3cee98e94f7c3b7b9b94b1a5ec5da98f0"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/quick-repair/quick-repair.ts",
+      "sha256": "e42874f3cb337d0fa4bd3d8debf23ea04380f93ae1cbe9472579b4289151d362"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/quick-repair/quick-repair.wxml",
+      "sha256": "d216d8ba3a63312c783c2149f986c6906c73acc7d2a6c587d793febd7b7e4cd0"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/quick-repair/quick-repair.wxss",
+      "sha256": "4be2f5da8e663c128f39651bc75359ec90fb125475b59e359f75e5769cd164f9"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/repair-create/repair-create.json",
+      "sha256": "7738351c33d2bcb397cc3f47b3d01cfee9a479311876bf342bebc17e5a0c11e9"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/repair-create/repair-create.ts",
+      "sha256": "6c0be83c9c14f6523e8cd497f82db6b049752234d8e2d53e06e63dd4ac192c89"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/repair-create/repair-create.wxml",
+      "sha256": "c6b68b384979d4025a55dcd61249d69ac51897995e6f8aa581e9ac3d40f66f1a"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/repair-create/repair-create.wxss",
+      "sha256": "ad05595ab104d2a9cffd237b30712f832507cc96182697352e5e145c88d4011f"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/stocktake-count/stocktake-count.json",
+      "sha256": "fb04f4a1832b8fa9de8a1623b496fb50507400c8f42626bf9f6d2b9d2a876c18"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/stocktake-count/stocktake-count.ts",
+      "sha256": "a9132c9d57f2e5b9c198c748d5c529d345de013ca1ec1cd2f6ee454b182d32af"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/stocktake-count/stocktake-count.wxml",
+      "sha256": "322aea18771fad7f08d7bb974e85d272e033a2661d710950a5c016ebfe10c6ff"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/stocktake-count/stocktake-count.wxss",
+      "sha256": "c1dcecf9bf30e41e73fc455ffa44dfd708c4a8ad9d86687e468c3b2d09fd706b"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/stocktake-review/stocktake-review.json",
+      "sha256": "ac0c1a126b6d58f6d0dbc075593a12fcf23c9c1c587e8b914cdbf09576947501"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/stocktake-review/stocktake-review.ts",
+      "sha256": "d0b4e0720e998f347023584794b0c20a8bb68120a80a6c93f8dfca4036d090a9"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/stocktake-review/stocktake-review.wxml",
+      "sha256": "09f08b871198d57b5f97574ce9715b48b8cfb5e8119b18be8775d15e2e8cb055"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/stocktake-review/stocktake-review.wxss",
+      "sha256": "c49481301af29ecca45f9fba705a26af7d4fc3dd0c4cabd07a4a1eb2c74794b6"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/stocktake/stocktake.json",
+      "sha256": "7bddb9c492b52e426bca9f48dfd31eb2ef0cf9ebe428bb534c69a7a9400993d3"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/stocktake/stocktake.ts",
+      "sha256": "c20be6fbef798cd28b0dc7107f56a26f9e3132b2e4033c45315a595e8e711b12"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/stocktake/stocktake.wxml",
+      "sha256": "65f36c8115c76d61118e33e7a70db56b8150ece6fb7dca743ab5729a70d1d744"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/stocktake/stocktake.wxss",
+      "sha256": "7e51b1ed2a825b11fff3bed99e8ee8806632b08e1a09aacc19e588509834e2c6"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/web-login/web-login.json",
+      "sha256": "c88731757a81ef0ad1b6056bd3d1c54c484a320cad3e4c96d5aa9d4527e30e73"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/web-login/web-login.ts",
+      "sha256": "df8f07e0f1b7e0b731623d12a01324bce08943aa84103b841d86501f68033724"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/web-login/web-login.wxml",
+      "sha256": "430cd174c544e5e440b0d9f78fd855da6b40a6c71eb599915ae3e03f85d4180c"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/web-login/web-login.wxss",
+      "sha256": "c01f47d854b5651c1526a35942befd7a9920a32bc4d3be0b8b6a3fa77e164687"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/web-sign/web-sign.json",
+      "sha256": "e8e1932e69a70710ab923ec6eb2200133bf004acbf1372db69f0d53e84adc3e3"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/web-sign/web-sign.ts",
+      "sha256": "e74e884a3be3710721acce2c357d4bab5a40fc89bb9879db1bc7474eed72eb34"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/web-sign/web-sign.wxml",
+      "sha256": "67190452b6034c02e9b27021a8c21abe3dff3ed67d531f2120674c58de5bce86"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/pages/web-sign/web-sign.wxss",
+      "sha256": "6a7892df9656d2cc51316ca5c64940764b518565ebfab9d045a99d46b1b5a600"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/sitemap.json",
+      "sha256": "1ddc01234febd174f9fda61da185bdef2227d477ffe3982852adf7914fea61c2"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/templates/notify-banner.wxml",
+      "sha256": "9d2304d60be8c4029b6e811b1245fccf470947d1d4671ec24aa4921351169f2f"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/templates/wo-card.wxml",
+      "sha256": "c39d075ae473f93bdbfdef993ce726765047719ece681d8fd07cd3b05162a4d6"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/address-detect.ts",
+      "sha256": "476433c541b1a6e7bc954627a7ed40450407dab86c80739942af83530533d063"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/address-picker.ts",
+      "sha256": "f516a0495d16dae3a977f4cc83c76a8c45620734b231aaa88298d3c4130939bc"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/badges.ts",
+      "sha256": "928eadc8ae0793848fd2b18e5302bb7e6b93f45ed188eb1bffc5a322900340bc"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/buildStamp.ts",
+      "sha256": "9a5d6569baf56bc0410493809fe7f5b701463734e23080da2ef4d3a22530f912"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/crop.ts",
+      "sha256": "f8a1e60156c5ab8cf08ac0b2e28d3e522b15898de53410012cf0bc867c12225e"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/custom-nav.ts",
+      "sha256": "28200b1642e003f174f7369e8a93b3c7816fa670dc882813af3143abeed425c2"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/feedback.ts",
+      "sha256": "59a2641bf570881042b042b64157235b87d1122c8ea4547bf6022617aa1c1278"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/guide.ts",
+      "sha256": "b8c7500d3d3d2625f4c09fe7af355567e7f342301f02bb0b4e186e4ca353d49a"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/meter-crop-canvas.ts",
+      "sha256": "7db680b28c160785275c207789aea057c1e26a403bc9f4dcb31488207f305100"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/meter-crop.ts",
+      "sha256": "0e4049dd294e760b596aa446ba771118042e4cc6144c16a2ac95ed2ff49d55a1"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/meter-location.ts",
+      "sha256": "c8b2a71aa2ecd9c612401f5c3c488d40056ba66ea33763a4a6c0a6d51922fac9"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/meter-photo-metadata.ts",
+      "sha256": "e7afb8399797d5f33cd16be15f2302b229b1e1f3ff0e6839f4e6578732fa1196"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/meter.ts",
+      "sha256": "9e9724d6ea66104060bbde68582b89bcdd1dcd48365231af319b18f93c02abd2"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/navigation.ts",
+      "sha256": "8b51030455ac31701cbb745a587d502b0c50897dfce862cf57d451394b1e90ee"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/notify-prompt.ts",
+      "sha256": "1ad72002f7957cb777208f2c410b9e6c509cf246e563fdf99eca0e7d7747d1fb"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/order-status.ts",
+      "sha256": "040fe4de903c49bf2aa98ea67b4252cf323e55e0625b433386565cf42cbcf1f6"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/repair-form-handoff.ts",
+      "sha256": "d80cbdce09a99a947072caba773d4ad1c13d65220cb7342707c767564741c44b"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/roles.ts",
+      "sha256": "269a8e0f15e025bc08a2542e9989b7b15291734119718e70a3176fbf0528eb8f"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/session.ts",
+      "sha256": "6ebb4a564164f63396a8830ceafed483cc1ea6d45f32843e8de74c82c54c968d"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/tabbar.ts",
+      "sha256": "b2b42de14ede71386e8eccd43046078f87abde4d0cd759bcc94c5a9b9967a350"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/unread.ts",
+      "sha256": "ab044e9eccec1accec6c2d2364f8b5c9e37dcba67046f539a4c2fa745f7000ea"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/vendor/exifr.LICENSE.txt",
+      "sha256": "74145c6f07eb7b2eec35c47194bc99f30b5a5e512812939374d403c0fefc8324"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/vendor/exifr.NOTICE.md",
+      "sha256": "d7f6d8b3a921f9d1ca1ca3171b409eba2f0f5f1e1108ca23eaf451f797a3fcb9"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/vendor/exifr.d.ts",
+      "sha256": "d1c5dd8691943b4fc21d77bfac2f97e31622c4f1d46de2d443e585ad8243ffbc"
+    },
+    {
+      "path": "apps/miniapp-staff/miniprogram/utils/vendor/exifr.js",
+      "sha256": "8f264c2e654571fe24dd1c0f50eed4a111d21fb67ced0fd6becabfc72746dafa"
+    },
+    {
+      "path": "apps/miniapp-staff/package.json",
+      "sha256": "55a1c6433576cb9d8f2467ff5d7b4df85132a48e8cb64bcb222673e219920083"
+    },
+    {
+      "path": "apps/miniapp-staff/project.config.json",
+      "sha256": "1fc973ef7c32f03e6af5c90de3110e6eca1efc6645ee9691ad9700f6a6825048"
+    },
+    {
+      "path": "apps/miniapp-staff/test/apartment-cashier-daily.test.mjs",
+      "sha256": "200b8c98cb42b81b9304be8f7e9ed2a6313963a1904a184fe3049d040df14043"
+    },
+    {
+      "path": "apps/miniapp-staff/test/apartment-cashier-rates.test.mjs",
+      "sha256": "91a5443191a1421e2d443eda4939c395c261a1f8187b769356285c6ff15d81b0"
+    },
+    {
+      "path": "apps/miniapp-staff/test/apartment-cashier.test.mjs",
+      "sha256": "5d6c5dc1c2d62efa5ea2495f497c21eaec3f9258853e10f2bc5fdb6fb2c0bb0e"
+    },
+    {
+      "path": "apps/miniapp-staff/test/crop.test.ts",
+      "sha256": "2c697ec2ee91759a4769c42f618f0aaf715036cef3e25017c725d22ced353f0e"
+    },
+    {
+      "path": "apps/miniapp-staff/test/fixtures/meter-exif/README.md",
+      "sha256": "7eee2fce30788c44c4963e3fe7ba397a006be39113a75e7b5ddbd895fd34dc99"
+    },
+    {
+      "path": "apps/miniapp-staff/test/fixtures/meter-exif/invalid-gps.jpg",
+      "sha256": "215db962fcda6fb719fa796e3e78a7c069d0c1bcaf38010217ca0618fa69c7a4"
+    },
+    {
+      "path": "apps/miniapp-staff/test/fixtures/meter-exif/north-east.jpg",
+      "sha256": "fd9bbceb60403e5e022b442bf67157c780368c4a0a1c010d77fab960801901e2"
+    },
+    {
+      "path": "apps/miniapp-staff/test/fixtures/meter-exif/south-west.jpg",
+      "sha256": "9655c160f870cc3ea1aa7aa8cc05e394ab72a74b9ebeacd979a9af127ef72522"
+    },
+    {
+      "path": "apps/miniapp-staff/test/fixtures/meter-exif/stripped.jpg",
+      "sha256": "ae63799ba427c724a6f14433b7e2f826033a8a2a31bf6cd07905bdee320c64cd"
+    },
+    {
+      "path": "apps/miniapp-staff/test/fixtures/meter-exif/with-gps.png",
+      "sha256": "e9b1d7e7f8d90bd0ce2bcfdff8fe50040c4fdc72a13c0817e4007163023831b1"
+    },
+    {
+      "path": "apps/miniapp-staff/test/fixtures/meter-exif/without-gps.jpg",
+      "sha256": "2c9101627b0c8f1cb92d855e3d732a108ea94828031040bc116a2d0904484ad0"
+    },
+    {
+      "path": "apps/miniapp-staff/test/fixtures/meter-exif/without-timezone.jpg",
+      "sha256": "b97dc319af142aa7bbe0908f5fc455c99f35ed8248dfdbec104860c9f5b1b593"
+    },
+    {
+      "path": "apps/miniapp-staff/test/inventory-stock-filter.test.cjs",
+      "sha256": "6539f15aa8c696229bf12f358f4656943f88eff01ac4591499828fbd3483d108"
+    },
+    {
+      "path": "apps/miniapp-staff/test/material-draft-transport.test.cjs",
+      "sha256": "c46ad0d1b81ad26f00f78fbda9c53623674d94e7cd8972893a4842ccbb232752"
+    },
+    {
+      "path": "apps/miniapp-staff/test/meter-crop.test.ts",
+      "sha256": "8a9232038a8cc0220ffb1152aeb6001b45294cc1bd968b512dc76a9f60821a75"
+    },
+    {
+      "path": "apps/miniapp-staff/test/meter-location.test.cjs",
+      "sha256": "a39b411a13373b0d74c0f57298af4ffe22886acb712a4ea23b72f28f47a1ead5"
+    },
+    {
+      "path": "apps/miniapp-staff/test/meter-pay.test.cjs",
+      "sha256": "a57d529e6a6ce231c1469f90473bded1fceef60e37447691e948faf2b42f54bb"
+    },
+    {
+      "path": "apps/miniapp-staff/test/meter-photo-metadata.test.cjs",
+      "sha256": "4c6d9593c7297935e8378aa1916a93cffb2e4f1677e971264008cddf43d4e618"
+    },
+    {
+      "path": "apps/miniapp-staff/test/meter-read.test.cjs",
+      "sha256": "c10da1b3e03db54b14e4efd54bd71bae5f77c5ff378a46cf531d8c58143a7850"
+    },
+    {
+      "path": "apps/miniapp-staff/test/meter-review.test.cjs",
+      "sha256": "e7e5b24cbaac5c44a0d4e660db39afcd0ab562e7100f8d2b93e21fad45a1aa4e"
+    },
+    {
+      "path": "apps/miniapp-staff/test/page-telemetry.test.cjs",
+      "sha256": "59b0cff6609fba968438c754f2210b8aceb089fbcf340325303a1fad8730d637"
+    },
+    {
+      "path": "apps/miniapp-staff/test/tabbar-access.test.cjs",
+      "sha256": "d3f567e57e1120e05f9198a7f7001d4cf9b5da2ad4f353f363da29e046313cc7"
+    },
+    {
+      "path": "apps/miniapp-staff/test/timeline-order.test.mjs",
+      "sha256": "8f159eb587980a9eb47fe36f3fea65d50732ef91ee26f9276b24048a100f65ad"
+    },
+    {
+      "path": "apps/miniapp-staff/test/web-login-exit.test.mjs",
+      "sha256": "b17c7d725f5d1f0890561add720f23814a6896f74e43c2ece3ac2bdd9b6b47e9"
+    },
+    {
+      "path": "apps/miniapp-staff/tsconfig.json",
+      "sha256": "d44a33e030c9a98df4c5e25ea5f49713e5c27b7d2f7e22d4fe2114e9001b81bc"
+    },
+    {
+      "path": "apps/neighbor-web/src/App.tsx",
+      "sha256": "e9f331ef89b4510b504da0e7acc30c56d91ccd36147b1cf25306a10d20a8b7dd"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/AddressSearch.tsx",
+      "sha256": "81297229ce05752e5d5e4e5c545d7d92064b46d5b8c25bbe3e5e06a474e62f34"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/CollectionEffects.tsx",
+      "sha256": "2343b03a9bc9827f3d5801279d630574cf1a7c0217ea572084440ce8dde412ac"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/CollectionFollowups.tsx",
+      "sha256": "e6c9874e5fd91e8badf7ee753614fb7b91362d236582724592391850cbc8ea1d"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/DateInput.tsx",
+      "sha256": "2f102df6c2fed290ed43a157c51753826651e2bee1f86227f5b97e66401853aa"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/FeeIcon.tsx",
+      "sha256": "cbf7f2af0c4a2918db2d8c86c81ef07f6f52784445a3915feebf868bfc2a1888"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/FeedbackDialog.tsx",
+      "sha256": "7b81682db68fd11c8fa7be7652907d6eeb7f1e2227aa3a04b5c1bd9015aeb410"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/HouseAddressPicker.css",
+      "sha256": "d10b94b69b8250c91c711b3f3c224ca600d9743e3e110a4066788bb7c662710a"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/HouseAddressPicker.tsx",
+      "sha256": "8e2dc0d42bbbd6eb2ee955ca98fa6f5eb3017983a43e607ecd3dd8d8454a1a18"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/HousePicker.tsx",
+      "sha256": "049a6234b22f378cafa0477eb1ab3322612223a9f4330466616082108898ce0c"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/Icon.tsx",
+      "sha256": "58764ce5583768bc9400bb9ea0f33490555491ea7b5e7d9bd8872560fe8916d1"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/LocationSuggestions.tsx",
+      "sha256": "5222acd15ab1a59b34370de69245144996942f296f2212d10d4e8a7648965512"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/MaterialPicker.tsx",
+      "sha256": "a9d675c762cff9d6573ce0b9b21a25a3a33772f0160a7915185d7208b162f98c"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/MigratedSurface.tsx",
+      "sha256": "537e8cfe261e617ab196ba34bce5980adbf6773f509808cb4f0cfa340798240c"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/NewOrderSheet.css",
+      "sha256": "5dcaabd3deab385fdff8ac0d962141b8709a85f8173b8e83eb724b66624504a3"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/NewOrderSheet.tsx",
+      "sha256": "ba0bcc35b7ed9121cb0dd11d201fc6e0173158e17fe7d4de257083da12dca3a3"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/OwnerBusinessContact.tsx",
+      "sha256": "b1af359946cf602c4c7e7b06138d44fbd3977de1b0fe06c5798129b183fac3b6"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/PageBoundary.tsx",
+      "sha256": "bbc6de2c2767070abf18980110c88f1252fd8ab1435fba9f2e0f62a6d8109c3c"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/PayMethods.tsx",
+      "sha256": "e8a29b29f889119e63f00785dd7b20c1ad66cce7347ec0b9c16632b80e3b5518"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/PaymentMethodIcon.tsx",
+      "sha256": "abece866d940f0473ddd26cbce6e861c10c2dcc60e21cb2442493a3f2f102687"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/PhotoField.tsx",
+      "sha256": "5f6a409cf206e684419091347f9c038e44b026fd4e3b37931460f2076da80d2c"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/RichNoteEditor.tsx",
+      "sha256": "4a993a5cfd6b23deea98831307a7617f9023b5ff91b9119336cb5be952e391f6"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/ScreenActionIcon.tsx",
+      "sha256": "cf8465b85024cc6fd68de8cefad86c7329668b4f6ee4826d1c3f1990cf6ec54f"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/Shell.tsx",
+      "sha256": "270e11ff3558146e767c17bc6ec6e3d6b28fbd528c10366d4adad7a9d751890f"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/ThemePicker.tsx",
+      "sha256": "9adef8a9b6b1ccbf2528dfd176f47b7dd1ba213505fac13cb3f81223023e9741"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/ThreeBackdrop.tsx",
+      "sha256": "94fd5b5ba528246c25c5ffdfdb27513b104df641452ea4b40d5d9d528b15ea4f"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/ToneIcon.tsx",
+      "sha256": "8824d33c306fa6c20bbb52004fd9a1842013b9f979b1e0cc108c3c318768bcb4"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/UiPreferencesProvider.tsx",
+      "sha256": "d4395b1d5a477b11e3e75dafefeaff465c022a019f80143c7573f8839ca64179"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/WorkOrderSheet.tsx",
+      "sha256": "d2aa37bcc4a89e703daec21c9fa64cae950c773ffc8f2e6383c41ff75552445f"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/access/DoorControlPanel.tsx",
+      "sha256": "74efed9f851e68699b46c973c3045e24a995a534b529a4ac6e9d60c4d910b1b9"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/cashier/MisCollectionPanel.tsx",
+      "sha256": "e254cd3e3edc102262b9983c7d342314eece3b5aee3326febb291dacfbcbf88b"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/cashier/MisPostingStatus.tsx",
+      "sha256": "81a4b01d74794d3be0a8ad5a99d2af8ac1abcf9a3f3494839f0928e04f54cfb7"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/cashier/NewPlateCard.tsx",
+      "sha256": "968281f283aa6af694ff8ea4b5f63a7e7c140c0947fccf3c14175f885d3cc6c5"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/cashier/PaidHistory.tsx",
+      "sha256": "759f2f451842ff6934c6b5526aed7c402df55d97e84c5be0599eb9ed068fab20"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/cashier/ParkingTab.tsx",
+      "sha256": "dd34bdf43b505246186bed79784e811aa5ef275df5528f30a8d20cff6dc06cb1"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/cashier/RenewalMonths.css",
+      "sha256": "4e2bc462da48c4f074b1edb51b3daa815ae9eb6960ed6a4ae939548fb0d2c180"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/cashier/RenewalMonths.tsx",
+      "sha256": "9f44f12e62298e1562155ef170c756960f13a26364dc6e7800f301b3b40d4932"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/cashier/UniSearch.css",
+      "sha256": "be77f3f0d7986930811e0d85a029309d5d84784cdc6fd96f959a41662c54a4cc"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/cashier/UniSearch.tsx",
+      "sha256": "9a3dd1e4477d961b067ceed65abae0bbe4714660cc137c17d33a3b89380f5cf7"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/cashier/mis-remarks.css",
+      "sha256": "acf40fe46137ef34df4d657f61f4db8fe53fc3b9822635feed07a01a8d912753"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/cashier/plate-review.css",
+      "sha256": "ff26a07c150d370fa6fff51c23494444475e7eee1f614d660ad9cf8584647a76"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/maint/MaintEditor.tsx",
+      "sha256": "8340291c73b2391063ddc34c1c709b9300d79a4ceb121b93764932692dc6f34c"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/owner-business-contact.css",
+      "sha256": "d652d918e552e9dc81ba5e80a3447dcb0ffa88e528e2845539bf287faddcf5e8"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/parking/ParkingGarage3D.tsx",
+      "sha256": "23e0d2739b489b5340cd1e76c0842a1b23ed499ad71e5aed24bdc3b8fb9a2ab3"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/parking/ParkingSpaceEditor.tsx",
+      "sha256": "e358d351d645a1933692530fbabd9a2760b5b1e2dbc95192628f69f1538aff9d"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/purchase/RequestComposer.tsx",
+      "sha256": "da1a0b033b4e8badac6adadaac6ea6a6588d314dfbe1284923bcc89f785309d4"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/settings/CollectionFollowupSection.tsx",
+      "sha256": "4a08cd908c5143468f0b516010f792226e7877d367ec6ef6e85daec415470059"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/settings/CollectionSmsSection.tsx",
+      "sha256": "589ed07fe689ef42e9b95b188a0019d2ad1e6e520e1c6c154fa14e2f4260e548"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/settings/DispatchNoticeSection.tsx",
+      "sha256": "3a7bd0668195edb9eb911e71c520c05b10ef43e4550337446df78f27d8bb9159"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/settings/MisMirrorSection.tsx",
+      "sha256": "7fc0412e159e92c653a8627eba42fdce6a41e0ca3c4f76e691dec3781b9f1e9e"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/settings/NoticeTemplateSection.tsx",
+      "sha256": "ef0821dfd5e455dd12ded66e33aa27cab9b0c9453fd91eb56f045348c924bcd6"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/settings/ai.tsx",
+      "sha256": "6b64006b19636252d741b9a9d4304509a70092e92b3ba78fc6e4a9a1ae565002"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/settings/feeTemplates.tsx",
+      "sha256": "654ae195eb4002268a0dcac160abb83aebb10b05aa69bb59f65bf2670084b504"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/settings/general.tsx",
+      "sha256": "07f8b2e40d87a265a59964a124eca973363f6aa6f54086316d8d2152b7dec15e"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/settings/parts.tsx",
+      "sha256": "831dfe1a7143885d92cbd5e55dd5d78c661510a2eabc1c8f6ea2670cf8fd2586"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/statistics/AnnualSummaryTable.tsx",
+      "sha256": "c1aabdc20d510ce9cebe98a967e5f534d4522947ce3c0e808a1ba1cb812c7162"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/statistics/ArrearsBillsSheet.tsx",
+      "sha256": "09089814e2708df5b03d7513dad066b28c70d02a727d8dab1944650cd8885c28"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/statistics/ArrearsPrepaidTable.tsx",
+      "sha256": "5fc86977b73330cfc9d01baae189607b51a7fbf8168e4636f027e0addd137e31"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/statistics/AssessmentTable.tsx",
+      "sha256": "032768cd8b9197a6ba7e6a36a7d822424ca4539ebfd23ca455535f8bbd49bc53"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/statistics/BuildingLedgerTable.tsx",
+      "sha256": "d80ae9a0c3184d30ea3d846af1e3c218acd02602cfbd47b1357aca671deec6ff"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/statistics/CollectionAnalysisDetailSheet.tsx",
+      "sha256": "910d7cbd4b960e427d8162bdc28b034bd9b548193fc85300b250bddb03994e63"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/statistics/CollectionAnalysisTable.tsx",
+      "sha256": "bf7839b7b1baf4e75d96c5ecdf6a6cded666ce13d427a4244530665e941ecc6e"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/statistics/CollectionDetailSheet.tsx",
+      "sha256": "8b1d670f45a13aa6f032070344a56348223e533c14654871ef661f7ed3d32dd2"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/statistics/DailyTable.tsx",
+      "sha256": "c5c128de95c7457cd8899ac96e65b6f2e71b572af0a15fed8e13c273d77fbac6"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/statistics/FeeNatureTable.tsx",
+      "sha256": "94b08be6008c6396a22f0d6a3a8084355b28fcaf3a43b3b84464a6dd3254ba23"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/statistics/HouseDetailSheet.tsx",
+      "sha256": "8d9eae50dc8ba6fb51b1d0137b901eb3ea3cb8f703af04389d1d471091dbfdb5"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/statistics/MonthlyReportTable.tsx",
+      "sha256": "3e3f7c96e74bec287196bb1f4fc0a548375a562ba2f20268742820ffae12a2cf"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/statistics/OwnerLedgerTable.tsx",
+      "sha256": "5f64195ced1c6a26073af60c5263e8a8a8537474eb9bc3c233e21c18a04eb6bd"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/statistics/PropertySummaryTable.tsx",
+      "sha256": "29e9984ef7037b4c74c35a6257b2f60a888af996eef498e2938828a835c93435"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/statistics/ReliefTable.tsx",
+      "sha256": "7d2e0c9ce12593c724ee4ca4c979364d783d837d4faf7a6bee0f12fce11e56e1"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/statistics/SignoffsTable.tsx",
+      "sha256": "665c327c3a05c19512b5423b07f8cc6fb53601643f3de8f6deef77a0998c73d6"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/statistics/StatisticsFilters.tsx",
+      "sha256": "c479934d34939b7e3504f99b62cc45f121462ff589e899e9b196adaea849a5af"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/statistics/TicketItemsDetailSheet.tsx",
+      "sha256": "5329b130eebac3f04967197789f9fab5833641d98fb05f00edec3aa01df7e8b0"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/statistics/TicketItemsTable.tsx",
+      "sha256": "d1436c8309851a9cc8462f1cf5c84ac558cdf2dc96e2698fcf78d4a5b63e3c79"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/statistics/TicketSummaryTable.tsx",
+      "sha256": "88e4b4a10fe2d67670df87d7567a351d9a4d3926d95ba772e6fd038bb4a9f7bd"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/statistics/TicketsTable.tsx",
+      "sha256": "90876406ce7c2154e6ccc67b37a9d760cc3e049ee8449d8881602633ad87ed06"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/stock/StockDocs.tsx",
+      "sha256": "ee314225be67905f7490aaface31017afcce713dacaa9653d381909fd753e057"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/stock/StockOps.tsx",
+      "sha256": "a4316a2c77a0f97a55abf864660f5c736146cdc0d1e492f2ca4f14a06950ce58"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/stock/WarehouseManager.tsx",
+      "sha256": "5cce9eead44d9a55a764620316c5002ec82c61d07d0b0b88b33c189ca88918e8"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/ui.tsx",
+      "sha256": "04217431edd32b0d02496d311d6fd66e8ea8ab7c32c2f4d90e9ed98596a0f218"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/vehicle-ops/HistoryAndOwnerSheets.tsx",
+      "sha256": "b3cf180c3ec7f205096f704d0e93dce26f485bc6226afa6df56dcf822a72fe7c"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/vehicle-ops/OtherOpSheets.tsx",
+      "sha256": "f0d7b147099702ca4fa17074de1a72445e0edd4e283934eaa744dbf4ed2e29b7"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/vehicle-ops/PlateChangeSheet.tsx",
+      "sha256": "71b522cee1cbc536f2a8754d69ce34d165aa15222302988e1100e06823c8203b"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/vehicle-ops/RebindGarageSheets.tsx",
+      "sha256": "008fa47e89c1f309e91d45b9cdc506556b642f9b5cad0f38c74f792d92360fbe"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/vehicle-ops/RenewSheet.tsx",
+      "sha256": "33b4523e62ec5d3d2e784be21a6fad0b412f0885662a44ddb56462a95d18ccb4"
+    },
+    {
+      "path": "apps/neighbor-web/src/components/vehicle-ops/VehicleTypeSheet.tsx",
+      "sha256": "8b59c8b93fbf3ac19c7b138bde3a1f5e71c3048a90394c3e1fd3d3adc35b284b"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/components/FeeReportCharts.tsx",
+      "sha256": "825f5bc8668bc91d609eefd97ddeae570f7e23639200b4f7a69892bc8ba36816"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/components/MaterialPhotos.tsx",
+      "sha256": "e1bdd5d36ec6b69937a4d2b4476f0f562ebc06de8182b43f44a6b99c399a9b2b"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/components/MeterPaymentMethods.css",
+      "sha256": "2d95ed0f2f4a65b29e5038a6390c8f03de86b7b6f2120149d172a14684ea5245"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/components/MeterPaymentMethods.tsx",
+      "sha256": "a94bd6732ca72a56b7c35611cac6754fb3e850aaee9d1aa738f8522ce78d8437"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/components/MisPropertyFees.tsx",
+      "sha256": "f7019b470015dbc7cda249378e65b9c83600574722c14bf7d98d0937b44bcd6d"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/components/PaymentMethodIcon.tsx",
+      "sha256": "abece866d940f0473ddd26cbce6e861c10c2dcc60e21cb2442493a3f2f102687"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/components/ReadingLocationMap.tsx",
+      "sha256": "6018321feb9c3a334df97d869523e2df1f62f33cf6ee5552403cab7ed31f1b89"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/components/useUploadPasteTarget.ts",
+      "sha256": "c73b5d04f490022c9eb9eab6a1552cf39bfb67286f195c86e10b15a8cf4307b3"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/lib/api.ts",
+      "sha256": "ccf4ee51665fc89ecdff26efd5823e1a398dcb9ffa58f36a786661c8c6108b79"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/lib/auth.ts",
+      "sha256": "48e07947c945cb7d020bd845a45228013cb298aff27fb150f19c925366e4694a"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/lib/compressImage.ts",
+      "sha256": "15909d72cf748c7169e3a87cee6fa5ddd915e363eb2f1b8ed8c3c49c197ff2c8"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/lib/exportXlsx.ts",
+      "sha256": "b295f9943dd33dd9e878c25570c2972b290acf2d6e29b6fdb502331bfd5fa697"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/lib/gone.ts",
+      "sha256": "25998ac4bf17b979fdbf55ce4056f7d5195c4b74d1528004bc0f9f370bc0baaf"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/lib/meter-geo.ts",
+      "sha256": "a596233ecf608551b6c0039265518125b2e20265b4c5efa447dc4014ce450954"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/lib/meter-qr-label.ts",
+      "sha256": "9a893d4b2b4c26c4edc97212e83d450b02c15a93f6060d6b2946a8b3209f1d3a"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/lib/selectProps.ts",
+      "sha256": "275a064609953b527c5a80f7c56d94573e74ad731aba98c2c740a01b50dfa88b"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/pages/ApartmentCashierPage.css",
+      "sha256": "01234fe0adff472b0630212dd510ed56410eb82f80cb631b6f399fb2d0d0887e"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/pages/ApartmentCashierPage.tsx",
+      "sha256": "6c589915c945f0137cb05633bdf152e7ff412cfb22ca95775c2198b8b080e84e"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/pages/ApartmentCashierWorkspace.tsx",
+      "sha256": "85aade705a31997b7f76bae189b42864a0cfa155337842d5891d21f2b5a5c775"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/pages/FeeTemplateSettings.css",
+      "sha256": "b9b8121d72aa2e24db192b268667a87c14e83462b2d8571096368874f46a18b0"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/pages/FeeTemplateSettings.tsx",
+      "sha256": "39847e25c97fe584b2a385b272525fc869c702a08b08383e9477992b6275c718"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/pages/FeesPage.tsx",
+      "sha256": "55a21899edb35d7e44d31867c0ce872b319b05fc4c3c7e1cb67889967d277cb5"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/pages/FeesReportShell.css",
+      "sha256": "3f0eb77d44e1d4b7c5f600c7a267e03c454fe202677442472157ced1293b0c51"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/pages/MeterManagementPage.css",
+      "sha256": "f605723223c3b6b774460ae2829c7e58340895509c93c44948b0280bad69fd9e"
+    },
+    {
+      "path": "apps/neighbor-web/src/legacy/pages/MeterManagementPage.tsx",
+      "sha256": "a6403704f73870d79e39b3744bfaa4423e3f5fec5938bdaa4e4afc000434df8d"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/access-card-status.ts",
+      "sha256": "f85358ba774edaaade3122aaabf9e13998d41ce1b3ba7172ff97f1dea057edda"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/address-match.ts",
+      "sha256": "6c369ba31f3c53cbbe3124c91466d583ce8c75374c623ca6d4c74ca4925a72cf"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/address-tree.ts",
+      "sha256": "7ef1f305fd65333e0b097c0d94c0ad9fad0dd18a86dbc49f68ec10f6ce6fff00"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/api.ts",
+      "sha256": "bb10c5e9c68c803717802be7aa99a75f1709ccdd023d0aa2c2db68387caec93b"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/auth.ts",
+      "sha256": "f99cdeff1f4182e65de911ee2e5358361a6b8fe0fe7900a570010d8eae672b80"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/format.ts",
+      "sha256": "94ded35377c003ddaa0699d587894b82a2e8b08685b90197e435b1d21541b1ec"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/layoutGuard.ts",
+      "sha256": "a1a7946283742aba3c6ac4d1d13393d093e0c41db48853bc6be7301a14fc5006"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/legacy-shim.ts",
+      "sha256": "167cde8398b83a002a0467752e7c3c9bfbc16dcbe03af111cfa33deea8b484ec"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/legacy.ts",
+      "sha256": "560d7448d16d1f86393b81f31c4472763d06d44b2272a93b789e218d0a7d6f58"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/logs-presentation.ts",
+      "sha256": "27dc994454b1b5c425ef934a8a175e8245aac52107465ac1c5f717c404e9d856"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/page-access.ts",
+      "sha256": "f64d210f30b5011ad53f0c7c3417807ca582c478c79c6866a225f7a6257ddfc4"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/parking-fields.ts",
+      "sha256": "e43db0608bf57fda229bdc53b86a6a93cd6606640f4f9425fcf13508c3ca94f4"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/parking-garage-layout.ts",
+      "sha256": "e3df23ca0114c24c57a8b0401770394bf8de6b460e3fe5943b34cac39adca3e8"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/parking-ops.ts",
+      "sha256": "0882e574b7649b011461465abf2e3763b0e6c986339c237cf26df4227cf89f5f"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/parking-pricing.ts",
+      "sha256": "dc7b016012c1666dcd4769a7e0a2fcf1cca9a6bb9c9ec7010ce836b509ce4a22"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/parking-renewal-window.ts",
+      "sha256": "bd85d418ddaae4b9a8beae527648350fb95e54efe5453bfa8551fe9808af30ac"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/perm.ts",
+      "sha256": "93ea71e6d0b09a62d16c545caa7e5888363a02cffa4734ec15dcd3d562a0a5d7"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/purchase-form.ts",
+      "sha256": "a3dd34a7cf98fc6e23dd2d91c2ab4e28aad6e77efb0eaaa614e2465bda392a44"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/repair-location-options.ts",
+      "sha256": "9a0c8258d10c9e5a1a593ebee723c2fe682f636297eb0c55f1c7b55607dac805"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/residential-bills.ts",
+      "sha256": "1d0f0fcdfe08a0231b6b57a0db02042f8a297fc2e9dbc1228a7b080088cc3fbb"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/screen-decision.ts",
+      "sha256": "8cd11f4ee7185f9dfa38dcf4a72fd275449b4634edaf7e4d03f44de990d5e891"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/statistics-xlsx.ts",
+      "sha256": "54a6d889f722a34657e1087b50d8eb45ad10a5da1114c4bc5f6d933f78200f0e"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/statistics.ts",
+      "sha256": "fa61fbad949710140f50c417bcfac5f916e83c7537cc61543a9c89e28e903e27"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/ui-preferences-core.ts",
+      "sha256": "821a882041f76172787c355b1179bad0e6cf7d36d5a89f9ef9b9345845581347"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/upload.ts",
+      "sha256": "0ce8d5c54bad74cc1603c36110121acccca5836897e18b7c5c299f521ba5ab03"
+    },
+    {
+      "path": "apps/neighbor-web/src/lib/wechatLaunch.ts",
+      "sha256": "deff6b863d82941ab2ec134ddb0149fc9e753e6edd8dad4f747cc775c8e8e53e"
+    },
+    {
+      "path": "apps/neighbor-web/src/main.tsx",
+      "sha256": "e97321d7c07ac8d95332e0367597545ee98bfea44cc489fa4f4ed93e7bd40e29"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/AccessCards.tsx",
+      "sha256": "07e9a115fe3e3fcd07b7443e27a605b08fef3e1fa13b8f5ea0574fef6cb5d452"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/AccessDevices.tsx",
+      "sha256": "809cee4537af6c5e1a4a765a965722b36c059c37ea4cab688b8dfd0afb148acb"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/ApartmentCashier.tsx",
+      "sha256": "3bf966147b5d98816ec39c39227888785bbf1aa3eeef1ca966fd990e2abe71ee"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/ApartmentStandards.tsx",
+      "sha256": "273eda751ca0b9b99cb24911ea24c34bfa355e0615eb5867f7293a529bfdae67"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Bills.tsx",
+      "sha256": "6904d2eaedba32bd36a07abcf7aedd2ae8e1f8f37f44580be9be120e3caf256a"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Cashier.tsx",
+      "sha256": "d783d457ffe60617b6615fc84ef33c30b41235d23f8aff5fdc562831c2f4d81e"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Devices.tsx",
+      "sha256": "74d26b05360e0bd48ed9130b58ff0030ca41ed072cff881ed967788f3c9100a4"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Experience.tsx",
+      "sha256": "a752cebbf3448018180d82d927f6e7dbcafb308686f17ae3c6a6660249438d92"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/FamilyCars.tsx",
+      "sha256": "63c04667e4e547993f10f89191c85e0f6dfba550b0c66084c8510aade7f4c45c"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Fees.tsx",
+      "sha256": "82a75599f9a33ab88e3dab8f05e090b0e3318e5323385a4a26cf2b8cea397f4c"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Houses.tsx",
+      "sha256": "6f4205f11434ab2fd0e12e196b351172c5a04de65627ea44246e5c4c52bdeadf"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Intranet.tsx",
+      "sha256": "56645866e7b9ed5e2f46e236d92a824a50b2283b3ad96850b3669f97100aa18c"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Login.tsx",
+      "sha256": "bd3c8042189ba6e6a3e55cee1b8df9fcadb845d519ca063c84c552ce2293bab6"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Logs.css",
+      "sha256": "3cd5ba5fcfd5ce5a887f1553d8796e0d2bde322836d47c82e5fe868c0a25175b"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Logs.tsx",
+      "sha256": "96fb59821eede2730851aaa19fada4f208db8a27f3ffeba4f7d91f3e84ad732b"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Maintenance.tsx",
+      "sha256": "4d11c85234aa328930d460b870007293e35e5c0b5914dc1e36d6247e6823e3bf"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Materials.tsx",
+      "sha256": "989056dfc7cf516ebfbb3d19471d9d7df5f1c5f73fb89beb627b3e9d675e2bae"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/MigratedApartment.tsx",
+      "sha256": "5e517a0a1b8a9690c6dbb4c3847a909f85bb74b2c1694ccf8c282eae26c2a14e"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/MigratedMeters.tsx",
+      "sha256": "5d29b0066426ef65d1646a0f4a5d58327a3b0080425d6d2827c56314ad32f432"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/MisFeeLedger.tsx",
+      "sha256": "dac38dd46a33780dd6c8d19dba03f80cc34369b8f4faf411fa5e7a5f1a13426d"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Offices.tsx",
+      "sha256": "eb6ba15c4c0cea26093a7b468ca031549cd9dd169f762e4504ce4144ba983673"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Owners.tsx",
+      "sha256": "1ddd9c2e979e35649aaf20756d9bd2338538257d44cce2a12942acea1afaa2dc"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/ParkingSpaces.tsx",
+      "sha256": "73a896b68cfab04f730b277d111859ec5c065d9bacb5423b84124983f1b044bd"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Pending.tsx",
+      "sha256": "ea7ffdae7c1607aae6cfb31b6e06870e806a582585ac78ef35bac0f2ff6baf9a"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/PlateForm.tsx",
+      "sha256": "9e5e4eb9fb34078068c41c2efd6a96de92a470ad8b1d8647998978901dd03b25"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Plates.tsx",
+      "sha256": "ab32579348b6d4c021348105e71af24858c1ba2bb1140496615ec07188331e8d"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/PropertyArchive.tsx",
+      "sha256": "8ba24ebe3019e081cbaefbc6bb736bc0c5ea8a1aba3a241e68a493b50c6bf003"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Purchase.tsx",
+      "sha256": "cb72c92921b3f515228ed8494f7d1d7e94bbaa0bea231377c35a18e36f09f210"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/QrCodes.tsx",
+      "sha256": "c078a20a189c921dbb4677ce3598b7c27a8e73d6af74b9b12e996e704153cd41"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Records.tsx",
+      "sha256": "ecfc5ec468f35fb996dfc2851528bd353463d8682025bee5a50f8139f2cf0b60"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Reports.tsx",
+      "sha256": "eb292286e8b908508a959d42f3315d4547997161d4568b8f36073a38e15f6984"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/ResidentialBills.tsx",
+      "sha256": "a51e1214a70287b77a49bcaa99173b2924fa528cbfae0657c2c0f626f9b55f9d"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Screen.tsx",
+      "sha256": "4eab004fe38431134b494bbdfcf77ede5680d381f1ebb88082a4784f3eb40583"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/ScreenSettings.tsx",
+      "sha256": "23867b44b8736a15baa040500b6d5e368bac61aab3886c53d8d2148fc95afa5c"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Settings.tsx",
+      "sha256": "bba5134520c7ed181888b5c8dc3be1601b69a9e1f031c30009663e1377dbe841"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Staff.tsx",
+      "sha256": "381a08545c1b3d783d946c024802d625a8e763530713bd0334f27a90da9c848b"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Standards.tsx",
+      "sha256": "2a48b0d9048b4cde67a319536b77671a984ed69b65aaad67f2daa6a32536e162"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Statistics.tsx",
+      "sha256": "651b2853d51b5b1d35fea0f56bd3c31fe02e0340f231e4e1ad005d052fbb32ad"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Stock.tsx",
+      "sha256": "0f17b8f3b1e549d89e1309e3796ab8da531ec271e17a82745c10363d7850b4a6"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Stocktakes.tsx",
+      "sha256": "5517ac6dc014ea8cf867b2bb63803de88d83f42fe09fb04cb608a53c7227e365"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Today.tsx",
+      "sha256": "0d1a47b6b2e2a55eaa19c2876b3d4a45617c0acce55a7ee3f1c56770dd8eec09"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/Vehicles.tsx",
+      "sha256": "9f52f678ad7933cdb122d631605a2cc9f308bfaf06867185b4636e49dbe2dbab"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/WorkOrders.tsx",
+      "sha256": "b8481ad1de184eb19121eb5e371343e4521a73fd53dd6221d5bd6ce4709fa538"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/erp-reference-pages.css",
+      "sha256": "f3ab5e40c60576b450ed837683b2f0fa1ee6d8a8fd83ea0e91a374e85b88cfd2"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/erp-today.css",
+      "sha256": "3e36899690ba3fd27e3c5a2f0fba302c89e0f062c2d1690cb99adc95ce4d3297"
+    },
+    {
+      "path": "apps/neighbor-web/src/pages/property-archive.css",
+      "sha256": "ad5d3c4249f5e28dd4db0b4d99b1cd5e7ff901a21766a06543e31929f91b0ad6"
+    },
+    {
+      "path": "apps/neighbor-web/src/styles/access-door.css",
+      "sha256": "39c4c1ec4c7bc013fe7d4993777f47c572ff86369341bba54490f97615d6ba00"
+    },
+    {
+      "path": "apps/neighbor-web/src/styles/apartment-cashier.css",
+      "sha256": "5bcbda142b36d6cfacd7a924c12ab4d6bcef687dae14e589490671757d526a19"
+    },
+    {
+      "path": "apps/neighbor-web/src/styles/app.css",
+      "sha256": "3c2a32a72f31deabcb75fc8702fb561dcf0c85bf86916e232d754377f28fb19e"
+    },
+    {
+      "path": "apps/neighbor-web/src/styles/calendar.css",
+      "sha256": "ae2e0306ba7c7ad75787c1366c17e96300c3ab9c8fd3df93ba13e6ee4c677af5"
+    },
+    {
+      "path": "apps/neighbor-web/src/styles/design.css",
+      "sha256": "25037352f9737b1862683c84e0b1c7ef4b891a559e98b3f897dfde67ef816a5b"
+    },
+    {
+      "path": "apps/neighbor-web/src/styles/erp-reference.css",
+      "sha256": "bd5ca19f22e271e5c8c596307ed2f86f6cbc4b306f82fbcd221e17d24d6a7e4c"
+    },
+    {
+      "path": "apps/neighbor-web/src/styles/feedback.css",
+      "sha256": "3c29c70a98c776752ede08398c219db8f75caf05e46f42f33275fc628fa40ba4"
+    },
+    {
+      "path": "apps/neighbor-web/src/styles/guards.css",
+      "sha256": "911ff1f086fd8141c05fa05ee988637a3bf40d621b89b4602cdb748a908e5422"
+    },
+    {
+      "path": "apps/neighbor-web/src/styles/intranet.css",
+      "sha256": "ce67c9dc1dbc5f44419ec23b46b8c02a2269c1376c47c0182676747b478f1694"
+    },
+    {
+      "path": "apps/neighbor-web/src/styles/large.css",
+      "sha256": "81c1ed0a7069fdad0835f8701e71110fe49ec1135b5754139745106d3ef5e71a"
+    },
+    {
+      "path": "apps/neighbor-web/src/styles/migrated-surface.css",
+      "sha256": "15d097159e284c492f1141a8312e266b208898c38bbc1961b28241866f9f6bc9"
+    },
+    {
+      "path": "apps/neighbor-web/src/styles/offices-admin.css",
+      "sha256": "08d9879f66df6e0282fd4dd56d6a85d3b992b96ffc642f5278c2113020f8a03d"
+    },
+    {
+      "path": "apps/neighbor-web/src/styles/parking-garage.css",
+      "sha256": "5c975c629580859e1407848ab475cdc51b1667a840dc27581c5cb2c314c57f1e"
+    },
+    {
+      "path": "apps/neighbor-web/src/styles/parking-glass.css",
+      "sha256": "6428138e970082349e92a595a52b75e8b4fa0aba21e80362a2fcffbb2135b8b2"
+    },
+    {
+      "path": "apps/neighbor-web/src/styles/records-detail.css",
+      "sha256": "3044e209e59e9e097bc9a76249b76fb5453dd20416f231e07a90b10d2641ae93"
+    },
+    {
+      "path": "apps/neighbor-web/src/styles/residential-bills.css",
+      "sha256": "a0776b56dedc7525ec5ff9ecb065000f3370c91f1f19ceaa93b388f0494ce8d4"
+    },
+    {
+      "path": "apps/neighbor-web/src/styles/screen-settings.css",
+      "sha256": "f7423639012fdf4b2b3351e4769f8266cdac7c4aa6c39dcef4123a509f3a5c37"
+    },
+    {
+      "path": "apps/neighbor-web/src/styles/screen.css",
+      "sha256": "e47eb79970c71b84a2617d5a24b53f93a083fa54aa91d026c3374cd449530771"
+    },
+    {
+      "path": "apps/neighbor-web/src/styles/staff-perms.css",
+      "sha256": "a4197c2d2e7c5e55666a552b6e089fb38b87bb6d457d251d87310925a07d3940"
+    },
+    {
+      "path": "apps/neighbor-web/src/styles/statistics.css",
+      "sha256": "e27c1e3ff30d9e98c0ba487a8a37c84e9aa9340a6c44c65d78da097b7a5fbabb"
+    },
+    {
+      "path": "apps/neighbor-web/src/styles/stock.css",
+      "sha256": "e3076a0b46be10d12adb9dad8438ca73cf5a766fbf04677c0327b0b711a9a172"
+    },
+    {
+      "path": "apps/neighbor-web/src/styles/ui-preferences.css",
+      "sha256": "18d08f42b98c9d6b32db68108fd16683e0b44828e7916ead3795a6c5b7b7eeca"
+    },
+    {
+      "path": "apps/neighbor-web/src/vite-env.d.ts",
+      "sha256": "14c582252249616006b831b2276674d47b1d94542e68471070c6cf425b9f1627"
+    },
+    {
+      "path": "packages/api-client/package.json",
+      "sha256": "46fa937dcd802d0378a130f6f7dda5bed3157f3240600bf4702b5a326513a740"
+    },
+    {
+      "path": "packages/api-client/src/compress.ts",
+      "sha256": "fe4ce696d45c4957b8ff5004eeab16b49aa6f82206af60ca544e25832381acb2"
+    },
+    {
+      "path": "packages/api-client/src/endpoints/access-card-issuance.ts",
+      "sha256": "62927d6594a998067710990ca899a12f7ad0a261d489f5cd8c1c631abd9f4cfc"
+    },
+    {
+      "path": "packages/api-client/src/endpoints/address.ts",
+      "sha256": "7225e8e62505c0b9c2190e8a70ec823dd51bd11d4b4b8c454cbae868057658e3"
+    },
+    {
+      "path": "packages/api-client/src/endpoints/ai.ts",
+      "sha256": "1f139ace9c5fb93d47f141f169d5723d858349e915ef6a436e8b33038f4898e0"
+    },
+    {
+      "path": "packages/api-client/src/endpoints/apartment-cashier.ts",
+      "sha256": "36561f6310b3e8c76a0a0d1beccc61e1de51916de080fab81692c5183d7a238a"
+    },
+    {
+      "path": "packages/api-client/src/endpoints/auth.ts",
+      "sha256": "bec2fdb1b481b27238299bc679fabd7b8be9fb11b443a5c672f5c20b1901d08c"
+    },
+    {
+      "path": "packages/api-client/src/endpoints/family-cars.ts",
+      "sha256": "4585f66a90e6f4045c6eeec2530cd45c83a06701a5290eb12982f4121620296e"
+    },
+    {
+      "path": "packages/api-client/src/endpoints/feedback.ts",
+      "sha256": "fb805350d7f58fb331b18c3b88ff4f10909cc580411683b8c8531505a4095c98"
+    },
+    {
+      "path": "packages/api-client/src/endpoints/inventory.ts",
+      "sha256": "114b539e2b19b90ec245576a3daa3d50bf80b7c406776933e48d3f3f2c0a17b7"
+    },
+    {
+      "path": "packages/api-client/src/endpoints/maintenance.ts",
+      "sha256": "c590eb9099b91ed295ce011afcac85f7a56aba213a91cfa843ece0cd95256468"
+    },
+    {
+      "path": "packages/api-client/src/endpoints/material-ai.ts",
+      "sha256": "796184d41a5975632932cb409e12522d5c27ca2c9f484a69407619d86e3cf8ad"
+    },
+    {
+      "path": "packages/api-client/src/endpoints/meters.ts",
+      "sha256": "c6899573d5c3ccbb4d2014cb2f7b5fa1ff03ed03e1b7575de074e918825ebc95"
+    },
+    {
+      "path": "packages/api-client/src/endpoints/notifications.ts",
+      "sha256": "83a719063b31d337ed523c02883922f5c2e81fee41ae52ac3fb02f9a7d3007a2"
+    },
+    {
+      "path": "packages/api-client/src/endpoints/observability.ts",
+      "sha256": "4d7773fe68d141379db08c641593ac777facc2fe20c6b3d7f4382ffbeed7efa8"
+    },
+    {
+      "path": "packages/api-client/src/endpoints/purchases.ts",
+      "sha256": "bbb6a5fc1f759b01db4c7eb0178c4f566098090c20dfe43ed0303556dc37ebfb"
+    },
+    {
+      "path": "packages/api-client/src/endpoints/qr.ts",
+      "sha256": "8ee5b4ddbd99aca9ed2a61cb224cc735fbfa6ef342b2416ba0b615c5b89d130d"
+    },
+    {
+      "path": "packages/api-client/src/endpoints/repair-experiences.ts",
+      "sha256": "f8937013b1f5ec10727a4db8a44472b69f92e8583aa80346e33e62ec576ff8ab"
+    },
+    {
+      "path": "packages/api-client/src/endpoints/repairs.ts",
+      "sha256": "93437807f7709e776030450d3eaff56fe5e9b987ef9f1a476b9620e7b9f7ccde"
+    },
+    {
+      "path": "packages/api-client/src/endpoints/stocktakes.ts",
+      "sha256": "7014b725425d95f39750f6f25eb2562193d1b37d12a11915f5e3513864b694e1"
+    },
+    {
+      "path": "packages/api-client/src/endpoints/upload.ts",
+      "sha256": "6a7ffbc1ba78cbbacdf7c3b953251285a9256b8675d252afd230120a16a81f6b"
+    },
+    {
+      "path": "packages/api-client/src/envelope.ts",
+      "sha256": "4ad05017b611a6c2e48bf7a3b5cceb34897a00447f10acb690e5a1dfb8c749c0"
+    },
+    {
+      "path": "packages/api-client/src/index.ts",
+      "sha256": "32a778d8e1ca182ff74bf95b12edcb6f81a04c6d621d2342dd1fdaa706fb73e1"
+    },
+    {
+      "path": "packages/api-client/src/request-diagnostic.ts",
+      "sha256": "e9979410c94e2b7ab6d5abf0959cea4b93ccb432d846c3b3283279fc2cfdd980"
+    },
+    {
+      "path": "packages/api-client/src/request.test.ts",
+      "sha256": "8262a5bd833b8c9a71cbd569cbed55185386d7018a40a8919e6b83d4109b81a5"
+    },
+    {
+      "path": "packages/api-client/src/request.ts",
+      "sha256": "80c8f29bf5d2bdd542c2cfff52766cf81ece053c850c063d928e21c86afb2f15"
+    },
+    {
+      "path": "packages/api-client/tsconfig.build.json",
+      "sha256": "e21ec064f694fa3306b4d1f75333217ca326cba9d3031b5e383c33f22eb5e4a3"
+    },
+    {
+      "path": "packages/miniapp-ui/components/empty/index.js",
+      "sha256": "c9155712bd48fdb59e63b380793cca500cb4d7742dbb75b03caf939f1095ac3b"
+    },
+    {
+      "path": "packages/miniapp-ui/components/empty/index.json",
+      "sha256": "a86141b3fc9036835f80ed60a03bec91271f26da944e18c7ead57ce95dd9ad67"
+    },
+    {
+      "path": "packages/miniapp-ui/components/empty/index.wxml",
+      "sha256": "7649fb83a11d069ed896a0dd7e7f11aba0f483f9256585b739b7e5bbfc9b3e3c"
+    },
+    {
+      "path": "packages/miniapp-ui/components/empty/index.wxss",
+      "sha256": "126d553d4a1d001541f94a1aa39b1949b7f108d666918d10979b38663231f16e"
+    },
+    {
+      "path": "packages/miniapp-ui/components/status-tag/index.js",
+      "sha256": "e46ccbffc30a5525cd162aa639a9686172aaa047e642c7eeafada6367471ed46"
+    },
+    {
+      "path": "packages/miniapp-ui/components/status-tag/index.json",
+      "sha256": "a86141b3fc9036835f80ed60a03bec91271f26da944e18c7ead57ce95dd9ad67"
+    },
+    {
+      "path": "packages/miniapp-ui/components/status-tag/index.wxml",
+      "sha256": "5bc330aa1f656d3099ba54411e584d64b4a3772fc8d969c99dd2ce7b0aec1f47"
+    },
+    {
+      "path": "packages/miniapp-ui/components/status-tag/index.wxss",
+      "sha256": "eeaec762c2d6e3c858f1dbd19c4fd913496ec56f3107767458504d4c437a1010"
+    },
+    {
+      "path": "packages/miniapp-ui/package.json",
+      "sha256": "9f0847bf6566f4be95a8d619543d4504dcb63acc97048805be0ad08525acdd16"
+    },
+    {
+      "path": "packages/miniapp-ui/src/autoUpdate.ts",
+      "sha256": "7cde31c3b6f0095e7b7fdc3b64d0ee1e4d3c55bf372e6189222bedb5944189c4"
+    },
+    {
+      "path": "packages/miniapp-ui/src/format.ts",
+      "sha256": "b35de61258feed1f77589687be31087db7e92115171a805af27aa4ea50076058"
+    },
+    {
+      "path": "packages/miniapp-ui/src/index.ts",
+      "sha256": "f9f23ed0c2d61e785794698ca1ccf0436ca171bfc593b46fab8a10a23f89e304"
+    },
+    {
+      "path": "packages/miniapp-ui/src/pageTelemetry.ts",
+      "sha256": "060f5f6ecacbf467826e97cc55a8bb3559cfca4186733d9c0991864caa9f0c5d"
+    },
+    {
+      "path": "packages/miniapp-ui/src/speech.ts",
+      "sha256": "5b77b34230480f309688b0af13165c92581c35d12b16ed0a4712c99893bc8535"
+    },
+    {
+      "path": "packages/miniapp-ui/src/status.ts",
+      "sha256": "351836acd19a4b8241e7d39fd57a2f8794823f485df98ceb8a077f9555f03165"
+    },
+    {
+      "path": "packages/miniapp-ui/src/tokens.ts",
+      "sha256": "947a3a73004338b320398aeca0f81ac2b5bca23deba9231f8642ee52055d7f09"
+    },
+    {
+      "path": "packages/miniapp-ui/tokens.wxss",
+      "sha256": "7e9725be204ede26322435bcb6b713324b52ed14d6609aa2a102c13fc86f6907"
+    },
+    {
+      "path": "packages/miniapp-ui/tsconfig.build.json",
+      "sha256": "d1962d34cf8cb3b1ae4e2e621007d779922c2b5a98ccf8b1dbdc9491caa8e126"
+    },
+    {
+      "path": "packages/shared-types/package.json",
+      "sha256": "d1d2a02c229d5975b4ef103050a2dcb95023c67b80ed3ce997f10f4dd33a872e"
+    },
+    {
+      "path": "packages/shared-types/src/address-dedupe.test.ts",
+      "sha256": "3eb99a0b9f0ff6b117de6a4ef94d9aa5b744ed6ec88c11a0ec6d7b58fbc60810"
+    },
+    {
+      "path": "packages/shared-types/src/address-display.test.ts",
+      "sha256": "24d01895dc36fecf391be1066a395aa939f12444604367c2e83010582766ebf5"
+    },
+    {
+      "path": "packages/shared-types/src/address-query.test.ts",
+      "sha256": "439b042b6915bd68c9a1615f09d760817bcae04f8cc5cd600082220fc9192aaa"
+    },
+    {
+      "path": "packages/shared-types/src/address.test.ts",
+      "sha256": "e379377263b9a0116f7b8fc6a0589ffee11749bddd02a7fb40641f5e7cf664ce"
+    },
+    {
+      "path": "packages/shared-types/src/address.ts",
+      "sha256": "6c9e6597fb02576eed2f7973dea228979e1e33920893f0e6f92a4c0987adfc3a"
+    },
+    {
+      "path": "packages/shared-types/src/beijing-time.ts",
+      "sha256": "8a731a555929fa9b2fab6add1917cc9d0fee48d3a2f7aa75c875b2564bb689d8"
+    },
+    {
+      "path": "packages/shared-types/src/fees.test.ts",
+      "sha256": "24fa8f05b4ae6ec57b15a81cd6b43277798b0622a7368190ed119a28173aaf4a"
+    },
+    {
+      "path": "packages/shared-types/src/fees.ts",
+      "sha256": "3965bec1ef119f22a149605f7c92aaf1dde1877bdc79a6e4736fa483607af724"
+    },
+    {
+      "path": "packages/shared-types/src/geo.ts",
+      "sha256": "7297dd0d4918a8e021960afad4f96ba2f99c09cd9f138122683abd4f7856f9cc"
+    },
+    {
+      "path": "packages/shared-types/src/index.ts",
+      "sha256": "194344b8fe8a7c584c6929405b5c44294c266002f504ef585683fec86bcd38ef"
+    },
+    {
+      "path": "packages/shared-types/src/maintenance-sheet-geometry.ts",
+      "sha256": "b042534dd2171d9c48e08ca3f55d4b205d8229a02db54a1b092bb48cef9ea207"
+    },
+    {
+      "path": "packages/shared-types/src/meter-capture.ts",
+      "sha256": "5570c4835a229adec3681028e9f57be7dc46622b225dbc304503392233ab4ed6"
+    },
+    {
+      "path": "packages/shared-types/src/natural-order.ts",
+      "sha256": "08c155d9bed3b227c25d49fdfc71663224a0b13ebd380e69f033bbc3a390d8cf"
+    },
+    {
+      "path": "packages/shared-types/src/notification.test.ts",
+      "sha256": "ef80c4d1e9b99d435166fe5eeb5139a3243d6fd9650b432b2dd5e756fea77ebb"
+    },
+    {
+      "path": "packages/shared-types/src/notification.ts",
+      "sha256": "badcdc83ce59db4c18c20f1a24bf2a416282b06fed13554389e5a03a2517a74c"
+    },
+    {
+      "path": "packages/shared-types/src/pages.ts",
+      "sha256": "fdd36458c3cc90c75976f77e4bc306edac98ce3caa5183620d9ad78d481deb6e"
+    },
+    {
+      "path": "packages/shared-types/src/property-address.test.ts",
+      "sha256": "307396d69b11e89977ae0607a43e74dfc4dd3282883428be4b2e50c1b638e5fa"
+    },
+    {
+      "path": "packages/shared-types/src/property-address.ts",
+      "sha256": "fb754e39a6862127fe2cda3a74fead60ac46a016e6a843f1d63c4c73f3daf919"
+    },
+    {
+      "path": "packages/shared-types/src/repair-classify.ts",
+      "sha256": "2d9d6133c5797119eea5e068c480053f8a9cbead1898a5efb8fb85eafa4d7a11"
+    },
+    {
+      "path": "packages/shared-types/src/repair-experience-markdown.test.ts",
+      "sha256": "a010ee4d73a7f3da378a980e1637ab2473c7ff418c22167dfebe64bf55993eb9"
+    },
+    {
+      "path": "packages/shared-types/src/repair-experience-markdown.ts",
+      "sha256": "4ef7729d2318ae2a207398b4eaa2e2116a892bdfb64e10cca4678e5630c40366"
+    },
+    {
+      "path": "packages/shared-types/src/repair-experience.ts",
+      "sha256": "9c0607b7de89fa0678aeaa3afe4bc17e6126bd6a7264cb174557d4220da97219"
+    },
+    {
+      "path": "packages/shared-types/src/timeline.test.ts",
+      "sha256": "220f76897e94847f834318ae96d319f354d5bd0e3d04d1cda2758bcb19f7b849"
+    },
+    {
+      "path": "packages/shared-types/src/timeline.ts",
+      "sha256": "9c012fe4f06eff7e7f30487201819ef1b904fdc3924d6e2bfac7a31040eadb54"
+    },
+    {
+      "path": "packages/shared-types/src/urgency.test.ts",
+      "sha256": "1bce8e66c358cc42624be5a6f947fabd4e826d8cbd52a42e4978f7ca2741b9c9"
+    },
+    {
+      "path": "packages/shared-types/src/urgency.ts",
+      "sha256": "0a4874f6346c63f674c2ea6680299265fdc2aaaee93bc0a839f1b0e6e9ca317d"
+    },
+    {
+      "path": "packages/shared-types/src/voice-extract.test.ts",
+      "sha256": "8a516ed406043a49aeb7e217c917a3c759191d90ee82c87d5c2c1d30967ff4f2"
+    },
+    {
+      "path": "packages/shared-types/src/voice-extract.ts",
+      "sha256": "9f6434a784226b8f5ff8fdfeca006fe444c286eaf9516e7f1aa8bb2d974ba8ae"
+    },
+    {
+      "path": "packages/shared-types/src/work-order-sort.test.ts",
+      "sha256": "29e43e43aed45b86d981a5071c218af987a972e65bd470b3b4bd09ee69c0ffd6"
+    },
+    {
+      "path": "packages/shared-types/src/work-order-sort.ts",
+      "sha256": "744e9bdcb2c4edadc24dc4a824947cc937d0be3d7723e25bdc8581d67f38729c"
+    },
+    {
+      "path": "packages/shared-types/tsconfig.build.json",
+      "sha256": "d5df2113f24522a3f4a5a1393d18c6fd5b425ae335a238ae9919a3d0ceaaf960"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "builtAt": "2026-11-16T02:34:22.174Z",
+  "sourceCommit": "74e332d00514b17ee2f753f76a8a498628781bf2",
+  "command": "node node_modules/@nestjs/cli/bin/nest.js build (cwd apps/api)",
+  "localOnly": true,
+  "compiledAddressSmokePassed": true,
+  "artifact": "apps/api/dist/common/address.shared.js",
+  "sha256": "62dbf37581e76700d30bebc02f48a5570f93a640c489ed55df763a5e275276f2"
+}

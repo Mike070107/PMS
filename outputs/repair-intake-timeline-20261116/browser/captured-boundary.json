@@ -1,0 +1,129 @@
+{
+  "creates": [
+    {
+      "communityId": 81,
+      "attachments": [
+        "/fixture-upload/upload/file?key=uploads%2Fsynthetic-1.png",
+        "/fixture-upload/upload/file?key=uploads%2Fsynthetic-2.png",
+        "/fixture-upload/upload/file?key=uploads%2Fsynthetic-4.png",
+        "/fixture-upload/upload/file?key=uploads%2Fsynthetic-5.png"
+      ],
+      "addressText": "合成空楼小区/公共区域 大门",
+      "locationText": "大门",
+      "contactName": "合成联系人",
+      "contactPhone": "13800138000",
+      "content": "合成公共区域灯不亮",
+      "urgent": false
+    },
+    {
+      "communityId": 81,
+      "attachments": [
+        "/fixture-upload/upload/file?key=uploads%2Fsynthetic-1.png",
+        "/fixture-upload/upload/file?key=uploads%2Fsynthetic-2.png",
+        "/fixture-upload/upload/file?key=uploads%2Fsynthetic-4.png",
+        "/fixture-upload/upload/file?key=uploads%2Fsynthetic-5.png"
+      ],
+      "addressText": "合成空楼小区/公共区域 大门",
+      "locationText": "大门",
+      "contactName": "合成联系人",
+      "contactPhone": "13800138000",
+      "content": "合成公共区域灯不亮",
+      "urgent": false
+    },
+    {
+      "communityId": 82,
+      "buildingId": 821,
+      "houseId": 8211,
+      "attachments": [],
+      "addressText": "合成永南140弄6号502",
+      "contactName": "合成住户",
+      "contactPhone": "13800138000",
+      "content": "合成house",
+      "urgent": false
+    },
+    {
+      "communityId": 82,
+      "buildingId": 821,
+      "attachments": [],
+      "addressText": "合成永南140弄6号/公共区域",
+      "content": "合成building",
+      "urgent": false
+    },
+    {
+      "communityId": 82,
+      "attachments": [],
+      "addressText": "合成永南140弄6号502室",
+      "contactName": "预填联系人",
+      "content": "合成fixed",
+      "urgent": false
+    }
+  ],
+  "uploads": [
+    {
+      "authorization": "Bearer synthetic-token",
+      "tenant": "7",
+      "contentType": "multipart/form-data; boundary=----WebKitFormBoundaryWcVZcEcnlBABEQcg",
+      "bytes": 1734
+    },
+    {
+      "authorization": "Bearer synthetic-token",
+      "tenant": "7",
+      "contentType": "multipart/form-data; boundary=----WebKitFormBoundaryBBVgE32yOX8Atvfw",
+      "bytes": 1733
+    },
+    {
+      "authorization": "Bearer synthetic-token",
+      "tenant": "7",
+      "contentType": "multipart/form-data; boundary=----WebKitFormBoundaryG3Xnxne8iNSq6FPE",
+      "bytes": 1743
+    },
+    {
+      "authorization": "Bearer synthetic-token",
+      "tenant": "7",
+      "contentType": "multipart/form-data; boundary=----WebKitFormBoundaryH9oUHFEegg7fRbrE",
+      "bytes": 1743
+    },
+    {
+      "authorization": "Bearer synthetic-token",
+      "tenant": "7",
+      "contentType": "multipart/form-data; boundary=----WebKitFormBoundaryCRt88sqhGmdN23yE",
+      "bytes": 282
+    },
+    {
+      "authorization": "Bearer synthetic-token",
+      "tenant": "7",
+      "contentType": "multipart/form-data; boundary=----WebKitFormBoundaryDZmEGFG87l88KALv",
+      "bytes": 1734
+    },
+    {
+      "authorization": "Bearer synthetic-token",
+      "tenant": "7",
+      "contentType": "multipart/form-data; boundary=----WebKitFormBoundarygR1qJLVTLMHBcZNr",
+      "bytes": 1734
+    },
+    {
+      "authorization": "Bearer synthetic-token",
+      "tenant": "7",
+      "contentType": "multipart/form-data; boundary=----WebKitFormBoundaryMmgdSRkiZyc4Pha3",
+      "bytes": 1736
+    },
+    {
+      "authorization": "Bearer synthetic-token",
+      "tenant": "7",
+      "contentType": "multipart/form-data; boundary=----WebKitFormBoundarylBh3yW5oHMwA7qCP",
+      "bytes": 1733
+    }
+  ],
+  "stored": {
+    "communityId": 82,
+    "attachments": [],
+    "addressText": "合成永南140弄6号502室",
+    "contactName": "预填联系人",
+    "content": "合成fixed",
+    "urgent": false
+  },
+  "failCreate": false,
+  "failUpload": false,
+  "slowUpload": false,
+  "details": 5
+}

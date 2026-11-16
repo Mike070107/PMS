@@ -1,0 +1,28 @@
+{
+  "passed": true,
+  "synthetic": true,
+  "widths": [
+    1440,
+    375
+  ],
+  "assertions": [
+    "community-public-no-building-house",
+    "click-filechooser",
+    "drop",
+    "paste-once",
+    "upload-wait-gates",
+    "failed-file-retry",
+    "failed-file-discard",
+    "submission-error-preserves",
+    "success-payload",
+    "actual-detail-readback-reload",
+    "two-fields-active-paste",
+    "plain-text-paste-not-stolen",
+    "late-upload-isolated",
+    "house-and-building-ids",
+    "fixed-no-inferred-ids"
+  ],
+  "uploadCount": 9,
+  "createCount": 5,
+  "detailReadCount": 5
+}

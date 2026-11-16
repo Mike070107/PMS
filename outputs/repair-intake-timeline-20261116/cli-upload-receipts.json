@@ -1,0 +1,34 @@
+[
+  {
+    "app": "staff",
+    "appid": "wx002fde4bfaa4c7d9",
+    "version": "1.0.20261116b",
+    "uploadedAt": "2026-11-16T02:33:30.161Z",
+    "sourceCommit": "74e332d00514b17ee2f753f76a8a498628781bf2",
+    "officialCliEvidence": [
+      "√ Using AppID: wx002fde4bfaa4c7d9",
+      "√ build-npm",
+      "基线提交  74e332d0  fix: complete repair intake photos, community public areas and newest-first timelines",
+      "│ (index) │ size     │ size (Byte) │",
+      "│ TOTAL   │ '1.1 MB' │ 1115958     │",
+      "√ Using AppID: wx002fde4bfaa4c7d9",
+      "√ upload"
+    ]
+  },
+  {
+    "app": "owner",
+    "appid": "wx8ef4de0e498064c4",
+    "version": "1.0.20261116b",
+    "uploadedAt": "2026-11-16T02:33:55.602Z",
+    "sourceCommit": "74e332d00514b17ee2f753f76a8a498628781bf2",
+    "officialCliEvidence": [
+      "√ Using AppID: wx8ef4de0e498064c4",
+      "√ build-npm",
+      "基线提交  74e332d0  fix: complete repair intake photos, community public areas and newest-first timelines",
+      "│ (index) │ size       │ size (Byte) │",
+      "│ TOTAL   │ '343.5 KB' │ 351778      │",
+      "√ Using AppID: wx8ef4de0e498064c4",
+      "√ upload"
+    ]
+  }
+]
