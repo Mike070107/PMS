@@ -8,6 +8,10 @@ $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $Remote = 'ubuntu@124.223.179.214'
 $Key = Join-Path $env:USERPROFILE '.ssh\pms_repair_key.pem'
+$script:ReleasePhases = [Collections.Generic.List[object]]::new()
+$ReleaseStartedAt = [DateTime]::UtcNow.ToString('o')
+$ReleaseWatch = [Diagnostics.Stopwatch]::StartNew()
+$ReleaseSucceeded = $false
 
 function Die([string] $message) {
     throw $message
@@ -29,8 +33,20 @@ function Run([string] $label, [scriptblock] $body) {
     Write-Host ("==> " + $label) -ForegroundColor Cyan
     # 子命令输出直接写到主机，不能回流到函数返回值；否则 Make-WebPackage 的
     # 构建日志会和 tar 路径一起被 scp 当成多个参数，触发 ambiguous target。
-    & $body | Out-Host
-    if ($LASTEXITCODE -ne 0) { Die ("步骤失败：" + $label) }
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    $startedAt = [DateTime]::UtcNow.ToString('o')
+    $passed = $false
+    try {
+        & $body | Out-Host
+        if ($LASTEXITCODE -ne 0) { Die ("步骤失败：" + $label) }
+        $passed = $true
+    }
+    finally {
+        $watch.Stop()
+        $phase = [ordered]@{label=$label; startedAt=$startedAt; elapsedMs=$watch.ElapsedMilliseconds; passed=$passed}
+        $script:ReleasePhases.Add($phase)
+        Write-Host ("[release-phase] " + (ConvertTo-Json $phase -Compress)) -ForegroundColor DarkGray
+    }
 }
 
 function Dirty([string[]] $paths) {
@@ -41,7 +57,8 @@ function Dirty([string[]] $paths) {
 function Test-DependencyChanges([string] $target, [string[]] $changedFiles) {
     $tag = "refs/tags/deployed/$target"
     $base = & git.exe -C $RepoRoot rev-parse --verify --quiet $tag 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $base) { return $false }
+    if ($LASTEXITCODE -ne 0 -or -not $base) { return $true }
+    if (@($changedFiles | Where-Object { $_ -in @('pnpm-workspace.yaml', '.npmrc') }).Count -gt 0) { return $true }
     if (@($changedFiles | Where-Object { $_ -eq 'pnpm-lock.yaml' }).Count -gt 0) {
         if ($target -ne 'api') { return $true }
         Run '核对运行依赖检查回归' { python (Join-Path $PSScriptRoot 'api-runtime-dependencies.test.py') }
@@ -63,32 +80,44 @@ function Test-DependencyChanges([string] $target, [string[]] $changedFiles) {
     return $false
 }
 
+function Get-CachedPackage([string] $target, [string] $mode) {
+    $cached = & node deploy/release-check.mjs package-find $target $SourceCommit $mode
+    if ($LASTEXITCODE -ne 0) { Die '无法安全核对已有制品，停止发布' }
+    return ($cached -join "`n").Trim()
+}
+
 function Make-WebPackage([string] $stamp) {
-    $env:VITE_BASE = '/'
-    $env:VITE_APP_VERSION = "2.0.$(Get-Date -Format 'yyyyMMdd-HHmm')"
+    $cached = Get-CachedPackage 'web' 'web'
+    if ($cached) { Write-Host '复用已核对 SHA256 和内嵌身份的 Web 制品。'; return $cached }
     # 构建输出不经过 Run 的管道：Windows PowerShell 5.1 在 ErrorActionPreference=Stop 下
     # 会把管道中 pnpm/node 的 stderr 转成 ErrorRecord，导致 vite/esbuild 警告误判为失败。
-    & pnpm --filter '@pms/neighbor-web' build | Out-Host
+    & node deploy/release-check.mjs build web $SourceCommit | Out-Host
     if ($LASTEXITCODE -ne 0) { Die '构建正式新版管理后台失败' }
     Run '记录 Web 制品身份' { node deploy/release-check.mjs stamp web $SourceCommit }
     $dist = Join-Path $RepoRoot 'apps\neighbor-web\dist'
     if (-not (Test-Path (Join-Path $dist 'index.html'))) { Die 'Web 构建没有生成 dist/index.html' }
     $package = Join-Path $RepoRoot ("deploy\pms-web-" + $stamp + '.tar.gz')
     Run '压缩 Web 静态资源' { tar -czf $package -C $dist . }
+    Run '保存 Web 制品复用证据' { node deploy/release-check.mjs package-save web $SourceCommit web $package }
     return $package
 }
 
 function Make-ApiPackage([string] $stamp, [string[]] $pending, [string[]] $changedFiles) {
     $dependencyChanged = Test-DependencyChanges 'api' $changedFiles
+    $mode = if ($dependencyChanged) { 'full' } else { 'fast' }
+    $cached = Get-CachedPackage 'api' $mode
+    if ($cached) { Write-Host '复用已核对 SHA256 和内嵌身份的 API 制品。'; return $cached }
 
     if ($dependencyChanged) {
         Write-Host '检测到依赖文件变化，使用完整 API 包（仅此类发布才重新携带 node_modules）。' -ForegroundColor Yellow
         Run '完整构建 API 包' { & (Join-Path $RepoRoot 'deploy\pack.ps1') -Only api -SourceCommit $SourceCommit }
-        return (Get-ChildItem (Join-Path $RepoRoot 'deploy\pms-api-*.tar.gz') |
+        $package = (Get-ChildItem (Join-Path $RepoRoot 'deploy\pms-api-*.tar.gz') |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
+        Run '保存完整 API 制品复用证据' { node deploy/release-check.mjs package-save api $SourceCommit full $package }
+        return $package
     }
 
-    Run '构建 API dist' { pnpm --filter '@pms/api' build }
+    Run '构建或复用 API dist' { node deploy/release-check.mjs build api $SourceCommit }
     Run '记录 API 制品身份' { node deploy/release-check.mjs stamp api $SourceCommit }
     $stage = Join-Path $RepoRoot ("deploy\.quick-api-" + $stamp)
     $apiStage = Join-Path $stage 'api'
@@ -100,6 +129,7 @@ function Make-ApiPackage([string] $stamp, [string[]] $pending, [string[]] $chang
         Set-Content -LiteralPath (Join-Path $apiStage '.pms-fast-release') -Value 'dist-only-v1' -NoNewline
         $package = Join-Path $RepoRoot ("deploy\pms-api-fast-" + $stamp + '.tar.gz')
         Run '压缩 API 快速包' { tar -czf $package -C $stage api }
+        Run '保存快速 API 制品复用证据' { node deploy/release-check.mjs package-save api $SourceCommit fast $package }
         return $package
     }
     finally {
@@ -127,6 +157,7 @@ $previousBuildCommit = $env:VITE_BUILD_COMMIT
 $previousApiBase = $env:VITE_API_BASE_URL
 $previousWebBase = $env:VITE_BASE
 $previousWebVersion = $env:VITE_APP_VERSION
+$previousCI = $env:CI
 try {
     $gitDirectory = Git @('rev-parse', '--path-format=absolute', '--git-common-dir')
     try { $releaseLock = [IO.File]::Open((Join-Path $gitDirectory 'pms-production.lock'), 'OpenOrCreate', 'ReadWrite', 'None') }
@@ -136,13 +167,18 @@ try {
         Write-Host '==> 跳过远端标签同步（使用本地部署标记）' -ForegroundColor Yellow
     } else {
         Write-Host '==> 同步远端部署标记' -ForegroundColor Cyan
-        Git @('fetch', '-q', 'origin', '--tags', '--force') | Out-Null
+        Run '同步远端 main 与部署标记' { Git @('fetch', '-q', 'origin', '--tags', '--force') | Out-Null }
     }
 
     $SourceCommit = Git @('rev-parse', 'HEAD')
     $env:VITE_BUILD_COMMIT = $SourceCommit
+    $env:CI = 'true'
     $env:VITE_API_BASE_URL = '/api/v1'
-    Run '发布检查自测' { node --test deploy/release-check.test.mjs deploy/neighbor-production.test.mjs }
+    $env:VITE_BASE = '/'
+    # 同一冻结提交的门禁构建/打包/失败重试使用相同编译输入，不因墙钟分钟变化重编。
+    $commitTime = [DateTimeOffset]::Parse((Git @('show', '-s', '--format=%cI', $SourceCommit)))
+    $env:VITE_APP_VERSION = "2.0.$($commitTime.ToString('yyyyMMdd-HHmm'))"
+    Run '发布检查自测' { node --test deploy/release-check.test.mjs deploy/neighbor-production.test.mjs deploy/release-cache.test.mjs }
     $targets = if ($Target -eq 'auto') { @('api', 'web', 'assistant') } else { @($Target) }
     $definitions = (& node deploy/release-check.mjs definitions) | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0) { Die '无法读取发布目标定义' }
@@ -186,13 +222,23 @@ try {
         Write-Host "✓ $targetName 已发布：$packageName" -ForegroundColor Green
     }
 
+    $ReleaseSucceeded = $true
     Write-Host "`n完成。之后的 API 纯代码发布只上传快速包，不再重复上传 node_modules。" -ForegroundColor Green
 }
 finally {
+    $ReleaseWatch.Stop()
+    try {
+        $timingDir = Join-Path $RepoRoot 'artifacts\release-checks'
+        New-Item -ItemType Directory -Force -Path $timingDir | Out-Null
+        $timingFile = Join-Path $timingDir ("publish-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + "-$PID-timings.json")
+        [ordered]@{startedAt=$ReleaseStartedAt; elapsedMs=$ReleaseWatch.ElapsedMilliseconds; passed=$ReleaseSucceeded; commit=$SourceCommit; target=$Target; phases=@($script:ReleasePhases.ToArray())} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $timingFile -Encoding UTF8
+        Write-Host ("发布总耗时：{0:N1} 秒；计时证据：{1}" -f ($ReleaseWatch.ElapsedMilliseconds/1000), $timingFile)
+    } catch { Write-Warning ("无法保存发布计时：" + $_.Exception.Message) }
     if ($releaseLock) { $releaseLock.Dispose() }
     $env:VITE_BUILD_COMMIT = $previousBuildCommit
     $env:VITE_API_BASE_URL = $previousApiBase
     $env:VITE_BASE = $previousWebBase
     $env:VITE_APP_VERSION = $previousWebVersion
+    $env:CI = $previousCI
     Pop-Location
 }

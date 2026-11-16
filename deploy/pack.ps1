@@ -4,6 +4,7 @@
 # we check $LASTEXITCODE explicitly.
 
 # tell pnpm we're non-interactive so it skips "confirm purge" prompts that abort under no-TTY
+$previousCI = $env:CI
 $env:CI = "true"
 
 function Die([string] $msg) {
@@ -13,8 +14,16 @@ function Die([string] $msg) {
 
 function Run([string] $name, [scriptblock] $body) {
     Write-Host ("==> " + $name) -ForegroundColor Cyan
-    & $body
-    if ($LASTEXITCODE -ne 0) { Die ("step failed: " + $name + " (exit=" + $LASTEXITCODE + ")") }
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    $passed = $false
+    try {
+        & $body
+        if ($LASTEXITCODE -ne 0) { Die ("step failed: " + $name + " (exit=" + $LASTEXITCODE + ")") }
+        $passed = $true
+    } finally {
+        $watch.Stop()
+        Write-Host ('[release-phase] ' + (ConvertTo-Json @{label=$name;elapsedMs=$watch.ElapsedMilliseconds;passed=$passed} -Compress))
+    }
 }
 
 function Remove-Tree([string] $path) {
@@ -41,14 +50,15 @@ $Ts        = Get-Date -Format "yyyyMMdd-HHmm"
 
 Push-Location $RepoRoot
 try {
-    Run "pnpm install" { pnpm install }
+    Run "pnpm install (frozen lockfile)" { pnpm install --frozen-lockfile }
 
     if ($Only -eq "all" -or $Only -eq "web") {
         Run "build admin-web" { pnpm --filter "@pms/admin-web" build }
     }
 
     if ($Only -eq "all" -or $Only -eq "api") {
-        Run "build api" { pnpm --filter "@pms/api" build }
+        if ($SourceCommit) { Run 'build or reuse frozen API' { node deploy/release-check.mjs build api $SourceCommit } }
+        else { Run "build api" { pnpm --filter "@pms/api" build } }
         if ($SourceCommit) { Run 'stamp API release' { node deploy/release-check.mjs stamp api $SourceCommit } }
 
         # 每次使用新的打包目录，避免旧 node_modules 的逐文件清理阻塞发布；不触碰其他包。
@@ -105,7 +115,7 @@ try {
 
     # pnpm deploy --prod 会把工作区的 devDependencies 一并剪掉（tsc / 开发者工具依赖全没了），
     # 打完包必须装回来，否则下一条 typecheck、pnpm mp:staff 全部报「找不到 tsc」。
-    Run "restore dev deps" { pnpm install }
+    Run "restore dev deps" { pnpm install --frozen-lockfile }
 
     Write-Host ""
     Write-Host "==> done. next:" -ForegroundColor Yellow
@@ -113,5 +123,6 @@ try {
     Write-Host  "    ssh pms   # follow deploy/README.md"
 }
 finally {
+    $env:CI = $previousCI
     Pop-Location
 }

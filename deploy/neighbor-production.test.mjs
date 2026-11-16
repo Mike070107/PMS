@@ -1,8 +1,10 @@
 import test from 'node:test';
+import {execFileSync} from 'node:child_process';
+test('Windows PowerShell入口保留UTF8 BOM且实际语法解析通过',()=>{for(const name of ['publish-production.ps1','pack.ps1']){const file=join(ROOT,'deploy',name);assert.equal(readFileSync(file).subarray(0,3).toString('hex'),'efbbbf');if(process.platform==='win32')execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',"$e=$null;$t=$null;[System.Management.Automation.Language.Parser]::ParseFile('"+file.replaceAll("'","''")+"',[ref]$t,[ref]$e)|Out-Null;if($e){throw ($e|Out-String)}"],{stdio:'inherit'})}});
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {TARGETS,ROOT} from './release-check.mjs';
 import {join} from 'node:path';
 test('正式登录页不再标记为测试环境',()=>{const s=readFileSync(join(ROOT,'apps/neighbor-web/src/pages/Login.tsx'),'utf8');assert.equal(s.includes('新版测试环境'),false);assert.equal(s.includes('测试环境与正式系统共用'),false)});
 test('正式Web目标包含新版源码，避免后续发布退回旧首页',()=>{assert.ok(TARGETS.web.paths.includes('apps/neighbor-web'))});
-test('正式Web构建新版并明确根路径和正式版本',()=>{const s=readFileSync(join(ROOT,'deploy/publish-production.ps1'),'utf8');assert.match(s,/pnpm --filter '@pms\/neighbor-web' build/);assert.match(s,/VITE_BASE = '\/'/);assert.match(s,/VITE_APP_VERSION = "2\.0\./);assert.match(s,/apps\\neighbor-web\\dist/)});
+test('正式Web构建新版并明确根路径和正式版本',()=>{const s=readFileSync(join(ROOT,'deploy/publish-production.ps1'),'utf8');assert.match(s,/node deploy\/release-check\.mjs build web \$SourceCommit/);assert.match(readFileSync(join(ROOT,'deploy/release-cache.mjs'),'utf8'),/target === 'web' \? 'neighbor-web' : 'api'/);assert.ok(s.indexOf("$env:VITE_BASE = '/'")<s.indexOf("Run '发布检查自测'"));assert.match(s,/commitTime\.ToString/);assert.match(s,/VITE_BASE = '\/'/);assert.match(s,/VITE_APP_VERSION = "2\.0\./);assert.match(s,/apps\\neighbor-web\\dist/)});

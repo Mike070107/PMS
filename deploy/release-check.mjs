@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { cachedBuild, findPackage, rememberPackage, buildEnvironment, packageManagerVersion } from './release-cache.mjs';
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const TARGETS = {
@@ -13,7 +14,7 @@ export const TARGETS = {
   'miniapp-staff': { label: '员工端小程序', paths: ['apps/miniapp-staff', 'packages/shared-types', 'packages/api-client'] },
   'miniapp-owner': { label: '业主端小程序', paths: ['apps/miniapp-owner', 'packages/shared-types', 'packages/api-client'] },
 };
-const RECOVERY_INPUTS = ['deploy/property-archive-details-migration.cjs', 'deploy/property-archive-details-migration.test.cjs', 'deploy/release-check.mjs', 'deploy/release-check.test.mjs'];
+const RECOVERY_INPUTS = ['deploy/property-archive-details-migration.cjs', 'deploy/property-archive-details-migration.test.cjs', 'deploy/release-check.mjs', 'deploy/release-check.test.mjs', 'deploy/release-cache.mjs', 'deploy/release-cache.test.mjs', 'deploy/neighbor-production.test.mjs', 'deploy/pack.ps1', 'deploy/publish-production.ps1', 'pnpm-workspace.yaml', '.npmrc', 'deploy/api-runtime-dependencies.py', 'deploy/api-runtime-dependencies.test.py', 'deploy/mark-deployed.mjs', 'deploy/srv-deploy-api.sh', 'deploy/srv-deploy-web.sh'];
 const EVIDENCE = join(ROOT, 'artifacts/release-checks');
 const sha = value => createHash('sha256').update(value).digest('hex');
 const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).trim();
@@ -37,7 +38,7 @@ export function changed(target, commit = 'HEAD') {
 function fingerprint(target) {
   const files = git('ls-files', '--', ...paths(target), ...RECOVERY_INPUTS, 'package.json')
     .split('\n').filter(Boolean).filter(productionInput).sort();
-  return sha(JSON.stringify([process.version, files.map(file => [file, existsSync(join(ROOT, file)) ? sha(readFileSync(join(ROOT, file))) : 'missing'])]));
+  return sha(JSON.stringify([process.version, packageManagerVersion(), buildEnvironment(), files.map(file => [file, existsSync(join(ROOT, file)) ? sha(readFileSync(join(ROOT, file))) : 'missing'])]));
 }
 export function assertSource(target, commit) {
   if (!/^[a-f0-9]{40}$/.test(commit || '')) throw new Error('需要冻结的完整源码提交');
@@ -104,7 +105,28 @@ export function assertVersionIncrease(current, published) {
   for (let i = 0; i < 3; i++) { if (a[i] > b[i]) return; if (a[i] < b[i]) break; }
   throw new Error(`助手源码已改变但版本未递增：${current}，线上 ${published}`);
 }
-function run(command) { execSync(command, { cwd: ROOT, stdio: 'inherit', timeout: 180000 }); }
+const commandTimings = [];
+function run(command) {
+  const startedAt = new Date().toISOString(), start = Date.now(); let passed = false;
+  try { execSync(command, { cwd: ROOT, stdio: 'inherit', timeout: 180000 }); passed = true; }
+  finally { const phase = { command, startedAt, elapsedMs: Date.now()-start, passed }; commandTimings.push(phase); record(join(EVIDENCE,`commands-${process.pid}-timings.json`),commandTimings); console.log('[release-phase] '+JSON.stringify(phase)); }
+}
+export function build(target, commit) {
+  assertSource(target,commit);
+  return cachedBuild({root:ROOT,target,commit,inputHash:fingerprint(target),env:process.env,execute:run});
+}
+function packageCache(command,target,commit,mode,artifact) {
+  if (!['full','fast','web'].includes(mode) || (target==='web') !== (mode==='web')) throw Error('invalid package mode');
+  verifySource(target,commit);
+  const options={root:ROOT,target,commit,inputHash:fingerprint(target),mode,env:process.env};
+  if(command==='package-save') {
+    const release=JSON.parse(readFileSync(join(ROOT,'apps',target==='web'?'neighbor-web':'api','dist','release.json'),'utf8'));
+    rememberPackage({...options,artifact,release});
+  } else {
+    const cached=findPackage(options);
+    if(cached) { record(join(EVIDENCE,`${target}-expected.json`),cached.release); console.log(cached.artifact); }
+  }
+}
 async function getJson(url) {
   const response = await fetch(url, { signal: AbortSignal.timeout(20000), headers: { 'Cache-Control': 'no-cache' } });
   if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
@@ -128,7 +150,7 @@ async function check(target, commit) {
     const evidenceFile=id=>join(EVIDENCE,`${id}-${inputHash}.json`);
     const executed=executeRecoveryGroups(recoveryGroups,{inputHash,
       load:id=>existsSync(evidenceFile(id))?JSON.parse(readFileSync(evidenceFile(id),'utf8')):null,
-      save:(id,data)=>record(evidenceFile(id),{...data,commit}),execute:run});
+      save:(id,data)=>record(evidenceFile(id),{...data,commit}),execute:command=>command==='pnpm --filter @pms/neighbor-web build'?build('web',commit):run(command)});
     console.log(executed.length?`完成定点回归 ${executed.join(', ')}`:'复用同源码档案/车位迁移回归证据');
   }
   if ((target==='api'||target==='web') && (feeChanges(changes)||changes.includes('unmarked'))) {
@@ -206,10 +228,12 @@ async function verifyLive(target) {
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const [command, target, commit] = process.argv.slice(2);
+    const [command, target, commit, mode, artifact] = process.argv.slice(2);
     if (command === 'definitions') console.log(JSON.stringify(TARGETS));
     else if (command === 'changed') console.log(changed(target, commit || 'HEAD').join('\n'));
     else if (command === 'check') await check(target, commit);
+    else if (command === 'build') build(target,commit);
+    else if (command === 'package-find' || command === 'package-save') packageCache(command,target,commit,mode,artifact);
     else if (command === 'verify-source') verifySource(target, commit);
     else if (command === 'stamp') stamp(target, commit);
     else if (command === 'verify-live') await verifyLive(target);
