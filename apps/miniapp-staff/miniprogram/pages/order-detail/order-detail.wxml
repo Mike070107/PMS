@@ -500,7 +500,7 @@
     </view>
     <view wx:if="{{guide}}" class="complete-guide">
       <view class="complete-guide__badge">AI</view>
-      <view><view class="complete-guide__title">可以按住说一句话</view><view class="complete-guide__desc">说清做了什么、实际故障、是否收费，系统会帮你整理</view></view>
+      <view><view class="complete-guide__title">可以按住说一句话</view><view class="complete-guide__desc">{{autoSummary ? '说清做了什么、实际故障、是否收费，AI 先给草稿，由你决定是否采用' : '说完保留识别原文，不做 AI 改写，仍可手工修改'}}</view></view>
     </view>
 
     <view class="complete-card">
@@ -527,13 +527,27 @@
         <view wx:if="{{hasSpeech}}" class="complete-speech-block">
           <button class="complete-speech {{(recording || pressing) && speechTarget === 'summary' ? 'complete-speech--on' : ''}}" data-speech-target="summary" data-speech-label="完工情况" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord" catchtouchmove="onHoldMove">
             <view class="complete-speech__mic"></view>
-            <view><view class="complete-speech__title">{{recording && speechTarget === 'summary' ? '松开结束' : (pressing && speechTarget === 'summary' ? '正在准备…' : summarizing ? '正在整理…' : '按住说完工情况')}}</view><view wx:if="{{guide}}" class="complete-speech__desc">一次说清做了什么、故障和收费，AI 自动整理</view></view>
+            <view><view class="complete-speech__title">{{recording && speechTarget === 'summary' ? '松开结束' : (pressing && speechTarget === 'summary' ? '正在准备…' : summarizing ? '正在整理…' : '按住说完工情况')}}</view><view wx:if="{{guide}}" class="complete-speech__desc">{{autoSummary ? '说完先保留原文，再核对 AI 候选' : '说完只转成文字，保留你的原意'}}</view></view>
           </button>
           <view wx:if="{{recording && speechTarget === 'summary'}}" class="complete-listening">正在听：{{partial || '请继续说…'}}</view>
         </view>
       </view>
+      <!-- 个人输入偏好常驻，不放在指导层里，关闭时仍能找到入口。 -->
+      <view class="summary-setting">
+        <view class="summary-setting__copy"><view class="summary-setting__title">AI 自动总结</view><view class="summary-setting__desc">{{autoSummary ? '已开启 · 先保留原文，采用前请核对' : '已关闭 · 仅语音转文字，不改写原意'}}</view></view>
+        <switch checked="{{autoSummary}}" disabled="{{busy || !summaryPreferenceReady}}" bindchange="onAutoSummaryChange" aria-label="AI自动总结" color="#315f98"/>
+      </view>
       <view class="complete-label complete-label--next">维修说明 <text class="complete-required">必填</text></view>
       <textarea class="complete-textarea" placeholder="例如：更换门铃电源并重新接线，测试后已能正常开门" bindinput="onNote" value="{{actionNote}}"/>
+      <view wx:if="{{summarizing}}" class="summary-status">正在整理候选，原文已保留，可直接修改或提交</view>
+      <view wx:if="{{summaryError}}" class="summary-error"><view>{{summaryError}}</view><button class="summary-action" disabled="{{busy}}" bindtap="onRetrySummary">重新整理</button></view>
+      <view wx:if="{{aiSummaryPreview}}" class="summary-preview">
+        <view class="summary-preview__title">AI 整理候选 · 尚未采用</view>
+        <view class="summary-preview__text">{{aiSummaryPreview}}</view>
+        <view wx:if="{{aiSummaryDetails}}" class="summary-preview__details">{{aiSummaryDetails}}</view>
+        <view class="summary-setting__desc">采用后仅补充空白的故障和收费字段，用料只作提醒。原意不符请保留原文。</view>
+        <view class="summary-preview__actions"><button class="summary-action" disabled="{{busy}}" bindtap="onKeepOriginal">保留原文</button><button class="summary-action summary-action--primary" disabled="{{busy}}" bindtap="onUseSummary">采用整理</button></view>
+      </view>
       <view wx:if="{{materialHints.length}}" class="mat-said">AI听到可能用了：{{materialHints}}。这只是提醒，不会自动加入用料；请按实际情况到用料记录中手动选择。</view>
       <block wx:if="{{phrases.length}}">
         <view class="complete-subtitle">常用话术，点一下就能填</view>

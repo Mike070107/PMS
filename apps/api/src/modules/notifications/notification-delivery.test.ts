@@ -8,8 +8,11 @@ test('待办公室派单的通知仅发给本管理处配置且仍具备权限�
   const service: any = Object.create(RepairsService.prototype);
   service.accessService = {
     officeIdOfCommunity: async () => 4,
-    userIdsWithPermission: async (_tenant: number, page: string) => page === 'app:dispatch' ? [1, 2] : [2, 3],
-    filterUsersCoveringOffice: async () => new Set([1, 2, 3]),
+    userIdsWithPermission: async (_tenant: number, page: string) => page === 'app:dispatch' ? [1, 2, 4] : [2, 3, 4],
+    assignmentsOf: async () => new Map([
+      [1, [{ officeId: 4, skills: [] }]], [2, [{ officeId: 4, skills: [] }]],
+      [3, [{ officeId: 4, skills: [] }]], [4, [{ officeId: null, skills: [] }]],
+    ]),
   };
   service.settings = { getDispatchNoticeRecipients: async () => [2, 9] };
   service.userRepo = { find: async (opts: any) => opts.where.id.value.map((id: number) => ({ id })) };

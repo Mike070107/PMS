@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Raw, Repository } from 'typeorm';
 import { AiExtractSample } from '../../entities';
 
 /**
@@ -35,13 +35,13 @@ export class ExtractSamplesService {
    */
   async ensureSeeded(tenantId: number, kind: string): Promise<void> {
     try {
-      const count = await this.repo.count({ where: { tenantId, kind } });
+      const count = await this.repo.count({ where: { tenantId, kind: In([kind, `${kind}_seeded`]) } });
       if (count > 0) return;
       const seeds = kind === 'completion' ? COMPLETION_SEEDS : SEED_SAMPLES;
       await this.repo.save(
-        seeds.map((item) =>
+        [...seeds.map((item) =>
           this.repo.create({ ...item, kind, tenantId, enabled: true, createdBy: null, updatedBy: null }),
-        ),
+        ), this.seedMarker(tenantId, kind)],
       );
       this.logger.log(`租户 ${tenantId} 灌入 ${seeds.length} 条「${kind}」样例种子`);
     } catch (err) {
@@ -54,13 +54,13 @@ export class ExtractSamplesService {
    * 房号、弄号、电话和业务编号先变量化，因此换了门牌仍能命中同类纠错；这里只
    * 取例子给模型参考，不复制旧样例的具体数字。
    */
-  async forPrompt(tenantId: number, kind = 'repair', sourceText = ''): Promise<AiExtractSample[]> {
+  async forPrompt(tenantId: number, kind = 'repair', sourceText = '', officeId?: number | null): Promise<AiExtractSample[]> {
     await this.ensureSeeded(tenantId, kind);
-    const rows = await this.repo.find({
-      where: { tenantId, kind, enabled: true },
+    const rows = (await this.repo.find({
+      where: { tenantId, kind, enabled: true, expected: sampleOfficeWhere(officeId) },
       order: { updatedAt: 'DESC' },
       take: 200,
-    });
+    })).filter((row) => sampleCoversOffice(row, officeId));
     const query = buildLearningTemplate(sourceText);
     const similar = query
       ? rows
@@ -88,22 +88,46 @@ export class ExtractSamplesService {
    * 用户说的原话和启用样例完全相同时，样例就是确定规则，不该再交给模型猜一次。
    * 先走数据库精确命中；标点/空格不同再在最近 100 条里做一次归一化比较。
    */
-  async findExact(tenantId: number, text: string, kind = 'repair'): Promise<AiExtractSample | null> {
+  async findExact(tenantId: number, text: string, kind = 'repair', officeId?: number | null): Promise<AiExtractSample | null> {
     await this.ensureSeeded(tenantId, kind);
     const value = text.trim();
     if (!value) return null;
-    const exact = await this.repo.findOne({
-      where: { tenantId, kind, enabled: true, text: value },
-      order: { updatedAt: 'DESC' },
-    });
-    if (exact) return exact;
     const normalized = normalizeSampleText(value);
-    const recent = await this.repo.find({
-      where: { tenantId, kind, enabled: true },
+    // 老样例即使不在最近200条里，完全相同的原文仍应直接命中。
+    const exactRows = await this.repo.find({ where: { tenantId, kind, enabled: true, text: value, expected: sampleOfficeWhere(officeId) }, order: { updatedAt: 'DESC' } });
+    const recent = [...exactRows, ...(await this.repo.find({
+      where: { tenantId, kind, enabled: true, expected: sampleOfficeWhere(officeId) },
       order: { updatedAt: 'DESC' },
-      take: 100,
-    });
-    return recent.find((row) => normalizeSampleText(row.text) === normalized) ?? null;
+      take: 200,
+    }))];
+    const matches = recent.filter((row) => sampleCoversOffice(row, officeId)
+      && normalizeSampleText(row.text) === normalized);
+    // 办公室刚确认的本处类型优先于旧的公司通用样例，不扩大到其它管理处。
+    return matches.find((row) => row.expected?._officeId === officeId) ?? matches[0] ?? null;
+  }
+
+  /** 只学“这段故障→本管理处类别”，不复制地址/联系人、不把上次维修工变成默认人。 */
+  async rememberRepairType(
+    tenantId: number, userId: number, officeId: number, workOrderId: number,
+    content: string, repairType: string,
+  ): Promise<AiExtractSample | null> {
+    const text = content.trim();
+    if (!text || !officeId || !repairType.trim()) return null;
+    await this.ensureSeeded(tenantId, 'repair');
+    const existing = await this.repo.find({ where: { tenantId, kind: 'repair', text }, order: { updatedAt: 'DESC' } });
+    const row = existing.find((item) => item.expected?._classificationOnly === true && item.expected?._officeId === officeId);
+    return this.repo.save(this.repo.create({
+      ...(row ?? {}), tenantId, kind: 'repair', text,
+      expected: { repairType: repairType.trim(), _classificationOnly: true, _officeId: officeId },
+      note: `办公室派单确认类别；管理处 #${officeId}；最近工单 #${workOrderId}`,
+      enabled: true, createdBy: row?.createdBy ?? userId, updatedBy: userId,
+    }));
+  }
+
+  /** 隐藏的初始化标记不是识别样例；删光可见样例后也不得重新播种。 */
+  private seedMarker(tenantId: number, kind: string): AiExtractSample {
+    return this.repo.create({ tenantId, kind: `${kind}_seeded`, text: '样例初始化记录',
+      expected: {}, note: '内部初始化标记，不参与识别', enabled: false, createdBy: null, updatedBy: null });
   }
 
   async list(tenantId: number, kind = 'repair'): Promise<AiExtractSample[]> {
@@ -137,9 +161,16 @@ export class ExtractSamplesService {
     patch: { text?: string; expected?: Record<string, unknown>; note?: string; enabled?: boolean },
   ): Promise<AiExtractSample> {
     const row = await this.repo.findOne({ where: { id, tenantId } });
-    if (!row) throw new NotFoundException('样例不存在');
+    if (!row || !['repair', 'completion'].includes(row.kind)) throw new NotFoundException('样例不存在');
     if (patch.text !== undefined) row.text = patch.text.trim();
-    if (patch.expected !== undefined) row.expected = pruneExpected(patch.expected);
+    if (patch.expected !== undefined) {
+      const expected = pruneExpected(patch.expected);
+      // 内部作用域只能由可信派单链路写入，设置页编辑不能意外洗成全公司样例。
+      if (row.expected?._classificationOnly === true) {
+        row.expected = { repairType: expected.repairType || row.expected.repairType,
+          _classificationOnly: true, _officeId: row.expected._officeId };
+      } else row.expected = expected;
+    }
     if (patch.note !== undefined) row.note = patch.note.trim();
     if (patch.enabled !== undefined) row.enabled = patch.enabled;
     row.updatedBy = userId;
@@ -148,10 +179,25 @@ export class ExtractSamplesService {
 
   async remove(tenantId: number, id: number): Promise<{ ok: true }> {
     const row = await this.repo.findOne({ where: { id, tenantId } });
-    if (!row) throw new NotFoundException('样例不存在');
+    if (!row || !['repair', 'completion'].includes(row.kind)) throw new NotFoundException('样例不存在');
+    // 兼容旧租户：旧版本播种时没有初始化标记，首次删除前补上持久标记。
+    if (!(await this.repo.count({ where: { tenantId, kind: `${row.kind}_seeded` } }))) {
+      await this.repo.save(this.seedMarker(tenantId, row.kind));
+    }
     await this.repo.remove(row);
     return { ok: true };
   }
+}
+
+function sampleOfficeWhere(officeId?: number | null) {
+  // 先在数据库限制作用域再take，避免其它管理处的大量新样例挤掉本处学习。
+  return Raw((alias) => `(${alias} ->> '_officeId' IS NULL OR (jsonb_typeof(${alias} -> '_officeId') = 'number' AND ${alias} ->> '_officeId' = :sampleOfficeId))`,
+    { sampleOfficeId: officeId ?? 0 });
+}
+
+function sampleCoversOffice(row: AiExtractSample, officeId?: number | null): boolean {
+  const scoped = row.expected?._officeId;
+  return scoped === undefined || (Number.isInteger(scoped) && scoped === officeId);
 }
 
 export function normalizeSampleText(value: string): string {

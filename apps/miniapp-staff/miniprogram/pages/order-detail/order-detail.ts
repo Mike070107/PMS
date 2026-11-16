@@ -30,6 +30,15 @@ import {
 } from '@pms/shared-types';
 import { guideHandlers } from '../../utils/guide';
 import { loadAddressBook } from '../../utils/address-picker';
+import { appendCompletionOriginal, completionSummaryPreferenceKey, readCompletionSummaryPreference, writeCompletionSummaryPreference } from '../../utils/completion-summary';
+
+type CompletionSummaryResult = Awaited<ReturnType<typeof ai.completionSummary>>;
+interface CompletionSummaryCandidate {
+  before: string;
+  text: string;
+  original: string;
+  result?: CompletionSummaryResult;
+}
 
 interface PickedPlace {
   communityId: number;
@@ -335,6 +344,12 @@ interface PageData {
   speechRowIndex: number;
   /** 识别中的实时文字，让人知道在听 */
   partial: string;
+  /** 本机、当前租户和维修工的个人偏好；首次默认关闭。 */
+  autoSummary: boolean;
+  summaryPreferenceReady: boolean;
+  aiSummaryPreview: string;
+  aiSummaryDetails: string;
+  summaryError: string;
   /** 正在让模型整理 */
   summarizing: boolean;
   /** 模型从话里听出的材料名 —— 只做提示，用料仍要自己从库存选 */
@@ -479,6 +494,11 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     speechRowIndex: -1,
     /** 识别中的实时文字，让人知道在听 */
     partial: '',
+    autoSummary: false,
+    summaryPreferenceReady: false,
+    aiSummaryPreview: '',
+    aiSummaryDetails: '',
+    summaryError: '',
     /** 正在让模型整理 */
     summarizing: false,
     /** 模型从话里听出的材料名 —— 只做提示，用料仍要自己从库存选（要扣的是具体 SKU） */
@@ -530,6 +550,12 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   appliedDraftBatchId: null as number | null,
   /** 本次完工提交的幂等令牌：连点两下或弱网重试都只扣一次库存 */
   completeIdempotencyKey: '',
+  summaryPreferenceKey: '',
+  summaryGeneration: 0,
+  summaryDisposed: false,
+  summaryPanelClosed: false,
+  summarySpeechCancelled: false,
+  summaryCandidate: null as CompletionSummaryCandidate | null,
   repairTypes: [] as PublicRepairType[],
   addressBook: [] as Awaited<ReturnType<typeof loadAddressBook>>,
   addressSpots: [] as Awaited<ReturnType<typeof address.communitySpots>>,
@@ -547,6 +573,12 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     this.materialDraftSaving = null;
     this.appliedDraftBatchId = null;
     this.completeIdempotencyKey = '';
+    this.summaryDisposed = false;
+    this.summaryPanelClosed = false;
+    this.summarySpeechCancelled = false;
+    this.summaryGeneration = 0;
+    this.summaryCandidate = null;
+    this.summaryPreferenceKey = '';
     this.setData({ id: q.id || '' });
     this.bindSpeech();
     void this.loadEditBook();
@@ -612,6 +644,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         [WorkOrderStatus.CREATED]: detail.workOrder.candidateIds?.length ? '待接单' : '待派单',
       };
       const myId = session?.me?.id ?? 0;
+      this.initCompletionSummaryPreference(session?.me ?? null);
       const previousBuildingId = this.data.detail?.request?.buildingId ?? null;
       const buildingId = detail.request?.buildingId ?? null;
       const buildingChanged = previousBuildingId !== buildingId;
@@ -1391,11 +1424,12 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     };
     speechManager.onStop = (res: { result: string }) => {
       hold?.ended();
+      if (this.summaryDisposed) return;
       const text = (res.result || this.data.partial || '').trim();
       this.setData({ recording: false, partial: '' });
       if (!text) return;
       if (this.data.speechTarget === 'summary') {
-        this.summarize(text);
+        this.summarize(text, !this.summarySpeechCancelled);
       } else {
         this.applySpeechText(text);
       }
@@ -1409,6 +1443,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
 
   onStartRecord(event?: WechatMiniprogram.BaseEvent) {
     const dataset = event?.currentTarget?.dataset || {};
+    this.summarySpeechCancelled = false;
     this.setData({
       speechTarget: String(dataset.speechTarget || 'summary'),
       speechRowIndex: dataset.rowIndex === undefined ? -1 : Number(dataset.rowIndex),
@@ -1474,60 +1509,126 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     this.setData({ actionNote: appendSpeech(this.data.actionNote, spoken) }, () => this.syncPhraseState());
   },
 
-  /**
-   * 把口述交给模型整理成维修记录。
-   *
-   * **整理不成也要有结果**：没配大模型、调不通、超时时，把原话原样接到「维修说明」后面 ——
-   * 他话已经说完了，总不能让它凭空消失，宁可格式糙一点。
-   * 位置和现象只在原来空着时才填，不覆盖他手工改过的内容。
-   * 用料一律不自动填：模型听出的名字和库存 SKU 常对不上（2026-09-02 反馈：
-   * 「角阀」「弯头」这类口语名跟材料库里的规范名不匹配），只把名字列出来提醒他
-   * 去「添加用料」里手动核对、从库存选，不直接塞进用料行。
-   */
-  async summarize(text: string) {
-    this.setData({ summarizing: true });
-    const fallback = () => {
-      const next = [this.data.actionNote.trim(), text].filter(Boolean).join('；');
-      this.setData({ actionNote: next }, () => this.syncPhraseState());
-    };
-    try {
-      const res = await ai.completionSummary({ text, workOrderId: Number(this.data.id) });
-      if (!res?.ok || !res.actionNote) {
-        fallback();
-        return;
-      }
-      const patch: Record<string, unknown> = {
-        actionNote: [this.data.actionNote.trim(), res.actionNote].filter(Boolean).join('；'),
-        materialHints: res.materials || [],
-      };
-      if (!this.data.faultLocation && res.faultLocation) patch.faultLocation = res.faultLocation;
-      if (!this.data.faultSymptom && res.faultSymptom) patch.faultSymptom = res.faultSymptom;
-      if (!this.data.feeYuan && res.feeSuggestion) {
-        patch.feeYuan = String(res.feeSuggestion.feeCents / 100);
-        patch.feeRuleCode = res.feeSuggestion.ruleCode;
-        patch.feeSuggestionText = `${res.feeSuggestion.basis}，请核对`;
-      }
-      const previousTrace = this.data.aiAssistTrace;
-      patch.aiAssistTrace = {
-        sourceText: [previousTrace?.sourceText, text].filter(Boolean).join('；'),
-        draft: {
-          ...(res.draft || {}),
-          actionNote: patch.actionNote,
-          faultLocation: patch.faultLocation ?? this.data.faultLocation,
-          faultSymptom: patch.faultSymptom ?? this.data.faultSymptom,
-          materials: [...new Set([...(this.data.materialHints || []), ...(res.materials || [])])],
-          feeRuleCode: patch.feeRuleCode ?? this.data.feeRuleCode,
-        },
-      };
-      this.setData(patch, () => this.syncPhraseState());
-    } catch {
-      fallback();
-    } finally {
-      this.setData({ summarizing: false });
+  /** 默认不调用AI；主动开启后也只生成候选，原文先保留，明确采用后才补充空白字段。 */
+  initCompletionSummaryPreference(user: { tenantId: number | null; id: number } | null) {
+    const key = completionSummaryPreferenceKey(user);
+    if (key === this.summaryPreferenceKey) return;
+    this.invalidateSummary();
+    this.summaryPreferenceKey = key;
+    this.setData({ autoSummary: readCompletionSummaryPreference(key), summaryPreferenceReady: !!key });
+  },
+
+  invalidateSummary() {
+    this.summaryGeneration += 1;
+    this.summaryCandidate = null;
+    this.setData({ summarizing: false, aiSummaryPreview: '', aiSummaryDetails: '', summaryError: '' });
+  },
+
+  onAutoSummaryChange(e: WechatMiniprogram.CustomEvent<{ value: boolean }>) {
+    if (!this.summaryPreferenceKey || this.data.busy) return;
+    const enabled = e.detail.value === true;
+    this.invalidateSummary();
+    this.setData({ autoSummary: enabled });
+    if (!writeCompletionSummaryPreference(this.summaryPreferenceKey, enabled)) {
+      wx.showToast({ icon: 'none', title: '设置未能保存，仅本次生效' });
     }
   },
 
+  /** 原文先落入可编辑字段。即使AI失败/关闭/迟到，已经说的话也不再靠回调补写。 */
+  async summarize(text: string, allowAi = true) {
+    if (!text || this.summaryDisposed || this.data.busy) return;
+    this.invalidateSummary();
+    const before = this.data.actionNote;
+    const original = appendCompletionOriginal(before, text);
+    this.setData({ actionNote: original }, () => this.syncPhraseState());
+    if (!allowAi || !this.data.autoSummary || this.summaryPanelClosed) return;
+    this.summaryCandidate = { before, text, original };
+    await this.requestCompletionSummary();
+  },
+
+  async requestCompletionSummary() {
+    const candidate = this.summaryCandidate;
+    if (!candidate || !this.data.autoSummary || this.data.busy || this.summaryDisposed) return;
+    const generation = ++this.summaryGeneration;
+    const orderId = this.data.id;
+    const current = () => generation === this.summaryGeneration && !this.summaryDisposed
+      && this.data.autoSummary && this.data.id === orderId;
+    this.setData({ summarizing: true, summaryError: '', aiSummaryPreview: '' });
+    try {
+      const res = await ai.completionSummary({ text: candidate.text, workOrderId: Number(orderId) });
+      if (!current()) return;
+      if (!res?.ok || !res.actionNote?.trim()) throw new Error('未生成小结');
+      candidate.result = res;
+      const details = [
+        res.faultLocation ? `故障位置：${res.faultLocation}` : '',
+        res.faultSymptom ? `故障现象：${res.faultSymptom}` : '',
+        res.feeSuggestion ? `建议收费：${res.feeSuggestion.feeCents / 100}元（${res.feeSuggestion.basis}）` : '',
+        res.materials?.length ? `用料提醒：${res.materials.join('、')}` : '',
+      ].filter(Boolean).join('\n');
+      this.setData({ aiSummaryPreview: res.actionNote, aiSummaryDetails: details });
+    } catch {
+      if (current()) this.setData({ summaryError: '整理失败，已保留原文' });
+    } finally {
+      if (current()) this.setData({ summarizing: false });
+    }
+  },
+
+  async onRetrySummary() {
+    if (this.data.summarizing || this.data.busy) return;
+    if (!this.summaryCandidate || this.data.actionNote !== this.summaryCandidate.original) {
+      this.invalidateSummary();
+      return;
+    }
+    await this.requestCompletionSummary();
+  },
+
+  onKeepOriginal() { this.invalidateSummary(); },
+
+  onUseSummary() {
+    const candidate = this.summaryCandidate;
+    const res = candidate?.result;
+    if (this.data.busy || !this.data.autoSummary || !candidate || !res?.actionNote) return;
+    if (this.data.actionNote !== candidate.original) {
+      this.invalidateSummary();
+      wx.showToast({ icon: 'none', title: '说明已修改，已保留当前原文' });
+      return;
+    }
+    const patch: Record<string, unknown> = {
+      actionNote: appendCompletionOriginal(candidate.before, res.actionNote),
+      materialHints: res.materials || [],
+    };
+    if (!this.data.faultLocation && res.faultLocation) patch.faultLocation = res.faultLocation;
+    if (!this.data.faultSymptom && res.faultSymptom) patch.faultSymptom = res.faultSymptom;
+    if (!this.data.feeYuan && res.feeSuggestion) {
+      patch.feeYuan = String(res.feeSuggestion.feeCents / 100);
+      patch.feeRuleCode = res.feeSuggestion.ruleCode;
+      patch.feeSuggestionText = `${res.feeSuggestion.basis}，请核对`;
+    }
+    const previousTrace = this.data.aiAssistTrace;
+    patch.aiAssistTrace = {
+      sourceText: [previousTrace?.sourceText, candidate.text].filter(Boolean).join('；'),
+      draft: {
+        ...(res.draft || {}),
+        actionNote: patch.actionNote,
+        faultLocation: patch.faultLocation ?? this.data.faultLocation,
+        faultSymptom: patch.faultSymptom ?? this.data.faultSymptom,
+        materials: [...new Set([...(this.data.materialHints || []), ...(res.materials || [])])],
+        feeRuleCode: patch.feeRuleCode ?? this.data.feeRuleCode,
+      },
+    };
+    this.invalidateSummary();
+    this.setData(patch, () => this.syncPhraseState());
+  },
+
+  onUnload() {
+    this.summaryDisposed = true;
+    this.summaryGeneration += 1;
+    this.summaryCandidate = null;
+    hold?.release();
+  },
+
   onNote(e: WechatMiniprogram.Input) {
+    this.invalidateSummary();
     this.setData({ actionNote: e.detail.value, errorMsg: '' }, () => this.syncPhraseState());
   },
 
@@ -1539,6 +1640,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   onTapPhrase(e: WechatMiniprogram.BaseEvent) {
     const text = String(e.currentTarget.dataset.text || '');
     if (!text) return;
+    this.invalidateSummary();
     const note = this.data.actionNote;
     let next: string;
     if (note.indexOf(text) >= 0) {
@@ -1579,6 +1681,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       wx.showToast({ icon: 'none', title: '用料尚未加载，请稍后重试' });
       return;
     }
+    if (panel === 'complete') this.summaryPanelClosed = false;
     this.setData({ panel, materialError: '', errorMsg: '' });
     if (panel === 'rollback') void this.loadRollbackPreview();
     if (panel === 'editIntake') {
@@ -1645,6 +1748,11 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       try { await this.flushMaterialDraft(); } catch { return; }
     }
     if (this.data.completePickerOpen) this.closeCompletePlacePicker();
+    this.invalidateSummary();
+    this.summaryPanelClosed = true;
+    if ((this.data.recording || this.data.pressing) && this.data.speechTarget === 'summary') {
+      this.summarySpeechCancelled = true;
+    }
     // 维修工按着语音键时也可能直接点关闭。先结束录音，避免面板关了麦克风还在工作。
     if (this.data.recording) hold?.release();
     this.setData({ panel: '', recording: false, partial: '' });
@@ -2194,6 +2302,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
 
   async onComplete() {
     if (this.data.busy) return;
+    this.invalidateSummary();
     const fee = this.data.feeYuan.trim();
     if (fee && (!Number.isFinite(Number(fee)) || Number(fee) < 0)) {
       return this.setData({ errorMsg: '收费金额填写不正确' });

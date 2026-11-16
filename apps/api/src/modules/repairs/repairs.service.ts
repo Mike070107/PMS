@@ -48,6 +48,7 @@ import {
 import { RepairTextAiService, matchRepairTypeKeywords } from '../ai/repair-text.ai';
 import { RepairSpeechMergeService } from '../ai/repair-speech-merge.ai';
 import { AiFeedbackService } from '../ai/ai-feedback.service';
+import { ExtractSamplesService } from '../ai/extract-samples.service';
 import {
   classifyPublicAreaText,
   detectPublicAreaPlace,
@@ -310,6 +311,7 @@ export class RepairsService implements OnModuleInit {
     private readonly repairTextAi: RepairTextAiService,
     private readonly speechMerge: RepairSpeechMergeService,
     private readonly aiFeedback: AiFeedbackService,
+    private readonly extractSamples: ExtractSamplesService,
   ) {}
 
   /**
@@ -2989,6 +2991,10 @@ export class RepairsService implements OnModuleInit {
       throw new NotFoundException('work order not found');
     }
     const officeId = await this.accessService.officeIdOfCommunity(tenantId, target.communityId);
+    const selectedType = dto.skill?.trim();
+    if (selectedType && !(await this.findTypeRule(selectedType, tenantId, target.communityId))) {
+      throw new BadRequestException('报修类型不存在或已停用');
+    }
     await this.assertAssignee(tenantId, dto.assigneeId, officeId ?? undefined);
     const assignee = await this.userRepo.findOne({ where: { id: dto.assigneeId, tenantId } });
 
@@ -3007,7 +3013,7 @@ export class RepairsService implements OnModuleInit {
 
       workOrder.assigneeId = dto.assigneeId;
       workOrder.candidateIds = [dto.assigneeId];
-      workOrder.skill = dto.skill ?? workOrder.skill;
+      workOrder.skill = selectedType || workOrder.skill;
       workOrder.status = WorkOrderStatus.DISPATCHED;
       workOrder.dispatchedAt = new Date();
       // 换了负责人就重新计时：上一个人没接单的催单记录，不该算在新人头上
@@ -3036,6 +3042,20 @@ export class RepairsService implements OnModuleInit {
       return saved;
     });
 
+    // 派单成功才学习；独立样例可在现有识别样例页删除，不往类型规则永久写关键词。
+    const learningType = selectedType || saved.skill;
+    if (officeId && learningType) {
+      try {
+        const request = await this.repairRequestRepo.findOne({ where: { tenantId, id: saved.requestId } });
+        if (request && await this.findTypeRule(learningType, tenantId, saved.communityId)) {
+          await this.extractSamples.rememberRepairType(
+            tenantId, user.id, officeId, saved.id, request.content, learningType,
+          );
+        }
+      } catch (error) {
+        this.logger.warn(`派单类别样例记录失败（不影响派单）：${error instanceof Error ? error.message : error}`);
+      }
+    }
     await this.notifyOwnerOnStatus(saved, 'dispatched', assignee?.name ?? null);
     // 派单不通知维修工，那这单就得等他自己想起来打开小程序看一眼 ——
     // 「已派单」堆在那儿没人动，办公室还以为派出去就完事了
@@ -5182,8 +5202,10 @@ export class RepairsService implements OnModuleInit {
       }
     }
     if (!ids.length) return [];
-    const coverage = await this.accessService.filterUsersCoveringOffice(tenantId, ids, officeId);
-    const scopedIds = ids.filter((id) => coverage.has(id));
+    // “能看全公司”不等于“属于每个管理处办公室”。只有显式本处工作范围才默认收通知；
+    // 同时有all+本处行的员工仍可收到，只有all的超级管理员不会被自动加入。
+    const assignments = await this.accessService.assignmentsOf(tenantId, ids);
+    const scopedIds = ids.filter((id) => (assignments.get(id) ?? []).some((row) => row.officeId === officeId));
     if (!scopedIds.length) return [];
     return this.userRepo.find({
       where: { id: In(scopedIds), tenantId, status: UserStatus.ACTIVE },
@@ -5196,24 +5218,12 @@ export class RepairsService implements OnModuleInit {
     reason: string,
     requesterId: number,
   ): Promise<void> {
-    const [request, requester, officeId] = await Promise.all([
+    const [request, requester, receivers] = await Promise.all([
       this.repairRequestRepo.findOne({ where: { id: workOrder.requestId, tenantId: workOrder.tenantId } }),
       this.userRepo.findOne({ where: { id: requesterId, tenantId: workOrder.tenantId }, select: ['id', 'name'] }),
-      this.accessService.officeIdOfCommunity(workOrder.tenantId, workOrder.communityId),
+      this.dispatchersToNotify(workOrder.tenantId, workOrder.communityId, requesterId, true),
     ]);
-    // 有些办公室人员只使用网页后台，没有勾员工端“派单台”。两种入口都是合法的
-    // 派单人，因此取并集，避免只有超级管理员收到转单提醒。
-    const [appDispatcherIds, webDispatcherIds] = await Promise.all([
-      this.accessService.userIdsWithPermission(workOrder.tenantId, 'app:dispatch', 'edit'),
-      this.accessService.userIdsWithPermission(workOrder.tenantId, 'work-orders', 'edit'),
-    ]);
-    const dispatcherIds = [...new Set([...appDispatcherIds, ...webDispatcherIds])];
-    const coverage = await this.accessService.filterUsersCoveringOffice(
-      workOrder.tenantId,
-      dispatcherIds,
-      officeId,
-    );
-    const receiverIds = dispatcherIds.filter((id) => id !== requesterId && coverage.has(id));
+    const receiverIds = receivers.map((receiver) => receiver.id);
     const address = dedupeAddressText(request?.addressText).trim() || '（未填地址）';
     const content = request?.content?.trim() || '';
     if (!receiverIds.length) {
@@ -5578,22 +5588,9 @@ export class RepairsService implements OnModuleInit {
           select: ['id', 'name'],
         })
       : null;
-    const dispatcherIds = await this.accessService.userIdsWithPermission(
-      workOrder.tenantId,
-      'app:dispatch',
-      'edit',
+    const watchers = await this.dispatchersToNotify(
+      workOrder.tenantId, workOrder.communityId, null, true,
     );
-    const watchers = dispatcherIds.length
-      ? await this.userRepo.find({
-          where: {
-            id: In(dispatcherIds),
-            tenantId: workOrder.tenantId,
-            status: UserStatus.ACTIVE,
-          },
-          select: ['id'],
-          take: 20,
-        })
-      : [];
     for (const watcher of watchers) {
       await this.notifications.notifyUser({
         tenantId: workOrder.tenantId,
@@ -6228,35 +6225,31 @@ export class RepairsService implements OnModuleInit {
     access?: ResolvedAccess,
   ) {
     const tenantId = this.resolveTenantId(user);
-    const repairTypes = this.listPublicRepairTypes(
-      user,
-      dto.communityId ?? null,
-      access,
-    );
+    // 先确认原文实际匹配的小区；communityId只是上下文，不能让A处样例污染明确说出的B处。
+    await this.listPublicRepairTypes(user, dto.communityId ?? null, access);
+    const byRule = await this.parseAddressByRule(dto, user, access);
+    const classificationCommunityId = byRule.matched ? byRule.communityId : dto.communityId;
+    const types = await this.listPublicRepairTypes(user, classificationCommunityId ?? null, access);
+    const officeId = byRule.matched && byRule.communityId
+      ? await this.accessService.officeIdOfCommunity(tenantId, byRule.communityId) : null;
     const rank = (level?: string) =>
       level === 'house' ? 3 : level === 'building' ? 2 : level === 'community' ? 1 : 0;
     let ai: Awaited<ReturnType<RepairTextAiService['parse']>> = null;
-    let byRule: Awaited<ReturnType<RepairsService['parseAddressByRule']>>;
     if (dto.lite) {
       /**
        * 省钱模式（填表报修边打字边识别）：规则先撞库，撞到楼栋或房号就不调模型 ——
        * 打字的人自己在写描述，用不着模型整理；只有地址没撞上或只到小区才请模型圈地址。
        * 2026-09-05 查费用：这个接口占大模型调用的八成多，大头是打字每停顿一次就调一次。
        */
-      byRule = await this.parseAddressByRule(dto, user, access);
       // 地址撞上了、但类型一个关键词都没撞上（「有 5 个摄像头图像没有」）也请模型判一下类型，
       // 否则这单一路躺到「其它」（2026-09-07 Mike）。只对写得够长的话问，边打字的半句不问；
       // 同一句话有结果缓存，不会每停一下就花一次钱。
-      const types = await repairTypes;
       const typeUnknown = dto.text.trim().length >= 8 && !matchRepairTypeKeywords(dto.text, types);
       if (!byRule.matched || rank(byRule.level) <= 1 || typeUnknown) {
-        ai = await this.repairTextAi.parse(tenantId, dto.text, types);
+        ai = await this.repairTextAi.parse(tenantId, dto.text, types, officeId);
       }
     } else {
-      [ai, byRule] = await Promise.all([
-        repairTypes.then((types) => this.repairTextAi.parse(tenantId, dto.text, types)),
-        this.parseAddressByRule(dto, user, access),
-      ]);
+      ai = await this.repairTextAi.parse(tenantId, dto.text, types, officeId);
     }
     let result = byRule;
     /**
@@ -6319,6 +6312,40 @@ export class RepairsService implements OnModuleInit {
         // 把地址里的室号摘掉，剩下的就是「小区+楼栋」：永北5511弄278号503室 → 永北5511弄278号
         addressText: `${(result.addressText || '').replace(/\d+室$/, '')} 公共区域`.trim(),
       };
+    }
+    // 语音先识别门牌后才知道管理处时，用可信匹配小区再查一次类别样例；
+    // 只改类别，地址/联系人/原文继续走上述原有识别链。
+    const learningCommunityId = result.matched ? result.communityId : dto.communityId;
+    if (learningCommunityId) {
+      try {
+        const learningOfficeId = await this.accessService.officeIdOfCommunity(tenantId, learningCommunityId);
+        // 模型整理地址后可能才确认到另一个管理处。用最终项目类型重新判类别，
+        // 不保留前一上下文的类型，也不覆盖已经验证的门牌/联系人。
+        if (ai && learningOfficeId !== officeId) {
+          // 必须先清除旧作用域类别；最终处识别失败时宁可待人工派单，不串处。
+          ai = { ...ai, repairType: '', sampleMatched: false };
+          const finalTypes = await this.listPublicRepairTypes(user, learningCommunityId, access);
+          const reclassified = await this.repairTextAi.parse(tenantId, dto.text, finalTypes, learningOfficeId);
+          ai = { ...ai, repairType: reclassified?.repairType || '', sampleMatched: !!reclassified?.sampleMatched };
+        }
+        const rawAddress = result.matched && 'matchedRaw' in result && typeof result.matchedRaw === 'string'
+          ? result.matchedRaw : '';
+        const faultText = rawAddress ? dto.text.replace(rawAddress, '')
+          .replace(/^[\s，,。；;：:]+|[\s，,。；;：:]+$/g, '')
+          .replace(/^(?:来?报修|反映|说是)[的：:\s]*/, '').trim() : '';
+        let learned: Awaited<ReturnType<ExtractSamplesService['findExact']>> = null;
+        for (const text of [...new Set([ai?.description?.trim(), faultText, dto.text].filter(Boolean) as string[])]) {
+          const sample = await this.extractSamples.findExact(tenantId, text, 'repair', learningOfficeId);
+          if (sample?.expected._classificationOnly === true) { learned = sample; break; }
+        }
+        const learnedType = learned?.expected.repairType;
+        if (learned?.expected._classificationOnly === true && typeof learnedType === 'string'
+          && await this.findTypeRule(learnedType, tenantId, learningCommunityId)) {
+          ai = { ...(ai ?? {}), repairType: learnedType, sampleMatched: true };
+        }
+      } catch (error) {
+        this.logger.warn(`类别样例读取失败（保留识别结果）：${error instanceof Error ? error.message : error}`);
+      }
     }
     return {
       ...result,
@@ -7547,13 +7574,27 @@ export class RepairsService implements OnModuleInit {
   ): Promise<string | null> {
     if (!content?.trim()) return null;
     const rules = (await this.rulesForCommunity(tenantId, communityId)).filter((rule) => rule.enabled);
-    return classifyByKeywords(
-      content,
-      rules.map((rule) => ({
-        repairType: rule.repairType,
-        keywords: buildTypeKeywords(rule),
-      })),
-    );
+    if (!rules.length) return null;
+    const officeId = communityId ? await this.accessService.officeIdOfCommunity(tenantId, communityId) : null;
+    try {
+      const learned = await this.extractSamples.findExact(tenantId, content, 'repair', officeId);
+      const learnedType = learned?.expected.repairType;
+      if (typeof learnedType === 'string' && rules.some((rule) => rule.repairType === learnedType)) return learnedType;
+    } catch (error) {
+      this.logger.warn(`类别样例读取失败，继续规则识别：${error instanceof Error ? error.message : error}`);
+    }
+    const options = rules.map((rule) => ({
+      repairType: rule.repairType, label: rule.label, keywords: buildTypeKeywords(rule),
+    }));
+    const keywordType = classifyByKeywords(content, options);
+    if (keywordType) return keywordType;
+    try {
+      const result = await this.repairTextAi.parse(tenantId, content, options, officeId);
+      return rules.some((rule) => rule.repairType === result?.repairType) ? result!.repairType! : null;
+    } catch (error) {
+      this.logger.warn(`AI类别识别失败，转办公室：${error instanceof Error ? error.message : error}`);
+      return null;
+    }
   }
 
   /** 报修小区适用的那套规则里，这个类型的一条（停用的不算） */
@@ -7579,14 +7620,19 @@ export class RepairsService implements OnModuleInit {
     rule: RepairTypeRule | null,
     communityId?: number | null,
   ): Promise<User[]> {
-    const ids = rule ? ruleAssigneeIds(rule) : [];
-    if (!ids.length) return [];
+    if (!rule) return [];
+    const configuredIds = ruleAssigneeIds(rule);
     // 新工单必须先落到管理处，再取该管理处能接单的人。小区没有归属管理处时不使用
     // 公司模板“猜一个人”兜底，直接交给办公室派单，避免跨管理处推送。
     const officeId = communityId
       ? await this.accessService.officeIdOfCommunity(tenantId, communityId)
       : rule?.officeId ?? null;
     if (!officeId) return [];
+    // 未配置默认人时按本处技能找能接单的员工；绝不把上次手工派给的人固化成默认。
+    const ids = configuredIds.length ? configuredIds
+      : await this.accessService.userIdsWithPermission(tenantId, 'app:pool', 'edit');
+    if (!ids.length) return [];
+    const skills = configuredIds.length ? null : await this.accessService.skillsAtOfficeOf(tenantId, ids, officeId);
     const coverage = await this.accessService.filterUsersCoveringOffice(tenantId, ids, officeId);
     const users = await this.userRepo.find({ where: { id: In(ids), tenantId } });
     const picked: User[] = [];
@@ -7594,6 +7640,7 @@ export class RepairsService implements OnModuleInit {
       const user = users.find((u) => u.id === id);
       if (!user || user.status !== UserStatus.ACTIVE) continue;
       if (!coverage.has(user.id)) continue;
+      if (skills && !skills.get(user.id)?.includes(rule.repairType)) continue;
       if (!(await this.accessService.userHasPermission(tenantId, user.id, 'app:pool', 'edit'))) continue;
       picked.push(user);
     }

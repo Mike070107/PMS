@@ -208,19 +208,21 @@ export class RepairTextAiService {
     tenantId: number,
     text: string,
     repairTypes: RepairTypePromptOption[] = [],
+    officeId?: number | null,
   ): Promise<RepairTextAiResult | null> {
     const value = (text || '').trim();
-    // 太短的话规则法足够了，不值得多花一次调用和 1~2 秒延迟
-    if (value.length < 6) return null;
+    let learnedType = '';
     const allowedTypes = new Set(repairTypes.map((item) => item.repairType));
     // 同一句已经由管理员确认过，就直接采用样例。few-shot 只能“劝”模型参考，
     // 不能保证它听话；精确命中若仍调用模型，就会出现同一句话依旧识别错。
     try {
-      const exact = await this.samples.findExact(tenantId, value, 'repair');
+      const exact = await this.samples.findExact(tenantId, value, 'repair', officeId);
       if (exact) {
         const originalType = str(exact.expected.repairType);
         const resolvedType = resolveSubmittedRepairType(originalType, repairTypes.map((type) => ({ ...type, enabled: true })));
-        return repairResultFromSample({ ...exact.expected, repairType: resolvedType }, value, allowedTypes);
+        if (exact.expected._classificationOnly === true) {
+          if (allowedTypes.has(resolvedType)) learnedType = resolvedType;
+        } else return repairResultFromSample({ ...exact.expected, repairType: resolvedType }, value, allowedTypes);
       }
     } catch {
       // 样例库不可用时继续走原来的模型链路，不影响正常报修
@@ -233,7 +235,9 @@ export class RepairTextAiService {
      * （2026-09-01 用户要求：已经处理过的正例要让 AI 记住，别每次重讲一遍规则）。
      * 拿不到样例（库挂了、还没灌种子）也不影响 —— 固定规则那部分照常工作。
      */
-    const keywordRepairType = matchRepairTypeKeywords(value, repairTypes);
+    // 短句也先读人工类别样例；普通短输入仍避免不必要的模型调用。
+    if (value.length < 6) return learnedType ? { repairType: learnedType, sampleMatched: true } : null;
+    const keywordRepairType = learnedType || matchRepairTypeKeywords(value, repairTypes);
     // 固定样例不能写死 smart/electric：租户可以把类型编码命名成 menjing 等任意值。
     // 先从本租户类型与关键词中找到对应编码，再替换样例占位符，避免样例反过来教模型
     // 返回一个“不在本项目可用类型里”的编码。
@@ -273,12 +277,13 @@ export class RepairTextAiService {
       'repair',
       keywordTail,
       value,
+      officeId,
     );
     const raw = await this.llm.askJson<Record<string, unknown>>(tenantId, system, value, {
       kind: 'repair-parse',
       cacheable: true,
     });
-    if (!raw) return null;
+    if (!raw) return learnedType ? { repairType: learnedType, sampleMatched: true } : null;
     const repairType = keywordRepairType || str(raw.repairType);
     return {
       addressText: str(raw.addressText),
@@ -349,10 +354,11 @@ export class RepairTextAiService {
     kind: string,
     tail = '',
     sourceText = '',
+    officeId?: number | null,
   ): Promise<string> {
     let examples: string[] = [];
     try {
-      const rows = await this.samples.forPrompt(tenantId, kind, sourceText);
+      const rows = await this.samples.forPrompt(tenantId, kind, sourceText, officeId);
       examples = rows
         .filter((row) => row.text?.trim() && row.expected && Object.keys(row.expected).length)
         .map((row) => `输入：${row.text.trim()}\n输出：${JSON.stringify(fullShape(row.expected, row.text))}`);
@@ -370,6 +376,8 @@ export class RepairTextAiService {
 
 /** 样例只存要教的字段，喂给模型时补齐成完整形状 —— 缺字段会教出「可以不输出某个字段」 */
 function fullShape(expected: Record<string, unknown>, sourceText = ''): Record<string, unknown> {
+  // 派单只确认了类别，不能把未标注的地址/联系人等教成空值。
+  if (expected._classificationOnly === true) return { repairType: expected.repairType };
   // 完工小结的样例只补它自己那几个字段：把报修的字段混进去会教偏
   if ('actionNote' in expected || 'faultLocation' in expected || 'faultSymptom' in expected) {
     return {
