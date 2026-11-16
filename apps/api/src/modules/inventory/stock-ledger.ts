@@ -157,6 +157,60 @@ export async function applyStockDelta(
   return { stock, movement };
 }
 
+/** 原单整单撤销专用：只冲原批次，绝不拿后来补的货替已领用批次抵扣。调用方须锁原入库单。 */
+export async function reverseReceiptLots(
+  manager: EntityManager,
+  input: { tenantId: number; warehouseId: number; receiptId: number; operatorId: number; reason: string },
+): Promise<{ alreadyReversed: boolean }> {
+  const movements = await manager.find(StockMovement, {
+    where: { tenantId: input.tenantId, warehouseId: input.warehouseId, refType: 'general_receipt', refId: input.receiptId },
+    order: { id: 'ASC' },
+  });
+  if (!movements.length || movements.some((row) => row.type !== StockMovementType.INBOUND || Number(row.qty) <= 0)) {
+    throw new BadRequestException('原入库流水不完整，不可自动撤销');
+  }
+  const reversed = await manager.find(StockMovement, {
+    where: { tenantId: input.tenantId, refType: 'receipt_reversal', refId: input.receiptId },
+  });
+  if (reversed.length) {
+    if (reversed.length === movements.length && movements.every((row) => reversed.some((r) => r.reversalOfMovementId === row.id))) return { alreadyReversed: true };
+    throw new BadRequestException('撤销流水不完整，请管理员核对');
+  }
+  // 和正常出库相同：先锁批次，再由 applyStockDelta 锁库存、检查预留。
+  const lots = await manager.find(StockLot, {
+    where: { tenantId: input.tenantId, warehouseId: input.warehouseId, goodsReceiptId: input.receiptId },
+    order: { receivedAt: 'ASC', id: 'ASC' }, lock: { mode: 'pessimistic_write' },
+  });
+  const totals = (rows: Array<{ materialId: number; qty: number }>) => {
+    const map = new Map<number, number>();
+    for (const row of rows) map.set(row.materialId, round2((map.get(row.materialId) || 0) + Number(row.qty)));
+    return map;
+  };
+  const original = totals(movements);
+  const batches = totals(lots.map((lot) => ({ materialId: lot.materialId, qty: Number(lot.initialQty) })));
+  if (original.size !== batches.size || [...original].some(([id, qty]) => batches.get(id) !== qty)) {
+    throw new BadRequestException('原批次与入库流水不一致，不可自动撤销');
+  }
+  if (lots.some((lot) => Number(lot.remainingQty) !== Number(lot.initialQty))) {
+    throw new BadRequestException('该入库批次已有领用、调拨或盘点变动，不能撤销');
+  }
+  for (const lot of lots) {
+    lot.remainingQty = 0;
+    lot.updatedBy = input.operatorId;
+    await manager.save(StockLot, lot);
+  }
+  for (const row of movements) {
+    await applyStockDelta(manager, {
+      tenantId: input.tenantId, warehouseId: input.warehouseId, materialId: row.materialId,
+      deltaQty: -Number(row.qty), type: StockMovementType.ADJUST, unitCostCents: row.unitCostCents,
+      refType: 'receipt_reversal', refId: input.receiptId, operatorId: input.operatorId,
+      reversalOfMovementId: row.id, locationId: row.locationId,
+      note: `撤销入库：${input.reason}`,
+    });
+  }
+  return { alreadyReversed: false };
+}
+
 export async function createStockLot(
   manager: EntityManager,
   input: StockKey & {

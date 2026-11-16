@@ -1,6 +1,7 @@
 import { repairs } from '@pms/api-client';
 import { withOrderLabels } from '@pms/miniapp-ui';
-import { WorkOrderStatus, compareWorkOrderOldestFirst, type WorkOrderListItem } from '@pms/shared-types';
+import { WorkOrderStatus, type WorkOrderListItem } from '@pms/shared-types';
+import { WORK_ORDER_SORT_OPTIONS, readWorkOrderSort, saveWorkOrderSort, sortWorkOrders, workOrderSortIndex, type WorkOrderSort } from '../../utils/work-order-sort';
 import { isActiveOrder } from '../../utils/order-status';
 import { getSession } from '../../utils/session';
 import { setTabBadge, syncTabBar } from '../../utils/tabbar';
@@ -72,7 +73,14 @@ Page({
     normalCount: 0,
     waitingMaterialCount: 0,
     loaded: false,
+    loading: false,
+    sortMode: 'address' as WorkOrderSort,
+    sortIndex: 2,
+    sortLabels: WORK_ORDER_SORT_OPTIONS.map((item) => item.label),
   },
+
+  loadVersion: 0,
+  listIdentity: null as string | null,
 
   onShow() {
     this.syncGuide();
@@ -86,14 +94,22 @@ Page({
     this.load().finally(() => wx.stopPullDownRefresh());
   },
 
-  async load() {
+  async load(sortOverride?: { value: WorkOrderSort; identity: string }) {
+    const version = ++this.loadVersion;
+    this.setData({ loading: true });
     try {
-      const [list, session] = await Promise.all([
-        repairs.list({ scope: 'mine', activeOnly: '1' }),
-        getSession(this),
-      ]);
+      const session = await getSession(this);
+      if (version !== this.loadVersion) return;
+      const identity = session.me ? `${session.me.tenantId}.${session.me.id}` : '';
+      if (this.listIdentity !== null && this.listIdentity !== identity) this.setData({ active: [], loaded: false });
+      this.listIdentity = identity;
+      const sortMode = sortOverride?.identity === identity ? sortOverride.value : readWorkOrderSort(session.me, 'my-orders');
+      const list = await repairs.list({ scope: 'mine', activeOnly: '1', sort: sortMode });
+      if (version !== this.loadVersion) return;
+      const current = (await getSession(this)).me;
+      if (version !== this.loadVersion || (current ? `${current.tenantId}.${current.id}` : '') !== identity) return;
       const myUserId = session.me?.id;
-      const active: OrderRow[] = withOrderLabels(list)
+      let active: OrderRow[] = withOrderLabels(list)
         // 后端 scope=mine 已经按本人过滤；端上再核一次 assigneeId，防止旧接口、缓存或
         // 权限组合异常时把别人的地址和工单带进“在手工单”。取不到本人 id 时宁可不展示。
         .filter((item) => !!myUserId && item.assigneeId === myUserId && isActiveOrder(item.status))
@@ -103,15 +119,12 @@ Page({
           // 卡片也不能再误导用户去接第二次；有接单时间就只能进入完工流程。
           actionText: item.acceptedAt ? '去完工' : ACTION_TEXT[item.status] || '查看详情',
         }));
-      // 在手工单与工单池同一口径（shared-types 一份实现）：紧急在前；其余按报修时间从早到晚，越老越靠前
-      active.sort(compareWorkOrderOldestFirst);
-      active.forEach((row, index) => {
-        const previous = active[index - 1];
-        row.groupStart = index === 0 || !!previous?.urgent !== !!row.urgent;
-        row.groupLabel = row.urgent ? '紧急工单 · 先处理' : '普通工单';
-      });
+      // 全清单按显式选择排序；紧急与待料保留徽标/统计，不插队、不拆小区。
+      active = sortWorkOrders(active, sortMode);
       this.setData({
         active,
+        sortMode,
+        sortIndex: workOrderSortIndex(sortMode),
         overdueCount: active.filter((item) => item.stayTone === 'danger').length,
         urgentCount: active.filter((item) => item.urgent).length,
         normalCount: active.filter((item) => !item.urgent).length,
@@ -122,7 +135,25 @@ Page({
       // 微信提醒额度快用完了没有：这一屏是维修工每天都会打开的，提示放这里才看得到
       this.checkNotifyPrompt(session.canAccept);
     } catch (e: any) {
-      wx.showToast({ icon: 'none', title: e?.message || '加载失败' });
+      if (version === this.loadVersion) wx.showToast({ icon: 'none', title: e?.message || '加载失败' });
+    } finally {
+      if (version === this.loadVersion) this.setData({ loading: false });
+    }
+  },
+
+  async onPickSort(e: WechatMiniprogram.PickerChange) {
+    if (this.data.loading) return;
+    const value = e?.detail?.value;
+    if (typeof value !== 'number' && (typeof value !== 'string' || !/^\d+$/.test(value))) return;
+    const index = Number(value);
+    const option = Number.isInteger(index) ? WORK_ORDER_SORT_OPTIONS[index] : undefined;
+    if (!option || option.value === this.data.sortMode) return;
+    try {
+      const session = await getSession(this);
+      saveWorkOrderSort(session.me, 'my-orders', option.value);
+      await this.load({ value: option.value, identity: session.me ? `${session.me.tenantId}.${session.me.id}` : '' });
+    } catch (e: any) {
+      wx.showToast({ icon: 'none', title: e?.message || '排序失败，请重试' });
     }
   },
 

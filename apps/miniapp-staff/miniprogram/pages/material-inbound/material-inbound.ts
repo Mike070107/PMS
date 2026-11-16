@@ -147,6 +147,8 @@ Page({
     warehouses: [] as WarehouseView[],
     warehouseNames: [] as string[],
     warehouseIndex: -1,
+    selectedWarehouseId: null as number | null,
+    selectedWarehouseName: '',
     warehouseError: '',
     warehousePickerOpen: false,
     noWarehouseHint: '',
@@ -221,6 +223,8 @@ Page({
           warehouses: enabled,
           warehouseNames: enabled.map((item) => item.name),
           warehouseIndex: -1,
+          selectedWarehouseId: null,
+          selectedWarehouseName: '',
           noWarehouseHint: enabled.length
             ? ''
             : '你所属的管理处还没有仓库，入库没有去处。请办公室在管理后台「库存与采购 → 基础资料 → 仓库档案」里给管理处建仓（新建管理处会自动带一个同名仓）。',
@@ -236,7 +240,7 @@ Page({
 
   /** 库位跟着仓走：换了仓还留着上一个仓的库位，入库就落到别人家货架上了 */
   async loadLocations() {
-    const warehouse = this.data.warehouses[this.data.warehouseIndex];
+    const warehouse = this.selectedWarehouse();
     if (!warehouse) {
       this.setData({ locations: [], locationNames: ['不指定库位'], locationIndex: 0 });
       return;
@@ -245,7 +249,7 @@ Page({
       const list = (await inventory.listWarehouseLocations({ warehouseId: warehouse.id })).filter(
         (item) => item.enabled,
       );
-      if (this.data.warehouses[this.data.warehouseIndex]?.id !== warehouse.id) return;
+      if (this.selectedWarehouse()?.id !== warehouse.id) return;
       // 仓库配了默认库位就替他选上，省得每次入库都从头挑
       const defaultIndex = warehouse.defaultLocationId
         ? list.findIndex((item) => item.id === warehouse.defaultLocationId)
@@ -256,7 +260,7 @@ Page({
         locationIndex: defaultIndex >= 0 ? defaultIndex + 1 : 0,
       });
     } catch {
-      if (this.data.warehouses[this.data.warehouseIndex]?.id !== warehouse.id) return;
+      if (this.selectedWarehouse()?.id !== warehouse.id) return;
       // 没配库位不影响入库，静默退回「不指定库位」，别弹一个红条吓人
       this.setData({ locations: [], locationNames: ['不指定库位'], locationIndex: 0 });
     }
@@ -264,7 +268,7 @@ Page({
 
   /** 某条 SKU 在当前选中仓的存量 */
   stockOf(materialId: number): number {
-    const warehouse = this.data.warehouses[this.data.warehouseIndex];
+    const warehouse = this.selectedWarehouse();
     if (!warehouse) return 0;
     return (this.stocks as StockView[])
       .filter((item) => item.materialId === materialId && item.warehouseId === warehouse.id)
@@ -654,8 +658,9 @@ Page({
 
   /** 按采购单收货：整单进同一个仓（总仓或小区仓），每行实收和单价可改 */
   async onSubmitPoReceipt() {
+    if (this.data.saving) return;
     const order = this.data.poOrder;
-    const warehouse = this.data.warehouses[this.data.warehouseIndex];
+    const warehouse = this.selectedWarehouse();
     if (!order) return;
     if (!warehouse) return this.setData({ warehouseError: '请选择入库仓库' });
     const items: Array<{ materialId: number; qty: number; unitCostCents: number; locationId?: number }> = [];
@@ -672,6 +677,7 @@ Page({
     const total = items.reduce((sum, item) => sum + item.qty * item.unitCostCents, 0);
     this.setData({ saving: true, poError: '' });
     try {
+      if (!await this.confirmWarehouse(warehouse, `${order.orderNo} · ${items.length}项 · ¥${(total / 100).toFixed(2)}`)) return;
       const receipt = await inventory.createGoodsReceipt({ purchaseOrderId: order.id, warehouseId: warehouse.id, items });
       wx.showModal({
         title: '入库完成',
@@ -690,6 +696,23 @@ Page({
 
   // ---------------- 第三步：填入库 ----------------
 
+  /** ID、索引和显示名必须一致；列表重排不能把旧索引悄悄指向另一个仓。 */
+  selectedWarehouse(): WarehouseView | undefined {
+    const warehouse = this.data.warehouses[this.data.warehouseIndex];
+    return warehouse?.enabled && warehouse.id === this.data.selectedWarehouseId &&
+      warehouse.name === this.data.selectedWarehouseName ? warehouse : undefined;
+  },
+
+  confirmWarehouse(warehouse: WarehouseView, summary: string): Promise<boolean> {
+    return new Promise((resolve) => wx.showModal({
+      title: '确认入库仓库',
+      content: `目标仓库：${warehouse.name}（编号 ${warehouse.id}）\n${summary}\n请确认实物确实存放在此仓库。`,
+      confirmText: '确认入此仓',
+      success: (result) => resolve(!!result.confirm && this.selectedWarehouse()?.id === warehouse.id),
+      fail: () => resolve(false),
+    }));
+  },
+
   onOpenWarehousePicker() {
     if (this.data.warehouses.length) this.setData({ warehousePickerOpen: true });
   },
@@ -701,11 +724,11 @@ Page({
   onPickWarehouse(e: WechatMiniprogram.BaseEvent) {
     const index = Number(e.currentTarget.dataset.index);
     if (!Number.isInteger(index) || !this.data.warehouses[index]) return;
-    if (index === this.data.warehouseIndex) {
+    if (index === this.data.warehouseIndex && this.selectedWarehouse()) {
       this.setData({ warehousePickerOpen: false, warehouseError: '' });
       return;
     }
-    this.setData({ warehouseIndex: index, warehouseError: '', warehousePickerOpen: false, locations: [], locationNames: ['不指定库位'], locationIndex: 0 }, () => {
+    this.setData({ warehouseIndex: index, selectedWarehouseId: this.data.warehouses[index].id, selectedWarehouseName: this.data.warehouses[index].name, warehouseError: '', warehousePickerOpen: false, locations: [], locationNames: ['不指定库位'], locationIndex: 0 }, () => {
       this.loadLocations();
       // 换仓之后「本仓存量」这句就变了，重算一遍
       const selected = this.data.selected;
@@ -796,8 +819,9 @@ Page({
   // ---------------- 提交 ----------------
 
   async onSubmitInbound() {
+    if (this.data.saving) return;
     const selected = this.data.selected;
-    const warehouse = this.data.warehouses[this.data.warehouseIndex];
+    const warehouse = this.selectedWarehouse();
     if (!selected) return;
     if (!warehouse) {
       this.setData({ warehouseError: '请选择入库仓库' });
@@ -817,6 +841,7 @@ Page({
     const location = this.data.locationIndex > 0 ? this.data.locations[this.data.locationIndex - 1] : null;
     this.setData({ saving: true });
     try {
+      if (!await this.confirmWarehouse(warehouse, `${selected.title} · ${qty}${selected.unit} · ¥${(qty * price).toFixed(2)}`)) return;
       const receipt = await inventory.createGeneralReceipt({
         warehouseId: warehouse.id,
         sourceText,

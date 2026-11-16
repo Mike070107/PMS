@@ -78,12 +78,21 @@ test('关键词只在看得到的笔记本里搜标题和正文，并带上收�
     { officeId: 1, officeName: '一处', repairType: 'electric', repairTypeLabel: '电气', canEdit: true, isPublic: false },
   ];
   service.tenantId = () => 3;
+  service.context = async () => ({ tenantId: 3, userId: 7, member: true, canCreate: true,
+    notebooks: await service.allowedNotebooks(), communities: [], allCommunities: [], skills: new Set() });
   const now = new Date();
-  service.noteRepo = { async find() { return [
-    { id: 1, officeId: 1, repairType: 'electric', title: '门禁没反应', blocks: [{ id: 'a', type: 'paragraph', text: '先查电源' }], revision: 1, updatedAt: now, updatedBy: null, createdBy: null },
-    { id: 2, officeId: 1, repairType: 'electric', title: '楼道灯不亮', blocks: [{ id: 'b', type: 'paragraph', text: '换灯管，门禁无关' }], revision: 1, updatedAt: now, updatedBy: null, createdBy: null },
-    { id: 3, officeId: 2, repairType: 'electric', title: '门禁主板', blocks: [], revision: 1, updatedAt: now, updatedBy: null, createdBy: null },
-  ]; } };
+  const base = { visibility: 'legacy', communityIds: [], repairTypes: [], allowEdit: false, allowDelete: false, revision: 1, updatedAt: now, updatedBy: null, createdBy: null };
+  const sql: string[] = []; let keyword = '';
+  const query: any = {
+    where(text: string) { sql.push(text); return this; },
+    andWhere(text: string, args?: any) { sql.push(text); if (args?.keyword) keyword = args.keyword; return this; },
+    orderBy() { return this; }, addOrderBy() { return this; },
+    async getMany() { return keyword === '%门禁%' ? [
+      { ...base, id: 1, officeId: 1, repairType: 'electric', title: '门禁没反应', blocks: [{ id: 'a', type: 'paragraph', text: '先查电源' }] },
+      { ...base, id: 2, officeId: 1, repairType: 'electric', title: '楼道灯不亮', blocks: [{ id: 'b', type: 'paragraph', text: '换灯管，门禁无关' }] },
+    ] : []; },
+  };
+  service.noteRepo = { createQueryBuilder() { return query; } };
   service.favoriteRepo = { async find() { return [{ noteId: 2 }]; } };
   service.userNames = async () => new Map();
   const user = { id: 7, tenantId: 3, role: 'staff' };
@@ -92,6 +101,9 @@ test('关键词只在看得到的笔记本里搜标题和正文，并带上收�
   assert.deepEqual(hit[0].notes.map((n: any) => [n.id, n.favorite]), [[1, false], [2, true]]);
   const none = await service.list(user, '电梯');
   assert.deepEqual(none[0].notes, []);
+  assert.ok(sql.some((statement) => statement.includes('tenant_id') && statement.includes('deleted_at')));
+  assert.ok(sql.some((statement) => statement.includes("visibility = 'legacy'") && statement.includes('office_id')));
+  assert.ok(sql.some((statement) => statement.includes('search_text ILIKE')));
 });
 
 test('Markdown 新内容块保存时保留待办状态，分隔线不要求正文', () => {
@@ -118,4 +130,23 @@ test('富文本文档保留排版并清除脚本和危险链接', () => {
   assert.match(document.html, /<strong>先断电<\/strong>/);
   assert.match(document.html, /https:\/\/img\.example\.com\/a\.jpg/);
   assert.doesNotMatch(document.html, /script|javascript:|onerror/i);
+});
+
+test('纯图片文档可保存结构；私密正文不接受公共图片或跨作者未授权安全键', () => {
+  const service = Object.create(RepairExperiencesService.prototype) as any;
+  const blocks = service.cleanBlocks([{ id: 'image-only', type: 'document', html: '<p><img src="https://public.invalid/image.jpg"></p>' }]);
+  assert.match(blocks[0].html, /<img/);
+  assert.throws(() => service.secureBlocks(blocks, 'private', { id: 1, tenantId: 1 }), /安全上传/);
+  assert.doesNotThrow(() => service.secureBlocks(blocks, 'legacy', { id: 1, tenantId: 1 }));
+  const other = [{ id: 'foreign', type: 'image', url: '/api/v1/repair-experiences/assets/view?key=protected%2Frepair-experiences%2F1%2F2%2F2026%2F11%2F16%2Fimage.jpg' }];
+  assert.throws(() => service.secureBlocks(other, 'private', { id: 1, tenantId: 1 }), /他人未授权/);
+});
+
+test('安全附件拒绝默认短密钥、过期及重复查询参数，不向普通公开上传地址降级', async () => {
+  const service = Object.create(RepairExperiencesService.prototype) as any;
+  for (const secret of ['', 'change-me-in-prod', 'short']) {
+    service.config = { get() { return secret; } };
+    assert.throws(() => service.assetSignature('key', 1, 1, 0, 0, 123), /密钥未配置/);
+  }
+  await assert.rejects(service.readAsset({ key: 'protected/repair-experiences/1/1/2026/11/16/image.jpg', tenantId: '1', ownerId: '1', noteId: '0', revision: '0', expires: String(Math.floor(Date.now() / 1000) + 120), signature: ['0'.repeat(64)] }), /不存在/);
 });

@@ -8,12 +8,11 @@ import {
 import {
   RECENT_LIST_LIMIT,
   compareWorkOrderNewestFirst,
-  compareWorkOrderCompletedNewestFirst,
-  compareWorkOrderOldestFirst,
   WorkOrderStatus,
   type TechnicianOption,
   type WorkOrderListItem,
 } from '@pms/shared-types';
+import { WORK_ORDER_SORT_OPTIONS, readWorkOrderSort, saveWorkOrderSort, sortWorkOrders, workOrderSortIndex, type WorkOrderSort } from '../../utils/work-order-sort';
 import { isActiveOrder } from '../../utils/order-status';
 import { getSession } from '../../utils/session';
 import {
@@ -27,7 +26,6 @@ import {
 import { askOrderSubscribe, topUpQuietly } from '../../utils/unread';
 import { notifyPromptHandlers } from '../../utils/notify-prompt';
 import { refreshTabBadges } from '../../utils/badges';
-import { guideHandlers } from '../../utils/guide';
 
 /** 派单备注也允许按住说话；插件不可用时隐藏语音入口，手工输入照常可用。 */
 let speechManager: any = null;
@@ -206,11 +204,8 @@ const SLA_OPTIONS = [
 const PAGE_CAP = 100;
 
 Page({
-  ...guideHandlers(),
   ...notifyPromptHandlers(),
   data: {
-    /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
-    guide: false,
     /** 维修工视角 / 派单台视角，决定整屏的标题、按钮和筛选条 */
     dispatcher: false,
     screenTitle: '工单池',
@@ -237,7 +232,6 @@ Page({
      * 「我报的」「已完结」原来在「在手工单」页，2026-08-31 搬过来，那页只留手上要干的活。
      */
     mainTab: 'pool',
-    leadText: '待接单',
     /** 页头红数字：这一屏里压了 3 天以上的单数，0 就不显示那一格 */
     overdueCount: 0,
     urgentCount: 0,
@@ -260,6 +254,7 @@ Page({
     closingId: 0,
     settling: false,
     capped: false,
+    listLimit: PAGE_CAP,
     /** 等待材料那一组：几张、展开没。展开状态跨刷新保留，别刷一下又收起来 */
     waitingCount: 0,
     waitingExpanded: false,
@@ -272,6 +267,9 @@ Page({
     filters: POOL_FILTERS as PoolFilter[],
     filterIndex: 0,
     keyword: '',
+    sortMode: 'reported_desc' as WorkOrderSort,
+    sortIndex: 1,
+    sortLabels: WORK_ORDER_SORT_OPTIONS.map((item) => item.label),
 
     // ---- 派单面板 ----
     assignOpen: false,
@@ -305,9 +303,10 @@ Page({
 
   /** 当前这一屏的全量行；页头数字筛选在本地做，别每点一下就重新请求 */
   allRows: [] as OrderRow[],
+  loadVersion: 0,
+  listIdentity: null as string | null,
 
   onShow() {
-    this.syncGuide();
     // 语音插件的回调是全局单例，其他页面使用后会覆盖；每次回到派单台都重新绑定到本页。
     this.bindAssignSpeech();
     /**
@@ -344,10 +343,18 @@ Page({
     this.load(true).finally(() => wx.stopPullDownRefresh());
   },
 
-  async load(refreshSession = false) {
+  async load(refreshSession = false, sortOverride?: { value: WorkOrderSort; identity: string; page: 'pool' | 'dispatch' }) {
+    const version = ++this.loadVersion;
     this.setData({ loading: true });
     try {
       const session = await getSession(this, refreshSession);
+      if (version !== this.loadVersion) return;
+      const identity = session.me ? `${session.me.tenantId}.${session.me.id}` : '';
+      if (this.listIdentity !== null && identity !== this.listIdentity) {
+        this.allRows = [];
+        this.setData({ list: [], loaded: false, metricFilter: '', filterIndex: 0, keyword: '' });
+      }
+      this.listIdentity = identity;
       if (!session.hasPmsAppAccess) {
         wx.reLaunch({ url: '/pages/external-access/external-access' });
         return;
@@ -368,6 +375,7 @@ Page({
         return cachedPoolMode();
       })();
       const dispatcher = mode === 'dispatch';
+      const sortMode = sortOverride?.identity === identity && sortOverride.page === mode ? sortOverride.value : readWorkOrderSort(session.me, mode);
 
       // 三档各自有独立权限。当前档被管理员取消后，刷新必须落到仍有权限的第一档，
       // 不能继续请求旧 scope（服务端也会按 scope 拒绝）。
@@ -414,14 +422,17 @@ Page({
             : {
                 scope: filter.scope || (dispatcher ? 'all' : 'pool'),
                 status: filter.status as any,
-                sort: dispatcher ? 'newest' : undefined,
+                sort: sortMode,
                 q: keyword || undefined,
               },
       );
+      if (version !== this.loadVersion) return;
+      const current = (await getSession(this)).me;
+      if (version !== this.loadVersion || (current ? `${current.tenantId}.${current.id}` : '') !== identity) return;
       const list = mainTab === 'done' ? raw.filter((item) => !isActiveOrder(item.status)) : raw;
       const myId = session.me?.id ?? 0;
 
-      const rows: OrderRow[] = withOrderLabels(list).map((item) => {
+      let rows: OrderRow[] = withOrderLabels(list).map((item) => {
         // 只有「工单池」那一档才画接单按钮：我报的 / 已完结里那张单未必轮得到我领
         const claimable =
           // 「我修的」那一档里的单已经归自己了，不再画「接单」按钮
@@ -431,12 +442,8 @@ Page({
           ...item,
           claimable,
           dispatchable,
-          // 「等待材料」那一档本身就在看它们，不折；其它档把它们收成一组放在列表最后
-          inWaitingGroup:
-            mainTab === 'pool' &&
-            !dispatcher &&
-            filter.key !== 'waiting' &&
-            item.status === WorkOrderStatus.WAITING_MATERIAL,
+          // 等待材料保留状态/接回动作，但不折叠挪到末尾打乱显式排序。
+          inWaitingGroup: false,
           waitingGroupStart: false,
           actionText:
             mainTab === 'reported'
@@ -466,46 +473,22 @@ Page({
         };
       });
 
-      // 排序口径（2026-09-06 Mike）：
-      //   工单池 / 派单台 / 我修的：紧急先，其余按报修时间从早到晚 —— 越老的越该先修，新单在下面；
-      //   我报的 / 已完结：最近的在上面，不搜索时只展示最近 30 条，更早的靠搜索。
-      // 服务端给的是 id 倒序，这里必须重排，不然四档看起来各是各的顺序。
-      const dispatchCompleted = dispatcher && mainTab === 'pool' && filter.key === 'completed';
+      // 三逻辑页面全列表显式排序；我报的/已完结仍维持最近30条和原时间语义。
       const recentList = mainTab === 'reported' || mainTab === 'done';
-      rows.sort(dispatchCompleted ? compareWorkOrderCompletedNewestFirst : (dispatcher || recentList) ? compareWorkOrderNewestFirst : compareWorkOrderOldestFirst);
-      const recentLimit = dispatchCompleted ? 50 : RECENT_LIST_LIMIT;
-      const recentHiddenCount =
-        dispatchCompleted || (recentList && !keyword) ? Math.max(0, rows.length - recentLimit) : 0;
+      if (recentList) rows.sort(compareWorkOrderNewestFirst);
+      else rows = sortWorkOrders(rows, sortMode);
+      const recentLimit = RECENT_LIST_LIMIT;
+      const recentHiddenCount = recentList && !keyword ? Math.max(0, rows.length - recentLimit) : 0;
       if (recentHiddenCount) rows.splice(recentLimit);
+      const waitingRows = rows.filter((row) => row.status === WorkOrderStatus.WAITING_MATERIAL);
+      const showPriorityGroups = false;
 
-      // 等待材料的单收成一组挂在列表最后（2026-09-07 Mike：折叠成一行文字，要看再展开）：
-      // 它们眼下没活可干，散在中间只会把「先接哪一单」的顺序搅乱
-      const waitingRows = rows.filter((row) => row.inWaitingGroup);
-      if (waitingRows.length) {
-        const mainRows = rows.filter((row) => !row.inWaitingGroup);
-        rows.length = 0;
-        rows.push(...mainRows, ...waitingRows);
-        waitingRows[0].waitingGroupStart = true;
-      }
-
-      // 「紧急 / 普通」分组标题只在「先接哪一单」的池子里画；「我修的」已在自己手上，不参与；
-      // 等待材料那一组有自己的标题行，不参与
-      const showPriorityGroups =
-        mainTab === 'pool' && filter.key !== 'mine' && !dispatcher;
-      if (showPriorityGroups) {
-        rows.forEach((row, index) => {
-          if (row.inWaitingGroup) {
-            row.groupStart = false;
-            return;
-          }
-          const previous = rows[index - 1];
-          row.groupStart = index === 0 || !!previous?.urgent !== !!row.urgent;
-          row.groupLabel = row.urgent ? '紧急工单 · 先处理' : '普通工单';
-        });
-      }
-
+      const listLimit = filter.scope === 'all' && !filter.status ? 300 : PAGE_CAP;
       this.setData({
         dispatcher,
+        sortMode,
+        sortIndex: workOrderSortIndex(sortMode),
+        listLimit,
         screenTitle:
           dispatcher
             ? '派单台'
@@ -522,18 +505,6 @@ Page({
         mainTab,
         filters,
         filterIndex,
-        // 页头那句话说的是「这一屏在办什么事」
-        leadText:
-          mainTab === 'reported'
-            // 翻到具体某一档就报档名，和工单池同一个做法：页头那个数说的是「眼前这批」
-            ? (filter.key === 'all' ? '我报的' : filter.label)
-            : mainTab === 'done'
-              ? '已完结'
-              : filter.key === (dispatcher ? 'pool' : 'all')
-                ? dispatcher
-                  ? '待派单'
-                  : '待接单'
-                : filter.label,
         list: this.applyMetric(rows),
         /* 页头那个红数字：压了 3 天以上的（stayTone 的 danger 档）。只在「待接 / 待派」这一档算 ——
            已完结的单再标「压了 3 天」是翻旧账，我报的那摞也不该用这个口径催自己。
@@ -543,9 +514,9 @@ Page({
         urgentCount: rows.filter((row) => row.urgent).length,
         normalCount: rows.filter((row) => !row.urgent).length,
         showPriorityGroups,
-        waitingCount: rows.filter((row) => row.inWaitingGroup).length,
+        waitingCount: waitingRows.length,
         loaded: true,
-        capped: rows.length >= PAGE_CAP,
+        capped: raw.length >= listLimit,
         recentHiddenCount,
         recentLimit,
         /* 空态要说清「空在哪一层」：搜的没有 / 这一档没有 / 真的没活。
@@ -592,9 +563,26 @@ Page({
         mainTab === 'pool' && !keyword && filter.key === (dispatcher ? 'pool' : 'all');
       if (isDefaultView) setTabBadge(this, dispatcher ? 'dispatch' : 'pool', rows.length);
     } catch (e: any) {
-      wx.showToast({ icon: 'none', title: e?.message || '加载失败' });
+      if (version === this.loadVersion) wx.showToast({ icon: 'none', title: e?.message || '加载失败' });
     } finally {
-      this.setData({ loading: false });
+      if (version === this.loadVersion) this.setData({ loading: false });
+    }
+  },
+
+  async onPickSort(e: WechatMiniprogram.PickerChange) {
+    if (this.data.loading || this.data.mainTab !== 'pool') return;
+    const value = e?.detail?.value;
+    if (typeof value !== 'number' && (typeof value !== 'string' || !/^\d+$/.test(value))) return;
+    const index = Number(value);
+    const option = Number.isInteger(index) ? WORK_ORDER_SORT_OPTIONS[index] : undefined;
+    if (!option || option.value === this.data.sortMode) return;
+    const page = this.data.dispatcher ? 'dispatch' : 'pool';
+    try {
+      const session = await getSession(this);
+      saveWorkOrderSort(session.me, page, option.value);
+      await this.load(false, { value: option.value, identity: session.me ? `${session.me.tenantId}.${session.me.id}` : '', page });
+    } catch (e: any) {
+      wx.showToast({ icon: 'none', title: e?.message || '排序失败，请重试' });
     }
   },
 

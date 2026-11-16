@@ -2,6 +2,7 @@ import { repairs } from '@pms/api-client';
 import { buildTimeline, statusLabel } from '@pms/miniapp-ui';
 import {
   formatDateTimeCn,
+  isVideoUrl,
   REPAIR_TYPE_LABELS,
   WorkOrderStatus,
   type WorkOrderDetail,
@@ -21,6 +22,8 @@ interface PageData {
   createdAtText: string;
   currentStatusLabel: string;
   timeline: TimelineRow[];
+  resultPhotos: string[];
+  resultVideos: string[];
   canReview: boolean;
   canCancel: boolean;
   canUrge: boolean;
@@ -51,6 +54,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     createdAtText: '',
     currentStatusLabel: '',
     timeline: [],
+    resultPhotos: [],
+    resultVideos: [],
     canReview: false,
     canCancel: false,
     canUrge: false,
@@ -75,6 +80,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       };
       this.setData({
         detail,
+        resultPhotos: (detail.workOrder.resultAttachments || []).filter((url) => !isVideoUrl(url)),
+        resultVideos: (detail.workOrder.resultAttachments || []).filter((url) => isVideoUrl(url)),
         // 中文类型名以后端为准，租户自建的类型端上认不出（会显示成 menjing 这种编码）
         typeLabel:
           detail.request?.repairTypeLabel ||
@@ -97,7 +104,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   },
 
   onPreviewImage(e: WechatMiniprogram.BaseEvent) {
-    const urls = (e.currentTarget.dataset.urls as string[] | undefined) || this.data.detail?.request?.attachments || [];
+    const urls = ((e.currentTarget.dataset.urls as string[] | undefined) || this.data.detail?.request?.attachments || []).filter((url) => !isVideoUrl(url));
     if (!urls.length) return;
     wx.previewImage({ current: e.currentTarget.dataset.url, urls });
   },

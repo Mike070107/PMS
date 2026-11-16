@@ -27,6 +27,24 @@
       <view wx:if="{{canViewStock}}" class="tab {{tab === 'purchase' ? 'tab--on' : ''}}" data-tab="purchase" bindtap="onSwitchTab">采购申请</view>
     </view>
 
+    <view wx:if="{{canViewStock}}" class="card">
+      <button class="btn btn--outline btn--sm" size="mini" bindtap="onToggleReceipts">{{receiptsOpen ? '收起入库记录' : '入库记录 / 入错仓撤销'}}</button>
+      <block wx:if="{{receiptsOpen}}">
+        <view class="muted mt-sm">最近100张可见入库单；仅未耗用的一般入库可整单冲正，撤销后重新选仓入库。采购单请走采购纠错流程。</view>
+        <view wx:if="{{receiptsLoading}}" class="muted mt-sm">加载中…</view>
+        <view wx:if="{{receiptsError}}" class="field-error">{{receiptsError}}</view>
+        <view wx:if="{{!receiptsLoading && !receiptsError && !receipts.length}}" class="muted mt-sm">暂无可见入库记录</view>
+        <view wx:for="{{receipts}}" wx:key="id" class="receipt-record">
+          <view>{{item.receiptNo}} · {{item.reversed ? '已撤销' : '已入库'}}</view>
+          <view>{{item.warehouseName}} · {{item.itemsText}}</view>
+          <view class="muted">{{item.createdAtText}} · {{item.sourceText || '采购单入库'}}</view>
+          <view wx:if="{{item.reversed}}" class="muted">{{item.reversedAtText}} · {{item.reversalReason}} · 操作人编号 {{item.reversedBy}}</view>
+          <view wx:if="{{!item.reversalSupported}}" class="muted">当前API未提供安全撤销能力，请联系管理员升级；未更改库存。</view>
+          <button wx:if="{{canEdit && item.reversalSupported && item.receiptType === 'general' && !item.reversed}}" class="btn btn--outline btn--sm receipt-record__reverse" size="mini" data-id="{{item.id}}" bindtap="onReverseReceipt" loading="{{reversingReceiptId === item.id}}" disabled="{{reversingReceiptId > 0}}">撤销整单（保留流水）</button>
+        </view>
+      </block>
+    </view>
+
     <!-- 库存默认仅显示有货；取消勾选可查看零库存材料 -->
     <block wx:if="{{tab === 'stock'}}">
       <view class="inventory-overview">

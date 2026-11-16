@@ -3,6 +3,7 @@ import { Fragment, useEffect, useState } from 'react';
 import dayjs from 'dayjs';
 import { request } from '@pms/api-client';
 import { logObjectLabel, safeLogTechnical, type LogPresentation } from '@/lib/logs-presentation';
+import { usagePageLabel } from '@/lib/page-labels';
 import Icon from '@/components/Icon';
 import type { IconName } from '@/components/Icon';
 import { Loading, Sheet, toast } from '@/components/ui';
@@ -274,7 +275,7 @@ type UsageSource = { key: UsageSourceKey; label: string; views: number; users: n
 type UsageDay = { date: string; count: number; bySource?: Partial<Record<UsageSourceKey, number>> };
 type LoginStats = { total: number; success: number; failed: number; uniqueUsers: number };
 type UsagePageRow = { name: string; path?: string; views: number; users: number; share: number };
-type UsageUserRow = { name: string; userId?: string; views: number; pages: number; topPage: string };
+type UsageUserRow = { name: string; userId?: string; views: number; pages: number; topPage: string; topPagePath?: string };
 type UsageData = { totalViews: number; uniqueUsers: number; days: UsageDay[]; topPages: UsagePageRow[]; topUsers: UsageUserRow[]; bySource?: UsageSource[]; logins?: LoginStats };
 type LoginRow = { id: string; time: string; user: string; method: string; status: 'success' | 'failed' | 'unknown'; reason: string; ip: string };
 type LoginData = { rows: LoginRow[]; total: number };
@@ -339,14 +340,16 @@ function normalizeUsage(raw: any): UsageData {
     const views = numberValue(row?.views ?? row?.count ?? row?.visits);
     const shareRaw = Number(row?.share ?? row?.ratio);
     const share = Number.isFinite(shareRaw) && shareRaw > 0 ? (shareRaw <= 1 ? shareRaw * 100 : shareRaw) : (totalViews ? (views / totalViews) * 100 : 0);
-    return { name: textValue(row?.name, row?.pageName, row?.path, row?.pageKey) || '未命名页面', path: textValue(row?.path, row?.pagePath, row?.pageKey, row?.name) || undefined, views, users: numberValue(row?.uniqueUsers ?? row?.users ?? row?.userCount), share: Math.round(share * 10) / 10 };
+    const path = textValue(row?.path, row?.pagePath, row?.pageKey, row?.name);
+    return { name: usagePageLabel(path, textValue(row?.name, row?.pageName)), path: path || undefined, views, users: numberValue(row?.uniqueUsers ?? row?.users ?? row?.userCount), share: Math.round(share * 10) / 10 };
   }) : [];
   const topUsers = Array.isArray(raw?.topUsers) ? raw.topUsers.map((row: any) => ({
     name: textValue(row?.name, row?.userName, row?.user, row?.loginAccount) || (row?.userId ? '用户 #' + row.userId : '未知用户'),
     userId: textValue(row?.userId, row?.id) || undefined,
     views: numberValue(row?.views ?? row?.count ?? row?.visits),
     pages: numberValue(row?.pages ?? row?.pageCount ?? row?.uniquePages),
-    topPage: textValue(row?.topPage, row?.topPageName, row?.page, row?.mostVisitedPage) || '—',
+    topPage: usagePageLabel(textValue(row?.topPage, row?.page, row?.mostVisitedPage), textValue(row?.topPageName, row?.topPage)),
+    topPagePath: textValue(row?.topPage, row?.page, row?.mostVisitedPage) || undefined,
   })) : [];
   return { totalViews, uniqueUsers, days, topPages, topUsers, bySource, logins };
 }
@@ -538,7 +541,7 @@ function UsagePanel({ scopeKey }: { scopeKey: string }) {
                       <tbody>
                         {usage.topPages.map((row, index) => (
                           <tr key={row.name + index}>
-                            <td>{row.name}</td>
+                            <td title={row.path}>{row.name}</td>
                             <td className="usage-num"><button type="button" className="usage-link" title="查看该页面的访问明细" onClick={() => setDrill({ kind: 'page-events', title: '页面访问明细', subtitle: `时间窗 ${from} 至 ${to} · ${row.name}`, path: row.path || row.name })}>{row.views.toLocaleString()}</button></td>
                             <td className="usage-num"><button type="button" className="usage-link" title="查看该页面的用户列表" onClick={() => setDrill({ kind: 'page-users', title: '页面用户列表', subtitle: `时间窗 ${from} 至 ${to} · ${row.name}`, path: row.path || row.name })}>{row.users.toLocaleString()}</button></td>
                             <td><div className="usage-share"><i style={{ width: `${Math.min(100, Math.max(0, row.share))}%` }} /><span>{row.share}%</span></div></td>
@@ -561,7 +564,7 @@ function UsagePanel({ scopeKey }: { scopeKey: string }) {
                             <td>{row.name}</td>
                             <td className="usage-num"><button type="button" className="usage-link" title="查看该用户的访问明细" onClick={() => setDrill({ kind: 'user-events', title: '用户访问明细', subtitle: `时间窗 ${from} 至 ${to} · ${row.name}`, userId: row.userId })}>{row.views.toLocaleString()}</button></td>
                             <td className="usage-num"><button type="button" className="usage-link" title="查看该用户访问过的页面" onClick={() => setDrill({ kind: 'user-pages', title: '用户访问页面', subtitle: `时间窗 ${from} 至 ${to} · ${row.name}`, userId: row.userId })}>{row.pages.toLocaleString()}</button></td>
-                            <td>{row.topPage}</td>
+                            <td title={row.topPagePath}>{row.topPage}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -916,7 +919,7 @@ const DRILL_SOURCES: Array<{ key: string; label: string }> = [
 const drillGroup = (kind: DrillKind) => kind === 'page-users' ? 'users' : kind === 'user-pages' ? 'pages' : 'events';
 const drillRow = (kind: DrillKind, row: any) => {
   const time = textValue(row?.time, row?.createdAt, row?.at, row?.visitedAt);
-  const page = textValue(row?.page, row?.path, row?.pageName, row?.name) || '—';
+  const page = usagePageLabel(textValue(row?.path, row?.page), textValue(row?.pageName, row?.name, row?.page));
   const user = textValue(row?.userName, row?.name, row?.user, row?.account) || '—';
   const ip = textValue(row?.ip, row?.ipAddress, row?.clientIp) || '—';
   const count = numberValue(row?.count ?? row?.views ?? row?.visits);
@@ -975,7 +978,7 @@ function UsageDrilldown({ target, from, to, onClose }: { target: DrillTarget; fr
                   const meta = sourceMeta(row?.source);
                   return (
                     <tr key={index}>
-                      {drillRow(target.kind, row).map((value, columnIndex) => <td key={columnIndex}>{value}</td>)}
+                      {drillRow(target.kind, row).map((value, columnIndex) => <td key={columnIndex} title={(target.kind === 'user-pages' && columnIndex === 0) || (target.kind === 'user-events' && columnIndex === 1) ? textValue(row?.path, row?.page) : undefined}>{value}</td>)}
                       <td><span className={'usage-source-tag ' + meta.tone}>{meta.label}</span></td>
                     </tr>
                   );

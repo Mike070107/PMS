@@ -8,13 +8,12 @@
       <view class="work-hero__eyebrow">邻修现场工作台</view>
       <view class="work-hero__title">{{screenTitle}}</view>
     </view>
-    <view class="work-hero__right">
-      <view class="work-hero__count">{{list.length}} {{leadText}}</view>
-      <!-- 指导层开关：说明文字默认收起，点亮才显示，见 utils/guide.ts -->
-      <view class="head-help {{guide ? 'head-help--on' : ''}}" bindtap="onToggleGuide">?</view>
+    <view wx:if="{{mainTab === 'pool'}}" class="work-hero__right">
+      <picker mode="selector" range="{{sortLabels}}" value="{{sortIndex}}" bindchange="onPickSort" disabled="{{loading}}">
+        <view class="order-sort-control {{loading ? 'order-sort-control--disabled' : ''}}">排序：{{sortLabels[sortIndex]}} ▾</view>
+      </picker>
     </view>
   </view>
-  <view wx:if="{{guide}}" class="work-hero__hint">{{dispatcher ? '把待办准确派给合适的维修人员' : '这里只列跟你有关的：按报修类型推给你的、你负责那一类的，以及还没定人的单。紧急优先；同组按报修时间从早到晚'}}</view>
   <!-- 三个数字可点：点了就在这一屏里只看那一类，再点一次取消（见 pool.ts onTapMetric） -->
   <view class="work-metrics">
     <view
@@ -131,20 +130,7 @@
     wx:for="{{list}}"
     wx:key="id"
   >
-    <view wx:if="{{showPriorityGroups && item.groupStart}}" class="priority-group {{item.urgent ? 'priority-group--urgent' : ''}}">
-      <view class="priority-group__title">{{item.groupLabel}}</view>
-      <view wx:if="{{guide}}" class="priority-group__hint">紧急先处理；其余按报修时间，越早报的越靠前</view>
-    </view>
-    <!-- 等待材料收成一组（2026-09-07 Mike）：一行文字 + 张数，点开才铺出卡片；这些单眼下没活可干 -->
-    <view wx:if="{{item.waitingGroupStart}}" class="waiting-group {{waitingExpanded ? 'waiting-group--open' : ''}}" bindtap="onToggleWaitingGroup">
-      <view class="waiting-group__title">
-        <text>等待材料 {{waitingCount}} 张</text>
-        <text class="waiting-group__sub">到料后再接回</text>
-      </view>
-      <text class="waiting-group__toggle">{{waitingExpanded ? '收起 ⌃' : '展开 ⌄'}}</text>
-    </view>
     <view
-    wx:if="{{!item.inWaitingGroup || waitingExpanded}}"
     id="pool-order-{{item.id}}"
     class="order-slot {{collectingId === item.id ? 'order-slot--collecting' : ''}} {{closingId === item.id ? 'order-slot--closing' : ''}} {{settling && index > collectingIndex ? 'order-slot--following' : ''}}"
     style="{{collectingId === item.id || closingId === item.id ? 'height:' + collectingHeight + 'px' : ''}}"
@@ -194,7 +180,7 @@
   </view>
   <!-- 服务端一次最多给 100 条：到顶了必须说明，否则看着就是「搜索漏了单」 -->
   <view wx:elif="{{capped}}" class="muted center cap-tip">
-    只显示最近 100 条，用上面的搜索或状态筛选缩小范围
+    {{mainTab === 'pool' ? '只显示当前排序前' : '只显示最近'}} {{listLimit}} 条，用上面的搜索或状态筛选缩小范围
   </view>
 </view>
 
@@ -218,12 +204,12 @@
   </view>
 
   <scroll-view class="sheet__body" scroll-y>
-    <view class="label">工单类型<text wx:if="{{guide}}" class="label__opt">先定类型，再选该类型维修工</text></view>
+    <view class="label">工单类型</view>
     <picker mode="selector" range="{{repairTypeNames}}" value="{{repairTypeIndex}}" bindchange="onPickRepairType">
       <view class="picker">{{repairTypeNames[repairTypeIndex] || '请选择工单类型'}}</view>
     </picker>
 
-    <view class="label mt">选择维修工<text wx:if="{{guide}}" class="label__opt">只显示该类型可接单人员，手上单少的排前面</text></view>
+    <view class="label mt">选择维修工</view>
 
     <view wx:if="{{techLoading}}" class="center muted">加载中…</view>
     <block wx:elif="{{techError}}">
@@ -263,7 +249,7 @@
     <view class="label mt">派单备注<text class="label__opt">选填，维修工能看到</text></view>
     <button wx:if="{{hasSpeech}}" class="assign-speech {{assignRecording || assignPressing ? 'assign-speech--on' : ''}}" bindtouchstart="onAssignSpeechStart" bindtouchend="onAssignSpeechEnd" bindtouchcancel="onAssignSpeechEnd" catchtouchmove="onHoldMove">
       <view class="assign-speech__mic"></view>
-      <view><view class="assign-speech__title">{{assignRecording ? '松开结束' : (assignPressing ? '正在准备…' : '按住说派单备注')}}</view><view wx:if="{{guide}}" class="assign-speech__desc">说完自动变成文字，还可以修改</view></view>
+      <view><view class="assign-speech__title">{{assignRecording ? '松开结束' : (assignPressing ? '正在准备…' : '按住说派单备注')}}</view></view>
     </button>
     <view wx:if="{{assignRecording}}" class="assign-speech__listening">正在听：{{assignSpeechPartial || '请继续说…'}}</view>
     <textarea

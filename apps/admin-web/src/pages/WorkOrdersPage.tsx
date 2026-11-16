@@ -2185,47 +2185,50 @@ function RepairPhotoCell({ photos, total }: { photos: string[]; total: number })
 }
 
 function AttachmentPreview({ urls }: { urls: string[] }) {
+  const [video, setVideo] = useState<string | null>(null);
+  let videoIndex = 0;
   if (!urls.length) return <Text type="secondary">未上传</Text>;
-  return (
-    <Space size={[12, 12]} wrap>
-      <Image.PreviewGroup>
-        {urls.map((url) => {
-          if (isVideoUrl(url)) {
-            return (
-              <div key={url} style={{ width: 180 }}>
-                <video
-                  src={url}
-                  controls
-                  style={{ width: '100%', height: 120, borderRadius: 8, background: '#000' }}
-                />
-                <Button
-                  type="link"
-                  size="small"
-                  href={url}
-                  target="_blank"
-                  icon={<VideoCameraOutlined />}
-                  style={{ paddingInline: 0 }}
-                >
-                  打开视频
-                </Button>
-              </div>
-            );
-          }
-          return (
-            <Image
-              key={url}
-              src={url}
-              width={120}
-              height={120}
-              style={{ objectFit: 'cover', borderRadius: 8 }}
-              preview={{ src: url }}
-              fallback=""
-            />
-          );
-        })}
-      </Image.PreviewGroup>
-    </Space>
-  );
+  return <>
+    <Image.PreviewGroup>
+      <Space size={[12, 12]} wrap style={{ maxWidth: '100%' }}>
+        {urls.map((url, i) => isVideoUrl(url)
+          ? <Button key={`${url}-${i}`} aria-label={`预览视频 ${++videoIndex}`} icon={<VideoCameraOutlined />} onClick={() => setVideo(url)} style={{ width: 120, height: 120, whiteSpace: 'normal' }}>视频 · 本页播放</Button>
+          : <AttachmentPhoto key={`${url}-${i}`} url={url} />)}
+      </Space>
+    </Image.PreviewGroup>
+    <Modal title="视频预览" open={video !== null} onCancel={() => setVideo(null)} footer={null} destroyOnHidden width={960} style={{ top: 24, maxWidth: 'calc(100vw - 32px)' }}>
+      {video ? <AttachmentVideo key={video} url={video} /> : null}
+    </Modal>
+  </>;
+}
+
+function AttachmentPhoto({ url }: { url: string }) {
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  return <div style={{ maxWidth: '100%' }}>
+    <Image key={attempt} src={url} width={120} height={120} alt="工单附件照片" style={{ objectFit: 'cover', borderRadius: 8 }} preview={{ src: url }} fallback="" onError={() => setFailed(true)} onLoad={() => setFailed(false)} />
+    {failed ? <div role="alert"><Text type="secondary">照片加载失败</Text><Button onClick={() => { setFailed(false); setAttempt((n) => n + 1); }} style={{ minHeight: 44 }}>重试照片</Button></div> : null}
+  </div>;
+}
+
+function AttachmentVideo({ url }: { url: string }) {
+  const player = useRef<HTMLVideoElement>(null);
+  const focusTarget = useRef<HTMLDivElement>(null);
+  const [failed, setFailed] = useState(false);
+  const [waiting, setWaiting] = useState(true);
+  useEffect(() => {
+    const media = player.current;
+    return () => { media?.pause(); media?.removeAttribute('src'); media?.load(); };
+  }, []);
+  // Retrying removes the focused error button; keep Escape/Tab inside the modal.
+  useEffect(() => { focusTarget.current?.focus({ preventScroll: true }); }, [failed]);
+  return <div ref={focusTarget} tabIndex={-1}>
+    {waiting && !failed ? <div role="status"><Spin size="small" /> 正在加载视频…</div> : null}
+    <video ref={player} data-work-order-player src={url} controls playsInline preload="metadata" hidden={failed}
+      onLoadedData={() => setWaiting(false)} onCanPlay={() => setWaiting(false)} onPlaying={() => setWaiting(false)} onWaiting={() => setWaiting(true)} onError={() => { setFailed(true); setWaiting(false); }}
+      style={{ display: failed ? 'none' : 'block', width: '100%', maxHeight: '65dvh', background: '#000', borderRadius: 8 }} />
+    {failed ? <Alert type="error" showIcon message="视频加载失败" description="请检查网络或视频格式后重试" action={<Button aria-label="重试" onClick={() => { setFailed(false); setWaiting(true); player.current?.load(); }} style={{ minHeight: 44 }}>重试</Button>} /> : null}
+  </div>;
 }
 
 function CompactRepairRecord({ detail }: { detail: WorkOrderDetail }) {

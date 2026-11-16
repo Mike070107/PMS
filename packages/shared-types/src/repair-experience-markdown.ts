@@ -109,8 +109,6 @@ function escapeHtml(value: string): string {
 
 /** 把旧版结构化内容转换成新富文本编辑器可直接继续编辑的安全 HTML。 */
 export function repairExperienceBlocksToDocumentHtml(blocks: RepairExperienceBlock[]): string {
-  const documentBlock = blocks.find((block) => block.type === 'document' && block.html);
-  if (documentBlock?.html) return documentBlock.html;
   let orderedOpen = false;
   let bulletOpen = false;
   const output: string[] = [];
@@ -133,7 +131,8 @@ export function repairExperienceBlocksToDocumentHtml(blocks: RepairExperienceBlo
       continue;
     }
     closeLists();
-    if (block.type === 'heading') output.push(`<h2>${inline}</h2>`);
+    if (block.type === 'document') output.push(block.html || '');
+    else if (block.type === 'heading') output.push(`<h2>${inline}</h2>`);
     else if (block.type === 'paragraph') output.push(`<p>${inline}</p>`);
     else if (block.type === 'quote') output.push(`<blockquote>${inline}</blockquote>`);
     else if (block.type === 'warning') output.push(`<aside>${inline}</aside>`);
@@ -148,7 +147,7 @@ export function repairExperienceBlocksToDocumentHtml(blocks: RepairExperienceBlo
 /** 用于搜索、卡片摘要与空内容判断；不把 HTML 标签暴露给用户。 */
 export function repairExperienceDocumentPlainText(html: string): string {
   return String(html || '')
-    .replace(/<(br|\/p|\/div|\/h[1-6]|\/li|\/blockquote|\/aside|\/figcaption)>/gi, '\n')
+    .replace(/<(br\s*\/?|\/p|\/div|\/h[1-6]|\/li|\/blockquote|\/aside|\/figcaption|\/td|\/th|\/tr|\/table)>/gi, '\n')
     .replace(/<[^>]*>/g, '')
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')

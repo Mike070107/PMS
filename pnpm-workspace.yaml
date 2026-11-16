@@ -20,6 +20,7 @@ allowBuilds:
   '@nestjs/core': true
   bcrypt: false
   esbuild: true
+  sharp: true
 supportedArchitectures:
   os:
     - current

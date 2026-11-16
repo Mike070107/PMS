@@ -1,3 +1,9 @@
+/** Safe document HTML policy, mirrored by the API's experience-only sanitizer. */
+export const REPAIR_EXPERIENCE_TABLE_LIMITS = {
+  maxTables: 10, maxRows: 100, maxColumns: 20, maxSpan: 20,
+  maxExpandedCells: 2000, maxNodes: 5000, maxDepth: 50, maxHtmlLength: 120000,
+} as const;
+
 export type RepairExperienceBlockType =
   | 'heading'
   | 'paragraph'
@@ -17,7 +23,10 @@ export interface RepairExperienceBlock {
   url?: string;
   caption?: string;
   checked?: boolean;
-  /** 服务端清洗后的富文本文档 HTML。新编辑器使用；旧内容块继续兼容。 */
+  /** 服务端清洗后的富文本文档HTML。表格保留table/thead/tbody/tfoot/tr/th/td，
+   * th/td仅支持1..20的rowspan/colspan；不保留样式/列宽，不支持嵌套表。
+   * 超出REPAIR_EXPERIENCE_TABLE_LIMITS返回400，不截断。旧内容块继续兼容。
+   */
   html?: string;
 }
 
@@ -40,6 +49,18 @@ export interface RepairExperienceNoteSummary {
   updatedByName: string;
   /** 当前用户收藏了没有；小程序列表默认只展开收藏的 */
   favorite: boolean;
+  visibility?: 'private' | 'published' | 'legacy';
+  communityIds?: number[];
+  communityNames?: string[];
+  repairTypes?: string[];
+  repairTypeLabels?: string[];
+  allowEdit?: boolean;
+  allowDelete?: boolean;
+  isOwner?: boolean;
+  canManage?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
+  createdByName?: string;
 }
 
 export interface RepairExperienceNoteView extends RepairExperienceNoteSummary {
@@ -64,7 +85,9 @@ export interface RepairExperienceNotebookView {
 
 export interface RepairExperienceAccessView {
   canView: boolean;
+  /** 兼容旧入口，此字段代表可创建自己的文档，不代表可编辑别人的文档。 */
   canEdit: boolean;
+  canCreate?: boolean;
   notebookCount: number;
   /**
    * 一本都看不到时的原因（最常见：员工档案里还没配工种）。
@@ -74,9 +97,37 @@ export interface RepairExperienceAccessView {
 }
 
 export interface SaveRepairExperienceNoteReq {
-  officeId: number;
-  repairType: string;
+  /** 旧笔记本兼容字段；新私有文档不需要。 */
+  officeId?: number;
+  repairType?: string;
+  visibility?: 'private' | 'published';
+  communityIds?: number[];
+  repairTypes?: string[];
+  allowEdit?: boolean;
+  allowDelete?: boolean;
   title: string;
   blocks: RepairExperienceBlock[];
   revision?: number;
+}
+
+export interface RepairExperienceLibraryQuery {
+  q?: string;
+  view?: 'all' | 'mine' | 'private' | 'favorites';
+  communityId?: number;
+  repairType?: string;
+  page?: number;
+  pageSize?: number;
+}
+export interface RepairExperienceLibraryView {
+  items: RepairExperienceNoteSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+export interface RepairExperienceSharingOptions {
+  canCreate: boolean;
+  communities: Array<{
+    id: number; name: string; officeId: number; officeName: string;
+    repairTypes: Array<{ value: string; label: string }>;
+  }>;
 }

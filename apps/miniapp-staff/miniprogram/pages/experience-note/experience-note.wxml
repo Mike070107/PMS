@@ -1,53 +1,52 @@
 <view class="container note-page">
-  <view class="note-scope">
-    <view class="note-scope__text"><text>{{officeName || '所属管理处'}}</text><text class="note-scope__dot">·</text><text>{{repairTypeLabel || repairType}}</text></view>
-    <!-- 收藏：列表页默认只摊开收藏过的帖子 -->
-    <view wx:if="{{noteId && !editing}}" class="star {{favorite ? 'star--on' : ''}}" bindtap="onToggleFavorite"></view>
-  </view>
-
-  <block wx:if="{{editing}}">
-    <view class="card editor-card">
-      <view class="field-label">笔记标题</view>
-      <input class="title-input" maxlength="160" placeholder="例如：单元门门禁无响应的排查方法" value="{{title}}" bindinput="onTitleInput" />
-    </view>
-
-    <view class="document-editor">
-      <scroll-view class="document-toolbar" scroll-x enable-flex>
-        <view class="document-toolbar__inner">
-          <button data-name="bold" bindtap="onFormat"><text class="format-bold">B</text></button>
-          <button data-name="italic" bindtap="onFormat"><text class="format-italic">I</text></button>
-          <button data-name="header" data-value="H2" bindtap="onFormat">标题</button>
-          <button data-name="list" data-value="bullet" bindtap="onFormat">项目符号</button>
-          <button data-name="list" data-value="ordered" bindtap="onFormat">编号</button>
-          <button data-name="blockquote" bindtap="onFormat">引用</button>
-          <button bindtap="onInsertDivider">分隔线</button>
-          <button bindtap="onAddImage">图片</button>
-        </view>
-      </scroll-view>
-      <editor id="experienceEditor" class="document-editor__body" placeholder="输入正文，选中文字后可设置标题、加粗、列表或引用" show-img-size show-img-toolbar show-img-resize bindready="onEditorReady" bindinput="onDocumentInput"></editor>
-    </view>
-    <button wx:if="{{hasSpeech}}" class="voice-btn {{recording || pressing ? 'voice-btn--on' : ''}}" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord" catchtouchmove="onHoldMove">{{recording ? '松开结束' : (pressing ? '正在准备…' : '按住说话，插入到文档')}}</button>
-    <button class="save-btn" loading="{{saving}}" disabled="{{saving}}" bindtap="onSave">保存维修经验</button>
-  </block>
-
-  <block wx:else>
-    <view class="reader-title">{{title}}</view>
-    <view wx:for="{{readerBlocks}}" wx:key="id" class="reader-block reader-block--{{item.type}}">
-      <rich-text wx:if="{{item.type === 'document'}}" class="reader-document" nodes="{{item.html}}"></rich-text>
-      <block wx:elif="{{item.type === 'image'}}">
-        <image class="reader-image" src="{{item.url}}" mode="widthFix" data-url="{{item.url}}" bindtap="onPreview" />
-        <view wx:if="{{item.caption}}" class="reader-caption">{{item.caption}}</view>
-      </block>
-      <view wx:elif="{{item.type === 'divider'}}" class="reader-divider"></view>
-      <view wx:else class="reader-line">
-        <text wx:if="{{item.type === 'bullet'}}" class="reader-marker">•</text>
-        <text wx:if="{{item.type === 'ordered'}}" class="reader-marker">{{item.order}}.</text>
-        <view wx:if="{{item.type === 'checklist'}}" class="reader-check {{item.checked ? 'is-checked' : ''}}"></view>
-        <rich-text class="reader-rich" nodes="{{item.html}}"></rich-text>
+  <view wx:if="{{loading}}" class="note-state" aria-role="status">正在加载文档…</view>
+  <view wx:if="{{error}}" class="inline-error">{{error}}<button wx:if="{{!loaded}}" class="quiet-button" bindtap="onReload">重试</button></view>
+  <block wx:if="{{loaded}}">
+    <view class="note-head"><view class="note-head__meta"><text>{{scopeText}}</text><text wx:if="{{dirty}}"> · 未保存</text></view><view class="note-head__actions"><button wx:if="{{noteId}}" class="quiet-button" bindtap="onToggleFavorite">{{favorite ? '已收藏' : '收藏'}}</button><button wx:if="{{canManage && noteId}}" class="quiet-button share-entry" disabled="{{uploading || saving}}" bindtap="onOpenSharing">分享设置</button></view></view>
+    <block wx:if="{{editing && !hasTable}}">
+      <input class="title-input" aria-label="文档标题" maxlength="160" placeholder="无标题文档" value="{{title}}" bindinput="onTitleInput"/>
+      <view class="document-editor">
+        <scroll-view class="document-toolbar" scroll-x enable-flex><view class="document-toolbar__inner">
+          <button data-name="bold" bindtap="onFormat" aria-label="粗体"><text class="format-bold">B</text></button><button data-name="italic" bindtap="onFormat" aria-label="斜体"><text class="format-italic">I</text></button><button data-name="strike" bindtap="onFormat">删除线</button><button data-name="header" data-value="H2" bindtap="onFormat">标题</button>
+          <button data-name="list" data-value="bullet" bindtap="onFormat">列表</button><button data-name="list" data-value="ordered" bindtap="onFormat">编号</button><button data-name="list" data-value="check" bindtap="onFormat">清单</button><button data-name="blockquote" bindtap="onFormat">引用</button><button bindtap="onInsertDivider">分隔线</button>
+          <button disabled="{{uploading || saving}}" bindtap="onAddImage">{{uploading ? '上传中…' : '图片'}}</button><button bindtap="onUndo">撤销</button><button bindtap="onRedo">重做</button>
+        </view></scroll-view>
+        <editor id="experienceEditor" class="document-editor__body" placeholder="写下做法与注意事项…" show-img-size show-img-toolbar show-img-resize bindready="onEditorReady" bindinput="onDocumentInput"></editor>
       </view>
-    </view>
-    <view class="reader-actions">
-      <button wx:if="{{canEdit}}" class="edit-btn" bindtap="onEdit">编辑这篇经验</button>
-    </view>
+      <button wx:if="{{hasSpeech}}" class="voice-btn {{recording || pressing ? 'voice-btn--on' : ''}}" disabled="{{saving || uploading}}" bindtouchstart="onStartRecord" bindtouchend="onStopRecord" bindtouchcancel="onStopRecord" catchtouchmove="onHoldMove">{{recording ? '松开结束' : (pressing ? '正在准备…' : '按住说话')}}</button>
+      <view class="save-bar"><text class="save-status">{{uploading ? '图片上传中，请稍候' : (dirty ? '内容尚未保存' : (noteId ? '已保存 · 分享范围未变' : '新文档 · 仅我可见'))}}</text><button class="save-btn" loading="{{saving}}" disabled="{{saving || uploading || sharingSaving}}" bindtap="onSave">保存</button></view>
+    </block>
+    <block wx:else>
+      <view class="reader-title">{{title}}</view><view wx:if="{{authorText}}" class="reader-author">{{authorText}}</view>
+      <view wx:if="{{hasTable}}" class="table-notice"><text wx:if="{{canEdit}}">含表格，请在Web编辑。 </text><text>左右滑动查看表格。</text></view>
+      <view wx:for="{{readerBlocks}}" wx:key="id" class="reader-block reader-block--{{item.type}}">
+        <scroll-view wx:if="{{item.type === 'document' && item.hasTable}}" class="reader-table-scroll" scroll-x enhanced show-scrollbar><rich-text class="reader-document reader-document--table" style="min-width:{{item.tableMinWidth}}" nodes="{{item.html}}"></rich-text></scroll-view>
+        <rich-text wx:elif="{{item.type === 'document'}}" class="reader-document" nodes="{{item.html}}"></rich-text>
+        <block wx:elif="{{item.type === 'image'}}"><image class="reader-image" src="{{item.url}}" mode="widthFix" data-url="{{item.url}}" bindtap="onPreview" binderror="onImageError"/><view wx:if="{{item.caption}}" class="reader-caption">{{item.caption}}</view></block>
+        <view wx:elif="{{item.type === 'divider'}}" class="reader-divider"></view>
+        <view wx:else class="reader-line"><text wx:if="{{item.type === 'bullet'}}" class="reader-marker">•</text><text wx:if="{{item.type === 'ordered'}}" class="reader-marker">{{item.order}}.</text><view wx:if="{{item.type === 'checklist'}}" class="reader-check {{item.checked ? 'is-checked' : ''}}"></view><rich-text class="reader-rich" nodes="{{item.html}}"></rich-text></view>
+      </view>
+      <view class="reader-actions"><button wx:if="{{canEdit && !hasTable}}" class="edit-btn" bindtap="onEdit">编辑</button><button wx:if="{{canDelete}}" class="delete-btn" loading="{{deleting}}" disabled="{{deleting}}" bindtap="onDelete">删除</button></view>
+    </block>
+    <view wx:if="{{hasImages && !imageWarning}}" class="asset-tip"><text>图片使用临时访问地址</text><button class="quiet-button" bindtap="onReload">显示异常？刷新</button></view>
+    <view wx:if="{{imageWarning}}" class="image-warning">{{imageWarning}}<button class="quiet-button" bindtap="onReload">刷新文档</button></view>
   </block>
+</view>
+<view wx:if="{{sharingOpen}}" class="share-overlay" catchtap="onCloseSharing" catchtouchmove="onNoop">
+  <view class="share-sheet" catchtap="onNoop">
+    <view class="share-head"><view class="share-title">分享设置</view><button class="quiet-button" disabled="{{sharingSaving}}" bindtap="onCloseSharing">关闭</button></view>
+    <scroll-view class="share-body" scroll-y>
+      <view wx:if="{{visibility === 'legacy'}}" class="share-hint">旧版共享：未修改前保留原范围。历史公开图片无法收回，改分享前需替换为安全附件。</view>
+      <view class="visibility-options"><button class="share-choice {{shareVisibility === 'private' ? 'is-selected' : ''}}" data-value="private" bindtap="onVisibility">仅我可见</button><button class="share-choice {{shareVisibility === 'published' ? 'is-selected' : ''}}" data-value="published" bindtap="onVisibility">发布到小区</button></view>
+      <block wx:if="{{shareVisibility === 'published'}}">
+        <view class="share-label">选择小区</view><view wx:if="{{optionsError}}" class="inline-error">{{optionsError}}<button class="quiet-button" bindtap="loadOptions">重试范围</button></view>
+        <view class="share-choices"><button wx:for="{{shareCommunities}}" wx:key="id" class="share-choice {{item.checked ? 'is-selected' : ''}}" data-id="{{item.id}}" bindtap="onToggleCommunity">{{item.checked ? '✓ ' : ''}}{{item.name}}</button></view>
+        <view wx:if="{{!shareCommunities.length && optionsLoaded}}" class="share-hint">暂无可发布的小区，仍可仅自己保存。</view>
+        <block wx:if="{{shareCommunityIds.length}}"><view class="share-label">可见工种</view><view class="share-choices"><button class="share-choice {{!shareRepairTypes.length ? 'is-selected' : ''}}" bindtap="onAllTypes">不限工种</button><button wx:for="{{shareTypes}}" wx:key="value" class="share-choice {{item.checked ? 'is-selected' : ''}}" data-value="{{item.value}}" bindtap="onToggleType">{{item.checked ? '✓ ' : ''}}{{item.label}}</button></view><view class="share-hint">仅所选小区、所选工种的成员可见</view>
+        <view class="share-switch"><text>允许可见成员编辑</text><switch checked="{{shareAllowEdit}}" data-field="allowEdit" bindchange="onSharingSwitch" color="#31558a"/></view><view class="share-switch"><text>允许可见成员删除</text><switch checked="{{shareAllowDelete}}" data-field="allowDelete" bindchange="onSharingSwitch" color="#31558a"/></view></block>
+      </block>
+      <view wx:if="{{hasLegacyTable}}" class="share-hint">旧版表格格式需先转换为文档；当前保留原文并暂停修改分享。</view><view wx:if="{{dirty}}" class="share-hint">请先保存正文，再修改分享设置。</view><view wx:if="{{sharingError}}" class="inline-error">{{sharingError}}</view>
+    </scroll-view>
+    <view class="share-footer"><button class="share-save" disabled="{{sharingSaving || dirty || uploading || saving || hasLegacyTable}}" loading="{{sharingSaving}}" bindtap="onSaveSharing">保存分享设置</button></view>
+  </view>
 </view>

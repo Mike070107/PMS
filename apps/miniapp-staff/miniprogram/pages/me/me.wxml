@@ -13,7 +13,8 @@
           <view class="app-tile__name">抄表</view>
           <view class="app-tile__desc">扫码与拍照抄表</view>
         </view>
-        <view wx:if="{{canSeeMaintenance}}" class="app-tile" bindtap="onOpenMaintenance" hover-class="app-tile--hover" role="button" aria-label="养护单">
+        <view wx:if="{{canSeeMaintenance}}" class="app-tile" bindtap="onOpenMaintenance" hover-class="app-tile--hover" role="button" aria-label="养护单{{maintenanceCount ? '，待处理 ' + maintenanceCount + ' 张' : ''}}">
+          <view wx:if="{{maintenanceBadge}}" class="app-tile__todo">{{maintenanceBadge}}</view>
           <view class="app-tile__icon"><view class="maintenance-glyph"></view></view>
           <view class="app-tile__name">养护单</view>
           <view class="app-tile__desc">查看待办与签字</view>

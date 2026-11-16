@@ -256,6 +256,12 @@ Page({
     rows: [] as SkuRow[],
 
     requests: [] as RequestRow[],
+    receiptsOpen: false,
+    receiptsLoading: false,
+    receiptsError: '',
+    reversingReceiptId: 0,
+    receipts: [] as Array<inventory.GoodsReceiptView & { warehouseName: string; itemsText: string; createdAtText: string; reversedAtText: string; reversalSupported: boolean }>,
+
 
     // ---- 详情 / 编辑面板 ----
     detailOpen: false,
@@ -301,6 +307,56 @@ Page({
 
   onPageScroll(e: { scrollTop: number }) {
     this.pageScrollTop = Number(e.scrollTop) || 0;
+  },
+
+  async onToggleReceipts() {
+    this.setData({ receiptsOpen: !this.data.receiptsOpen });
+    if (this.data.receiptsOpen) await this.loadReceipts();
+  },
+
+  async loadReceipts() {
+    this.setData({ receiptsLoading: true, receiptsError: '' });
+    try {
+      const receipts = await inventory.listGoodsReceipts();
+      this.setData({ receipts: receipts.map((row) => ({
+        ...row,
+        reversalSupported: typeof row.reversed === 'boolean',
+        warehouseName: this.data.warehouses.find((w) => w.id === row.warehouseId)?.name || `仓库编号 ${row.warehouseId}`,
+        createdAtText: formatDateTimeCn(row.createdAt),
+        reversedAtText: row.reversedAt ? formatDateTimeCn(row.reversedAt) : '',
+        itemsText: row.items.map((item) => {
+          const material = this.materials.find((m) => m.id === item.materialId);
+          return `${material?.name || '材料'} ×${item.qty}${material?.unit || ''}`;
+        }).join('、'),
+      })) });
+    } catch (e: any) {
+      this.setData({ receipts: [], receiptsError: e?.message || '入库记录接口未就绪，请联系管理员。未更改库存。' });
+    } finally { this.setData({ receiptsLoading: false }); }
+  },
+
+  async onReverseReceipt(e: WechatMiniprogram.BaseEvent) {
+    if (!this.data.canEdit || this.data.reversingReceiptId) return;
+    const id = Number(e.currentTarget.dataset.id);
+    const row = this.data.receipts.find((r) => r.id === id);
+    if (!row || !row.reversalSupported || row.reversed || row.receiptType !== 'general') return;
+    this.setData({ reversingReceiptId: id });
+    try {
+      const reason = await new Promise<string | null>((resolve) => wx.showModal({
+        title: '撤销一般入库', editable: true, placeholderText: '填写撤销原因（至少2字）',
+        content: `${row.receiptNo}\n目标：${row.warehouseName}\n${row.itemsText}\n整单冲正后可重新选仓入库。已领用、调拨、盘点变动或预留占用将拒绝；不修改原单。`,
+        confirmText: '确认撤销', confirmColor: '#b42318',
+        success: (result) => resolve(result.confirm ? (result.content || '').trim() : null),
+        fail: () => resolve(null),
+      }));
+      if (reason === null) return;
+      if (reason.length < 2 || reason.length > 200) return wx.showToast({ icon: 'none', title: '原因须为2至200字' });
+      await inventory.reverseGoodsReceipt(id, reason);
+      wx.showToast({ title: '已撤销并留痕' });
+      await this.load();
+    } catch (error: any) {
+      wx.showModal({ title: '撤销未完成', content: `${error?.message || '撤销接口未就绪或结果未知'}\n请刷新入库记录核对；不要直接改库存。`, showCancel: false });
+      await this.loadReceipts();
+    } finally { this.setData({ reversingReceiptId: 0 }); }
   },
 
   /** 给弹层遮罩的 catchtouchmove 用：吞掉滑动，别让底下的列表跟着滚 */
@@ -380,6 +436,7 @@ Page({
       setTabBadge(this, 'materials', session.canEditMaterials ? incompleteCount : 0);
       this.applyFilter();
       this.applySkuFilter();
+      if (this.data.receiptsOpen && canViewStock) await this.loadReceipts();
     } catch (e: any) {
       wx.showToast({ icon: 'none', title: e?.message || '加载失败' });
     } finally {

@@ -391,6 +391,10 @@ export interface WorkOrderListItem {
   status: WorkOrderStatus;
   requestId: number;
   communityId: number;
+  /** 员工列表小区楼栋排序键；旧服务未下发时可回退完整地址。 */
+  communityName?: string | null;
+  buildingLane?: string | null;
+  buildingNo?: string | null;
   assigneeId: number | null;
   /** 建单时实际收到“新工单待接”通知的维修工；空数组表示等待办公室派单 */
   candidateIds?: number[];

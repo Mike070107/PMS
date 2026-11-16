@@ -61,7 +61,7 @@
           <view class="field">
             <view class="label">入库仓库 <text class="required">*</text><text class="label__opt">总仓或小区仓都可以</text></view>
             <view role="button" aria-label="入库仓库" bindtap="onOpenWarehousePicker">
-              <view class="picker warehouse-picker {{warehouseError ? 'warehouse-picker--error' : ''}}" aria-invalid="{{!!warehouseError}}" aria-describedby="warehouse-error-po">{{warehouseIndex >= 0 ? warehouseNames[warehouseIndex] : '请选择入库仓库'}}</view>
+              <view class="picker warehouse-picker {{warehouseError ? 'warehouse-picker--error' : ''}}" aria-invalid="{{!!warehouseError}}" aria-describedby="warehouse-error-po">{{selectedWarehouseName || '请选择入库仓库'}}</view>
             </view>
             <view id="warehouse-error-po" class="field-error" wx:if="{{warehouseError}}">{{warehouseError}}</view>
           </view>
@@ -305,7 +305,7 @@
         <view class="field">
           <view class="label">入库仓库 <text class="required">*</text></view>
           <view role="button" aria-label="入库仓库" bindtap="onOpenWarehousePicker">
-            <view class="picker warehouse-picker {{warehouseError ? 'warehouse-picker--error' : ''}}" aria-invalid="{{!!warehouseError}}" aria-describedby="warehouse-error">{{warehouseIndex >= 0 ? warehouseNames[warehouseIndex] : '请选择入库仓库'}}</view>
+            <view class="picker warehouse-picker {{warehouseError ? 'warehouse-picker--error' : ''}}" aria-invalid="{{!!warehouseError}}" aria-describedby="warehouse-error">{{selectedWarehouseName || '请选择入库仓库'}}</view>
           </view>
           <view id="warehouse-error" class="field-error" wx:if="{{warehouseError}}">{{warehouseError}}</view>
         </view>

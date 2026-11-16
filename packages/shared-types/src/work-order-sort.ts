@@ -109,5 +109,48 @@ export function compareWorkOrderCompletedNewestFirst(a: RouteSortableWorkOrder, 
   return (b.id ?? 0) - (a.id ?? 0);
 }
 
+export type StaffWorkOrderSort = 'reported_asc' | 'reported_desc' | 'address';
+
+export interface StaffSortableWorkOrder extends RouteSortableWorkOrder {
+  communityId?: number;
+  communityName?: string | null;
+  buildingLane?: string | null;
+  buildingNo?: string | null;
+}
+
+/** 数字片段显式比较，不依赖小程序内核的 localeCompare numeric 实现。空项置后。 */
+export function compareNaturalAddress(left?: string | null, right?: string | null): number {
+  const a = (left || '').trim().match(/\d+|\D+/g) || [];
+  const b = (right || '').trim().match(/\d+|\D+/g) || [];
+  if (!a.length || !b.length) return Number(!a.length) - Number(!b.length);
+  for (let i = 0; i < Math.min(a.length, b.length); i += 1) {
+    const x = a[i], y = b[i];
+    const diff = /^\d+$/.test(x) && /^\d+$/.test(y) ? Number(x) - Number(y) : x.localeCompare(y, 'zh-CN');
+    if (diff) return diff;
+  }
+  return a.length - b.length;
+}
+
+/** 员工三页的显式全列表排序：不插紧急/超时/待料分组，无坐标不声称路线优化。 */
+export function compareStaffWorkOrders(a: StaffSortableWorkOrder, b: StaffSortableWorkOrder, sort: StaffWorkOrderSort): number {
+  if (sort === 'address') {
+    const communityName = compareNaturalAddress(a.communityName, b.communityName);
+    if (communityName) return communityName;
+    const communityId = (a.communityId ?? 0) - (b.communityId ?? 0);
+    if (communityId) return communityId;
+    // 同楼栋不受房号打散；无结构化楼栋（公共点位/旧报修）才回退完整地址自然序。
+    const structuredA = !!a.buildingNo, structuredB = !!b.buildingNo;
+    if (structuredA !== structuredB) return structuredA ? -1 : 1;
+    const address = structuredA
+      ? compareNaturalAddress(a.buildingLane, b.buildingLane) || compareNaturalAddress(a.buildingNo, b.buildingNo)
+      : compareNaturalAddress(a.summaryAddress, b.summaryAddress);
+    if (address) return address;
+  }
+  const x = timeOf(a.createdAt), y = timeOf(b.createdAt);
+  if (Number.isFinite(x) !== Number.isFinite(y)) return Number.isFinite(x) ? -1 : 1;
+  if (Number.isFinite(x) && x !== y) return sort === 'reported_desc' ? y - x : x - y;
+  return sort === 'reported_desc' ? (b.id ?? 0) - (a.id ?? 0) : (a.id ?? 0) - (b.id ?? 0);
+}
+
 /** 「我报的 / 已完结」不搜索时只展示最近这么多条，更早的靠搜索 */
 export const RECENT_LIST_LIMIT = 30;

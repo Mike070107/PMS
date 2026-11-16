@@ -12,7 +12,12 @@
       <view class="head-help {{guide ? 'head-help--on' : ''}}" bindtap="onToggleGuide">?</view>
     </view>
   </view>
-  <view wx:if="{{guide}}" class="work-hero__hint">紧急优先；同组按报修时间从早到晚</view>
+  <view class="order-sort-row">
+    <picker mode="selector" range="{{sortLabels}}" value="{{sortIndex}}" bindchange="onPickSort" disabled="{{loading}}">
+      <view class="order-sort-control {{loading ? 'order-sort-control--disabled' : ''}}">排序：{{sortLabels[sortIndex]}} ▾</view>
+    </picker>
+  </view>
+  <view wx:if="{{guide}}" class="work-hero__hint">按所选顺序排列全部在手工单；小区楼栋按名称、楼栋数字聚拢，紧急和待料保留标记、不插队</view>
   <view class="work-metrics">
     <view class="work-metric work-metric--danger">
       <view class="work-metric__value">{{urgentCount}}</view>
@@ -45,10 +50,6 @@
     wx:for="{{active}}"
     wx:key="id"
   >
-    <view wx:if="{{item.groupStart}}" class="priority-group {{item.urgent ? 'priority-group--urgent' : ''}}">
-      <view class="priority-group__title">{{item.groupLabel}}</view>
-      <view wx:if="{{guide}}" class="priority-group__hint">同组按报修时间从早到晚</view>
-    </view>
     <view
     class="card wo-card wo-card--data"
     hover-class="wo-card--hover"

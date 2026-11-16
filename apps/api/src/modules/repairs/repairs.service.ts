@@ -1,4 +1,5 @@
 import { resolveAddressForTenant } from '../../common/address-lookup';
+import { compareStaffWorkOrders, type StaffWorkOrderSort } from '../../common/work-order-sort.shared';
 import { recordOwnerPhoneUsage } from '../../common/owner-phone-activity';
 import {
   BadRequestException,
@@ -1371,6 +1372,8 @@ export class RepairsService implements OnModuleInit {
 
     const workOrderWhere = wheres.length === 1 ? wheres[0] : wheres;
     const repairTimeFirst = query.sort === 'repair_time_desc';
+    const staffSort = (['reported_asc', 'reported_desc', 'address'] as const).includes(query.sort as StaffWorkOrderSort)
+      ? query.sort as StaffWorkOrderSort : null;
     // 必须在数据库取前 100 条之前完成优先级排序。以前先拿最新 100 条、回来后才
     // 把急单提到前面，会漏掉更早的急单，也会让同组的新单排在老单前面。
     // 单测里的轻量仓库桩只有 find；生产仓库走带报修表联查的完整排序。
@@ -1421,7 +1424,13 @@ export class RepairsService implements OnModuleInit {
       && wheres.every((w) => (w as any).status instanceof FindOperator && (w as any).status.type === 'not'
         && (w as any).status.value === WorkOrderStatus.VOIDED);
     let workOrders: WorkOrder[];
-    if (mixed && query.sort !== 'newest') {
+    const staffLimit = query.scope === 'mine' && query.activeOnly === '1' && user.role !== UserRole.OWNER
+      ? null : mixed ? 300 : 100;
+    if (staffSort) {
+      // 显式列表序不能对旧急单/状态优先截断后的100条再重排。
+      // 完整取得同一权限where候选，补齐报修时间/小区楼栋键，精排后才应用原展示上限。
+      workOrders = await fetchOrders(workOrderWhere, false, null);
+    } else if (mixed && query.sort !== 'newest') {
       const open = await fetchOrders(wheres.map((w) => ({ ...w, status: Not(In(OPEN_EXCLUDED)) })), false, 300);
       const rest = open.length >= 100 ? [] : await fetchOrders(
         wheres.map((w) => ({ ...w, status: In([WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED]) })), true, 100 - open.length);
@@ -1494,6 +1503,14 @@ export class RepairsService implements OnModuleInit {
         ...item,
         // 列表上的“报修时间”以报修表提交时间为准，不拿稍后生成工单的时间代替。
         createdAt: requestById.get(item.requestId)?.createdAt ?? item.createdAt,
+        communityName: communityById.get(item.communityId)?.name ?? null,
+        ...(() => {
+          const request = requestById.get(item.requestId);
+          const house = request?.houseId ? houseById.get(request.houseId) : undefined;
+          const buildingId = house?.buildingId ?? request?.buildingId;
+          const building = buildingId ? buildingById.get(buildingId) : undefined;
+          return { buildingLane: building?.lane ?? null, buildingNo: building?.buildingNo ?? null };
+        })(),
         repairType,
         // 报修时就说了「急修」的单：卡片和后台列表挂红色「紧急」标
         urgent: requestById.get(item.requestId)?.urgent ?? false,
@@ -1538,6 +1555,10 @@ export class RepairsService implements OnModuleInit {
     });
     // 小程序默认仍按紧急 / 超时风险优先，同一天内按完整地址自然排序。
     // Web 显式选择维修时间排序，不能被默认精排覆盖；截断前后均使用同一维修/报修时间口径。
+    if (staffSort) {
+      rows.sort((a, b) => compareStaffWorkOrders(a, b, staffSort));
+      return staffLimit === null ? rows : rows.slice(0, staffLimit);
+    }
     rows.sort(repairTimeFirst ? (a, b) => {
       const time = (value: Date | string | null | undefined) => value ? new Date(value).getTime() || 0 : 0;
       const repairedAt = (o: typeof a) => time(o.completedAt) || time(o.acceptedAt);

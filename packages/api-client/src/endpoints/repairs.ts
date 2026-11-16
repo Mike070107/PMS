@@ -224,8 +224,8 @@ export interface ListQuery {
    */
   scope?: 'mine' | 'pool' | 'dispatch' | 'reported' | 'all' | 'done';
   activeOnly?: '1';
-  /** Web 调度台：先维修时间、再报修时间倒序。 */
-  sort?: 'repair_time_desc' | 'newest';
+  /** 员工显式列表序；旧Web维修时间/已完成口径保持兼容。 */
+  sort?: 'repair_time_desc' | 'newest' | 'reported_asc' | 'reported_desc' | 'address';
   /** 关键词：单号 / 报修地址 / 故障描述 */
   q?: string;
 }

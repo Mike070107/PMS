@@ -20,6 +20,7 @@ import { ResolvedAccess } from '../access/access.service';
 import { CurrentAccess } from '../access/current-access.decorator';
 import {
   CreateGeneralReceiptDto,
+  ReverseGoodsReceiptDto,
   CreateGoodsReceiptDto,
   CreateMaterialDto,
   CreatePurchaseOrderDto,
@@ -505,6 +506,17 @@ export class InventoryController {
     return this.seen(this.inventoryService.createGoodsReceipt(dto, user, access), user, {
       purchaseOrderId: dto.purchaseOrderId,
     });
+  }
+
+  @Post('goods-receipts/:id/reverse')
+  @RequirePermission(['inventory', 'app:inventory'], 'edit')
+  reverseGoodsReceipt(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ReverseGoodsReceiptDto,
+    @CurrentUser() user: AuthUser,
+    @CurrentAccess() access: ResolvedAccess,
+  ) {
+    return this.inventoryService.reverseGoodsReceipt(id, dto.reason, user, access);
   }
 
   @Post('goods-receipts/general')

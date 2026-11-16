@@ -11,6 +11,7 @@ import MaterialPicker, { linesToPayload } from '@/components/MaterialPicker';
 import type { MatLine } from '@/components/MaterialPicker';
 import HousePicker, { type PickedHouse } from '@/components/HousePicker';
 import { useAddressTree } from '@/lib/address-tree';
+import WorkOrderMedia from '@/components/WorkOrderMedia';
 
 type Tab = 'info' | 'tl' | 'mat' | 'maint';
 type Flow =
@@ -269,13 +270,17 @@ function InfoTab({ detail }: { detail: WorkOrderDetail }) {
 
       {(req?.attachments?.length || wo.photos?.length) ? (
         <>
-          <div className="sec-t">现场照片</div>
-          <div className="photos" style={{ marginBottom: 18 }}>
-            {(req?.attachments ?? wo.photos ?? []).map((url, i) => (
-              <a key={`${url}-${i}`} href={url} target="_blank" rel="noreferrer"><i style={{ backgroundImage: `url(${url})`, backgroundSize: 'cover' }} /></a>
-            ))}
-          </div>
+          <div className="sec-t">现场照片 / 视频</div>
+          <div style={{ marginBottom: 18 }}><WorkOrderMedia urls={req?.attachments?.length ? req.attachments : wo.photos ?? []} /></div>
         </>
+      ) : null}
+
+      {wo.actionNote || wo.resultAttachments?.length ? (
+        <section aria-label="维修结果" style={{ marginBottom: 18 }}>
+          <div className="sec-t">维修结果</div>
+          {wo.actionNote ? <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{wo.actionNote}</p> : null}
+          {wo.resultAttachments?.length ? <WorkOrderMedia urls={wo.resultAttachments} /> : null}
+        </section>
       ) : null}
 
       {detail.workOrder.missingMaterials?.length ? (
@@ -313,11 +318,7 @@ function TimelineTab({ detail }: { detail: WorkOrderDetail }) {
           </div>
           {l.note ? <div className="w">{l.note}</div> : null}
           {l.attachments?.length ? (
-            <div className="photos" style={{ marginTop: 6 }}>
-              {l.attachments.map((u, k) => (
-                <a key={k} href={u} target="_blank" rel="noreferrer"><i style={{ backgroundImage: `url(${u})`, backgroundSize: 'cover' }} /></a>
-              ))}
-            </div>
+            <div style={{ marginTop: 6 }}><WorkOrderMedia urls={l.attachments} /></div>
           ) : null}
         </div>
       ))}

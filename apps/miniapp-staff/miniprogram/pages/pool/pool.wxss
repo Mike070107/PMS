@@ -218,7 +218,6 @@
   transform: translateX(-50%);
 }
 .assign-speech__title { font-size: 30rpx; font-weight: 700; line-height: 1.35; }
-.assign-speech__desc { margin-top: 4rpx; font-size: 24rpx; opacity: .78; line-height: 1.35; }
 .assign-speech__listening {
   margin-top: 10rpx;
   padding: 14rpx 18rpx;
@@ -305,9 +304,20 @@
   background: #31558a;
 }
 
-/* 等待材料一组（2026-09-07）：一行标题，点开铺出下面的卡片；放在普通工单后面 */
-.waiting-group { display: flex; align-items: center; justify-content: space-between; gap: 16rpx; margin: 24rpx 0 12rpx; padding: 22rpx 28rpx; border-radius: 20rpx; background: #f1f6fb; border: 2rpx dashed #b8c9da; }
-.waiting-group--open { border-style: solid; background: #eaf2fa; }
-.waiting-group__title { display: flex; align-items: baseline; gap: 14rpx; color: #243b4f; font-size: var(--font-lg); font-weight: 600; }
-.waiting-group__sub { color: var(--color-text-tertiary); font-size: var(--font-sm); font-weight: 400; }
-.waiting-group__toggle { flex-shrink: 0; color: var(--color-brand); font-size: var(--font-md); font-weight: 600; }
+/* 排序低频使用，与标题同行；不再用一整行，也不缩减触达高度。 */
+.work-hero { padding: 20rpx 24rpx; }
+.work-hero__top { align-items: center; gap: 12rpx; }
+.work-hero__top > view:first-child { flex: 1; min-width: 0; }
+.work-hero__title { font-size: 40rpx; }
+.work-hero__right { flex-shrink: 0; }
+.order-sort-control { display: flex; align-items: center; justify-content: flex-end; min-height: 88rpx; padding: 0 4rpx; color: var(--color-brand); font-size: 24rpx; line-height: 1.5; white-space: nowrap; }
+/* 数字与标签保留两层，压缩留白但每个统计筛选仍至少44px高（375px屏）。 */
+.work-metrics { margin-top: 12rpx; gap: 12rpx; }
+.work-metric { min-height: 88rpx; padding: 8rpx; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.work-metric__value { font-size: 34rpx; line-height: 1.15; }
+.work-metric__label { max-width: 100%; margin-top: 2rpx; font-size: 24rpx; line-height: 1.3; }
+.order-sort-control--disabled { opacity: .5; }
+/* 88rpx在窄于375px的屏幕不足44px，用物理CSS像素兜住触达区。 */
+@media screen and (max-width: 374px) {
+  .order-sort-control, .work-metric { min-height: 44px; }
+}

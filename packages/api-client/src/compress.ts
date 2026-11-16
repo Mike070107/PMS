@@ -1,75 +1,78 @@
 /**
- * 上传前的图片压缩（小程序端）。
- *
- * 为什么放在这里而不是每个页面各写一遍：全端 7 个选图入口最后都汇到
- * `uploadFile()` 这一条路上，压缩挂在这里，**任何新入口都自动享受，谁也漏不掉**。
- * 页面那边只负责在 `wx.chooseMedia` 里显式要压缩图（见各页 sizeType）——
- * 那是第一道，这里是第二道兜底：相册选「原图」、或某些机型默认没压，都会落到这里。
- *
- * 2026-09-01 调查过一次「为什么线上图片这么小」：我们代码里**一处压缩都没有**，
- * 7 个 chooseMedia 全没传 sizeType，也没调过 compressImage；
- * 图之所以只有 200~700KB，靠的是微信 chooseMedia 自己的默认行为。
- * 那是平台默认值，我们控制不了、也不该指望它 —— 所以补上这两道。
- *
- * 三条原则：
- * 1. **绝不因为压缩失败而上传不了**：任何一步出错都退回原图继续传。
- * 2. 只压图片，视频原样走（compressVideo 很慢，且报修视频已有 15 秒时长上限）。
- * 3. 小图不动：低于阈值的直接传，省一次编解码。
+ * All miniapp media entries converge on uploadFile(). Native WeChat compression reduces upload bytes;
+ * the shared API then attempts real WebP encoding for static images from both miniapps and Web.
+ * Videos use compressVideo, never WebP. Keep the original on failure or if compression grows it.
  */
-
-/** 超过这个大小才压（字节）。低于它的图再压收益不大，还平白多一次编解码 */
-const COMPRESS_THRESHOLD_BYTES = 600 * 1024;
-
-/** wx.compressImage 的质量（0~100）。80 在手机屏上看不出差别，体积通常降到三分之一 */
-const COMPRESS_QUALITY = 80;
-
-const IMAGE_EXT = /\.(jpe?g|png|webp|heic|heif|bmp)$/i;
+const IMAGE_THRESHOLD = 600 * 1024;
+const VIDEO_THRESHOLD = 1024 * 1024;
+// PNG/WebP can be animated. Native APIs expose no frame count; let the server inspect them safely.
+const IMAGE_EXT = /\.(jpe?g|heic|heif|bmp)$/i;
+const VIDEO_EXT = /\.(mp4|mov|m4v|webm|avi|mkv)$/i;
+const KEEP_EXT = /\.(png|webp|gif|pdf|xlsx?|docx?|pptx?|zip|csv|txt)$/i;
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+type MediaKind = 'image' | 'video' | null;
 
 function hasWx(): boolean {
-  // @ts-ignore — 小程序运行时注入
+  // @ts-ignore miniapp runtime
   return typeof wx !== 'undefined';
 }
-
-function fileSize(tempFilePath: string): Promise<number> {
+function fileSize(path: string): Promise<number> {
   return new Promise((resolve) => {
     try {
-      // @ts-ignore — 小程序运行时注入
-      wx.getFileSystemManager().getFileInfo({
-        filePath: tempFilePath,
-        success: (res: any) => resolve(Number(res?.size) || 0),
-        fail: () => resolve(0),
-      });
-    } catch {
-      resolve(0);
-    }
+      // @ts-ignore miniapp runtime
+      wx.getFileSystemManager().getFileInfo({ filePath: path, success: (r: any) => resolve(Number(r?.size) || 0), fail: () => resolve(0) });
+    } catch { resolve(0); }
   });
 }
-
-/**
- * 需要的话压一张图，返回可直接上传的路径。
- * 拿不准（不是图片 / 取不到大小 / 压缩失败）一律返回原路径。
- */
-export function compressImageIfNeeded(tempFilePath: string): Promise<string> {
-  if (!hasWx() || !tempFilePath) return Promise.resolve(tempFilePath);
-  // 视频和其它文件不碰。注意临时路径可能不带扩展名，这时按「不是图片」处理，
-  // 交给 chooseMedia 的 sizeType 那一道，别拿视频去调 compressImage
-  if (!IMAGE_EXT.test(tempFilePath)) return Promise.resolve(tempFilePath);
-
-  return fileSize(tempFilePath).then((size) => {
-    if (!size || size <= COMPRESS_THRESHOLD_BYTES) return tempFilePath;
-    return new Promise<string>((resolve) => {
-      try {
-        // @ts-ignore — 小程序运行时注入
-        wx.compressImage({
-          src: tempFilePath,
-          quality: COMPRESS_QUALITY,
-          success: (res: any) => resolve(res?.tempFilePath || tempFilePath),
-          // 压不动就传原图：宁可多占点空间，也不能让人报不了修（原则 1）
-          fail: () => resolve(tempFilePath),
-        });
-      } catch {
-        resolve(tempFilePath);
-      }
-    });
+async function mediaKind(path: string): Promise<MediaKind> {
+  if (IMAGE_EXT.test(path)) return 'image';
+  if (VIDEO_EXT.test(path)) return 'video';
+  if (KEEP_EXT.test(path)) return null;
+  // Camera/album temp files need not have an extension. Probe with native metadata, not renaming.
+  const image = await new Promise<boolean>((resolve) => {
+    try {
+      // @ts-ignore miniapp runtime
+      wx.getImageInfo({ src: path, success: (r: any) => resolve(!!r?.width && !!r?.height && /^(jpe?g|heic|heif|bmp)$/i.test(String(r?.type || ''))), fail: () => resolve(false) });
+    } catch { resolve(false); }
   });
+  if (image) return 'image';
+  return new Promise<MediaKind>((resolve) => {
+    try {
+      // @ts-ignore miniapp runtime
+      wx.getVideoInfo({ src: path, success: (r: any) => resolve(Number(r?.duration) > 0 ? 'video' : null), fail: () => resolve(null) });
+    } catch { resolve(null); }
+  });
+}
+async function compressKnown(path: string, kind: 'image' | 'video'): Promise<string> {
+  const size = await fileSize(path);
+  if (!size || size <= (kind === 'image' ? IMAGE_THRESHOLD : VIDEO_THRESHOLD)) return path;
+  const candidate = await new Promise<string>((resolve) => {
+    const handlers = { success: (r: any) => resolve(r?.tempFilePath || path), fail: () => resolve(path) };
+    try {
+      if (kind === 'image') {
+        // @ts-ignore miniapp runtime
+        wx.compressImage({ src: path, quality: 80, ...handlers });
+      } else {
+        // @ts-ignore miniapp runtime
+        wx.compressVideo({ src: path, quality: 'medium', ...handlers });
+      }
+    } catch { resolve(path); }
+  });
+  if (!candidate || candidate === path) return path;
+  const compressedSize = await fileSize(candidate);
+  return compressedSize > 0 && compressedSize < size ? candidate : path;
+}
+/** Backward-compatible image-only helper. */
+export async function compressImageIfNeeded(path: string): Promise<string> {
+  if (!hasWx() || !path) return path;
+  return await mediaKind(path) === 'image' ? compressKnown(path, 'image') : path;
+}
+export async function compressMediaIfNeeded(path: string): Promise<string> {
+  if (!hasWx() || !path) return path;
+  const kind = await mediaKind(path);
+  const result = kind ? await compressKnown(path, kind) : path;
+  if (await fileSize(result) > MAX_UPLOAD_BYTES) {
+    throw new Error('文件压缩后仍超过50MB，请缩短视频或降低分辨率后重试');
+  }
+  return result;
 }

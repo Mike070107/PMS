@@ -4,12 +4,16 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import sanitizeHtml from 'sanitize-html';
 import { AuthUser } from '../../common/current-user.decorator';
 import {
+  Community,
   ManagementOffice,
   RepairExperienceFavorite,
   RepairExperienceNote,
@@ -28,7 +32,18 @@ export const OFFICE_PUBLIC_REPAIR_TYPE_LABEL = '本管理处公共';
 import { AccessService, ResolvedAccess } from '../access/access.service';
 import { ObjectStorageService } from '../upload/object-storage.service';
 import { ruleAssigneeIds } from '../repairs/repair-rule-template';
-import { SaveRepairExperienceNoteDto } from './dto';
+import { ExperienceLibraryQueryDto, SaveRepairExperienceNoteDto } from './dto';
+import { compressUploadedImage } from '../upload/image-compression';
+import { canonicalUploadFilename, detectUploadContentType } from '../upload/upload.controller';
+import { cleanExperienceDocumentHtml, experienceDocumentBudget } from './repair-experience-document-html';
+
+type ExperienceContext = {
+  tenantId: number; userId: number; canCreate: boolean; member: boolean;
+  notebooks: AllowedNotebook[];
+  communities: Array<{ id: number; name: string; officeId: number; officeName: string; repairTypes: Array<{ value: string; label: string }> }>;
+  allCommunities: Community[];
+  skills: Set<string>;
+};
 
 interface AllowedNotebook {
   officeId: number;
@@ -64,6 +79,9 @@ export class RepairExperiencesService {
     private readonly staffProfileRepo: Repository<StaffProfile>,
     private readonly accessService: AccessService,
     private readonly storage: ObjectStorageService,
+    @InjectRepository(Community)
+    private readonly communityRepo: Repository<Community>,
+    private readonly config: ConfigService,
   ) {}
 
   /**
@@ -75,23 +93,26 @@ export class RepairExperiencesService {
    * `/api/v1/upload/file?key=...`）。工单附件早就走 storage.toDisplayUrls 了，
    * 经验笔记漏了这一道。在读取时补，存量数据不用改。
    */
-  private withDisplayUrls(blocks: ExperienceBlock[] | null | undefined): ExperienceBlock[] {
-    return (blocks || []).map((block) => {
-      if (block.type === 'image') return { ...block, url: this.storage.toDisplayUrl(block.url) };
+  private withDisplayUrls(note: RepairExperienceNote): ExperienceBlock[] {
+    const display = (url: string) => {
+      const key = this.assetKey(url);
+      return key ? this.signedAsset(key, note.tenantId, note.createdBy || 0, note).displayUrl : this.storage.toDisplayUrl(url);
+    };
+    return (note.blocks || []).map((block) => {
+      if (block.type === 'image') return { ...block, url: display(block.url || '') };
       if (block.type === 'document' && block.html) {
-        return { ...block, html: block.html.replace(/(<img\b[^>]*\bsrc=["'])([^"']+)(["'])/gi, (_match, before, url, after) => `${before}${this.storage.toDisplayUrl(url)}${after}`) };
+        return { ...block, html: block.html.replace(/((?:\bsrc|\bhref)=["'])([^"']+)(["'])/gi, (_match, before, url, after) => `${before}${display(url.replace(/&amp;/g, '&')).replace(/&/g, '&amp;')}${after}`) };
       }
       return block;
     });
   }
 
   async access(user: AuthUser) {
-    const allowed = await this.allowedNotebooks(user);
+    const context = await this.context(user);
     return {
-      canView: allowed.length > 0,
-      canEdit: allowed.some((item) => item.canEdit),
-      notebookCount: allowed.length,
-      emptyReason: allowed.length ? null : await this.emptyReason(user),
+      canView: context.member, canEdit: context.canCreate, canCreate: context.canCreate,
+      notebookCount: context.notebooks.length,
+      emptyReason: context.member ? null : await this.emptyReason(user),
     };
   }
 
@@ -142,61 +163,137 @@ export class RepairExperiencesService {
     return '你所在管理处这几个工种还没有建笔记本，等办公室配好报修类型后就会出现。';
   }
 
-  /**
-   * q：关键词，搜标题和正文（不搜图片说明以外的 url）。只在自己看得到的笔记本里搜 ——
-   * 先按权限收窄再过滤，不是先全库搜再挑，否则 q 一带就成了绕过范围的口子。
-   * 笔记总量小（一个管理处几十篇），拿回来在内存里 includes 就够，不值得上全文索引。
-   */
+  /** 兼容旧分组入口，也必须先在SQL中应用同一ACL和关键词。 */
   async list(user: AuthUser, q?: string) {
-    const allowed = await this.allowedNotebooks(user);
-    if (!allowed.length) return [];
-    const tenantId = this.tenantId(user);
-    const notes = await this.noteRepo.find({
-      where: { tenantId },
-      order: { updatedAt: 'DESC', id: 'DESC' },
-    });
-    const visibleKeys = new Set(allowed.map((item) => this.key(item.officeId, item.repairType)));
-    const keyword = (q || '').trim().toLowerCase();
-    const visibleNotes = notes.filter(
-      (note) =>
-        visibleKeys.has(this.key(note.officeId, note.repairType)) &&
-        (!keyword || this.matches(note, keyword)),
-    );
-    const names = await this.userNames(visibleNotes.flatMap((note) => [note.createdBy, note.updatedBy]));
-    const favorites = await this.favoriteIds(user);
-    const byKey = new Map<string, NoteSummary[]>();
-    for (const note of visibleNotes) {
-      const key = this.key(note.officeId, note.repairType);
-      const rows = byKey.get(key) || [];
-      rows.push(this.summary(note, names, favorites));
-      byKey.set(key, rows);
+    const context = await this.context(user);
+    const notes = await this.visibleQuery(context, { q }).getMany();
+    const summaries = await this.summaries(notes, user, context);
+    const groups = context.notebooks.map((item) => ({ ...item, notes: [] as any[] }));
+    for (const summary of summaries) {
+      let group = groups.find((g) => g.officeId === summary.officeId && g.repairType === summary.repairType);
+      if (!group) {
+        group = { officeId: summary.officeId, officeName: '文档', repairType: summary.repairType,
+          repairTypeLabel: '文档', canEdit: summary.canEdit, isPublic: false, notes: [] };
+        groups.push(group);
+      }
+      group.notes.push(summary);
     }
-    return allowed.map((item) => ({
-      ...item,
-      notes: byKey.get(this.key(item.officeId, item.repairType)) || [],
-    }));
+    return groups;
   }
 
-  private matches(note: RepairExperienceNote, keyword: string): boolean {
-    if (note.title.toLowerCase().includes(keyword)) return true;
-    return (note.blocks || []).some((block) =>
-      [block.text, block.caption, block.type === 'document' ? this.documentText(block.html) : '']
-        .some((text) => !!text && text.toLowerCase().includes(keyword)),
-    );
+  async library(user: AuthUser, query: ExperienceLibraryQueryDto = {}) {
+    const context = await this.context(user);
+    const page = Number(query.page || 1), pageSize = Number(query.pageSize || 20);
+    if (!Number.isSafeInteger(page) || page < 1 || page > 100000 || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100) throw new BadRequestException('分页参数无效');
+    const [notes, total] = await this.visibleQuery(context, query).skip((page - 1) * pageSize).take(pageSize).getManyAndCount();
+    return { items: await this.summaries(notes, user, context), total, page, pageSize };
+  }
+
+  async sharingOptions(user: AuthUser) {
+    const context = await this.context(user);
+    return { canCreate: context.canCreate, communities: context.communities };
+  }
+
+  private async context(user: AuthUser): Promise<ExperienceContext> {
+    const tenantId = this.tenantId(user);
+    const [access, notebooks, profile, allCommunities, offices, rules] = await Promise.all([
+      this.accessService.getAccess(user), this.allowedNotebooks(user),
+      this.staffProfileRepo.findOne({ where: { tenantId, userId: user.id }, select: ['skills'] }),
+      this.communityRepo.find({ where: { tenantId, enabled: true }, order: { id: 'ASC' } }),
+      this.officeRepo.find({ where: { tenantId, enabled: true } }),
+      this.ruleRepo.find({ where: { tenantId, enabled: true }, order: { sortOrder: 'ASC', id: 'ASC' } }),
+    ]);
+    const member = this.accessService.hasPermission(access, ['experience-notes', 'app:experience-notes'], 'view') || notebooks.length > 0;
+    const officeMap = new Map(offices.map((o) => [o.id, o]));
+    const communityMap = new Map(allCommunities.map((c) => [c.id, c]));
+    const officeOf = (c: Community): number => {
+      const seen = new Set<number>(); let current: Community | undefined = c;
+      while (current && !seen.has(current.id)) {
+        seen.add(current.id); if (current.officeId) return current.officeId;
+        current = current.parentId ? communityMap.get(current.parentId) : undefined;
+      }
+      return 0;
+    };
+    const communities = (member ? allCommunities : []).filter((c) => access.scopeAll || access.communityIds?.includes(c.id)).map((c) => {
+      const officeId = officeOf(c);
+      const types = new Map<string, string>();
+      for (const rule of rules.filter((r) => !r.officeId || r.officeId === officeId)) types.set(rule.repairType, rule.label);
+      return { id: c.id, name: c.name, officeId, officeName: officeMap.get(officeId)?.name || '未划分管理处',
+        repairTypes: [...types].filter(([value]) => value !== OFFICE_PUBLIC_REPAIR_TYPE).map(([value, label]) => ({ value, label })) };
+    });
+    return { tenantId, userId: user.id, member, canCreate: member, notebooks, communities, allCommunities,
+      skills: new Set((profile?.skills || []).filter(Boolean)) };
+  }
+
+  /** SQL ACL comes before filtering, counting and pagination; no whole-tenant bodies are loaded. */
+  private visibleQuery(context: ExperienceContext, query: ExperienceLibraryQueryDto) {
+    const qb = this.noteRepo.createQueryBuilder('n').where('n.tenant_id = :tenantId AND n.deleted_at IS NULL', { tenantId: context.tenantId });
+    const acl: string[] = ["(n.visibility <> 'legacy' AND n.created_by = :userId)"];
+    const args: Record<string, any> = { userId: context.userId };
+    const legacy = context.notebooks.map((book, i) => {
+      args[`o${i}`] = book.officeId; args[`r${i}`] = book.repairType;
+      return `(n.office_id = :o${i} AND n.repair_type = :r${i})`;
+    });
+    if (legacy.length) acl.push(`(n.visibility = 'legacy' AND (${legacy.join(' OR ')}))`);
+    if (context.member && context.communities.length) {
+      const communityAcl = context.communities.map((c, i) => {
+        args[`c${i}`] = JSON.stringify([c.id]); return `n.community_ids @> :c${i}::jsonb`;
+      });
+      let skill = `n.repair_types = '[]'::jsonb`;
+      if (context.skills.size) { args.skills = [...context.skills]; skill += ' OR n.repair_types ?| ARRAY[:...skills]::text[]'; }
+      acl.push(`(n.visibility = 'published' AND (${communityAcl.join(' OR ')}) AND (${skill}))`);
+    }
+    qb.andWhere(`(${acl.join(' OR ')})`, args);
+    const keyword = String(query.q || '').trim();
+    if (keyword.length > 200) throw new BadRequestException('关键词最多200字');
+    if (keyword) qb.andWhere("(n.title ILIKE :keyword ESCAPE '\\' OR n.search_text ILIKE :keyword ESCAPE '\\')", { keyword: `%${keyword.replace(/[\\%_]/g, '\\$&')}%` });
+    if (query.view === 'mine') qb.andWhere('n.created_by = :userId');
+    if (query.view === 'private') qb.andWhere("n.visibility = 'private' AND n.created_by = :userId");
+    if (query.view === 'favorites') qb.andWhere('EXISTS (SELECT 1 FROM repair_experience_favorites f WHERE f.tenant_id = n.tenant_id AND f.note_id = n.id AND f.user_id = :userId)');
+    if (query.communityId) qb.andWhere('n.community_ids @> :filterCommunity::jsonb', { filterCommunity: JSON.stringify([Number(query.communityId)]) });
+    if (query.repairType) qb.andWhere("(n.repair_types ? :filterType OR (n.visibility = 'legacy' AND n.repair_type = :filterType))", { filterType: query.repairType });
+    return qb.orderBy('n.updated_at', 'DESC').addOrderBy('n.id', 'DESC');
+  }
+
+  private rights(note: RepairExperienceNote, context: ExperienceContext) {
+    const isOwner = note.createdBy === context.userId;
+    const legacy = context.notebooks.find((b) => b.officeId === note.officeId && b.repairType === note.repairType);
+    const published = note.visibility === 'published' && context.member &&
+      note.communityIds.some((id) => context.communities.some((c) => c.id === id)) &&
+      (!note.repairTypes.length || note.repairTypes.some((type) => context.skills.has(type)));
+    const canView = !note.deletedAt && (note.visibility === 'legacy' ? !!legacy : (isOwner || published));
+    return { isOwner, canManage: isOwner, canView,
+      canEdit: !!canView && (note.visibility === 'legacy' ? !!legacy?.canEdit : (isOwner || note.allowEdit)),
+      canDelete: !!canView && (isOwner || (note.visibility !== 'legacy' && note.allowDelete)) };
+  }
+
+  private async summaries(notes: RepairExperienceNote[], user: AuthUser, context: ExperienceContext) {
+    const [names, favorites] = await Promise.all([this.userNames(notes.flatMap((n) => [n.createdBy, n.updatedBy])), this.favoriteIds(user)]);
+    return notes.map((note) => this.fullSummary(note, names, favorites, context));
+  }
+
+  private fullSummary(note: RepairExperienceNote, names: Map<number, string>, favorites: Set<number>, context: ExperienceContext) {
+    const rights = this.rights(note, context);
+    const typeLabels = new Map(context.communities.flatMap((c) => c.repairTypes.map((t) => [t.value, t.label] as const)));
+    return { ...this.summary(note, names, favorites), visibility: note.visibility,
+      communityIds: note.communityIds, communityNames: note.communityIds.map((id) => context.allCommunities.find((c) => c.id === id)?.name || `小区${id}`),
+      repairTypes: note.repairTypes, repairTypeLabels: note.repairTypes.map((t) => typeLabels.get(t) || t),
+      allowEdit: note.allowEdit, allowDelete: note.allowDelete, isOwner: rights.isOwner, canManage: rights.canManage,
+      canEdit: rights.canEdit, canDelete: rights.canDelete,
+      createdByName: note.createdBy ? names.get(note.createdBy) || '员工' : '系统' };
   }
 
   /** 收藏 / 取消收藏。能看到那篇才能收藏，否则收藏列表就成了绕过范围的口子 */
   async setFavorite(id: number, user: AuthUser, on: boolean) {
-    const note = await this.find(id, user);
-    await this.requireNotebook(user, note.officeId, note.repairType, false);
-    const tenantId = this.tenantId(user);
-    const where = { tenantId, userId: user.id, noteId: note.id };
-    const existing = await this.favoriteRepo.findOne({ where });
-    if (on && !existing) {
-      await this.favoriteRepo.save(this.favoriteRepo.create({ ...where, createdBy: user.id, updatedBy: user.id }));
-    } else if (!on && existing) {
-      await this.favoriteRepo.remove(existing);
-    }
+    const context = await this.context(user);
+    await this.noteRepo.manager.transaction(async (manager) => {
+      const note = await manager.getRepository(RepairExperienceNote).findOne({ where: { id, tenantId: context.tenantId, deletedAt: IsNull() }, lock: { mode: 'pessimistic_write' } });
+      if (!note || !this.rights(note, context).canView) throw new NotFoundException('维修经验笔记不存在或无权查看');
+      const repo = manager.getRepository(RepairExperienceFavorite);
+      const where = { tenantId: context.tenantId, userId: user.id, noteId: id };
+      if (on) await repo.upsert({ ...where, createdBy: user.id, updatedBy: user.id }, ['tenantId', 'userId', 'noteId']);
+      else await repo.delete(where);
+    });
     return { favorite: on };
   }
 
@@ -210,57 +307,199 @@ export class RepairExperiencesService {
 
   async detail(id: number, user: AuthUser) {
     const note = await this.find(id, user);
-    const allowed = await this.requireNotebook(user, note.officeId, note.repairType, false);
+    const context = await this.context(user);
+    if (!this.rights(note, context).canView) throw new NotFoundException('维修经验笔记不存在或无权查看');
     const names = await this.userNames([note.createdBy, note.updatedBy]);
     const favorites = await this.favoriteIds(user);
+    const legacy = context.notebooks.find((b) => b.officeId === note.officeId && b.repairType === note.repairType);
     return {
-      ...this.summary(note, names, favorites),
-      blocks: this.withDisplayUrls(note.blocks),
-      createdAt: note.createdAt.toISOString(),
-      createdByName: note.createdBy ? names.get(note.createdBy) || '员工' : '系统',
-      canEdit: allowed.canEdit,
-      officeName: allowed.officeName,
-      repairTypeLabel: allowed.repairTypeLabel,
+      ...this.fullSummary(note, names, favorites, context), blocks: this.withDisplayUrls(note),
+      createdAt: note.createdAt.toISOString(), officeName: legacy?.officeName || (note.visibility === 'private' ? '我的私密文档' : '共享文档'),
+      repairTypeLabel: legacy?.repairTypeLabel || (!note.repairTypes.length ? '不限工种' : note.repairTypes.join('、')),
     };
   }
 
   async create(dto: SaveRepairExperienceNoteDto, user: AuthUser) {
-    await this.requireNotebook(user, dto.officeId, dto.repairType, true);
-    const note = this.noteRepo.create({
-      tenantId: this.tenantId(user),
-      officeId: dto.officeId,
-      repairType: dto.repairType,
-      title: dto.title.trim(),
-      blocks: this.cleanBlocks(dto.blocks),
-      revision: 1,
-      createdBy: user.id,
-      updatedBy: user.id,
-    });
+    const context = await this.context(user);
+    if (!context.canCreate) throw new ForbiddenException('没有维修经验文档创建权限');
+    const sharing = this.sharing(dto, context);
+    const blocks = this.secureBlocks(this.cleanBlocks(dto.blocks), sharing.visibility, user);
+    const title = this.cleanTitle(dto.title);
+    const note = this.noteRepo.create({ ...sharing, tenantId: context.tenantId, title, blocks,
+      searchText: this.searchText(blocks), revision: 1, deletedAt: null, createdBy: user.id, updatedBy: user.id });
     const saved = await this.noteRepo.save(note);
     return this.detail(saved.id, user);
   }
 
   async update(id: number, dto: SaveRepairExperienceNoteDto, user: AuthUser) {
     const note = await this.find(id, user);
-    await this.requireNotebook(user, note.officeId, note.repairType, true);
-    if (dto.officeId !== note.officeId || dto.repairType !== note.repairType) {
-      throw new BadRequestException('笔记所属管理处和报修类别不能修改');
+    const context = await this.context(user);
+    const rights = this.rights(note, context);
+    if (!rights.canView) throw new NotFoundException('维修经验笔记不存在或无权查看');
+    if (!rights.canEdit) throw new ForbiddenException('作者未授权编辑此文档');
+    this.checkRevision(dto.revision, note.revision);
+    let sharing = { visibility: note.visibility, communityIds: note.communityIds, repairTypes: note.repairTypes,
+      allowEdit: note.allowEdit, allowDelete: note.allowDelete, officeId: note.officeId, repairType: note.repairType };
+    const change = (key: string) => dto[key] !== undefined && JSON.stringify(dto[key]) !== JSON.stringify(note[key]);
+    const changedSharing = ['visibility', 'communityIds', 'repairTypes', 'allowEdit', 'allowDelete', 'officeId', 'repairType'].some(change);
+    if (!rights.canManage && changedSharing) throw new ForbiddenException('只有作者能更改发布范围及编辑、删除授权');
+    if (rights.canManage && (note.visibility !== 'legacy' || dto.visibility !== undefined)) {
+      sharing = this.sharing({ ...dto, visibility: dto.visibility || (note.visibility === 'published' ? 'published' : 'private'),
+        communityIds: dto.communityIds ?? note.communityIds, repairTypes: dto.repairTypes ?? note.repairTypes,
+        allowEdit: dto.allowEdit ?? note.allowEdit, allowDelete: dto.allowDelete ?? note.allowDelete }, context);
+    } else if (note.visibility === 'legacy' && changedSharing) {
+      throw new BadRequestException('旧笔记本范围保持不变；作者可明确转换为私密或发布文档');
     }
-    if (dto.revision !== note.revision) {
-      throw new ConflictException('这篇笔记刚被别人更新，请返回列表重新打开后再编辑');
-    }
-    note.title = dto.title.trim();
-    note.blocks = this.cleanBlocks(dto.blocks);
-    note.revision += 1;
-    note.updatedBy = user.id;
-    await this.noteRepo.save(note);
-    return this.detail(note.id, user);
+    const blocks = this.secureBlocks(this.cleanBlocks(dto.blocks), sharing.visibility, user, note);
+    const result = await this.noteRepo.createQueryBuilder().update().set({ ...sharing, title: this.cleanTitle(dto.title), blocks,
+      searchText: this.searchText(blocks), revision: () => 'revision + 1', updatedBy: user.id })
+      .where('id = :id AND tenant_id = :tenantId AND revision = :revision AND deleted_at IS NULL', { id, tenantId: context.tenantId, revision: dto.revision }).execute();
+    if (result.affected !== 1) throw new ConflictException('文档已更新或撤销授权，请重新打开后编辑');
+    return this.detail(id, user);
+  }
+
+  async remove(id: number, revision: number, user: AuthUser) {
+    const context = await this.context(user);
+    await this.noteRepo.manager.transaction(async (manager) => {
+      const repo = manager.getRepository(RepairExperienceNote);
+      const note = await repo.findOne({ where: { id, tenantId: context.tenantId, deletedAt: IsNull() }, lock: { mode: 'pessimistic_write' } });
+      if (!note || !this.rights(note, context).canView) throw new NotFoundException('维修经验笔记不存在或无权查看');
+      if (!this.rights(note, context).canDelete) throw new ForbiddenException('作者未授权删除此文档');
+      this.checkRevision(revision, note.revision);
+      await repo.update({ id, tenantId: context.tenantId, revision }, { deletedAt: new Date(), revision: revision + 1, updatedBy: user.id });
+      await manager.getRepository(RepairExperienceFavorite).delete({ tenantId: context.tenantId, noteId: id });
+    });
+    return { deleted: true };
+  }
+
+  private cleanTitle(value: string) {
+    const title = String(value || '').trim();
+    if (!title || title.length > 160) throw new BadRequestException('请填写1–160字标题');
+    return title;
+  }
+
+  private checkRevision(revision: number | undefined, expected: number) {
+    if (revision === undefined || !Number.isSafeInteger(revision) || revision < 1) throw new BadRequestException('请携带文档revision版本');
+    if (revision !== expected) throw new ConflictException('这篇文档刚被更新，请重新打开后编辑');
+  }
+
+  private sharing(dto: SaveRepairExperienceNoteDto, context: ExperienceContext) {
+    const visibility = dto.visibility || 'private';
+    if (!['private', 'published'].includes(visibility)) throw new BadRequestException('无效文档可见性');
+    const communityIds = [...new Set(dto.communityIds || [])];
+    const repairTypes = [...new Set(dto.repairTypes || [])];
+    if (visibility === 'published' && !communityIds.length) throw new BadRequestException('发布文档请先选择小区');
+    const chosen = communityIds.map((id) => context.communities.find((c) => c.id === id));
+    if (chosen.some((c) => !c)) throw new ForbiddenException('发布范围不能超出本人可访问小区');
+    if (repairTypes.some((type) => !type || type === OFFICE_PUBLIC_REPAIR_TYPE || chosen.some((c) => !c?.repairTypes.some((t) => t.value === type)))) throw new BadRequestException('请先选择小区，再选择各小区均可用的工种；空工种表示不限');
+    if (repairTypes.length && !chosen.length) throw new BadRequestException('请先选择小区再选择工种');
+    return { visibility: visibility as 'private' | 'published', communityIds, repairTypes,
+      allowEdit: dto.allowEdit ?? false, allowDelete: dto.allowDelete ?? false,
+      officeId: chosen[0]?.officeId || 0, repairType: repairTypes[0] || OFFICE_PUBLIC_REPAIR_TYPE };
+  }
+
+  private searchText(blocks: ExperienceBlock[]) {
+    return blocks.map((b) => [b.text, b.caption, b.type === 'document' ? this.documentText(b.html) : ''].filter(Boolean).join(' ')).join(' ');
   }
 
   private async find(id: number, user: AuthUser) {
-    const note = await this.noteRepo.findOne({ where: { id, tenantId: this.tenantId(user) } });
+    const note = await this.noteRepo.findOne({ where: { id, tenantId: this.tenantId(user), deletedAt: IsNull() } });
     if (!note) throw new NotFoundException('维修经验笔记不存在');
     return note;
+  }
+
+  private assetKey(value?: string): string | null {
+    const url = String(value || '').replace(/&amp;/g, '&');
+    let key = url;
+    if (!key.startsWith('protected/repair-experiences/')) {
+      try { key = new URL(url, 'https://relative.invalid').searchParams.get('key') || ''; } catch { return null; }
+    }
+    return /^protected\/repair-experiences\/[1-9]\d*\/[1-9]\d*\/\d{4}\/\d{2}\/\d{2}\/[a-zA-Z0-9_\-.]+$/.test(key) && !key.includes('..') ? key : null;
+  }
+
+  private assetKeys(blocks: ExperienceBlock[]) {
+    const keys = new Set<string>();
+    for (const block of blocks || []) {
+      if (block.type === 'image') { const key = this.assetKey(block.url); if (key) keys.add(key); }
+      if (block.type === 'document') {
+        for (const match of (block.html || '').matchAll(/(?:\bsrc|\bhref)=["']([^"']+)["']/gi)) {
+          const key = this.assetKey(match[1]); if (key) keys.add(key);
+        }
+      }
+    }
+    return keys;
+  }
+
+  /** Persist canonical key URLs, not expiring bearer tokens. Public history cannot become private by copying URLs. */
+  private secureBlocks(blocks: ExperienceBlock[], visibility: string, user: AuthUser, old?: RepairExperienceNote) {
+    const oldKeys = this.assetKeys(old?.blocks || []);
+    const normalize = (url: string, image: boolean) => {
+      const raw = url.replace(/&amp;/g, '&');
+      const key = this.assetKey(raw);
+      if (key) {
+        if (!key.startsWith(`protected/repair-experiences/${this.tenantId(user)}/`)) throw new ForbiddenException('附件不属于当前公司');
+        if (!key.startsWith(`protected/repair-experiences/${this.tenantId(user)}/${user.id}/`) && !oldKeys.has(key)) throw new ForbiddenException('不能关联他人未授权附件，请重新上传');
+        return `/api/v1/repair-experiences/assets/view?key=${encodeURIComponent(key)}`;
+      }
+      if (visibility !== 'legacy' && (image || /\/upload\/file\?|^(uploads|protected)\//i.test(raw))) {
+        throw new BadRequestException('私密/发布文档图片须重新使用安全上传；旧公开链接及缓存无法撤回，请确认历史公开风险');
+      }
+      return raw;
+    };
+    return blocks.map((block) => {
+      if (block.type === 'image') return { ...block, url: normalize(block.url || '', true) };
+      if (block.type === 'document') return { ...block, html: (block.html || '').replace(/(<(img|a)\b[^>]*?\b(?:src|href)=["'])([^"']+)(["'])/gi,
+        (_m, before, tag, url, after) => `${before}${normalize(url, tag.toLowerCase() === 'img').replace(/&/g, '&amp;')}${after}`) };
+      return block;
+    });
+  }
+
+  private assetSignature(key: string, tenantId: number, ownerId: number, noteId: number, revision: number, expires: number) {
+    const secret = this.config.get<string>('JWT_SECRET');
+    if (!secret || secret === 'change-me-in-prod' || secret.length < 32) throw new ServiceUnavailableException('安全附件签名密钥未配置，请联系管理员');
+    return createHmac('sha256', `${secret}:experience-assets:v1`).update(JSON.stringify([key, tenantId, ownerId, noteId, revision, expires])).digest('hex');
+  }
+
+  private signedAsset(key: string, tenantId: number, ownerId: number, note?: RepairExperienceNote) {
+    const expires = Math.floor(Date.now() / 1000) + 120;
+    const noteId = note?.id || 0, revision = note?.revision || 0;
+    const signature = this.assetSignature(key, tenantId, ownerId, noteId, revision, expires);
+    const prefix = this.config.get<string>('API_GLOBAL_PREFIX', 'api/v1').replace(/^\/+|\/+$/g, '');
+    const base = this.config.get<string>('APP_PUBLIC_BASE_URL', '').replace(/\/+$/, '');
+    const params = new URLSearchParams({ key, tenantId: String(tenantId), ownerId: String(ownerId), noteId: String(noteId), revision: String(revision), expires: String(expires), signature });
+    return { displayUrl: `${base}/${prefix}/repair-experiences/assets/view?${params}`, expiresAt: new Date(expires * 1000).toISOString() };
+  }
+
+  async uploadAsset(file: Express.Multer.File | undefined, user: AuthUser) {
+    const context = await this.context(user);
+    if (!context.canCreate) throw new ForbiddenException('没有维修经验附件上传权限');
+    if (!file?.buffer?.length || file.buffer.length > 50 * 1024 * 1024) throw new BadRequestException('请选择50MB以内的图片');
+    const detected = detectUploadContentType(file.buffer);
+    if (!detected?.startsWith('image/')) throw new BadRequestException('经验文档仅支持JPG/PNG/GIF/WebP/HEIC图片安全上传');
+    // Fail before writing an object if signing cannot work in this deployment.
+    this.assetSignature('configuration-check', context.tenantId, user.id, 0, 0, 0);
+    const image = await compressUploadedImage(file.buffer, detected, canonicalUploadFilename(file.originalname, detected));
+    const stored = await this.storage.putBuffer(image.buffer, image.contentType, `protected/repair-experiences/${context.tenantId}/${user.id}`, image.filename);
+    const signed = this.signedAsset(stored.objectKey, context.tenantId, user.id);
+    return { objectKey: stored.objectKey, ...signed, publicUrl: signed.displayUrl };
+  }
+
+  /** Anonymous image consumer: the short-lived, revision-bound capability is the credential. */
+  async readAsset(query: Record<string, string>) {
+    const key = this.assetKey(query.key);
+    const tenantId = Number(query.tenantId), ownerId = Number(query.ownerId), noteId = Number(query.noteId), revision = Number(query.revision), expires = Number(query.expires);
+    const now = Math.floor(Date.now() / 1000);
+    const invalid = () => new NotFoundException('附件不存在或链接已过期，请重新打开文档');
+    if (['key', 'tenantId', 'ownerId', 'noteId', 'revision', 'expires', 'signature'].some((field) => typeof query[field] !== 'string')) throw invalid();
+    if (!key || ![tenantId, ownerId, noteId, revision, expires].every(Number.isSafeInteger) || tenantId < 1 || ownerId < 1 || noteId < 0 || revision < 0 || expires < now || expires > now + 120 || !/^[a-f0-9]{64}$/.test(query.signature || '')) throw invalid();
+    if (!key.startsWith(`protected/repair-experiences/${tenantId}/`)) throw invalid();
+    const signature = this.assetSignature(key, tenantId, ownerId, noteId, revision, expires);
+    if (!timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(query.signature, 'hex'))) throw invalid();
+    if (noteId) {
+      const note = await this.noteRepo.findOne({ where: { id: noteId, tenantId, deletedAt: IsNull(), revision } });
+      if (!note || note.createdBy !== ownerId || !this.assetKeys(note.blocks).has(key)) throw invalid();
+    } else if (revision !== 0 || !key.startsWith(`protected/repair-experiences/${tenantId}/${ownerId}/`)) throw invalid();
+    try { return await this.storage.getObject(key); } catch { throw invalid(); }
   }
 
   private async requireNotebook(user: AuthUser, officeId: number, repairType: string, edit: boolean) {
@@ -375,6 +614,7 @@ export class RepairExperiencesService {
   }
 
   private cleanBlocks(blocks: SaveRepairExperienceNoteDto['blocks']): ExperienceBlock[] {
+    const documentBudget = experienceDocumentBudget();
     return blocks.map((block, index) => {
       const id = String(block.id || `block-${Date.now()}-${index}`).slice(0, 80);
       if (block.type === 'image') {
@@ -385,8 +625,8 @@ export class RepairExperiencesService {
         return { id, type: 'image', url, caption: String(block.caption || '').trim().slice(0, 300) };
       }
       if (block.type === 'document') {
-        const html = this.cleanDocumentHtml(String(block.html || ''));
-        if (!this.documentText(html)) throw new BadRequestException('文档正文还是空的');
+        const html = this.cleanDocumentHtml(String(block.html || ''), documentBudget);
+        if (!this.documentText(html) && !/<img\b[^>]*\bsrc=|<table\b/i.test(html)) throw new BadRequestException('文档正文还是空的');
         return { id, type: 'document', html };
       }
       if (block.type === 'divider') return { id, type: 'divider' };
@@ -436,27 +676,13 @@ export class RepairExperiencesService {
     return `${officeId}:${repairType}`;
   }
 
-  private cleanDocumentHtml(value: string) {
-    return sanitizeHtml(value, {
-      allowedTags: ['p', 'br', 'h2', 'h3', 'strong', 'em', 's', 'code', 'pre', 'blockquote', 'aside', 'ul', 'ol', 'li', 'label', 'input', 'div', 'hr', 'figure', 'figcaption', 'img', 'a'],
-      allowedAttributes: {
-        a: ['href', 'target', 'rel'],
-        img: ['src', 'alt', 'title'],
-        input: ['type', 'checked', 'disabled'],
-        ul: ['data-type'],
-        li: ['data-type', 'data-checked'],
-      },
-      allowedSchemes: ['http', 'https'],
-      allowedSchemesByTag: { img: ['http', 'https'] },
-      transformTags: {
-        a: sanitizeHtml.simpleTransform('a', { target: '_blank', rel: 'noopener noreferrer' }),
-        input: sanitizeHtml.simpleTransform('input', { type: 'checkbox', disabled: 'disabled' }),
-      },
-    }).trim();
+  private cleanDocumentHtml(value: string, budget = experienceDocumentBudget()) {
+    return cleanExperienceDocumentHtml(value, budget);
   }
 
   private documentText(html?: string) {
-    return sanitizeHtml(String(html || ''), { allowedTags: [], allowedAttributes: {} })
+    const spaced = String(html || '').replace(/<\/(?:p|div|h[1-6]|li|blockquote|aside|figcaption|td|th|tr|table)>|<br\s*\/?>/gi, ' ');
+    return sanitizeHtml(spaced, { allowedTags: [], allowedAttributes: {} })
       .replace(/\s+/g, ' ')
       .trim();
   }

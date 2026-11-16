@@ -104,6 +104,28 @@ export const createGeneralReceipt = (data: CreateGeneralReceiptReq) =>
     data,
   });
 
+export interface GoodsReceiptView {
+  id: number;
+  receiptNo: string;
+  receiptType: 'general' | 'purchase_order';
+  warehouseId: number;
+  sourceText: string | null;
+  createdAt: string;
+  items: Array<{ materialId: number; qty: number; unitCostCents: number }>;
+  reversed?: boolean;
+  reversalReason?: string | null;
+  reversedAt?: string | null;
+  reversedBy?: number | null;
+}
+
+export const listGoodsReceipts = () => request<GoodsReceiptView[]>({ url: '/goods-receipts' });
+
+/** 整单冲正；已领用/预留或采购单入库会被拒绝。原单与流水保留。 */
+export const reverseGoodsReceipt = (id: number, reason: string) =>
+  request<{ id: number; receiptNo: string; reversed: boolean; alreadyReversed: boolean }>({
+    method: 'POST', url: `/goods-receipts/${id}/reverse`, data: { reason },
+  });
+
 // ---------------- 采购单 / 采购入库 ----------------
 
 export interface PurchaseOrderItemView {

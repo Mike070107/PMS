@@ -56,7 +56,7 @@ async function fixture(run) {
       build.onResolve({filter:/^@\/lib\/auth$/},()=>({path:'auth',namespace:'fixture'}));
       build.onLoad({filter:/.*/,namespace:'fixture'},args=>({contents:args.path==='api'?api:'export const useSession=()=>({user:{id:1},access:{scopeAll:true}});',loader:'ts'}));
     }}],
-    define:{'process.env.NODE_ENV':'"test"','import.meta.env.BASE_URL':'"/"','import.meta.env.VITE_LEGACY_BASE':'""'},
+    define:{'process.env.NODE_ENV':'"test"','import.meta.env.BASE_URL':'"/"','import.meta.env.VITE_LEGACY_BASE':'""','import.meta.env.VITE_API_BASE_URL':'"/api/v1"'},
   });
   const resources = new Map(built.outputFiles.map(f=>['/'+path.basename(f.path),f.contents]));
   resources.set('/',Buffer.from('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/fixture.css"><div id="root"></div><script src="/fixture.js"></script>'));

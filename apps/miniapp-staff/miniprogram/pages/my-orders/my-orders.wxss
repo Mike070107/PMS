@@ -3,3 +3,9 @@
    卡片正文用的是 /templates/wo-card.wxml，和工单池共一份。
    这一页现在只有「在手」一摞卡片，没有自己的东西要写 —— 「我报的 / 已完结」连同
    它们的搜索行 2026-08-31 一起搬去了工单池的三档 Tab。 */
+
+/* 小字辅助入口保留88rpx触达高度；独立一行避免窄屏挤压标题与帮助。 */
+.order-sort-row { display: flex; justify-content: flex-end; margin-top: 4rpx; }
+.order-sort-row picker { max-width: 100%; }
+.order-sort-control { display: flex; align-items: center; min-height: 88rpx; padding: 0 12rpx; color: #31558a; font-size: 24rpx; line-height: 1.5; }
+.order-sort-control--disabled { opacity: .5; }

@@ -54,15 +54,20 @@
   <view wx:if="{{detail.workOrder.actionNote || detail.workOrder.resultAttachments.length}}" class="card">
     <view class="section-title">维修结果</view>
     <view wx:if="{{detail.workOrder.actionNote}}" class="desc">{{detail.workOrder.actionNote}}</view>
-    <view wx:if="{{detail.workOrder.resultAttachments.length}}" class="thumbs">
+    <view wx:if="{{resultPhotos.length}}" class="thumbs">
       <image
-        wx:for="{{detail.workOrder.resultAttachments}}"
+        wx:for="{{resultPhotos}}"
         wx:key="*this"
         class="thumb"
         src="{{item}}"
         mode="aspectFill"
+        data-url="{{item}}"
+        data-urls="{{resultPhotos}}"
+        bindtap="onPreviewImage"
       />
     </view>
+    <view wx:if="{{resultVideos.length}}" class="result-video-label">完工视频 · {{resultVideos.length}} 段</view>
+    <video wx:for="{{resultVideos}}" wx:key="*this" class="result-video" src="{{item}}" controls show-center-play-btn object-fit="contain"/>
   </view>
 
   <view wx:if="{{canReview}}" class="card">

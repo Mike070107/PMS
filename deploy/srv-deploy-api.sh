@@ -78,6 +78,47 @@ if tar -tzf "$PKG" 2>/dev/null | grep -qx 'api/.pms-fast-release'; then
   exit 0
 fi
 
+# 完整包先在隔离目录检查原生运行依赖；失败时不能动当前 API 或 .env。
+FULL_PREFLIGHT=$(mktemp -d "$BK/pms-api-preflight.XXXXXX")
+cleanup_full_preflight() {
+  case "$FULL_PREFLIGHT" in
+    "$BK"/pms-api-preflight.*) rm -rf -- "$FULL_PREFLIGHT" ;;
+    *) echo 'invalid native preflight cleanup path' >&2; return 1 ;;
+  esac
+}
+trap cleanup_full_preflight EXIT
+tar -xzf "$PKG" -C "$FULL_PREFLIGHT"
+[ -f "$FULL_PREFLIGHT/api/dist/main.js" ] || { echo 'full package missing dist/main.js' >&2; exit 1; }
+[ ! -f "$FULL_PREFLIGHT/api/.env" ] || { echo 'full package contains forbidden .env' >&2; exit 1; }
+node --check "$FULL_PREFLIGHT/api/dist/main.js"
+node - "$FULL_PREFLIGHT/api" <<'NATIVE_PREFLIGHT'
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const api = process.argv[2];
+const manifest = require(path.join(api, 'package.json'));
+(async () => {
+  if (!manifest.dependencies?.sharp) return;
+  assert.equal(process.platform, 'linux');
+  assert.equal(process.arch, 'x64');
+  const glibc = process.report.getReport().header.glibcVersionRuntime;
+  assert.ok(glibc, 'production Sharp requires Linux x64 glibc');
+  const sharp = require(path.join(api, 'node_modules/sharp'));
+  const webp = await sharp({ create: { width: 2, height: 2, channels: 3, background: '#ffffff' } }).webp().toBuffer();
+  assert.equal(webp.toString('ascii', 0, 4), 'RIFF');
+  assert.equal(webp.toString('ascii', 8, 12), 'WEBP');
+  const decoded = await sharp(webp).metadata();
+  assert.equal(decoded.width, 2);
+  assert.equal(decoded.height, 2);
+  const pixels = await sharp(webp).raw().toBuffer({ resolveWithObject: true });
+  assert.equal(pixels.info.width, 2);
+  assert.equal(pixels.info.height, 2);
+  assert.equal(pixels.data.length, 2 * 2 * pixels.info.channels);
+  console.log(JSON.stringify({ nativePreflight: 'passed', node: process.version, platform: process.platform, arch: process.arch, glibc, sharp: sharp.versions.sharp, libvips: sharp.versions.vips, webpBytes: webp.length }));
+})().catch(error => { console.error(error); process.exitCode = 1; });
+NATIVE_PREFLIGHT
+cleanup_full_preflight
+trap - EXIT
+
 # 1) 备份现有 .env（万一被踩）
 [ -f api/.env ] && cp api/.env /opt/pms-backups/api/api.env.bak.$(date +%s)
 

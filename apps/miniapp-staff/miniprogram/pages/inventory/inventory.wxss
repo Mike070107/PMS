@@ -3,6 +3,26 @@
    这里只写这一屏独有的东西。 */
 
 /* 段落 Tab（.tabs/.tab）已提到 app.wxss，和工单池的三档共用一套 */
+.receipt-record {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  margin-top: 24rpx;
+  padding-top: 24rpx;
+  border-top: 1rpx solid var(--color-border);
+  overflow-wrap: anywhere;
+}
+.receipt-record__reverse {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+  align-self: flex-start;
+  max-width: 100%;
+  white-space: normal;
+  min-height: 76rpx;
+  height: auto;
+  padding-top: 16rpx;
+  padding-bottom: 16rpx;
+}
 
 .stocktake-entry {
   display: flex;

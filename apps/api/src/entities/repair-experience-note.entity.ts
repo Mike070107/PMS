@@ -26,6 +26,28 @@ export class RepairExperienceNote extends TenantEntity {
     html?: string;
   }>;
 
+  /** legacy只用于迁移存量；新建默认private。占位officeId不参与新文档ACL。 */
+  @Column({ type: 'varchar', length: 20, default: 'private' })
+  visibility: 'private' | 'published' | 'legacy';
+
+  @Column({ name: 'community_ids', type: 'jsonb', default: () => "'[]'" })
+  communityIds: number[];
+
+  @Column({ name: 'repair_types', type: 'jsonb', default: () => "'[]'" })
+  repairTypes: string[];
+
+  @Column({ name: 'allow_edit', default: false })
+  allowEdit: boolean;
+
+  @Column({ name: 'allow_delete', default: false })
+  allowDelete: boolean;
+
+  @Column({ name: 'search_text', type: 'text', default: '' })
+  searchText: string;
+
+  @Column({ name: 'deleted_at', type: 'timestamptz', nullable: true })
+  deletedAt: Date | null;
+
   /** 乐观锁版本，防止两个人同时编辑时后保存的人覆盖前一个人的内容。 */
   @Column({ type: 'int', default: 1 })
   revision: number;

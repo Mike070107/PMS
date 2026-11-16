@@ -14,6 +14,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ObjectStorageService } from './object-storage.service';
+import { compressUploadedImage } from './image-compression';
 
 @Controller('upload')
 export class UploadController {
@@ -28,12 +29,16 @@ export class UploadController {
     if (!detectedType) {
       throw new BadRequestException('只支持 JPG/PNG/GIF/WebP/HEIC 图片、MP4/MOV 视频或 PDF');
     }
+    // Both miniapps and Web use this route. Clients without a WebP encoder still store optimized images.
+    // File signatures, stored MIME and suffix must agree (video preview relies on the suffix).
+    const optimized = await compressUploadedImage(
+      file.buffer, detectedType, canonicalUploadFilename(file.originalname, detectedType),
+    );
     const stored = await this.storage.putBuffer(
-      file.buffer,
-      // 浏览器报上来的 mimetype 可以伪造；对象元数据必须用文件签名识别出的安全类型。
-      detectedType,
+      optimized.buffer,
+      optimized.contentType,
       'uploads',
-      file.originalname,
+      optimized.filename,
     );
     // COS 桶是私有的，直连地址会 403。这里返回的 publicUrl/displayUrl 都是代理地址，
     // 前端把它写进 attachments 就能直接显示；COS 规范地址另放 cosUrl，只作排障参考。
@@ -66,6 +71,10 @@ export class UploadController {
           ? 'public, max-age=300, must-revalidate'
           : 'public, max-age=31536000, immutable',
       );
+      // Storage failures arrive asynchronously, outside this try/catch. Never let a
+      // failed image/video preview become an unhandled stream error on the API worker.
+      object.stream.on('error', () => res.destroy());
+      res.once('close', () => object.stream.destroy());
       object.stream.pipe(res);
     } catch {
       throw new NotFoundException('file not found');
@@ -73,14 +82,28 @@ export class UploadController {
   }
 
   private validateObjectKey(key?: string) {
-    if (!key || key.length > 512 || key.startsWith('/') || key.includes('..') || key.includes('\\')) {
+    if (typeof key !== 'string' || !key || key.length > 512 || key.startsWith('/') || key.includes('..') || key.includes('\\') || key.split('/').includes('.')) {
       throw new BadRequestException('invalid file key');
     }
+    // Private experience assets are served only by the revision-bound signed document endpoint.
+    // Never let this anonymous compatibility proxy bypass document visibility or revocation.
+    if (key.split('/').filter(Boolean).join('/').startsWith('protected/')) throw new NotFoundException('file not found');
     if (!/^[a-zA-Z0-9/_\-.]+$/.test(key)) {
       throw new BadRequestException('invalid file key');
     }
     return key;
   }
+}
+
+const UPLOAD_EXTENSIONS: Record<string, string> = {
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp',
+  'image/heic': 'heic', 'image/heif': 'heif', 'video/mp4': 'mp4',
+  'video/quicktime': 'mov', 'application/pdf': 'pdf',
+};
+
+export function canonicalUploadFilename(filename: string | undefined, contentType: string): string {
+  const base = String(filename || 'upload').split(/[\\/]/).pop()!.replace(/\.[^.]*$/, '') || 'upload';
+  return `${base}.${UPLOAD_EXTENSIONS[contentType] || 'bin'}`;
 }
 
 const SAFE_STORED_TYPES = new Set([

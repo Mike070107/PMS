@@ -4,7 +4,7 @@ import { USER_ROLE_LABELS, type MeResp } from '@pms/shared-types';
 import { clearSession, getSession } from '../../utils/session';
 import { cachedMeMode, clearAccessCache, rememberApprovalMode, rememberPoolMode, syncTabBar } from '../../utils/tabbar';
 import { askOrderSubscribe, getSubscribeState } from '../../utils/unread';
-import { refreshTabBadges } from '../../utils/badges';
+import { refreshTabBadges, syncMaintenanceBadge } from '../../utils/badges';
 import { openFeedback } from '../../utils/feedback';
 import { repairExperiences } from '@pms/api-client';
 import { guideHandlers } from '../../utils/guide';
@@ -56,6 +56,8 @@ Page({
     canSeeMeters: false,
     /** 签字或检查任一授权可进入养护单，继续复用原页面。 */
     canSeeMaintenance: false,
+    maintenanceCount: 0,
+    maintenanceBadge: '',
   },
 
   /** 显示当前跑的是哪个包：改完重新上传后，忘记「选为体验版本」一眼就能看出来 */
@@ -76,15 +78,17 @@ Page({
     this.applyMode();
     this.showBuild();
     this.load();
-    // 未读数每次进来都重新拉：小程序没有推到端的长连接，角标只能主动拿
-    // 底部几格的角标一起对准；返回值是未读数，这一页要显示它
-    refreshTabBadges(this).then((unread) => this.setData({ unread }));
+  },
+
+  async onPullDownRefresh() {
+    try { await this.load(); } finally { wx.stopPullDownRefresh(); }
   },
 
   async load() {
     // “更多”和“我的”共用一个原生 tab 页；同页切换不一定触发 onShow，
     // custom-tab-bar 会直接调用 load，所以这里也必须重新读模式。
     this.applyMode();
+    syncMaintenanceBadge(this);
     try {
       // 身份和权限都从这一份会话来（utils/session.ts），页面里不再各写角色白名单
       const [session, experienceAccess] = await Promise.all([
@@ -121,6 +125,9 @@ Page({
         canSeeMaintenance: session.canInspectMaintenance || session.canSignMaintenance,
       });
       if (session.canAccept) this.refreshNotifyState();
+      // 权限更新后统一刷新；同页“我的↔更多”的load也会走到这里，不另查养护接口。
+      const unread = await refreshTabBadges(this);
+      this.setData({ unread });
     } catch {
       // 未登录时由请求层跳转登录页
     }

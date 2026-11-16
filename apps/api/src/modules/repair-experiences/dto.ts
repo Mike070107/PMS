@@ -10,6 +10,8 @@ import {
   MaxLength,
   Min,
   MinLength,
+  Max,
+  ArrayUnique,
   ValidateNested,
 } from 'class-validator';
 
@@ -47,14 +49,45 @@ export class RepairExperienceBlockDto {
 }
 
 export class SaveRepairExperienceNoteDto {
+  @IsOptional()
   @IsInt()
   @Min(1)
-  officeId: number;
+  officeId?: number;
 
+  @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(60)
-  repairType: string;
+  repairType?: string;
+
+  @IsOptional()
+  @IsIn(['private', 'published'])
+  visibility?: 'private' | 'published';
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ArrayUnique()
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  communityIds?: number[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @IsString({ each: true })
+  @MinLength(1, { each: true })
+  @MaxLength(60, { each: true })
+  repairTypes?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  allowEdit?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  allowDelete?: boolean;
 
   @IsString()
   @MinLength(1)
@@ -71,4 +104,16 @@ export class SaveRepairExperienceNoteDto {
   @IsInt()
   @Min(1)
   revision?: number;
+}
+
+export class ExperienceLibraryQueryDto {
+  @IsOptional() @IsString() @MaxLength(200) q?: string;
+  @IsOptional() @IsIn(['all', 'mine', 'private', 'favorites']) view?: 'all' | 'mine' | 'private' | 'favorites';
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) communityId?: number;
+  @IsOptional() @IsString() @MaxLength(60) repairType?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) pageSize?: number;
+}
+export class DeleteExperienceQueryDto {
+  @Type(() => Number) @IsInt() @Min(1) revision: number;
 }

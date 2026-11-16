@@ -6,6 +6,8 @@
 .mt { margin-top: 32rpx; }
 
 .thumbs { display: flex; flex-wrap: wrap; gap: 16rpx; margin-top: 20rpx; }
+.result-video-label { margin-top: 24rpx; color: var(--color-text-secondary); font-size: 28rpx; }
+.result-video { display: block; width: 100%; max-width: 100%; height: 340rpx; margin-top: 16rpx; border-radius: var(--radius-sm); background: #142a3e; }
 .thumb { width: 160rpx; height: 160rpx; border-radius: var(--radius-sm); background: var(--color-bg); }
 
 .timeline-item { display: flex; gap: var(--space-sm); margin-bottom: var(--space-lg); }

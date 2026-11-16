@@ -1,4 +1,6 @@
 import { address, ai, repairs, upload } from '@pms/api-client';
+import { completionMediaState, validateCompletionVideo } from '../../utils/completion-media';
+import { isVideoUrl, MAX_REPAIR_IMAGES, MAX_REPAIR_VIDEOS, MAX_REPAIR_VIDEO_SECONDS } from '@pms/shared-types';
 import type { PublicRepairType } from '@pms/api-client/src/endpoints/repairs';
 import { getSession } from '../../utils/session';
 import { askOrderSubscribe } from '../../utils/unread';
@@ -321,6 +323,11 @@ interface PageData {
   resultRows: ResultRow[];
   resultMaterials: string[];
   resultPhotos: string[];
+  resultVideos: string[];
+  completionMediaItems: { url: string; index: number; isVideo: boolean }[];
+  completionImageRemaining: number;
+  completionVideoRemaining: number;
+  completionMediaError: string;
   hasResult: boolean;
   /** 「王师傅」/「未派单」 */
   assigneeText: string;
@@ -397,6 +404,8 @@ interface PageData {
   skuWarehouseId: number | null;
   /** 可手动切换的仓库，后台配好的那个排最前 */
   warehouses: WorkOrderStockWarehouse[];
+  skuWarehouseNames: string[];
+  skuWarehouseIndex: number;
   /** 没配仓库 / 当前仓空了的出路提示 */
   skuEmptyHint: string;
   /** 维修说明的常用话术（按本单报修类型给），点一下填进去 */
@@ -423,6 +432,11 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     resultRows: [],
     resultMaterials: [],
     resultPhotos: [],
+    resultVideos: [],
+    completionMediaItems: [],
+    completionImageRemaining: MAX_REPAIR_IMAGES,
+    completionVideoRemaining: MAX_REPAIR_VIDEOS,
+    completionMediaError: '',
     hasResult: false,
     assigneeText: '未派单',
     canAccept: false,
@@ -533,6 +547,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     skuTitle: '选择材料',
     skuWarehouseId: null,
     warehouses: [],
+    skuWarehouseNames: [],
+    skuWarehouseIndex: 0,
     skuEmptyHint: '',
     phrases: [],
   },
@@ -817,9 +833,9 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
       faultSymptom: draft.faultSymptom || this.data.faultSymptom,
       actionNote: draft.actionNote || draft.repairContent || this.data.actionNote,
       feeYuan: draft.feeCents != null ? String(draft.feeCents / 100) : this.data.feeYuan,
-      resultAttachments: draft.resultAttachments?.length
-        ? draft.resultAttachments.slice()
-        : this.data.resultAttachments,
+      ...completionMediaState(draft.resultAttachments?.length
+        ? draft.resultAttachments
+        : this.data.resultAttachments),
     });
 
     const lines = (draft.materials || []).filter((item) => item && (item.name || item.materialId));
@@ -894,13 +910,16 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     const materials = (wo.usedMaterials || [])
       .filter((item) => item && (item.name || item.qty))
       .map((item) => `${item.name || '未命名材料'} ×${item.qty}${item.unit || ''}`);
-    const photos = wo.resultAttachments || [];
+    const attachments = wo.resultAttachments || [];
+    const photos = attachments.filter((url) => !isVideoUrl(url));
+    const videos = attachments.filter((url) => isVideoUrl(url));
 
     return {
       resultRows: rows,
       resultMaterials: materials,
       resultPhotos: photos,
-      hasResult: rows.length > 0 || materials.length > 0 || photos.length > 0,
+      resultVideos: videos,
+      hasResult: rows.length > 0 || materials.length > 0 || attachments.length > 0,
     };
   },
 
@@ -1366,43 +1385,78 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     wx.switchTab({ url: '/pages/pool/pool' });
   },
 
-  async onChooseMedia() {
-    if (this.data.uploading) return;
-    const res = await wx
-      // 显式要压缩图，别靠微信默认值
-      .chooseMedia({
-        count: 6,
-        mediaType: ['image'],
-        sourceType: ['camera', 'album'],
-        sizeType: ['compressed'],
-      })
-      .catch(() => null);
-    if (!res?.tempFiles?.length) return;
+  setCompletionAttachments(urls: string[]) {
+    this.setData(completionMediaState(urls));
+  },
 
-    this.setData({ uploading: true });
-    wx.showLoading({ title: '上传中…', mask: true });
+  async onChooseMedia() {
+    if (this.data.uploading || this.data.busy) return;
+    const state = completionMediaState(this.data.resultAttachments);
+    const remaining = state.completionImageRemaining + state.completionVideoRemaining;
+    if (remaining <= 0) return;
+    // 在打开相册前锁定，防止连续点击开启多次选择以及此时直接提交完工。
+    this.setData({ uploading: true, errorMsg: '', completionMediaError: '' });
+    let loadingShown = false;
     try {
-      const uploaded = await upload.uploadTempFiles(res.tempFiles.map((f) => f.tempFilePath));
-      this.setData({
-        resultAttachments: [
-          ...this.data.resultAttachments,
-          ...uploaded.map((item) => item.publicUrl),
-        ],
-        errorMsg: '',
+      const res = await wx.chooseMedia({
+        count: Math.min(9, remaining),
+        mediaType: ['image', 'video'],
+        sourceType: ['album', 'camera'],
+        sizeType: ['compressed'],
+        maxDuration: MAX_REPAIR_VIDEO_SECONDS,
+      }).catch((error) => {
+        if (/cancel/i.test(error?.errMsg || error?.message || '')) return null;
+        throw error;
       });
+      if (!res?.tempFiles?.length) return;
+      const files = res.tempFiles.map((file) => ({
+        ...file,
+        // 原生选择器返回fileType；兼容旧SDK缺失字段时用临时路径识别。
+        isVideo: file.fileType === 'video' || (!file.fileType && isVideoUrl(file.tempFilePath)),
+      }));
+      const videos = files.filter((file) => file.isVideo);
+      const images = files.length - videos.length;
+      // 不截断混选结果：某类超额整批提示重选，不能悄悄丢掉用户选中的附件。
+      if (images > state.completionImageRemaining) {
+        throw new Error(`照片最多 6 张，还可添加 ${state.completionImageRemaining} 张，请重新选择`);
+      }
+      if (videos.length > state.completionVideoRemaining) {
+        throw new Error(`视频最多 1 段，还可添加 ${state.completionVideoRemaining} 段，请重新选择`);
+      }
+      for (const video of videos) await validateCompletionVideo(video.tempFilePath);
+      loadingShown = true;
+      wx.showLoading({ title: '上传中…', mask: true });
+      // 单个成功立即落入本地草稿，后一个失败不能丢掉已上传成功的URL。
+      for (const file of files) {
+        const uploaded = await upload.uploadTempFiles([file.tempFilePath]);
+        const url = uploaded[0]?.publicUrl;
+        if (!url || isVideoUrl(url) !== file.isVideo) {
+          throw new Error('附件上传结果无效，请重试');
+        }
+        this.setCompletionAttachments([...this.data.resultAttachments, url]);
+      }
     } catch (e: any) {
-      this.setData({ errorMsg: e?.message || '上传失败' });
+      const message = e?.message || '上传失败，已上传的附件已保留，请重试';
+      this.setData({ errorMsg: message, completionMediaError: message });
     } finally {
-      wx.hideLoading();
+      if (loadingShown) wx.hideLoading();
       this.setData({ uploading: false });
     }
   },
 
+  onPreviewCompletionImage(e: WechatMiniprogram.BaseEvent) {
+    const urls = this.data.resultAttachments.filter((url: string) => !isVideoUrl(url));
+    const current = String(e.currentTarget.dataset.url || '');
+    if (urls.includes(current)) wx.previewImage({ current, urls });
+  },
+
   onRemoveMedia(e: WechatMiniprogram.BaseEvent) {
+    if (this.data.uploading || this.data.busy) return;
     const idx = Number(e.currentTarget.dataset.index);
     const next = this.data.resultAttachments.slice();
+    if (!Number.isInteger(idx) || idx < 0 || idx >= next.length) return;
     next.splice(idx, 1);
-    this.setData({ resultAttachments: next });
+    this.setCompletionAttachments(next);
   },
 
   // ---------------- 完工小结：说一句，模型理成维修记录 ----------------
@@ -2077,6 +2131,11 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         skuTitle: resp.warehouseName ? `${resp.warehouseName}库存` : '未匹配到仓库',
         skuWarehouseId: resp.warehouseId,
         warehouses,
+        skuWarehouseNames: warehouses.map(
+          (item) =>
+            `${item.name}${item.own ? '（本单默认）' : ''}${item.hasStock ? '' : '（暂无库存）'}`,
+        ),
+        skuWarehouseIndex: Math.max(0, warehouses.findIndex((item) => item.id === resp.warehouseId)),
         skuCategories: seen,
         skuCategoryIndex: -1,
         // 没仓 / 仓空都得说清是哪种，否则一屏「无货」看着就是坏了
@@ -2109,24 +2168,18 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
    * 默认仓按工单所在小区 / 管理处自动匹配，匹配不到 / 匹配到的那个仓空了，
    * 维修工照样得能领到料 —— 不给这个口子，人就只能停在这儿等办公室。
    */
-  onSwitchWarehouse() {
+  onSwitchWarehouse(e: WechatMiniprogram.PickerChange) {
     const list = this.data.warehouses;
-    if (!list.length) return;
-    const names = list.map(
-      (item) =>
-        `${item.name}${item.own ? '（本单默认）' : ''}${item.hasStock ? '' : '（暂无库存）'}`,
-    );
-    wx.showActionSheet({
-      itemList: names,
-      success: (res) => {
-        const picked = list[res.tapIndex];
-        if (!picked || picked.id === this.data.skuWarehouseId) return;
-        this.allSkus = [];
-        this.setData({ skuKeyword: '' });
-        this.loadSkus(true, picked.id);
-      },
-      fail: () => {},
-    });
+    if (this.data.skuLoading || !list.length) return;
+    const value = e?.detail?.value;
+    if (typeof value !== 'number' && (typeof value !== 'string' || !/^\d+$/.test(value))) return;
+    const index = Number(value);
+    if (!Number.isInteger(index) || index < 0 || index >= list.length) return;
+    const picked = list[index];
+    if (!picked || picked.id === this.data.skuWarehouseId) return;
+    this.allSkus = [];
+    this.setData({ skuKeyword: '' });
+    return this.loadSkus(true, picked.id);
   },
 
   onPickSkuCategory(e: WechatMiniprogram.BaseEvent) {
@@ -2301,7 +2354,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   },
 
   async onComplete() {
-    if (this.data.busy) return;
+    if (this.data.busy || this.data.uploading) return;
     this.invalidateSummary();
     const fee = this.data.feeYuan.trim();
     if (fee && (!Number.isFinite(Number(fee)) || Number(fee) < 0)) {
@@ -2312,7 +2365,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     if (this.materialDraftReady) {
       try { await this.flushMaterialDraft(); } catch { return this.setData({ errorMsg: '用料尚未保存，请返回用料记录重试' }); }
     }
-    if (this.data.busy) return;
+    if (this.data.busy || this.data.uploading) return;
     const shortage = this.data.materialRows.find((row) => {
       const qty = Number(row.qty);
       return !!row.materialId && Number.isFinite(qty) && qty > 0 && qty > row.stockQty;

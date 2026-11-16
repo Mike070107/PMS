@@ -2,6 +2,12 @@
    库存行（.sku / .sku__photo / .sku__qty）都在 app.wxss / tokens.wxss 里，
    这里只写这一屏独有的东西。 */
 
+/* action-bar 本身已是 flex：内层按钮组也要撑满，否则按内容收缩，右侧留空、文字被挤换行。
+   主操作多分一点宽度，给图标、完整文案和原生 loading 留空间，不缩小字号。 */
+.action-bar .btn-row { flex: 1 1 0; min-width: 0; }
+.action-bar .btn-row .btn { padding: 0 20rpx; white-space: nowrap; }
+.action-bar .btn-row .btn--primary { flex-grow: 1.5; }
+
 /* 行内的次要信息（编码 · 类别 · 单位）。和 order-detail 那份是同一个观感，
    等哪天有第三个页面要用，再提到 app.wxss 去 */
 .meta { color: var(--color-text-tertiary); font-size: var(--font-sm); margin-top: 14rpx; line-height: 1.6; }

@@ -74,6 +74,7 @@ import { LOCKED_WHEN_USED, lockedChanges, MATERIAL_ID_TABLES, MATERIAL_JSON_COLU
 import { ObjectStorageService } from '../upload/object-storage.service';
 import {
   applyStockDelta,
+  reverseReceiptLots,
   averageUnitCost,
   consumeStockLots,
   createStockLot,
@@ -1180,7 +1181,7 @@ export class InventoryService {
           .map((r) => r.refId as number),
       ),
     ];
-    const receiptIds = [...new Set([...idsOf('goods_receipt'), ...idsOf('general_receipt')])];
+    const receiptIds = [...new Set([...idsOf('goods_receipt'), ...idsOf('general_receipt'), ...idsOf('receipt_reversal')])];
     const transferIds = idsOf('transfer_order');
     // 工单类流水有四种 refType（历史 work_order、完工扣料、撤回还料、作废退料），
     // 都要能在流水页显示工单号，否则用户只看到一个孤零零的 id（2026-09-03）
@@ -1229,7 +1230,7 @@ export class InventoryService {
     return rows.map((row) => {
       let refNo: string | null = null;
       if (row.refId) {
-        if (row.refType === 'goods_receipt' || row.refType === 'general_receipt') {
+        if (row.refType === 'goods_receipt' || row.refType === 'general_receipt' || row.refType === 'receipt_reversal') {
           refNo = receiptNo.get(row.refId) ?? null;
         } else if (row.refType === 'transfer_order') {
           refNo = transferNo.get(row.refId) ?? null;
@@ -2308,6 +2309,7 @@ export class InventoryService {
     access?: ResolvedAccess,
   ) {
     const tenantId = this.resolveTenantId(user, dto.tenantId);
+    if (!Number.isSafeInteger(dto.warehouseId) || dto.warehouseId <= 0) throw new BadRequestException('请明确选择入库仓库');
     if (!dto.items.length) throw new BadRequestException('items is required');
     await this.assertWarehouseVisible(tenantId, user, dto.warehouseId, access);
     return this.dataSource.transaction(async (manager) => {
@@ -2431,6 +2433,7 @@ export class InventoryService {
   ) {
     const tenantId = this.resolveTenantId(user, dto.tenantId);
     if (!dto.items.length) throw new BadRequestException('items is required');
+    if (!Number.isSafeInteger(dto.warehouseId) || dto.warehouseId <= 0) throw new BadRequestException('请明确选择入库仓库');
     if (!dto.sourceText?.trim()) throw new BadRequestException('请填写材料来源');
     await this.assertWarehouseVisible(tenantId, user, dto.warehouseId, access);
     return this.dataSource.transaction(async (manager) => {
@@ -2499,14 +2502,41 @@ export class InventoryService {
     });
   }
 
+  /** 只开放一般入库整单冲正，采购单涉及累计收货/审批，不能借此绕过原流程。 */
+  async reverseGoodsReceipt(id: number, reason: string, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.resolveTenantId(user);
+    const note = reason?.trim();
+    if (!note || note.length < 2 || note.length > 200) throw new BadRequestException('请填写2至200字撤销原因');
+    return this.dataSource.transaction(async (manager) => {
+      const receipt = await manager.findOne(GoodsReceipt, {
+        where: { id, tenantId }, lock: { mode: 'pessimistic_write' },
+      });
+      if (!receipt) throw new NotFoundException('入库单不存在');
+      await this.assertWarehouseVisible(tenantId, user, receipt.warehouseId, access);
+      if (receipt.receiptType !== 'general' || receipt.purchaseOrderId) throw new BadRequestException('采购单入库不支持此撤销，请走采购纠错流程');
+      const result = await reverseReceiptLots(manager, { tenantId, warehouseId: receipt.warehouseId, receiptId: id, operatorId: user.id, reason: note });
+      if (!result.alreadyReversed) await this.refreshReferenceCosts(manager, tenantId, receipt.items.map((item) => item.materialId), user.id);
+      return { id, receiptNo: receipt.receiptNo, reversed: true, ...result };
+    });
+  }
+
   async listGoodsReceipts(query: TenantQueryDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user, query.tenantId);
     const visible = await this.visibleWarehouseIds(tenantId, user, access);
     if (visible && !visible.length) return [];
-    return this.dataSource.getRepository(GoodsReceipt).find({
+    const receipts = await this.dataSource.getRepository(GoodsReceipt).find({
       where: { tenantId, ...(visible ? { warehouseId: In(visible) } : {}) },
       order: { id: 'DESC' },
       take: 100,
+    });
+    if (!receipts.length) return [];
+    const reversals = await this.dataSource.getRepository(StockMovement).find({
+      where: { tenantId, refType: 'receipt_reversal', refId: In(receipts.map((row) => row.id)) },
+      order: { id: 'DESC' },
+    });
+    return receipts.map((receipt) => {
+      const reversal = reversals.find((row) => row.refId === receipt.id);
+      return { ...receipt, reversed: !!reversal, reversalReason: reversal?.note ?? null, reversedAt: reversal?.createdAt ?? null, reversedBy: reversal?.createdBy ?? null };
     });
   }
 

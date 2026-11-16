@@ -1,7 +1,7 @@
 import { isApiEnvelope } from './envelope';
 import { diagnosticRequestPath } from './request-diagnostic';
 
-import { compressImageIfNeeded } from './compress';
+import { compressMediaIfNeeded } from './compress';
 
 export interface RequestConfig {
   baseURL: string;
@@ -243,51 +243,23 @@ export interface UploadFileResp {
  * 只在小程序环境可用；Web 端请直接用 FormData + fetch。
  */
 export function uploadFile(tempFilePath: string, timeout = 60000): Promise<UploadFileResp> {
-  if (!config) throw new Error('[api-client] configure() must be called before uploadFile()');
-  if (!hasWxRequest()) {
-    return Promise.reject(new ApiError(-1, 'uploadFile 仅在小程序环境可用'));
-  }
-  // 压缩挂在这一条路上，全端所有选图入口都会经过，新入口不用记得自己压。
-  // 压不动会原样返回，绝不因此上传失败（见 compress.ts）
-  return compressImageIfNeeded(tempFilePath).then((filePath) => uploadTempFile(filePath, timeout));
+  return uploadMediaTo<UploadFileResp>(tempFilePath, '/upload', timeout);
 }
 
-function uploadTempFile(tempFilePath: string, timeout: number): Promise<UploadFileResp> {
-  const url = buildUrl(config!.baseURL, '/upload');
-  const header: Record<string, string> = {};
-  const token = config!.getToken();
-  if (token) header['Authorization'] = `Bearer ${token}`;
-  return new Promise<UploadFileResp>((resolve, reject) => {
-    // @ts-ignore — 小程序运行时注入
-    wx.uploadFile({
-      url,
-      filePath: tempFilePath,
-      name: 'file',
-      header,
-      timeout,
-      success: (res: any) => {
-        const { statusCode, data } = res;
-        if (statusCode === 401) {
-          config?.onUnauthorized?.();
-          return reject(
-            new ApiError(401, serverMessage(data) || '未登录或登录已过期', statusCode),
-          );
-        }
-        if (statusCode < 200 || statusCode >= 300) {
-          return reject(
-            new ApiError(statusCode, serverMessage(data) || `上传失败 HTTP ${statusCode}`, statusCode),
-          );
-        }
-        const parsed = tryParseJson(data);
-        if (!parsed) return reject(new ApiError(-1, '上传返回格式异常'));
-        try {
-          resolve(unwrap(parsed));
-        } catch (e) {
-          reject(e);
-        }
-      },
-      fail: (err: any) => reject(new ApiError(-1, err.errMsg || '上传失败')),
-    });
+/** 媒体业务上传：先统一压缩，再检查压缩期间身份/代管租户没有改变。原始文档仍用uploadFileTo。 */
+export function uploadMediaTo<T = unknown>(tempFilePath: string, endpoint: string, timeout = 60000): Promise<T> {
+  if (!config) throw new Error('[api-client] configure() must be called before uploadMediaTo()');
+  if (!hasWxRequest()) return Promise.reject(new ApiError(-1, '媒体上传仅在小程序环境可用'));
+  const currentConfig = config;
+  const token = currentConfig.getToken();
+  const scope = JSON.stringify(currentConfig.getExtraHeaders?.() || {});
+  // 图片原生压缩、视频独立压缩，静态图WebP由API编码；超50MB在网络上传前明确拒绝。
+  return compressMediaIfNeeded(tempFilePath).then((filePath) => {
+    if (config !== currentConfig || currentConfig.getToken() !== token ||
+        JSON.stringify(currentConfig.getExtraHeaders?.() || {}) !== scope) {
+      throw new ApiError(-1, '登录身份或租户已变更，请重新选择文件后上传');
+    }
+    return uploadFileTo<T>(filePath, endpoint, timeout);
   });
 }
 
@@ -299,9 +271,11 @@ export function uploadFileTo<T = unknown>(
 ): Promise<T> {
   if (!config) throw new Error('[api-client] configure() must be called before uploadFileTo()');
   if (!hasWxRequest()) return Promise.reject(new ApiError(-1, 'uploadFileTo 仅在小程序环境可用'));
-  const url = buildUrl(config.baseURL, endpoint);
-  const header: Record<string, string> = { ...config.getExtraHeaders?.() };
-  const token = config.getToken();
+  const currentConfig = config;
+  const url = buildUrl(currentConfig.baseURL, endpoint);
+  const header: Record<string, string> = { ...currentConfig.getExtraHeaders?.() };
+  for (const key of Object.keys(header)) if (key.toLowerCase() === 'content-type') delete header[key];
+  const token = currentConfig.getToken();
   if (token) header.Authorization = `Bearer ${token}`;
   return new Promise<T>((resolve, reject) => {
     // @ts-ignore — 小程序运行时注入
@@ -314,7 +288,7 @@ export function uploadFileTo<T = unknown>(
       success: (res: any) => {
         const { statusCode, data } = res;
         if (statusCode === 401) {
-          config?.onUnauthorized?.();
+          if (config === currentConfig) notifyUnauthorized({ url: endpoint, method: 'POST' }, header);
           return reject(new ApiError(401, serverMessage(data) || '未登录或登录已过期', statusCode));
         }
         if (statusCode < 200 || statusCode >= 300) {
@@ -327,6 +301,46 @@ export function uploadFileTo<T = unknown>(
       fail: (error: any) => reject(new ApiError(-1, networkMessage(error?.errMsg))),
     });
   });
+}
+
+/** Web multipart business uploads. Preserve document bytes and let FormData set its own boundary. */
+export async function uploadBlobTo<T = unknown>(
+  file: Blob,
+  endpoint: string,
+  filename = 'upload',
+  timeout = 60000,
+): Promise<T> {
+  if (!config) throw new Error('[api-client] configure() must be called before uploadBlobTo()');
+  const currentConfig = config;
+  const header: Record<string, string> = { ...currentConfig.getExtraHeaders?.() };
+  for (const key of Object.keys(header)) if (key.toLowerCase() === 'content-type') delete header[key];
+  const token = currentConfig.getToken();
+  if (token) header.Authorization = `Bearer ${token}`;
+  const form = new FormData();
+  form.append('file', file, filename);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetch(buildUrl(currentConfig.baseURL, endpoint), {
+      method: 'POST', headers: header, body: form, credentials: 'include', signal: controller.signal,
+    });
+    const text = await response.text();
+    const body = tryParseJson(text);
+    if (response.status === 401) {
+      if (config === currentConfig) notifyUnauthorized({ url: endpoint, method: 'POST' }, header);
+      throw new ApiError(401, serverMessage(body) || '未登录或登录已过期', 401);
+    }
+    if (!response.ok) throw new ApiError(response.status, serverMessage(body) || `上传失败 HTTP ${response.status}`, response.status);
+    // null is valid JSON; an empty or non-JSON success response is not a valid upload receipt.
+    if (body === null && text.trim() !== 'null') throw new ApiError(-1, '上传返回格式异常');
+    return unwrap(body);
+  } catch (error: any) {
+    if (error instanceof ApiError) throw error;
+    if (controller.signal.aborted || error?.name === 'AbortError') {
+      throw new ApiError(-1, `上传超时（${Math.round(timeout / 1000)}秒），请检查网络后重试`);
+    }
+    throw new ApiError(-1, error?.message || '上传失败，请检查网络后重试', undefined, true);
+  } finally { clearTimeout(timer); }
 }
 
 /** 小程序下载需要登录态的业务文件，返回微信临时文件路径。 */

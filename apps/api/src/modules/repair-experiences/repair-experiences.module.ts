@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import {
+  Community,
   ManagementOffice,
   RepairExperienceFavorite,
   RepairExperienceNote,
@@ -9,7 +10,7 @@ import {
   User,
 } from '../../entities';
 import { UploadModule } from '../upload/upload.module';
-import { RepairExperiencesController } from './repair-experiences.controller';
+import { RepairExperienceAssetsController, RepairExperiencesController } from './repair-experiences.controller';
 import { RepairExperiencesService } from './repair-experiences.service';
 
 @Module({
@@ -18,13 +19,14 @@ import { RepairExperiencesService } from './repair-experiences.service';
       RepairExperienceNote,
       RepairExperienceFavorite,
       RepairTypeRule,
+      Community,
       ManagementOffice,
       StaffProfile,
       User,
     ]),
     UploadModule,
   ],
-  controllers: [RepairExperiencesController],
+  controllers: [RepairExperienceAssetsController, RepairExperiencesController],
   providers: [RepairExperiencesService],
 })
 export class RepairExperiencesModule {}

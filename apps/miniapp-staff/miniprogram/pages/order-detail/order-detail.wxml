@@ -111,6 +111,10 @@
         <view class="result-row"><text>完工照片</text><view>共 {{resultPhotos.length}} 张</view></view>
         <view class="result-photos"><image wx:for="{{resultPhotos}}" wx:key="*this" class="thumb" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="onPreviewResultImage"/></view>
       </block>
+      <block wx:if="{{resultVideos.length}}">
+        <view class="result-row"><text>完工视频</text><view>共 {{resultVideos.length}} 段</view></view>
+        <video wx:for="{{resultVideos}}" wx:key="*this" class="result-video" src="{{item}}" controls show-center-play-btn object-fit="contain"/>
+      </block>
     </view>
 
     <view class="content-card">
@@ -506,21 +510,24 @@
     <view class="complete-card">
       <view class="complete-card__head">
         <view class="complete-card__num">1</view>
-        <view><view class="complete-card__title">完工照片和说明</view><view wx:if="{{guide}}" class="complete-card__desc">先拍维修后的样子，再写做了什么；说明业主看得到</view></view>
+        <view><view class="complete-card__title">完工照片、视频和说明</view><view wx:if="{{guide}}" class="complete-card__desc">先拍维修后的样子，再写做了什么；说明业主看得到</view></view>
       </view>
       <!-- 2026-09-04 Mike：完工照片放第一步 -->
-      <view class="complete-label">完工照片 <text>{{guide ? '选填，建议拍维修结果' : '选填'}}</text></view>
+      <view class="complete-label">完工照片 / 视频 <text>选填</text></view>
+      <view class="completion-media-limit">最多 6 张照片 + 1 段视频，视频最长 15 秒</view>
       <view class="complete-photo-speech-stack">
         <view class="complete-photo-block">
-          <view class="complete-photo-entry" bindtap="onChooseMedia">
+          <button class="complete-photo-entry" disabled="{{uploading || busy || (!completionImageRemaining && !completionVideoRemaining)}}" bindtap="onChooseMedia">
             <view class="complete-photo-entry__camera"></view>
-            <view><view class="complete-photo-entry__title">{{resultAttachments.length ? '继续添加完工照片' : '添加完工照片'}}</view><view wx:if="{{guide}}" class="complete-photo-entry__desc">最多6张，拍清维修后的状态</view></view>
+            <view><view class="complete-photo-entry__title">{{uploading ? '附件处理中…' : '添加照片/视频'}}</view><view class="complete-photo-entry__desc">{{completionImageRemaining || completionVideoRemaining ? '还可加 ' + completionImageRemaining + ' 张照片、' + completionVideoRemaining + ' 段视频' : '附件已满'}}</view></view>
             <view class="complete-photo-entry__plus">＋</view>
-          </view>
+          </button>
+          <view wx:if="{{completionMediaError}}" class="complete-error">{{completionMediaError}}</view>
           <view wx:if="{{resultAttachments.length}}" class="complete-thumbs">
-            <view wx:for="{{resultAttachments}}" wx:key="*this" class="thumb-wrap">
-              <image class="thumb" src="{{item}}" mode="aspectFill"/>
-              <view class="thumb-remove" data-index="{{index}}" catchtap="onRemoveMedia"><view class="icon icon--close"></view></view>
+            <view wx:for="{{completionMediaItems}}" wx:key="url" class="thumb-wrap {{item.isVideo ? 'completion-video-wrap' : ''}}">
+              <video wx:if="{{item.isVideo}}" class="completion-draft-video" src="{{item.url}}" controls show-center-play-btn object-fit="contain"/>
+              <image wx:else class="thumb" src="{{item.url}}" mode="aspectFill" data-url="{{item.url}}" bindtap="onPreviewCompletionImage"/>
+              <button class="completion-remove" disabled="{{uploading || busy}}" data-index="{{item.index}}" catchtap="onRemoveMedia">{{item.isVideo ? '移除视频' : '移除照片'}}</button>
             </view>
           </view>
         </view>
@@ -608,9 +615,17 @@
     <text class="sheet__title">{{skuTitle}}</text>
     <view class="sheet__head-right">
       <!-- 默认仓由后台「小区 + 报修类型」配好；配漏了或那个仓空了，得让人自己挑一个 -->
-      <text wx:if="{{warehouses.length}}" class="sheet__link" bindtap="onSwitchWarehouse">
-        {{skuWarehouseId ? '换仓库' : '选仓库'}}
-      </text>
+      <picker
+        wx:if="{{warehouses.length}}"
+        mode="selector"
+        range="{{skuWarehouseNames}}"
+        value="{{skuWarehouseIndex}}"
+        bindchange="onSwitchWarehouse"
+        disabled="{{skuLoading || !warehouses.length}}"
+        style="opacity: {{skuLoading ? 0.5 : 1}};"
+      >
+        <text class="sheet__link">{{skuWarehouseId ? '换仓库' : '选仓库'}}</text>
+      </picker>
       <text class="sheet__close" bindtap="onCloseSku">关闭</text>
     </view>
   </view>
@@ -698,12 +713,19 @@
         <text class="sku-footer__link" data-name="{{skuKeyword}}" bindtap="onAddPurchaseFromSku">申购新材料「{{skuKeyword}}」</text>
       </view>
 
-      <button
+      <picker
         wx:if="{{!skuWarehouseId}}"
-        class="btn btn--outline mt"
-        bindtap="onSwitchWarehouse"
-        disabled="{{!warehouses.length}}"
-      ><view class="btn__icon icon-action--box-blue"></view><text>选仓库</text></button>
+        mode="selector"
+        range="{{skuWarehouseNames}}"
+        value="{{skuWarehouseIndex}}"
+        bindchange="onSwitchWarehouse"
+        disabled="{{skuLoading || !warehouses.length}}"
+      >
+        <button
+          class="btn btn--outline mt"
+          disabled="{{skuLoading || !warehouses.length}}"
+        ><view class="btn__icon icon-action--box-blue"></view><text>选仓库</text></button>
+      </picker>
       <view wx:if="{{!skuWarehouseId}}" class="sku-footer">
         <text class="sku-footer__link" bindtap="onAddPurchaseFromSku">不选仓库，直接申购新材料</text>
       </view>

@@ -17,6 +17,13 @@ import {
 import { Transform, Type } from 'class-transformer';
 import { WarehouseType } from '../../common/enums';
 
+export class ReverseGoodsReceiptDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(200)
+  reason: string;
+}
+
 export class TenantQueryDto {
   @IsOptional()
   @Type(() => Number)

@@ -1,107 +1,98 @@
 import { repairExperiences } from '@pms/api-client';
-import type { RepairExperienceNoteSummary, RepairExperienceNotebookView } from '@pms/shared-types';
-import { guideHandlers } from '../../utils/guide';
-
-/**
- * 维修经验总结（列表）
- *
- * 2026-09-04 Mike：本子一多列表就太长、看着乱。改成：
- *   · 收藏过的帖子单独一块，一直摊开在最上面（星在每行右侧，详情页也有）；
- *   · 各本子默认收起，只露名字和篇数，点名字展开；人手动展开/收起过的，刷新后保持；
- *   · 搜索框：关键词交给服务端在自己看得到的本子里搜标题和正文，搜的时候本子全部展开；
- *   · 「本管理处公共」本子由服务端按管理处附带，同一管理处的人都能看、能写。
- * 本子范围本来就按人收敛（维修工只有自己工种的，办公室是整个管理处，见服务端
- * repair-experiences.service.ts allowedNotebooks），端上不再筛。
- */
-type NotebookRow = RepairExperienceNotebookView & { key: string; open: boolean };
-type FavoriteRow = RepairExperienceNoteSummary & { scope: string };
+import type { RepairExperienceLibraryQuery } from '@pms/shared-types';
+import { experienceRow, experienceTypes, experienceError, type ExperienceCommunity } from '../../utils/experience-library';
 
 Page({
-  ...guideHandlers(),
   data: {
-    /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
-    guide: false,
-    keyword: '',
-    /** 真正发出去搜的词；输入框里还没点搜索的字不算 */
-    query: '',
-    favorites: [] as FavoriteRow[],
-    notebooks: [] as NotebookRow[],
-    loaded: false,
+    keyword: '', query: '', view: 'all' as NonNullable<RepairExperienceLibraryQuery['view']>,
+    views: [{ value: 'all', label: '全部可见' }, { value: 'mine', label: '我写的' }, { value: 'private', label: '仅我可见' }, { value: 'favorites', label: '收藏' }],
+    items: [] as ReturnType<typeof experienceRow>[], total: 0, page: 0, pageSize: 20,
+    loading: false, loadingMore: false, loaded: false, error: '', optionsError: '',
+    canCreate: false, filtersOpen: false, communities: [] as ExperienceCommunity[],
+    communityNames: ['全部小区'], communityIndex: 0, communityId: 0,
+    repairTypes: [] as { value: string; label: string }[], repairTypeNames: ['全部工种'], repairTypeIndex: 0, repairType: '',
   },
-
-  /** 人手动展开/收起过的本子，刷新后保持；换关键词时清空 */
-  openKeys: {} as Record<string, boolean>,
-
-  onShow() {
-    this.syncGuide();
-    this.load();
-  },
-  onPullDownRefresh() { this.load().finally(() => wx.stopPullDownRefresh()); },
-
-  async load() {
-    const query = this.data.query;
+  requestVersion: 0, optionsVersion: 0, destroyed: false,
+  searchTimer: null as ReturnType<typeof setTimeout> | null,
+  favoriteLocks: {} as Record<number, boolean>,
+  async onShow() { this.destroyed = false; await Promise.all([this.loadOptions(), this.load()]); },
+  onUnload() { this.destroyed = true; this.requestVersion++; this.optionsVersion++; if (this.searchTimer) clearTimeout(this.searchTimer); },
+  async onPullDownRefresh() { try { await this.loadOptions(); await this.load(); } finally { wx.stopPullDownRefresh(); } },
+  onRetry() { return this.load(); },
+  async loadOptions() {
+    const version = ++this.optionsVersion;
+    this.setData({ canCreate: false });
     try {
-      const books = await repairExperiences.list(query || undefined);
-      if (query !== this.data.query) return; // 等待期间又搜了别的词，这一批作废
-      const favorites: FavoriteRow[] = [];
-      const notebooks: NotebookRow[] = books.map((book) => {
-        const key = `${book.officeId}:${book.repairType}`;
-        for (const note of book.notes) {
-          if (note.favorite) favorites.push({ ...note, scope: `${book.officeName} · ${book.repairTypeLabel}` });
-        }
-        const manual = this.openKeys[key];
-        const open = manual !== undefined ? manual : !!query || books.length === 1;
-        return { ...book, key, open };
-      });
-      this.setData({ favorites, notebooks, loaded: true });
+      const options = await repairExperiences.sharingOptions();
+      if (this.destroyed || version !== this.optionsVersion) return;
+      const communities = options.communities;
+      this.setData({ communities, canCreate: options.canCreate === true, optionsError: '', communityNames: ['全部小区', ...communities.map((c) => c.name)] });
+      this.syncTypeOptions();
+    } catch (e: any) { if (!this.destroyed && version === this.optionsVersion) this.setData({ canCreate: false, optionsError: experienceError(e, '新建与筛选权限加载失败') }); }
+  },
+  syncTypeOptions() {
+    const selected = this.data.communityId ? this.data.communities.filter((c) => c.id === this.data.communityId) : this.data.communities;
+    const repairTypes = experienceTypes(selected);
+    this.setData({ repairTypes, repairTypeNames: ['全部工种', ...repairTypes.map((t) => t.label)] });
+  },
+  async load(append = false) {
+    if (append && (this.data.loadingMore || this.data.loading || this.data.items.length >= this.data.total)) return;
+    const version = ++this.requestVersion;
+    const page = append ? this.data.page + 1 : 1;
+    const query: RepairExperienceLibraryQuery = { q: this.data.query || undefined, view: this.data.view, communityId: this.data.communityId || undefined, repairType: this.data.repairType || undefined, page, pageSize: this.data.pageSize };
+    this.setData({ loading: !append, loadingMore: append, error: '', ...(append ? {} : { items: [], total: 0 }) });
+    try {
+      const result = await repairExperiences.library(query);
+      if (version !== this.requestVersion) return;
+      const next = result.items.map(experienceRow);
+      const items = append ? [...this.data.items, ...next.filter((n) => !this.data.items.some((old) => old.id === n.id))] : next;
+      this.setData({ items, total: result.total, page: result.page, pageSize: result.pageSize, loaded: true });
     } catch (e: any) {
-      this.setData({ loaded: true });
-      wx.showToast({ icon: 'none', title: e?.message || '加载失败' });
+      if (version === this.requestVersion) this.setData({ error: experienceError(e, '文档加载失败，请重试'), loaded: true });
+    } finally {
+      if (version === this.requestVersion) this.setData({ loading: false, loadingMore: false });
     }
   },
-
-  onKeyword(e: WechatMiniprogram.Input) { this.setData({ keyword: e.detail.value }); },
+  onKeyword(e: WechatMiniprogram.Input) {
+    this.setData({ keyword: e.detail.value });
+    this.requestVersion++; // 输入期间也禁止上一关键词的请求落地。
+    if (this.searchTimer) clearTimeout(this.searchTimer);
+    this.searchTimer = setTimeout(() => { this.searchTimer = null; this.onSearch(); }, 300);
+  },
   onSearch() {
-    const query = this.data.keyword.trim();
-    this.openKeys = {};
-    this.setData({ query });
-    this.load();
+    if (this.searchTimer) { clearTimeout(this.searchTimer); this.searchTimer = null; }
+    this.setData({ query: this.data.keyword.trim() }); return this.load();
   },
-  onClearKeyword() {
-    this.openKeys = {};
-    this.setData({ keyword: '', query: '' });
-    this.load();
+  onClearKeyword() { this.setData({ keyword: '' }); return this.onSearch(); },
+  onView(e: WechatMiniprogram.BaseEvent) {
+    const view = String(e.currentTarget.dataset.value) as typeof this.data.view;
+    if (!this.data.views.some((v) => v.value === view) || view === this.data.view) return;
+    this.setData({ view }); return this.load();
   },
-
-  onToggleNotebook(e: WechatMiniprogram.BaseEvent) {
-    const key = String(e.currentTarget.dataset.key);
-    const index = this.data.notebooks.findIndex((book) => book.key === key);
-    if (index < 0) return;
-    const open = !this.data.notebooks[index].open;
-    this.openKeys[key] = open;
-    this.setData({ [`notebooks[${index}].open`]: open });
+  onToggleFilters() { this.setData({ filtersOpen: !this.data.filtersOpen }); },
+  onCommunity(e: WechatMiniprogram.PickerChange) {
+    const communityIndex = Number(e.detail.value);
+    this.setData({ communityIndex, communityId: this.data.communities[communityIndex - 1]?.id || 0, repairType: '', repairTypeIndex: 0 });
+    this.syncTypeOptions(); return this.load();
   },
-
+  onRepairType(e: WechatMiniprogram.PickerChange) {
+    const repairTypeIndex = Number(e.detail.value);
+    this.setData({ repairTypeIndex, repairType: this.data.repairTypes[repairTypeIndex - 1]?.value || '' }); return this.load();
+  },
+  onLoadMore() { return this.load(true); },
+  onReachBottom() { return this.onLoadMore(); },
   async onToggleFavorite(e: WechatMiniprogram.BaseEvent) {
     const id = Number(e.currentTarget.dataset.id);
-    const on = !Number(e.currentTarget.dataset.on);
+    const item = this.data.items.find((n) => n.id === id);
+    if (!item || this.favoriteLocks[id]) return;
+    this.favoriteLocks[id] = true;
     try {
-      await repairExperiences.setFavorite(id, on);
-      wx.showToast({ icon: 'none', title: on ? '已收藏，放到最上面了' : '已取消收藏' });
-      await this.load();
-    } catch (err: any) {
-      wx.showToast({ icon: 'none', title: err?.message || '操作失败' });
-    }
+      await repairExperiences.setFavorite(id, !item.favorite);
+      if (this.data.view === 'favorites') await this.load();
+      else this.setData({ items: this.data.items.map((n) => n.id === id ? { ...n, favorite: !item.favorite } : n) });
+    } catch (e: any) { wx.showToast({ icon: 'none', title: experienceError(e, '收藏操作失败') }); }
+    finally { delete this.favoriteLocks[id]; }
   },
-
-  onOpen(e: WechatMiniprogram.BaseEvent) {
-    wx.navigateTo({ url: `/pages/experience-note/experience-note?id=${e.currentTarget.dataset.id}` });
-  },
-
-  onCreate(e: WechatMiniprogram.BaseEvent) {
-    const { officeId, repairType, officeName, typeLabel } = e.currentTarget.dataset;
-    wx.navigateTo({
-      url: `/pages/experience-note/experience-note?officeId=${officeId}&repairType=${encodeURIComponent(repairType)}&officeName=${encodeURIComponent(officeName)}&typeLabel=${encodeURIComponent(typeLabel)}`,
-    });
-  },
+  onOpen(e: WechatMiniprogram.BaseEvent) { wx.navigateTo({ url: `/pages/experience-note/experience-note?id=${Number(e.currentTarget.dataset.id)}` }); },
+  onCreate() { if (this.data.canCreate) wx.navigateTo({ url: '/pages/experience-note/experience-note' }); },
 });
