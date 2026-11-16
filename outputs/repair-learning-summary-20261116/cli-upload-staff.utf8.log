@@ -1,0 +1,74 @@
+
+==> 员工端 邻修管理（staff）
+
+==> 1/3 编译共享包
+==> tsc shared-types
+    ok -> packages/shared-types/miniprogram_dist
+    sync -> apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/shared-types
+    sync -> apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/shared-types
+==> tsc api-client
+    ok -> packages/api-client/miniprogram_dist
+    sync -> apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/api-client
+    sync -> apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/api-client
+==> tsc miniapp-ui
+    ok -> packages/miniapp-ui/miniprogram_dist
+    sync -> apps/miniapp-owner/miniprogram/miniprogram_npm/@pms/miniapp-ui
+    sync -> apps/miniapp-staff/miniprogram/miniprogram_npm/@pms/miniapp-ui
+
+完成，两个小程序的 miniprogram_npm 已同步，直接编译预览即可。
+
+==> 2/3 构建 npm
+
+{
+  "cost": 5208,
+  "warnings": []
+}
+node : - initialize
+所在位置 行:1 字符: 129
++ ... ew($false); node tools/miniapp-ship.mjs staff --upload --desc "完工小结默认 ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (- initialize:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+(node:15976) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative inste
+ad.
+(Use `微信开发者工具 --trace-deprecation ...` to show where the warning was created)
+√ IDE server has started, listening on http://127.0.0.1:52570
+- preparing
+- Fetching AppID () permissions
+√ Using AppID: wx002fde4bfaa4c7d9
+√ build-npm
+
+---- 这一包装了什么 ----
+  基线提交  2043607a  fix: scope repair learning and office notices; make completion summaries opt-in
+  夹带改动  无 —— 传的就是这个提交的代码
+  （另有 30 个改动在这个端之外，不影响这一包）
+------------------------
+
+==> 3/3 上传体验版 v1.0.20261116c：完工小结默认关闭、原文保留及显式采用；管理处类别自学习配套（2043607a+本地改动）
+
+┌─────────┬──────────┬─────────────┐
+│ (index) │ size     │ size (Byte) │
+├─────────┼──────────┼─────────────┤
+│ TOTAL   │ '1.1 MB' │ 1124141     │
+└─────────┴──────────┴─────────────┘
+
+- initialize
+
+(node:3628) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instea
+d.
+(Use `微信开发者工具 --trace-deprecation ...` to show where the warning was created)
+√ IDE server has started, listening on http://127.0.0.1:52570
+- preparing
+- Fetching AppID () permissions
+√ Using AppID: wx002fde4bfaa4c7d9
+- Upload
+√ upload
+
+完成。上传的是 1.0.20261116c（代码 2043607a+本地改动）。还要两步：
+  1. 公众平台 → 版本管理 → 开发版本 → 找到描述里带 2043607a 的那条 → 「选为体验版」
+  2. 手机微信里先把这个小程序从「最近使用」删掉，再重新进 —— 否则跑的还是缓存包
+  进小程序「我的」页最下面应显示：1.0.20261116c · 2043607a
+  对不上就是第 1 步选错了版本；页面上那个 hash 直接 git show 就是这份代码
+
