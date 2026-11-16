@@ -117,9 +117,61 @@ for (const action of ['contact', 'format-only', 'new-place']) {
   });
 }
 
+for (const name of ['永南150弄', '永北150弄']) {
+  test(`数字房号通知与详情直接连接，${name}身份ID及历史快照保持`, async () => {
+    const f = fixture(name, '150');
+    const raw = Object.freeze({ ...f.request, houseId: 17, addressText: `${name}/150弄6号/201` });
+    f.service.repairRequestRepo = { findOne: async () => raw };
+    await f.service.notifyOwnerOnStatus(f.order, 'dispatched', '维修工');
+    const result = await f.service.getWorkOrder(134, { id: 7, tenantId: 1, role: UserRole.OWNER });
+    assert.equal(f.messages[0].templateFields.address, `${name}6号201`);
+    assert.equal(result.request.addressText, `${name}6号201`);
+    assert.deepEqual([result.request.communityId, result.request.buildingId, result.request.houseId], [8, 11, 17]);
+    assert.equal(raw.addressText, `${name}/150弄6号/201`);
+  });
+}
+
+test('真实通用报修服务接受仅小区公区，事务保存照片并详情回读，不放宽跨租户校验', async () => {
+  const f = fixture();
+  const saved: any[] = [];
+  const manager = {
+    create: (_entity: any, data: any) => ({ ...data }),
+    save: async (entity: any, data: any) => {
+      const row = { ...data, id: 134, createdAt: new Date('2026-11-16T02:00:00Z') };
+      saved.push({ entity: entity.name, row }); return row;
+    },
+    query: async () => [],
+  };
+  f.service.communityRepo = { findOne: async ({ where }: any) => where.id === 8 && where.tenantId === 1 ? { id: 8, tenantId: 1, name: '永南150弄' } : null };
+  f.service.buildingRepo = { findOne: () => { throw new Error('小区公区不得借用楼栋'); } };
+  f.service.houseRepo = { findOne: () => { throw new Error('小区公区不得借用住户'); } };
+  f.service.dataSource.transaction = async (fn: any) => fn(manager);
+  f.service.resolveContact = async () => ({ name: '测试代报', phone: null });
+  f.service.ruleCandidates = async () => [];
+  f.service.nextOrderNo = async () => 'RX-PUBLIC-TEST';
+  f.service.rememberContactAsOwner = async () => {};
+  f.service.notifyCandidatesOnCreate = async () => {};
+  const dto = { communityId: 8, addressText: '永南150弄/公共区域 南门', locationText: '南门', content: '门异响', repairType: 'menjing', attachments: ['/api/upload/file?key=test.png'] };
+  const user = { id: 7, tenantId: 1, role: UserRole.OWNER };
+  const created = await f.service.submitOwnerRepair(dto, user);
+  assert.equal(created.request.buildingId, null); assert.equal(created.request.houseId, null);
+  assert.deepEqual(created.request.attachments, dto.attachments);
+  assert.equal(saved.filter(x => x.entity === 'RepairRequest').length, 1);
+  assert.equal(saved.filter(x => x.entity === 'WorkOrder').length, 1);
+  assert.equal(saved.filter(x => x.entity === 'WorkOrderLog').length, 1);
+  f.service.repairRequestRepo = { findOne: async () => created.request };
+  f.service.workOrderRepo = { findOne: async () => created.workOrder };
+  const detail = await f.service.getWorkOrder(134, user);
+  assert.deepEqual(detail.request.attachments, dto.attachments);
+  assert.equal(detail.request.addressText, dto.addressText);
+  assert.equal(detail.request.communityId, 8);
+  await assert.rejects(f.service.submitOwnerRepair({ ...dto, communityId: 9 }, user), /community not found/);
+  assert.equal(saved.length, 3, '拒绝后不得新增任何事务行');
+});
+
 test('业主报修范围拼接同样去重，摘房号规则不变', () => {
   const base = { communityName: '永北150弄', buildingText: '150弄6号', homeText: '永北150弄/150弄6号/201' };
-  assert.equal(composePlaceText('home', base), '永北150弄6号/201');
+  assert.equal(composePlaceText('home', base), '永北150弄6号201');
   assert.equal(composePlaceText('building', base, '楼道'), '永北150弄6号 楼道');
   assert.equal(composePlaceText('community', base, '大门'), '永北150弄 大门');
   assert.deepEqual(scopeIds('building', { buildingId: 11, houseId: 17 }), { buildingId: 11, houseId: undefined });

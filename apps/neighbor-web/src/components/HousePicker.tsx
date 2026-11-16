@@ -68,7 +68,9 @@ export default function HousePicker({
 
   const cascaderValue = useMemo<Array<number | string>>(() => {
     if (navigationPath) return navigationPath;
-    if (allowPublicArea && publicValue?.locationKind === 'public') return [publicValue.communityId, publicValue.buildingId!, PUBLIC_AREA_VALUE];
+    if (allowPublicArea && publicValue?.locationKind === 'public') {
+      return [publicValue.communityId, ...(publicValue.buildingId != null ? [publicValue.buildingId] : []), PUBLIC_AREA_VALUE];
+    }
     if (!value) return [];
     const list: Array<number | string> = [value.communityId, value.buildingId];
     if (value.houseId) list.push(value.houseId);
@@ -106,7 +108,7 @@ export default function HousePicker({
         communities={ordered}
         value={cascaderValue}
         onChange={next => {
-          if (!disabled) setNavigationPath(next.length > 0 && next.length < 3 ? next : null);
+          if (!disabled) setNavigationPath(next.length > 0 && next.length < 3 && next[next.length - 1] !== PUBLIC_AREA_VALUE ? next : null);
         }}
         disabled={disabled}
         placeholder={placeholder}

@@ -1,4 +1,4 @@
-import { formatBeijingDateTime } from '@pms/shared-types';
+import { formatBeijingDateTime, sortTimelineNewestFirst } from '@pms/shared-types';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
@@ -442,7 +442,7 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
 
       {/* 付费车：选月数收款（资料没齐也可以先收，挂待处理） */}
       {manage && it.log?.length ? (
-        <ol className="np-log">{[...it.log].reverse().map((l, i) => <li key={i}><time>{formatBeijingDateTime(l.at, 'MM-DD HH:mm')}</time><b>{l.userName}</b>{l.action}{l.note ? <small> · {l.note}</small> : null}</li>)}</ol>
+        <ol className="np-log">{sortTimelineNewestFirst(it.log, l => l.at).map((l, i) => <li key={i}><time>{formatBeijingDateTime(l.at, 'MM-DD HH:mm')}</time><b>{l.userName}</b>{l.action}{l.note ? <small> · {l.note}</small> : null}</li>)}</ol>
       ) : null}
       {manage && it.kind === 'paid' && !it.transaction && it.status !== 'void' ? <div className="muted" style={{ marginTop: 8 }}>还没收款：<Link className="btn sm" to={`/cashier?intakeId=${it.id}`}>去收银台处理此登记</Link>（定位原登记，不新建计费业务）</div> : null}
       {!manage && it.kind === 'paid' && !it.transaction && it.status !== 'void' ? (

@@ -61,7 +61,12 @@ function buildOptions(communities: AddressCommunity[], allowPublicArea = false):
             isLeaf: false,
             keys: communityMatchKeys(community),
       community,
-      children: community.buildings.map((building) => ({
+      children: [
+        ...(allowPublicArea ? [{
+          value: PUBLIC_AREA_VALUE, label: '本小区公共区域', kind: 'public' as const,
+          keys: { exact: [], prefix: [], loose: ['公共区域', '小区公区'] }, community, isLeaf: true,
+        }] : []),
+        ...community.buildings.map((building) => ({
         value: building.id,
         label: formatBuildingLabel(community, building),
         kind: 'building' as const,
@@ -94,6 +99,7 @@ function buildOptions(communities: AddressCommunity[], allowPublicArea = false):
           })),
         ],
       })),
+      ],
     }));
 }
 
@@ -121,7 +127,7 @@ function pathText(path: AddrOption[]): string {
   const house = path[2]?.house;
   const roomNo = path[2] && !house ? '' : house?.roomNo;
   const text = formatFullAddress(community.name, building, roomNo);
-  return path[2]?.kind === 'public' ? `${text}/公共区域` : text;
+  return path[path.length - 1]?.kind === 'public' ? `${text}/公共区域` : text;
 }
 
 export function describePickedAddress(path: AddrOption[]): PickedAddress | null {
@@ -130,7 +136,7 @@ export function describePickedAddress(path: AddrOption[]): PickedAddress | null 
   const building = path[1]?.building;
   const house = path[2]?.house;
   return {
-    ...(path[2]?.kind === 'public' ? { locationKind: 'public' as const } : {}),
+    ...(path[path.length - 1]?.kind === 'public' ? { locationKind: 'public' as const } : {}),
     communityId: community.id,
     communityName: community.name,
     buildingId: building?.id,

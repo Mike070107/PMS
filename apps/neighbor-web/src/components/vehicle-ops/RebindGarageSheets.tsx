@@ -80,7 +80,7 @@ export function RebindSheet({ plate, rows, onClose, onDone }: OpProps) {
           </div>
         ) : null}
         {missingPrev.length ? <div className="note" style={{ background: 'var(--warn-w)', color: 'var(--warn)', margin: '10px 0', fontSize: 13 }}>{missingPrev.map((t) => dbShort(t.database)).join('、')} 读不到原住户编号，无法在本页安全换绑</div> : null}
-        {log.length ? <div className="card" style={{ padding: '10px 12px', marginBottom: 12, background: 'var(--bg)' }}>{log.map((l, i) => <div key={i} style={{ fontSize: 13, lineHeight: 1.9 }}>{l}</div>)}</div> : null}
+        {log.length ? <div className="card" style={{ padding: '10px 12px', marginBottom: 12, background: 'var(--bg)' }}>{[...log].reverse().map((l, i) => <div key={i} style={{ fontSize: 13, lineHeight: 1.9 }}>{l}</div>)}</div> : null}
         {err ? <div className="note" style={{ background: 'var(--dang-w)', color: 'var(--dang)', marginBottom: 12 }}>{err}</div> : null}
         <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
           <button className="btn p" style={{ flex: 1 }} disabled={running || !picked || !ownerRoom || !!missingPrev.length} onClick={() => void run()}>
@@ -200,7 +200,7 @@ export function GaragesSheet({ plate, rows, cloud, onClose, onDone }: OpProps) {
         ) : null}
         {mixing && end1 && end2 && end1 !== end2 ? <div className="note" style={{ background: 'var(--warn-w)', color: 'var(--warn)', marginBottom: 12, fontSize: 13 }}>一期({end1})和二期({end2})到期日不一致，混选前请先续期同步</div> : null}
         {sel.has('civil') && !cloudKnown ? <div className="note" style={{ background: 'var(--warn-w)', color: 'var(--warn)', marginBottom: 12, fontSize: 13 }}>人防状态还在查，可先保存其它车库；人防要等状态查回再勾</div> : null}
-        {log.length ? <div className="card" style={{ padding: '10px 12px', marginBottom: 12, background: 'var(--bg)' }}>{log.map((l, i) => <div key={i} style={{ fontSize: 13, lineHeight: 1.9 }}>{l}</div>)}</div> : null}
+        {log.length ? <div className="card" style={{ padding: '10px 12px', marginBottom: 12, background: 'var(--bg)' }}>{[...log].reverse().map((l, i) => <div key={i} style={{ fontSize: 13, lineHeight: 1.9 }}>{l}</div>)}</div> : null}
         {err ? <div className="note" style={{ background: 'var(--dang-w)', color: 'var(--dang)', marginBottom: 12 }}>{err}</div> : null}
         <div style={{ display: 'flex', gap: 10 }}>
           <button className="btn p" style={{ flex: 1 }} disabled={running || (sel.has('civil') && !cloudKnown)} onClick={() => void run()}>

@@ -75,6 +75,7 @@ import type {
 } from '@pms/shared-types';
 import {
   RECENT_LIST_LIMIT,
+  sortTimelineNewestFirst,
   classifyRepairType,
   compareWorkOrderNewestFirst,
   compareWorkOrderOldestFirst,
@@ -2464,11 +2465,7 @@ function WorkOrderDetailDrawer({
       ? wo.candidateIds?.length ? '待维修工接单' : '等待办公室派单'
       : statusMeta[wo.status].label
     : '';
-  const timelineLogs = detail
-    ? [...detail.logs].sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() || b.id - a.id,
-      )
-    : [];
+  const timelineLogs = sortTimelineNewestFirst(detail?.logs, log => log.createdAt, log => log.id);
   const actionBar = status && (canEdit || isSystemAdmin || canFillMaintenance) ? (
     <div className="pms-workorder-detail-actionbar">
       <div className="pms-workorder-detail-secondary-actions">

@@ -193,7 +193,7 @@ export function OwnerInfoSheet({ plate, rows, onClose, onDone }: OpProps) {
           <dd><input className="in" value={note} onChange={(e) => setNote(e.target.value)} style={{ width: '100%' }} placeholder="可留空" /></dd>
         </div>
         {missingOwnerId.length ? <div className="note" style={{ background: 'var(--warn-w)', color: 'var(--warn)', margin: '10px 0', fontSize: 13 }}>{missingOwnerId.map((t) => dbShort(t.database)).join('、')} 读不到住户编号，无法在本页写回</div> : null}
-        {log.length ? <div className="card" style={{ padding: '10px 12px', margin: '12px 0', background: 'var(--bg)' }}>{log.map((l, i) => <div key={i} style={{ fontSize: 13, lineHeight: 1.9 }}>{l}</div>)}</div> : null}
+        {log.length ? <div className="card" style={{ padding: '10px 12px', margin: '12px 0', background: 'var(--bg)' }}>{[...log].reverse().map((l, i) => <div key={i} style={{ fontSize: 13, lineHeight: 1.9 }}>{l}</div>)}</div> : null}
         {err ? <div className="note" style={{ background: 'var(--dang-w)', color: 'var(--dang)', margin: '12px 0' }}>{err}</div> : null}
         <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
           <button className="btn p" style={{ flex: 1 }} disabled={running || !!missingOwnerId.length} onClick={() => void run()}>

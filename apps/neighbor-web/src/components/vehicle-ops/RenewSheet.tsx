@@ -332,7 +332,7 @@ export default function RenewSheet({
 
         {log.length ? (
           <div className="card" style={{ padding: '10px 12px', marginBottom: 12, background: 'var(--bg)' }}>
-            {log.map((line, i) => <div key={i} style={{ fontSize: 13, lineHeight: 1.9 }}>{line}</div>)}
+            {[...log].reverse().map((line, i) => <div key={i} style={{ fontSize: 13, lineHeight: 1.9 }}>{line}</div>)}
           </div>
         ) : null}
 

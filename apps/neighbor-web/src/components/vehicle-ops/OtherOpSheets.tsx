@@ -53,7 +53,7 @@ export function DownloadSheet({ plate, rows, onClose, onDone }: OpProps) {
         <div className="note" style={{ marginBottom: 12, fontSize: 13 }}>
           按当前授权通道重新生成下载任务，并等旧停车系统确认所有现行通道都已下载。只写入队列不算成功；60 秒内未确认会列出未完成通道（任务保留，可稍后重试）。
         </div>
-        {log.length ? <div className="card" style={{ padding: '10px 12px', marginBottom: 12, background: 'var(--bg)' }}>{log.map((l, i) => <div key={i} style={{ fontSize: 13, lineHeight: 1.9 }}>{l}</div>)}</div> : null}
+        {log.length ? <div className="card" style={{ padding: '10px 12px', marginBottom: 12, background: 'var(--bg)' }}>{[...log].reverse().map((l, i) => <div key={i} style={{ fontSize: 13, lineHeight: 1.9 }}>{l}</div>)}</div> : null}
         {err ? <div className="note" style={{ background: 'var(--dang-w)', color: 'var(--dang)', marginBottom: 12 }}>{err}</div> : null}
         <div style={{ display: 'flex', gap: 10 }}>
           <button className="btn p" style={{ flex: 1 }} disabled={running} onClick={() => void run()}>
@@ -108,7 +108,7 @@ export function DeleteSheet({ plate, rows, onClose, onDone }: OpProps) {
           <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} style={{ width: 16, height: 16 }} />
           我已核对，确认注销 <b>{plate}</b>
         </label>
-        {log.length ? <div className="card" style={{ padding: '10px 12px', marginBottom: 12, background: 'var(--bg)' }}>{log.map((l, i) => <div key={i} style={{ fontSize: 13, lineHeight: 1.9 }}>{l}</div>)}</div> : null}
+        {log.length ? <div className="card" style={{ padding: '10px 12px', marginBottom: 12, background: 'var(--bg)' }}>{[...log].reverse().map((l, i) => <div key={i} style={{ fontSize: 13, lineHeight: 1.9 }}>{l}</div>)}</div> : null}
         {err ? <div className="note" style={{ background: 'var(--dang-w)', color: 'var(--dang)', marginBottom: 12 }}>{err}</div> : null}
         <div style={{ display: 'flex', gap: 10 }}>
           <button className="btn d solid" style={{ flex: 1 }} disabled={running || !confirmed} onClick={() => void run()}>

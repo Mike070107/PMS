@@ -3,135 +3,145 @@ import Icon from '@/components/Icon';
 import { toast } from '@/components/ui';
 import { uploadImage } from '@/lib/upload';
 
-/**
- * 所有「加图片」的栏位共用：截图后 Ctrl+V 直接粘贴最方便，也支持拖入和从电脑选择。
- *
- * - 点一下虚线框即获得焦点，Ctrl+V 粘贴剪贴板里的图片（截图、网页上「复制图片」都行）；
- * - 表单打开时，即使没点框，只要光标不在文字输入框里，Ctrl+V 也会进到最后打开的那个图片栏；
- * - 文字输入框里粘贴的是图片（不是文字）时也接住，免得用户以为没反应。
- */
+export interface PhotoUploadStatus { uploading: boolean; failedCount: number }
 interface Props {
   value: string[];
   onChange: (urls: string[]) => void;
   max?: number;
-  /** 缩略图边长 */
   size?: number;
-  /** 默认只收图片；票据类可传 'image/*,application/pdf' */
   accept?: string;
-  /** 附件不一定是图片（PDF）时用标签显示 */
   asTags?: boolean;
   disabled?: boolean;
+  /** Allows a containing form to wait for uploads and explicitly resolve failed files. */
+  onStatusChange?: (status: PhotoUploadStatus) => void;
 }
 
-/** 当前「接收全局粘贴」的栏位栈：最后挂载的优先 */
+/** One global paste receiver: most recently mounted or explicitly focused field wins. */
 const stack: string[] = [];
-
+const accepts = (file: File, accept: string) => file.type.startsWith('image/') || (accept.includes('pdf') && file.type === 'application/pdf');
 function filesFrom(dt: DataTransfer | null, accept: string): File[] {
   if (!dt) return [];
-  const ok = (f: File) => (accept.includes('pdf') && f.type === 'application/pdf') || f.type.startsWith('image/');
-  const list = Array.from(dt.files || []).filter(ok);
-  if (list.length) return list;
-  return Array.from(dt.items || [])
-    .filter((i) => i.kind === 'file')
-    .map((i) => i.getAsFile())
-    .filter((f): f is File => !!f && ok(f));
+  const files = Array.from(dt.files || []).filter(file => accepts(file, accept));
+  if (files.length) return files;
+  return Array.from(dt.items || []).filter(item => item.kind === 'file').map(item => item.getAsFile())
+    .filter((file): file is File => !!file && accepts(file, accept));
 }
+const isTextTarget = (el: Element | null) => !!el && (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || (el as HTMLElement).isContentEditable);
+interface FailedUpload { file: File; message: string }
 
-const isTextTarget = (el: Element | null) =>
-  !!el && (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || (el as HTMLElement).isContentEditable);
-
-export default function PhotoField({ value, onChange, max = 6, size = 104, accept = 'image/*', asTags = false, disabled = false }: Props) {
+export default function PhotoField({ value, onChange, max = 6, size = 104, accept = 'image/*', asTags = false, disabled = false, onStatusChange }: Props) {
   const id = useId();
   const [busy, setBusy] = useState(false);
-  const [focus, setFocus] = useState(false);
+  const [failed, setFailed] = useState<FailedUpload[]>([]);
+  const [pasteTarget, setPasteTarget] = useState(false);
   const [over, setOver] = useState(false);
+  const mounted = useRef(true);
   const fileRef = useRef<HTMLInputElement>(null);
-  const latest = useRef({ value, onChange, max, busy, disabled });
-  latest.current = { value, onChange, max, busy, disabled };
+  const latest = useRef({ value, onChange, max, busy, disabled, failed, onStatusChange });
+  latest.current = { value, onChange, max, busy, disabled, failed, onStatusChange };
   const room = max - value.length;
+  const activate = () => {
+    const index = stack.indexOf(id);
+    if (index >= 0) stack.splice(index, 1);
+    stack.push(id);
+    window.dispatchEvent(new Event('pms-photo-paste-target'));
+  };
+  useEffect(() => { onStatusChange?.({ uploading: busy, failedCount: failed.length }); }, [busy, failed.length, onStatusChange]);
 
-  const add = async (files: File[]) => {
+  const add = async (files: File[], retry = false) => {
     const cur = latest.current;
-    if (!files.length || cur.disabled) return;
-    if (cur.busy) { toast('上一张还在上传'); return; }
+    if (!files.length || cur.disabled || !mounted.current) return;
+    if (cur.busy) { toast('上一批还在上传'); return; }
     const left = cur.max - cur.value.length;
-    if (left <= 0) { toast(`最多 ${cur.max} 张`); return; }
-    if (files.length > left) toast(`最多 ${cur.max} 张，只加了前 ${left} 张`);
+    if (left <= 0) { toast(`最多 ${cur.max} 张，请先移除已有附件`); return; }
+    if (!retry && files.length > left) toast(`最多 ${cur.max} 张，只添加前 ${left} 张`);
+    const failures = retry ? cur.failed.slice(left) : [...cur.failed];
+    // Set the ref synchronously too: two paste/drop events in one render cannot start parallel batches.
+    cur.busy = true;
+    cur.onStatusChange?.({ uploading: true, failedCount: failures.length });
     setBusy(true);
     const urls: string[] = [];
     try {
-      for (const f of files.slice(0, left)) {
-        if (f.size > 15 * 1024 * 1024) { toast(`「${f.name}」超过 15MB，跳过`); continue; }
-        urls.push(await uploadImage(f));
+      for (const file of files.slice(0, left)) {
+        if (!mounted.current) return;
+        try {
+          if (!accepts(file, accept)) throw new Error('请选择图片附件');
+          if (file.size > 15 * 1024 * 1024) throw new Error('超过 15MB，请换一张较小的图片');
+          urls.push(await uploadImage(file));
+        } catch (error) {
+          failures.push({ file, message: error instanceof Error ? error.message : '上传失败' });
+        }
       }
-    } catch (e) { toast(e instanceof Error ? e.message : '上传失败'); }
-    finally {
-      setBusy(false);
-      if (urls.length) { latest.current.onChange([...latest.current.value, ...urls].slice(0, latest.current.max)); toast(`已添加 ${urls.length} 张`); }
+    } finally {
+      // Closing/resetting a form must never inject late URLs into another repair request.
+      if (mounted.current) {
+        latest.current.busy = false;
+        setBusy(false);
+        setFailed(failures);
+        if (urls.length) latest.current.onChange([...latest.current.value, ...urls].slice(0, latest.current.max));
+        latest.current.onStatusChange?.({ uploading: false, failedCount: failures.length });
+      }
     }
   };
 
-  // 全局粘贴：表单里任何位置（不在文字框里）Ctrl+V 都进这个栏；文字框里粘的是图片也接住
   useEffect(() => {
-    stack.push(id);
-    const onPaste = (e: ClipboardEvent) => {
-      if (e.defaultPrevented || stack[stack.length - 1] !== id) return;
-      const files = filesFrom(e.clipboardData, accept);
-      if (!files.length) return;
-      const text = e.clipboardData?.getData('text/plain');
-      if (isTextTarget(document.activeElement) && text) return; // 粘的是文字，交给输入框
-      e.preventDefault();
+    mounted.current = true;
+    const onTarget = () => setPasteTarget(stack[stack.length - 1] === id);
+    window.addEventListener('pms-photo-paste-target', onTarget);
+    activate();
+    const onPaste = (event: ClipboardEvent) => {
+      if (event.defaultPrevented || stack[stack.length - 1] !== id || latest.current.disabled) return;
+      const files = filesFrom(event.clipboardData, accept);
+      if (!files.length || (isTextTarget(document.activeElement) && event.clipboardData?.getData('text/plain'))) return;
+      event.preventDefault();
       void add(files);
     };
     window.addEventListener('paste', onPaste);
     return () => {
+      mounted.current = false;
       window.removeEventListener('paste', onPaste);
-      const i = stack.lastIndexOf(id);
-      if (i >= 0) stack.splice(i, 1);
+      window.removeEventListener('pms-photo-paste-target', onTarget);
+      const index = stack.indexOf(id);
+      if (index >= 0) stack.splice(index, 1);
+      window.dispatchEvent(new Event('pms-photo-paste-target'));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, accept]);
 
-  const zone = room > 0 && !disabled ? (
-    <div
-      tabIndex={0}
-      role="button"
-      className={`photo-drop ${focus ? 'on' : ''} ${over ? 'over' : ''}`}
-      style={asTags ? undefined : { width: size * 1.6, height: size }}
-      onFocus={() => setFocus(true)}
-      onBlur={() => setFocus(false)}
-      onPaste={(e) => { const f = filesFrom(e.clipboardData, accept); if (f.length) { e.preventDefault(); void add(f); } }}
-      onDragOver={(e) => { e.preventDefault(); setOver(true); }}
-      onDragLeave={() => setOver(false)}
-      onDrop={(e) => { e.preventDefault(); setOver(false); void add(filesFrom(e.dataTransfer, accept)); }}
-      onKeyDown={(e) => { if (e.key === 'Enter') fileRef.current?.click(); }}
-    >
-      {busy ? <><div className="spin" /><span>上传中…</span></> : (
-        <>
-          <Icon name="image" size={22} />
-          <b>{focus ? '按 Ctrl+V 粘贴' : 'Ctrl+V 粘贴截图'}</b>
-          <span>或拖进来 · <a onMouseDown={(e) => e.preventDefault()} onClick={(e) => { e.stopPropagation(); fileRef.current?.click(); }}>从电脑选</a></span>
-        </>
-      )}
-      <input ref={fileRef} type="file" accept={accept} multiple hidden onChange={(e) => { void add(Array.from(e.target.files || [])); e.target.value = ''; }} />
-    </div>
-  ) : null;
-
   return (
-    <div className="photo-field">
-      {value.map((u, i) => asTags ? (
-        <span key={u} className="tag">
-          <a href={u} target="_blank" rel="noreferrer">附件 {i + 1}</a>
-          {disabled ? null : <button className="btn g sm" style={{ height: 22, padding: '0 4px' }} onClick={() => onChange(value.filter((x) => x !== u))}>✕</button>}
+    <div className="photo-field" onFocusCapture={activate} onPointerDownCapture={activate}>
+      {value.map((url, index) => asTags ? (
+        <span key={`${url}-${index}`} className="tag">
+          <a href={url} target="_blank" rel="noreferrer">附件 {index + 1}</a>
+          {disabled ? null : <button type="button" className="btn g sm" aria-label={`移除附件 ${index + 1}`} onClick={() => onChange(value.filter((_, i) => i !== index))}>✕</button>}
         </span>
       ) : (
-        <div key={u} className="photo-item" style={{ width: size, height: size }}>
-          <a href={u} target="_blank" rel="noreferrer"><img src={u} alt="" /></a>
-          {disabled ? null : <button className="btn sm" title="移除" onClick={() => onChange(value.filter((x) => x !== u))}>✕</button>}
+        <div key={`${url}-${index}`} className="photo-item" style={{ width: size, height: size }}>
+          <a href={url} target="_blank" rel="noreferrer"><img src={url} alt={`报修照片 ${index + 1}`} /></a>
+          {disabled ? null : <button type="button" className="btn sm" title="移除" aria-label={`移除附件 ${index + 1}`} onClick={() => onChange(value.filter((_, i) => i !== index))}>✕</button>}
         </div>
       ))}
-      {zone}
-      {room <= 0 && !asTags ? <span className="muted" style={{ alignSelf: 'center', fontSize: 13 }}>已满 {max} 张</span> : null}
+      {room > 0 && !disabled ? (
+        <div tabIndex={0} role="button" aria-label="添加照片：点击、拖拽或 Ctrl+V 粘贴" aria-busy={busy}
+          data-paste-target={pasteTarget ? 'active' : undefined}
+          className={`photo-drop ${pasteTarget ? 'on' : ''} ${over ? 'over' : ''}`} style={asTags ? undefined : { width: size * 1.6, height: size }}
+          onClick={() => { if (!latest.current.busy) fileRef.current?.click(); }}
+          onPaste={event => { if (isTextTarget(document.activeElement) && event.clipboardData.getData('text/plain')) return; const files = filesFrom(event.clipboardData, accept); if (files.length) { event.preventDefault(); void add(files); } }}
+          onDragOver={event => { event.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
+          onDrop={event => { event.preventDefault(); setOver(false); void add(filesFrom(event.dataTransfer, accept)); }}
+          onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (!latest.current.busy) fileRef.current?.click(); } }}>
+          {busy ? <><div className="spin" /><span role="status">上传中…</span></> : <><Icon name="image" size={22} /><b>{pasteTarget ? '当前粘贴目标 · Ctrl+V' : '点击或 Ctrl+V 粘贴截图'}</b><span>也可拖入 · 每张不超过 15MB</span></>}
+          <input ref={fileRef} type="file" aria-label="选择照片" accept={accept} multiple hidden
+            onClick={event => event.stopPropagation()}
+            onChange={event => { void add(Array.from(event.target.files || [])); event.target.value = ''; }} />
+        </div>
+      ) : null}
+      {room <= 0 ? <span className="muted">已满 {max} 张</span> : null}
+      {failed.length > 0 ? <div className="photo-upload-errors" role="alert" style={{ flexBasis: '100%', overflowWrap: 'anywhere' }}>
+        {failed.map((item, index) => <div key={index}>{item.file.name}：{item.message}</div>)}
+        <button type="button" className="btn g sm" disabled={disabled || busy} onClick={() => void add(failed.map(item => item.file), true)}>重试上传</button>
+        <button type="button" className="btn g sm" disabled={disabled || busy} onClick={() => setFailed([])}>放弃失败照片</button>
+      </div> : null}
     </div>
   );
 }

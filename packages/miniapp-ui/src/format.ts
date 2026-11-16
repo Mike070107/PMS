@@ -6,6 +6,7 @@ import {
   REPAIR_TYPE_LABELS,
   stayDays,
   stayTone,
+  sortTimelineNewestFirst,
   workOrderStatusText,
 } from '@pms/shared-types';
 
@@ -192,10 +193,9 @@ export interface TimelineRow {
 /**
  * 进度时间轴：两个小程序渲染的是同一份数据，别各写一套。
  *
- * **倒序返回：最新的动作在第 0 位。** 后端给的 logs 是按 id 升序的流水，
- * 直接铺出来最新一条沉在最底下 —— 打开详情最想知道的是「现在到哪一步了」，
- * 却要先划过「已提交、已派单、已接单…」。所以在这里翻一次，两个端都不用各自 reverse
- * （谁忘了翻，谁那一屏就是老的在上面，两端还对不上）。
+ * **倒序返回：最新的动作在第 0 位。** 不依赖后端流水排列，先复制并按真实时间
+ * 归一为正序计算停留，再返回最新优先；同刻按流水号区分先后。
+ * 两个端都不要再各自 reverse，避免一端忘翻或重复翻导致两端不一致。
  * 折叠展示时取第 0 条，不要再写 length - 1。
  *
  * 每个节点带上「停了多久」——办公室和维修工要的是「卡在哪一步、卡了多久」，
@@ -208,10 +208,11 @@ export function buildTimeline(
   labels: Record<string, string>,
   opts: { finished?: boolean } = {},
 ): TimelineRow[] {
-  return logs
+  const chronologicalLogs = sortTimelineNewestFirst(logs, log => log.createdAt, log => log.id).reverse();
+  return chronologicalLogs
     .map((log, index) => {
-      const next = logs[index + 1];
-      const isLast = index === logs.length - 1;
+      const next = chronologicalLogs[index + 1];
+      const isLast = index === chronologicalLogs.length - 1;
       const stay =
         next != null
           ? formatDuration(log.createdAt, next.createdAt)

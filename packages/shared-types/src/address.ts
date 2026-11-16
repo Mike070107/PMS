@@ -139,7 +139,7 @@ export function formatRoomText(roomNo?: string | null): string {
 }
 
 /**
- * 一行展示的完整地址：`枫桦景苑一期17号201室`。
+ * 一行展示的完整地址：`枫桦景苑一期17号201`；房号按原值连接，不额外加斜杠或「室」。
  *
  * 工单卡片、消息标题、通知文案这些「给人看一眼就知道去哪」的地方都用它，
  * 别再各处自己拼 —— 拼出来的差别就是「永北5511弄 5511弄278号503室」这种重复。
@@ -155,7 +155,7 @@ export function formatAddressLine(
   const buildingText = building
     ? `${keepLane ? `${lane}弄` : ''}${!lane && building.roadName ? building.roadName : ''}${building.buildingNo ? `${building.buildingNo}号` : ''}`
     : '';
-  return `${community.name}${buildingText}${formatRoomText(roomNo)}`;
+  return `${community.name}${buildingText}${String(roomNo ?? '').trim()}`;
 }
 
 /**
@@ -164,20 +164,26 @@ export function formatAddressLine(
  * 不跨小区名称、不删不同弄号，不重建门牌以免丢失公区位置；不回写历史快照。
  */
 export function dedupeAddressText(text?: string | null): string {
-  return (text || '').replace(/(^|[^0-9])(\d+弄)(?:[ \t/／]*\2)+/g, '$1$2');
+  return (text || '')
+    .replace(/(^|[^0-9])(\d+弄)(?:[ \t/／]*\2)+/g, '$1$2')
+    // Only a complete numeric room after a numbered building; keep public-area paths and other door numbers.
+    .replace(/(\d+号)[ \t]*[/／][ \t]*(?=\d+(?:室)?(?:$|[\s,，。]))/g, '$1');
 }
 
-/** 最终填进表单、可复制的地址：保留不同弄号/室号分隔，仅裁相邻重复弄号。 */
+/** 最终填进表单、可复制的地址：房号直接接楼号，保留不同弄号，仅裁相邻重复弄号。 */
 export function formatFullAddress(
   communityName: string,
   building?: Pick<AddressBuilding, 'lane' | 'buildingNo' | 'roadName'> | null,
   roomNo?: string | null,
 ): string {
-  return dedupeAddressText(
-    [communityName, building ? formatBuildingFull(building) : '', roomNo || '']
-      .filter(Boolean)
-      .join('/'),
-  );
+  const buildingText = building ? formatBuildingFull(building) : '';
+  const room = String(roomNo ?? '').trim();
+  // A real building and its room form one doorplate. Keep the separator when
+  // there is no building number (office floor/department), rather than inventing one.
+  const place = buildingText
+    ? [buildingText, room].filter(Boolean).join(building?.buildingNo ? '' : '/')
+    : room;
+  return dedupeAddressText([communityName, place].filter(Boolean).join('/'));
 }
 
 /**

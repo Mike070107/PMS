@@ -5,6 +5,7 @@ import { Btn, ErrorNote, Field, Sheet, toast } from '@/components/ui';
 import Icon from '@/components/Icon';
 import HousePicker, { type PickedHouse } from '@/components/HousePicker';
 import type { PickedAddress } from '@/components/HouseAddressPicker';
+import PhotoField, { type PhotoUploadStatus } from '@/components/PhotoField';
 import { useAddressTree } from '@/lib/address-tree';
 import LocationSuggestions from '@/components/LocationSuggestions';
 import { locationOptions, normalizeLocation } from '@/lib/repair-location-options';
@@ -48,6 +49,8 @@ export default function NewOrderSheet({
   const [content, setContent] = useState('');
   const [urgent, setUrgent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [photoStatus, setPhotoStatus] = useState<PhotoUploadStatus>({ uploading: false, failedCount: 0 });
   const [err, setErr] = useState('');
   /** 带户进来时锁定地址；点「改地址」解锁回到选房 */
   const [fixed, setFixed] = useState<RepairPrefill | null>(null);
@@ -79,12 +82,14 @@ export default function NewOrderSheet({
     setContactName(initialHouse?.contactName ?? '');
     setContactPhone(initialHouse?.contactPhone ?? '');
     setContent(''); setRepairType(''); setUrgent(false);
+    setPhotos([]); setPhotoStatus({ uploading: false, failedCount: 0 });
   }, [open, initialHouse]);
 
   const reset = () => {
     setPickerRevision(value => value + 1);
     setFixed(null); setPicked(null); setSpot(''); setPublicArea(null); setNameEdited(false); setPhoneEdited(false);
     setContactName(''); setContactPhone(''); setContent(''); setRepairType(''); setUrgent(false); setErr('');
+    setPhotos([]); setPhotoStatus({ uploading: false, failedCount: 0 });
   };
 
   const fullAddress = fixed
@@ -100,7 +105,10 @@ export default function NewOrderSheet({
     };
 
     const submit = async () => {
-      if (!fixed && !picked && !publicArea) { setErr('请选择房号，或在楼栋下选择公共区域'); return; }
+      if (busy) return;
+      if (photoStatus.uploading) { setErr('照片正在上传，请稍候再提交'); return; }
+      if (photoStatus.failedCount) { setErr('请先重试上传或放弃失败照片'); return; }
+      if (!fixed && !picked && !publicArea) { setErr('请选择房号，或选择小区/楼栋公共区域'); return; }
       const communityId = fixed?.communityId ?? picked?.communityId ?? publicArea?.communityId;
       if (!communityId) { setErr('所选地址缺少小区，请重新选择'); return; }
 
@@ -110,6 +118,9 @@ export default function NewOrderSheet({
     try {
       const r = await repairs.create({
         communityId,
+        buildingId: picked?.buildingId ?? publicArea?.buildingId,
+        houseId: picked?.houseId,
+        attachments: photos,
         addressText: fullAddress,
         locationText: normalizeLocation(spot) || undefined,
         contactName: contactName.trim() || undefined,
@@ -130,7 +141,7 @@ export default function NewOrderSheet({
   return (
     <Sheet
       open={open}
-      onClose={onClose}
+      onClose={() => { if (!busy) onClose(); else toast('正在提交，请稍候'); }}
       subtitle="草稿不会自动保存，关闭前请提交"
       title="登记报修"
       headExtra={null}
@@ -158,7 +169,7 @@ export default function NewOrderSheet({
                 selectionRevision={pickerRevision}
                               allowPublicArea
                               disabled={busy}
-                              placeholder="先选小区、楼栋，再选室号或公共区域"
+                              placeholder="选小区公区，或选楼栋、室号/公区"
                               onPick={(p) => {
                                 if (publicArea || (picked && picked.houseId !== p.houseId)) setSpot('');
                                 setPublicArea(null); setPicked(p);
@@ -219,15 +230,18 @@ export default function NewOrderSheet({
 
             </details>
 
-      <div className="note" style={{ marginBottom: 14 }}>
-        照片附件还没接：需要带照片的话，先在现有后台或小程序里登记。
-      </div>
+      <section className="new-order-section" aria-label="照片附件">
+        <Field label="照片附件（选填）">
+          <PhotoField key={pickerRevision} value={photos} onChange={setPhotos} disabled={busy} onStatusChange={setPhotoStatus} />
+          <div className="muted" role="status">{photoStatus.uploading ? '照片上传中，完成后即可提交。' : photoStatus.failedCount ? '有照片上传失败，请重试或放弃后再提交。' : '支持点击选择、拖拽和 Ctrl+V 粘贴，最多 6 张。'}</div>
+        </Field>
+      </section>
 
-      <button type="button" className="btn p lg" style={{ width: '100%', justifyContent: 'center' }} disabled={busy} onClick={() => void submit()}>
+      <button type="button" className="btn p lg" style={{ width: '100%', justifyContent: 'center' }} disabled={busy || photoStatus.uploading || photoStatus.failedCount > 0} onClick={() => void submit()}>
         {busy ? '提交中…' : '提交报修'}
       </button>
       <div style={{ height: 8 }} />
-      <Btn kind="g" disabled={busy} onClick={() => { reset(); toast('已清空'); }}>清空</Btn>
+      <Btn kind="g" disabled={busy || photoStatus.uploading} onClick={() => { reset(); toast('已清空'); }}>清空</Btn>
       </div>
     </Sheet>
   );

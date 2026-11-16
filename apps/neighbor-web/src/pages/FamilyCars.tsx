@@ -1,4 +1,4 @@
-import { formatBeijingDateTime } from '@pms/shared-types';
+import { formatBeijingDateTime, sortTimelineNewestFirst } from '@pms/shared-types';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { accessCardIssuance, request } from '@pms/api-client';
 import Icon from '@/components/Icon';
@@ -272,7 +272,7 @@ function FamilyList({ kw }: { kw: string }) {
                         {canEdit && (open.status === 'expired' || (open.status === 'active' && open.expiringSoon)) ? <button className="btn sm" disabled={busy} onClick={() => renew(open)}>{busy ? '处理中…' : '续登一年'}</button> : null}
                         {canEdit && open.status === 'active' ? <button className="btn sm d" disabled={busy || !note.trim()} onClick={() => act('停用', () => request({ method: 'POST', url: `/family-cars/${open.id}/stop`, data: { note } }))}>停用</button> : null}
                       </div>
-                      <ol className="np-log">{[...(open.log ?? [])].reverse().map((l, i) => <li key={i}><time>{formatBeijingDateTime(l.at, 'MM-DD HH:mm')}</time><b>{l.userName}</b>{l.action}{l.note ? <small> · {l.note}</small> : null}</li>)}</ol>
+                      <ol className="np-log">{sortTimelineNewestFirst(open.log, l => l.at).map((l, i) => <li key={i}><time>{formatBeijingDateTime(l.at, 'MM-DD HH:mm')}</time><b>{l.userName}</b>{l.action}{l.note ? <small> · {l.note}</small> : null}</li>)}</ol>
                     </td></tr>
                   ) : null}
                 </Fragment>

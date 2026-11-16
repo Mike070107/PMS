@@ -32,6 +32,7 @@ function harness(initialHouse = null) {
       if (id === '@/components/LocationSuggestions') return { __esModule: true, default: 'LocationSuggestions' };
       if (id === '@/lib/repair-location-options') { const m={exports:{}};vm.runInNewContext(transpile(fs.readFileSync(path.join(root,'neighbor-web/src/lib/repair-location-options.ts'),'utf8')),{module:m,exports:m.exports});return m.exports; }
       if (id === '@/components/HousePicker') return { __esModule: true, default: 'HousePicker' };
+      if (id === '@/components/PhotoField') return { __esModule: true, default: 'PhotoField' };
       if (id === '@/components/Icon') return { __esModule: true, default: 'Icon' };
       throw Error('Unexpected import: ' + id);
     },
@@ -93,14 +94,14 @@ test('失败保留输入并解除忙状态，重试成功走原API载荷与onCre
   assert.equal(h.input('联系人').props.value, prefill.contactName);
   assert.equal(h.find('button', n => text(n) === '提交报修').props.disabled, false);
   h.click('提交报修'); const payload = h.requests[1].payload;
-  assert.deepEqual(JSON.parse(JSON.stringify(payload)), { communityId: 21, addressText: house.text + ' 大门', contactName: prefill.contactName, contactPhone: prefill.contactPhone, locationText: '大门', repairType: type.value, content: '窗户漏水', urgent: true });
+  assert.deepEqual(JSON.parse(JSON.stringify(payload)), { communityId: 21, attachments: [], addressText: house.text + ' 大门', contactName: prefill.contactName, contactPhone: prefill.contactPhone, locationText: '大门', repairType: type.value, content: '窗户漏水', urgent: true });
   h.requests[1].resolve({ workOrder: { id: 71 } }); await h.settle(); assert.deepEqual(h.created, [71]);
   assert.equal(h.input('问题描述').props.value, ''); assert.equal(h.input('具体位置').props.value, '');
 });
 
 test('真实JSX字段顺序：先地址再联系人，最后问题与补充信息', () => {
   const h = harness();
-  assert.deepEqual(h.nodes().filter(n => n.type === 'Field').map(n => n.props.label.replace(/ \*$/, '')), ['报修位置', '具体位置', '联系人', '手机号', '问题描述', '报修类型', '紧急程度']);
+  assert.deepEqual(h.nodes().filter(n => n.type === 'Field').map(n => n.props.label.replace(/ \*$/, '')), ['报修位置', '具体位置', '联系人', '手机号', '问题描述', '报修类型', '紧急程度', '照片附件（选填）']);
   const row = h.nodes().find(n => n.props?.className === 'new-order-contact');
   assert.ok(row); assert.equal(h.nodes(row).filter(n => n.type === 'Field').length, 2);
 });
@@ -149,3 +150,5 @@ test('三个模式均可点常用位置，选中态清楚且可手写修改，�
     assert.equal(h.find('button', n => text(n) === '提交中…').props.disabled, true);
   }
 });
+
+module.exports = { harness, house, publicArea, prefill, text };

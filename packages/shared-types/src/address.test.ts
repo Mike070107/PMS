@@ -23,29 +23,29 @@ test('公区报修的住户门牌统一成斜杠联系人标识', () => {
 test('小区名里已经写了这个弄 → 省掉，不说两遍', () => {
   const c = { name: '永南140弄', mainLane: '140', laneCount: 1 };
   assert.equal(isLaneRedundant(c, '140'), true);
-  assert.equal(formatAddressLine(c, b('140', '3'), '201'), '永南140弄3号201室');
+  assert.equal(formatAddressLine(c, b('140', '3'), '201'), '永南140弄3号201');
 });
 
 test('小区就这一个弄 → 说了小区名就等于说了弄号', () => {
   const c = { name: '枫桦景苑一期', mainLane: '198', laneCount: 1 };
-  assert.equal(formatAddressLine(c, b('198', '17'), '201'), '枫桦景苑一期17号201室');
+  assert.equal(formatAddressLine(c, b('198', '17'), '201'), '枫桦景苑一期17号201');
 });
 
 test('小区有好几个弄 → 一个都不能省，否则两个地址长得一模一样', () => {
   const c = { name: '枫桦景苑一期', mainLane: '198', laneCount: 3 };
   assert.equal(isLaneRedundant(c, '198'), false);
-  assert.equal(formatAddressLine(c, b('198', '17'), '201'), '枫桦景苑一期198弄17号201室');
-  assert.equal(formatAddressLine(c, b('228', '17'), '201'), '枫桦景苑一期228弄17号201室');
+  assert.equal(formatAddressLine(c, b('198', '17'), '201'), '枫桦景苑一期198弄17号201');
+  assert.equal(formatAddressLine(c, b('228', '17'), '201'), '枫桦景苑一期228弄17号201');
 });
 
 test('弄数未知时保守保留弄号：宁可多一段，也不能把两个地址显示成一个', () => {
   const c = { name: '枫桦景苑一期', mainLane: '198' };
-  assert.equal(formatAddressLine(c, b('198', '17'), '201'), '枫桦景苑一期198弄17号201室');
+  assert.equal(formatAddressLine(c, b('198', '17'), '201'), '枫桦景苑一期198弄17号201');
 });
 
 test('没有弄号的按路名走', () => {
   const c = { name: '锦川公寓', mainLane: null, laneCount: 0 };
-  assert.equal(formatAddressLine(c, b(null, '153', '永德路'), '502'), '锦川公寓永德路153号502室');
+  assert.equal(formatAddressLine(c, b(null, '153', '永德路'), '502'), '锦川公寓永德路153号502');
 });
 
 test('只到楼栋 / 只到小区也要拼得出来', () => {

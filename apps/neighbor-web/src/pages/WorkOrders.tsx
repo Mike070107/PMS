@@ -222,7 +222,7 @@ export default function WorkOrders() {
       />
 
       <div className="note" style={{ marginTop: 14 }}>
-        列表里电话按脱敏显示；照片附件上传、养护单签字和打印这一版还没接，需要时走左侧标「旧」的入口。
+        列表里电话按脱敏显示；登记报修已支持照片上传。养护单签字和打印需要时走左侧标「旧」的入口。
         <span className="muted"> 共 {orders?.length ?? 0} 单，当前筛选 {filtered.length} 单。</span>
       </div>
     </>

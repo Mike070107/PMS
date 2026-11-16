@@ -1,4 +1,4 @@
-import { formatBeijingDateTime } from '@pms/shared-types';
+import { formatBeijingDateTime, sortTimelineNewestFirst } from '@pms/shared-types';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { WorkOrderStatus, REPAIR_TYPE_OPTIONS } from '@pms/shared-types';
@@ -297,12 +297,12 @@ function InfoTab({ detail }: { detail: WorkOrderDetail }) {
 
 /* -------------------- 进度 -------------------- */
 function TimelineTab({ detail }: { detail: WorkOrderDetail }) {
-  const logs = [...detail.logs].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const logs = sortTimelineNewestFirst(detail.logs, log => log.createdAt, log => log.id);
   if (!logs.length) return <div className="empty">还没有处理记录</div>;
   return (
     <div className="tl">
       {logs.map((l, i) => (
-        <div key={l.id} className={`e ${i === logs.length - 1 ? 'cur' : ''}`}>
+        <div key={l.id} className={`e ${i === 0 ? 'cur' : ''}`}>
           <b>{ACTION_LABEL[l.action] || l.action}</b>
           <span className="w" style={{ float: 'right' }}>{formatBeijingDateTime(l.createdAt, 'MM-DD HH:mm')}</span>
           <div className="w">

@@ -24,7 +24,7 @@ test('总公司单栋办公楼：楼层与部门组成位置，不伪造楼号�
 test('公寓仍用真实楼栋和房号，不被楼层字段影响', () => {
   const room = composePropertyRoom({ propertyType: '公寓', floorNo: 3, roomNo: '101' });
   assert.equal(room, '101');
-  assert.equal(formatAddressLine({ name: '馨香公寓吴泾店' }, { buildingNo: '1', lane: null, roadName: null }, room), '馨香公寓吴泾店1号101室');
+  assert.equal(formatAddressLine({ name: '馨香公寓吴泾店' }, { buildingNo: '1', lane: null, roadName: null }, room), '馨香公寓吴泾店1号101');
 });
 
 test('办公楼数字房间保留室后缀，旧的无楼层部门编辑不丢失', () => {

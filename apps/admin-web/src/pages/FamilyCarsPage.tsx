@@ -1,4 +1,4 @@
-import { formatBeijingDateTime } from '@pms/shared-types';
+import { formatBeijingDateTime, sortTimelineNewestFirst } from '@pms/shared-types';
 import {
   App as AntdApp,
   Alert,
@@ -605,7 +605,8 @@ function DetailDrawer({ id, canEdit, canApprove, onClose, onChanged, onShowQr, o
     </div>)}</div></Image.PreviewGroup> : <div className="family-empty">还没有资料。业主扫码上传后会自动出现在这里，无需刷新。</div>}
   </section>;
 
-  const logSec = <section className="family-sec"><h3>处理记录</h3><div className="family-tl">{car.log.map((entry, index) => <div key={index} className={index === car.log.length - 1 ? 'is-last' : ''}>
+  const timelineLogs = sortTimelineNewestFirst(car.log, entry => entry.at);
+  const logSec = <section className="family-sec"><h3>处理记录</h3><div className="family-tl">{timelineLogs.map((entry, index) => <div key={index} className={index === timelineLogs.length - 1 ? 'is-last' : ''}>
     {entry.action}{entry.note ? `：${entry.note}` : ''}<small>{entry.userName} · {formatBeijingDateTime(entry.at, 'MM-DD HH:mm')}</small></div>)}</div></section>;
 
   let body: React.ReactNode;
