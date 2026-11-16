@@ -1,0 +1,267 @@
+﻿**********************
+Windows PowerShell 脚本开始
+开始时间: 20261116122739
+用户名: PC-20240510FDAR\Administrator
+RunAs 用户: PC-20240510FDAR\Administrator
+配置名称: 
+计算机: PC-20240510FDAR (Microsoft Windows NT 10.0.19044.0)
+主机应用程序: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoLogo -NoProfile -NonInteractive -Command [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); $OutputEncoding = [System.Text.UTF8Encoding]::new($false); $env:PATH = (Join-Path (Get-Location) 'outputs/repair-learning-deploy-20261116/bin') + ';' + $env:PATH; Start-Transcript -Path outputs/repair-learning-deploy-20261116/publish-attempt6-transcript.txt | Out-Null; try { & ./deploy/publish-production.ps1 -Target api; $resultCode=$LASTEXITCODE } finally { Stop-Transcript | Out-Null }; exit $resultCode
+进程 ID: 30528
+PSVersion: 5.1.19041.3803
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.19041.3803
+BuildVersion: 10.0.19041.3803
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+==> 同步远端部署标记
+==> 发布检查自测
+✔ 正式登录页不再标记为测试环境 (1.0328ms)
+✔ 正式Web目标包含新版源码，避免后续发布退回旧首页 (0.1648ms)
+✔ 正式Web构建新版并明确根路径和正式版本 (0.5937ms)
+✔ 验收记录必须通过且匹配输入哈希，不能以旧记录放行新源码 (0.8299ms)
+✔ 线上源码、版本或制品来源不符时失败 (0.554ms)
+✔ 助手源码变更必须提高版本，禁止同号覆盖和降级 (0.2955ms)
+✔ 按相关路径选择回归；纯文档不制造助手新版本 (0.3703ms)
+✔ 档案/共享联系人/停车回归按受影响源码选取，助手和无关脏文件不误触发 (1.5132ms)
+✔ 新门禁先build一次；旧hash不复用、失败不记pass/不继续，同hash全绿才零成本复用 (1.394ms)
+✔ 无法读取 Git 不是首次部署，权限/进程失败必须停止 (0.8504ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 182.4937
+==> api 源码与相关回归
+[esbuild IPC fallback] Vite-only environment preload; no compiler/source/dependency/permission patch
+[local junction-compatible pnpm] {"selected":"@pms/neighbor-web","args":["--dir","D:\\00项目开发\\PMS-vehicle-type-20261114\\apps\\neighbor-web","--ignore-workspace","--config.verify-deps-before-run=false","run","build"]}
+$ tsc --noEmit && vite build
+[esbuild IPC fallback] Vite-only TEMP set after pnpm startup; native compiler and source unchanged
+vite v5.4.10 building for production...
+transforming...
+✓ 3354 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                        0.69 kB │ gzip:   0.42 kB
+dist/assets/wanweiwei-preview-BbnoQ3Jg.woff2           8.42 kB
+dist/assets/zhaizaijia-preview-DpkPqGHI.woff2         13.15 kB
+dist/assets/zhangqingping-preview-DH8QlXak.woff2      13.91 kB
+dist/assets/shoushu-preview-BP4h-i43.woff2            18.21 kB
+dist/assets/wanweiwei-Dox_oCqg.woff2               1,705.11 kB
+dist/assets/zhangqingping-Bajp5zvP.woff2           2,868.14 kB
+dist/assets/shoushu-BgotiKV5.woff2                 3,820.31 kB
+dist/assets/zhaizaijia-CxqXsrIU.woff2              5,741.87 kB
+dist/assets/MigratedSurface-BZ_-FR1R.css               0.53 kB │ gzip:   0.26 kB
+dist/assets/Staff-B0MzsUYA.css                         0.81 kB │ gzip:   0.36 kB
+dist/assets/RenewalMonths-hqTss1D3.css                 0.88 kB │ gzip:   0.35 kB
+dist/assets/Cashier-CcwcEc5v.css                       0.91 kB │ gzip:   0.42 kB
+dist/assets/Stock-CEdvvZ8z.css                         1.46 kB │ gzip:   0.56 kB
+dist/assets/Records-DCrcELvt.css                       1.82 kB │ gzip:   0.68 kB
+dist/assets/Offices-XLckC4Xl.css                       1.97 kB │ gzip:   0.75 kB
+dist/assets/NewOrderSheet-DqUhW8rG.css                 2.15 kB │ gzip:   0.82 kB
+dist/assets/OwnerBusinessContact-BX9TaJNB.css          2.52 kB │ gzip:   0.90 kB
+dist/assets/ScreenSettings-B0K4saZt.css                3.55 kB │ gzip:   1.09 kB
+dist/assets/ParkingGarage3D-DhBMHyfr.css               3.97 kB │ gzip:   1.35 kB
+dist/assets/Today-DVty_We5.css                         4.85 kB │ gzip:   1.28 kB
+dist/assets/Reports-CHup3nTB.css                       5.10 kB │ gzip:   1.45 kB
+dist/assets/ParkingSpaces-B6xEcUWT.css                 5.65 kB │ gzip:   1.53 kB
+dist/assets/PropertyArchive-_cbjdbrc.css               6.31 kB │ gzip:   1.68 kB
+dist/assets/MigratedMeters-CLB_ySTp.css                6.32 kB │ gzip:   1.79 kB
+dist/assets/Maintenance-B7KtNIDp.css                   7.48 kB │ gzip:   2.19 kB
+dist/assets/Logs-Byqg9wMc.css                          7.81 kB │ gzip:   2.00 kB
+dist/assets/ParkingTab-JbzdQMPU.css                    9.18 kB │ gzip:   2.34 kB
+dist/assets/Screen-D3VgxuGm.css                       10.72 kB │ gzip:   2.77 kB
+dist/assets/MigratedApartment-DjO1xWnm.css            17.61 kB │ gzip:   3.87 kB
+dist/assets/Intranet-DCLuC9Vy.css                     21.63 kB │ gzip:   4.82 kB
+dist/assets/Statistics-P6DKfZln.css                   26.19 kB │ gzip:   5.05 kB
+dist/assets/Bills-BJQsX2Df.css                        33.11 kB │ gzip:   5.94 kB
+dist/assets/index-DCP71aIw.css                       111.16 kB │ gzip:  22.14 kB
+dist/assets/_commonjs-dynamic-modules-TDtrdbi3.js      0.24 kB │ gzip:   0.19 kB
+dist/assets/index-iIayuM6R.js                          0.27 kB │ gzip:   0.21 kB
+dist/assets/timeline-EeP1Heb8.js                       0.36 kB │ gzip:   0.24 kB
+dist/assets/address-tree-Dm-4RkCT.js                   0.53 kB │ gzip:   0.40 kB
+dist/assets/ApartmentStandards-BcXtOSbV.js             0.56 kB │ gzip:   0.51 kB
+dist/assets/inventory-BkKufgmc.js                      0.57 kB │ gzip:   0.28 kB
+dist/assets/screen-decision-DZG6TFP3.js                0.62 kB │ gzip:   0.50 kB
+dist/assets/FeeIcon-CqRZ3k3_.js                        0.92 kB │ gzip:   0.73 kB
+dist/assets/AddressSearch-DAr_AnUW.js                  1.13 kB │ gzip:   0.70 kB
+dist/assets/DateInput-D4ZK9qXU.js                      1.18 kB │ gzip:   0.75 kB
+dist/assets/RenewalMonths-2p0frgt7.js                  1.54 kB │ gzip:   0.87 kB
+dist/assets/parts-RxhcVGJB.js                          1.92 kB │ gzip:   0.78 kB
+dist/assets/meters-C4HWS6yI.js                         1.99 kB │ gzip:   0.64 kB
+dist/assets/repairs-DIsrs4DF.js                        3.18 kB │ gzip:   1.10 kB
+dist/assets/Stocktakes-B2ZldS4C.js                     3.18 kB │ gzip:   1.70 kB
+dist/assets/FeeReportCharts-BNXcsu10.js                3.50 kB │ gzip:   1.72 kB
+dist/assets/QrCodes-C-h1-DZT.js                        4.17 kB │ gzip:   2.08 kB
+dist/assets/PhotoField-CV6bwFp5.js                     4.96 kB │ gzip:   2.36 kB
+dist/assets/Devices-DJr-9CZg.js                        5.20 kB │ gzip:   2.28 kB
+dist/assets/parking-pricing-D0-wPNbb.js                5.72 kB │ gzip:   2.83 kB
+dist/assets/Plates-CQ0ZNYvj.js                         5.80 kB │ gzip:   2.84 kB
+dist/assets/OwnerBusinessContact-D3yXWH_9.js           5.95 kB │ gzip:   3.07 kB
+dist/assets/PlateForm-VufFkjZC.js                      7.37 kB │ gzip:   3.44 kB
+dist/assets/Materials-Dg0intXL.js                      7.76 kB │ gzip:   3.82 kB
+dist/assets/Offices-DnDhVqJK.js                        7.87 kB │ gzip:   2.80 kB
+dist/assets/NewOrderSheet-BtgD3HfJ.js                  8.18 kB │ gzip:   3.74 kB
+dist/assets/index-DvgplMQj.js                          9.00 kB │ gzip:   3.40 kB
+dist/assets/Owners-Bnu9SRmc.js                         9.73 kB │ gzip:   4.01 kB
+dist/assets/residential-bills-DAE6TAlX.js             11.05 kB │ gzip:   5.65 kB
+dist/assets/Pending-BcQrTUzr.js                       12.40 kB │ gzip:   5.20 kB
+dist/assets/ScreenSettings-D_9rvwRu.js                12.42 kB │ gzip:   5.54 kB
+dist/assets/statistics-xlsx-HIQM2-DU.js               13.00 kB │ gzip:   5.82 kB
+dist/assets/Records-B_2oFb7o.js                       13.62 kB │ gzip:   5.87 kB
+dist/assets/ParkingSpaces-DpkhSp9y.js                 13.78 kB │ gzip:   5.75 kB
+dist/assets/RenewSheet-C0exPaSH.js                    15.92 kB │ gzip:   7.33 kB
+dist/assets/FamilyCars-DllrQeR0.js                    15.97 kB │ gzip:   5.95 kB
+dist/assets/Screen-1D3mwATF.js                        16.35 kB │ gzip:   6.75 kB
+dist/assets/Standards-BByPleyn.js                     18.01 kB │ gzip:   6.75 kB
+dist/assets/Fees-DaJqiOaE.js                          18.20 kB │ gzip:   6.45 kB
+dist/assets/feeTemplates-C0l_YpvX.js                  18.41 kB │ gzip:   6.81 kB
+dist/assets/Today-CuQyfxrt.js                         20.50 kB │ gzip:   7.25 kB
+dist/assets/Intranet-CUPppNJQ.js                      23.52 kB │ gzip:   8.08 kB
+dist/assets/PropertyArchive-DGSh2zjb.js               24.10 kB │ gzip:   8.75 kB
+dist/assets/button-f8NMR7YU.js                        25.22 kB │ gzip:   8.28 kB
+dist/assets/Reports-CznJ1SC3.js                       26.93 kB │ gzip:   7.99 kB
+dist/assets/Staff-BbajYHM_.js                         28.03 kB │ gzip:   9.86 kB
+dist/assets/Purchase-Jn5V9vxC.js                      35.98 kB │ gzip:  12.37 kB
+dist/assets/WorkOrders-DKXA_Kn6.js                    36.68 kB │ gzip:  12.77 kB
+dist/assets/Stock-5lixkj67.js                         37.19 kB │ gzip:  11.44 kB
+dist/assets/Logs-CA-Qw_Vl.js                          43.23 kB │ gzip:  12.77 kB
+dist/assets/ParkingTab-B6j3cLWW.js                    44.95 kB │ gzip:  17.27 kB
+dist/assets/Vehicles-BLmKaqza.js                      45.08 kB │ gzip:  15.43 kB
+dist/assets/Cashier-DMIzvW6u.js                       49.43 kB │ gzip:  19.62 kB
+dist/assets/Bills-CZxVpNUC.js                         51.33 kB │ gzip:  17.59 kB
+dist/assets/Settings-BvWfh_LI.js                      59.14 kB │ gzip:  23.41 kB
+dist/assets/Maintenance-jCzsVZtg.js                   74.63 kB │ gzip:  23.41 kB
+dist/assets/exportXlsx-DwNklbWr.js                    75.66 kB │ gzip:  23.88 kB
+dist/assets/MigratedApartment-C2gjgTZ9.js             88.65 kB │ gzip:  28.68 kB
+dist/assets/jszip.min-Bxqm4lNT.js                     97.40 kB │ gzip:  30.23 kB
+dist/assets/index-DKo-cHjH.js                        106.92 kB │ gzip:  34.65 kB
+dist/assets/Statistics-BZp-FXWF.js                   134.16 kB │ gzip:  31.71 kB
+dist/assets/MigratedMeters-WlMzxlVl.js               169.41 kB │ gzip:  56.73 kB
+dist/assets/Experience-4UpjPly7.js                   420.41 kB │ gzip: 134.24 kB
+dist/assets/xlsx-D_0l8YDs.js                         429.03 kB │ gzip: 143.08 kB
+dist/assets/MigratedSurface-CHNVP3k-.js              446.89 kB │ gzip: 138.73 kB
+dist/assets/ParkingGarage3D-DV9-pt41.js              540.55 kB │ gzip: 137.34 kB
+dist/assets/index-Ccj8oocN.js                        754.05 kB │ gzip: 257.84 kB
+dist/assets/exceljs.min-B16U2I5G.js                  938.40 kB │ gzip: 270.96 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 17.60s
+✔ 旧schema首次添加10列、NULL不推断，保存后重跑保留档案/确认/category历史 (2148.3129ms)
+✔ 默认dry真正READ ONLY，无DDL/数据/备份/审计写入；返回待加列而非谎报已迁移 (1311.9272ms)
+✔ 已有列类型/长度/NULL/default漂移和缺依赖表逐项拒绝，绝不部分迁移 (7979.6276ms)
+✔ 第5条DDL失败整批rollback，已有旧数据不变，无成功审计 (1504.2398ms)
+✔ 身份、source/hash、允许清单、备份及审计门禁失败均不执行DDL (1316.0088ms)
+✔ 并发锁被占/短锁超时/提交前durable审计失败均不留部分列 (3836.2019ms)
+✔ CLI缺批准/备份显式参数或未知flag即失败；不把字符串当apply (0.7948ms)
+✔ COMMIT响应/提交后审计失败必须标记未知或已提交，禁止伪称rollback/自动重试 (2930.5707ms)
+✔ 备份文件真实hash/身份/恢复验证/新鲜度/pg_restore目录校验均为apply前置条件 (10.933ms)
+✔ 验收记录必须通过且匹配输入哈希，不能以旧记录放行新源码 (0.7681ms)
+✔ 线上源码、版本或制品来源不符时失败 (0.5495ms)
+✔ 助手源码变更必须提高版本，禁止同号覆盖和降级 (0.2914ms)
+✔ 按相关路径选择回归；纯文档不制造助手新版本 (0.4399ms)
+✔ 档案/共享联系人/停车回归按受影响源码选取，助手和无关脏文件不误触发 (2.0573ms)
+✔ 新门禁先build一次；旧hash不复用、失败不记pass/不继续，同hash全绿才零成本复用 (1.7886ms)
+✔ 无法读取 Git 不是首次部署，权限/进程失败必须停止 (0.276ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21242.2221
+[local junction-compatible pnpm] {"selected":"@pms/api","args":["--dir","D:\\00项目开发\\PMS-vehicle-type-20261114\\apps\\api","--ignore-workspace","--config.verify-deps-before-run=false","run","test:property-archive"]}
+$ node -r ts-node/register --test src/modules/owners-mgmt/property-archive.persistence.test.ts src/modules/properties/properties-office.test.ts src/modules/properties/properties-delete.test.ts src/modules/fees/cashier-finance.persistence.test.ts src/modules/owners-mgmt/production-classification.persistence.test.ts
+✔ 真实SQL：公寓分类隔离明细/报表/对账/下钻，金额与分页合计一致 (2940.4056ms)
+✔ 真实SQL：迁移回填唯一红冲关联，金额日期不变且不把独立退费当红冲 (2463.3077ms)
+✔ 真实服务/SQL：跨日红冲、独立退费、动态方式、报表对账今日一致，刷新双向查看且拒绝重复红冲 (2523.8573ms)
+✔ 真实收费保存：独立退费无需旧账单；同日收费红冲抵消且拒绝重复请求 (2244.0533ms)
+✔ 确认范围：吴泾一村和馨香臣寓四店为公寓；锦川及其他租户不变，重跑幂等 (3594.4571ms)
+✔ 主数据名称与批准ID不符时整批拒绝，不留下部分分类修改 (3379.1618ms)
+✔ 真实SQL：多对多关联、重复关联幂等、解除一处保留其他房产和电话 (3518.5116ms)
+✔ 迁移保留历史孤立房号原值，只为真实同租户房屋回填关联且可重跑 (2463.3454ms)
+✔ 真实SQL：业务使用不伪造接通时间，失败不覆盖上次成功，按号码分别留痕 (2229.0787ms)
+✔ A档案：原子替换当前非主关联，保留其他房产、主关联和历史；过期关联拒绝并回滚姓名 (1694.8846ms)
+✔ 房产详情：真实 SQL 保存/重读、性质过滤、稳定 ID 查询和去重楼栋人数 (1774.4637ms)
+✔ 真实 HTTP + 实际权限守卫/DTO + SQL：只读403、跨租户/范围、非法日期/号码400和显式确认刷新 (2055.4936ms)
+✔ 业务电话：读/使用/接通不等于显式确认；逐号码确认、来源隔离、失败事务回滚 (1604.4606ms)
+✔ 小区无房产、无历史业务时，同一事务清理空楼栋及从属档案 (2.9515ms)
+✔ 楼栋里真有房产时，提示户数而不是把空楼栋数说成房产 (1.0572ms)
+✔ 无房产但有历史工单时，显示可搜索单号并保留地址档案 (0.4693ms)
+✔ 请求契约：单栋标记必须是布尔值，完整楼层部门文本仍受30字限制 (6.0414ms)
+✔ 无号办公楼可保存，第二个部门复用同一栋，不制造楼号 (0.9403ms)
+✔ 同楼同层同部门禁止重复，另一层同名部门允许，编辑可以改楼层 (1.5789ms)
+✔ 住宅公寓仍要求楼号，办公楼编号模式也要求；单栋不能混传假编号 (1.3516ms)
+✔ 无编号模式也必须校验租户与小区权限，拒绝时不创建楼栋 (0.4803ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 28732.7133
+[local junction-compatible pnpm] {"selected":"@pms/api","args":["--dir","D:\\00项目开发\\PMS-vehicle-type-20261114\\apps\\api","--ignore-workspace","--config.verify-deps-before-run=false","exec","node","-r","ts-node/register","--test","src/modules/owners-mgmt/property-archive.integration.test.ts"]}
+✔ JWT签名/时效/数据库身份 + SQL角色范围：匿名401、无权限403、只读和跨租户/管理处拒绝 (2863.8699ms)
+✔ 真JWT→controller/DTO→SQL保存重读：房产清空、替换当前关联保留另一处、逐号码显式确认 (2029.1772ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15247.3813
+[local junction-compatible pnpm] {"selected":"@pms/neighbor-web","args":["--dir","D:\\00项目开发\\PMS-vehicle-type-20261114\\apps\\neighbor-web","--ignore-workspace","--config.verify-deps-before-run=false","run","test:property-archive"]}
+$ node --test test/property-archive-browser.test.cjs test/business-owner-contact-browser.test.cjs test/apartment-reconciliation-browser.test.cjs
+✔ 公寓三个查询页携带分类，对账按日/方式/退费下钻并支持分页及失败重试 (7942.5679ms)
+▲ [WARNING] "import.meta" is not available with the "iife" output format and will be empty [empty-import-meta]
+
+    src/lib/upload.ts:3:12:
+      3 │ const API = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+        ╵             ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+Entry browser runtime: TypeError: Cannot read properties of undefined (reading 'VITE_API_BASE_URL')
+    at http://127.0.0.1:2770/entry.js:76133:29
+    at http://127.0.0.1:2770/entry.js:80825:3
+✖ 正式收银/公寓/新车登记/已存车牌/续费入口可逐号确认，加载不写且不触发收费/设备动作 (11744.8921ms)
+✔ A 档案正式组件：逐级路径、分期/弄号、全部业主、多电话日期、失败保留、刷新/返回及窄屏；共享联系人逐号确认 (21975.3884ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 2
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 22621.824
+
+✖ failing tests:
+
+test at test\business-owner-contact-browser.test.cjs:12:1
+✖ 正式收银/公寓/新车登记/已存车牌/续费入口可逐号确认，加载不写且不触发收费/设备动作 (11744.8921ms)
+  locator.waitFor: Timeout 8000ms exceeded.
+  Call log:
+  [2m  - waiting for getByRole('region', { name: '业务联系人' }).getByRole('button', { name: /业务联系人/ }) to be visible[22m
+
+      at TestContext.<anonymous> (D:\00项目开发\PMS-vehicle-type-20261114\apps\neighbor-web\test\business-owner-contact-browser.test.cjs:54:105) {
+    name: 'TimeoutError',
+    log: [ "  - waiting for getByRole('region', { name: '业务联系人' }).getByRole('button', { name: /业务联系人/ }) to be visible" ]
+  }
+[ELIFECYCLE] Command failed with exit code 1.
+PS>TerminatingError():“步骤失败：api 源码与相关回归”
+>> TerminatingError():“步骤失败：api 源码与相关回归”
+PS>TerminatingError():“步骤失败：api 源码与相关回归”
+**********************
+Windows PowerShell 脚本结束
+结束时间: 20261116122955
+**********************

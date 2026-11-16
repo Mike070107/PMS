@@ -1,0 +1,4 @@
+{"target":"api","version":"api-c0dcec1","commit":"c0dcec1a98becf32bbd16d0e094e982080effb1e","sourceHash":"2dac8d0073c03e49c69f704ba91c07d9bab410fce7236d72f5424d1b957c87c3","builtAt":"2026-11-14T17:52:03.161Z","files":{}}
+rollback members verified 1474
+8a1332160de6165cdbdfc0a2a130e36b4fbf6a6faa68651c8afb83fd56a66d5d  /opt/pms-backups/api/pms-api-rollback-20261116-120900.tar.gz
+Rollback snapshot created; deployment not yet run. Marker directory intentionally retained: /opt/pms-backups/api/rollback-marker.Maw7Y1

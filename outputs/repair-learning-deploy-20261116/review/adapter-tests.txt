@@ -1,0 +1,25 @@
+﻿✔ api build (3.6165ms)
+✔ api test script (1.0884ms)
+✔ api exec preserving all arguments (0.9614ms)
+✔ neighbor build (3.5331ms)
+✔ shared type script (1.3988ms)
+✔ nonzero child status is not swallowed (1.7157ms)
+✔ missing child status is failure (1.2055ms)
+✔ spawn failure throws rather than succeeding (1.5151ms)
+✔ unknown selectors and non-filter command refused (1.3278ms)
+✔ package selector identity mismatch refused (1.2209ms)
+✔ only exact neighbor build appends preload while pnpm TEMP is untouched (0.9053ms)
+✔ API,test,exec,other-project and extra build arguments retain original environment (4.8274ms)
+✔ Vite in exact selected project switches TEMP only after pnpm initialization (1.2986ms)
+✔ non-Vite pnpm,tsc,node entries never touch synthetic environment (1.9815ms)
+✔ Vite other project refuses before touching environment (0.7946ms)
+✔ preexisting IPC-only path refuses without creating or deleting directory (0.6764ms)
+✔ actual esbuild async write error returns null for native IPC fallback (1.6099ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 355.1219

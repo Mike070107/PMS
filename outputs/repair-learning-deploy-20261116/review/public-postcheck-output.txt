@@ -1,0 +1,130 @@
+﻿{
+  "checkedAt": "2026-11-16T04:44:54.472Z",
+  "node": "v24.15.0",
+  "dns": [
+    "198.18.4.73"
+  ],
+  "expected": {
+    "target": "api",
+    "version": "api-b9cbd70",
+    "commit": "b9cbd70478dad8988774aeb25b2946bf2271e956",
+    "sourceHash": "eb9e963f7b98e944e12dd875694fac1f77d0c2cdeeb394856330401b4a5a536a",
+    "builtAt": "2026-11-16T04:40:04.727Z",
+    "files": {}
+  },
+  "paths": {
+    "domain": {
+      "health": {
+        "remoteAddress": "198.18.4.73",
+        "tlsAuthorized": true,
+        "servername": "prsznh.cn",
+        "tlsProtocol": "TLSv1.3",
+        "status": 200,
+        "body": {
+          "status": "ok",
+          "db": "up",
+          "release": {
+            "target": "api",
+            "version": "api-b9cbd70",
+            "commit": "b9cbd70478dad8988774aeb25b2946bf2271e956",
+            "sourceHash": "eb9e963f7b98e944e12dd875694fac1f77d0c2cdeeb394856330401b4a5a536a",
+            "builtAt": "2026-11-16T04:40:04.727Z"
+          },
+          "ts": "2026-11-16T04:44:52.983Z"
+        }
+      },
+      "web": {
+        "remoteAddress": "198.18.4.73",
+        "tlsAuthorized": true,
+        "servername": "prsznh.cn",
+        "tlsProtocol": "TLSv1.3",
+        "status": 200,
+        "body": {
+          "target": "web",
+          "version": "2.0.20261115-0154",
+          "commit": "c0dcec1a98becf32bbd16d0e094e982080effb1e",
+          "sourceHash": "59cb542e1be51d2aeaf10ca9ab5022fcbfcc5196fb989f241e64d561374d9eee",
+          "builtAt": "2026-11-14T17:55:08.529Z",
+          "files": {
+            "index.html": "08fcff4f0fb2843ded2af1c43ef3da842b57fc8f35f46477f1535019cd34a25d",
+            "assets/index-COGgWmBn.js": "ea520f283e7d8e5e7c66a89ce1f128c1462614ff5bb131ecd371888e5d04eafc"
+          }
+        }
+      },
+      "assistant": {
+        "remoteAddress": "198.18.4.73",
+        "tlsAuthorized": true,
+        "servername": "prsznh.cn",
+        "tlsProtocol": "TLSv1.3",
+        "status": 200,
+        "body": {
+          "version": "2.5.54",
+          "downloadUrl": "https://prsznh.cn/downloads/pms-data-sync-assistant/2.5.54/Pms.DataSyncAssistant.V2.exe",
+          "url": "https://prsznh.cn/downloads/pms-data-sync-assistant/2.5.54/Pms.DataSyncAssistant.V2.exe",
+          "sha256": "0c8384104b3328fbf1ad032ddaf6b7e274c91436f81341611cea853ec92a7a74",
+          "releaseNotes": "PMS 数据同步助手 2.5.54",
+          "notes": "PMS 数据同步助手 2.5.54",
+          "publishedAt": "2026-11-14T16:44:22.2047980Z",
+          "sourceCommit": "d075f81de4941147fcc15e3cabba1e4f31e5ea7f"
+        }
+      }
+    },
+    "fixedIP": {
+      "health": {
+        "remoteAddress": "124.223.179.214",
+        "tlsAuthorized": true,
+        "servername": "prsznh.cn",
+        "tlsProtocol": "TLSv1.3",
+        "status": 200,
+        "body": {
+          "status": "ok",
+          "db": "up",
+          "release": {
+            "target": "api",
+            "version": "api-b9cbd70",
+            "commit": "b9cbd70478dad8988774aeb25b2946bf2271e956",
+            "sourceHash": "eb9e963f7b98e944e12dd875694fac1f77d0c2cdeeb394856330401b4a5a536a",
+            "builtAt": "2026-11-16T04:40:04.727Z"
+          },
+          "ts": "2026-11-16T04:44:53.088Z"
+        }
+      },
+      "web": {
+        "remoteAddress": "124.223.179.214",
+        "tlsAuthorized": true,
+        "servername": "prsznh.cn",
+        "tlsProtocol": "TLSv1.3",
+        "status": 200,
+        "body": {
+          "target": "web",
+          "version": "2.0.20261115-0154",
+          "commit": "c0dcec1a98becf32bbd16d0e094e982080effb1e",
+          "sourceHash": "59cb542e1be51d2aeaf10ca9ab5022fcbfcc5196fb989f241e64d561374d9eee",
+          "builtAt": "2026-11-14T17:55:08.529Z",
+          "files": {
+            "index.html": "08fcff4f0fb2843ded2af1c43ef3da842b57fc8f35f46477f1535019cd34a25d",
+            "assets/index-COGgWmBn.js": "ea520f283e7d8e5e7c66a89ce1f128c1462614ff5bb131ecd371888e5d04eafc"
+          }
+        }
+      },
+      "assistant": {
+        "remoteAddress": "124.223.179.214",
+        "tlsAuthorized": true,
+        "servername": "prsznh.cn",
+        "tlsProtocol": "TLSv1.3",
+        "status": 200,
+        "body": {
+          "version": "2.5.54",
+          "downloadUrl": "https://prsznh.cn/downloads/pms-data-sync-assistant/2.5.54/Pms.DataSyncAssistant.V2.exe",
+          "url": "https://prsznh.cn/downloads/pms-data-sync-assistant/2.5.54/Pms.DataSyncAssistant.V2.exe",
+          "sha256": "0c8384104b3328fbf1ad032ddaf6b7e274c91436f81341611cea853ec92a7a74",
+          "releaseNotes": "PMS 数据同步助手 2.5.54",
+          "notes": "PMS 数据同步助手 2.5.54",
+          "publishedAt": "2026-11-14T16:44:22.2047980Z",
+          "sourceCommit": "d075f81de4941147fcc15e3cabba1e4f31e5ea7f"
+        }
+      }
+    }
+  },
+  "apiFiveFieldsMatch": true
+}

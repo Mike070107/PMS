@@ -1,0 +1,67 @@
+﻿{
+  "checkedAt": "2026-11-16T04:46:22.712Z",
+  "passed": true,
+  "apiFiveFieldsBothRoutes": true,
+  "identity": {
+    "hostname": "VM-4-8-ubuntu",
+    "instanceId": "ins-2s08wnpd",
+    "privateIP": "10.0.4.8",
+    "apiDirectory": "/opt/pms-repair/apps/api",
+    "pid": 312460,
+    "processState": "node /opt/pms-r Ssl"
+  },
+  "artifacts": [
+    {
+      "local": "apps/api/dist/modules/repairs/repairs.service.js",
+      "remote": "/opt/pms-repair/apps/api/dist/modules/repairs/repairs.service.js",
+      "bytes": 308012,
+      "sha256": "4fdb9337941ca64f44baec5edec6ce6d56964ffb52f726821e60b6f320cae1f2",
+      "matchesValidatedBuildAndProduction": true
+    },
+    {
+      "local": "apps/api/dist/modules/ai/extract-samples.service.js",
+      "remote": "/opt/pms-repair/apps/api/dist/modules/ai/extract-samples.service.js",
+      "bytes": 15363,
+      "sha256": "6b3696e91d9296bf4bb6cb96eb3657512a4af3bc88f5f11e20aeaa788daa6812",
+      "matchesValidatedBuildAndProduction": true
+    },
+    {
+      "local": "apps/api/dist/modules/ai/repair-text.ai.js",
+      "remote": "/opt/pms-repair/apps/api/dist/modules/ai/repair-text.ai.js",
+      "bytes": 20322,
+      "sha256": "314b070c43bb41cb5f7eee4466e0a9d483c9283593d447c1d295f4966dd0089f",
+      "matchesValidatedBuildAndProduction": true
+    }
+  ],
+  "rollback": {
+    "path": "/opt/pms-backups/api/pms-api-rollback-20261116-120900.tar.gz",
+    "bytes": 1643770,
+    "sha256": "8a1332160de6165cdbdfc0a2a130e36b4fbf6a6faa68651c8afb83fd56a66d5d",
+    "members": 1474,
+    "extracted": false
+  },
+  "web": {
+    "version": "2.0.20261115-0154",
+    "commit": "c0dcec1a98becf32bbd16d0e094e982080effb1e",
+    "matchesHistoricalVerified": true,
+    "historicalVerifiedAt": "2026-11-14T17:55:13.126Z"
+  },
+  "assistant": {
+    "version": "2.5.54",
+    "commit": "d075f81de4941147fcc15e3cabba1e4f31e5ea7f",
+    "matchesHistoricalDeployTagAndAssembly": true,
+    "sha256": "0c8384104b3328fbf1ad032ddaf6b7e274c91436f81341611cea853ec92a7a74"
+  },
+  "scope": {
+    "readOnlyProduction": true,
+    "apiOnlyReleasePerLead": true,
+    "webOrAssistantDeployment": false,
+    "businessWrites": false,
+    "notifications": false,
+    "rollbackExtractionOrRestore": false
+  },
+  "limitations": [
+    "No simultaneous Web/assistant preflight was captured this release. Public current identities match historical formal verification/tag; not a fabricated same-time before/after comparison.",
+    "Health and compiled-file hashes do not prove real business DB writes, native WeChat/phone use, field assistant upgrade or physical device completion."
+  ]
+}

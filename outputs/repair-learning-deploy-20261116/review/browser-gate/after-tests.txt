@@ -1,0 +1,9 @@
+﻿✔ 正式收银/公寓/新车登记/已存车牌/续费入口可逐号确认，加载不写且不触发收费/设备动作 (6895.4533ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7308.5774

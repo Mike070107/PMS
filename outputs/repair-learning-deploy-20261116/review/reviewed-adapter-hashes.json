@@ -1,0 +1,12 @@
+﻿[
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "DE89EB3CCC78398D28B006002402C9076ECFC152EC244CF2E4DD8442025A9B01",
+        "Path":  "D:\\00项目开发\\PMS-vehicle-type-20261114\\outputs\\repair-learning-deploy-20261116\\bin\\pnpm-project.cjs"
+    },
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "F98283F60BC4D2D48903E520C7D0616A7CBD7BF329D8517699F66C71A532D2BF",
+        "Path":  "D:\\00项目开发\\PMS-vehicle-type-20261114\\outputs\\repair-learning-deploy-20261116\\bin\\esbuild-ipc-temp.cjs"
+    }
+]

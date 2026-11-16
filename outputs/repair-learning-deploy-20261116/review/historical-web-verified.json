@@ -1,0 +1,14 @@
+{
+  "target": "web",
+  "version": "2.0.20261115-0154",
+  "commit": "c0dcec1a98becf32bbd16d0e094e982080effb1e",
+  "sourceHash": "59cb542e1be51d2aeaf10ca9ab5022fcbfcc5196fb989f241e64d561374d9eee",
+  "builtAt": "2026-11-14T17:55:08.529Z",
+  "files": {
+    "index.html": "08fcff4f0fb2843ded2af1c43ef3da842b57fc8f35f46477f1535019cd34a25d",
+    "assets/index-COGgWmBn.js": "ea520f283e7d8e5e7c66a89ce1f128c1462614ff5bb131ecd371888e5d04eafc"
+  },
+  "verifiedAt": "2026-11-14T17:55:13.126Z",
+  "fieldInstallation": "not verified",
+  "fieldBusiness": "not verified"
+}

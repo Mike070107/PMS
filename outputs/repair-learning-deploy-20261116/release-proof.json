@@ -1,0 +1,99 @@
+{
+  "checkedAt": "2026-11-16T04:51:43.505Z",
+  "node": "v24.15.0",
+  "expected": {
+    "target": "api",
+    "version": "api-b9cbd70",
+    "commit": "b9cbd70478dad8988774aeb25b2946bf2271e956",
+    "sourceHash": "eb9e963f7b98e944e12dd875694fac1f77d0c2cdeeb394856330401b4a5a536a",
+    "builtAt": "2026-11-16T04:40:04.727Z",
+    "files": {}
+  },
+  "formalVerified": {
+    "target": "api",
+    "version": "api-b9cbd70",
+    "commit": "b9cbd70478dad8988774aeb25b2946bf2271e956",
+    "sourceHash": "eb9e963f7b98e944e12dd875694fac1f77d0c2cdeeb394856330401b4a5a536a",
+    "builtAt": "2026-11-16T04:40:04.727Z",
+    "files": {},
+    "verifiedAt": "2026-11-16T04:40:16.190Z",
+    "fieldInstallation": "not verified",
+    "fieldBusiness": "not verified"
+  },
+  "formalPublish": {
+    "transcript": "outputs/repair-learning-deploy-20261116/publish-attempt7-transcript.txt",
+    "testRunCounts": [
+      10,
+      16,
+      21,
+      2,
+      3,
+      1,
+      17,
+      12,
+      227,
+      22
+    ],
+    "allTestRunFailuresZero": true,
+    "note": "Counts are per command, not unique cases; release command exit 0 collected separately."
+  },
+  "featureSourceCommit": "2043607af0456ac5d1ace5f8489e635df304f6f3",
+  "sourceFilesChecked": 936,
+  "sourceFilesUnchanged": true,
+  "compiledFeatureArtifactsMatchValidatedBuild": true,
+  "independentAfterCheck": {
+    "passed": true,
+    "checkedAt": "2026-11-16T04:46:22.712Z",
+    "evidence": "outputs/repair-learning-deploy-20261116/review/comparison-result.json",
+    "sha256": "0296faa6c7d343ed20646c9b73ffde441799eb0214fde6d3174e948dc5db88e9",
+    "report": "outputs/repair-learning-deploy-20261116/review/postcheck-report.md",
+    "compiledArtifactsMatchProduction": true,
+    "rollbackPreserved": true
+  },
+  "artifacts": [
+    {
+      "path": "apps/api/dist/modules/repairs/repairs.service.js",
+      "bytes": 308012,
+      "sha256": "4fdb9337941ca64f44baec5edec6ce6d56964ffb52f726821e60b6f320cae1f2"
+    },
+    {
+      "path": "apps/api/dist/modules/ai/extract-samples.service.js",
+      "bytes": 15363,
+      "sha256": "6b3696e91d9296bf4bb6cb96eb3657512a4af3bc88f5f11e20aeaa788daa6812"
+    },
+    {
+      "path": "apps/api/dist/modules/ai/repair-text.ai.js",
+      "bytes": 20322,
+      "sha256": "314b070c43bb41cb5f7eee4466e0a9d483c9283593d447c1d295f4966dd0089f"
+    }
+  ],
+  "isolatedFeatureRegressions": {
+    "tests": 195,
+    "pass": 195,
+    "fail": 0,
+    "evidence": "outputs/repair-learning-deploy-20261116/api-regressions-transcript.txt"
+  },
+  "rollback": {
+    "path": "/opt/pms-backups/api/pms-api-rollback-20261116-120900.tar.gz",
+    "sha256": "8a1332160de6165cdbdfc0a2a130e36b4fbf6a6faa68651c8afb83fd56a66d5d",
+    "members": 1474,
+    "originalEvidenceSha256": "83621175565b9c9a96484fe4d7f09010b6a4daf43bb5e75e39f5211262aa5268"
+  },
+  "git": {
+    "head": "803fd9f8c2fd1aaacb3a919606ff489672023fc0",
+    "originMain": "803fd9f8c2fd1aaacb3a919606ff489672023fc0",
+    "remoteApiTag": "b9cbd70478dad8988774aeb25b2946bf2271e956"
+  },
+  "scope": {
+    "apiOnly": true,
+    "webDeployed": false,
+    "assistantDeployed": false,
+    "miniappFormalRelease": false,
+    "businessTestWrites": false,
+    "testNotifications": false
+  },
+  "limitations": [
+    "Public health and file hashes do not prove native-phone interactions or real business completion.",
+    "Independent production after-check is recorded separately in review."
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "checkedAt": "2026-11-16T04:07:22.373Z",
+  "node": "v24.21.0",
+  "dns": [
+    "198.18.4.73"
+  ],
+  "sshIdentity": {
+    "host": "VM-4-8-ubuntu",
+    "privateIP": "10.0.4.8",
+    "instanceId": "ins-2s08wnpd",
+    "directory": "/opt/pms-repair/apps/api",
+    "service": "pms-api",
+    "state": "online",
+    "scope": "observed by BatchMode/StrictHostKeyChecking SSH read-only preflight before this capture"
+  },
+  "domain": {
+    "remoteAddress": "198.18.4.73",
+    "tlsAuthorized": true,
+    "status": 200,
+    "body": {
+      "status": "ok",
+      "db": "up",
+      "release": {
+        "target": "api",
+        "version": "api-c0dcec1",
+        "commit": "c0dcec1a98becf32bbd16d0e094e982080effb1e",
+        "sourceHash": "2dac8d0073c03e49c69f704ba91c07d9bab410fce7236d72f5424d1b957c87c3",
+        "builtAt": "2026-11-14T17:52:03.161Z"
+      },
+      "ts": "2026-11-16T04:07:21.421Z"
+    }
+  },
+  "fixedIP": {
+    "remoteAddress": "124.223.179.214",
+    "tlsAuthorized": true,
+    "status": 200,
+    "body": {
+      "status": "ok",
+      "db": "up",
+      "release": {
+        "target": "api",
+        "version": "api-c0dcec1",
+        "commit": "c0dcec1a98becf32bbd16d0e094e982080effb1e",
+        "sourceHash": "2dac8d0073c03e49c69f704ba91c07d9bab410fce7236d72f5424d1b957c87c3",
+        "builtAt": "2026-11-14T17:52:03.161Z"
+      },
+      "ts": "2026-11-16T04:07:21.460Z"
+    }
+  }
+}

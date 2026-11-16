@@ -1,0 +1,601 @@
+﻿**********************
+Windows PowerShell 脚本开始
+开始时间: 20261116123553
+用户名: PC-20240510FDAR\Administrator
+RunAs 用户: PC-20240510FDAR\Administrator
+配置名称: 
+计算机: PC-20240510FDAR (Microsoft Windows NT 10.0.19044.0)
+主机应用程序: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoLogo -NoProfile -NonInteractive -Command [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); $OutputEncoding = [System.Text.UTF8Encoding]::new($false); $env:PATH = (Join-Path (Get-Location) 'outputs/repair-learning-deploy-20261116/bin') + ';' + $env:PATH; Start-Transcript -Path outputs/repair-learning-deploy-20261116/publish-attempt7-transcript.txt | Out-Null; try { & ./deploy/publish-production.ps1 -Target api; $resultCode=$LASTEXITCODE } finally { Stop-Transcript | Out-Null }; exit $resultCode
+进程 ID: 17944
+PSVersion: 5.1.19041.3803
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.19041.3803
+BuildVersion: 10.0.19041.3803
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+==> 同步远端部署标记
+==> 发布检查自测
+✔ 正式登录页不再标记为测试环境 (1.8855ms)
+✔ 正式Web目标包含新版源码，避免后续发布退回旧首页 (0.319ms)
+✔ 正式Web构建新版并明确根路径和正式版本 (0.6517ms)
+✔ 验收记录必须通过且匹配输入哈希，不能以旧记录放行新源码 (0.8214ms)
+✔ 线上源码、版本或制品来源不符时失败 (0.5932ms)
+✔ 助手源码变更必须提高版本，禁止同号覆盖和降级 (0.3127ms)
+✔ 按相关路径选择回归；纯文档不制造助手新版本 (0.3975ms)
+✔ 档案/共享联系人/停车回归按受影响源码选取，助手和无关脏文件不误触发 (1.6159ms)
+✔ 新门禁先build一次；旧hash不复用、失败不记pass/不继续，同hash全绿才零成本复用 (2.2911ms)
+✔ 无法读取 Git 不是首次部署，权限/进程失败必须停止 (0.3597ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 245.9529
+==> api 源码与相关回归
+[esbuild IPC fallback] Vite-only environment preload; no compiler/source/dependency/permission patch
+[local junction-compatible pnpm] {"selected":"@pms/neighbor-web","args":["--dir","D:\\00项目开发\\PMS-vehicle-type-20261114\\apps\\neighbor-web","--ignore-workspace","--config.verify-deps-before-run=false","run","build"]}
+$ tsc --noEmit && vite build
+[esbuild IPC fallback] Vite-only TEMP set after pnpm startup; native compiler and source unchanged
+vite v5.4.10 building for production...
+transforming...
+✓ 3354 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                        0.69 kB │ gzip:   0.43 kB
+dist/assets/wanweiwei-preview-BbnoQ3Jg.woff2           8.42 kB
+dist/assets/zhaizaijia-preview-DpkPqGHI.woff2         13.15 kB
+dist/assets/zhangqingping-preview-DH8QlXak.woff2      13.91 kB
+dist/assets/shoushu-preview-BP4h-i43.woff2            18.21 kB
+dist/assets/wanweiwei-Dox_oCqg.woff2               1,705.11 kB
+dist/assets/zhangqingping-Bajp5zvP.woff2           2,868.14 kB
+dist/assets/shoushu-BgotiKV5.woff2                 3,820.31 kB
+dist/assets/zhaizaijia-CxqXsrIU.woff2              5,741.87 kB
+dist/assets/MigratedSurface-BZ_-FR1R.css               0.53 kB │ gzip:   0.26 kB
+dist/assets/Staff-B0MzsUYA.css                         0.81 kB │ gzip:   0.36 kB
+dist/assets/RenewalMonths-hqTss1D3.css                 0.88 kB │ gzip:   0.35 kB
+dist/assets/Cashier-CcwcEc5v.css                       0.91 kB │ gzip:   0.42 kB
+dist/assets/Stock-CEdvvZ8z.css                         1.46 kB │ gzip:   0.56 kB
+dist/assets/Records-DCrcELvt.css                       1.82 kB │ gzip:   0.68 kB
+dist/assets/Offices-XLckC4Xl.css                       1.97 kB │ gzip:   0.75 kB
+dist/assets/NewOrderSheet-DqUhW8rG.css                 2.15 kB │ gzip:   0.82 kB
+dist/assets/OwnerBusinessContact-BX9TaJNB.css          2.52 kB │ gzip:   0.90 kB
+dist/assets/ScreenSettings-B0K4saZt.css                3.55 kB │ gzip:   1.09 kB
+dist/assets/ParkingGarage3D-DhBMHyfr.css               3.97 kB │ gzip:   1.35 kB
+dist/assets/Today-DVty_We5.css                         4.85 kB │ gzip:   1.28 kB
+dist/assets/Reports-CHup3nTB.css                       5.10 kB │ gzip:   1.45 kB
+dist/assets/ParkingSpaces-B6xEcUWT.css                 5.65 kB │ gzip:   1.53 kB
+dist/assets/PropertyArchive-_cbjdbrc.css               6.31 kB │ gzip:   1.68 kB
+dist/assets/MigratedMeters-CLB_ySTp.css                6.32 kB │ gzip:   1.79 kB
+dist/assets/Maintenance-B7KtNIDp.css                   7.48 kB │ gzip:   2.19 kB
+dist/assets/Logs-Byqg9wMc.css                          7.81 kB │ gzip:   2.00 kB
+dist/assets/ParkingTab-JbzdQMPU.css                    9.18 kB │ gzip:   2.34 kB
+dist/assets/Screen-D3VgxuGm.css                       10.72 kB │ gzip:   2.77 kB
+dist/assets/MigratedApartment-DjO1xWnm.css            17.61 kB │ gzip:   3.87 kB
+dist/assets/Intranet-DCLuC9Vy.css                     21.63 kB │ gzip:   4.82 kB
+dist/assets/Statistics-P6DKfZln.css                   26.19 kB │ gzip:   5.05 kB
+dist/assets/Bills-BJQsX2Df.css                        33.11 kB │ gzip:   5.94 kB
+dist/assets/index-DCP71aIw.css                       111.16 kB │ gzip:  22.14 kB
+dist/assets/_commonjs-dynamic-modules-TDtrdbi3.js      0.24 kB │ gzip:   0.19 kB
+dist/assets/index-RfvIKTQB.js                          0.27 kB │ gzip:   0.21 kB
+dist/assets/timeline-EeP1Heb8.js                       0.36 kB │ gzip:   0.24 kB
+dist/assets/address-tree-B84yqKLx.js                   0.53 kB │ gzip:   0.40 kB
+dist/assets/ApartmentStandards-CdrW2UaB.js             0.56 kB │ gzip:   0.51 kB
+dist/assets/inventory-DPST65nV.js                      0.57 kB │ gzip:   0.28 kB
+dist/assets/screen-decision-DZG6TFP3.js                0.62 kB │ gzip:   0.50 kB
+dist/assets/FeeIcon-BvYe6Fit.js                        0.92 kB │ gzip:   0.73 kB
+dist/assets/AddressSearch-kowH0zzK.js                  1.13 kB │ gzip:   0.70 kB
+dist/assets/DateInput-Drjus7yJ.js                      1.18 kB │ gzip:   0.75 kB
+dist/assets/RenewalMonths-CZ2hIlrK.js                  1.54 kB │ gzip:   0.87 kB
+dist/assets/parts-C8MLxw9l.js                          1.92 kB │ gzip:   0.78 kB
+dist/assets/meters-BHA7sexl.js                         1.99 kB │ gzip:   0.64 kB
+dist/assets/repairs-D98ZDMiM.js                        3.18 kB │ gzip:   1.10 kB
+dist/assets/Stocktakes-DaBfGn8o.js                     3.18 kB │ gzip:   1.71 kB
+dist/assets/FeeReportCharts-DMCplZtB.js                3.50 kB │ gzip:   1.72 kB
+dist/assets/QrCodes-N8j2wvlQ.js                        4.17 kB │ gzip:   2.08 kB
+dist/assets/PhotoField-QCvkBBa1.js                     4.96 kB │ gzip:   2.36 kB
+dist/assets/Devices-DlgPuqfG.js                        5.20 kB │ gzip:   2.28 kB
+dist/assets/parking-pricing-D0-wPNbb.js                5.72 kB │ gzip:   2.83 kB
+dist/assets/Plates-CVw3OvkE.js                         5.80 kB │ gzip:   2.84 kB
+dist/assets/OwnerBusinessContact-LtqN4-HU.js           5.95 kB │ gzip:   3.07 kB
+dist/assets/PlateForm-C6PuTZlp.js                      7.37 kB │ gzip:   3.44 kB
+dist/assets/Materials-DGtWqEtQ.js                      7.76 kB │ gzip:   3.82 kB
+dist/assets/Offices-BcaVJ5hp.js                        7.87 kB │ gzip:   2.80 kB
+dist/assets/NewOrderSheet-BU6X0Rsw.js                  8.18 kB │ gzip:   3.74 kB
+dist/assets/index-D3dT9iyP.js                          9.00 kB │ gzip:   3.40 kB
+dist/assets/Owners-BlbGMC0c.js                         9.73 kB │ gzip:   4.01 kB
+dist/assets/residential-bills-DAE6TAlX.js             11.05 kB │ gzip:   5.65 kB
+dist/assets/Pending-C1j_rI3m.js                       12.40 kB │ gzip:   5.20 kB
+dist/assets/ScreenSettings-DQU5tr1s.js                12.42 kB │ gzip:   5.54 kB
+dist/assets/statistics-xlsx-HIQM2-DU.js               13.00 kB │ gzip:   5.82 kB
+dist/assets/Records-BUQ1jwmp.js                       13.62 kB │ gzip:   5.87 kB
+dist/assets/ParkingSpaces-Cr95VJUA.js                 13.78 kB │ gzip:   5.75 kB
+dist/assets/RenewSheet--CwcKmPJ.js                    15.92 kB │ gzip:   7.33 kB
+dist/assets/FamilyCars-DC5od42q.js                    15.97 kB │ gzip:   5.96 kB
+dist/assets/Screen-Bj-RSSO4.js                        16.35 kB │ gzip:   6.75 kB
+dist/assets/Standards-DO9rhSkC.js                     18.01 kB │ gzip:   6.75 kB
+dist/assets/Fees-x_2COLSW.js                          18.20 kB │ gzip:   6.45 kB
+dist/assets/feeTemplates-CfL5MZ8S.js                  18.41 kB │ gzip:   6.81 kB
+dist/assets/Today-CnfSVaS8.js                         20.50 kB │ gzip:   7.25 kB
+dist/assets/Intranet-H8-GYqF_.js                      23.52 kB │ gzip:   8.08 kB
+dist/assets/PropertyArchive-CRku5n-v.js               24.10 kB │ gzip:   8.75 kB
+dist/assets/button-7PBU70Vi.js                        25.22 kB │ gzip:   8.28 kB
+dist/assets/Reports-4_bZWENq.js                       26.93 kB │ gzip:   7.99 kB
+dist/assets/Staff-DfxhozoS.js                         28.03 kB │ gzip:   9.86 kB
+dist/assets/Purchase-CCyoLXMG.js                      35.98 kB │ gzip:  12.37 kB
+dist/assets/WorkOrders-UwNHYMFe.js                    36.68 kB │ gzip:  12.77 kB
+dist/assets/Stock-CJKXWou5.js                         37.19 kB │ gzip:  11.44 kB
+dist/assets/Logs-Lqpzw0mp.js                          43.23 kB │ gzip:  12.77 kB
+dist/assets/ParkingTab-CoNJOcL_.js                    44.95 kB │ gzip:  17.26 kB
+dist/assets/Vehicles-jjj5_TG1.js                      45.08 kB │ gzip:  15.43 kB
+dist/assets/Cashier-BkDGd7o9.js                       49.43 kB │ gzip:  19.62 kB
+dist/assets/Bills-DjjzYtDT.js                         51.33 kB │ gzip:  17.59 kB
+dist/assets/Settings-xm8Aspiv.js                      59.14 kB │ gzip:  23.41 kB
+dist/assets/Maintenance-B9sI5wDX.js                   74.63 kB │ gzip:  23.41 kB
+dist/assets/exportXlsx-DpXV8-N9.js                    75.66 kB │ gzip:  23.88 kB
+dist/assets/MigratedApartment-CePnWkB3.js             88.65 kB │ gzip:  28.68 kB
+dist/assets/jszip.min-KJiwx-rW.js                     97.40 kB │ gzip:  30.23 kB
+dist/assets/index-BDRPyeDc.js                        106.92 kB │ gzip:  34.65 kB
+dist/assets/Statistics-CRdOYu14.js                   134.16 kB │ gzip:  31.71 kB
+dist/assets/MigratedMeters-DVFoQo8V.js               169.41 kB │ gzip:  56.73 kB
+dist/assets/Experience-C13-K7ow.js                   420.41 kB │ gzip: 134.24 kB
+dist/assets/xlsx-D_0l8YDs.js                         429.03 kB │ gzip: 143.08 kB
+dist/assets/MigratedSurface-03fkRIUk.js              446.89 kB │ gzip: 138.73 kB
+dist/assets/ParkingGarage3D-DNhhPRK3.js              540.55 kB │ gzip: 137.34 kB
+dist/assets/index-DpSjpUt6.js                        754.05 kB │ gzip: 257.86 kB
+dist/assets/exceljs.min-Cbite3bj.js                  938.40 kB │ gzip: 270.96 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 16.90s
+✔ 旧schema首次添加10列、NULL不推断，保存后重跑保留档案/确认/category历史 (2535.288ms)
+✔ 默认dry真正READ ONLY，无DDL/数据/备份/审计写入；返回待加列而非谎报已迁移 (1379.9176ms)
+✔ 已有列类型/长度/NULL/default漂移和缺依赖表逐项拒绝，绝不部分迁移 (8227.4287ms)
+✔ 第5条DDL失败整批rollback，已有旧数据不变，无成功审计 (1337.1226ms)
+✔ 身份、source/hash、允许清单、备份及审计门禁失败均不执行DDL (1273.5196ms)
+✔ 并发锁被占/短锁超时/提交前durable审计失败均不留部分列 (4088.359ms)
+✔ CLI缺批准/备份显式参数或未知flag即失败；不把字符串当apply (0.794ms)
+✔ COMMIT响应/提交后审计失败必须标记未知或已提交，禁止伪称rollback/自动重试 (2594.7228ms)
+✔ 备份文件真实hash/身份/恢复验证/新鲜度/pg_restore目录校验均为apply前置条件 (11.5328ms)
+✔ 验收记录必须通过且匹配输入哈希，不能以旧记录放行新源码 (0.8633ms)
+✔ 线上源码、版本或制品来源不符时失败 (0.5755ms)
+✔ 助手源码变更必须提高版本，禁止同号覆盖和降级 (0.3016ms)
+✔ 按相关路径选择回归；纯文档不制造助手新版本 (0.4255ms)
+✔ 档案/共享联系人/停车回归按受影响源码选取，助手和无关脏文件不误触发 (1.653ms)
+✔ 新门禁先build一次；旧hash不复用、失败不记pass/不继续，同hash全绿才零成本复用 (1.67ms)
+✔ 无法读取 Git 不是首次部署，权限/进程失败必须停止 (0.2613ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21676.8645
+[local junction-compatible pnpm] {"selected":"@pms/api","args":["--dir","D:\\00项目开发\\PMS-vehicle-type-20261114\\apps\\api","--ignore-workspace","--config.verify-deps-before-run=false","run","test:property-archive"]}
+$ node -r ts-node/register --test src/modules/owners-mgmt/property-archive.persistence.test.ts src/modules/properties/properties-office.test.ts src/modules/properties/properties-delete.test.ts src/modules/fees/cashier-finance.persistence.test.ts src/modules/owners-mgmt/production-classification.persistence.test.ts
+✔ 真实SQL：公寓分类隔离明细/报表/对账/下钻，金额与分页合计一致 (3071.19ms)
+✔ 真实SQL：迁移回填唯一红冲关联，金额日期不变且不把独立退费当红冲 (2036.4737ms)
+✔ 真实服务/SQL：跨日红冲、独立退费、动态方式、报表对账今日一致，刷新双向查看且拒绝重复红冲 (2284.8076ms)
+✔ 真实收费保存：独立退费无需旧账单；同日收费红冲抵消且拒绝重复请求 (2258.6607ms)
+✔ 确认范围：吴泾一村和馨香臣寓四店为公寓；锦川及其他租户不变，重跑幂等 (3678.1965ms)
+✔ 主数据名称与批准ID不符时整批拒绝，不留下部分分类修改 (2851.009ms)
+✔ 真实SQL：多对多关联、重复关联幂等、解除一处保留其他房产和电话 (2903.8916ms)
+✔ 迁移保留历史孤立房号原值，只为真实同租户房屋回填关联且可重跑 (2170.1539ms)
+✔ 真实SQL：业务使用不伪造接通时间，失败不覆盖上次成功，按号码分别留痕 (2289.8985ms)
+✔ A档案：原子替换当前非主关联，保留其他房产、主关联和历史；过期关联拒绝并回滚姓名 (1749.1804ms)
+✔ 房产详情：真实 SQL 保存/重读、性质过滤、稳定 ID 查询和去重楼栋人数 (1679.8973ms)
+✔ 真实 HTTP + 实际权限守卫/DTO + SQL：只读403、跨租户/范围、非法日期/号码400和显式确认刷新 (1911.6911ms)
+✔ 业务电话：读/使用/接通不等于显式确认；逐号码确认、来源隔离、失败事务回滚 (1794.3324ms)
+✔ 小区无房产、无历史业务时，同一事务清理空楼栋及从属档案 (3.9017ms)
+✔ 楼栋里真有房产时，提示户数而不是把空楼栋数说成房产 (1.9687ms)
+✔ 无房产但有历史工单时，显示可搜索单号并保留地址档案 (0.5826ms)
+✔ 请求契约：单栋标记必须是布尔值，完整楼层部门文本仍受30字限制 (14.0939ms)
+✔ 无号办公楼可保存，第二个部门复用同一栋，不制造楼号 (1.6596ms)
+✔ 同楼同层同部门禁止重复，另一层同名部门允许，编辑可以改楼层 (2.1968ms)
+✔ 住宅公寓仍要求楼号，办公楼编号模式也要求；单栋不能混传假编号 (1.5042ms)
+✔ 无编号模式也必须校验租户与小区权限，拒绝时不创建楼栋 (0.799ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 27691.5884
+[local junction-compatible pnpm] {"selected":"@pms/api","args":["--dir","D:\\00项目开发\\PMS-vehicle-type-20261114\\apps\\api","--ignore-workspace","--config.verify-deps-before-run=false","exec","node","-r","ts-node/register","--test","src/modules/owners-mgmt/property-archive.integration.test.ts"]}
+✔ JWT签名/时效/数据库身份 + SQL角色范围：匿名401、无权限403、只读和跨租户/管理处拒绝 (2799.0165ms)
+✔ 真JWT→controller/DTO→SQL保存重读：房产清空、替换当前关联保留另一处、逐号码显式确认 (2041.0942ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11722.8194
+[local junction-compatible pnpm] {"selected":"@pms/neighbor-web","args":["--dir","D:\\00项目开发\\PMS-vehicle-type-20261114\\apps\\neighbor-web","--ignore-workspace","--config.verify-deps-before-run=false","run","test:property-archive"]}
+$ node --test test/property-archive-browser.test.cjs test/business-owner-contact-browser.test.cjs test/apartment-reconciliation-browser.test.cjs
+✔ 公寓三个查询页携带分类，对账按日/方式/退费下钻并支持分页及失败重试 (8194.4156ms)
+✔ 正式收银/公寓/新车登记/已存车牌/续费入口可逐号确认，加载不写且不触发收费/设备动作 (8860.4473ms)
+✔ A 档案正式组件：逐级路径、分期/弄号、全部业主、多电话日期、失败保留、刷新/返回及窄屏；共享联系人逐号确认 (21175.1611ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21808.75
+✔ 真实React/主题/权限→JWT API→SQL：层级、全部业主、房产保存刷新、多号码明确确认、只读/无页面权限 (18257.6956ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18756.0297
+[local junction-compatible pnpm] {"selected":"@pms/api","args":["--dir","D:\\00项目开发\\PMS-vehicle-type-20261114\\apps\\api","--ignore-workspace","--config.verify-deps-before-run=false","run","test:parking-spaces"]}
+$ node -r ts-node/register --test src/modules/business/parking-spaces.test.ts src/modules/business/parking-spaces.persistence.test.ts
+✔ A01/A02 SQL复核：租户/小区隔离、空归属、自然排序与档案更新回读 (2220.3716ms)
+✔ A01: 无页面权限不能读取车位 (2.2655ms)
+✔ A01: 只读用户可读取但不能编辑车位 (0.3436ms)
+✔ A01: 列表按租户与小区范围过滤，未归属记录不向受限用户开放 (1.2483ms)
+✔ A01: 全公司仍不能跨租户，零范围返回空 (0.2749ms)
+✔ A01: PATCH 拒绝跨租户、跨管理处、未归属、零范围且不写入 (0.9577ms)
+✔ A01: 范围内 PATCH 保存操作者且 GET 可回读 (0.433ms)
+✔ A01: 缺失 access 或租户不得退化为全量 (0.3804ms)
+✔ A01: controller 必须向两个 service 方法传递 user/access (0.3232ms)
+✔ T75 HTTP: category严格拒绝非法值，且原档案完全不变 (167.0891ms)
+✔ T75 HTTP: GET/PATCH回category和communityId，枚举/省略/null清空独立于旧字段 (42.9207ms)
+✔ T75 HTTP: 类别更新不绕过只读/跨租户/跨小区/未归属/空scope权限 (84.7728ms)
+✔ T75 service: 非HTTP调用非法category仍400且不修改旧行 (0.6984ms)
+✔ A02: 非字符串/超长字段经真实 ValidationPipe 返回400且不保存 (100.6348ms)
+✔ A02: 面积、日期、车牌业务值非法返回400 (54.0069ms)
+✔ A02: 非法路径id返回400而不是500/错误写入 (28.4609ms)
+✔ A02: 合法部分更新、空字符串清空、归一化与只允许白名单字段 (13.6475ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13082.9557
+✔ 车位号按自然顺序排：1、2、10 不是 1、10、2 (18.3413ms)
+✔ 大车库 182 个车位：双排布局、每排 27、7 排、3 条车道 (0.9996ms)
+✔ 通用布局94个车位的余数排，不代表人防有3D入口 (0.4245ms)
+✔ 窄屏可指定每排车位数（排得更竖，车位块更大） (0.6478ms)
+✔ 空列表不炸：布局为空、尺寸为 0 (0.1356ms)
+✔ 车位状态：空位、已绑、7 天内到期、已过期 (1.25ms)
+✔ 日期只认自然日：非法值按「未登记到期」处理，不冒充过期 (0.1691ms)
+✔ 仅大车库保留车位图；3D组件不保留人防分支 (0.7066ms)
+✔ hover只做整数位移/阴影、不缩放或强制合成，并覆盖键盘焦点与减少动效 (1.7374ms)
+✔ 两库复用编辑器和完整卡片字段，类别与绑定分开 (0.6388ms)
+✔ 两库正式车位入口：金额月份日期、分类保存、授权、等待/失败/未知与只补人防 (21073.3117ms)
+✔ 两库正式卡片：独立类别/完整字段、hover及focus清晰动效、减少动效/窄屏、人防无图及大车库真实3D (13688.3519ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21588.932
+完成定点回归 additive-migrations, property-archive, parking-spaces
+[local junction-compatible pnpm] {"selected":"@pms/api","args":["--dir","D:\\00项目开发\\PMS-vehicle-type-20261114\\apps\\api","--ignore-workspace","--config.verify-deps-before-run=false","run","test:access-card"]}
+$ node -r ts-node/register --test src/modules/access-card-issuance/family-car-list.test.ts src/modules/access-card-issuance/access-card-routing.test.ts src/modules/access-card-issuance/access-card-history.util.test.ts src/modules/access-card-issuance/access-card-controller-upload.service.test.ts src/modules/access-card-issuance/access-door-control.test.ts src/modules/access-card-issuance/legacy-card-history.test.ts src/modules/access-card-issuance/recent-legacy-cards.test.ts src/modules/access-card-issuance/agent-auth.test.ts src/modules/access-card-issuance/agent-status.test.ts src/modules/access-card-issuance/deliyun-parking.service.test.ts src/modules/access-card-issuance/parking-history.util.test.ts src/modules/access-card-issuance/parking-owner-update.util.test.ts src/modules/access-card-issuance/parking-query.util.test.ts src/modules/access-card-issuance/parking-query-readiness.test.ts src/modules/access-card-issuance/parking-family.test.ts src/modules/access-card-issuance/family-car.util.test.ts src/modules/access-card-issuance/family-car.service.test.ts
+✔ controller_upload 领取任务跳过成功门栋，仅发送离线门栋 (7.2719ms)
+✔ controller_revoke 领取任务跳过成功门栋，仅发送离线门栋 (0.4795ms)
+✔ 历史下发失败后复用原任务，不创建全栋新任务 (1.6517ms)
+✔ 首次下发包含门禁库已有的全部楼栋权限 (0.7144ms)
+✔ 多楼栋结果保留已成功楼栋，只重试失败楼栋 (0.4576ms)
+✔ 撤销权限保留已完成楼栋，只重试控制器或数据库未确认的楼栋 (0.3952ms)
+✔ 历史卡未写入门禁管理系统时禁止跳过直接下发 (2.5261ms)
+✔ 历史卡可先幂等创建本楼栋门禁库写入任务 (1.0518ms)
+✔ iCCard 远程开门只对选中的单栋建立独立任务 (1.0867ms)
+✔ MjSystem 所有唯一映射楼栋都允许立即远程开门，但不猜测未验证命令 (43.9832ms)
+✔ 设备与服务入口无需先选房号即可创建楼栋开门任务 (1.0791ms)
+✔ iCCard 临时常开确认后按所选时长创建一次恢复正常任务 (1.5997ms)
+✔ 历史卡取消勾选只为真实已有权限的楼栋创建撤销任务 (2.1727ms)
+✔ 旧版助手不允许重试撤销权限任务 (0.9476ms)
+✔ 旧版助手不会领取已排队的撤销权限任务 (0.7148ms)
+✔ 门禁库已有权限后才会创建控制器下发任务 (0.4349ms)
+✔ 捷顺最新记录可以只添加到二期门禁数据库 (0.7467ms)
+✔ 198弄一期捷顺记录不允许写入 .88 门禁系统 (0.3541ms)
+✔ 最近发卡记录限制30条并遵守小区数据范围 (1.0029ms)
+✔ Car_Out 进出记录保留停车出入口，不把出入口冒充住户 (1.0654ms)
+✔ history is ordered by issuance time instead of legacy sequence (4.5144ms)
+✔ phase2 history only reports uploaded after a permission row is verified (0.3786ms)
+✔ 全楼栋远程开门只交给2.5.46或更新助手 (1.5201ms)
+✔ 撤销控制器权限只交给2.5.44或更新助手 (0.2937ms)
+✔ 额外授权只列同一门禁区域，并按楼栋数字自然排序 (1.633ms)
+✔ 捷顺旧卡提示包含原用户、系统编号和发卡时间 (0.4259ms)
+✔ 识别枫桦景苑期数并按二期楼栋选择门禁系统 (0.2496ms)
+✔ 房号展示不强制给楼栋补零 (0.2514ms)
+✔ 门禁软件用户姓名展示房号和该房累计发卡序号 (0.2758ms)
+✔ 房号历史优先展示捷顺登记名称，缺失时生成房号与累计序号 (0.2147ms)
+✔ 完整门禁用户姓名任务只交给 2.5.29 或更新助手 (0.2753ms)
+✔ 拆分写门禁库与控制器下发只交给 2.5.30 或更新助手 (0.3326ms)
+✔ 捷顺登记名称精确解析弄号、楼栋、室号和累计卡序号 (0.4932ms)
+✔ IC 转 WG 与旧 PHP 字节顺序一致 (0.5092ms)
+✔ 旧库按基础房号统计，并为同房新用户分配累计序号 (0.3204ms)
+✔ door/open 复用既有授权任务通道并写审计 (4.0369ms)
+✔ temporary_open 只接受 1–60 分钟并换算为秒 (3.2393ms)
+✔ 远程开门不接受 minutes，MjSystem 常开明确拒绝而不是失败重试 (1.5799ms)
+✔ doorNo 必须与楼栋唯一实体门一致 (0.5429ms)
+✔ 同一 idempotencyKey 返回原任务，不重复入队/审计 (1.8512ms)
+✔ 任务状态映射 pending/sent/succeeded/failed 与控制器回执 (0.5771ms)
+✔ getDoorTask 只接受门禁操作任务并按管理范围校验 (1.438ms)
+✔ 门禁控制器在线状态由心跳 + 最近一次 agent 回执推导 (5.3963ms)
+✔ 门禁控制器：选一期小区时 agentOnline 仍反映真实网关，controllers 为空并提示二期 (1.942ms)
+✔ 门禁控制器：网关离线才 agentOnline=false，二期控制器全标 offline (1.1035ms)
+✔ 门禁控制器：不传 communityId 返回全部二期控制器 (0.7133ms)
+✔ 门禁控制器：没有二期小区时也不谎报 agentOnline=false (0.3918ms)
+✔ readiness.doorControlCommunities 只含二期小区，供前端下拉/默认值 (1.876ms)
+✔ 审计回写包含结果、控制器回执和错误 (0.6261ms)
+✔ 门禁接口沿用 access-cards 的 business edit/view 权限，不新增页面 key (0.3335ms)
+✔ 发卡页新增的 grant-options 只读接口沿用 business view 权限 (0.1788ms)
+✔ check-online 对每块 iCCard 控制器入队探测，MjSystem 明确跳过 (1.1431ms)
+✔ check-online agent 离线直接 503，不入队 (0.4435ms)
+✔ check-online 助手版本低于 2.5.46 直接 503，不入队 (0.4305ms)
+✔ check-online 10 秒内同一控制器复用原任务 (0.5359ms)
+✔ check-online 超过 10 秒重新入队，支持指定控制器 (0.6595ms)
+✔ check-online 指定不存在的控制器返回 404 (0.4185ms)
+✔ 代理密钥只保存 hash，且使用固定时间比较 (1.8329ms)
+✔ 只接受标准 Bearer 代理凭据 (0.4453ms)
+✔ 从未心跳或超过 15 秒的代理显示离线 (4.0349ms)
+✔ 新鲜心跳保留代理上报状态 (0.304ms)
+✔ 重复注册时优先返回持续在线且心跳最新的网关 (1.3991ms)
+✔ 人防真实字段差异按名称报错；缺失金额不假装已核验，也不误判授权失败 (3.1764ms)
+✔ 德立云表单不发送空的数字关联ID，车位号写入卡号 (0.6112ms)
+✔ 人防换牌只改车牌，保留车库、用户、卡号、车位备注与原有效期 (0.6749ms)
+✔ 人防日期固定上海时区年月日格式，不依赖区域默认分隔符 (1.7298ms)
+✔ 德立云失败保留上游具体消息，未返回时明确提示，不能只给通用失败 (1.7826ms)
+✔ 同房号重复人员直接复用有效ID，返回顺序变化不新建或更换关联 (0.8277ms)
+✔ 房号无可用人员才新建，且必须回读有效ID (0.5212ms)
+✔ 人防直接换牌调用更新不删除；失败回读不报告成功 (1.6199ms)
+✔ 人防授权按项目车辆列表存在判断，不要求详情重复返回车库字段 (0.3257ms)
+✔ 取消人防授权删除车辆并回读不存在，不调用 updateCard (1.1643ms)
+✔ 新建使用今天、二期截止日、已有房号人员及车位备注，金额为零且回读字段 (3.7855ms)
+✔ 新建接口忽略车位号时用 updateCard.cardNo 补写并再回读 (1.874ms)
+✔ 车辆列表不带卡号时使用详情 cardNo 映射 PMS 车位号 (0.7841ms)
+✔ 删除响应成功但车辆仍存在时不得报告取消完成 (0.3677ms)
+✔ 德立云旧协议签名与参数传入顺序无关 (1.8974ms)
+✔ 德立云签名不包含空参数 (0.1865ms)
+✔ 德立云签名按文档示例追加 accessKeySecret 键值 (0.1401ms)
+✔ 德立云小程序请求使用 AES-128-CBC 和紧凑 JSON (1.3021ms)
+✔ 德立云小程序签名保持协议字段固定顺序 (0.2686ms)
+✔ 德立云车辆响应只映射页面需要的字段 (0.2232ms)
+✔ 德立云关系ID的 0 表示未关联，不能误判为车位池车辆 (1.5189ms)
+✔ 德立云续期重试发现目标日期已生效时直接按幂等成功返回 (1.2885ms)
+✔ 德立云续期走正式延期接口且金额固定为零 (1.7624ms)
+✔ 德立云项目车辆存在即授权，同时保留真实车库名称供展示 (1.0638ms)
+✔ 德立云授权只追加人防车库并保留车辆原资料 (0.297ms)
+✔ 德立云不存在车牌时按月票小型车建档，不记收费 (1.038ms)
+✔ automatic new registration must not update a plate that appeared after duplicate check (0.4986ms)
+✔ 控制器透传分页，服务端count及offset/limit返回第二页且只映射当页 (4352.6639ms)
+✔ 分页安全整数默认值和上限，空数据及空范围固定page=1 (2228.202ms)
+✔ 状态精确过滤及400校验，分页count与租户小区弄号搜索保持同范围 (2079.0655ms)
+✔ 列表真实view仅给fileCount，不映射或签名附件，不调用详情同步 (1659.2758ms)
+✔ 亲情车真实查询包含文字楼栋及超大数字时仍可返回，按数字楼栋和室号自然排序 (1520.9134ms)
+✔ 自然排序不放宽租户、小区、查询词或作废过滤；空范围不执行SQL (1469.1001ms)
+✔ 完整流程：登记 → 业主扫码填信息上传 → 办公室审核 → 经理审核 → 开通 → 续期一年 → 已生效 (182.6034ms)
+✔ 办公室本地上传、要求补资料重新生成二维码、作废 (173.9728ms)
+✔ 车牌已是别户亲情车或住户车时禁止登记；查重过期必须重查 (44.6961ms)
+✔ 到期前 30 天提醒一次，到期后自动停用并撤销车库授权 (1.5792ms)
+✔ 有效期一年：生效日起至次年前一天，闰日按 2 月 28 日到期 (6.8298ms)
+✔ 生效日按上海日期：UTC 16:30 已是上海次日 (0.3844ms)
+✔ 到期提醒 30 天窗口与过期判断（到期日当天仍有效） (0.7053ms)
+✔ 车牌去掉中间的点和空格 (0.3769ms)
+✔ 车库按弄默认，非法车库拒绝 (0.9267ms)
+✔ 旧库房号统一格式 (1.5938ms)
+✔ 查重分类：旧库无车牌为新登记 (0.6135ms)
+✔ 查重分类：本户亲情车为续登，别户或住户车拒绝 (0.9287ms)
+✔ 旧库房号：序号括号、换车牌、已隐藏、备注后缀、两段按库补弄号 (1.1905ms)
+✔ 旧库商铺：路名 + 门牌 (0.51ms)
+✔ 认不出的不猜：备注、错位数字 (2.3634ms)
+✔ owner_Name 是人名时，房号在 owner_Add，人名是车主 (0.6364ms)
+✔ 商铺写回旧库用旧库写法 (0.314ms)
+✔ mapLegacyCardRow 解析已隐藏前缀，不把整串当房号 (2.8963ms)
+✔ 旧助手缺 personName/时间字段：房号兜底、hidden=null、fieldsIncomplete=true (0.3474ms)
+✔ cards/history 旧助手返回时用请求地址兜底 roomLabel (2.815ms)
+✔ cards/history 返回 228/50/202 的 8 条捷顺发卡记录 (2.1524ms)
+✔ cards/history phase1 房号的行 accessSystem=null (0.6742ms)
+✔ apply-mdb 按系统入队；房号不属于该系统时明确失败 (1.1038ms)
+✔ apply-mdb 不传 systems 时默认写本楼栋系统（iccard / mjsystem 各一例） (1.8726ms)
+✔ apply-mdb 未传 systems 且本楼栋未配置门禁路由时明确 400 (1.4598ms)
+✔ grant-boards 多主板部分失败不影响其他主板 (1.4492ms)
+✔ grant-boards remove 使用 controller_revoke (0.7436ms)
+✔ grant-boards 网关离线时返回 offline 而不是 failed (0.5283ms)
+✔ 单卡详情聚合已写入系统和已授权楼栋 (1.1063ms)
+✔ cards/:id/grant-options：只返回该卡所在小区二期路由门栋（去重+自然排序）并带本楼栋 (4.0521ms)
+✔ cards/:id/grant-options：一期卡 options 为空、accessSystem=null、本楼栋仍返回 (0.3957ms)
+✔ cards/:id/grant-options：卡不在数据范围 403 (0.7773ms)
+✔ cards/history 行级聚合：一次 find、revoke 扣减、空 wg 返回空数组/null (0.8909ms)
+✔ cards/:id 详情 additive：permissionCheckedAt/permissionSource/grantedBuildingDetails 读回优先 (0.8105ms)
+✔ 任务回执 additive：acknowledgements 提取 acknowledgement/error，finishedAt=completedAt (0.4562ms)
+✔ verify-grant：只读 .88 权限表成功返回授权楼栋/系统，不伪造 (1.1217ms)
+✔ verify-grant：网关离线 503、权限读回失败 503、无门栋授权返回空但不伪造 (0.9794ms)
+✔ verify-grant：房号不匹配 400、越权 403 (0.5536ms)
+✔ verify-grant 路由沿用 business view 权限，POST cards/:id/verify-grant (0.4512ms)
+✔ 新增车牌各车库号独立必填，取消选择不提交对应号码 (3.7956ms)
+✔ 真实服务链登记持久关联、待审核禁止授权；审核通过稳定复用同一授权任务 (4.1323ms)
+✔ 驳回必须填写原因且不生成授权任务；其他租户不能审核 (0.9624ms)
+✔ 审核授权失败重试只恢复原任务；待审核不能绕过开通人防 (2.007ms)
+✔ 亲情车启用协议必须具备2.5.40完整版本号 (1.8468ms)
+✔ 亲情车多材料上传保存全部文件；重复和过期上传不覆盖原资料 (2.8743ms)
+✔ 费率写入租户配置并重新读取，不能串物业公司 (0.886ms)
+✔ 已生成二维码的亲情车无论是否上传，登记只能待审核且没有有效授权 (0.3842ms)
+✔ 不能用其他车牌二维码或已绑定二维码登记亲情车 (0.4531ms)
+✔ 费率按完整周期保存，非法金额或缺少周期拒绝而非静默回退 (0.5703ms)
+✔ 首次观察只建立基线，不伪造历史事件 (2.2043ms)
+✔ 同一旧库车辆记录换牌时保留换牌前后值 (0.6032ms)
+✔ 绑定用户变更与普通电话修改分成不同事件 (0.4162ms)
+✔ 同一次换牌并换绑只生成一条合并记录 (1.0188ms)
+✔ 全零旧库编号视为无效主键 (0.7125ms)
+✔ 车库授权历史把旧库位串翻译为一个或多个车库名称 (0.9663ms)
+✔ 住户更新值只去首尾空格并保留原始姓名间距和备注换行 (5.2962ms)
+✔ 住户联查优先使用 Owner 字段，不把车辆备注和电话当成住户资料 (0.7444ms)
+✔ P_Owner.owner_Name 固定解释为房号且旧库姓名为空 (0.3738ms)
+✔ 只记录真正改动的住户字段 (0.3834ms)
+✔ 只有新版助手可领取住户更新任务 (0.4318ms)
+✔ 跨库资料复用只交给不修改到期日的 2.5.23 及以上助手 (0.2871ms)
+✔ 车库授权、车辆类型和下载下发只交给 2.5.21 及以上助手 (0.2724ms)
+✔ 停车设备真实确认只交给 2.5.47 及以上助手 (0.2505ms)
+✔ 网页提示的列名必须去掉 Owner 前缀 (0.4185ms)
+✔ 联查住户值为空时不能借用车辆或其他同名字段 (0.3786ms)
+✔ 同住户两辆车只共享电话房号，不共享车辆备注 (0.3327ms)
+✔ 成功回报必须逐项等于请求值，备注允许补来源标记并统一换行 (0.5946ms)
+✔ 2.5.52 / AssemblyVersion 2.5.52.0 pass the actual service and preserve the structured query contract (5.5478ms)
+✔ actual service explains missing registration without misdiagnosing 2.5.52 (0.5904ms)
+✔ readiness agrees with actual vehicle-query rejection: missing registration (0.5681ms)
+✔ actual service explains disabled even with a fresh online heartbeat without misdiagnosing 2.5.52 (0.3902ms)
+✔ readiness agrees with actual vehicle-query rejection: disabled even with a fresh online heartbeat (0.2348ms)
+✔ actual service explains heartbeat older than the unchanged 15s TTL without misdiagnosing 2.5.52 (0.4349ms)
+✔ readiness agrees with actual vehicle-query rejection: heartbeat older than the unchanged 15s TTL (0.5924ms)
+✔ actual service explains never received a heartbeat without misdiagnosing 2.5.52 (0.8489ms)
+✔ readiness agrees with actual vehicle-query rejection: never received a heartbeat (0.5942ms)
+✔ actual service explains explicit offline without misdiagnosing 2.5.52 (0.429ms)
+✔ readiness agrees with actual vehicle-query rejection: explicit offline (0.3335ms)
+✔ actual service explains degraded is not online without misdiagnosing 2.5.52 (0.2526ms)
+✔ readiness agrees with actual vehicle-query rejection: degraded is not online (0.2197ms)
+✔ actual service explains no read capability without misdiagnosing 2.5.52 (0.3136ms)
+✔ readiness agrees with actual vehicle-query rejection: no read capability (0.2476ms)
+✔ actual service explains false read capability without misdiagnosing 2.5.52 (0.1867ms)
+✔ readiness agrees with actual vehicle-query rejection: false read capability (0.2482ms)
+✔ actual service explains truthy string is not a read capability without misdiagnosing 2.5.52 (0.1951ms)
+✔ readiness agrees with actual vehicle-query rejection: truthy string is not a read capability (0.1406ms)
+✔ actual service explains old structured protocol without misdiagnosing 2.5.52 (0.2776ms)
+✔ readiness agrees with actual vehicle-query rejection: old structured protocol (0.2011ms)
+✔ actual service explains unknown version fails closed without misdiagnosing 2.5.52 (0.2633ms)
+✔ readiness agrees with actual vehicle-query rejection: unknown version fails closed (0.2977ms)
+✔ actual service explains other tenant gateway cannot authorize a query without misdiagnosing 2.5.52 (0.3054ms)
+✔ readiness agrees with actual vehicle-query rejection: other tenant gateway cannot authorize a query (0.2311ms)
+✔ actual service explains another kind cannot authorize a query without misdiagnosing 2.5.52 (0.2345ms)
+✔ readiness agrees with actual vehicle-query rejection: another kind cannot authorize a query (0.2568ms)
+✔ duplicate registrations: a stale/disabled/old record cannot hide an eligible online replacement (0.408ms)
+✔ offline newer version and online old version do not combine into one capable gateway (0.2532ms)
+✔ movement shares accurate availability reasons but keeps its own protocol minimum (0.9351ms)
+✔ fee report shares accurate availability reasons but keeps its own protocol minimum (0.4ms)
+✔ fee detail shares accurate availability reasons but keeps its own protocol minimum (0.3413ms)
+✔ identity list shares accurate availability reasons but keeps its own protocol minimum (0.2527ms)
+✔ missing tenant scope is rejected before discovery or enqueueing (0.2435ms)
+✔ fee query authorization is still checked before discovery or enqueueing (0.2118ms)
+✔ 旧库 Sart_Time 和 End_Time 必须一起送到人防新建授权 (2.1032ms)
+✔ 两段房号保留楼栋边界，不把 6 号楼扩成 36 号楼 (2.5052ms)
+✔ 完整房号兼容弄号文字和旧库卡序号后缀 (0.4848ms)
+✔ 区分完整车牌、车牌尾号、电话和姓名 (1.1852ms)
+✔ 拒绝会造成大范围扫描的短数字 (1.7756ms)
+✔ 只有带结构化查询边界的现场助手才能领取查询 (0.4968ms)
+✔ 进出记录仅交给具备新版协议的助手，必须是完整车牌和不超过 31 天的日期范围 (1.6713ms)
+✔ 金额报表按 31 天限制查询，且仅新版助手可领取 (0.6677ms)
+✔ P_Owner.owner_Name 中的旧库标准地址按房号解释 (0.7706ms)
+✔ P_Owner.owner_Name 裸房号按停车库补全所属弄号但不猜未知库 (0.3458ms)
+✔ 同户多卡的隐藏标识、前导零及卡序号不改变房号 (0.3386ms)
+✔ 停车旧库的多种房号格式统一匹配同一套 PMS 房产 (0.2635ms)
+✔ 换车牌是旧库名称的操作说明，不参与 PMS 房产匹配 (0.1552ms)
+✔ 带说明的房号仍按完整弄号、楼栋、室号匹配，不截断数字或猜测多个地址 (0.1181ms)
+✔ 真实住户匹配方法将三种旧库名称关联到同一 PMS 二期房产业主，保留原名称 (3.8348ms)
+✔ 真实住户匹配方法按数据库把裸房号关联到对应弄号，并优先房号而非过期电话 (1.4548ms)
+✔ 新增车牌查重按旧库车牌字段做精确匹配 (0.5149ms)
+✔ 已存在车牌不能通过新增车牌查重 (0.445ms)
+✔ 新增车牌提交只接受当前车牌五分钟内完成的真实查重 (0.5188ms)
+✔ cards/recent：ready 快照连续两次 GET 都返回 ready+30 行，不重置快照 (6.0592ms)
+✔ cards/recent：无快照时入队并等待助手回传 ready (1.4584ms)
+✔ cards/recent：pending 时轮询到助手回传 ready（不重复入队） (1.2914ms)
+✔ cards/recent：等待超时返回 pending 且保留上一次 rows (1.0681ms)
+✔ cards/recent：error 30s 内直接返回错误，不重复入队等待 (1.302ms)
+✔ cards/recent：error 超过 30s 后重新入队并等待 (0.952ms)
+✔ cards/recent：行补齐 communityName/lane/roomNo/houseId，roomLabel 不丢 (0.7916ms)
+✔ POST queries：显式刷新入队并等待 ready (1.1112ms)
+✔ POST queries：已在 pending 时不重复重置 requestedAt，只等待回传 (0.8221ms)
+✔ GET queries：轮询不重置 ready 快照，过期才入队且刷新期间保留旧 rows (1.305ms)
+✔ cards/recent 行级聚合：appliedSystems/grantedBuildings/latestTaskAt 一次批量查询，revoke 扣减、空卡为空 (1.847ms)
+ℹ tests 227
+ℹ suites 0
+ℹ pass 227
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 37683.42
+[local junction-compatible pnpm] {"selected":"@pms/api","args":["--dir","D:\\00项目开发\\PMS-vehicle-type-20261114\\apps\\api","--ignore-workspace","--config.verify-deps-before-run=false","run","test:parking-owner"]}
+$ node -r ts-node/register --test src/modules/access-card-issuance/parking-owner-update.util.test.ts src/modules/access-card-issuance/parking-owner-update.service.test.ts
+✔ 换绑仅接受 PMS 房号及该房号有效业主，服务端重建房号/电话而非信任自由输入 (3.5552ms)
+✔ 房号换绑隔离旧版助手，避免新版页面被旧助手当成改姓名 (0.1409ms)
+✔ 换绑回报必须读回所选房号/电话/原住户，历史使用实际分配的 /2 房号和新住户编号 (1.3254ms)
+✔ 旧助手领取查询的 OR 条件必须括起，不能绕过租户或换绑版本限制 (0.8125ms)
+✔ 缺失/空车牌在 DTO 与入队前拒绝，不让助手再次遇到缺车牌 (4.9413ms)
+✔ 缺失表单字段不能被当成清空值，显式 null 仍可提交 (0.6735ms)
+✔ 创建→领取→读回确认→查询贯通车牌，同户多车备注隔离、重复回报仅一条审计 (1.4682ms)
+✔ 相同提交重发复用原任务；同一幂等键不准改变车牌或更新内容 (0.4369ms)
+✔ 返回任意改动不算成功：读回号码不等于请求时拒绝确认 (0.4687ms)
+✔ 其他租户不能读取任务；其他网关不能回报当前租约 (0.4826ms)
+✔ 住户更新值只去首尾空格并保留原始姓名间距和备注换行 (1.5616ms)
+✔ 住户联查优先使用 Owner 字段，不把车辆备注和电话当成住户资料 (0.3952ms)
+✔ P_Owner.owner_Name 固定解释为房号且旧库姓名为空 (0.2ms)
+✔ 只记录真正改动的住户字段 (0.2098ms)
+✔ 只有新版助手可领取住户更新任务 (0.2134ms)
+✔ 跨库资料复用只交给不修改到期日的 2.5.23 及以上助手 (0.1428ms)
+✔ 车库授权、车辆类型和下载下发只交给 2.5.21 及以上助手 (0.136ms)
+✔ 停车设备真实确认只交给 2.5.47 及以上助手 (0.1319ms)
+✔ 网页提示的列名必须去掉 Owner 前缀 (0.2507ms)
+✔ 联查住户值为空时不能借用车辆或其他同名字段 (0.2734ms)
+✔ 同住户两辆车只共享电话房号，不共享车辆备注 (0.2223ms)
+✔ 成功回报必须逐项等于请求值，备注允许补来源标记并统一换行 (0.3123ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6213.7725
+发布预检通过 api b9cbd70 eb9e963f7b98
+
+==> 发布 api，源码 b9cbd70
+==> 构建 API dist
+[local junction-compatible pnpm] {"selected":"@pms/api","args":["--dir","D:\\00项目开发\\PMS-vehicle-type-20261114\\apps\\api","--ignore-workspace","--config.verify-deps-before-run=false","run","build"]}
+$ nest build
+==> 记录 API 制品身份
+{"target":"api","version":"api-b9cbd70","commit":"b9cbd70478dad8988774aeb25b2946bf2271e956","sourceHash":"eb9e963f7b98e944e12dd875694fac1f77d0c2cdeeb394856330401b4a5a536a","builtAt":"2026-11-16T04:40:04.727Z","files":{}}
+==> 压缩 API 快速包
+==> 上传前确认源码未变
+==> 上传 pms-api-fast-20261116-123556.tar.gz
+==> 上传部署脚本 api
+==> 服务器部署 api
+deploying: /tmp/pms-api-fast-20261116-123556.tar.gz
+[PM2] Applying action reloadProcessId on app [pms-api](ids: [ 0 ])
+[PM2] [pms-api](0) ✓
+--- 快速 API 健康检查 ---
+{"status":"ok","db":"up","release":{"target":"api","version":"api-b9cbd70","commit":"b9cbd70478dad8988774aeb25b2946bf2271e956","sourceHash":"eb9e963f7b98e944e12dd875694fac1f77d0c2cdeeb394856330401b4a5a536a","builtAt":"2026-11-16T04:40:04.727Z"},"ts":"2026-11-16T04:40:14.287Z"}
+{"status":"ok","db":"up","release":{"target":"api","version":"api-b9cbd70","commit":"b9cbd70478dad8988774aeb25b2946bf2271e956","sourceHash":"eb9e963f7b98e944e12dd875694fac1f77d0c2cdeeb394856330401b4a5a536a","builtAt":"2026-11-16T04:40:04.727Z"},"ts":"2026-11-16T04:40:14.406Z"}
+--- 清理旧临时包（各类型保留最近 2 份） ---
+==> 核对公网运行版本和制品
+公网版本及制品已验证 api api-b9cbd70 b9cbd70
+==> 记录 api 已上线
+## 2026-11-16 12:40 · api · b9cbd704
+
+- 包：`pms-api-fast-20261116-123556.tar.gz`
+- 提交：b9cbd704 test(web): define API base in contact browser fixture
+- 自上次（c0dcec1a）以来上线的相关提交：
+  - 2043607a fix: scope repair learning and office notices; make completion summaries opt-in
+  - 74e332d0 fix: complete repair intake photos, community public areas and newest-first timelines
+  - 87bb63e0 fix: deduplicate repeated lane numbers across address displays and notifications
+
+✓ 已推送 main 和标签 deployed/api（远端已回读确认 = b9cbd704）
+✓ api 已发布：pms-api-fast-20261116-123556.tar.gz
+
+完成。之后的 API 纯代码发布只上传快速包，不再重复上传 node_modules。
+**********************
+Windows PowerShell 脚本结束
+结束时间: 20261116124028
+**********************

@@ -1,0 +1,66 @@
+﻿**********************
+Windows PowerShell 脚本开始
+开始时间: 20261116122458
+用户名: PC-20240510FDAR\Administrator
+RunAs 用户: PC-20240510FDAR\Administrator
+配置名称: 
+计算机: PC-20240510FDAR (Microsoft Windows NT 10.0.19044.0)
+主机应用程序: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoLogo -NoProfile -NonInteractive -Command [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); $OutputEncoding = [System.Text.UTF8Encoding]::new($false); $env:PATH = (Join-Path (Get-Location) 'outputs/repair-learning-deploy-20261116/bin') + ';' + $env:PATH; Start-Transcript -Path outputs/repair-learning-deploy-20261116/publish-ipc-transcript.txt | Out-Null; try { & ./deploy/publish-production.ps1 -Target api; $resultCode=$LASTEXITCODE } finally { Stop-Transcript | Out-Null }; exit $resultCode
+进程 ID: 4580
+PSVersion: 5.1.19041.3803
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.19041.3803
+BuildVersion: 10.0.19041.3803
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+==> 同步远端部署标记
+==> 发布检查自测
+✔ 正式登录页不再标记为测试环境 (0.9711ms)
+✔ 正式Web目标包含新版源码，避免后续发布退回旧首页 (0.1664ms)
+✔ 正式Web构建新版并明确根路径和正式版本 (0.5774ms)
+✔ 验收记录必须通过且匹配输入哈希，不能以旧记录放行新源码 (0.8264ms)
+✔ 线上源码、版本或制品来源不符时失败 (0.5734ms)
+✔ 助手源码变更必须提高版本，禁止同号覆盖和降级 (0.3024ms)
+✔ 按相关路径选择回归；纯文档不制造助手新版本 (0.4023ms)
+✔ 档案/共享联系人/停车回归按受影响源码选取，助手和无关脏文件不误触发 (1.5395ms)
+✔ 新门禁先build一次；旧hash不复用、失败不记pass/不继续，同hash全绿才零成本复用 (1.3806ms)
+✔ 无法读取 Git 不是首次部署，权限/进程失败必须停止 (0.2598ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 175.0673
+==> api 源码与相关回归
+[esbuild IPC fallback] Web build only; no source/dependency/permission change
+[local junction-compatible pnpm] {"selected":"@pms/neighbor-web","args":["--dir","D:\\00项目开发\\PMS-vehicle-type-20261114\\apps\\neighbor-web","--ignore-workspace","--config.verify-deps-before-run=false","run","build"]}
+$ tsc --noEmit && vite build
+vite v5.4.10 building for production...
+transforming...
+✓ 3354 modules transformed.
+rendering chunks...
+x Build failed in 16.08s
+error during build:
+[vite:esbuild-transpile] remove D:\00项目开发\PMS-vehicle-type-20261114\outputs\repair-learning-deploy-20261116\temp-web-build\ipc-only-not-created\esbuild-e295ac21983ffe817abe91c009e44316d5707d8c2f3acc1b665c82281f18dced: Access is denied.
+    at D:\00项目开发\PMS\node_modules\.pnpm\esbuild@0.21.3\node_modules\esbuild\lib\main.js:737:38
+    at responseCallbacks.<computed> (D:\00项目开发\PMS\node_modules\.pnpm\esbuild@0.21.3\node_modules\esbuild\lib\main.js:622:9)
+    at handleIncomingPacket (D:\00项目开发\PMS\node_modules\.pnpm\esbuild@0.21.3\node_modules\esbuild\lib\main.js:676:31)
+    at Socket.readFromStdout (D:\00项目开发\PMS\node_modules\.pnpm\esbuild@0.21.3\node_modules\esbuild\lib\main.js:600:7)
+    at Socket.emit (node:events:509:28)
+    at addChunk (node:internal/streams/readable:563:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+    at Readable.push (node:internal/streams/readable:394:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+[ELIFECYCLE] Command failed with exit code 1.
+PS>TerminatingError():“步骤失败：api 源码与相关回归”
+>> TerminatingError():“步骤失败：api 源码与相关回归”
+PS>TerminatingError():“步骤失败：api 源码与相关回归”
+**********************
+Windows PowerShell 脚本结束
+结束时间: 20261116122543
+**********************

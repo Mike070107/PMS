@@ -1,0 +1,38 @@
+{
+  "fixtureOnly": true,
+  "realEntryComponents": true,
+  "realApiOrAuthOrDatabase": false,
+  "results": [
+    {
+      "entry": "cashier",
+      "contactWrites": 1,
+      "confirmationSource": "cashier",
+      "businessWrites": 0
+    },
+    {
+      "entry": "apartment",
+      "contactWrites": 1,
+      "confirmationSource": "cashier",
+      "businessWrites": 0
+    },
+    {
+      "entry": "vehicles",
+      "contactWrites": 1,
+      "confirmationSource": "parking",
+      "businessWrites": 0
+    },
+    {
+      "entry": "vehicle-existing",
+      "contactWrites": 1,
+      "confirmationSource": "parking",
+      "businessWrites": 0
+    },
+    {
+      "entry": "renew",
+      "contactWrites": 1,
+      "confirmationSource": "parking",
+      "businessWrites": 0
+    }
+  ],
+  "errors": []
+}
