@@ -7422,3 +7422,10 @@
   - 74e332d0 fix: complete repair intake photos, community public areas and newest-first timelines
   - 87bb63e0 fix: deduplicate repeated lane numbers across address displays and notifications
 
+## 2026-11-16 14:18 · api · 194fd822
+
+- 包：`pms-api-fast-20261116-141723.tar.gz`
+- 提交：194fd822 test(cashier): align release gate with immutable standard prices
+- 自上次（b9cbd704）以来上线的相关提交：
+  - 0a75ddf6 feat(staff): isolate cashier tabs and lazily load daily details
+
