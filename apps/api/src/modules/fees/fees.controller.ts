@@ -315,6 +315,14 @@ export class FeesController {
     return this.feesService.cashierPaymentMethods(user, access);
   }
 
+  /** 统计独立入口：折叠明细时不得执行收据/收费项查询。 */
+  @Get('cashier/today-summary')
+  @RequirePermission(['fees', 'apartment-cashier', 'app:apartment-cashier'], 'view')
+  async cashierTodaySummary(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    const { total, totalCents } = await this.feesService.cashierToday({ summaryOnly: true }, user, access);
+    return { total, totalCents };
+  }
+
   @Get('cashier/today')
   @RequirePermission(['fees', 'apartment-cashier', 'app:apartment-cashier'], 'view')
   cashierToday(

@@ -1261,7 +1261,7 @@ export class FeesService {
    * 合计把红冲产生的负数收据一并算进去 —— 当天收完又红冲的那笔自动抵消为 0，
    * 收费员手上的现金和这个数才对得上。
    */
-  async cashierToday(query: PageQueryDto, user: AuthUser, access?: ResolvedAccess) {
+  async cashierToday(query: PageQueryDto & { summaryOnly?: boolean }, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
     const scope = scopeCommunityIds(access);
     const page = Math.max(1, Number(query.page) || 1);
@@ -1292,6 +1292,7 @@ export class FeesService {
       .select('COUNT(DISTINCT (f.house_id, f.receipt_no))', 'total')
       .addSelect('COALESCE(SUM(f.amount_cents), 0)', 'totalCents')
       .getRawOne<any>();
+    if (query.summaryOnly) return { rows: [], total: Number(summary?.total || 0), totalCents: Number(summary?.totalCents || 0), page, pageSize };
     const headers = await base()
       .select('f.receipt_no', 'receiptNo')
       .addSelect('f.house_id', 'houseId')

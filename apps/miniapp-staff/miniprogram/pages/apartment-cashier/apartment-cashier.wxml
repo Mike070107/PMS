@@ -2,7 +2,7 @@
   公寓收费工作台（员工端）。绑定名一律对应 apartment-cashier.ts 的 data / 方法。
   手机上只做「收一笔、出一张、看这间房交过什么」；补打和红冲在网站后台办。
 -->
-<view class="container container--with-bar">
+<view class="container {{activeTab === 'charge' && placeText ? 'container--with-bar' : ''}}">
   <view wx:if="{{loading}}" class="muted center">加载中…</view>
 
   <!-- 没有这一格权限就把原因说清楚，不要静默空白 -->
@@ -26,7 +26,7 @@
     <!-- ============ 1 选房间 ============ -->
     <view class="card">
       <view class="field">
-        <view class="label">公寓<text class="label__opt">唯一所属自动选择，多公寓记住本人上次选择</text></view>
+        <view class="label address-label"><text class="address-label__name">公寓</text><text class="label__opt">唯一所属自动选择，多公寓记住本人上次选择</text></view>
         <picker mode="selector" range="{{communityNames}}" value="{{communityIndex}}" bindchange="onPickCommunity">
           <view class="picker {{communityIndex < 0 ? 'placeholder' : ''}}">
             {{communityIndex < 0 ? '选择小区' : communityNames[communityIndex]}}
@@ -71,22 +71,32 @@
       </view>
     </view>
 
-    <block wx:if="{{placeText}}">
+    <view class="card cashier-workspace">
+      <view class="cashier-tabs" role="tablist" aria-label="公寓收费功能">
+        <view class="cashier-tab {{activeTab === 'charge' ? 'cashier-tab--on' : ''}}" role="tab" aria-selected="{{activeTab === 'charge'}}" data-tab="charge" bindtap="onSwitchTab">住户收费</view>
+        <view class="cashier-tab {{activeTab === 'history' ? 'cashier-tab--on' : ''}}" role="tab" aria-selected="{{activeTab === 'history'}}" data-tab="history" bindtap="onSwitchTab">本户缴费记录</view>
+        <view class="cashier-tab {{activeTab === 'today' ? 'cashier-tab--on' : ''}}" role="tab" aria-selected="{{activeTab === 'today'}}" data-tab="today" bindtap="onSwitchTab">今日收费汇总</view>
+      </view>
+      <block wx:if="{{activeTab === 'charge'}}">
+        <block wx:if="{{placeText}}">
       <!-- 收费对象：楼栋补「号」、和房号用「-」隔开，跟小票、后台一字不差 -->
-      <view class="card cashier-place">
-        <view class="cashier-place__title">{{communityText}} {{placeText}}</view>
+      <view class="cashier-section cashier-place">
+        <view class="cashier-place__title">{{fullPlaceText}}</view>
         <view class="field">
           <view class="label">姓名<text class="label__opt">房产档案里有就自动带出，可改</text></view>
-          <input class="input" placeholder="住户姓名" value="{{ownerName}}" bindinput="onInputOwnerName" />
+          <input class="input" placeholder="住户姓名" maxlength="60" value="{{ownerName}}" disabled="{{!canCharge || submitting || contactSaving}}" bindinput="onInputOwnerName" bindblur="onBlurContact" />
         </view>
         <view class="field">
           <view class="label">手机号<text class="label__opt">选填</text></view>
-          <input class="input" type="number" placeholder="11 位手机号" value="{{ownerPhone}}" bindinput="onInputOwnerPhone" />
+          <input class="input" type="text" maxlength="30" placeholder="住户联系电话" value="{{ownerPhone}}" disabled="{{!canCharge || submitting || contactSaving}}" bindinput="onInputOwnerPhone" bindblur="onBlurContact" />
         </view>
+        <view class="muted contact-status">{{canCharge ? (contactStatus || '修改姓名、手机号后，离开输入框自动保存') : '仅查看，不能修改住户资料'}}</view>
+        <view wx:if="{{contactError}}" class="field-error">{{contactError}}，输入已保留。</view>
+        <button wx:if="{{contactError}}" class="btn btn--ghost mt-sm" disabled="{{contactSaving || submitting}}" bindtap="onBlurContact">重试保存资料</button>
       </view>
 
       <!-- ============ 2 点要收的项目 ============ -->
-      <view class="card">
+      <view class="cashier-section">
         <view class="label">收什么<text class="label__opt">点一下加一项，再点取消</text></view>
         <view wx:if="{{ratesLoading}}" class="muted">正在读取本房间收费标准…</view>
         <view wx:if="{{ratesError}}" class="field-error">{{ratesError}}</view>
@@ -111,7 +121,7 @@
       </view>
 
       <!-- ============ 3 填数量单价 ============ -->
-      <view wx:if="{{rows.length}}" class="card">
+      <view wx:if="{{rows.length}}" class="cashier-section">
         <view class="label">这一单</view>
         <view wx:for="{{rows}}" wx:key="feeCode" class="fee-row">
           <view class="fee-row__head">
@@ -137,15 +147,8 @@
             </view>
             <view class="fee-row__field">
               <text class="fee-row__label">{{item.priceHint || '单价（元）'}}</text>
-              <input
-                class="input"
-                type="digit"
-                placeholder="0.00"
-                value="{{item.unitPriceYuan}}"
-                data-code="{{item.feeCode}}"
-                data-field="unitPriceYuan"
-                bindinput="onRowInput"
-              />
+              <view class="standard-price" aria-label="Web配置的标准单价，不可修改">{{item.unitPriceYuan}}</view>
+              <text class="fee-row__readonly">Web标准 · 不可修改</text>
             </view>
             <view class="fee-row__field">
               <text class="fee-row__label">金额（元）</text>
@@ -165,17 +168,18 @@
       </view>
 
       <!-- ============ 4 收款方式 ============ -->
-      <view wx:if="{{rows.length}}" class="card">
+      <view wx:if="{{rows.length}}" class="cashier-section">
         <view class="field">
           <view class="label">收款方式</view>
-          <view class="chips chips--field">
+          <view class="payment-grid">
             <view
               wx:for="{{paymentMethods}}"
               wx:key="value"
-              class="chip {{paymentMethod === item.value ? 'chip--on' : ''}}"
+              class="payment-tile {{paymentMethod === item.value ? 'payment-tile--on' : ''}}"
+              role="radio" aria-checked="{{paymentMethod === item.value}}" aria-label="{{item.label}}"
               data-value="{{item.value}}"
               bindtap="onPickMethod"
-            >{{item.label}}</view>
+            ><view class="payment-icon payment-icon--{{item.value}}" aria-hidden="true"></view><text>{{item.label}}</text></view>
           </view>
         </view>
         <view class="field">
@@ -184,8 +188,16 @@
         </view>
       </view>
 
-      <!-- ============ 5 这间房交过什么 ============ -->
-      <view class="card">
+        </block>
+        <pms-empty wx:else text="先选房间，再收费" />
+      </block>
+      <block wx:elif="{{activeTab === 'history'}}">
+        <block wx:if="{{placeText}}">
+        <view class="cashier-section">
+          <view class="cashier-place__title">{{fullPlaceText}}</view>
+        </view>
+      <!-- ============ 这间房交过什么 ============ -->
+      <view class="cashier-section">
         <view class="label">本户历史缴费记录</view>
         <view wx:if="{{historyLoading}}" class="muted">加载中…</view>
         <view wx:if="{{historyError}}" class="field-error">{{historyError}}（下方如有记录为上次读取结果）</view>
@@ -206,26 +218,30 @@
         <button wx:if="{{history.length < historyTotal}}" class="btn btn--ghost mt-sm" loading="{{historyLoading}}" disabled="{{historyLoading}}" bindtap="onMoreHistory">查看更多历史记录</button>
         <view wx:if="{{guide}}" class="muted mt-sm">要补打小票或红冲，请在网站后台「收费业务 → 公寓收费工作台」里办。</view>
       </view>
-    </block>
-
-    <pms-empty wx:else text="先选房间，再收费" />
+        </block>
+        <pms-empty wx:else text="先选择房间，查看本户缴费记录" />
+      </block>
 
     <!-- 今日收费：独立于选房，展示本人权限范围内全部公寓，不随当前房间筛选 -->
-    <view class="card daily-card">
+    <view wx:elif="{{activeTab === 'today'}}" class="cashier-section daily-card">
       <view class="daily-head">
         <view class="label">今日收费汇总</view>
-        <button class="daily-refresh" disabled="{{todayLoading}}" loading="{{todayLoading}}" bindtap="onRefreshToday">刷新</button>
+        <button class="daily-refresh" disabled="{{todaySummaryLoading}}" loading="{{todaySummaryLoading}}" bindtap="onRefreshToday">刷新</button>
       </view>
       <view class="muted">{{todayDate}} 北京时间 · 本人可见公寓范围，不随选房切换</view>
-      <view wx:if="{{todayLoading}}" class="muted mt-sm">正在读取今日收费…</view>
-      <view wx:if="{{todayError}}" class="field-error mt-sm">{{todayError}}。请点刷新重试{{todayLoaded ? '，下方为上次读取结果' : ''}}。</view>
+      <view wx:if="{{todaySummaryLoading}}" class="muted mt-sm">正在读取今日统计…</view>
+      <view wx:if="{{todaySummaryError}}" class="field-error mt-sm">{{todaySummaryError}}。请点刷新重试。</view>
       <block wx:if="{{todayLoaded}}">
         <view class="daily-summary">
           <view class="muted">今日净收款</view>
           <view class="daily-summary__amount">{{todayAmountText}}</view>
           <view class="muted">共 {{todayTotal}} 笔流水 · 净额含红冲负数</view>
         </view>
-        <view class="label daily-details-title">今日收费明细</view>
+      </block>
+        <button class="daily-details-toggle" aria-expanded="{{todayDetailsExpanded}}" disabled="{{todaySummaryLoading}}" bindtap="onToggleTodayDetails"><text>今日收费明细</text><text class="daily-details-toggle__state">{{todayDetailsExpanded ? '收起 −' : '展开 ＋'}}</text></button>
+      <block wx:if="{{todayDetailsExpanded}}">
+        <view wx:if="{{todayLoading}}" class="muted mt-sm">正在读取今日明细…</view>
+        <view wx:if="{{todayError}}" class="field-error mt-sm">{{todayError}}，请点刷新重试。</view>
         <pms-empty wx:if="{{!todayRows.length && !todayLoading && !todayError}}" text="今日暂无收费记录" />
         <view wx:for="{{todayRows}}" wx:key="key" class="his-row">
           <view class="daily-place">{{item.placeText}}</view>
@@ -239,12 +255,13 @@
         <button wx:if="{{todayRows.length < todayTotal}}" class="btn btn--ghost mt-sm" loading="{{todayLoading}}" disabled="{{todayLoading}}" bindtap="onMoreToday">查看更多今日明细</button>
       </block>
     </view>
+    </view>
   </block>
 </view>
 
 <!-- 底部操作条：固定不滚，让开安全区 -->
 <staff-tabbar id="cashier-tabbar" wx:if="{{!receiptOpen}}" />
-<view wx:if="{{!loading && canSeeCashier && placeText}}" class="action-bar">
+<view wx:if="{{!loading && canSeeCashier && activeTab === 'charge' && placeText}}" class="action-bar">
   <view wx:if="{{submitError}}" class="field-error action-bar__error">{{submitError}}</view>
   <view class="action-bar__row">
     <view class="action-bar__total">合计 {{totalText}}</view>

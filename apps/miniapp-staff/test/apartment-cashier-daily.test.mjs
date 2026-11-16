@@ -21,6 +21,8 @@ function fixture(api = {}) {
   });
   page.data = JSON.parse(JSON.stringify(page.data));
   page.setData = patch => Object.assign(page.data, patch);
+  // 本文件验证已展开的明细分页；默认折叠/禁止预取由tabs回归覆盖。
+  Object.assign(page.data, { activeTab: 'today', todayDetailsExpanded: true });
   return page;
 }
 const row = (receiptNo, houseId = 1) => ({ receiptNo, houseId, communityName: '春风公寓', buildingNo: '13', roomNo: '101', paidAt: '2026-11-14T16:10:00Z', paymentMethod: 'cash', amountCents: 2000, status: 'paid', items: [{ feeName: '电费', quantity: 12.5, unit: '度' }, { feeName: '房租', quantity: null, unit: '月' }] });
@@ -119,5 +121,5 @@ test('历史不展示订单号，费用图示有独立颜色和文字，今日�
   for (const code of shared.APARTMENT_FEE_TYPES.map(item => item.code)) assert.match(styles, new RegExp('\\.fee-icon--' + code + ' \\{ background-color: #[0-9a-f]{6}; background-image: url'));
   assert.match(wxml, /今日收费汇总/); assert.match(wxml, /今日收费明细/);
   assert.match(wxml, /todayError/); assert.match(wxml, /historyError/);
-  assert.ok(wxml.indexOf('今日收费汇总') > wxml.indexOf('先选房间，再收费'));
+  assert.ok(wxml.indexOf("wx:elif=\"{{activeTab === 'today'}}\"") > wxml.indexOf('先选房间，再收费'));
 });

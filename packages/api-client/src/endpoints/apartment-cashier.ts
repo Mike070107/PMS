@@ -91,6 +91,14 @@ export const history = (houseId: number, page = 1) =>
     query: { page },
   });
 
+/** 自动保存住户联系方式，与Web收费台共用持久化入口。 */
+export const updateContact = (houseId: number, data: { ownerId?: number; ownerName: string; ownerPhone: string }) =>
+  request<{ owner: CashierOwner | null }>({ method: 'PATCH', url: `/fees/cashier/houses/${houseId}/contact`, data });
+
+/** 只读取完整权限范围的统计，不查询收据明细。旧API不支持时明确报错，不回退为提前加载明细。 */
+export const todaySummary = () =>
+  request<{ total: number; totalCents: number }>({ url: '/fees/cashier/today-summary' });
+
 export const today = (page = 1) =>
   request<{
     rows: Array<CashierHistoryRow & { houseId: number; communityName: string; lane?: string | null; buildingNo: string; roomNo: string; ownerName: string | null }>;

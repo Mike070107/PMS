@@ -26,7 +26,7 @@ test('员工公寓入口只放行选址和收费，不扩大后台账单管理�
     assert.ok(Reflect.getMetadata(PERMISSION_KEY, (PropertiesController.prototype as any)[method]).items.some(
       (p: any) => p.pageKey === 'app:apartment-cashier' && p.action === 'view'), method);
   }
-  for (const [method, action] of [['houseDetail', 'view'], ['cashierHistory', 'view'], ['createCashierCharge', 'edit']]) {
+  for (const [method, action] of [['houseDetail', 'view'], ['cashierHistory', 'view'], ['cashierTodaySummary', 'view'], ['updateCashierContact', 'edit'], ['createCashierCharge', 'edit']]) {
     assert.ok(Reflect.getMetadata(PERMISSION_KEY, (FeesController.prototype as any)[method]).items.some(
       (p: any) => p.pageKey === 'app:apartment-cashier' && p.action === action), method);
   }
@@ -43,7 +43,7 @@ test('只授权公寓收费台即可读取选址、明细、报表和小票', ()
   for (const method of ['listCommunities', 'listBuildings', 'listHouses']) {
     assert.ok(permits(PropertiesController, method, 'view'), method);
   }
-  for (const method of ['listBills', 'billSummary', 'feeReport', 'feeReconciliation', 'houseDetail', 'cashierHistory', 'cashierToday', 'cashierReceipt', 'reprintReceipt']) {
+  for (const method of ['listBills', 'billSummary', 'feeReport', 'feeReconciliation', 'houseDetail', 'cashierHistory', 'cashierToday', 'cashierTodaySummary', 'cashierReceipt', 'reprintReceipt']) {
     assert.ok(permits(FeesController, method, 'view'), method);
   }
 });

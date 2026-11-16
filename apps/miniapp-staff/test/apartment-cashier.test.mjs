@@ -42,7 +42,7 @@ test('仅查看权限和提交中不能发起收款', async () => {
 test('连点收款只打开一次确认、只提交一次；取消后解除锁', async () => {
   const f = fixture(); await Promise.all([f.page.onSubmit(), f.page.onSubmit()]);
   assert.equal(f.modalCalls(), 1); assert.equal(f.charges.length, 1); assert.equal(f.page.data.receiptNo, 'TEST-001');
-  assert.equal(f.page.data.submitError, ''); assert.equal(f.page.data.todayLoaded, true); assert.equal(f.page.data.todayAmountText, '180');
+  assert.equal(f.page.data.submitError, ''); assert.equal(f.page.data.todayLoaded, false); assert.equal(f.page.data.todayRows.length, 0);
   const cancelled = fixture({ confirm: false }); await cancelled.page.onSubmit();
   assert.equal(cancelled.charges.length, 0); assert.equal(cancelled.page.data.submitting, false); assert.equal(cancelled.page.data.rows.length, 1);
 });

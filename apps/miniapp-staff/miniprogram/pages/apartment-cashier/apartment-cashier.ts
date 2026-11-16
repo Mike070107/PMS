@@ -90,9 +90,17 @@ Page({
 
     /** 当前房间（选完才有） */
     placeText: '',
+    fullPlaceText: '',
     communityText: '',
     ownerName: '',
     ownerPhone: '',
+    contactSaving: false,
+    contactError: '',
+    contactStatus: '',
+    activeTab: 'charge' as 'charge' | 'history' | 'today',
+    todayDetailsExpanded: false,
+    todaySummaryLoading: false,
+    todaySummaryError: '',
 
     /** 可点的费用按钮 */
     feeTypes: APARTMENT_FEE_TYPES.map((item) => ({ ...item, active: false })),
@@ -132,14 +140,15 @@ Page({
   onShow() {
     this.syncGuide();
     syncTabBar(this, 'cashier');
-    if (!this.data.loading && this.data.canSeeCashier) void this.loadToday();
+    if (!this.data.loading && this.data.canSeeCashier && this.data.activeTab === 'today') void this.onRefreshToday();
   },
 
   async onPullDownRefresh() {
     try {
       if (!this.data.loading && this.data.canSeeCashier) {
         const house = this.data.houses[this.data.houseIndex];
-        await Promise.all([this.loadToday(), ...(house ? [this.loadHistory(house.id)] : [])]);
+        if (this.data.activeTab === 'today') await this.onRefreshToday();
+        else if (this.data.activeTab === 'history' && house) await this.loadHistory(house.id);
       }
     } finally { wx.stopPullDownRefresh(); }
   },
@@ -154,7 +163,6 @@ Page({
         return;
       }
       this.setData({ canCharge: session.canCharge });
-      void this.loadToday();
       const rows = await apartmentCashier.communities();
       // 他的数据范围只有一个小区时，那就是「他自己的小区」，直接选上。
       // 范围是多个（或全公司）时不替他猜，让他自己点。
@@ -180,7 +188,7 @@ Page({
   communityPreferenceKey: '',
 
   async pickCommunity(index: number) {
-    if(this.data.submitting)return;
+    if(this.data.submitting || !(await this.saveContact()))return;
     const community = this.data.communities[index];
     if (!community) return;
     try{if(this.communityPreferenceKey)wx.setStorageSync(this.communityPreferenceKey,community.id);}catch{/* 不影响正常选房 */}
@@ -212,6 +220,7 @@ Page({
   },
 
   async pickBuilding(index: number) {
+    if(this.data.submitting || !(await this.saveContact()))return;
     const building = this.data.buildings[index];
     if (!building) return;
     this.setData({ buildingIndex: index, loadingHouses: true, ...this.clearedHouse() });
@@ -234,10 +243,16 @@ Page({
 
   /** 选中房号：带出业主姓名电话（存量旧地址已经进了业主档案），预填单价，拉历史 */
   async pickHouse(index: number) {
+    if(this.data.submitting || !(await this.saveContact()))return;
     const house = this.data.houses[index];
     if (!house) return;
+    ++this.historyRequest;
+    const lane = this.data.buildings[this.data.buildingIndex]?.lane;
     this.setData({
       houseIndex: index,
+      fullPlaceText: dedupeAddressText([house.communityName || this.data.communityText, lane && /^\d+$/.test(lane) ? `${lane}弄` : lane, placeLabel(house.buildingNo, house.roomNo)].filter(Boolean).join(' ')),
+      contactStatus: '', contactError: '',
+      history: [], historyPage: 0, historyTotal: 0, historyLoading: false, historyError: '',
       placeText: placeLabel(house.buildingNo, house.roomNo),
       ownerName: house.owner?.name || '',
       ownerPhone: house.owner?.phone || '',
@@ -248,7 +263,7 @@ Page({
       submitError: '',
     });
     this.recount([]);
-    await Promise.all([this.loadRates(house.id), this.loadHistory(house.id)]);
+    await Promise.all([this.loadRates(house.id), ...(this.data.activeTab === 'history' ? [this.loadHistory(house.id)] : [])]);
   },
 
   /** 换楼栋 / 换小区时，房间和这一单全部清掉 —— 不能把上一间的费用带过去 */
@@ -262,8 +277,10 @@ Page({
       houseNames: [] as string[],
       houseIndex: -1,
       placeText: '',
+      fullPlaceText: '',
       ownerName: '',
       ownerPhone: '',
+      contactStatus: '', contactError: '', contactSaving: false,
       rows: [] as FeeRow[],
       feeTypes: this.data.feeTypes.map((item) => ({ ...item, active: false })),
       paymentMethod: '',
@@ -354,9 +371,47 @@ Page({
     }
   },
 
+  async onSwitchTab(e: WechatMiniprogram.BaseEvent) {
+    const tab = String(e.currentTarget.dataset.tab);
+    if (!['charge', 'history', 'today'].includes(tab) || tab === this.data.activeTab || this.data.submitting) return;
+    // 离开收费面板前完成失焦保存，失败留在原处并保留输入。
+    if (this.data.activeTab === 'charge' && !(await this.saveContact())) return;
+    ++this.todayRequest;
+    ++this.todaySummaryRequest;
+    this.setData({ activeTab: tab as 'charge' | 'history' | 'today', todayDetailsExpanded: false, todayRows: [], todayPage: 0, todayLoading: false, todaySummaryLoading: false, todayError: '' });
+    if (tab === 'today') await this.loadTodaySummary();
+    const house = this.data.houses[this.data.houseIndex];
+    if (tab === 'history' && house) await this.loadHistory(house.id);
+  },
+
+  todaySummaryRequest: 0,
+  async loadTodaySummary(): Promise<void> {
+    if (!this.data.canSeeCashier) return;
+    const requestId = ++this.todaySummaryRequest;
+    const day = formatBeijingDateTime(new Date(), 'YYYY-MM-DD');
+    this.setData({ todaySummaryLoading: true, todaySummaryError: '', todayLoaded: false, todayDate: day });
+    try {
+      const result = await apartmentCashier.todaySummary();
+      if (requestId !== this.todaySummaryRequest) return;
+      if (day !== formatBeijingDateTime(new Date(), 'YYYY-MM-DD')) return this.loadTodaySummary();
+      this.setData({ todaySummaryLoading: false, todayLoaded: true, todayTotal: result.total, todayAmountText: money(result.totalCents) });
+    } catch (e: any) {
+      if (requestId !== this.todaySummaryRequest) return;
+      this.setData({ todaySummaryLoading: false, todaySummaryError: e?.message || '今日汇总读取失败，请重试' });
+    }
+  },
+
+  async onToggleTodayDetails() {
+    if (this.data.activeTab !== 'today' || !this.data.canSeeCashier || this.data.todaySummaryLoading) return;
+    const expanded = !this.data.todayDetailsExpanded;
+    ++this.todayRequest;
+    this.setData({ todayDetailsExpanded: expanded, todayRows: [], todayPage: 0, todayLoading: false, todayError: '' });
+    if (expanded) await this.loadToday();
+  },
+
   todayRequest: 0,
   async loadToday(page = 1): Promise<void> {
-    if (!this.data.canSeeCashier) return;
+    if (!this.data.canSeeCashier || !this.data.todayDetailsExpanded || this.data.activeTab !== 'today') return;
     const day = formatBeijingDateTime(new Date(), 'YYYY-MM-DD');
     const changedDay = !!this.data.todayDate && this.data.todayDate !== day;
     if (changedDay) page = 1;
@@ -382,9 +437,15 @@ Page({
     }
   },
 
-  async onRefreshToday() { if (!this.data.todayLoading) await this.loadToday(); },
+  async onRefreshToday() {
+    if (this.data.activeTab !== 'today' || this.data.todaySummaryLoading) return;
+    ++this.todayRequest;
+    this.setData({ todayRows: [], todayPage: 0, todayLoading: false, todayError: '' });
+    await this.loadTodaySummary();
+    if (this.data.activeTab === 'today' && this.data.todayDetailsExpanded) await this.loadToday();
+  },
   async onMoreToday() {
-    if (!this.data.todayLoading && this.data.todayRows.length < this.data.todayTotal) await this.loadToday(this.data.todayPage + 1);
+    if (this.data.todayDetailsExpanded && !this.data.todaySummaryLoading && !this.data.todayLoading && this.data.todayRows.length < this.data.todayTotal) await this.loadToday(this.data.todayPage + 1);
   },
 
   // ---------------- 费用明细 ----------------
@@ -430,13 +491,13 @@ Page({
   },
 
   /**
-   * 数量、单价改了重算金额；手填实收金额反推三位小数的数量，金额保持手填值。
+   * 单价只读且仅来自Web配置；数量改了重算金额，手填实收金额反推数量。
    */
   onRowInput(e: WechatMiniprogram.Input | WechatMiniprogram.PickerChange) {
     if(this.data.submitting)return;
     const code = String(e.currentTarget.dataset.code);
-    const field = String(e.currentTarget.dataset.field) as 'quantityText' | 'unitPriceYuan' | 'amountYuan' | 'vehiclePlate' | 'serviceFrom' | 'serviceTo';
-    if(!['quantityText','unitPriceYuan','amountYuan','vehiclePlate','serviceFrom','serviceTo'].includes(field))return;
+    const field = String(e.currentTarget.dataset.field) as 'quantityText' | 'amountYuan' | 'vehiclePlate' | 'serviceFrom' | 'serviceTo';
+    if(!['quantityText','amountYuan','vehiclePlate','serviceFrom','serviceTo'].includes(field))return;
     const text = String(e.detail.value);
     const rows = this.data.rows.map((row) => {
       if (row.feeCode !== code) return row;
@@ -480,11 +541,53 @@ Page({
   },
 
   onInputOwnerName(e: WechatMiniprogram.Input) {
-    this.setData({ ownerName: String(e.detail.value) });
+    if (!this.data.canCharge || this.data.submitting) return;
+    this.setData({ ownerName: String(e.detail.value), contactStatus: '离开输入框后自动保存' });
   },
 
   onInputOwnerPhone(e: WechatMiniprogram.Input) {
-    this.setData({ ownerPhone: String(e.detail.value) });
+    if (!this.data.canCharge || this.data.submitting) return;
+    this.setData({ ownerPhone: String(e.detail.value), contactStatus: '离开输入框后自动保存' });
+  },
+
+  contactSavePromise: undefined as Promise<boolean> | undefined,
+  async onBlurContact() { return this.saveContact(); },
+  async saveContact(): Promise<boolean> {
+    if (this.contactSavePromise) {
+      const ok = await this.contactSavePromise;
+      return ok ? this.saveContact() : false;
+    }
+    const house = this.data.houses[this.data.houseIndex];
+    if (!house || !this.data.canCharge) return true;
+    const rawName = this.data.ownerName, rawPhone = this.data.ownerPhone;
+    const ownerName = rawName.trim(), ownerPhone = rawPhone.trim();
+    if (ownerName === (house.owner?.name || '').trim() && ownerPhone === (house.owner?.phone || '').trim()) return true;
+    this.setData({ contactSaving: true, contactError: '', contactStatus: '正在自动保存…' });
+    const work = (async () => {
+      try {
+        const result = await apartmentCashier.updateContact(house.id, { ownerId: house.owner?.id, ownerName, ownerPhone });
+        const sameHouse = this.data.houses[this.data.houseIndex]?.id === house.id;
+        this.setData({
+          houses: this.data.houses.map(row => row.id === house.id ? { ...row, owner: result.owner } : row),
+          ...(sameHouse ? {
+            ownerName: this.data.ownerName === rawName ? ownerName : this.data.ownerName,
+            ownerPhone: this.data.ownerPhone === rawPhone ? ownerPhone : this.data.ownerPhone,
+            contactError: '', contactStatus: '已自动保存',
+          } : {}),
+        });
+        return true;
+      } catch (e: any) {
+        if (this.data.houses[this.data.houseIndex]?.id === house.id) this.setData({ contactError: e?.message || '保存失败，已保留输入，请重试', contactStatus: '' });
+        return false;
+      } finally {
+        this.setData({ contactSaving: false });
+      }
+    })();
+    this.contactSavePromise = work;
+    const ok = await work;
+    this.contactSavePromise = undefined;
+    // 输入可能在前次请求期间变化；串行补存，禁止旧响应覆盖新输入。
+    return ok ? this.saveContact() : false;
   },
 
   onInputRemark(e: WechatMiniprogram.Input) {
@@ -492,7 +595,7 @@ Page({
   },
 
   async onSubmit() {
-    if (!this.data.canCharge || this.data.submitting) return;
+    if (!this.data.canCharge || this.data.submitting || this.data.activeTab !== 'charge') return;
     const house = this.data.houses[this.data.houseIndex];
     if (!house) return this.setData({ submitError: '先选房间' });
     if(this.rateQuote===undefined) return this.setData({submitError:'收费标准尚未读到，请重新选择房号核对单价后提交'});
@@ -508,6 +611,7 @@ Page({
     if (!this.data.paymentMethod) return this.setData({ submitError: '选一个收款方式' });
 
     this.setData({ submitting: true, submitError: '' });
+    if (!(await this.saveContact())) { this.setData({ submitting: false, submitError: '住户资料未保存，请先重试保存' }); return; }
     let confirm: WechatMiniprogram.ShowModalSuccessCallbackResult;
     try {
       confirm = await wx.showModal({
@@ -560,7 +664,8 @@ Page({
         totalCents: 0,
         totalText: formatFeeMoney(0),
       });
-      await Promise.all([this.loadHistory(house.id), this.loadToday()]);
+      // 隐藏面板不预取明细；切到对应Tab时再读最新结果。
+      this.setData({ history: [], historyPage: 0, historyTotal: 0, todayLoaded: false, todayRows: [], todayPage: 0 });
     } catch (e: any) {
       // 失败保留输入：这一单是现场对着住户填的，清掉等于让人从头来一遍
       this.setData({ submitting: false, submitError: e?.message || '收款失败，刚填的内容已保留，可以直接重试' });

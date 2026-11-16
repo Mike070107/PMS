@@ -14,12 +14,14 @@ import { todayInTz } from './report.util';
 // 完全内存隔离：真实服务及TypeORM SQL，不读取.env或连接外部数据库。
 async function fixture() {
   const pg = new PGlite();
+  const queries: string[] = [];
   const ds = new DataSource({type:'postgres',entities,synchronize:false});
   await (ds as any).buildMetadatas();
   const runner = (connection:any, active=false):any => {
     const qr:any={connection:ds,isReleased:false,isTransactionActive:active,data:{},
       connect:async()=>{},release:async()=>{},
       query:async(sql:string,params:any[]=[],structured=false)=>{
+        queries.push(sql);
         const out=await connection.query(sql,params);
         if(!structured)return out.rows;
         const result=new QueryResult();result.records=out.rows;result.raw=out.rows;result.affected=out.affectedRows;return result;
@@ -56,7 +58,7 @@ async function fixture() {
       VALUES($1,$2,$3,'rent','房租','202610',$4,'paid',$5,'cash',$6,'manual',1,1)`,
       [tenantId,communityId,houseId,amount,`${todayInTz()}T10:00:00+08:00`,receiptNo]);
   };
-  return {pg,ds,service,user,insert,seed};
+  return {pg,ds,service,user,insert,seed,queries};
 }
 
 test('history明细严格限tenant + house + receipt，保留分页和金额',async()=>{
@@ -119,6 +121,28 @@ test('today按房屋分开历史同号，统计/分页/范围与明细一致',as
   assert.equal(page.rows[0].houseId,2);assert.deepEqual(page.rows[0].items.map(i=>i.amountCents),[900]);
   const empty=await service.cashierToday({},user,{scopeAll:false,communityIds:[]} as any);
   assert.deepEqual(empty,{rows:[],total:0,page:1,pageSize:20,totalCents:0});
+ } finally {await pg.close();}
+});
+
+test('折叠统计入口只发一条聚合SQL，不取流水或项目；保留租户/小区/北京当日净额隔离',async()=>{
+ const {pg,service,user,seed,insert,queries}=await fixture();
+ try {
+  await seed('SAME',1,100);await seed('SAME',2,900);await seed('SAME',3,700,2);
+  await seed('REV',1,-100);await insert('OLD',88888,'2000-01-01T10:00:00+08:00');
+  await pg.exec("UPDATE fee_bills SET status='refunded' WHERE receipt_no IN ('REV','SAME') AND house_id=1");
+  (service as any).receiptItems=async()=>{throw Error('折叠时不应读取收费项');};
+  const controller=Object.create(FeesController.prototype) as any;controller.feesService=service;
+  queries.length=0;
+  assert.deepEqual(await controller.cashierTodaySummary(user),{total:3,totalCents:900});
+  assert.equal(queries.length,1);assert.match(queries[0],/COUNT\(DISTINCT/i);assert.match(queries[0],/SUM\(/i);
+  assert.doesNotMatch(queries[0],/GROUP BY|ORDER BY|LIMIT/i);
+  queries.length=0;
+  assert.deepEqual(await controller.cashierTodaySummary(user,{scopeAll:false,communityIds:[1]}),{total:2,totalCents:0});
+  assert.equal(queries.length,1);assert.match(queries[0],/community_id.*IN/);
+  queries.length=0;
+  assert.deepEqual(await controller.cashierTodaySummary(user,{scopeAll:false,communityIds:[]}),{total:0,totalCents:0});
+  assert.equal(queries.length,0);
+  assert.deepEqual(await controller.cashierTodaySummary({...user,tenantId:2}),{total:1,totalCents:700});
  } finally {await pg.close();}
 });
 
