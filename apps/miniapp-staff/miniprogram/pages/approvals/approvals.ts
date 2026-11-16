@@ -135,10 +135,19 @@ Page({
     summarizing: false,
   },
 
+  /** 固定本次入栈的应用模式，避免审批/养护共用缓存影响返回后的页面。 */
+  _entryMode: '' as '' | 'approvals' | 'maintenance',
+
   onLoad(options: Record<string, string | undefined>) {
+    const mode = options?.mode;
+    if (mode === 'maintenance' || mode === 'approvals') {
+      this._entryMode = mode;
+      this.setData({ mode });
+    }
     // 服务端发的「亲情车待经理审批」通知直接跳这一档
     if (options?.section === 'family') {
-      this.setData({ section: 'family' });
+      this._entryMode = 'approvals';
+      this.setData({ section: 'family', mode: 'approvals' });
       wx.setNavigationBarTitle({ title: '亲情车审批' });
     }
   },
@@ -158,7 +167,7 @@ Page({
     try {
       // 权限走共用会话（一次登录只打一遍 /auth/me），别每页各调各的
       const session = await getSession(this);
-      const requestedMode = cachedApprovalMode();
+      const requestedMode = this._entryMode || cachedApprovalMode();
       const canUseMaintenance = session.canInspectMaintenance || session.canSignMaintenance;
       const mode = requestedMode === 'maintenance' && canUseMaintenance
         ? 'maintenance'
@@ -166,7 +175,8 @@ Page({
           ? 'approvals'
           : canUseMaintenance ? 'maintenance' : 'approvals';
       this.setData({ mode, canInspectMaintenance: session.canInspectMaintenance, canSignMaintenance: session.canSignMaintenance });
-      syncTabBar(this, mode === 'maintenance' ? 'maintenance' : 'approvals');
+      syncTabBar(this, mode === 'maintenance' ? 'more' : 'approvals');
+      wx.setNavigationBarTitle({ title: mode === 'maintenance' ? '养护单' : this.data.section === 'family' ? '亲情车审批' : '采购审批' });
 
       if (mode === 'maintenance') {
         if (!canUseMaintenance) {

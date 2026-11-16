@@ -128,7 +128,12 @@
 .app-tile__desc { margin-top: 10rpx; font-size: var(--font-sm); color: var(--color-text-tertiary); line-height: 1.55; }
 .app-tile__badge { display: inline-block; margin-top: 16rpx; padding: 4rpx 14rpx; border-radius: 999rpx; background: #e7f0fb; color: #31558a; font-size: var(--font-xs); }
 .app-tile__svg { width: 64rpx; height: 64rpx; }
-.meter-tile {
-  width: 72rpx; height: 72rpx; border-radius: 18rpx; background: #edf4fa; color: #31558a;
-  font-size: 34rpx; font-weight: 700; display: flex; align-items: center; justify-content: center;
+.app-tile--hover { background: #edf4fa; box-shadow: none; }
+.meter-glyph {
+  width: 50rpx; height: 50rpx; background: center / contain no-repeat
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 15a8 8 0 1 1 16 0 M12 15l4-4 M6 19h12'/%3E%3C/svg%3E");
+}
+.maintenance-glyph {
+  width: 50rpx; height: 50rpx; background: center / contain no-repeat
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='4' width='14' height='17' rx='2'/%3E%3Cpath d='M9 4V2h6v2 M9 11h6 M9 15l2 2 4-4'/%3E%3C/svg%3E");
 }

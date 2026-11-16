@@ -53,10 +53,6 @@
         "text": "材料与库存"
       },
       {
-        "pagePath": "pages/meters/meters",
-        "text": "抄表"
-      },
-      {
         "pagePath": "pages/me/me",
         "text": "我的"
       }

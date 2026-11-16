@@ -5,6 +5,21 @@
       <view wx:if="{{guide}}" class="screen-head__desc">常用功能会以图标放在这里，页面保持简单好找</view>
       <view class="head-help {{guide ? 'head-help--on' : ''}}" bindtap="onToggleGuide">?</view>
     </view>
+    <view wx:if="{{canSeeMeters || canSeeMaintenance}}" class="card more-panel">
+      <view class="more-panel__title">现场作业</view>
+      <view class="app-grid">
+        <view wx:if="{{canSeeMeters}}" class="app-tile" bindtap="onOpenMeters" hover-class="app-tile--hover" role="button" aria-label="抄表">
+          <view class="app-tile__icon"><view class="meter-glyph"></view></view>
+          <view class="app-tile__name">抄表</view>
+          <view class="app-tile__desc">扫码与拍照抄表</view>
+        </view>
+        <view wx:if="{{canSeeMaintenance}}" class="app-tile" bindtap="onOpenMaintenance" hover-class="app-tile--hover" role="button" aria-label="养护单">
+          <view class="app-tile__icon"><view class="maintenance-glyph"></view></view>
+          <view class="app-tile__name">养护单</view>
+          <view class="app-tile__desc">查看待办与签字</view>
+        </view>
+      </view>
+    </view>
     <view class="card more-panel">
       <view class="more-panel__title">维修知识</view>
       <view class="app-grid">

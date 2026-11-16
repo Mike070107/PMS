@@ -2,7 +2,7 @@ import { maskPhone } from '@pms/miniapp-ui';
 import { buildDateText, buildStampText } from '../../utils/buildStamp';
 import { USER_ROLE_LABELS, type MeResp } from '@pms/shared-types';
 import { clearSession, getSession } from '../../utils/session';
-import { cachedMeMode, clearAccessCache, rememberPoolMode, syncTabBar } from '../../utils/tabbar';
+import { cachedMeMode, clearAccessCache, rememberApprovalMode, rememberPoolMode, syncTabBar } from '../../utils/tabbar';
 import { askOrderSubscribe, getSubscribeState } from '../../utils/unread';
 import { refreshTabBadges } from '../../utils/badges';
 import { openFeedback } from '../../utils/feedback';
@@ -54,6 +54,8 @@ Page({
     canCharge: false,
     /** 抄表入口：有 app:meters 查看权限才出现在「更多应用」 */
     canSeeMeters: false,
+    /** 签字或检查任一授权可进入养护单，继续复用原页面。 */
+    canSeeMaintenance: false,
   },
 
   /** 显示当前跑的是哪个包：改完重新上传后，忘记「选为体验版本」一眼就能看出来 */
@@ -116,6 +118,7 @@ Page({
         canSeeCashier: session.canSeeCashier,
         canCharge: session.canCharge,
         canSeeMeters: session.canSeeMeters,
+        canSeeMaintenance: session.canInspectMaintenance || session.canSignMaintenance,
       });
       if (session.canAccept) this.refreshNotifyState();
     } catch {
@@ -143,7 +146,20 @@ Page({
   },
 
   onOpenMeters() {
+    if (!this.data.canSeeMeters) {
+      wx.showToast({ icon: 'none', title: '暂无抄表权限' });
+      return;
+    }
     wx.navigateTo({ url: '/pages/meters/meters' });
+  },
+
+  onOpenMaintenance() {
+    if (!this.data.canSeeMaintenance) {
+      wx.showToast({ icon: 'none', title: '暂无养护单权限' });
+      return;
+    }
+    rememberApprovalMode('maintenance');
+    wx.navigateTo({ url: '/pages/approvals/approvals?mode=maintenance' });
   },
 
   onGoRepair() {

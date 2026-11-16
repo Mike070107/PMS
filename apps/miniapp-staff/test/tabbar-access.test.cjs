@@ -11,7 +11,10 @@ function fixture() {
   const cache = new Map();
   const storage = new Map();
   let definition;
+  const navigations = [];
   const wx = {
+    navigateTo: options => navigations.push({ method: 'navigateTo', ...options }),
+    switchTab: options => navigations.push({ method: 'switchTab', ...options }),
     getStorageSync: key => storage.get(key),
     setStorageSync: (key, value) => storage.set(key, value),
     removeStorageSync: key => storage.delete(key),
@@ -30,7 +33,7 @@ function fixture() {
       require: name => {
         if (name === '@pms/shared-types') return load('../../../packages/shared-types/src/pages.ts');
         if (name === '@pms/api-client') return { auth: {} };
-        if (name.endsWith('/unread')) return {};
+        if (name.endsWith('/unread')) return { topUpQuietly() {} };
         if (name.startsWith('.')) return load(path.relative(__dirname, path.resolve(path.dirname(filename), name + '.ts')));
         throw new Error('Unexpected runtime dependency: ' + name);
       },
@@ -47,16 +50,17 @@ function fixture() {
     tabbar.rememberAccess({ getTabBar: () => component }, permissions);
     return tabbar.readCachedAccess();
   };
-  return { pages, roles, tabbar, component, storage, remember, session: load('../miniprogram/utils/session.ts') };
+  return { pages, roles, tabbar, component, storage, remember, navigations, session: load('../miniprogram/utils/session.ts') };
 }
 
-test('服务端已授予抄表：刷新旧缓存后，底部入口恢复且路由保留', () => {
+test('服务端已授予抄表：刷新旧缓存后权限保留，从更多进入而非底部入口', () => {
   const f = fixture();
   f.storage.set('pms.staff.pages', { 'app:pool': true });
   const access = f.remember({ 'app:pool': { view: true }, 'app:meters': { view: true } });
   assert.equal(access.pages['app:meters'], true);
   assert.equal(f.roles.canSeeTab('meters', access), true);
-  assert.equal(f.component.data.tabs.find(tab => tab.key === 'meters')?.pagePath, '/pages/meters/meters');
+  assert.equal(f.component.data.tabs.some(tab => tab.key === 'meters'), false);
+  assert.equal(f.component.data.tabs.some(tab => tab.key === 'more'), true);
 });
 
 test('员工权限缓存与共用注册表完整一致，包含仅有抄表权限的账号', () => {
@@ -64,7 +68,7 @@ test('员工权限缓存与共用注册表完整一致，包含仅有抄表权�
   assert.deepEqual([...f.tabbar.STAFF_APP_PAGE_KEYS].sort(), [...f.pages.STAFF_APP_PAGE_KEYS].sort());
   const access = f.remember({ 'app:meters': { view: true } });
   assert.equal(f.roles.hasPmsAppAccess(access.pages), true);
-  assert.equal(f.component.data.tabs.some(tab => tab.key === 'meters'), true);
+  assert.deepEqual(Array.from(f.component.data.tabs, tab => tab.key), ['more', 'me']);
   const session = f.session.buildSession({ access: { pages: { 'app:meters': { view: true, edit: true } } } });
   assert.equal(session.hasPmsAppAccess, true);
   assert.equal(session.canSeeMeters, true);
@@ -74,7 +78,7 @@ test('员工权限缓存与共用注册表完整一致，包含仅有抄表权�
 test('逐项单独授权：派单、在手、养护、库存、各类审批、收费入口完整保留', () => {
   const grants = {
     'app:dispatch': 'dispatch', 'app:pool': 'pool', 'app:my-repairs': 'pool',
-    'app:my-orders': 'mine', 'app:maintenance-sign': 'maintenance', 'app:maintenance-inspect': 'maintenance',
+    'app:my-orders': 'mine', 'app:maintenance-sign': 'more', 'app:maintenance-inspect': 'more',
     'app:inventory': 'materials', 'app:materials': 'materials', 'app:stocktakes': 'materials',
     'app:approve-manager': 'approvals', 'app:approve-purchase-manager': 'approvals',
     'app:approve-business-manager': 'approvals', 'app:approve-purchaser': 'approvals',
@@ -95,11 +99,28 @@ test('所有底部入口都能通过服务端授权→缓存→组件显示，�
   const f = fixture();
   f.remember(Object.fromEntries(f.pages.STAFF_APP_PAGE_KEYS.map(key => [key, { view: true }])));
   const keys = Array.from(f.component.data.tabs, tab => tab.key);
-  assert.deepEqual(keys, ['dispatch', 'pool', 'mine', 'maintenance', 'materials', 'approvals', 'meters', 'cashier', 'more', 'me']);
+  assert.deepEqual(keys, ['dispatch', 'pool', 'mine', 'materials', 'approvals', 'cashier', 'more', 'me']);
   const app = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../miniprogram/app.json'), 'utf8'));
   for (const tab of f.component.data.tabs) assert.ok(app.pages.includes(tab.pagePath.slice(1).split('?')[0]), tab.key);
   const metersRoute = 'pages/meters/meters';
-  assert.ok(app.tabBar.list.some(tab => tab.pagePath === metersRoute));
+  assert.ok(app.pages.includes(metersRoute));
+  assert.equal(app.tabBar.list.some(tab => tab.pagePath === metersRoute), false);
+  assert.equal(app.tabBar.list.some(tab => /approvals/.test(tab.pagePath)), false);
+});
+
+test('审批底栏用显式审批模式入栈；养护待办角标移到更多而不丢失', () => {
+  const f = fixture();
+  f.remember({ 'app:approve-manager': { view: true }, 'app:maintenance-sign': { view: true } });
+  f.tabbar.rememberApprovalMode('maintenance');
+  const approvalIndex = f.component.data.tabs.findIndex(tab => tab.key === 'approvals');
+  f.component.onTap({ currentTarget: { dataset: { index: approvalIndex } } });
+  assert.deepEqual(f.navigations[0], { method: 'navigateTo', url: '/pages/approvals/approvals?mode=approvals' });
+  assert.equal(f.tabbar.cachedApprovalMode(), 'approvals');
+  const moreIndex = f.component.data.tabs.findIndex(tab => tab.key === 'more');
+  f.component.setBadge('maintenance', 7);
+  assert.equal(f.component.data[`tabs[${moreIndex}].badge`], '7');
+  f.component.setBadge('maintenance', 120);
+  assert.equal(f.component.data[`tabs[${moreIndex}].badge`], '99+');
 });
 
 test('无抄表授权不显示；撤销授权清旧缓存；外部应用专用账号仍无 PMS 入口', () => {

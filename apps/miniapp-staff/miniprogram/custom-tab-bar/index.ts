@@ -33,10 +33,8 @@ const ALL_TABS: TabDef[] = [
   { key: 'dispatch', pagePath: '/pages/pool/pool?mode=dispatch', text: '派单台' },
   { key: 'pool', pagePath: '/pages/pool/pool', text: '工单池' },
   { key: 'mine', pagePath: '/pages/my-orders/my-orders', text: '在手工单' },
-  { key: 'maintenance', pagePath: '/pages/approvals/approvals?mode=maintenance', text: '养护单' },
   { key: 'materials', pagePath: '/pages/inventory/inventory', text: '材料与库存' },
-  { key: 'approvals', pagePath: '/pages/approvals/approvals', text: '审批' },
-  { key: 'meters', pagePath: '/pages/meters/meters', text: '抄表' },
+  { key: 'approvals', pagePath: '/pages/approvals/approvals?mode=approvals', text: '审批' },
   { key: 'cashier', pagePath: '/pages/apartment-cashier/apartment-cashier', text: '公寓收费' },
   { key: 'more', pagePath: '/pages/me/me?mode=more', text: '更多' },
   { key: 'me', pagePath: '/pages/me/me', text: '我的' },
@@ -123,9 +121,7 @@ Component({
       rememberPoolMode(tab.key === 'dispatch' ? 'dispatch' : 'pool');
       // 点「工单池」那一格就回到工单池那一档，别停在上次看的「已完结」
       if (tab.key === 'pool' || tab.key === 'dispatch') markPoolTabTapped();
-      if (tab.key === 'approvals' || tab.key === 'maintenance') {
-        rememberApprovalMode(tab.key === 'maintenance' ? 'maintenance' : 'approvals');
-      }
+      if (tab.key === 'approvals') rememberApprovalMode('approvals');
       if (tab.key === 'more' || tab.key === 'me') {
         rememberMeMode(tab.key);
       }
@@ -152,7 +148,7 @@ Component({
 
       // 原生 tab 页最多五个；收费页复用同一底栏组件，不占原生名额。
       // 「审批」已经没有原生 tab 名额，和收费页一样走 navigateTo；否则 switchTab 会失败。
-      if (tab.key === 'cashier' || tab.key === 'approvals' || tab.key === 'maintenance') wx.navigateTo({ url: target });
+      if (tab.key === 'cashier' || tab.key === 'approvals') wx.navigateTo({ url: tab.pagePath });
       else wx.switchTab({ url: target });
     },
 
@@ -168,7 +164,9 @@ Component({
 
     /** 未处理数量：0 或空表示不显示 */
     setBadge(key: string, count: number) {
-      const index = this.data.tabs.findIndex((tab: any) => tab.key === key);
+      // 养护入口已移到更多；沿用原待签字数量，让待办提示仍可见。
+      const badgeKey = key === 'maintenance' ? 'more' : key;
+      const index = this.data.tabs.findIndex((tab: any) => tab.key === badgeKey);
       if (index < 0) return;
       const value = Number(count) > 0 ? (Number(count) > 99 ? '99+' : String(count)) : '';
       if ((this.data.tabs[index] as any).badge === value) return;
