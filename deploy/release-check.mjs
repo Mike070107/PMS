@@ -14,7 +14,7 @@ export const TARGETS = {
   'miniapp-staff': { label: '员工端小程序', paths: ['apps/miniapp-staff', 'packages/shared-types', 'packages/api-client'] },
   'miniapp-owner': { label: '业主端小程序', paths: ['apps/miniapp-owner', 'packages/shared-types', 'packages/api-client'] },
 };
-const RECOVERY_INPUTS = ['deploy/property-archive-details-migration.cjs', 'deploy/property-archive-details-migration.test.cjs', 'deploy/release-check.mjs', 'deploy/release-check.test.mjs', 'deploy/release-cache.mjs', 'deploy/release-cache.test.mjs', 'deploy/neighbor-production.test.mjs', 'deploy/pack.ps1', 'deploy/publish-production.ps1', 'pnpm-workspace.yaml', '.npmrc', 'deploy/api-runtime-dependencies.py', 'deploy/api-runtime-dependencies.test.py', 'deploy/mark-deployed.mjs', 'deploy/srv-deploy-api.sh', 'deploy/srv-deploy-web.sh'];
+const RECOVERY_INPUTS = ['deploy/property-archive-details-migration.cjs', 'deploy/property-archive-details-migration.test.cjs', 'deploy/release-check.mjs', 'deploy/release-check.test.mjs', 'deploy/release-cache.mjs', 'deploy/release-cache.test.mjs', 'deploy/neighbor-production.test.mjs', 'deploy/release-native-run.test.ps1', 'deploy/pack.ps1', 'deploy/publish-production.ps1', 'pnpm-workspace.yaml', '.npmrc', 'deploy/api-runtime-dependencies.py', 'deploy/api-runtime-dependencies.test.py', 'deploy/mark-deployed.mjs', 'deploy/srv-deploy-api.sh', 'deploy/srv-deploy-web.sh'];
 const EVIDENCE = join(ROOT, 'artifacts/release-checks');
 const sha = value => createHash('sha256').update(value).digest('hex');
 const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).trim();

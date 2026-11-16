@@ -1,5 +1,6 @@
 import test from 'node:test';
 import {execFileSync} from 'node:child_process';
+test('Windows发布不把普通stderr当失败，但退出码和PowerShell错误必须阻断',()=>{if(process.platform==='win32')execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',join(ROOT,'deploy/release-native-run.test.ps1')],{stdio:'inherit'})});
 test('Windows PowerShell入口保留UTF8 BOM且实际语法解析通过',()=>{for(const name of ['publish-production.ps1','pack.ps1']){const file=join(ROOT,'deploy',name);assert.equal(readFileSync(file).subarray(0,3).toString('hex'),'efbbbf');if(process.platform==='win32')execFileSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',"$e=$null;$t=$null;[System.Management.Automation.Language.Parser]::ParseFile('"+file.replaceAll("'","''")+"',[ref]$t,[ref]$e)|Out-Null;if($e){throw ($e|Out-String)}"],{stdio:'inherit'})}});
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';

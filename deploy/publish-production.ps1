@@ -36,12 +36,20 @@ function Run([string] $label, [scriptblock] $body) {
     $watch = [Diagnostics.Stopwatch]::StartNew()
     $startedAt = [DateTime]::UtcNow.ToString('o')
     $passed = $false
+    $previousPreference = $ErrorActionPreference
     try {
-        & $body | Out-Host
+        # Windows PowerShell 5.1 的 native stderr 是 ErrorRecord；普通 pnpm/tar 提示不等于失败。
+        # 仍立即抛出真正的 PowerShell 错误，原生命令则以退出码判定。
+        $ErrorActionPreference = 'Continue'
+        & $body 2>&1 | ForEach-Object {
+            if ($_ -is [Management.Automation.ErrorRecord] -and $_.FullyQualifiedErrorId -notlike 'NativeCommandError*') { throw $_ }
+            Write-Host $_
+        }
         if ($LASTEXITCODE -ne 0) { Die ("步骤失败：" + $label) }
         $passed = $true
     }
     finally {
+        $ErrorActionPreference = $previousPreference
         $watch.Stop()
         $phase = [ordered]@{label=$label; startedAt=$startedAt; elapsedMs=$watch.ElapsedMilliseconds; passed=$passed}
         $script:ReleasePhases.Add($phase)
@@ -89,10 +97,7 @@ function Get-CachedPackage([string] $target, [string] $mode) {
 function Make-WebPackage([string] $stamp) {
     $cached = Get-CachedPackage 'web' 'web'
     if ($cached) { Write-Host '复用已核对 SHA256 和内嵌身份的 Web 制品。'; return $cached }
-    # 构建输出不经过 Run 的管道：Windows PowerShell 5.1 在 ErrorActionPreference=Stop 下
-    # 会把管道中 pnpm/node 的 stderr 转成 ErrorRecord，导致 vite/esbuild 警告误判为失败。
-    & node deploy/release-check.mjs build web $SourceCommit | Out-Host
-    if ($LASTEXITCODE -ne 0) { Die '构建正式新版管理后台失败' }
+    Run '构建或复用正式 Web' { node deploy/release-check.mjs build web $SourceCommit }
     Run '记录 Web 制品身份' { node deploy/release-check.mjs stamp web $SourceCommit }
     $dist = Join-Path $RepoRoot 'apps\neighbor-web\dist'
     if (-not (Test-Path (Join-Path $dist 'index.html'))) { Die 'Web 构建没有生成 dist/index.html' }
