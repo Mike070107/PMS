@@ -1,0 +1,54 @@
+[
+  {
+    "app": "admin-web",
+    "sourceCommit": "87bb63e0dc30654947879a74dc1239b60aed40a6",
+    "localOnly": true,
+    "defaultMinifyAndTargetUnchanged": true,
+    "pipeTempRemainsAbsent": true,
+    "sharedModule": {
+      "source": "D:/00项目开发/PMS-vehicle-type-20261114/packages/shared-types/src/address.ts",
+      "chunk": "assets/address-xi0Y-4Mf.js",
+      "renderedExports": [
+        "tokenizeAddress",
+        "formatBuildingLabel",
+        "formatBuildingFull",
+        "isLaneRedundant",
+        "formatRoomText",
+        "formatAddressLine",
+        "dedupeAddressText",
+        "formatFullAddress",
+        "scoreAddressPath",
+        "communityMatchKeys",
+        "buildingMatchKeys",
+        "houseMatchKeys"
+      ]
+    }
+  },
+  {
+    "app": "neighbor-web",
+    "sourceCommit": "87bb63e0dc30654947879a74dc1239b60aed40a6",
+    "localOnly": true,
+    "defaultMinifyAndTargetUnchanged": true,
+    "pipeTempRemainsAbsent": true,
+    "sharedModule": {
+      "source": "D:/00项目开发/PMS-vehicle-type-20261114/packages/shared-types/src/address.ts",
+      "chunk": "assets/index-BrVog2Ch.js",
+      "renderedExports": [
+        "tokenizeAddress",
+        "formatBuildingLabel",
+        "formatBuildingFull",
+        "isLaneRedundant",
+        "formatRoomText",
+        "formatAddressLine",
+        "dedupeAddressText",
+        "formatFullAddress",
+        "scoreAddressPath",
+        "communityMatchKeys",
+        "buildingMatchKeys",
+        "houseMatchKeys",
+        "resolveAddressQuery",
+        "addressSearchKey"
+      ]
+    }
+  }
+]
