@@ -7413,3 +7413,12 @@
 - [CLI回执](<../outputs/apartment-cashier-20261115/cli-upload.log>)、[制品审计](<../outputs/apartment-cashier-20261115/upload-audit.json>)、[完整验收](<../outputs/apartment-cashier-20261115/verification.md>)。
 - 下一步：公众平台版本管理中将`1.0.20261115a（aa674ca2）`选为体验版，并在手机我的页核对；未经另行授权不代设体验指向、不审核/正式发布。
 
+## 2026-11-16 12:40 · api · b9cbd704
+
+- 包：`pms-api-fast-20261116-123556.tar.gz`
+- 提交：b9cbd704 test(web): define API base in contact browser fixture
+- 自上次（c0dcec1a）以来上线的相关提交：
+  - 2043607a fix: scope repair learning and office notices; make completion summaries opt-in
+  - 74e332d0 fix: complete repair intake photos, community public areas and newest-first timelines
+  - 87bb63e0 fix: deduplicate repeated lane numbers across address displays and notifications
+
