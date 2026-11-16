@@ -7429,3 +7429,15 @@
 - 自上次（b9cbd704）以来上线的相关提交：
   - 0a75ddf6 feat(staff): isolate cashier tabs and lazily load daily details
 
+## 2026-11-16 15:13 · web · 3e4b37d8
+
+- 包：`pms-web-20261116-150422.tar.gz`
+- 提交：3e4b37d8 feat(staff): move meters and maintenance into More app cards
+- 自上次（c0dcec1a）以来上线的相关提交：
+  - 194fd822 test(cashier): align release gate with immutable standard prices
+  - 0a75ddf6 feat(staff): isolate cashier tabs and lazily load daily details
+  - b9cbd704 test(web): define API base in contact browser fixture
+  - 74e332d0 fix: complete repair intake photos, community public areas and newest-first timelines
+  - 87bb63e0 fix: deduplicate repeated lane numbers across address displays and notifications
+  - 4c1a25ed feat(staff-miniapp): add daily apartment cashier summary and simplify payment history
+
