@@ -1,0 +1,39 @@
+{
+  "sourceCommit": "2043607af0456ac5d1ace5f8489e635df304f6f3",
+  "checkedAt": "2026-11-16T03:24:36.580Z",
+  "apiNestBuildExit": 0,
+  "compiledMarkersVerified": true,
+  "artifacts": [
+    {
+      "path": "apps/api/dist/modules/repairs/repairs.service.js",
+      "bytes": 308012,
+      "sha256": "4fdb9337941ca64f44baec5edec6ce6d56964ffb52f726821e60b6f320cae1f2",
+      "markers": [
+        "rememberRepairType",
+        "assignmentsOf",
+        "skillsAtOfficeOf",
+        "sampleMatched: false"
+      ]
+    },
+    {
+      "path": "apps/api/dist/modules/ai/extract-samples.service.js",
+      "bytes": 15363,
+      "sha256": "6b3696e91d9296bf4bb6cb96eb3657512a4af3bc88f5f11e20aeaa788daa6812",
+      "markers": [
+        "sampleOfficeWhere",
+        "_officeId",
+        "_classificationOnly",
+        "seedMarker"
+      ]
+    },
+    {
+      "path": "apps/api/dist/modules/ai/repair-text.ai.js",
+      "bytes": 20322,
+      "sha256": "314b070c43bb41cb5f7eee4466e0a9d483c9283593d447c1d295f4966dd0089f",
+      "markers": [
+        "_classificationOnly",
+        "learnedType"
+      ]
+    }
+  ]
+}

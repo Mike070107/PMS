@@ -1,0 +1,119 @@
+﻿✖ 正式Page语音：首次默认关闭，0 AI请求，原文追加且保留人工输入 (209.4196ms)
+✖ 正式Page开启：AI只给候选，显式采用才改本次语音，不覆盖已有字段或加材料 (105.2339ms)
+✖ 正式Page等待时编辑：迟到结果丢弃，人工文本不变 (94.4204ms)
+✖ 正式Page关闭中断：迟到结果不生效，重新开启不会复活旧请求 (70.1075ms)
+✖ 偏好：刷新/重进恢复，账号与租户隔离，缺身份不可写入共享key (70.4487ms)
+✖ 失败保留原文/人工字段、重试不重复追加，成功候选可放弃 (57.4189ms)
+✖ 候选等待采用后有人工变化：采用保护不覆盖、不改变收费与痕迹 (59.2913ms)
+✖ 失败ok:false、面板关闭和卸载均保留原文并使迟到请求失效 (59.1645ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 0
+ℹ fail 8
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1059.0407
+
+✖ failing tests:
+
+test at apps\miniapp-staff\test\completion-summary.test.cjs:30:1
+✖ 正式Page语音：首次默认关闭，0 AI请求，原文追加且保留人工输入 (209.4196ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 0
+  
+      at TestContext.<anonymous> (D:\00项目开发\PMS-vehicle-type-20261114\apps\miniapp-staff\test\completion-summary.test.cjs:32:37)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\miniapp-staff\test\completion-summary.test.cjs:34:1
+✖ 正式Page开启：AI只给候选，显式采用才改本次语音，不覆盖已有字段或加材料 (105.2339ms)
+  TypeError: f.page.initCompletionSummaryPreference is not a function
+      at init (D:\00项目开发\PMS-vehicle-type-20261114\apps\miniapp-staff\test\completion-summary.test.cjs:25:40)
+      at TestContext.<anonymous> (D:\00项目开发\PMS-vehicle-type-20261114\apps\miniapp-staff\test\completion-summary.test.cjs:35:20)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)
+
+test at apps\miniapp-staff\test\completion-summary.test.cjs:39:1
+✖ 正式Page等待时编辑：迟到结果丢弃，人工文本不变 (94.4204ms)
+  TypeError: f.page.initCompletionSummaryPreference is not a function
+      at init (D:\00项目开发\PMS-vehicle-type-20261114\apps\miniapp-staff\test\completion-summary.test.cjs:25:40)
+      at TestContext.<anonymous> (D:\00项目开发\PMS-vehicle-type-20261114\apps\miniapp-staff\test\completion-summary.test.cjs:40:74)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+
+test at apps\miniapp-staff\test\completion-summary.test.cjs:44:1
+✖ 正式Page关闭中断：迟到结果不生效，重新开启不会复活旧请求 (70.1075ms)
+  TypeError: f.page.initCompletionSummaryPreference is not a function
+      at init (D:\00项目开发\PMS-vehicle-type-20261114\apps\miniapp-staff\test\completion-summary.test.cjs:25:40)
+      at TestContext.<anonymous> (D:\00项目开发\PMS-vehicle-type-20261114\apps\miniapp-staff\test\completion-summary.test.cjs:45:74)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+
+test at apps\miniapp-staff\test\completion-summary.test.cjs:48:1
+✖ 偏好：刷新/重进恢复，账号与租户隔离，缺身份不可写入共享key (70.4487ms)
+  TypeError: f.page.initCompletionSummaryPreference is not a function
+      at init (D:\00项目开发\PMS-vehicle-type-20261114\apps\miniapp-staff\test\completion-summary.test.cjs:25:40)
+      at TestContext.<anonymous> (D:\00项目开发\PMS-vehicle-type-20261114\apps\miniapp-staff\test\completion-summary.test.cjs:49:53)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+
+test at apps\miniapp-staff\test\completion-summary.test.cjs:52:1
+✖ 失败保留原文/人工字段、重试不重复追加，成功候选可放弃 (57.4189ms)
+  TypeError: f.page.initCompletionSummaryPreference is not a function
+      at init (D:\00项目开发\PMS-vehicle-type-20261114\apps\miniapp-staff\test\completion-summary.test.cjs:25:40)
+      at TestContext.<anonymous> (D:\00项目开发\PMS-vehicle-type-20261114\apps\miniapp-staff\test\completion-summary.test.cjs:53:126)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+
+test at apps\miniapp-staff\test\completion-summary.test.cjs:56:1
+✖ 候选等待采用后有人工变化：采用保护不覆盖、不改变收费与痕迹 (59.2913ms)
+  TypeError: f.page.initCompletionSummaryPreference is not a function
+      at init (D:\00项目开发\PMS-vehicle-type-20261114\apps\miniapp-staff\test\completion-summary.test.cjs:25:40)
+      at TestContext.<anonymous> (D:\00项目开发\PMS-vehicle-type-20261114\apps\miniapp-staff\test\completion-summary.test.cjs:57:20)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)
+
+test at apps\miniapp-staff\test\completion-summary.test.cjs:59:1
+✖ 失败ok:false、面板关闭和卸载均保留原文并使迟到请求失效 (59.1645ms)
+  TypeError: f.page.initCompletionSummaryPreference is not a function
+      at init (D:\00项目开发\PMS-vehicle-type-20261114\apps\miniapp-staff\test\completion-summary.test.cjs:25:40)
+      at TestContext.<anonymous> (D:\00项目开发\PMS-vehicle-type-20261114\apps\miniapp-staff\test\completion-summary.test.cjs:60:51)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7)

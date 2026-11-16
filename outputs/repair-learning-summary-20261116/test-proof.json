@@ -1,0 +1,18 @@
+{
+  "checkedAt": "2026-11-16T03:30:21.162Z",
+  "sourceCommit": "2043607af0456ac5d1ace5f8489e635df304f6f3",
+  "evidence": [
+    {
+      "file": "api-regressions-pushed-main.utf8.txt",
+      "tests": 195,
+      "pass": 195,
+      "fail": 0
+    },
+    {
+      "file": "summary/after-tests.utf8.txt",
+      "tests": 14,
+      "pass": 14,
+      "fail": 0
+    }
+  ]
+}

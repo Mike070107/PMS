@@ -1,0 +1,27 @@
+﻿[
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "5B459178103D4F572E8AB27521E5CAB1972A7802884AAAB27CDD7DE77BFCBDCC",
+        "Path":  "D:\\00项目开发\\PMS-vehicle-type-20261114\\apps\\miniapp-staff\\miniprogram\\pages\\order-detail\\order-detail.ts"
+    },
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "B75BA937A2AE4F62F9EC4CFADA4516369C5934767EC1B289CFC66EB7ED9903D9",
+        "Path":  "D:\\00项目开发\\PMS-vehicle-type-20261114\\apps\\miniapp-staff\\miniprogram\\pages\\order-detail\\order-detail.wxml"
+    },
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "E0EECD3211DE07E03F27BFB2C4419070A1FD3F1D9629A2C8D67AC14542B1E464",
+        "Path":  "D:\\00项目开发\\PMS-vehicle-type-20261114\\apps\\miniapp-staff\\miniprogram\\pages\\order-detail\\order-detail.wxss"
+    },
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "356344946D7B494273EE878DB0DB3F188086E11500106E18B46A9F020E8E0AB1",
+        "Path":  "D:\\00项目开发\\PMS-vehicle-type-20261114\\apps\\miniapp-staff\\miniprogram\\utils\\completion-summary.ts"
+    },
+    {
+        "Algorithm":  "SHA256",
+        "Hash":  "08C522C1F9C741BB5A9D7AA30CFFBE52C1DE81971F0DCAE1363366D88BF175E9",
+        "Path":  "D:\\00项目开发\\PMS-vehicle-type-20261114\\apps\\miniapp-staff\\test\\completion-summary.test.cjs"
+    }
+]
