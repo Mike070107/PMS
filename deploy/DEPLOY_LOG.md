@@ -7441,3 +7441,10 @@
   - 87bb63e0 fix: deduplicate repeated lane numbers across address displays and notifications
   - 4c1a25ed feat(staff-miniapp): add daily apartment cashier summary and simplify payment history
 
+## 2026-11-16 23:48 · api · 147e4537
+
+- 包：`pms-api-20261116-2345.tar.gz`
+- 提交：147e4537 feat: publish repair inventory media and private experience notebook batch
+- 自上次（194fd822）以来上线的相关提交：
+  - 147e4537 feat: publish repair inventory media and private experience notebook batch
+
