@@ -10,6 +10,8 @@
  * 新增报修入口直接引它，不要各写一套。
  */
 
+import { dedupeAddressText } from '@pms/shared-types';
+
 export type PlaceScope = 'home' | 'building' | 'community';
 
 export interface PlaceScopeOption {
@@ -60,12 +62,12 @@ export function composePlaceText(
   base: PlaceBase,
   detail = '',
 ): string {
-  if (scope === 'home') return base.homeText;
+  if (scope === 'home') return dedupeAddressText(base.homeText);
   const prefix =
     scope === 'building'
       ? [base.communityName, base.buildingText].filter(Boolean).join(' ')
       : base.communityName;
-  return [prefix, detail.trim() || '公共区域'].filter(Boolean).join(' ');
+  return dedupeAddressText([prefix, detail.trim() || '公共区域'].filter(Boolean).join(' '));
 }
 
 /**

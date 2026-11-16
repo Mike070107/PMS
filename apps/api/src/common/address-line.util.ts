@@ -15,6 +15,8 @@
  * 一律保留，宁可多一段。
  */
 
+import { isLaneRedundant } from './address.shared';
+
 export interface AddressCommunityInfo {
   name: string;
   /** 这个小区有几个不同的「弄」。0 或 undefined = 不确定，按保留处理 */
@@ -27,14 +29,9 @@ export interface AddressBuildingInfo {
   roadName?: string | null;
 }
 
-export function isLaneRedundant(
-  community: AddressCommunityInfo,
-  lane?: string | null,
-): boolean {
-  if (!lane) return false;
-  if (community.name.includes(`${lane}弄`)) return true;
-  return community.laneCount === 1;
-}
+// 与地址簿共享完整弄号边界判断，避免第三份算法再次偏离。
+export { isLaneRedundant };
+
 
 /**
  * 楼栋那一段怎么显示：有弄写「198弄24号」，没有弄的写「宝秀路858号」。

@@ -1,4 +1,5 @@
 import {
+  dedupeAddressText,
   formatBuildingFull,
   formatBuildingLabel,
   formatFullAddress,
@@ -334,7 +335,7 @@ Component<
             ...row,
             kind: 'spot',
             communityName: community.name,
-            text: [community.name, row.buildingText, row.name].filter(Boolean).join(' / '),
+            text: dedupeAddressText([community.name, row.buildingText, row.name].filter(Boolean).join(' / ')),
           }));
         }
       }

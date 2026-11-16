@@ -1,4 +1,4 @@
-import { formatBeijingDateTime } from '@pms/shared-types';
+import { dedupeAddressText, formatBeijingDateTime } from '@pms/shared-types';
 /**
  * 公寓收费工作台（员工端）。
  *
@@ -368,7 +368,7 @@ Page({
       if (day !== formatBeijingDateTime(new Date(), 'YYYY-MM-DD') || (page > 1 && data.total !== this.data.todayTotal)) return this.loadToday();
       const records = [...(page > 1 ? this.data.todayRows : []), ...(data.rows || []).map((row) => ({
         ...recordView(row), key: `${row.houseId}:${row.receiptNo}`,
-        placeText: [row.communityName, row.lane, placeLabel(row.buildingNo, row.roomNo)].filter(Boolean).join(' '),
+        placeText: dedupeAddressText([row.communityName, row.lane && /^\d+$/.test(row.lane) ? `${row.lane}弄` : row.lane, placeLabel(row.buildingNo, row.roomNo)].filter(Boolean).join(' ')),
       }))];
       this.setData({
         todayLoading: false, todayLoaded: true, todayPage: page, todayDate: day, todayTotal: data.total,

@@ -1,4 +1,4 @@
-import { formatBeijingDateTime } from '@pms/shared-types';
+import { dedupeAddressText, formatBeijingDateTime } from '@pms/shared-types';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { request } from '@pms/api-client';
 import Icon from '@/components/Icon';
@@ -28,7 +28,7 @@ const statusOf = (r: BillRow) => {
   if (!r.receiptNo && r.status === 'paid') return { text: '已收', tone: 'ok' };
   return STATUS[r.status] ?? { text: r.status || '—', tone: 'mute' };
 };
-const place = (r: BillRow) => [r.communityName, r.lane ? `${r.lane}弄` : '', r.buildingNo ? `${r.buildingNo}号` : '', r.roomNo || ''].filter(Boolean).join(' ');
+const place = (r: BillRow) => dedupeAddressText([r.communityName, r.lane ? `${r.lane}弄` : '', r.buildingNo ? `${r.buildingNo}号` : '', r.roomNo || ''].filter(Boolean).join(' '));
 const PAGE = 30;
 
 /**

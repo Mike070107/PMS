@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { AddressCommunity } from '@pms/shared-types';
+import { dedupeAddressText, type AddressCommunity } from '@pms/shared-types';
 import HouseAddressPicker, { type PickedAddress } from '@/components/HouseAddressPicker';
 import './UniSearch.css';
 
@@ -179,7 +179,7 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
       setSelectedPath(b ? [h.communityId, b.id, h.id] : []);
       const building = /^\d+$/.test(h.buildingNo) ? `${h.buildingNo}号楼` : h.buildingNo;
       const room = /^\d+$/.test(h.roomNo) ? `${h.roomNo}室` : h.roomNo;
-      setSelectionText([h.communityName, `${h.lane ? `${h.lane}弄` : ''}${building}`, room].filter(Boolean).join(' / '));
+      setSelectionText(dedupeAddressText([h.communityName, `${h.lane ? `${h.lane}弄` : ''}${building}`, room].filter(Boolean).join(' / ')));
     } else setSelectionText(null);
     onPick(p); setOpen(false);
   };

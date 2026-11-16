@@ -23,7 +23,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { BuildingQrRow, QrBackfillResp } from '@pms/shared-types';
+import { dedupeAddressText, type BuildingQrRow, type QrBackfillResp } from '@pms/shared-types';
 import { request } from '../lib/api';
 import { usePagePerm } from '../lib/auth';
 import { searchableWideSelectProps, withOptionTitles } from '../lib/selectProps';
@@ -50,7 +50,7 @@ type PerPage = (typeof PER_PAGE_OPTIONS)[number]['value'];
  * 文案是生成时定好落库的，这里只负责排版，不重新拼。
  */
 function splitCaption(row: BuildingQrRow): { title: string; sub: string } {
-  const caption = row.qr?.caption?.trim();
+  const caption = dedupeAddressText(row.qr?.caption).trim();
   if (caption) {
     const at = caption.lastIndexOf('·');
     if (at > 0) {
@@ -62,7 +62,7 @@ function splitCaption(row: BuildingQrRow): { title: string; sub: string } {
     return { title: caption, sub: '扫码报修' };
   }
   return {
-    title: `${row.communityName} ${row.buildingText}`.trim(),
+    title: dedupeAddressText(`${row.communityName} ${row.buildingText}`).trim(),
     sub: '扫码报修',
   };
 }

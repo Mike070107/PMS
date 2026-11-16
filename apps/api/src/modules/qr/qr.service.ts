@@ -14,6 +14,7 @@ import { QrGranularity, UserRole } from '../../common/enums';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
 import { compareBuildingLike } from '../../common/natural-order';
+import { dedupeAddressText } from '../../common/address.shared';
 import { Building, Community, QrCode } from '../../entities';
 import { WechatService, type WxEnvVersion } from '../auth/wechat.service';
 import { ObjectStorageService } from '../upload/object-storage.service';
@@ -484,7 +485,7 @@ export class QrService {
     const place = building
       ? [communityName, this.buildingText(building)].filter(Boolean).join(' ')
       : communityName;
-    return `${place} · 扫码报修`.trim();
+    return `${dedupeAddressText(place)} · 扫码报修`.trim();
   }
 
   /** 扫码进来的落地页；未入驻的引导由小程序端在该页判断后跳入驻页 */

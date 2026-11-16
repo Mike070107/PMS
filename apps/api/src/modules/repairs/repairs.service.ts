@@ -58,6 +58,7 @@ import {
   formatBuildingText,
   formatRoomText,
 } from '../../common/address-line.util';
+import { dedupeAddressText } from '../../common/address.shared';
 import { detectUrgency } from '../../common/repair-urgency.util';
 import {
   repairTypeAndSlaLockReason,
@@ -2258,7 +2259,7 @@ export class RepairsService implements OnModuleInit {
       building?.buildingNo ? `${building.buildingNo}号` : '',
       formatRoomText(house?.roomNo),
     ];
-    return parts.filter(Boolean).join('') || request.addressText || community?.name || '';
+    return parts.filter(Boolean).join('') || dedupeAddressText(request.addressText) || community?.name || '';
   }
 
   /**
@@ -2450,6 +2451,8 @@ export class RepairsService implements OnModuleInit {
       request: request
         ? {
             ...request,
+            // 仅展示去重，不修改存量实体/审计地址；保留“大门”等现场定位后缀。
+            addressText: request.addressText == null ? request.addressText : dedupeAddressText(request.addressText),
             // 中文类型名由后端给，端上不认识租户自建的编码（会直接显示 menjing）
             repairTypeLabel: this.repairTypeLabel(request.repairType, typeLabels),
             contactName: contact?.name ?? request.contactName,
@@ -4986,7 +4989,7 @@ export class RepairsService implements OnModuleInit {
           statusShort: '待维修工接单',
           content: request.content?.trim() || '',
           assignee: assigneeName || '物业维修工',
-          address: request.addressText?.trim() || '',
+          address: dedupeAddressText(request.addressText).trim(),
           reporter: request.contactName?.trim() || '',
           time: when,
           reportedAt: this.formatWhen(new Date(workOrder.createdAt)),
@@ -5011,7 +5014,7 @@ export class RepairsService implements OnModuleInit {
         statusShort: '待验收',
         content: request.content?.trim() || '',
         assignee: assigneeName || '物业维修工',
-        address: request.addressText?.trim() || '',
+        address: dedupeAddressText(request.addressText).trim(),
         reporter: request.contactName?.trim() || '',
         time: when,
         reportedAt: this.formatWhen(new Date(workOrder.createdAt)),
@@ -5058,7 +5061,7 @@ export class RepairsService implements OnModuleInit {
     const typeLabel = rule?.label || '报修';
     // 紧急写进标题第一格：站内信列表和微信订阅消息都只露出开头那几个字
     const urgentTag = request?.urgent ? '【紧急】' : '';
-    const address = request?.addressText?.trim() || '（未填地址）';
+    const address = dedupeAddressText(request?.addressText).trim() || '（未填地址）';
     const content = request?.content?.trim() || '';
     const deadline = workOrder.slaDueAt
       ? `，${this.formatWhenShort(new Date(workOrder.slaDueAt))} 前完成`
@@ -5211,7 +5214,7 @@ export class RepairsService implements OnModuleInit {
       officeId,
     );
     const receiverIds = dispatcherIds.filter((id) => id !== requesterId && coverage.has(id));
-    const address = request?.addressText?.trim() || '（未填地址）';
+    const address = dedupeAddressText(request?.addressText).trim() || '（未填地址）';
     const content = request?.content?.trim() || '';
     if (!receiverIds.length) {
       this.logger.warn(
@@ -5258,7 +5261,7 @@ export class RepairsService implements OnModuleInit {
       workOrder.communityId,
     );
     const typeLabel = rule?.label || '报修';
-    const address = request?.addressText?.trim() || '（未填地址）';
+    const address = dedupeAddressText(request?.addressText).trim() || '（未填地址）';
     const content = request?.content?.trim() || '';
     // 标题里用短日期：站内信列表一行放不下「2026年8月26日 18:00」，
     // 一条消息折成三行，扫一眼看不出是哪一单
@@ -5439,7 +5442,7 @@ export class RepairsService implements OnModuleInit {
       ? await this.repairTypeRuleRepo.findOne({ where: { tenantId, repairType: request.repairType } })
       : null;
     const typeLabel = rule?.label || '报修';
-    const address = request?.addressText?.trim() || '（未填地址）';
+    const address = dedupeAddressText(request?.addressText).trim() || '（未填地址）';
     const due = workOrder.slaDueAt
       ? `，${this.formatWhenShort(new Date(workOrder.slaDueAt))} 前完成`
       : '';
@@ -5529,7 +5532,7 @@ export class RepairsService implements OnModuleInit {
         })
       : null;
     const typeLabel = rule?.label || '报修';
-    const address = request?.addressText?.trim() || '（未填地址）';
+    const address = dedupeAddressText(request?.addressText).trim() || '（未填地址）';
     const pooled = !workOrder.assigneeId;
     const waited = pooled
       ? `进工单池 ${minutes} 分钟还没人接`
@@ -6519,9 +6522,9 @@ export class RepairsService implements OnModuleInit {
         // 例：监控室11号显示屏图像卡顿 → 具体位置“监控室11号显示屏”。
         specificLocation: extractSpotSpecificLocation(dto.text, spot.name),
         // 点位名本身就是「具体在哪」，不再缀「公共区域」占位
-        addressText: [community.name, spotBuildingText, spot.name]
+        addressText: dedupeAddressText([community.name, spotBuildingText, spot.name]
           .filter(Boolean)
-          .join(' '),
+          .join(' ')),
         matchedText: spot.name,
         matchedRaw: extractSpotMatchedRaw(dto.text, spot.name),
         correctedText: null,
@@ -7156,7 +7159,16 @@ export class RepairsService implements OnModuleInit {
       building,
       house?.roomNo,
     );
-    const addressText = (dto.addressText?.trim() || (house ? line : `${line} ${place || '公共区域'}`)).trim();
+    const placeChanged =
+      request.communityId !== community.id ||
+      (request.buildingId ?? null) !== (building?.id ?? null) ||
+      (request.houseId ?? null) !== (house?.id ?? null);
+    const submittedAddressText = (dto.addressText?.trim() || (house ? line : `${line} ${place || '公共区域'}`)).trim();
+    // 详情已做显示去重：只改联系人等字段时，保留原地址快照，不能虚构一次地址更正。
+    const addressText = request.addressText && !placeChanged &&
+      dedupeAddressText(request.addressText).trim() === submittedAddressText
+      ? request.addressText
+      : submittedAddressText;
 
     const contactName = dto.contactName?.trim() || null;
     const contactPhone = dto.contactPhone?.trim() || null;
@@ -7173,10 +7185,6 @@ export class RepairsService implements OnModuleInit {
     pushChange('联系电话', request.contactPhone, contactPhone);
     pushChange('报修类型', request.repairType, repairType);
     if (!!request.urgent !== urgent) changes.push(`紧急程度「${request.urgent ? '紧急' : '普通'}」→「${urgent ? '紧急' : '普通'}」`);
-    const placeChanged =
-      request.communityId !== community.id ||
-      (request.buildingId ?? null) !== (building?.id ?? null) ||
-      (request.houseId ?? null) !== (house?.id ?? null);
     const routingChanged =
       request.communityId !== community.id || request.repairType !== repairType;
     if (!changes.length && !placeChanged) throw new BadRequestException('报修信息没有变化');
@@ -7221,7 +7229,7 @@ export class RepairsService implements OnModuleInit {
 
     return {
       ok: true as const,
-      addressText,
+      addressText: dedupeAddressText(addressText),
       repairType,
       candidateCount: candidates.length,
     };

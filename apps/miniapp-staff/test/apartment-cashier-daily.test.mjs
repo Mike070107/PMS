@@ -9,7 +9,7 @@ const dir = new URL('../miniprogram/pages/apartment-cashier/', import.meta.url);
 const source = readFileSync(new URL('apartment-cashier.ts', dir), 'utf8');
 const wxml = readFileSync(new URL('apartment-cashier.wxml', dir), 'utf8');
 const shared = {};
-for (const path of ['fees.ts', 'beijing-time.ts']) {
+for (const path of ['fees.ts', 'beijing-time.ts', 'address.ts']) {
   const url = new URL('../../../packages/shared-types/src/' + path, import.meta.url);
   vm.runInNewContext(ts.transpileModule(readFileSync(url, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports: shared });
 }
@@ -25,6 +25,16 @@ function fixture(api = {}) {
 }
 const row = (receiptNo, houseId = 1) => ({ receiptNo, houseId, communityName: '春风公寓', buildingNo: '13', roomNo: '101', paidAt: '2026-11-14T16:10:00Z', paymentMethod: 'cash', amountCents: 2000, status: 'paid', items: [{ feeName: '电费', quantity: 12.5, unit: '度' }, { feeName: '房租', quantity: null, unit: '月' }] });
 const deferred = () => { let resolve, reject; const promise = new Promise((a,b) => { resolve=a; reject=b; }); return { promise, resolve, reject }; };
+for (const communityName of ['永南150弄', '永北150弄']) {
+  for (const lane of ['150', '150弄']) {
+    test(`今日地址不重复且保留南北/凭证身份：${communityName}/${lane}`, async () => {
+      const p = fixture({ today: async () => ({ rows: [{ ...row('KEEP-ID', 17), communityName, lane }], total: 1, totalCents: 2000 }) });
+      await p.loadToday();
+      assert.equal(p.data.todayRows[0].placeText, `${communityName} 13号-101室`);
+      assert.equal(p.data.todayRows[0].key, '17:KEEP-ID');
+    });
+  }
+}
 test('今日汇总用服务端全部页净额，保留红冲负数，显示完整地址与数量', async () => {
   const calls = [];
   const p = fixture({ today: async page => { calls.push(page); return { rows: [{ ...row('A'), amountCents: -2000, status: 'refunded' }], total: 25, totalCents: 123456 }; } });

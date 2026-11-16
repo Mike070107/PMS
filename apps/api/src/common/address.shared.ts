@@ -120,7 +120,9 @@ export function isLaneRedundant(
   lane?: string | null,
 ): boolean {
   if (!lane) return false;
-  if (community.name.includes(`${lane}弄`)) return true;
+  // 140弄不包含40弄，1140弄也不等于140弄；不能用字符串尾缀判断。
+  const escaped = lane.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (new RegExp(`(^|[^0-9])${escaped}弄`).test(community.name)) return true;
   return community.laneCount === 1;
 }
 
@@ -157,15 +159,26 @@ export function formatAddressLine(
   return `${community.name}${buildingText}${formatRoomText(roomNo)}`;
 }
 
-/** 最终填进表单、可复制的地址：枫桦景苑二期/228弄4号/201 */
+/**
+ * 存量地址的展示去重：永南140弄/140弄6号 大门 → 永南140弄6号 大门。
+ * 只裁相邻、完全相同的数字弄号（可隔空格/斜杠），不做任意字符尾首重叠。
+ * 不跨小区名称、不删不同弄号，不重建门牌以免丢失公区位置；不回写历史快照。
+ */
+export function dedupeAddressText(text?: string | null): string {
+  return (text || '').replace(/(^|[^0-9])(\d+弄)(?:[ \t/／]*\2)+/g, '$1$2');
+}
+
+/** 最终填进表单、可复制的地址：保留不同弄号/室号分隔，仅裁相邻重复弄号。 */
 export function formatFullAddress(
   communityName: string,
   building?: Pick<AddressBuilding, 'lane' | 'buildingNo' | 'roadName'> | null,
   roomNo?: string | null,
 ): string {
-  return [communityName, building ? formatBuildingFull(building) : '', roomNo || '']
-    .filter(Boolean)
-    .join('/');
+  return dedupeAddressText(
+    [communityName, building ? formatBuildingFull(building) : '', roomNo || '']
+      .filter(Boolean)
+      .join('/'),
+  );
 }
 
 /**
