@@ -7496,3 +7496,10 @@
 - 自上次（37acc988）以来上线的相关提交：
   - 3fb3e8d8 feat(integrations): bridge exact parking queries to canonical history
 
+## 2026-11-17 17:50 · web · 70f1d2a2
+
+- 包：`pms-web-20261117-174904.tar.gz`
+- 提交：70f1d2a2 docs: record explicit approval for completion overlay deployment
+- 自上次（37acc988）以来上线的相关提交：
+  - e9750a04 fix(web): anchor completion panel and dismiss it on tab changes
+
