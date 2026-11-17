@@ -7532,3 +7532,10 @@
 - 自上次（9cb93f1d）以来上线的相关提交：
   - c4d0aa5c fix(web): wire Vehicles registration into same-page cashier flow
 
+## 2026-11-17 23:37 · web · ce10d8d2
+
+- 包：`pms-web-20261117-233447.tar.gz`
+- 提交：ce10d8d2 fix(web): preselect queried household for vehicle registration
+- 自上次（c4d0aa5c）以来上线的相关提交：
+  - ce10d8d2 fix(web): preselect queried household for vehicle registration
+
