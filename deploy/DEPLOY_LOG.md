@@ -7517,3 +7517,11 @@
 - 自上次（3fb3e8d8）以来上线的相关提交：
   - c81da0c4 feat: complete inline vehicle registration and ship pending cashier fixes
 
+## 2026-11-17 22:18 · web · 9cb93f1d
+
+- 包：`pms-web-20261117-221337.tar.gz`
+- 提交：9cb93f1d test: align legacy cashier fixtures with staff registration contracts
+- 自上次（fb182217）以来上线的相关提交：
+  - 9cb93f1d test: align legacy cashier fixtures with staff registration contracts
+  - c81da0c4 feat: complete inline vehicle registration and ship pending cashier fixes
+
