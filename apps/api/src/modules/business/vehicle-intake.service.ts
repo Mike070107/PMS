@@ -155,22 +155,6 @@ export class VehicleIntakeService {
     return communities.map(c => c.id);
   }
 
-  private spaceConflict(space: ParkingSpace, row: VehicleIntake): string {
-    if (space.plate?.trim() && normalizeFamilyPlate(space.plate) !== normalizeFamilyPlate(row.plate)) return '已绑定其他车牌';
-    if (!space.houseNo?.trim()) return '';
-    const room = row.houseLabel.split('/').slice(1).join('/');
-    if (space.houseNo.trim() === room) return '';
-    const nums = (text: string) => text.match(/\d+/g)?.map(n => String(Number(n))) ?? [];
-    const source = nums(space.houseNo), current = nums(room);
-    // 全地址允许分隔符差异；旧档案只有楼/室时还须业主姓名或电话一致，不能猜同号房。
-    const sameFull = source.length >= 3 && source.join('/') === current.join('/');
-    const sameShort = source.length === 2 && source.join('/') === current.slice(-2).join('/');
-    const sameOwner = !!space.ownerName?.trim() && space.ownerName.trim() === row.ownerName?.trim();
-    const samePhone = !!space.ownerTel?.trim() && [row.ownerPhone, row.contactPhone].includes(space.ownerTel.trim());
-    if (sameFull || (sameShort && (sameOwner || samePhone))) return '';
-    return '已关联其他房号，需先在车位管理核对';
-  }
-
   async parkingSpaces(id: number, user: AuthUser, access?: ResolvedAccess) {
     const row = await this.load(id, user, access);
     const rows: Array<{ id: number; garage: string; spaceNo: string; unavailableReason: string }> = [];
@@ -181,7 +165,7 @@ export class VehicleIntakeService {
       const counts = new Map<string, number>();
       spaces.forEach(s => counts.set(s.spaceNo, (counts.get(s.spaceNo) ?? 0) + 1));
       spaces.sort((a, b) => a.spaceNo.localeCompare(b.spaceNo, 'zh-CN', { numeric: true }));
-      rows.push(...spaces.map(s => ({ id: s.id, garage, spaceNo: s.spaceNo, unavailableReason: counts.get(s.spaceNo)! > 1 ? '车位号重复，请先核对档案' : this.spaceConflict(s, row) })));
+      rows.push(...spaces.map(s => ({ id: s.id, garage, spaceNo: s.spaceNo, unavailableReason: counts.get(s.spaceNo)! > 1 ? '车位号重复，请先核对档案' : '' })));
     }
     return { rows };
   }
@@ -540,11 +524,11 @@ export class VehicleIntakeService {
     if (other) throw new BadRequestException('该车牌已有登记，请核对原登记及收款流水，不可重复新办');
   }
 
-  /** 复用车位管理档案；与审核同事务提交，失败不会留下占位。 */
+  /** 一位多车：车位号保存在各办理单/执行快照，不覆盖车位主档；在库互斥由停车系统控制。 */
   private async bindSpaces(row: VehicleIntake, user: AuthUser) {
     const selected = this.numbersForGarages(row.garages, { main: 'main', civil: 'civil' }, row.kind);
     const repo = this.repo.manager.getRepository(ParkingSpace);
-    const bindings: Array<{ before: ParkingSpace; after: ParkingSpace }> = [];
+    const references: Array<{ id: number; garage: string; spaceNo: string }> = [];
     for (const garage of Object.keys(selected).sort() as Array<'main' | 'civil'>) {
       const spaceNo = row.garageNumbers[garage]?.trim();
       if (!spaceNo) throw new BadRequestException(`请选择${garage === 'main' ? '大车库' : '人防车库'}编号`);
@@ -552,28 +536,21 @@ export class VehicleIntakeService {
       const matches = communityIds.length ? await repo.find({ where: { tenantId: row.tenantId, communityId: In(communityIds), garage, spaceNo }, lock: { mode: 'pessimistic_write' } }) : [];
       if (matches.length !== 1) throw new BadRequestException('车位不属于所选车库或档案编号重复，请重新选择');
       const space = matches[0];
-      const room = row.houseLabel.split('/').slice(1).join('/');
-      const conflict = this.spaceConflict(space, row);
-      if (conflict) throw new BadRequestException(`${conflict}，不能抢占`);
-      const before = structuredClone(space);
-      space.plate = row.plate; space.houseNo = room; space.ownerName = row.contactName || row.ownerName;
-      space.ownerTel = row.contactPhone; space.updatedBy = user.id;
-      const after = await repo.save(space);
-      bindings.push({ before, after: structuredClone(after) });
+      references.push({ id: space.id, garage, spaceNo: space.spaceNo });
     }
-    if (bindings.length) row.log = [...row.log, { ...await this.entry(user, '关联车位档案', bindings.map(b => `${b.after.garage}/${b.after.spaceNo}`).join('、')), spaceBindings: bindings } as any];
+    if (references.length) row.log = [...row.log, { ...await this.entry(user, '关联共用车位', references.map(s => `${s.garage}/${s.spaceNo}`).join('、')), spaceReferences: references } as any];
   }
 
   /** 仅撤回本次未收款的绑定；精确核对快照，绝不覆盖人工后改动。 */
   private async restoreBoundSpaces(row: VehicleIntake, user: AuthUser) {
-    const last = [...row.log].reverse().find(entry => entry.action === '关联车位档案' || entry.action === '恢复登记前车位档案');
+    const last = [...row.log].reverse().find(entry => entry.action === '关联共用车位' || entry.action === '关联车位档案' || entry.action === '恢复登记前车位档案');
     const bindings = (last as any)?.spaceBindings as Array<{ before: ParkingSpace; after: ParkingSpace }> | undefined;
     if (last?.action !== '关联车位档案' || !bindings?.length) return;
     await this.assertUnlinked(row);
     const repo = this.repo.manager.getRepository(ParkingSpace);
     // 与绑定时统一 civil → main，避免两个登记各锁一个车位互等。
     for (const binding of [...bindings].sort((a, b) => a.after.garage.localeCompare(b.after.garage) || a.after.id - b.after.id)) {
-      const current = await repo.findOne({ where: { id: binding.after.id, tenantId: row.tenantId, communityId: row.communityId! }, lock: { mode: 'pessimistic_write' } });
+      const current = await repo.findOne({ where: { id: binding.after.id, tenantId: row.tenantId }, lock: { mode: 'pessimistic_write' } });
       if (!current || Object.keys(binding.after).some(key => JSON.stringify((current as any)[key] ?? null) !== JSON.stringify((binding.after as any)[key] ?? null))) {
         throw new BadRequestException('车位档案在登记后已被修改，请先在车位管理核对；本次操作已取消，未释放任何车位');
       }

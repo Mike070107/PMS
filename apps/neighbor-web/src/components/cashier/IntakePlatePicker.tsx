@@ -15,8 +15,11 @@ export default function IntakePlatePicker({ value, onChange, disabled = false }:
   };
   return <fieldset className="intake-plate-picker" disabled={disabled}>
     <legend>车牌（鼠标点选，普通车 7 位 / 新能源 8 位）</legend>
-    <div className="intake-plate-slots" aria-label="车牌号码">
-      {Array.from({ length: 8 }, (_, i) => <button type="button" key={i} aria-label={`车牌第${i + 1}位${value[i] ? ` ${value[i]}` : ''}`} aria-pressed={position === i} onClick={() => setPosition(Math.min(i, value.length))}>{value[i] || (i === 7 ? '+' : '—')}</button>)}
+    <div className="intake-plate-display">
+      <div className={`intake-plate-slots${value.length === 8 ? ' intake-plate-energy' : ''}`} aria-label={`${value.length === 8 ? '新能源绿牌' : '普通蓝牌'}：${value || '待填写'}`}>
+        {Array.from({ length: value.length === 8 ? 8 : 7 }, (_, i) => <button type="button" key={i} aria-label={`车牌第${i + 1}位${value[i] ? ` ${value[i]}` : ''}`} aria-pressed={position === i} onClick={() => setPosition(Math.min(i, value.length))}>{value[i] || '—'}</button>)}
+      </div>
+      {value.length < 8 ? <button type="button" className="btn sm intake-plate-add" aria-label="输入新能源车牌第8位" aria-pressed={position === 7} onClick={() => setPosition(Math.min(7, value.length))}>＋ 新能源第8位</button> : <span className="muted">新能源车牌</span>}
     </div>
     <div className="intake-plate-keys" aria-label={position === 0 ? '省份简称' : position === 1 ? '发牌机关' : '车牌序号'}>
       {keys.map(key => <button type="button" key={key} onClick={() => choose(key)}>{key}</button>)}

@@ -408,10 +408,11 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
               </div>
               <div className="np-garage-numbers">{basementKeys.map(k => <label key={k}>{it.kind === 'family' ? k === 'main' ? '大车库车库号' : '人防车位号' : k === 'main' ? '大车库编号（必选）' : '人防车位编号（必选）'}
                 {it.kind === 'family' ? <input className="in" value={nums[k] || ''} disabled={savingGarages || !!busy} onChange={e => setNums({ ...nums, [k]: e.target.value })} onBlur={() => saveGarages(picked, nums)} /> : <select className="in" aria-label={k === 'main' ? '大车库编号（必选）' : '人防车位编号（必选）'} value={nums[k] || ''} disabled={savingGarages || !!busy} onChange={e => { const next = { ...nums, [k]: e.target.value }; setNums(next); saveGarages(picked, next); }}>
-                  <option value="">请选择车位号（已占用项不可选）</option>
+                  <option value="">请选择车位号</option>
                   {spaces.filter(s => s.garage === k).map(s => <option key={s.id} value={s.spaceNo} disabled={!!s.unavailableReason}>{s.spaceNo}{s.unavailableReason ? `（${s.unavailableReason}）` : ''}</option>)}
                 </select>}
               </label>)}</div>
+              {basementKeys.length > 0 ? <p className="np-garage-help">同一车位号可关联多个车牌，同时在库限制由停车系统控制。</p> : null}
               {basementKeys.length && spacesError ? <div role="alert">{spacesError}<button className="btn sm" onClick={() => void loadSpaces()}>重试读取车位</button></div> : null}
               <div className="np-garage-status" role="status">{savingGarages ? '正在保存授权…' : garageError ? <><span>{garageError}</span><button type="button" className="btn" disabled={!!busy || savingGarages} onClick={() => saveGarages(picked, nums)}>重试保存授权</button></> : `已选择 ${picked.length} 个车库`}</div>
             </fieldset>
