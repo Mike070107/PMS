@@ -7503,3 +7503,10 @@
 - 自上次（37acc988）以来上线的相关提交：
   - e9750a04 fix(web): anchor completion panel and dismiss it on tab changes
 
+## 2026-11-17 19:07 · web · fb182217
+
+- 包：`pms-web-20261117-190433.tar.gz`
+- 提交：fb182217 fix(web): restore plate suffix lookup and mobile image interactions
+- 自上次（70f1d2a2）以来上线的相关提交：
+  - fb182217 fix(web): restore plate suffix lookup and mobile image interactions
+
