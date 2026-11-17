@@ -115,6 +115,32 @@ export default function Vehicles() {
   const rows = query?.rows ?? [];
   const groups = useMemo(() => groupByPlate(rows), [rows]);
 
+  // Carry the completed query's stable PMS household, never guess IDs from room text.
+  // All rows must agree; incomplete/ambiguous/out-of-scope matches stay manual.
+  const queryHouse = useMemo<PickedHouse | null>(() => {
+    if (polling || query?.status !== 'completed' || query.term !== term.trim() || !query.rows.length) return null;
+    const ids = new Set<number>();
+    for (const row of query.rows) {
+      const match = row.pmsMatch;
+      if (!match?.houseId || !Number.isSafeInteger(match.houseId) || match.houseId <= 0 || match.status === 'disabled'
+        || (match.house && match.house.id !== match.houseId)) return null;
+      ids.add(match.houseId);
+    }
+    if (ids.size !== 1) return null;
+    const houseId = [...ids][0];
+    for (const community of communities) for (const building of community.buildings) {
+      const house = building.houses.find(h => h.id === houseId);
+      if (!house) continue;
+      const buildingText = `${building.lane ? `${building.lane}弄` : ''}${building.buildingNo}号`;
+      const text = `${community.name} ${buildingText}${house.roomNo}室`;
+      return { communityId: community.id, communityName: community.name, lane: building.lane ?? null,
+        buildingId: building.id, buildingNo: building.buildingNo, buildingText, houseId,
+        roomNo: house.roomNo, ownerName: house.ownerName ?? null, ownerPhone: house.ownerPhone ?? null,
+        ownerId: house.ownerId ?? null, text, shortText: `${community.name}/${buildingText}${house.roomNo}` };
+    }
+    return null;
+  }, [query, term, polling, communities]);
+
   // 查询完成后，按车牌拉一次德立云人防授权状态（civil 车库不走旧库位串）
   useEffect(() => {
     if (query?.status !== 'completed') return;
@@ -141,7 +167,7 @@ export default function Vehicles() {
           <p>按车牌管理车辆：授权车库、有效期、续期收费与车辆档案</p>
         </div>
         <div className="act">
-          <button className="btn p" onClick={() => setNewOpen(true)}><Icon name="plus" size={16} />新车登记</button>
+          <button className="btn p" onClick={() => { setNewHouse(queryHouse); setNewOpen(true); }}><Icon name="plus" size={16} />新车登记</button>
         </div>
       </div>
 

@@ -31,14 +31,14 @@ async function fixture(width = 1440) {
 }
 const calls = page => page.evaluate(() => window.__calls);
 const navigate = (page, url) => page.evaluate(url => window.__navigate(url), url);
-async function shot(page, name) { await page.screenshot({ path: path.join(evidence, name + '.png'), fullPage: true }); }
+async function shot(page, name) { await page.screenshot({ path: path.join(evidence, name + '.png'), fullPage: true, animations: 'disabled' }); }
 async function noOverflow(page) { assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, 'page must not overflow at narrow width'); }
 async function openCreation(page, kind = 'paid') {
   await page.getByRole('button', { name: '新车登记', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '新车登记', exact: true });
   await dialog.locator('.ant-select-selector').click();
-  await page.locator('.ant-cascader-menu-item').filter({ hasText: '合成小区' }).click();
-  await page.locator('.ant-cascader-menu-item').filter({ hasText: '8号' }).click();
+  await page.locator('.ant-cascader-menu-item[data-path-key="1"]').click();
+  await page.locator('.ant-cascader-menu-item[data-path-key="1__RC_CASCADER_SPLIT__11"]').click();
   await page.locator('.ant-cascader-menu-item').filter({ hasText: '901' }).click();
   if (kind === 'family') await dialog.getByRole('button', { name: '亲情车（免费 · 一年）', exact: true }).click();
   return dialog;
@@ -49,6 +49,70 @@ async function create(page, kind = 'paid') {
   await dialog.getByRole('img', { name: '扫码填写', exact: true }).waitFor();
   return dialog;
 }
+
+for (const width of [1440, 390]) test(`Vehicles unique query household prefills registration with stable ID (${width})`, async () => {
+  const f = await fixture(width); const { page, origin } = f;
+  try {
+    await page.goto(origin + '/vehicles');
+    await page.evaluate(() => { window.__queryResults = { '198/8/901': { rows: ['parking1', 'parking2'].map(database => ({ database, fields: { CarNo: '浙ADD422' }, pmsMatch: { houseId: 501, userId: 701, name: '合成住户', matchedBy: 'room' } })) } }; });
+    const search = page.locator('.hsearch input');
+    await search.fill('198/8/901'); await search.press('Enter');
+    await page.getByText(/查询「198\/8\/901」/).waitFor();
+    await page.getByRole('button', { name: '新车登记', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '新车登记', exact: true });
+    assert.match(await dialog.locator('.ant-select-selector').innerText(), /901/);
+    assert.equal(await dialog.getByRole('button', { name: '工作人员直接登记', exact: true }).isDisabled(), false);
+    await shot(page, `vehicles-prefilled-${width}`); await noOverflow(page);
+    await dialog.getByRole('button', { name: '工作人员直接登记', exact: true }).click();
+    await dialog.getByRole('img', { name: '扫码填写', exact: true }).waitFor();
+    assert.equal((await calls(page)).find(c => c.url === '/vehicle-intakes' && c.method === 'POST').data.houseId, 501);
+    assert.equal(f.errors.length, 0, f.errors.join('\n'));
+  } finally { await f.close(); }
+});
+
+test('Vehicles ambiguous, unmatched, stale, failed and out-of-scope queries never preselect a household', { timeout: 30000 }, async () => {
+  const f = await fixture(); const { page, origin } = f;
+  try {
+    await page.goto(origin + '/vehicles');
+    for (const scenario of ['multiple', 'missing', 'outside', 'mismatch', 'disabled', 'failed', 'edited']) {
+      await page.evaluate(scenario => {
+        const ids = scenario === 'multiple' ? [501, 502] : [scenario === 'outside' ? 999 : 501];
+        window.__queryResults = { [scenario]: { status: scenario === 'failed' ? 'failed' : 'completed', rows: ids.map((houseId, i) => ({ database: 'parking1', fields: { CarNo: '浙ADD42' + i }, pmsMatch: scenario === 'missing' ? null : { houseId, userId: 701, name: '合成住户', matchedBy: 'room', ...(scenario === 'disabled' ? { status: 'disabled' } : {}), ...(scenario === 'mismatch' ? { house: { id: 502 } } : {}) } })) } };
+      }, scenario);
+      const search = page.locator('.hsearch input');
+      await search.fill(scenario); await search.press('Enter');
+      await page.getByText(`查询「${scenario}」`, { exact: false }).waitFor();
+      if (scenario === 'edited') await search.fill('尚未查询的其他住户');
+      await page.getByRole('button', { name: '新车登记', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: '新车登记', exact: true });
+      assert.equal(await dialog.getByRole('button', { name: '工作人员直接登记', exact: true }).isDisabled(), true, scenario);
+      await dialog.getByRole('button', { name: /关闭/ }).click();
+    }
+    assert.equal((await calls(page)).filter(c => c.url === '/vehicle-intakes' && c.method === 'POST').length, 0);
+    assert.equal(f.errors.length, 0, f.errors.join('\n'));
+  } finally { await f.close(); }
+});
+
+test('Vehicles pending result does not overwrite manual household selection', async () => {
+  const f = await fixture(); const { page, origin } = f;
+  try {
+    await page.goto(origin + '/vehicles');
+    await page.evaluate(() => { window.__queryResults = { '198/8/902': { rows: [{ database: 'parking1', fields: { CarNo: '浙ADD422' }, pmsMatch: { houseId: 502, userId: 702, matchedBy: 'room' } }] } }; window.__waitFor = ['GET /mock/parking-query/198/8/902']; });
+    await page.locator('.hsearch input').fill('198/8/902'); await page.locator('.hsearch input').press('Enter');
+    await page.waitForFunction(() => !!window.__holds['GET /mock/parking-query/198/8/902']);
+    const dialog = await openCreation(page);
+    await page.evaluate(() => { window.__waitFor = []; window.__release('GET /mock/parking-query/198/8/902'); });
+    await page.getByText(/查询「198\/8\/902」/).waitFor();
+    assert.match(await dialog.locator('.ant-select-selector').innerText(), /901/);
+    await dialog.getByRole('button', { name: /关闭/ }).click();
+    await page.getByRole('button', { name: '新车登记', exact: true }).click();
+    assert.match(await dialog.locator('.ant-select-selector').innerText(), /902/);
+    await dialog.locator('.ant-select-selector').click();
+    await page.locator('.ant-cascader-menu-item').filter({ hasText: '901' }).click();
+    assert.match(await dialog.locator('.ant-select-selector').innerText(), /901/);
+    assert.equal(f.errors.length, 0, f.errors.join('\n'));
+  } finally { await f.close(); }
+});
 
 test('precise intake links open waiting registration instead of hiding it behind submitted filter', async () => {
   const f = await fixture(); const { page, origin } = f;

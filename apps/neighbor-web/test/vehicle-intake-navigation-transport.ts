@@ -46,5 +46,5 @@ export async function request(o: any): Promise<any> {
   throw Error('隔离 fixture 未声明接口：' + o.url);
 }
 export const address = { tree: async () => { await record({ url: '/address/tree' }); return tree; } };
-export const accessCardIssuance = { createParkingQuery: async (term: string) => { await record({ url: '/mock/parking-query', term }); return { id: 1, status: 'completed', rows: [] }; }, parkingQuery: async () => ({ id: 1, status: 'completed', rows: [] }), parkingFeeRates: async () => ({ owner: { 1: 150 }, tenant: { 1: 260 } }) };
+export const accessCardIssuance = { createParkingQuery: async (term: string) => { const result = structuredClone({ id: 1, term, status: 'completed', rows: [], ...w.__queryResults?.[term] }); await record({ url: '/mock/parking-query/' + term, term }); return result; }, parkingQuery: async () => ({ id: 1, status: 'completed', rows: [] }), deliyunVehiclesByPlate: async () => ({ rows: [] }), parkingFeeRates: async () => ({ owner: { 1: 150 }, tenant: { 1: 260 } }) };
 export const repairs = {};
