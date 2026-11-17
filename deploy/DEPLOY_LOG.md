@@ -7560,3 +7560,10 @@
 - 自上次（a61c26d7）以来上线的相关提交：
   - 843bbb81 fix(vehicle-intake): allow shared parking spaces and render realistic plates
 
+## 2026-11-18 00:46 · web · 843bbb81
+
+- 包：`pms-web-20261118-004444.tar.gz`
+- 提交：843bbb81 fix(vehicle-intake): allow shared parking spaces and render realistic plates
+- 自上次（a61c26d7）以来上线的相关提交：
+  - 843bbb81 fix(vehicle-intake): allow shared parking spaces and render realistic plates
+
