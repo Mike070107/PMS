@@ -51,7 +51,7 @@ function component(file, values, query = '', suffix = '') {
     '@/lib/format': format, '@/lib/address-tree': { useAddressTree: () => ({ communities: [] }) },
     '@/lib/auth': { useSession: () => ({ user: {}, access: {} }) },
     '@/components/ui': stubs,
-    ...Object.fromEntries(['NewOrderSheet', 'WorkOrderSheet', 'AddressSearch', 'ToneIcon', 'Icon', 'MaterialPicker', 'HousePicker'].map(k => ['@/components/' + k, { __esModule: true, default: k }])),
+    ...Object.fromEntries(['NewOrderSheet', 'WorkOrderSheet', 'AddressSearch', 'ToneIcon', 'Icon', 'MaterialPicker', 'HousePicker', 'WorkOrderMedia'].map(k => ['@/components/' + k, { __esModule: true, default: k }])),
   }, suffix);
 }
 function workOrders(query) { return component('pages/WorkOrders.tsx', [orders, ''], query).default(); }
@@ -143,8 +143,12 @@ test('详情各页签：下一步只有一份，在固定头部且位于 tabs �
     assert.ok(action >= 0 && action < tabs, `tab ${tab}: 下一步在页签上面`);
     assert.equal(nodes(tree.props.children).filter(n => n.type?.name === 'NextActions').length, 0);
   }
-  const m = component('components/WorkOrderSheet.tsx', [detail, false, '', 'info', 'finish', false]);
-  assert.equal(nodes(m.default({ id: 4, onClose() {}, onChanged() {} })).filter(n => n.type?.name === 'NextActions').length, 0);
+  const m = component('components/WorkOrderSheet.tsx', [detail, false, '', 'info', 'finish', false, true]);
+  const opened = nodes(m.default({ id: 4, onClose() {}, onChanged() {} }));
+  assert.equal(opened.filter(n => n.type?.name === 'NextActions').length, 1, '完工时仍保留触发按钮用于锚定/收起');
+  assert.equal(opened.filter(n => n.type?.name === 'FlowPanel').length, 1, '完工表单不重复显示');
+  const overlay = opened.find(n => n.type?.name === 'CompletionOverlay');
+  assert.ok(overlay && overlay.props.open && overlay.props.children.props.flow === 'finish');
 });
 function today() { return component('pages/Today.tsx', [orders, []]).default(); }
 function todoCount(tree, title) { const row = nodes(tree).find(n => n.type === 'button' && text(n).includes(title)); assert.ok(row); return nodes(row).filter(n => n.type === 'b').at(-1).props.children; }

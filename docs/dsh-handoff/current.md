@@ -1,25 +1,28 @@
-# 六项遗漏交付账（2026-11-17，Asia/Shanghai，最新在上）
+# 工单完工浮层优先修复 / 六项遗漏（2026-11-17，Asia/Shanghai）
 ## 目标与授权
-用户授权六项逐项验收自动上线及代设双端体验；未授权提审/正式发布、真实客户/库存/硬件测试写。整项未完成，goal active/armed，round2/64。
-## 最新进展（16:51上线、16:53回读；本增量已发布）
-- 新增标准停车精确完整车牌查询：原正式入口 → 显式租户/数据库/独立逻辑资源 → canonical ParkingQuery+绑定任务 → 原查询GET/快照/历史事务保存；没有平行业务入口、假旧网关或自动fallback。
-- 标准报告要求明确完整投影；匹配冻结车牌/稳定原记录号；null不等于遗漏；重报幂等、未知不重排、原租约迟到对账；旧网关不能抢领或报告。保留另一数据库的旧查询可用性，不伪造写/控制器能力。
-- 最终冻结源码：API tsc、标准/卡/停车/限定三迁移17/17、旧发卡227/227、停车22/22通过；含任务创建失败、快照/历史失败全事务回滚。测试是本地真实TypeORM/PGlite，不是生产业务/硬件验收。
-- 17文件提交3fb3e8d8已push main，官方auto发布退出0/95.310秒，API api-3fb3e8d已上线；16:53二次公网提交/哈希核验通过。sourceHash5f91ecfd4bbdba7525f37c6eec310cf71583e7953f449a7684231a214a41155e。发布记录main d9bee68d、远端deployed/api=3fb3e8d8。Web/助手无差异跳过，未上传小程序新包。
-- 生产预检确认124.223.179.214，VM-4-8-ubuntu，machineId005acd736e534836bddf1997a7cc0636，pms-api online，cwd/opt/pms-repair/apps/api；本机DNS为代理合成198.18.4.73，Google公网DNS确认域名为124.223.179.214。
-## 此前已发布/上传（保持有效，不冒充新增源码证据）
-- API api-37acc98，Web2.0.20261117-1455，产品37acc988；官方发布退出0，公网版本/哈希及限定DDL只读回读通过。37发卡UID+.80真实分配账桥接已部署，不等于设备闭环。
-- More外关、删除在用卡、反馈图库已修复并被生产Web制品覆盖；Web24/24、标准UI14/14。picker6/6、双端tsc和员工原生隔离fixture通过。
-- 两端开发包均1.0.20261117a/4912774f，staff wx002fde4bfaa4c7d9、owner wx8ef4de0e498064c4；335 tracked上传输入与37产品相同、前后SHA保持；upload成功不等于体验生效。
-- 15:58原历史目录1917 tracked哈希、HEAD、dirty状态完全保持。助手仍2.5.54/d075f81d，未验现场安装。
-## 仍未完成（不关闭总任务）
-- 标准门禁授权/控制器正式路由、停车非精确查询/登记/续费/收费/进出等标准路由、真实生产厂商和标准硬件适配；新增停车绑定目前只有受保护配置API，尚无管理UI及真实绑定验收。不是只等登录，SQLite只读示例不能代替厂商适配。
-- 现场实卡/控制器闭环，正式登录态Web三项行为验收、实际小程序/手机手势均无最终证据；禁止真实测试写。16:53用BEGIN READ ONLY确认新绑定列integer/nullable及唯一部分索引，transaction_read_only=on、businessRowsWritten0。
-- 双端体验指针均未保存/刷新回读，实际指针未知；15:51公众平台9223未登录并刷新二维码。需要管理员本人认证，之后lead代设，不提审/正式发布。
-- 16:48只读CDP已有标签：PMS9222仍/login，公众平台9223为/且无token，未登录；未刷新二维码、未写业务。15:51新开PMS页Target crashed，无新业务截图。
-## 关键文件与验证
-- [协议](<docs/local-integration-protocol.md>)；[逐项交付账](<outputs/omission-release-20261117/delivery-audit-after-upload.md>)；[标准回归](<outputs/omission-release-20261117/standard-parking-full-standard.log>)；[旧发卡](<outputs/omission-release-20261117/standard-parking-legacy-core.log>)；[停车](<outputs/omission-release-20261117/standard-parking-legacy-owner.log>)。
-- 关键文件：[停车服务](<apps/api/src/modules/local-integrations/standard-parking-query.service.ts>)、[停车回归](<apps/api/src/modules/local-integrations/standard-parking-query.test.ts>)、[共享历史](<apps/api/src/modules/access-card-issuance/parking-query-history.ts>)、[限定第三迁移](<apps/api/src/migrations/1796200200000-StandardParkingQuery.ts>)。
-- bunded Node24.21.0/pnpm11.28.5；PATH先outputs/omission-release-20261117/tool-bin再Node/bin；verify_deps_before_run=warn、node_linker=isolated、virtual_store_dir=D:/00项目开发/PMS-release-batch-eight-20261116/node_modules/.pnpm、store_dir=该目录同级.pnpm-release-store。
-## 下一步
-本增量提交/推送/官方发布/公网和DDL回读均完成，相关job全部收齐。下一轮主攻标准门禁正式授权/控制器路由与真实厂商缺口：读AccessCardIssuanceService的createHistoryAuthorization/enqueueHistoryAuthorization/claimHistoryAuthorization/reportHistoryAuthorization及原助手实际处理器，先补真实事务回归，不能新建平行页面或假网关。体验登录后lead代设双端并刷新回读。task58/98/56/62等均in_progress，goal armed；不重建，不把本地或队列当现场完成。结果→证据→风险。
+- 当前优先：登记完工面板紧接顶部按钮下方展开、覆盖Tab区域；切Tab及时收起，失败保留输入。本次只有修复要求，没有当次生产授权，不沿用旧六项授权。
+- 原六项逐项验收自动上线及双端体验代设仍有效；未授权提审/正式发布、真实客户/库存/硬件测试写。总目标未完成，goal active/armed、revision2、round2/64。
+## 当前修复已完成 / 正在收尾
+- 修复前真实Chrome回归2/2失败：面板落在Tab下方、切处理进度仍残留；不是只看源码猜测。
+- 已窄修：保留顶部按钮、按实际按钮底部定位（手机动作换行不留大间隔）、独立视口内滚动；Tab切换/外点/取消/再次点击/Esc收起，首个Esc不关工单。
+- 收起保留表单、错误、等待请求及幂等键；成功或关闭工单清理。旧工单迟到结果不覆盖/关闭新工单，失败提示自动滚入视口。
+- Chrome桌面1440×1000、375×812、812×375、缺料完工入口、动态缩放及等待/错误/成功通过；连同原列表/阶段/More/图库回归26/26，应用tsc退出0。隔离合成API，无生产业务写，不冒充正式登录态验收。
+- 修复已有source-isolation测试缺失WorkOrderMedia适配和旧“打开表单隐藏按钮”断言；仅恢复本文件新增行LF，保留原有混合换行，scoped diff --check通过。
+- 正在：显式提交本次4个Web源/测试文件及交接、合回push main后构建受影响Web；未部署。保留原有3个API发布证据dirty及所有历史目录，不暂存产物。
+## 此前上线 / 上传（不是当前修复上线）
+- 16:51标准停车精确完整车牌查询已发布：原正式入口→显式租户/DB/逻辑资源→canonical ParkingQuery+绑定任务→原GET/快照/历史事务；无假旧网关、平行页面或自动fallback。
+- API api-3fb3e8d，sourceHash 5f91ecfd4bbdba7525f37c6eec310cf71583e7953f449a7684231a214a41155e；官方auto退出0/95.310秒，16:53公网提交/哈希及BEGIN READ ONLY新列/索引二次回读通过，businessRowsWritten0。17/17标准、227/227旧发卡、22/22停车通过。
+- 当前生产Web2.0.20261117-1455/37acc988、助手2.5.54/d075f81d；More外关、删除在用卡、图库已覆盖生产制品。37发卡UID+.80分配桥接上线≠现场设备闭环，助手未验现场安装。
+- 双端开发包1.0.20261117a/4912774f，staff wx002fde4bfaa4c7d9、owner wx8ef4de0e498064c4；335上传输入与37产品一致，未因停车重传。体验指针尚未保存/刷新回读，不能把upload成功当体验生效。
+## 未完成 / 下一步
+- 当前修复：构建后记录提交/产物结果，申请当次生产授权；获得后只用官方auto入口并核对公网版本/哈希，未授权不部署。
+- 原六项：标准门禁授权/控制器正式路由、停车非精确/登记/续费/收费/进出等标准路由、真实厂商与硬件适配；停车绑定仅受保护配置API，管理UI及真实绑定未验收。
+- 正式登录态Web、手机picker手势、现场实卡/控制器闭环无最终证据；双端体验指针需管理员本人认证后lead代设并刷新回读，不提审/正式发布。
+- 16:48只读CDP：PMS9222仍/login，公众平台9223为/且无token；15:51PMS新页Target crashed。不要盲目重复旧开页/二维码脚本；认证缺口不能冒充设备或业务验收。
+## 关键文件与证据
+- [修复](<apps/neighbor-web/src/components/WorkOrderSheet.tsx>)、[局部样式](<apps/neighbor-web/src/components/WorkOrderSheet.css>)、[浏览器回归](<apps/neighbor-web/test/work-orders-browser.test.cjs>)、[26/26日志](<outputs/work-order-completion-overlay-20261117/browser-acceptance.log>)、[tsc](<outputs/work-order-completion-overlay-20261117/typecheck-acceptance.log>)、[失败证据](<outputs/work-order-completion-overlay-20261117/before-regression.log>)。
+- [协议](<docs/local-integration-protocol.md>)、[六项交付账](<outputs/omission-release-20261117/delivery-audit-after-upload.md>)、[停车服务](<apps/api/src/modules/local-integrations/standard-parking-query.service.ts>)、[共享历史](<apps/api/src/modules/access-card-issuance/parking-query-history.ts>)。
+## 验证命令 / 接续
+- bundled Node24.21.0运行`--test apps/neighbor-web/test/work-orders-browser.test.cjs apps/neighbor-web/test/work-order-stages.test.cjs apps/neighbor-web/test/work-order-media-browser.test.cjs`；应用编译器`apps/neighbor-web/node_modules/typescript/bin/tsc --noEmit --project apps/neighbor-web/tsconfig.json`，根目录无typescript，不要再用根路径。
+- 构建用bundled Node/pnpm；PATH先outputs/omission-release-20261117/tool-bin再Node/bin；verify_deps_before_run=warn、node_linker=isolated、virtual_store_dir=D:/00项目开发/PMS-release-batch-eight-20261116/node_modules/.pnpm，store_dir同级.pnpm-release-store。
+- task99当前in_progress；task58/98/56/62等仍未完成。原六项后续读AccessCardIssuanceService正式授权enqueue/claim/report及原助手处理器，先加真实事务失败回归。不要重建任务，不把本地或任务回执当现场完成；汇报结果→证据→风险。

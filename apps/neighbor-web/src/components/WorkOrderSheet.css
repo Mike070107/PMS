@@ -1,0 +1,23 @@
+/* Work-order completion is an anchored, non-modal overlay, not Sheet body content. */
+.wo-completion-overlay {
+  position: fixed;
+  z-index: 43;
+  box-sizing: border-box;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 3px;
+  background: #fff;
+  border-radius: var(--r);
+  box-shadow: var(--sh-l);
+}
+.wo-completion-overlay[hidden] { display: none; }
+.wo-completion-overlay .flow { margin: 0; }
+.wo-completion-overlay .flow h3 {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 4px 0;
+  background: #fff;
+}
+.wo-completion-overlay [role="alert"] { scroll-margin-top: 64px; }

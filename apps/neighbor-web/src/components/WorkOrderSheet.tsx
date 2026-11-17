@@ -1,6 +1,8 @@
 import { formatBeijingDateTime, sortTimelineNewestFirst } from '@pms/shared-types';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode, RefObject } from 'react';
+import { createPortal } from 'react-dom';
+import './WorkOrderSheet.css';
 import { WorkOrderStatus, REPAIR_TYPE_OPTIONS } from '@pms/shared-types';
 import type { RollbackPreview, TechnicianOption, WorkOrderDetail, WorkOrderStockOptions } from '@pms/shared-types';
 import { repairs } from '@pms/api-client';
@@ -86,22 +88,32 @@ export default function WorkOrderSheet({
   const [tab, setTab] = useState<Tab>('info');
   const [flow, setFlow] = useState<Flow>(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  // Keep this form mounted while viewing tabs: closing a popover must not discard
+  // its draft, in-flight submission, or idempotency key. Reset on work-order close/success.
+  const [finishOpened, setFinishOpened] = useState(false);
+  const actionAnchor = useRef<HTMLDivElement>(null);
+  const currentId = useRef(id);
+  currentId.current = id;
+  const closeFlow = useCallback(() => setFlow(null), []);
 
   const load = useCallback(async (wid: number) => {
+    if (currentId.current !== wid) return;
     setLoading(true);
     setErr('');
     try {
-      setDetail(await repairs.detail(wid));
+      const result = await repairs.detail(wid);
+      if (currentId.current === wid) setDetail(result);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : '工单加载失败');
+      if (currentId.current === wid) setErr(e instanceof Error ? e.message : '工单加载失败');
     } finally {
-      setLoading(false);
+      if (currentId.current === wid) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     setDetail(null);
     setFlow(null);
+    setFinishOpened(false);
     setTab('info');
     setMoreOpen(false);
     if (id) void load(id);
@@ -109,9 +121,12 @@ export default function WorkOrderSheet({
 
   const afterAction = async (msg: string) => {
     toast(msg);
-    setFlow(null);
-    setMoreOpen(false);
-    if (id) await load(id);
+    if (currentId.current === id) {
+      setFlow(null);
+      setFinishOpened(false);
+      setMoreOpen(false);
+      if (id) await load(id);
+    }
     onChanged();
   };
 
@@ -124,18 +139,25 @@ export default function WorkOrderSheet({
       {wo ? <><Pill status={stageOf(wo)} /> {wo.urgent ? <span className="pill urg" style={{ marginLeft: 6 }}>紧急</span> : null}
         {isOverdue(wo) ? <span className="pill urg" style={{ marginLeft: 6 }}>已超时</span> : null}
         <span className="wo-sheet-summary" title={wo.summaryContent || req?.content || ''}>{wo.summaryContent || req?.content || ''}</span></> : null}
-      {detail && wo && !flow ? (
-        <NextActions
-          detail={detail}
-          moreOpen={moreOpen}
-          toggleMore={() => setMoreOpen((v) => !v)}
-          closeMore={() => setMoreOpen(false)}
-          onFlow={(f) => { setFlow(f); setMoreOpen(false); }}
-        />
+      {detail && wo && (!flow || flow === 'finish') ? (
+        <div ref={actionAnchor}>
+          <NextActions
+            detail={detail}
+            activeFlow={flow}
+            moreOpen={moreOpen}
+            toggleMore={() => setMoreOpen((v) => !v)}
+            closeMore={() => setMoreOpen(false)}
+            onFlow={(f) => {
+              if (f === 'finish') setFinishOpened(true);
+              setFlow((previous) => f === 'finish' && previous === f ? null : f);
+              setMoreOpen(false);
+            }}
+          />
+        </div>
       ) : null}
       <div className="tabs" style={{ marginTop: 12 }}>
         {TABS.map(([k, t]) => (
-          <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{t}</button>
+          <button key={k} className={tab === k ? 'on' : ''} onClick={() => { setTab(k); closeFlow(); setMoreOpen(false); }}>{t}</button>
         ))}
       </div>
     </div>
@@ -151,12 +173,18 @@ export default function WorkOrderSheet({
     >
       {err ? <ErrorNote>{err}</ErrorNote> : null}
       {loading && !detail ? <Loading /> : null}
+      {detail && wo && finishOpened ? (
+        <CompletionOverlay open={flow === 'finish'} anchorRef={actionAnchor} onClose={closeFlow}>
+          <FlowPanel detail={detail} flow="finish" onCancel={closeFlow} onDone={afterAction} />
+        </CompletionOverlay>
+      ) : null}
       {detail && wo ? (
-        flow ? (
+        flow && flow !== 'finish' ? (
           <FlowPanel
+            key={flow}
             detail={detail}
             flow={flow}
-            onCancel={() => setFlow(null)}
+            onCancel={closeFlow}
             onDone={afterAction}
           />
         ) : (
@@ -172,11 +200,83 @@ export default function WorkOrderSheet({
   );
 }
 
+/** Non-modal, anchored above the tabs; portalled so short-screen header scrolling
+ * cannot clip it. The hidden form stays mounted until its work order closes. */
+function CompletionOverlay({ open, anchorRef, onClose, children }: {
+  open: boolean;
+  anchorRef: RefObject<HTMLDivElement>;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [bounds, setBounds] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current;
+    const panel = panelRef.current;
+    if (!open || !anchor || !panel) return;
+    const trigger = anchor.querySelector<HTMLButtonElement>('button[data-flow="finish"]');
+    const header = anchor.closest<HTMLElement>('.sh-h');
+    const sheet = anchor.closest('.sheet');
+    const triggerBottom = (trigger ?? anchor).getBoundingClientRect().bottom;
+    if (header && triggerBottom > header.getBoundingClientRect().bottom) {
+      header.scrollTop += triggerBottom - header.getBoundingClientRect().bottom;
+    }
+    const update = () => {
+      const rect = anchor.getBoundingClientRect();
+      // The action row wraps on phones: anchor vertically to the actual button,
+      // not the bottom of the taller card (which would leave a large empty gap).
+      const top = (trigger?.getBoundingClientRect().bottom ?? rect.bottom) + 4;
+      const bottom = Math.min(window.innerHeight, (window.visualViewport?.offsetTop ?? 0) + (window.visualViewport?.height ?? window.innerHeight));
+      setBounds({ top, left: rect.left, width: rect.width, maxHeight: Math.max(1, bottom - top - 12) });
+    };
+    const dismissOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !panel.contains(event.target) && !trigger?.contains(event.target)) onClose();
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopImmediatePropagation(); // First Esc closes the form, not the containing Sheet.
+      onClose();
+    };
+    update();
+    panel.focus({ preventScroll: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(anchor);
+    if (header) observer.observe(header);
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    window.visualViewport?.addEventListener('resize', update);
+    sheet?.addEventListener('animationend', update);
+    document.addEventListener('pointerdown', dismissOutside, true);
+    window.addEventListener('keydown', escape, true);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+      window.visualViewport?.removeEventListener('resize', update);
+      sheet?.removeEventListener('animationend', update);
+      document.removeEventListener('pointerdown', dismissOutside, true);
+      window.removeEventListener('keydown', escape, true);
+      // Do not steal focus from a newly selected tab or another outside control.
+      if (panel.contains(document.activeElement) && trigger?.isConnected) trigger.focus({ preventScroll: true });
+    };
+  }, [open, anchorRef, onClose]);
+
+  return createPortal(
+    <div ref={panelRef} className="wo-completion-overlay" role="region" aria-label="登记完工"
+      tabIndex={-1} hidden={!open} style={bounds ?? { visibility: 'hidden' }}>
+      {children}
+    </div>, document.body,
+  );
+}
+
 /* -------------------- 下一步操作 -------------------- */
 function NextActions({
-  detail, onFlow, moreOpen, toggleMore, closeMore,
+  detail, activeFlow, onFlow, moreOpen, toggleMore, closeMore,
 }: {
   detail: WorkOrderDetail;
+  activeFlow: Flow;
   onFlow: (f: Flow) => void;
   moreOpen: boolean;
   toggleMore: () => void;
@@ -223,7 +323,9 @@ function NextActions({
       <div className="k">下一步</div>
       <div className="t">{cfg.t}</div>
       <div className="row" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        {cfg.main ? <Btn kind="p" onClick={() => onFlow(cfg.main![0])}>{cfg.main[1]}</Btn> : null}
+        {cfg.main ? <button type="button" className="btn p" data-flow={cfg.main[0]}
+          aria-expanded={cfg.main[0] === 'finish' ? activeFlow === 'finish' : undefined}
+          onClick={() => onFlow(cfg.main![0])}>{cfg.main[1]}</button> : null}
         {cfg.sec.map(([k, t]) => <Btn key={k} onClick={() => onFlow(k)}>{t}</Btn>)}
         {cfg.more.length ? (
           <div ref={moreRef} className="more" style={{ position: 'relative', marginLeft: 'auto' }}>
@@ -417,6 +519,10 @@ function FlowPanel({
   const wo = detail.workOrder;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const errorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (err) errorRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [err]);
 
   const run = async (fn: () => Promise<unknown>, msg: string) => {
     setBusy(true);
@@ -434,7 +540,7 @@ function FlowPanel({
   const shell = (title: string, body: ReactNode, foot?: ReactNode, danger?: boolean) => (
     <div className={`flow ${danger ? 'danger' : ''}`}>
       <h3>{title}<Btn size="sm" kind="g" onClick={onCancel}>取消</Btn></h3>
-      {err ? <ErrorNote>{err}</ErrorNote> : null}
+      {err ? <div ref={errorRef} role="alert"><ErrorNote>{err}</ErrorNote></div> : null}
       {body}
       {foot ? <div className="foot">{foot}</div> : null}
     </div>
