@@ -7489,3 +7489,10 @@
 - 自上次（a09dedfc）以来上线的相关提交：
   - 37acc988 fix: restore omitted UI and pickers with standard issuance bridge
 
+## 2026-11-17 16:51 · api · 3fb3e8d8
+
+- 包：`pms-api-fast-20261117-164940.tar.gz`
+- 提交：3fb3e8d8 feat(integrations): bridge exact parking queries to canonical history
+- 自上次（37acc988）以来上线的相关提交：
+  - 3fb3e8d8 feat(integrations): bridge exact parking queries to canonical history
+
