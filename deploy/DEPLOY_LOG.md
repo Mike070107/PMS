@@ -7553,3 +7553,10 @@
 - 自上次（ce10d8d2）以来上线的相关提交：
   - a61c26d7 fix(vehicle-intake): preserve address context and reuse garage inventory and pricing
 
+## 2026-11-18 00:45 · api · 843bbb81
+
+- 包：`pms-api-fast-20261118-004444.tar.gz`
+- 提交：843bbb81 fix(vehicle-intake): allow shared parking spaces and render realistic plates
+- 自上次（a61c26d7）以来上线的相关提交：
+  - 843bbb81 fix(vehicle-intake): allow shared parking spaces and render realistic plates
+
