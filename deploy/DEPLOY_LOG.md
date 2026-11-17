@@ -7525,3 +7525,10 @@
   - 9cb93f1d test: align legacy cashier fixtures with staff registration contracts
   - c81da0c4 feat: complete inline vehicle registration and ship pending cashier fixes
 
+## 2026-11-17 23:17 · web · c4d0aa5c
+
+- 包：`pms-web-20261117-231347.tar.gz`
+- 提交：c4d0aa5c fix(web): wire Vehicles registration into same-page cashier flow
+- 自上次（9cb93f1d）以来上线的相关提交：
+  - c4d0aa5c fix(web): wire Vehicles registration into same-page cashier flow
+
