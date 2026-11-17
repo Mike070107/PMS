@@ -20,6 +20,7 @@ test('正式收银/公寓/新车登记/已存车牌/续费入口可逐号确认�
  const tree=[{id:1,name:'测试小区',buildings:[{id:1,buildingNo:'3',lane:'198弄',houses:[house]}]}];
  export const fixtureRow={database:'parking2',recordId:'1',fields:{P_plate:'沪A00001',P_owner:'101',P_end:'2026-12-31',P_Effective:'000000000000001',P_Download:'000000000000001'},pmsMatch:{userId:1,houseId:1,name:owner.name,phone:owner.phone,roomLabel:'3号101'}};
  window.__entryCalls=[];
+ export const uploadBlobTo=async()=>{throw Error('禁止在联系人只读入口测试上传附件');};
  export const address={tree:async()=>tree};export const repairs=new Proxy({}, {get:(_,name)=>async()=>{throw Error('不应调用报修写入 '+String(name));}});
  export const accessCardIssuance=new Proxy({}, {get:(_,name)=>async(...args)=>{window.__entryCalls.push({methodName:String(name),args});if(name==='deliyunVehiclesByPlate')return {rows:[]};if(name==='createParkingQuery'||name==='parkingQuery')return {id:1,status:'completed',term:'沪A00001',rows:[fixtureRow]};return {rows:[],status:'completed'};}});
  export async function request({url,method='GET',query={},data={}}){window.__entryCalls.push({url,method,query,data});
@@ -31,6 +32,7 @@ test('正式收银/公寓/新车登记/已存车牌/续费入口可逐号确认�
  if(url==='/houses')return [house];
  if(url==='/vehicle-intakes/1')return {id:1,houseId:1,houseLabel:'测试小区/198弄3号/101',ownerName:owner.name,ownerPhone:owner.phone,kind:'paid',status:'submitted',plate:'沪A00001',contactName:owner.name,contactPhone:owner.phone,relation:'本人',vehicleClass:'small',garages:[],garageNumbers:{},expiresAt:'2026-12-01T00:00:00Z',qrValid:true,openedAt:null,submittedAt:'2026-11-12T00:00:00Z',reviewedAt:null,reviewNote:'',files:[],transaction:null,familyCarId:null,createdAt:'2026-11-12T00:00:00Z'};
  if(url==='/business/search')return {houses:[house],vehicles:[],accessCards:[]};
+ if(url==='/business/parking-spaces')return {rows:[]};
  if(url==='/business/rules')return [];if(url==='/business/household-parking')return {room:'3/101',roomTerm:'3/101',targets:[],localDatabases:[],deliyun:[]};
  if(url==='/fees/cashier/payment-methods')return ['cash'];
  if(url==='/fees/houses/1')return {standards:[]};

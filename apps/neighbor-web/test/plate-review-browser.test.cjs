@@ -26,11 +26,13 @@ async function fixture() {
         if (args.path.endsWith('/auth')) return { contents: 'export const useSession=()=>({user:{id:1}});', loader: 'js' };
         return { loader: 'js', contents: `
           const params=new URLSearchParams(location.search);const state=params.get('state')||'submitted';
-          export const targets=[{key:'phase1',label:'示例小区 一期地面',short:'一期地面',system:'local',billing:'vehicle',communities:['示例小区']},{key:'phase2',label:'示例小区 二期地面',short:'二期地面',system:'local',billing:'vehicle',communities:['示例小区']},{key:'main',label:'示例小区 二期大车库',short:'二期大车库',system:'local',billing:'space',communities:['示例小区']},{key:'civil',label:'示例小区 二期人防车库',short:'二期人防车库',system:'local',billing:'space',communities:['示例小区']}];
-          export const seed={id:61,kind:params.get('kind')||'family',status:state==='waiting'?'waiting':state==='reupload'?'reupload':state==='void'?'void':state==='submitted'?'submitted':'approved',houseId:1,houseLabel:'示例小区/198弄/示例室',ownerName:'示例住户',ownerPhone:'',plate:'示例车牌',contactName:'示例联系人',contactPhone:'',relation:'父母',vehicleClass:'示例类别',garages:['phase1'],garageNumbers:{},expiresAt:'2099-11-11T23:59:00+08:00',qrValid:true,openedAt:state==='waiting'||params.has('noOpened')?null:'2026-11-11T09:01:00+08:00',submittedAt:state==='waiting'?null:'2026-11-11T09:05:00+08:00',reviewedAt:['submitted','waiting'].includes(state)?null:'2026-11-11T09:10:00+08:00',reviewNote:state==='reupload'?'示例：请补清晰照片':'',files:[{index:0,fileName:'示例资料正面.svg',contentType:'image/svg+xml',fileUrl:'/sample-front.svg',uploadedAt:''},{index:1,fileName:'示例资料背面.svg',contentType:'image/svg+xml',fileUrl:'/sample-back.svg',uploadedAt:''},{index:2,fileName:'示例损坏图片.png',contentType:'image/png',fileUrl:'/broken.png',uploadedAt:''},{index:3,fileName:'示例原始附件.pdf',contentType:'application/pdf',fileUrl:'/original.pdf?token=fixture',uploadedAt:''}],transaction:params.has('txn')?{id:1,txnNo:'EXAMPLE',amountCents:10000,startDate:'2026-11-11',endDate:'2027-11-11',externalSyncStatus:params.get('txn'),execution:null}:null,familyCarId:state==='family-pending'?61:null,createdAt:'2026-11-11T09:00:00+08:00',qr:{url:location.origin+'/example-qr',dataUrl:'/sample-qr.svg',expiresAt:'2099-11-11T23:59:00+08:00'},log:[{at:'2026-11-11T09:00:00+08:00',userName:'示例办公室',action:'创建示例登记'}]};
+          export const targets=[{key:'phase1',label:'示例小区 一期地面',short:'一期地面',system:'local',billing:'vehicle',communities:['示例小区']},{key:'phase2',label:'示例小区 二期地面',short:'二期地面',system:'local',billing:'vehicle',communities:['示例小区']},{key:'main',label:'示例小区 二期大车库',short:'二期大车库',system:'local',billing:'space',communities:['示例小区']},{key:'civil',label:'示例小区 二期人防车库',short:'二期人防车库',system:'local',billing:'space',communities:['示例小区']}].map(t=>params.get('kind')==='paid'?{...t,key:({phase1:'local:phase1_parking',phase2:'local:phase2_parking',main:'local:phase2_main_garage',civil:'deliyun:枫桦景苑'})[t.key]}:t);
+          export const seed={id:61,kind:params.get('kind')||'family',status:state==='waiting'?'waiting':state==='reupload'?'reupload':state==='void'?'void':state==='submitted'?'submitted':'approved',houseId:1,communityId:1,houseLabel:'示例小区/198弄/示例室',ownerName:'示例住户',ownerPhone:'',plate:'示例车牌',contactName:'示例联系人',contactPhone:'',relation:'父母',vehicleClass:'示例类别',garages:[params.get('kind')==='paid'?'local:phase1_parking':'phase1'],garageNumbers:{},expiresAt:'2099-11-11T23:59:00+08:00',qrValid:true,openedAt:state==='waiting'||params.has('noOpened')?null:'2026-11-11T09:01:00+08:00',submittedAt:state==='waiting'?null:'2026-11-11T09:05:00+08:00',reviewedAt:['submitted','waiting'].includes(state)?null:'2026-11-11T09:10:00+08:00',reviewNote:state==='reupload'?'示例：请补清晰照片':'',files:[{index:0,fileName:'示例资料正面.svg',contentType:'image/svg+xml',fileUrl:'/sample-front.svg',uploadedAt:''},{index:1,fileName:'示例资料背面.svg',contentType:'image/svg+xml',fileUrl:'/sample-back.svg',uploadedAt:''},{index:2,fileName:'示例损坏图片.png',contentType:'image/png',fileUrl:'/broken.png',uploadedAt:''},{index:3,fileName:'示例原始附件.pdf',contentType:'application/pdf',fileUrl:'/original.pdf?token=fixture',uploadedAt:''}],transaction:params.has('txn')?{id:1,txnNo:'EXAMPLE',amountCents:10000,startDate:'2026-11-11',endDate:'2027-11-11',externalSyncStatus:params.get('txn'),execution:null}:null,familyCarId:state==='family-pending'?61:null,createdAt:'2026-11-11T09:00:00+08:00',qr:{url:location.origin+'/example-qr',dataUrl:'/sample-qr.svg',expiresAt:'2099-11-11T23:59:00+08:00'},log:[{at:'2026-11-11T09:00:00+08:00',userName:'示例办公室',action:'创建示例登记'}]};
           let current=structuredClone(seed);window.__calls=[];window.__failGarage=false;window.__delayGarage=0;
+          export const uploadBlobTo=async()=>{throw Error('Unexpected upload in review-only fixture')};
           export const accessCardIssuance={createParkingQuery:async()=>({id:1,status:'completed'}),parkingQuery:async()=>({id:1,status:'completed'})};
           export async function request({url,method='GET',data={}}){window.__calls.push({url,method,data});
+            if(url==='/business/parking-spaces')return {rows:[{id:1,communityId:1,garage:'main',spaceNo:'示例A01',plate:null,houseNo:null},{id:2,communityId:1,garage:'civil',spaceNo:'示例B01',plate:null,houseNo:null}]};
             if(url==='/business/parking-targets')return targets;
             if(url==='/vehicle-intakes')return [current];
             if(url.endsWith('/garages')){if(window.__delayGarage)await new Promise(r=>setTimeout(r,window.__delayGarage));if(window.__failGarage)throw Error('示例：车库保存失败，请重试');current={...current,...data};}
@@ -66,14 +68,15 @@ test('family and paid native multi-checkbox retain dependency and POST payload; 
   const f = await fixture();const {page,origin}=f;
   try {
     for (const kind of ['family','paid']) {
+      const keys = kind==='paid' ? ['local:phase1_parking','local:phase2_parking','local:phase2_main_garage','deliyun:枫桦景苑'] : ['phase1','phase2','main','civil'];
       await page.goto(origin+'/?kind='+kind);
       assert.equal(await page.getByRole('checkbox').count(),4,kind+' real checkboxes');
       await page.getByRole('checkbox',{name:'二期大车库',exact:true}).check();
       await page.getByRole('checkbox',{name:'二期人防车库',exact:true}).check();
-      assert.deepEqual(new Set((await lastPayload(page)).data.garages),new Set(['phase1','phase2','main','civil']));
+      assert.deepEqual(new Set((await lastPayload(page)).data.garages),new Set(keys));
       assert.equal((await lastPayload(page)).method,'POST');assert.equal((await lastPayload(page)).url,'/vehicle-intakes/61/garages');
       await page.getByRole('checkbox',{name:'二期地面',exact:true}).uncheck();
-      assert.deepEqual((await lastPayload(page)).data,{garages:['phase1'],garageNumbers:{}});
+      assert.deepEqual((await lastPayload(page)).data,{garages:[keys[0]],garageNumbers:{}});
       await page.getByRole('checkbox',{name:'二期大车库',exact:true}).check();
       if(kind==='family') {await page.getByLabel('大车库车库号',{exact:true}).fill('示例A01');await page.getByLabel('大车库车库号',{exact:true}).blur();assert.equal((await lastPayload(page)).data.garageNumbers.main,'示例A01');}
       await page.evaluate(()=>{window.__failGarage=true;});
@@ -89,13 +92,19 @@ test('family and paid native multi-checkbox retain dependency and POST payload; 
       assert.equal(await page.getByRole('checkbox',{name:'二期人防车库',exact:true}).isDisabled(),true);
       await page.getByRole('button',{name:'资料无误，通过',exact:true}).waitFor();
       await page.waitForFunction(()=>!document.querySelector('fieldset').getAttribute('aria-busy')||document.querySelector('fieldset').getAttribute('aria-busy')==='false');
-      assert.deepEqual(new Set((await lastPayload(page)).data.garages),new Set(['phase1','phase2','main','civil']));
+      assert.deepEqual(new Set((await lastPayload(page)).data.garages),new Set(keys));
       assert.equal(await page.getByRole('checkbox',{name:'二期人防车库',exact:true}).isEnabled(),true);
+      if(kind==='paid') {
+        assert.equal(await page.getByRole('button',{name:'资料无误，通过',exact:true}).isDisabled(),true,'paid underground registration requires explicit space numbers');
+        await page.getByLabel('大车库编号（必选）',{exact:true}).selectOption('示例A01');
+        await page.getByLabel('人防车位编号（必选）',{exact:true}).selectOption('示例B01');
+        assert.deepEqual((await lastPayload(page)).data.garageNumbers,{main:'示例A01',civil:'示例B01'});
+      }
       if(kind==='paid')for(const width of [1440,390]){await page.setViewportSize({width,height:900});await noOverflow(page);await page.screenshot({path:path.join(evidence,`paid-review-${width}.png`),fullPage:true});}
       await page.getByRole('button',{name:'资料无误，通过',exact:true}).click();
       await page.waitForFunction(()=>window.__calls.some(c=>c.url.endsWith('/review')));
       const review=await page.evaluate(()=>window.__calls.filter(c=>c.url.endsWith('/review')).at(-1));
-      assert.equal(review.method,'POST');assert.equal(review.data.decision,'approve');assert.deepEqual(new Set(review.data.garages),new Set(['phase1','phase2','main','civil']));
+      assert.equal(review.method,'POST');assert.equal(review.data.decision,'approve');assert.deepEqual(new Set(review.data.garages),new Set(keys));
     }
   } finally {await f.close();}
 });

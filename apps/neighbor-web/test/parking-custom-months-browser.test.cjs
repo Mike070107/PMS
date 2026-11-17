@@ -35,7 +35,7 @@ return <ConfigProvider><main style={{padding:12,maxWidth:1000,margin:'auto'}}><h
 createRoot(document.getElementById('root')).render(<Fixture/>);` }, bundle: true, write: false, outfile: 'entry.js', format: 'iife', jsx: 'automatic', alias: { '@': path.join(app, 'src') }, define: { 'process.env.NODE_ENV': '"development"', 'import.meta.env.BASE_URL': '"/"' }, plugins: [{ name: 'loopback-only', setup(b) {
     b.onResolve({ filter: /^@pms\/api-client$/ }, () => ({ path: 'api', namespace: 'fixture' }));
     b.onResolve({ filter: /^@\/lib\/perm$/ }, () => ({ path: 'perm', namespace: 'fixture' }));
-    b.onLoad({ filter: /.*/, namespace: 'fixture' }, a => ({ loader: 'js', contents: a.path === 'perm' ? 'export const can=()=>true;' : `export const accessCardIssuance={};export async function request(o){const r=await fetch('/fixture'+o.url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(o.data||{})});const v=await r.json();if(!r.ok)throw Error(v.error);return v;}` }));
+    b.onLoad({ filter: /.*/, namespace: 'fixture' }, a => ({ loader: 'js', contents: a.path === 'perm' ? 'export const can=()=>true;' : `export const uploadBlobTo=async()=>{throw Error('Unexpected upload in price-only fixture')};export const accessCardIssuance={};export async function request(o){const r=await fetch('/fixture'+o.url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(o.data||{})});const v=await r.json();if(!r.ok)throw Error(v.error);return v;}` }));
   } }] });
   const js = built.outputFiles.find(f => f.path.endsWith('.js')).contents, css = built.outputFiles.find(f => f.path.endsWith('.css'))?.contents || '';
   const server = http.createServer(async (req, res) => {
