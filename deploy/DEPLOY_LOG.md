@@ -7539,3 +7539,10 @@
 - 自上次（c4d0aa5c）以来上线的相关提交：
   - ce10d8d2 fix(web): preselect queried household for vehicle registration
 
+## 2026-11-17 23:58 · api · a61c26d7
+
+- 包：`pms-api-fast-20261117-235811.tar.gz`
+- 提交：a61c26d7 fix(vehicle-intake): preserve address context and reuse garage inventory and pricing
+- 自上次（9cb93f1d）以来上线的相关提交：
+  - a61c26d7 fix(vehicle-intake): preserve address context and reuse garage inventory and pricing
+
