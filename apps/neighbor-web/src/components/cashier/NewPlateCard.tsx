@@ -50,13 +50,14 @@ function FileThumb({ file }: { file: IntakeFile }) {
 }
 
 /** 一条新办车牌 / 亲情车扫码登记：二维码 → 实时看业主填写 → 审核 → （付费车）收款 */
-export default function NewPlateCard({ intake: it, house, targets: targetsProp, onChange, onDrop, onCart, renewal, manage = false }: {
+export default function NewPlateCard({ intake: it, house, targets: targetsProp, onChange, onDrop, onCart, renewal, manage = false, defaultStaffMode = false }: {
   intake: Intake; house: ParkHouse; rules: ParkRule[]; targets: ParkTarget[];
   onChange: (x: Intake) => void; onDrop: (id: number) => void;
   onCart: (key: string, c: ParkingCart | null) => void;
   renewal: (car: Car, label: string, vehicleClass: string, onClass: (v: string) => Promise<void>) => ReactNode;
   /** 车牌登记审核页：审核、选授权车库、看日志；收款仍在收银台。 */
   manage?: boolean;
+  defaultStaffMode?: boolean;
 }) {
   const [qr, setQr] = useState(it.qr ?? null);
   const [busy, setBusy] = useState('');
@@ -79,7 +80,7 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
   const canVoid = can('business', 'edit') && it.status !== 'void' && !handedOff;
   const [edit, setEdit] = useState({ plate: it.plate, contactName: it.contactName, contactPhone: it.contactPhone || it.ownerPhone, relation: it.relation });
   const uploadInput = useRef<HTMLInputElement>(null);
-  const [staffMode, setStaffMode] = useState(false);
+  const [staffMode, setStaffMode] = useState(defaultStaffMode);
   const canStaff = ['business', 'family-cars'].some(key => can(key, 'edit')) && ['waiting', 'reupload'].includes(it.status) && !it.transaction && !it.familyCarId;
   type SpaceChoice = { id: number; communityId: number; garage: string; spaceNo: string; plate: string | null; houseNo: string | null };
   const [spaces, setSpaces] = useState<SpaceChoice[]>([]);

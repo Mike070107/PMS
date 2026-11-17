@@ -71,11 +71,12 @@ const maskPhone = (p?: string | null) => (p && p.length >= 7 ? `${p.slice(0, 3)}
  * 物业费、停车、门禁按 Tab 独立收款，不合并；只汇总当前 Tab 所选。
  * 金额一律服务端试算；收款只登记，后续 MIS/停车/写卡在「待处理」跟踪，不在这里谎称已核验。
  */
-export default function Cashier() {
+export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIntakeId?: number; onBusyChange?: (busy: boolean) => void } = {}) {
   const navigate = useNavigate();
   const session = useSession();
   const [params] = useSearchParams();
-  const intakeParam = params.get('intakeId');
+  const embedded = embeddedIntakeId !== undefined;
+  const intakeParam = embedded ? String(embeddedIntakeId) : params.get('intakeId');
   const validIntakeId = intakeParam !== null && /^[1-9]\d*$/.test(intakeParam) && Number.isSafeInteger(Number(intakeParam));
   const [deep, setDeep] = useState<{ query: string; row?: Intake; error?: string } | null>(null);
   const navigationRevision = useRef(0);
@@ -109,6 +110,7 @@ export default function Cashier() {
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const charging = useRef(false);
+  useEffect(() => { onBusyChange?.(busy); }, [busy, onBusyChange]);
   const [done, setDone] = useState<ChargeResult | null>(null);
 
   useEffect(() => {
@@ -163,6 +165,9 @@ export default function Cashier() {
     });
     return () => { alive = false; };
   }, [intakeParam, validIntakeId, communities, tree, session.access]);
+  const updateLinkedIntake = useCallback((row: Intake) => {
+    setDeep(current => current?.query === intakeParam && current.row?.id === row.id ? { ...current, row } : current);
+  }, [intakeParam]);
   const linkedIntake = deep?.query === intakeParam ? deep.row : undefined;
   const deepReady = intakeParam === null || !!linkedIntake;
   const linkedBlocked = !!linkedIntake && (linkedIntake.kind !== 'paid' || linkedIntake.status === 'void' || !!linkedIntake.transaction || !!linkedIntake.familyCarId);
@@ -450,7 +455,7 @@ export default function Cashier() {
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 18 }}>
               {done.receiptNo !== '—' ? <button className="btn" onClick={() => navigate(`/fees?receipt=${encodeURIComponent(done.receiptNo)}`)}><Icon name="print" size={18} />打印收据</button> : null}
               <button className="btn p" onClick={() => { setDone(null); if (house) loadBills(house); }}><Icon name="receipt" size={18} />继续给本户办理</button>
-              <button className="btn" onClick={reset}><Icon name="search" size={18} />换一户</button>
+              {!embedded ? <button className="btn" onClick={reset}><Icon name="search" size={18} />换一户</button> : null}
             </div>
           </div>
           <hr className="hr" />
@@ -476,7 +481,7 @@ export default function Cashier() {
 
   return (
     <>
-      <div className="ph" style={{ marginBottom: 14 }}>
+      <div className="ph" style={{ marginBottom: 14, display: embedded ? 'none' : undefined }}>
         <div>
           <div className="h1row"><ToneIcon kind="cashier" /><h1 style={{ fontSize: 22 }}>收银台</h1></div>
           <p>找到住户 → 按项目办理 → 一次确认收款 <span className="tag mute" style={{ marginLeft: 8 }}><Icon name="building" />数据范围：{scopeLabel}</span></p>
@@ -497,8 +502,8 @@ export default function Cashier() {
                 {!linkedIntake.qrValid && linkedIntake.status !== 'void' ? <p className="muted">原二维码已失效；资料与收费状态以本次登记为准，需要填写时在登记详情处理二维码。</p> : null}
               </>}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
-          {validIntakeId ? <button className="btn" onClick={() => navigate(`/plates?intakeId=${intakeParam}`)}>查看/处理本次登记</button> : null}
-          <button className="btn" onClick={reset}>重新选择住户</button>
+          {!embedded && validIntakeId ? <button className="btn" onClick={() => navigate(`/plates?intakeId=${intakeParam}`)}>查看/处理本次登记</button> : null}
+          {!embedded ? <button className="btn" onClick={reset}>重新选择住户</button> : null}
         </div>
       </section> : null}
 
@@ -536,7 +541,7 @@ export default function Cashier() {
             </div>
 
             <OwnerBusinessContact key={house.id} houseId={house.id} preferredOwnerId={house.owner?.id} source="cashier" onSaved={owner => { setHouse(h => h && h.id === house.id && h.owner?.id === owner.id ? { ...h, owner: {id:owner.id,name:owner.name,phone:owner.phone} } : h); }} />
-            <div className="projTabs" style={{ marginTop: 18 }}>
+            <div className="projTabs" style={{ marginTop: 18, display: embedded ? 'none' : undefined }}>
               <button className={`projTab ${tab === 'wy' ? 'on' : ''}`} onClick={() => { setTab('wy'); if (bills === null) loadBills(house); }}>
                 <Icon name="home" /><b>物业费</b><small>{bills === null ? '查询中' : billErr ? '查询失败' : wyBills.length ? `待缴 ${wyBills.length} 笔` : '无待缴'}</small>
                 {wyBills.length ? <span className="flag">{wyBills.length}</span> : null}
@@ -576,8 +581,8 @@ export default function Cashier() {
               </div>
             ) : null}
 
-            {linkedBlocked ? (tab === 'pk' ? <div className="note2" role="status">本次登记不可收费，真实状态见上方。需要转类 / 撤销请进入本次登记详情。</div> : null) : <div style={{ display: tab === 'pk' ? undefined : 'none' }}>
-              <ParkingTab key={`${house.id}-${intakeParam ?? ''}`} house={house} rules={rules as never} onCart={onParkCart} initialPlate={parkPlate} focusedIntake={linkedIntake} />
+            {linkedBlocked && !embedded ? (tab === 'pk' ? <div className="note2" role="status">本次登记不可收费，真实状态见上方。需要转类 / 撤销请进入本次登记详情。</div> : null) : <div style={{ display: tab === 'pk' ? undefined : 'none' }}>
+              <ParkingTab key={`${house.id}-${intakeParam ?? ''}`} house={house} rules={rules as never} onCart={onParkCart} initialPlate={parkPlate} focusedIntake={linkedIntake} staffRegistration={embedded} onIntakeChange={embedded ? updateLinkedIntake : undefined} />
             </div>}
 
             {tab === 'ac' ? (

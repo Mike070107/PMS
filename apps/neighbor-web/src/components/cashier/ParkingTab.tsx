@@ -94,7 +94,7 @@ export const payCode = (label: string) => PAY_EN[label] || (/微信|wechat/i.tes
  * 前台点一辆车、选月数，按收费标准算钱；收款后执行层把同一辆车在各系统的有效期一起续上。
  */
 /** Deep-link integration: Cashier passes focusedIntake={linkedIntake}; keep ordinary household checkout unchanged. */
-export default function ParkingTab({ house, rules, onCart, initialPlate, focusedIntake }: { house: ParkHouse; rules: ParkRule[]; onCart: (items: ParkingCart[], ready: boolean) => void; initialPlate?: string | null; focusedIntake?: Intake }) {
+export default function ParkingTab({ house, rules, onCart, initialPlate, focusedIntake, staffRegistration = false, onIntakeChange }: { house: ParkHouse; rules: ParkRule[]; onCart: (items: ParkingCart[], ready: boolean) => void; initialPlate?: string | null; focusedIntake?: Intake; staffRegistration?: boolean; onIntakeChange?: (intake: Intake) => void }) {
   const [hh, setHh] = useState<Household | null>(null);
   const [hhErr, setHhErr] = useState('');
   const [local, setLocal] = useState<{ state: 'idle' | 'loading' | 'done' | 'failed'; rows: ParkingQuery['rows']; error?: string }>({ state: 'idle', rows: [] });
@@ -266,7 +266,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
     onCart(items, keys.length > 0 && items.length === keys.length);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [picked, carts, chargeKeys.join(','), focusedIntake?.id]);
-  const updateIntake = useCallback((x: Intake) => setIntakes((l) => l.map((i) => (i.id === x.id ? x : i))), []);
+  const updateIntake = useCallback((x: Intake) => { setIntakes((l) => l.map((i) => (i.id === x.id ? x : i))); onIntakeChange?.(x); }, [onIntakeChange]);
   const dropIntake = useCallback((id: number) => { setIntakes((l) => l.filter((i) => i.id !== id)); setCart(`新办#${id}`, null); }, [setCart]);
   const pickedCars = cars.filter((c) => picked.includes(c.plate));
   const allOn = cars.length > 0 && cars.every((c) => picked.includes(c.plate));
@@ -345,7 +345,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
       {intakes.length ? (
         <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
           {intakes.map((i) => (
-            <NewPlateCard key={i.id} intake={i} house={house} rules={rules} targets={hh?.targets ?? []}
+            <NewPlateCard key={i.id} intake={i} house={house} rules={rules} targets={hh?.targets ?? []} defaultStaffMode={staffRegistration}
               onChange={updateIntake} onDrop={dropIntake} onCart={setCart}
               renewal={(car, label, cls, onCls) => <CarRenewal car={car} rules={rules} house={house} onCart={setCart} intakeId={i.id} title="新办" label={label} vehicleClass={cls} onClass={onCls} />} />
           ))}

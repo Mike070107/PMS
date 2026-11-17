@@ -45,8 +45,8 @@ async function openCreation(page, kind = 'paid') {
 }
 async function create(page, kind = 'paid') {
   const dialog = await openCreation(page, kind);
-  await dialog.getByRole('button', { name: '生成二维码让业主填', exact: true }).click();
-  await dialog.getByRole('img', { name: '登记二维码', exact: true }).waitFor();
+  await dialog.getByRole('button', { name: '工作人员直接登记', exact: true }).click();
+  await dialog.getByRole('img', { name: '扫码填写', exact: true }).waitFor();
   return dialog;
 }
 
@@ -68,13 +68,13 @@ test('creation in flight locks household and type and collapses double-clicks', 
     await page.goto(origin + '/vehicles');
     const dialog = await openCreation(page);
     await page.evaluate(() => { window.__waitFor = ['POST /vehicle-intakes']; });
-    await dialog.getByRole('button', { name: '生成二维码让业主填', exact: true }).evaluate(b => { b.click(); b.click(); });
+    await dialog.getByRole('button', { name: '工作人员直接登记', exact: true }).evaluate(b => { b.click(); b.click(); });
     await page.waitForFunction(() => !!window.__holds['POST /vehicle-intakes']);
     assert.equal(await dialog.getByRole('button', { name: '亲情车（免费 · 一年）', exact: true }).isDisabled(), true);
     assert.ok(await dialog.locator('.ant-select-disabled').count());
     assert.equal((await calls(page)).filter(c => c.url === '/vehicle-intakes' && c.method === 'POST').length, 1);
     await page.evaluate(() => { window.__waitFor = []; window.__release('POST /vehicle-intakes'); });
-    await dialog.getByRole('img', { name: '登记二维码', exact: true }).waitFor();
+    await dialog.getByRole('img', { name: '扫码填写', exact: true }).waitFor();
     assert.equal((await calls(page)).find(c => c.url === '/vehicle-intakes' && c.method === 'POST').data.kind, 'paid');
     assert.equal(f.errors.length, 0, f.errors.join('\n'));
   } finally { await f.close(); }
@@ -120,18 +120,13 @@ for (const width of [1440, 390]) {
       const dialog = await create(page);
       assert.equal(await dialog.getByRole('button', { name: '新办车牌（按月收费）', exact: true }).count(), 0, 'type locked after create');
       await shot(page, `vehicles-created-${width}`); await noOverflow(page);
-      await page.evaluate(() => { window.__waitFor = ['GET /vehicle-intakes/71']; });
-      await dialog.getByRole('button', { name: '去收银台收费', exact: true }).click();
-      assert.ok(page.url().endsWith('/cashier?intakeId=71'));
-      await page.getByText('正在安全定位本次登记所属住户…', { exact: true }).waitFor();
-      await shot(page, `cashier-waiting-${width}`); await noOverflow(page);
+      assert.ok(page.url().endsWith('/vehicles'), 'registration and payment stay inside Vehicles');
+      assert.equal(await dialog.getByRole('button', { name: '去收银台收费', exact: true }).count(), 0);
       assert.equal((await calls(page)).filter(c => c.url === '/business/complete').length, 0);
-      await page.waitForFunction(() => !!window.__holds['GET /vehicle-intakes/71']);
-      await page.evaluate(() => { window.__waitFor = []; window.__release('GET /vehicle-intakes/71'); });
       await page.getByText('已按房屋稳定 ID 定位授权住户。', { exact: false }).waitFor();
       await page.getByRole('button', { name: /确认收款 ·/ }).waitFor();
       assert.equal(await page.getByRole('button', { name: /确认收款 ·/ }).isDisabled(), true, 'unsubmitted registration must not enter the payment cart');
-      await page.getByRole('button', { name: '工作人员直接代填', exact: true }).click();
+      await dialog.getByRole('button', { name: '收起工作人员代填', exact: true }).waitFor();
       for (const key of '沪A12345') await page.locator('.intake-plate-keys').getByRole('button', { name: key, exact: true }).click();
       await page.getByLabel('联系手机（必填）').fill('13900000000');
       await page.getByRole('button', { name: '保存登记，继续授权', exact: true }).click();
@@ -142,8 +137,17 @@ for (const width of [1440, 390]) {
       await page.waitForFunction(() => Array.from(document.querySelectorAll('button')).some(b => b.textContent.includes('确认收款 ·') && !b.disabled));
       await shot(page, `cashier-ready-${width}`); await noOverflow(page);
       assert.equal((await calls(page)).filter(c => c.url === '/business/complete').length, 0, 'never auto-pay');
+      await page.evaluate(() => { window.__waitFor = ['POST /business/complete']; });
       await payButton.click();
+      await page.waitForFunction(() => !!window.__holds['POST /business/complete']);
+      await page.waitForFunction(() => Array.from(document.querySelectorAll('button')).some(b => b.textContent === '再登记一台' && b.disabled));
+      assert.equal(await dialog.getByRole('button', { name: '再登记一台', exact: true }).isDisabled(), true);
+      await page.keyboard.press('Escape');
+      assert.equal(await dialog.isVisible(), true, 'cannot close and lose payment result while submitting');
+      await page.evaluate(() => { window.__waitFor = []; window.__release('POST /business/complete'); });
       await page.getByText('收款已登记', { exact: true }).waitFor();
+      assert.ok(page.url().endsWith('/vehicles'), 'payment result remains in original Vehicles sheet');
+      assert.equal(await dialog.getByRole('button', { name: '换一户', exact: true }).count(), 0);
       await shot(page, `cashier-success-${width}`); await noOverflow(page);
       const log = await calls(page);
       const payload = log.find(c => c.url === '/business/complete');
@@ -156,36 +160,35 @@ for (const width of [1440, 390]) {
     } finally { await f.close(); }
   });
 
-  test(`creation cancellation retains QR and reason on failure; family uses exact detail link (${width})`, { timeout: 25000 }, async () => {
+  test(`inline family cancellation retains QR and reason on failure and never navigates (${width})`, { timeout: 25000 }, async () => {
     const f = await fixture(width); const { page, origin } = f;
     try {
       await page.goto(origin + '/vehicles');
       const dialog = await create(page, 'family');
       assert.equal(await dialog.getByRole('button', { name: '去收银台收费', exact: true }).count(), 0);
-      const cancel = dialog.getByRole('button', { name: '撤销本次登记', exact: true });
+      await dialog.getByRole('button', { name: '撤销 / 作废登记', exact: true }).click();
+      const cancel = dialog.getByRole('button', { name: '确认作废', exact: true });
       assert.equal(await cancel.isDisabled(), true);
-      await dialog.getByLabel('撤销原因', { exact: true }).fill('合成撤销原因：登记重复，保留审计');
-      assert.equal(await cancel.isDisabled(), true);
-      await dialog.getByRole('checkbox', { name: '确认撤销本次登记，原二维码将失效', exact: true }).check();
+      await dialog.getByLabel('作废原因', { exact: true }).fill('合成撤销原因：登记重复，保留审计');
+      page.on('dialog', d => d.accept());
       await page.evaluate(() => { window.__failures['POST /vehicle-intakes/71/review'] = '合成服务端拒绝：原状态已变化'; });
       await cancel.click();
       await dialog.getByText('合成服务端拒绝：原状态已变化', { exact: true }).waitFor();
-      assert.equal(await dialog.getByLabel('撤销原因', { exact: true }).inputValue(), '合成撤销原因：登记重复，保留审计');
-      assert.equal(await dialog.getByRole('img', { name: '登记二维码' }).count(), 1);
-      assert.equal(await dialog.getByRole('checkbox').isChecked(), true);
+      assert.equal(await dialog.getByLabel('作废原因', { exact: true }).inputValue(), '合成撤销原因：登记重复，保留审计');
+      assert.equal(await dialog.getByRole('img', { name: '扫码填写' }).count(), 1);
+      assert.equal(await dialog.getByRole('button', { name: /确认收款 ·/ }).isDisabled(), true, 'family intake cannot charge');
       await shot(page, `vehicles-void-error-${width}`); await noOverflow(page);
       await page.evaluate(() => { delete window.__failures['POST /vehicle-intakes/71/review']; });
       await cancel.click();
-      await dialog.getByText('已撤销，原二维码已失效。', { exact: false }).waitFor();
-      assert.equal(await dialog.getByRole('img', { name: '登记二维码' }).count(), 0);
+      await dialog.getByText('已作废', { exact: true }).first().waitFor();
+      assert.equal(await dialog.getByRole('img', { name: '扫码填写' }).count(), 0);
       const voidCalls = (await calls(page)).filter(c => c.url === '/vehicle-intakes/71/review');
       assert.equal(voidCalls.length, 2); assert.deepEqual(voidCalls[1].data, { decision: 'void', note: '合成撤销原因：登记重复，保留审计' });
       assert.equal((await calls(page)).some(c => c.method === 'DELETE'), false);
       await shot(page, `vehicles-void-success-${width}`);
-      await dialog.getByRole('button', { name: '查看/处理本次登记', exact: true }).click();
       const region = page.getByRole('region', { name: '本次登记 #71', exact: true });
       await region.getByText('已作废', { exact: true }).first().waitFor();
-      assert.ok(page.url().endsWith('/plates?intakeId=71'));
+      assert.ok(page.url().endsWith('/vehicles'), 'family cancellation stays in original dialog');
       assert.equal(f.errors.length, 0, f.errors.join('\n'));
     } finally { await f.close(); }
   });
