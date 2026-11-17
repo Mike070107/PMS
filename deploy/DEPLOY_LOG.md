@@ -7467,3 +7467,11 @@
 - 提交：091d92df fix: distinguish native stderr from failed production release commands
 - 自上次（147e4537）以来没有相关提交（重新部署）
 
+## 2026-11-17 09:49 · web · a09dedfc
+
+- 包：`pms-web-20261117-094556.tar.gz`
+- 提交：a09dedfc test(web): configure shared API adapter in apartment browser fixture
+- 自上次（091d92df）以来上线的相关提交：
+  - a09dedfc test(web): configure shared API adapter in apartment browser fixture
+  - 73dec874 refactor(web): reuse verified meter, fee and upload interfaces across portals
+
