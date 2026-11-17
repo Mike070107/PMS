@@ -17,7 +17,7 @@
 - round7补Purchase明细、MaterialPicker候选（拆并列查看/选择，已选仍可看不重复加）、PlateForm本地待上传照片（PDF/删除保留、无提交）；3入口先失败再修，累计12处实际入口1440/375触屏/桌面通过，联合12/12，tsc/diff通过。[覆盖清单](<outputs/image-preview-unification-20261117/coverage.md>)下一步维保签名/二维码及剩余专项。
 - FamilyCars/Vehicles/QrCodes/Login/NoticeTemplateSection/维保二维码逐个审计；保留扫码/下载，非图标图片查看统一。
 - 补Feedback/Stock真实入口、拖动与touch、图片失败、上传点击/拖拽/多目标粘贴回归；清理旧预览CSS前查所有使用点。
-- task100/101仍in_progress；本次发布受影响回归70/70，tsc/diff通过；当前生产实例hostname/machine-id/目录/pm2 online确认。正在提交推送main冻结输入，随后官方auto构建发布核验；未完成前不声称上线。
+- task100 rev3/101 rev6/102 rev4仍in_progress：用户授权本批已官方auto上线，退出0/205.1秒；Web2.0.20261117-1903/fb182217，sourceHash95e74055651e2ca848f2008a404ad52affae675fb706cb36d082ac7eb022d4c7，公网提交/JS哈希及deployed/web远端核对通过。70/70、tsc/正式构建/发布门禁通过；API/助手不变，现场业务未验。
 ## 环境
 - 工作区D:/00项目开发/PMS-release-simplification-20261117 main；保留历史dirty三个artifacts/release-checks/api-{expected,source,verified}.json。
 - Node=C:/Users/Administrator/.dsh/dsh-runtimes/dsh-primary-runtime/dependencies/node/bin/node.exe；pnpm同dependencies/pnpm/bin/pnpm.mjs；Python313。
