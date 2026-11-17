@@ -135,10 +135,20 @@ function ChargeTag({ status }: { status: string }) {
 }
 
 export default function MeterManagementPage() {
+  const session = useAuth();
+  return <MeterManagementWorkspace session={session} permissions={pagePerm(session.access, 'meters')} />;
+}
+
+/** 共用抄表界面；身份、权限与端内收款/上传控件由入口提供，不能跨端读取会话。 */
+export function MeterManagementWorkspace({ session, permissions, PhotoUpload = MaterialPhotosUpload, PaymentMethods = MeterPaymentMethods }: {
+  session: Pick<ReturnType<typeof useAuth>, 'user' | 'actingTenant'>;
+  permissions: Pick<ReturnType<typeof pagePerm>, 'canEdit' | 'canDelete'>;
+  PhotoUpload?: typeof MaterialPhotosUpload;
+  PaymentMethods?: typeof MeterPaymentMethods;
+}) {
   const { message } = AntdApp.useApp();
-  const { access, user, actingTenant } = useAuth();
-  const canEdit = pagePerm(access, 'meters').canEdit;
-  const canDelete = pagePerm(access, 'meters').canDelete;
+  const { user, actingTenant } = session;
+  const { canEdit, canDelete } = permissions;
 
   const [tab, setTab] = useState('records');
   const [period, setPeriod] = useState<Dayjs>(dayjs());
@@ -1290,7 +1300,7 @@ export default function MeterManagementPage() {
             <Col span={16}><Form.Item name="remark" label="备注"><Input.TextArea rows={2} maxLength={2000} /></Form.Item></Col>
             <Col span={24}>
               <Form.Item name="photoUrls" label="表具照片" extra="支持点击、拖拽、Ctrl+V 粘贴；建议拍清表号、铭牌和读数窗口">
-                <MaterialPhotosUpload max={1} />
+                <PhotoUpload max={1} />
               </Form.Item>
             </Col>
           </Row>
@@ -1531,7 +1541,7 @@ export default function MeterManagementPage() {
             <Form.Item name="amount" label="本次收款（元）" rules={[{ required: true, message: '请填收款金额' }, { type: 'number', min: 0.01, max: Math.min(payTarget.outstandingCents / 100, 1000000), message: '金额须大于0，且不能超过待收金额或100万元' }]}>
               <InputNumber min={0.01} max={payTarget.outstandingCents / 100} precision={2} style={{ width: '100%' }} suffix="元" />
             </Form.Item>
-            <Form.Item name="method" label="收款方式" rules={[{ required: true, message: '请选择收款方式' }]}><MeterPaymentMethods disabled={payBusy || payPending} /></Form.Item>
+            <Form.Item name="method" label="收款方式" rules={[{ required: true, message: '请选择收款方式' }]}><PaymentMethods disabled={payBusy || payPending} /></Form.Item>
             <Form.Item name="receiptNo" label="票据号"><Input maxLength={60} placeholder="可空" /></Form.Item>
             <Form.Item name="note" label="备注"><Input.TextArea rows={2} maxLength={500} /></Form.Item>
           </Form>

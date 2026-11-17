@@ -23,8 +23,12 @@ const owns=(object:Record<string,number>,key:string)=>Object.prototype.hasOwnPro
 const activeVersion=(template:Template,date:string)=>template.versions.filter(v=>v.effective_from<=date).sort((a,b)=>b.effective_from.localeCompare(a.effective_from)||b.version-a.version)[0];
 
 export default function FeeTemplateSettings() {
-  const {message}=App.useApp();
   const {canEdit}=usePagePerm('settings');
+  return <FeeTemplateWorkspace canEdit={canEdit} />;
+}
+
+export function FeeTemplateWorkspace({canEdit}: {canEdit:boolean}) {
+  const {message}=App.useApp();
   const [kind,setKind]=useState<Kind>('apartment');
   const [communities,setCommunities]=useState<Community[]>([]);
   const [communityId,setCommunityId]=useState<number>();

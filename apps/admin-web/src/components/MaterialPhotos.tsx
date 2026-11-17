@@ -119,6 +119,7 @@ export function MaterialPhotosUpload({
   onUploadingChange,
   max = MATERIAL_PHOTO_LIMIT,
   compact = false,
+  getToken = auth.getToken,
 }: {
   value?: string[];
   onChange?: (urls: string[]) => void;
@@ -126,6 +127,8 @@ export function MaterialPhotosUpload({
   max?: number;
   /** 富文本工具栏等紧凑场景只显示一个上传按钮，不渲染缩略图卡片。 */
   compact?: boolean;
+  /** 共用界面不共享身份状态；迁移入口必须提供自己的实时 token。 */
+  getToken?: () => string | undefined;
 }) {
   const { message } = AntdApp.useApp();
   const pasteTarget = useUploadPasteTarget();
@@ -144,7 +147,7 @@ export function MaterialPhotosUpload({
   const uploadProps: UploadProps<UploadResponse> = {
     name: 'file',
     action: `${API_BASE_URL}/upload`,
-    headers: auth.getToken() ? { Authorization: `Bearer ${auth.getToken()}` } : undefined,
+    headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : undefined,
     accept: 'image/*',
     multiple: true,
     pastable: pasteTarget.pastable,

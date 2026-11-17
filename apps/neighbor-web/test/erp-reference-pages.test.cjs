@@ -11,7 +11,7 @@ const nodes = n => !n || typeof n !== 'object' ? [] : Array.isArray(n) ? n.flatM
 function load(file, deps = {}, globals = {}) {
  const module = { exports: {} };
  const code = ts.transpileModule(read(file), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
- vm.runInNewContext(code, { module, exports: module.exports, require: id => id in deps ? deps[id] : require(id), console, ...globals });
+ vm.runInNewContext(code, { module, exports: module.exports, require: id => id in deps ? deps[id] : id.startsWith('@legacy/') ? load(path.relative(path.join(root, 'src'), path.resolve(root, '../admin-web/src', id.slice(8))) + '.tsx', deps, globals) : require(id), console, ...globals });
  return module.exports;
 }
 const hooks = values => { let i=0; return { useState: init => [i < values.length ? values[i++] : (i++, typeof init === 'function' ? init() : init), () => {}], useMemo: fn => fn(), useEffect() {}, useId: () => 'chart-test' }; };

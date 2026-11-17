@@ -22,10 +22,12 @@ function buildFixture() {
       '@/lib/auth': path.join(__dirname, 'erp-browser-auth.ts'),
       '@/lib/perm': path.join(__dirname, 'erp-browser-auth.ts'),
       '@': path.join(app, 'src'),
+      '@legacy': path.join(app, '../admin-web/src'),
       '@pms/api-client': path.join(__dirname, 'erp-browser-api.ts'),
       '@pms/shared-types': path.join(app, '../../packages/shared-types/src/index.ts'),
     },
     define: {
+      'import.meta.env.VITE_API_BASE_URL': '"/api/v1"',
       'process.env.NODE_ENV': '"development"',
       'import.meta.env.VITE_LEGACY_BASE': '""',
       'import.meta.env.BASE_URL': '"/"',

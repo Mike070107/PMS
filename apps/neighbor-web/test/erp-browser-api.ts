@@ -17,6 +17,16 @@ const DETAIL_AMOUNTS: Record<string, number> = {
 };
 
 export async function request<T>(o: any): Promise<T> {
+  // Today reads the MIS summary, not the transaction-ledger fallback. Keep this
+  // fixture on that real read contract so the existing income assertion is meaningful.
+  if (o.url === '/fees/mis/today') {
+    w.__calls.push(o);
+    return { paidCents: 2600, paidCount: 26, refundedCents: 0, paidHouses: 2, byFee: [{ feeCode: 'property', name: '物业管理费', amountCents: 2600, count: 26 }], dataAsOf: '2026-11-17T00:00:00Z' } as T;
+  }
+  if (o.url === '/fees/mis/recent-payments') {
+    w.__calls.push(o);
+    return { rows: [], total: 0, houseCount: 0 } as T;
+  }
   if (o.url === '/fees/reports/summary') {
     w.__calls.push(o);
     await new Promise((r) => setTimeout(r, 80));
