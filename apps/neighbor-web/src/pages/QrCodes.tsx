@@ -3,6 +3,7 @@ import { request } from '@pms/api-client';
 import type { BuildingQrRow } from '@pms/shared-types';
 import { legacyUrl } from '@/lib/legacy';
 import Icon from '@/components/Icon';
+import ImagePreviewButton from '@/components/ImagePreviewButton';
 import { Loading, toast } from '@/components/ui';
 
 interface Community { id: number; name: string }
@@ -83,7 +84,7 @@ export default function QrCodes() {
             return (
               <div key={r.buildingId} className="card" style={{ padding: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                 <div style={{ width: 150, height: 150, borderRadius: 10, background: 'var(--bg2, #f4f6f9)', display: 'grid', placeItems: 'center', overflow: 'hidden' }}>
-                  {img ? <img src={img} alt={r.buildingText} style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <span className="muted" style={{ fontSize: 13 }}><Icon name="qr" size={28} /><br />{r.qr?.lastError ? '生成失败' : '未出码'}</span>}
+                  {img ? <ImagePreviewButton fileUrl={img} fileName={r.buildingText} style={{ width: '100%', height: '100%' }}><img src={img} alt={r.buildingText} style={{ width: '100%', height: '100%', objectFit: 'contain' }} /></ImagePreviewButton> : <span className="muted" style={{ fontSize: 13 }}><Icon name="qr" size={28} /><br />{r.qr?.lastError ? '生成失败' : '未出码'}</span>}
                 </div>
                 <b style={{ fontSize: 14.5, textAlign: 'center' }}>{r.buildingText}</b>
                 <div style={{ display: 'flex', gap: 6 }}>

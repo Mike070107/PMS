@@ -458,6 +458,13 @@ textarea.in{height:auto;padding:9px 12px;min-height:72px;resize:vertical}
 .cartItem .xi{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;flex:none}
 .cartItem .cx{flex:1;min-width:0} .cartItem .cx b{font-size:14.5px;font-weight:600} .cartItem .cx small{display:block;color:var(--ink3);font-size:12.5px;margin-top:1px}
 .cartItem .cv{font-weight:700;font-size:15px;white-space:nowrap}
+/* 停车摘要独占整行，避免加大日期后与右侧金额争宽。 */
+.parkingCartItem{display:grid;grid-template-columns:30px minmax(0,1fr) auto;row-gap:4px}
+.parkingCartItem .cx{display:contents}
+.parkingCartItem .cx > b{grid-column:2;min-width:0}
+.parkingCartItem .cv{grid-column:3;grid-row:1}
+.parkingCartItem .cx .parkingCartSummary{grid-column:1 / -1;grid-row:2;font-size:16px;font-weight:600;line-height:1.5;color:var(--ink2);overflow-wrap:anywhere}
+.parkingCartSummary > span{display:block}
 .cartItem .rm{color:var(--ink4);padding:2px} .cartItem .rm:hover{color:var(--dang)}
 .cartItem.free .cv{color:var(--ok)}
 .cartEmpty{padding:44px 24px;text-align:center;color:var(--ink3)}

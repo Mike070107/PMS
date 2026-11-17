@@ -8,6 +8,7 @@ import { useAddressTree } from '@/lib/address-tree';
 import { Btn, Card, ErrorNote, Loading, Sheet, toast } from '@/components/ui';
 import HousePicker, { type PickedHouse } from '@/components/HousePicker';
 import Icon from '@/components/Icon';
+import ImagePreviewButton from '@/components/ImagePreviewButton';
 import { field, vehicleIdentity, identityTone, deliyunVehicleIdentity, GARAGES, garageState, groupByPlate, normPlate } from '@/lib/parking-fields';
 import RenewSheet from '@/components/vehicle-ops/RenewSheet';
 import OwnerBusinessContact from '@/components/OwnerBusinessContact';
@@ -213,7 +214,7 @@ export default function Vehicles() {
               <>
                 <div className="note" style={{ marginBottom: 12 }}>本次登记 #{newQr.id} · {newQr.kind === 'paid' ? '付费新车' : '亲情车（免费）'}。{newQr.status === 'void' ? '已撤销，原二维码已失效。' : '让业主微信扫码填车牌、手机号并上传资料；按类型在登记详情转类 / 撤销。'}</div>
                 {newQr.status !== 'void' ? <>
-                {newQr.qr?.dataUrl ? <div style={{ textAlign: 'center' }}><img src={newQr.qr.dataUrl} alt="登记二维码" style={{ width: 240, maxWidth: '100%', height: 'auto' }} /></div> : <ErrorNote>登记单已创建，但未获得二维码图片，请勿重复登记。</ErrorNote>}
+                {newQr.qr?.dataUrl ? <div style={{ textAlign: 'center' }}><ImagePreviewButton fileUrl={newQr.qr.dataUrl} fileName="登记二维码" style={{ maxWidth: '100%' }}><img src={newQr.qr.dataUrl} alt="登记二维码" style={{ width: 240, maxWidth: '100%', height: 'auto' }} /></ImagePreviewButton></div> : <ErrorNote>登记单已创建，但未获得二维码图片，请勿重复登记。</ErrorNote>}
                 </> : null}
                 {newErr ? <ErrorNote>{newErr}</ErrorNote> : null}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 14 }}>

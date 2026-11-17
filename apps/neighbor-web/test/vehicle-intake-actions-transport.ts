@@ -9,6 +9,7 @@ const w = window as any;
 w.__calls = []; w.__failKind = false; w.__failGarage = false; w.__holdKind = false; w.__holdPoll = false; w.__failQuery = false; w.__rejectVoid = '';
 w.__current = () => structuredClone(current);
 const record = (url: string, method: string, data: any) => w.__calls.push({ url, method, data });
+export const uploadBlobTo = async () => { throw Error('附件上传不在本fixture范围'); };
 export const accessCardIssuance = {
   async createParkingQuery(plate: string) { record('/access-card-issuance/parking-queries', 'POST', { plate }); if (w.__failQuery) throw Error('合成：旧库查重失败，不能通过'); return { id: 901, status: 'completed' }; },
   async parkingQuery(id: number) { record('/access-card-issuance/parking-queries/' + id, 'GET', {}); return { id, status: 'completed' }; },
@@ -16,6 +17,7 @@ export const accessCardIssuance = {
 export async function request({ url, method = 'GET', data = {} }: any) {
   record(url, method, data);
   if (url === '/business/parking-targets') return targets;
+  if (url === '/business/parking-spaces') return { rows: [] };
   if (url.startsWith('/vehicle-intake-form/')) { if (current.status === 'void') throw Error('登记已撤销作废，二维码已失效'); return structuredClone(current); }
   if (method === 'GET' && w.__holdPoll) { const stale = structuredClone(current); await new Promise(resolve => { w.__releasePoll = resolve; }); return stale; }
   if (url.endsWith('/kind')) {

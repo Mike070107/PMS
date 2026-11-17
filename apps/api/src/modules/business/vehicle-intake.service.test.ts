@@ -23,6 +23,7 @@ function repo<T extends { id?: number }>(rows: T[]) {
       const qb: any = {
         update: () => qb, set: (p: any) => { patch = p; return qb; },
         where: (_sql: string, params: any) => { cond = params; return qb; },
+        getOne: async () => rows.find((x: any) => x.tenantId === cond.tenantId && x.plate === cond.plate && x.id !== cond.id && x.status !== cond.status) ?? null,
         execute: async () => {
           const allowed = cond.st ? (Array.isArray(cond.st) ? cond.st : [cond.st]) : cond.ss;
           const row: any = rows.find((x: any) => x.id === cond.id && (allowed.includes(x.status ?? x.externalSyncStatus)));
@@ -45,6 +46,7 @@ function setup(mode: 'queued' | 'mocked' = 'queued') {
   // Lock/race/rollback semantics are covered by vehicle-intake-kind-safety.test.ts.
   const repositories = new Map<any, any>([[VehicleIntake, intakes], [BusinessTransaction, txns], [BusinessLog, logs]]);
   const manager: any = {
+    query: async () => [],
     save: async () => undefined, create: (_entity: any, value: any) => value,
     getRepository: (entity: any) => { if (!repositories.has(entity)) repositories.set(entity, repo<any>([])); return repositories.get(entity); },
     transaction: async (work: any) => work(manager),
@@ -73,13 +75,16 @@ const tokenOf = (url: string) => url.split('/').pop()!;
 
 test('paid intake: owner fills plate on phone, payment waits for docs, approval releases it into execution', async () => {
   const { service, intakes, txns, user, kicked } = setup();
-  const created = await service.create({ houseId: 5, kind: 'paid', garages: ['local:phase2_main_garage'], formBase: 'https://prsznh.cn/beta/m/plate' }, user);
+  const created = await service.create({ houseId: 5, kind: 'paid', garages: ['local:phase2_parking'], formBase: 'https://prsznh.cn/beta/m/plate' }, user);
   assert.equal(created.status, 'waiting');
   assert.match(created.qr.url, /^https:\/\/prsznh\.cn\/beta\/m\/plate\/[A-Za-z0-9_-]{20,}$/);
   assert.equal(created.houseLabel, '枫桦景苑二期/228弄3号502');
   const token = tokenOf(created.qr.url);
 
-  // 先收款：资料未齐 → 流水挂「待业主资料」
+  // 新版create必须先审核；显式模拟上线前无版本标记的历史单以复核待资料兼容。
+  await assert.rejects(() => service.claimForPayment(created.id, 5, user), /须先提交/);
+  intakes.rows[0].log.forEach((entry: any) => delete entry.registrationVersion);
+  // 历史先收款：资料未齐 → 流水挂「待业主资料」
   const claim = await service.claimForPayment(created.id, 5, user);
   assert.equal(claim.approved, false);
   const txn = await txns.save({ tenantId: 1, txnNo: 'P1', amountCents: 45000, externalSyncStatus: 'awaiting_docs', snapshot: { parking: { newVehicle: true } } });
@@ -89,7 +94,7 @@ test('paid intake: owner fills plate on phone, payment waits for docs, approval 
   const opened = await service.publicSession(token);
   assert.equal(opened.ownerName, '张**');
   await assert.rejects(() => service.publicSubmit(token, [file()], { plate: '豫G·QN07', contactName: '李四', contactPhone: '13900000000' }), /车牌格式/);
-  await assert.rejects(() => service.publicSubmit(token, [], { plate: '豫GQ3N07', contactName: '李四', contactPhone: '13900000000' }), /上传资料/);
+  await assert.rejects(() => service.publicSubmit(token, [], { plate: '豫GQ3N07', contactName: '李四', contactPhone: '123' }), /手机号/);
   const sent = await service.publicSubmit(token, [file()], { plate: '豫g q3n07', contactName: '李四', contactPhone: '139-0000-0000' });
   assert.equal(sent.status, 'submitted');
   assert.equal(sent.contactPhone, '139****0000');
@@ -107,7 +112,7 @@ test('paid intake: owner fills plate on phone, payment waits for docs, approval 
 
 test('reupload keeps the same QR usable; regenerating invalidates the old one', async () => {
   const { service, user } = setup();
-  const created = await service.create({ houseId: 5, kind: 'paid', garages: ['local:phase2_main_garage'], formBase: 'https://prsznh.cn/beta/m/plate' }, user);
+  const created = await service.create({ houseId: 5, kind: 'paid', garages: ['local:phase2_parking'], formBase: 'https://prsznh.cn/beta/m/plate' }, user);
   const token = tokenOf(created.qr.url);
   await service.publicSubmit(token, [file()], { plate: '豫GQ3N07', contactName: '李四', contactPhone: '13900000000' });
   await assert.rejects(() => service.review(created.id, { decision: 'reupload' }, user), /补什么/);
@@ -148,8 +153,9 @@ test('family intake: relation required, needs duplicate check, converts to a fam
 });
 
 test('voiding a paid intake after payment hands the money to manual handling', async () => {
-  const { service, txns, user } = setup();
-  const created = await service.create({ houseId: 5, kind: 'paid', garages: ['local:phase2_main_garage'], formBase: 'https://prsznh.cn/beta/m/plate' }, user);
+  const { service, intakes, txns, user } = setup();
+  const created = await service.create({ houseId: 5, kind: 'paid', garages: ['local:phase2_parking'], formBase: 'https://prsznh.cn/beta/m/plate' }, user);
+  intakes.rows[0].log.forEach((entry: any) => delete entry.registrationVersion); // 历史已收费待资料单
   const claim = await service.claimForPayment(created.id, 5, user);
   const txn = await txns.save({ tenantId: 1, txnNo: 'P2', amountCents: 15000, externalSyncStatus: 'awaiting_docs', snapshot: {} });
   await service.attachPayment(claim.row, txn, user);

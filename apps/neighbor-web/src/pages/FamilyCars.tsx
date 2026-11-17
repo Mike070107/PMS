@@ -217,8 +217,8 @@ function FamilyList({ kw }: { kw: string }) {
         </div>
       ) : null}
       {qr ? (
-        <div className="card np-card" style={{ marginBottom: 12, display: 'flex', gap: 16, alignItems: 'center' }}>
-          <img src={qr.dataUrl} alt="" style={{ width: 160, height: 160 }} />
+        <div className="card np-card" style={{ marginBottom: 12, display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center' }}>
+          <ImagePreviewButton fileUrl={qr.dataUrl} fileName="亲情车续登二维码" style={{ flexShrink: 0 }}><img src={qr.dataUrl} alt="亲情车续登二维码" style={{ width: 160, height: 160 }} /></ImagePreviewButton>
           <div><b>{qr.plate} 续登：请业主扫码上传今年的资料</b><div className="muted">有效至 {formatBeijingDateTime(qr.expiresAt, 'HH:mm')}（1 小时）· 业主可拍下二维码回家再扫</div>
             <button className="btn sm" style={{ marginTop: 8 }} onClick={() => setQr(null)}>收起</button></div>
         </div>

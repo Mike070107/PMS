@@ -37,6 +37,7 @@ export default function PlateForm() {
   const [msg, setMsg] = useState('');
   const pick = useRef<HTMLInputElement>(null);
   const shoot = useRef<HTMLInputElement>(null);
+  const allocatedUrls = useRef(new Set<string>());
 
   useEffect(() => {
     document.title = '车辆登记';
@@ -47,14 +48,27 @@ export default function PlateForm() {
       })
       .catch((e) => setErr(e instanceof Error ? e.message : '链接无效'));
   }, [token]);
-  useEffect(() => () => picks.forEach((p) => URL.revokeObjectURL(p.url)), []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const kept = new Set(picks.map((p) => p.url));
+    allocatedUrls.current.forEach((url) => {
+      if (!kept.has(url)) { URL.revokeObjectURL(url); allocatedUrls.current.delete(url); }
+    });
+  }, [picks]);
+  useEffect(() => () => {
+    allocatedUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    allocatedUrls.current.clear();
+  }, []);
 
   const add = (list: FileList | null) => {
     if (!list) return;
-    const next = Array.from(list).map((file) => ({ file, url: URL.createObjectURL(file), isImg: isImage(file) }));
+    const next = Array.from(list).slice(0, Math.max(0, 10 - picks.length)).map((file) => {
+      const url = URL.createObjectURL(file);
+      allocatedUrls.current.add(url);
+      return { file, url, isImg: isImage(file) };
+    });
     setPicks((p) => [...p, ...next].slice(0, 10));
   };
-  const remove = (i: number) => setPicks((p) => { URL.revokeObjectURL(p[i].url); return p.filter((_, j) => j !== i); });
+  const remove = (i: number) => setPicks((p) => p.filter((_, j) => j !== i));
 
   const mode = !PROVINCES.includes(plate.slice(0, 1)) ? 'province' : plate.length === 1 ? 'letter' : 'number';
   const keys = mode === 'province' ? PROVINCES : mode === 'letter' ? LETTERS : ALNUM;
@@ -63,7 +77,7 @@ export default function PlateForm() {
   const phoneOk = /^1\d{10}$/.test(phone);
   const rel = relation === OTHER ? otherText.trim() : relation;
   const keptCount = s?.status === 'reupload' && keep ? s.fileCount : 0;
-  const ready = plateOk && phoneOk && (s?.kind !== 'family' || !!rel) && picks.length + keptCount > 0;
+  const ready = plateOk && phoneOk && (s?.kind !== 'family' || (!!rel && picks.length + keptCount > 0));
 
   const submit = async () => {
     if (!ready || busy) return;
@@ -144,7 +158,7 @@ export default function PlateForm() {
           </>
         ) : null}
 
-        <label className="pf-label">上传资料</label>
+        <label className="pf-label">上传资料（{s.kind === 'paid' ? '选填，也可不上传' : '亲情车须提供关系证明'}）</label>
         <p className="pf-muted">{s.kind === 'family' ? '行驶证、车主身份证、与业主关系证明（户口本 / 结婚证等）' : '行驶证（正副页）、车主身份证或驾驶证'}，可多张，最多 10 张</p>
         {s.status === 'reupload' && s.fileCount ? <label className="pf-keep"><input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />保留上次上传的 {s.fileCount} 张</label> : null}
         <div className="pf-files">

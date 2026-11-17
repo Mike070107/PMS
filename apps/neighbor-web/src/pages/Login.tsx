@@ -6,6 +6,7 @@ import { auth } from '@/lib/auth';
 import { apiBaseURL } from '@/lib/api';
 import { wechatLaunchHref } from '@/lib/wechatLaunch';
 import Icon from '@/components/Icon';
+import ImagePreviewButton from '@/components/ImagePreviewButton';
 import { toast } from '@/components/ui';
 
 type Mode = 'qr' | 'pwd';
@@ -248,7 +249,7 @@ function QrPanel({ onSuccess }: { onSuccess: (t: string, u: AdminLoginResp['user
       <div style={{ position: 'relative', width: 196, height: 196, margin: '0 auto', display: 'grid', placeItems: 'center', border: '1px solid var(--line)', borderRadius: 14, overflow: 'hidden', background: 'var(--sunken)' }}>
         {loading ? <span className="muted">生成中…</span> : (
           <>
-            <img src={qrImage} alt="微信扫码登录" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: dead ? 'blur(3px)' : undefined }} />
+            {!dead && qrImage ? <ImagePreviewButton fileUrl={qrImage} fileName="微信扫码登录" style={{ width: '100%', height: '100%' }}><img src={qrImage} alt="微信扫码登录" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /></ImagePreviewButton> : <img src={qrImage} alt="微信扫码登录" style={{ width: '100%', height: '100%', objectFit: 'contain', filter: dead ? 'blur(3px)' : undefined }} />}
             {dead ? (
               <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,.82)', display: 'grid', placeItems: 'center' }}>
                 <button className="btn p" onClick={() => void load()}><Icon name="refresh" size={18} />刷新二维码</button>

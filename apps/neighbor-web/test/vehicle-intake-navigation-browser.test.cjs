@@ -10,7 +10,7 @@ const evidence = path.resolve(app, '../../outputs/vehicle-intake-navigation-2026
 const esbuild = createRequire(require.resolve('vite'))('esbuild');
 let built;
 async function fixture(width = 1440) {
-  built ||= await esbuild.build({ entryPoints: [path.join(__dirname, 'vehicle-intake-navigation-fixture.tsx')], bundle: true, write: false, format: 'iife', jsx: 'automatic', outfile: 'fixture.js', alias: { '@': path.join(app, 'src'), '@pms/api-client': path.join(__dirname, 'vehicle-intake-navigation-transport.ts'), '@pms/shared-types': path.resolve(app, '../../packages/shared-types/src/index.ts') }, define: { 'import.meta.env.BASE_URL': '"/"', 'import.meta.env.VITE_LEGACY_BASE': '""', 'process.env.NODE_ENV': '"development"' }, plugins: [{ name: 'only-auth-and-permission', setup(build) {
+  built ||= await esbuild.build({ entryPoints: [path.join(__dirname, 'vehicle-intake-navigation-fixture.tsx')], bundle: true, write: false, format: 'iife', jsx: 'automatic', outfile: 'fixture.js', alias: { '@': path.join(app, 'src'), '@pms/api-client': path.join(__dirname, 'vehicle-intake-navigation-transport.ts'), '@pms/shared-types': path.resolve(app, '../../packages/shared-types/src/index.ts') }, define: { 'import.meta.env.VITE_API_BASE_URL': '"/api/v1"', 'import.meta.env.BASE_URL': '"/"', 'import.meta.env.VITE_LEGACY_BASE': '""', 'process.env.NODE_ENV': '"development"' }, plugins: [{ name: 'only-auth-and-permission', setup(build) {
     build.onResolve({ filter: /^@\/lib\/(auth|perm)$/ }, a => ({ path: a.path, namespace: 'auth-fixture' }));
     build.onLoad({ filter: /.*/, namespace: 'auth-fixture' }, a => ({ contents: a.path.endsWith('/perm') ? 'export const can=()=>true;' : `import {session} from '${path.join(__dirname, 'vehicle-intake-navigation-transport.ts').replace(/\\/g, '/')}';export const useSession=()=>session;`, loader: 'js', resolveDir: app }));
   } }] });
@@ -84,6 +84,7 @@ test('payment preflight rejects a registration changed to paid or family after n
   const f = await fixture(); const { page, origin } = f;
   try {
     await page.goto(origin + '/vehicles');
+    await page.evaluate(() => { Object.assign(window.__intakes[61], { status: 'approved', plate: '沪A12345', submittedAt: '2026-11-17T09:00:00Z', reviewedAt: '2026-11-17T09:01:00Z' }); });
     await navigate(page, '/cashier?intakeId=61');
     await page.getByRole('button', { name: '现金', exact: true }).click();
     await page.waitForFunction(() => Array.from(document.querySelectorAll('button')).some(b => b.textContent.includes('确认收款 ·') && !b.disabled));
@@ -99,6 +100,7 @@ test('payment preflight rejects a registration changed to paid or family after n
     assert.equal((await calls(page)).filter(c => c.url === '/business/complete').length, 1, 'preflight must stop a second payment attempt');
     await navigate(page, '/cashier');
     await page.evaluate(() => { window.__intakes[61].transaction = null; });
+    await page.evaluate(() => { Object.assign(window.__intakes[61], { status: 'approved', plate: '沪A12345', submittedAt: '2026-11-17T09:00:00Z', reviewedAt: '2026-11-17T09:01:00Z' }); });
     await navigate(page, '/cashier?intakeId=61');
     await page.getByRole('button', { name: '现金', exact: true }).click();
     await page.waitForFunction(() => Array.from(document.querySelectorAll('button')).some(b => b.textContent.includes('确认收款 ·') && !b.disabled));
@@ -128,6 +130,12 @@ for (const width of [1440, 390]) {
       await page.evaluate(() => { window.__waitFor = []; window.__release('GET /vehicle-intakes/71'); });
       await page.getByText('已按房屋稳定 ID 定位授权住户。', { exact: false }).waitFor();
       await page.getByRole('button', { name: /确认收款 ·/ }).waitFor();
+      assert.equal(await page.getByRole('button', { name: /确认收款 ·/ }).isDisabled(), true, 'unsubmitted registration must not enter the payment cart');
+      await page.getByRole('button', { name: '工作人员直接代填', exact: true }).click();
+      for (const key of '沪A12345') await page.locator('.intake-plate-keys').getByRole('button', { name: key, exact: true }).click();
+      await page.getByLabel('联系手机（必填）').fill('13900000000');
+      await page.getByRole('button', { name: '保存登记，继续授权', exact: true }).click();
+      await page.getByRole('button', { name: '资料无误，通过', exact: true }).click();
       await page.waitForFunction(() => window.__calls.some(c => c.url === '/business/estimate'));
       const payButton = page.getByRole('button', { name: /确认收款 ·/ });
       await page.getByRole('button', { name: '现金', exact: true }).click();

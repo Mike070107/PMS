@@ -204,8 +204,8 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
       if (hh && !hh.localDatabases.includes(db)) continue;
       const f = row.fields as Record<string, unknown>;
       const owner = field(f, /^owner__owner_name$/i) || field(f, /owner_?name|room|addr/i) || '';
-      // 房号不一致的行：若是按车牌单独查到的，保留并标注（旧页显示「一期、二期资料不一致」）
-      if (!sameRoom(owner, hh?.room || roomTermOf(house)) && !plateRows.includes(row)) continue;
+      // 车牌只是查找线索，不是跨住户收费授权；两路结果都必须属于当前所选住户。
+      if (!sameRoom(owner, roomTermOf(house))) continue;
       const p = field(f, /^p_plate$/i) || field(f, /plate|carno/i);
       if (!p) continue;
       const note = field(f, /^p_note$/i);

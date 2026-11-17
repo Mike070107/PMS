@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { request } from '@pms/api-client';
 import Icon from '@/components/Icon';
+import ImagePreviewButton from '@/components/ImagePreviewButton';
 import { ErrorNote, Loading, toast } from '@/components/ui';
 import { renderNoticeDocument, type Notice, type NoticeTemplate } from '@/lib/residential-bills';
 import { uploadImage } from '@/lib/upload';
@@ -81,7 +82,7 @@ function QrImageUpload({ value, disabled, onChange }: { value: string; disabled:
           onDragLeave={() => setOver(false)}
           onDrop={(e) => { e.preventDefault(); setOver(false); pick(imageFiles(e.dataTransfer)); }}
         >
-          <img src={value} alt="缴费二维码预览" style={{ objectFit: 'contain', background: '#fff' }} />
+          <ImagePreviewButton fileUrl={value} fileName="缴费二维码" style={{ width: '100%', height: '100%' }}><img src={value} alt="缴费二维码预览" style={{ objectFit: 'contain', background: '#fff' }} /></ImagePreviewButton>
         </div>
       ) : disabled ? (
         <div className="photo-drop" style={{ width: 160, height: 120, cursor: 'default' }}>

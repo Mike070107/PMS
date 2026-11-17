@@ -50,6 +50,7 @@ export default function FeedbackDialog({ open, onClose, defaultType = 'suggestio
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const previewUrls = useRef(new Set<string>());
   const images = attachments.filter((item) => item.preview);
 
   useEffect(() => {
@@ -62,7 +63,16 @@ export default function FeedbackDialog({ open, onClose, defaultType = 'suggestio
     setError('');
     setPreviewIndex(null);
   }, [open, defaultType]);
-  useEffect(() => () => { attachments.forEach((item) => { if (item.preview) URL.revokeObjectURL(item.preview); }); }, [attachments]);
+  // An attachment update must not revoke URLs still used by other thumbnails/the viewer.
+  useEffect(() => {
+    const next = new Set(attachments.flatMap((item) => item.preview ? [item.preview] : []));
+    previewUrls.current.forEach((url) => { if (!next.has(url)) URL.revokeObjectURL(url); });
+    previewUrls.current = next;
+  }, [attachments]);
+  useEffect(() => () => {
+    previewUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    previewUrls.current.clear();
+  }, []);
   // 高度自适应：文字多时变高，最高 240px 后内部滚动
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -79,6 +89,7 @@ export default function FeedbackDialog({ open, onClose, defaultType = 'suggestio
     setIncludeErrors(next === 'error');
   };
   const addFiles = (files: FileList | File[]) => {
+    if (busy) return;
     const incoming = Array.from(files);
     if (!incoming.length) return;
     const room = MAX_FILES - attachments.length;
@@ -101,11 +112,7 @@ export default function FeedbackDialog({ open, onClose, defaultType = 'suggestio
     setAttachments((prev) => [...prev, ...accepted]);
   };
   const removeAttachment = (id: string) => {
-    setAttachments((prev) => prev.flatMap((item) => {
-      if (item.id !== id) return [item];
-      if (item.preview) URL.revokeObjectURL(item.preview);
-      return [];
-    }));
+    setAttachments((prev) => prev.filter((item) => item.id !== id));
     setPreviewIndex(null);
     setError((current) => current.startsWith('「') || current.startsWith('有附件') ? '' : current);
   };
@@ -137,9 +144,10 @@ export default function FeedbackDialog({ open, onClose, defaultType = 'suggestio
         if (item.url) { urls.push(item.url); continue; }
         const url = await uploadImage(item.file);
         item.url = url;
+        // Keep each completed upload even when a later attachment fails.
+        setAttachments((current) => current.map((entry) => entry.id === item.id ? { ...entry, url } : entry));
         urls.push(url);
       }
-      setAttachments(next);
       const payload: Record<string, unknown> = {
         kind: type,
         content: text,

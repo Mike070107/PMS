@@ -48,6 +48,19 @@ export class VehicleIntakeController {
     return this.service.regenerate(id, body?.formBase, user, access);
   }
 
+  @Post(':id/staff-submit')
+  @RequirePermission([...VIEW], 'edit')
+  staffSubmit(@Param('id', ParseIntPipe) id: number, @Body() body: Record<string, unknown>, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.service.staffSubmit(id, body, user, access);
+  }
+
+  @Post(':id/files')
+  @RequirePermission([...VIEW], 'edit')
+  @UseInterceptors(FilesInterceptor('file', 10, { limits: { fileSize: 20 * 1024 * 1024 } }))
+  staffUpload(@Param('id', ParseIntPipe) id: number, @UploadedFiles() files: Express.Multer.File[], @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.service.staffUpload(id, files, user, access);
+  }
+
   @Post(':id/kind')
   @RequirePermission('business', 'edit')
   setKind(@Param('id', ParseIntPipe) id: number, @Body() body: ChangeIntakeKindInput, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {

@@ -10,7 +10,7 @@ import { InboundForm, InboundList, TransferForm, TransferList } from '@/componen
 import { can } from '@/lib/perm';
 import { Btn, Card, ErrorNote, Loading, Sheet, toast } from '@/components/ui';
 import Icon from '@/components/Icon';
-import ImagePreview from '@/components/ImagePreview';
+import ImagePreviewButton from '@/components/ImagePreviewButton';
 import { dayjs, money } from '@/lib/format';
 import ToneIcon from '@/components/ToneIcon';
 
@@ -50,7 +50,6 @@ export default function Stock() {
   const [err, setErr] = useState('');
   const [peek, setPeek] = useState<StockView | null>(null);
   const [movements, setMovements] = useState<StockMovementView[] | null>(null);
-  const [photos, setPhotos] = useState<{ name: string; urls: string[]; index: number } | null>(null);
   const [tab, setTab] = useState<'stock' | 'inbound' | 'transfer'>('stock');
   const [form, setForm] = useState<'inbound' | 'transfer' | null>(null);
   const [opsKey, setOpsKey] = useState(0);
@@ -233,13 +232,11 @@ export default function Stock() {
               const locTitle = locations.map((loc) => locLabel(loc) + '×' + locQty(loc)).join(' / ') || s.locationLabel || '';
               return (
                 <tr key={s.id} className="row" onClick={() => void openPeek(s)}>
-                  <td onClick={(e) => {
-                    e.stopPropagation();
-                    const urls = PHOTO_OF(m);
-                    if (urls.length) setPhotos({ name: m?.name || '', urls, index: 0 });
-                  }}>
+                  <td onClick={(e) => e.stopPropagation()}>
                     {PHOTO_OF(m).length ? (
-                      <img src={PHOTO_OF(m)[0]} alt={m?.name || ''} className="stock-thumb" />
+                      <ImagePreviewButton fileUrl={PHOTO_OF(m)[0]} fileName={m?.name || '材料照片'} files={PHOTO_OF(m).map((fileUrl, index) => ({ fileUrl, fileName: `${m?.name || '材料照片'} ${index + 1}` }))}>
+                        <img src={PHOTO_OF(m)[0]} alt={m?.name || ''} className="stock-thumb" />
+                      </ImagePreviewButton>
                     ) : (
                       <span className="stock-thumb is-empty"><Icon name="box" size={22} /></span>
                     )}
@@ -291,10 +288,10 @@ export default function Stock() {
                 <div className="sec-t">材料实物照片</div>
                 <div className="photos" style={{ marginBottom: 16 }}>
                   {PHOTO_OF(materialOf(peek.materialId)).map((url, index) => (
-                    <button key={url} type="button" style={{ padding: 0, border: 0, background: 'none', cursor: 'zoom-in' }}
-                      onClick={() => setPhotos({ name: materialOf(peek.materialId)?.name || '', urls: PHOTO_OF(materialOf(peek.materialId)), index })}>
-                      <i style={{ backgroundImage: `url(${url})`, backgroundSize: 'cover', backgroundPosition: 'center', width: 96, height: 96, borderRadius: 9, display: 'block' }} />
-                    </button>
+                    <ImagePreviewButton key={url} fileUrl={url} fileName={`${materialOf(peek.materialId)?.name || '材料照片'} ${index + 1}`}
+                      files={PHOTO_OF(materialOf(peek.materialId)).map((fileUrl, i) => ({ fileUrl, fileName: `${materialOf(peek.materialId)?.name || '材料照片'} ${i + 1}` }))}>
+                      <i aria-hidden="true" style={{ backgroundImage: `url(${url})`, backgroundSize: 'cover', backgroundPosition: 'center', width: 96, height: 96, borderRadius: 9, display: 'block' }} />
+                    </ImagePreviewButton>
                   ))}
                 </div>
               </>
@@ -330,9 +327,6 @@ export default function Stock() {
         ) : null}
       </Sheet>
       <WarehouseManager open={warehouseOpen} onClose={() => setWarehouseOpen(false)} warehouses={warehouses} canEdit={canEdit} onChanged={() => void load()} />
-      {photos ? (
-        <ImagePreview files={photos.urls.map(fileUrl => ({ fileUrl, fileName: photos.name }))} initialIndex={photos.index} title={photos.name} onClose={() => setPhotos(null)} />
-      ) : null}
     </>
   );
 }

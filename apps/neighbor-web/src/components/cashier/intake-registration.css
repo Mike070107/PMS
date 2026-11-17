@@ -1,0 +1,13 @@
+.intake-plate-picker{border:1px solid var(--line);border-radius:10px;padding:12px;margin:0 0 12px;min-width:0}
+.intake-plate-picker legend{font-size:14px;font-weight:600}
+.intake-plate-slots{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:4px;margin-bottom:10px;max-width:480px}
+.intake-plate-slots button,.intake-plate-keys button{min-height:44px;border:1px solid var(--line);border-radius:6px;background:var(--paper,#fff);color:var(--ink);cursor:pointer;font-size:16px;transition:background .15s}
+.intake-plate-slots button[aria-pressed=true]{border-color:var(--acc);background:var(--acc-bg,#e6f5f2);font-weight:700}
+.intake-plate-keys{display:grid;grid-template-columns:repeat(auto-fit,minmax(44px,1fr));gap:8px;max-width:560px}
+.intake-plate-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:10px}
+.intake-upload{padding:12px;border:1px dashed var(--line);border-radius:8px;margin:10px 0;outline-offset:3px}
+.intake-upload:focus{outline:2px solid var(--acc)}
+.intake-upload p{margin:6px 0;color:var(--ink2);font-size:13px}
+.intake-registration-form{min-width:0;margin-bottom:16px}
+@media(max-width:600px){.intake-plate-picker{padding:8px}.intake-plate-slots{gap:2px}.intake-plate-keys{gap:6px;grid-template-columns:repeat(5,minmax(0,1fr))}.intake-plate-picker legend{font-size:13px}}
+@media(prefers-reduced-motion:reduce){.intake-plate-picker button{transition:none}}

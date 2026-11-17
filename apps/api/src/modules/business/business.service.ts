@@ -869,6 +869,13 @@ export class BusinessService {
         updatedBy: operatorId,
       });
     } else {
+      // 续费不能隐式变更车辆归属；换户须走独立的档案核对流程。
+      if (dto.plateNo && normPlate(vehicle.plateNo) !== normPlate(dto.plateNo)) {
+        throw new BadRequestException('车辆记录与提交车牌不一致，请重新查询后办理');
+      }
+      if (vehicle.houseId != null && vehicle.houseId !== dto.houseId) {
+        throw new BadRequestException('该车已关联其他住户房号，不能在当前住户下续费；请先核对车辆档案');
+      }
       vehicle.houseId = dto.houseId;
       vehicle.ownerId = dto.ownerId ?? vehicle.ownerId;
       vehicle.validUntil = validUntil;

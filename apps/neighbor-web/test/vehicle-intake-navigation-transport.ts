@@ -14,11 +14,13 @@ w.__intakes = { 61: seed(), 62: seed(62, { houseId: 502, plate: '浙ADD422', sta
 w.__failures ||= {};
 w.__waitFor ||= [];
 async function record(o: any) { w.__calls.push(structuredClone(o)); const key = `${o.method || 'GET'} ${o.url}`; if (w.__waitFor.includes(key)) await new Promise<void>(r => { w.__holds[key] = r; }); if (w.__failures[key]) throw Error(w.__failures[key]); }
+export const uploadBlobTo = async () => { throw Error('附件上传不在本fixture范围'); };
 export async function request(o: any): Promise<any> {
   await record(o);
   const d = o.data || {};
   if (o.url === '/business/rules') return [{ id: 90, communityId: 1, serviceType: 'parking_monthly', name: '住户车-1', enabled: true, unitPriceCents: 15000, config: { priceMode: 'monthly', monthlyPriceCents: 15000, vehicleClass: '住户车-1', parkingTargets: ['phase1'], tiers: [{ months: 1, amountCents: 15000 }] } }];
   if (o.url === '/business/parking-targets') return targets;
+  if (o.url === '/business/parking-spaces') return { rows: [] };
   if (o.url === '/business/household-parking') return { room: '合成', roomTerm: '198/8/901', targets, localDatabases: [], deliyun: [] };
   if (o.url === '/business/plate-tags/list') return { counts: {} };
   if (o.url === '/business/plate-tags') return {};
@@ -33,7 +35,8 @@ export async function request(o: any): Promise<any> {
   if (match) {
     const item = w.__intakes[Number(match[1])];
     if (!item) throw Error('登记不存在或不在当前租户授权范围');
-    if (match[2] === 'review') { if (d.decision !== 'void' || !d.note?.trim()) throw Error('必须确认撤销原因'); item.status = 'void'; item.qrValid = false; return { ...item }; }
+    if (match[2] === 'staff-submit') { Object.assign(item, d, { status: 'submitted', submittedAt: '2026-11-17T09:00:00+08:00' }); return { ...item }; }
+    if (match[2] === 'review') { if (d.decision === 'approve') { Object.assign(item, d, { status: 'approved', reviewedAt: '2026-11-17T09:01:00+08:00' }); return { ...item }; } if (d.decision !== 'void' || !d.note?.trim()) throw Error('必须确认撤销原因'); item.status = 'void'; item.qrValid = false; return { ...item }; }
     if (match[2] === 'class') item.vehicleClass = d.vehicleClass;
     if (match[2] === 'garages') { item.garages = d.garages; item.garageNumbers = d.garageNumbers; }
     if (!match[2] || ['show-qr', 'class', 'garages'].includes(match[2])) return { ...item };

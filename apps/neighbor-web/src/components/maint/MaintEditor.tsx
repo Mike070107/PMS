@@ -17,6 +17,7 @@ import {
 } from '@legacy/pages/maintenance/types';
 import { printMaintenanceSheets } from '@legacy/lib/printSheet';
 import Icon from '@/components/Icon';
+import ImagePreviewButton from '@/components/ImagePreviewButton';
 import { Btn, ConfirmModal, Loading, toast } from '@/components/ui';
 
 /* ───────── 与旧后台同口径的小工具 ───────── */
@@ -476,7 +477,7 @@ function PhoneSignPanel({ state, onRetry, onClose }: { state: PhoneSign; onRetry
         {state.status === 'loading' ? <Loading text="正在生成二维码…" /> : null}
         {counting ? (
           <>
-            <img src={state.qrDataUrl} alt="签名二维码" style={{ width: 240, height: 240 }} />
+            {state.qrDataUrl ? <ImagePreviewButton fileUrl={state.qrDataUrl} fileName="签名二维码"><img src={state.qrDataUrl} alt="签名二维码" style={{ width: 240, height: 240, maxWidth: '100%', objectFit: 'contain' }} /></ImagePreviewButton> : null}
             <div style={{ margin: '8px 0', fontWeight: 600, color: state.status === 'opened' ? 'var(--ok)' : 'var(--ink2)' }}>
               {state.status === 'opened' ? '● 手机已打开签名页，等他写完' : '○ 等待手机扫码…'}
             </div>
@@ -491,7 +492,7 @@ function PhoneSignPanel({ state, onRetry, onClose }: { state: PhoneSign; onRetry
           <>
             <div style={{ fontSize: 40, color: 'var(--ok)' }}>✓</div>
             <b>{label}的签名已收到</b>
-            {state.signUrl ? <img src={state.signUrl} alt="签名" style={{ maxWidth: '100%', maxHeight: 120, margin: '10px auto', display: 'block', border: '1px solid var(--line)', borderRadius: 8 }} /> : null}
+            {state.signUrl ? <ImagePreviewButton fileUrl={state.signUrl} fileName="签名" style={{ maxWidth: '100%', margin: '10px auto' }}><img src={state.signUrl} alt="签名" style={{ maxWidth: '100%', maxHeight: 120, display: 'block', border: '1px solid var(--line)', borderRadius: 8 }} /></ImagePreviewButton> : null}
             <div className="muted" style={{ fontSize: 14 }}>已存进这张养护单，不用再点保存。写歪了可以重新签一次。</div>
           </>
         ) : null}

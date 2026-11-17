@@ -251,7 +251,7 @@ export default function Cashier() {
   const applyHouse = (h: HouseHit | null, from: SearchResult | null) => {
     navigationRevision.current += 1;
     setHouse(h); setResult(from); setDone(null); setConfirmed(false);
-    setParkCarts([]); setParkReady(false); setCardEst(null); setCardQty(1); setCardFree(false); setTab('wy');
+    setParkPlate(null); setParkCarts([]); setParkReady(false); setCardEst(null); setCardQty(1); setCardFree(false); setTab('wy');
     if (h) loadBills(h); else setBills(null);
   };
 
@@ -641,7 +641,7 @@ export default function Cashier() {
               ) : tab === 'pk' ? (
                 parkCarts.length ? (<>
                   {parkCarts.map((pc) => (
-                    <div className="cartItem" key={pc.plate}><div className="xi ic green"><Icon name="car" size={18} /></div><div className="cx"><b>{pc.plate} · {pc.custom ? '自定日期' : `${pc.months} 个月`}{pc.custom ? <span className="tag warn" style={{ marginLeft: 6, height: 20 }}>需经理审核</span> : null}</b><small>{pc.systemsLabel} · {pc.estimate.startDate} → {pc.estimate.endDate}</small></div><div className="cv money">{money(pc.estimate.amountCents / 100)}</div></div>
+                    <div className="cartItem parkingCartItem" key={pc.plate}><div className="xi ic green"><Icon name="car" size={18} /></div><div className="cx"><b>{pc.plate} · {pc.custom ? '自定日期' : `${pc.months} 个月`}{pc.custom ? <span className="tag warn" style={{ marginLeft: 6, height: 20 }}>需经理审核</span> : null}</b><small className="parkingCartSummary"><span>{pc.systemsLabel}</span><span>{pc.estimate.startDate} → {pc.estimate.endDate}</span></small></div><div className="cv money">{money(pc.estimate.amountCents / 100)}</div></div>
                   ))}
                   {!parkReady ? <div className="muted" style={{ fontSize: 13, padding: '4px 2px' }}>还有勾选的车没算出金额（缺收费标准、没勾系统，或自定日期没填金额/原因），处理后才能收款</div> : null}
                 </>) : <div className="cartEmpty"><Icon name="car" /><div>勾选要缴费的车和续期月份</div></div>

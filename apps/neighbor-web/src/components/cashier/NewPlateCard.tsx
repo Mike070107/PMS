@@ -4,7 +4,8 @@ import ImagePreview from '@/components/ImagePreview';
 import { Link } from 'react-router-dom';
 import { can } from '@/lib/perm';
 import './plate-review.css';
-import { accessCardIssuance, request } from '@pms/api-client';
+import { accessCardIssuance, request, uploadBlobTo } from '@pms/api-client';
+import IntakePlatePicker from './IntakePlatePicker';
 import Icon from '@/components/Icon';
 import { dayjs, money } from '@/lib/format';
 import { formBase, type Car, type Lot, type ParkHouse, type ParkingCart, type ParkRule, type ParkTarget } from './ParkingTab';
@@ -12,7 +13,7 @@ import { formBase, type Car, type Lot, type ParkHouse, type ParkingCart, type Pa
 export interface IntakeFile { index: number; fileName: string; contentType: string; fileUrl: string; uploadedAt: string }
 export interface Intake {
   id: number; kind: 'paid' | 'family'; status: 'waiting' | 'submitted' | 'reupload' | 'approved' | 'void';
-  houseId: number; houseLabel: string; ownerName: string; ownerPhone: string;
+  houseId: number; communityId?: number | null; houseLabel: string; ownerName: string; ownerPhone: string;
   plate: string; contactName: string; contactPhone: string; relation: string; vehicleClass: string;
   garages: string[]; garageNumbers: Record<string, string>;
   expiresAt: string; qrValid: boolean; openedAt: string | null; submittedAt: string | null; reviewedAt: string | null; reviewNote: string;
@@ -76,7 +77,15 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
   const canConvert = can('business', 'edit') && it.status !== 'void' && !finalized && !it.transaction && !it.familyCarId;
   const handedOff = !!it.familyCarId || finalized || (!!it.transaction && !['awaiting_docs', 'review'].includes(it.transaction.externalSyncStatus));
   const canVoid = can('business', 'edit') && it.status !== 'void' && !handedOff;
-  const [edit, setEdit] = useState({ plate: it.plate, contactName: it.contactName, contactPhone: it.contactPhone, relation: it.relation });
+  const [edit, setEdit] = useState({ plate: it.plate, contactName: it.contactName, contactPhone: it.contactPhone || it.ownerPhone, relation: it.relation });
+  const uploadInput = useRef<HTMLInputElement>(null);
+  const [staffMode, setStaffMode] = useState(false);
+  const canStaff = ['business', 'family-cars'].some(key => can(key, 'edit')) && ['waiting', 'reupload'].includes(it.status) && !it.transaction && !it.familyCarId;
+  type SpaceChoice = { id: number; communityId: number; garage: string; spaceNo: string; plate: string | null; houseNo: string | null };
+  const [spaces, setSpaces] = useState<SpaceChoice[]>([]);
+  const [spacesError, setSpacesError] = useState('');
+  const loadSpaces = () => request<{ rows: SpaceChoice[] }>({ url: '/business/parking-spaces' }).then(x => { setSpaces(x.rows); setSpacesError(''); }).catch(e => setSpacesError(e instanceof Error ? e.message : '读取车位失败'));
+  useEffect(() => { void loadSpaces(); }, [it.id]);
   const acceptResponse = (x: Intake) => {
     const nextQr = x.status === 'void' || x.qrValid === false ? null : x.qr ?? qr;
     setQr(nextQr);
@@ -92,7 +101,7 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
   }, [catalog, community, targetsProp]);
   const [picked, setPicked] = useState<string[]>(() => (it.garages.length ? it.garages : it.kind === 'family' ? [String(house.lane || '').includes('198') ? 'phase1' : 'phase2'] : []));
   const [nums, setNums] = useState<Record<string, string>>(it.garageNumbers || {});
-  const canEditGarages = ['business', 'family-cars'].some(key => can(key, 'edit')) && it.status !== 'void' && !(it.kind === 'family' && it.status === 'approved') && !(it.kind === 'paid' && it.transaction);
+  const canEditGarages = ['business', 'family-cars'].some(key => can(key, 'edit')) && it.status !== 'void' && it.status !== 'approved' && !(it.kind === 'paid' && it.transaction);
   const [savingGarages, setSavingGarages] = useState(false);
   const [garageError, setGarageError] = useState('');
   // 选的车库存到登记单上：收银台和车牌登记审核看到的是同一份。
@@ -111,9 +120,14 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
   const togglePick = (k: string) => {
     const has = picked.includes(k);
     let next = has ? picked.filter((x) => x !== k) : [...picked, k];
-    if (!has && (k === 'main' || k === 'civil') && !next.includes('phase2')) next = [...next, 'phase2'];
-    if (has && k === 'phase2') next = next.filter((x) => x !== 'main' && x !== 'civil');
-    void saveGarages(next);
+    const main = it.kind === 'paid' ? 'local:phase2_main_garage' : 'main';
+    const civil = it.kind === 'paid' ? 'deliyun:枫桦景苑' : 'civil';
+    const ground = it.kind === 'paid' ? 'local:phase2_parking' : 'phase2';
+    if (!has && (k === main || k === civil) && !next.includes(ground)) next = [...next, ground];
+    if (has && k === ground) next = next.filter((x) => x !== main && x !== civil);
+    const nextNums = Object.fromEntries(Object.entries(nums).filter(([key]) => next.includes(key === 'main' ? main : key === 'civil' ? civil : key)));
+    setNums(nextNums);
+    void saveGarages(next, nextNums);
   };
   // 付费车还没选过车库：目录到了默认选第一个（一般是地面车库），前台可再改
   useEffect(() => { if (allowInitialPaidDefault.current && it.kind === 'paid' && !picked.length && !it.garages.length && targets.length && canEditGarages) saveGarages([targets[0].key]); }, [targets.length]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -135,7 +149,7 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
     return () => window.clearInterval(t);
   }, [it.id, live, qr]); // eslint-disable-line react-hooks/exhaustive-deps
   // 业主提交后，把填的内容带进可更正的输入框
-  useEffect(() => { if (!operation.current) setEdit({ plate: it.plate, contactName: it.contactName, contactPhone: it.contactPhone, relation: it.relation }); }, [it.submittedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!operation.current) setEdit({ plate: it.plate, contactName: it.contactName, contactPhone: it.contactPhone || it.ownerPhone, relation: it.relation }); }, [it.submittedAt]); // eslint-disable-line react-hooks/exhaustive-deps
   // 收过款 / 作废后，从收款车里拿掉
   useEffect(() => { if (it.transaction || it.status === 'void' || it.kind === 'family') onCart(key, null); }, [it.transaction?.id, it.status, it.kind]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -157,6 +171,23 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
     catch (e) { setErr(e instanceof Error ? e.message : `${label}失败`); if (rethrow) throw e; }
     finally { operation.current = ''; setBusy(''); }
   };
+  const uploadFiles = async (list: FileList | File[]) => {
+    if (!canStaff || operation.current || savingGarage.current) return;
+    const files = Array.from(list);
+    if (files.length + it.files.length > 10) { setErr('资料最多 10 份，请减少后重试'); return; }
+    for (const file of files) {
+      if (file.size > 20 * 1024 * 1024) { setErr('单个附件不能超过 20MB'); return; }
+    }
+    await call('上传附件', async () => {
+      let result = it;
+      for (const file of files) result = await uploadBlobTo<Intake>(file, `/vehicle-intakes/${it.id}/files`, file.name || 'clipboard.png');
+      return result;
+    });
+  };
+  const staffSubmit = () => call('保存登记', () => request<Intake>({ method: 'POST', url: `/vehicle-intakes/${it.id}/staff-submit`, data: edit }));
+  const basementKeys = ['main', 'civil'].filter(k => picked.includes(it.kind === 'family' ? k : k === 'main' ? 'local:phase2_main_garage' : 'deliyun:枫桦景苑'));
+  // 历史已审核单可能没有车位绑定记录；不追溯改写、也不阻断原收款。
+  const missingSpace = it.kind === 'paid' && !it.transaction && it.status !== 'approved' && basementKeys.some(k => !nums[k]);
   const setClass = async (v: string) => {
     if (it.kind !== 'paid' || it.status === 'void' || it.transaction) return;
     await call('保存价格分类', () => request<Intake>({ method: 'POST', url: `/vehicle-intakes/${it.id}/class`, data: { vehicleClass: v } }), true);
@@ -208,7 +239,7 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
     } }));
   };
   const approve = async () => {
-    if (operation.current || savingGarage.current || garageError || !picked.length || it.status === 'void') return;
+    if (operation.current || savingGarage.current || garageError || !picked.length || missingSpace || it.status === 'void') return;
     if (it.kind === 'paid') return review('approve');
     if (!edit.relation.trim() || edit.relation === '其他亲属') { setErr('请填写与业主的具体关系后再审核'); return; }
     // 亲情车：先在旧停车库按车牌查重（现场助手，约 5–20 秒）
@@ -305,6 +336,22 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
         <div>
           {it.status === 'reupload' && it.reviewNote ? <div className="note2" style={{ marginBottom: 8 }}><Icon name="alert" />已退回：{it.reviewNote}</div> : null}
 
+          {canStaff ? <div className="intake-registration-form">
+            <button type="button" className="btn p" disabled={!!busy} onClick={() => setStaffMode(!staffMode)}>{staffMode ? '收起工作人员代填' : '工作人员直接代填'}</button>
+            <p className="muted">可由工作人员填写，也可保留二维码让住户上传。{it.kind === 'paid' ? '附件选填，不上传也可登记。' : '亲情车仍需关系证明资料及经理审核。'}</p>
+            {staffMode ? <fieldset disabled={!!busy || savingGarages} style={{ border: 0, padding: 0, minWidth: 0 }}>
+              <IntakePlatePicker value={edit.plate} onChange={plate => setEdit({ ...edit, plate })} disabled={!!busy} />
+              <div className="np-fields"><label>车主（选填）<input className="in" value={edit.contactName} onChange={e => setEdit({ ...edit, contactName: e.target.value })} /></label><label>联系手机（必填）<input className="in" inputMode="tel" value={edit.contactPhone} onChange={e => setEdit({ ...edit, contactPhone: e.target.value })} /></label>{it.kind === 'family' ? <label>与业主关系<input className="in" value={edit.relation} onChange={e => setEdit({ ...edit, relation: e.target.value })} /></label> : null}</div>
+              <div className="intake-upload" tabIndex={0} aria-label="本条登记附件上传区" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); void uploadFiles(e.dataTransfer.files); }} onPaste={e => { if (e.clipboardData.files.length) { e.preventDefault(); e.stopPropagation(); void uploadFiles(e.clipboardData.files); } }}>
+                <input ref={uploadInput} type="file" accept="image/*,application/pdf" multiple hidden onChange={e => { if (e.target.files) void uploadFiles(e.target.files); e.target.value = ''; }} />
+                <button type="button" className="btn" onClick={() => uploadInput.current?.click()}>本地上传附件（{it.kind === 'paid' ? '选填' : '必填'}）</button>
+                <p>点击选择、拖入，或先点击本区域再 Ctrl+V 粘贴。最多 10 份，每份 20MB；二维码上传仍可用。</p>
+                <span role="status">已上传 {it.files.length} 份{busy === '上传附件' ? ' · 上传中…' : ''}</span>
+                {it.files.map(f => <div key={f.index}>{f.fileName}</div>)}
+              </div>
+              <button type="button" className="btn p" disabled={!/^[\u4e00-\u9fa5][A-HJ-NP-Z][A-HJ-NP-Z0-9]{5,6}$/.test(edit.plate) || !/^1\d{10}$/.test(edit.contactPhone) || (it.kind === 'family' && (!edit.relation || !it.files.length))} onClick={staffSubmit}>{busy === '保存登记' ? '保存中…' : '保存登记，继续授权'}</button>
+            </fieldset> : null}
+          </div> : null}
           {it.submittedAt ? (
             <>
               <div className="np-fields">
@@ -342,9 +389,13 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
                 ))}
                 {it.kind === 'paid' && !targets.length ? <span className="muted">{catalog === null ? '正在读取本小区停车场…' : '本小区没有接入停车系统'}</span> : null}
               </div>
-              {it.kind === 'family' ? <div className="np-garage-numbers">{['main', 'civil'].filter((k) => picked.includes(k)).map((k) => (
-                <label key={k}>{k === 'main' ? '大车库车库号' : '人防车位号'}<input className="in" value={nums[k] || ''} disabled={savingGarages || !!busy} onChange={(e) => setNums({ ...nums, [k]: e.target.value })} onBlur={() => saveGarages(picked, nums)} /></label>
-              ))}</div> : null}
+              <div className="np-garage-numbers">{basementKeys.map(k => <label key={k}>{it.kind === 'family' ? k === 'main' ? '大车库车库号' : '人防车位号' : k === 'main' ? '大车库编号（必选）' : '人防车位编号（必选）'}
+                {it.kind === 'family' ? <input className="in" value={nums[k] || ''} disabled={savingGarages || !!busy} onChange={e => setNums({ ...nums, [k]: e.target.value })} onBlur={() => saveGarages(picked, nums)} /> : <select className="in" aria-label={k === 'main' ? '大车库编号（必选）' : '人防车位编号（必选）'} value={nums[k] || ''} disabled={savingGarages || !!busy} onChange={e => { const next = { ...nums, [k]: e.target.value }; setNums(next); saveGarages(picked, next); }}>
+                  <option value="">请选择本小区可用车位</option>
+                  {spaces.filter(s => s.communityId === it.communityId && s.garage === k && (!s.plate || s.plate === it.plate) && (!s.houseNo || s.houseNo === it.houseLabel.split('/').slice(1).join('/'))).map(s => <option key={s.id} value={s.spaceNo}>{s.spaceNo}</option>)}
+                </select>}
+              </label>)}</div>
+              {basementKeys.length && spacesError ? <div role="alert">{spacesError}<button className="btn sm" onClick={() => void loadSpaces()}>重试读取车位</button></div> : null}
               <div className="np-garage-status" role="status">{savingGarages ? '正在保存授权…' : garageError ? <><span>{garageError}</span><button type="button" className="btn" disabled={!!busy || savingGarages} onClick={() => saveGarages(picked, nums)}>重试保存授权</button></> : `已选择 ${picked.length} 个车库`}</div>
             </fieldset>
           ) : null}
@@ -352,7 +403,7 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
           {/* 审核 */}
           {canReview && ['submitted', 'reupload'].includes(it.status) && it.submittedAt ? (
             <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-              <button className="btn p" disabled={!!busy || savingGarages || !!garageError || !picked.length || (it.kind === 'family' && (!edit.relation.trim() || edit.relation === '其他亲属'))} onClick={approve}><Icon name="check" size={16} />{busy === '旧库查重' ? '旧库查重中…' : busy === '审核' ? '提交中…' : '资料无误，通过'}</button>
+              <button className="btn p" disabled={!!busy || savingGarages || !!garageError || !picked.length || missingSpace || (it.kind === 'family' && (!edit.relation.trim() || edit.relation === '其他亲属'))} onClick={approve}><Icon name="check" size={16} />{busy === '旧库查重' ? '旧库查重中…' : busy === '审核' ? '提交中…' : '资料无误，通过'}</button>
               <button className="btn" disabled={!!busy} onClick={() => setAsk(ask === 'reupload' ? '' : 'reupload')}>退回重传</button>
             </div>
           ) : null}
@@ -381,15 +432,15 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
         </div>
       </div>
 
-      {/* 付费车：选月数收款（资料没齐也可以先收，挂待处理） */}
+      {/* 新代填登记审核后复用原月数与收款；历史已审核单不追溯绑定。 */}
       {manage && it.log?.length ? (
         <ol className="np-log">{sortTimelineNewestFirst(it.log, l => l.at).map((l, i) => <li key={i}><time>{formatBeijingDateTime(l.at, 'MM-DD HH:mm')}</time><b>{l.userName}</b>{l.action}{l.note ? <small> · {l.note}</small> : null}</li>)}</ol>
       ) : null}
       {manage && it.kind === 'paid' && !it.transaction && it.status !== 'void' ? <div className="muted" style={{ marginTop: 8 }}>还没收款：<Link className="btn sm" to={`/cashier?intakeId=${it.id}`}>去收银台处理此登记</Link>（定位原登记，不新建计费业务）</div> : null}
       {!manage && it.kind === 'paid' && !it.transaction && it.status !== 'void' ? (
         <div style={{ marginTop: 12 }}>
-          {lots.length ? renewal(car, it.plate ? `${it.plate}（新办）` : `新办车牌 #${it.id}`, it.vehicleClass, setClass) : <div className="muted">先选要开通的车库，再选月数收款</div>}
-          {it.status !== 'approved' ? <div className="muted" style={{ fontSize: 13.5, marginTop: 6 }}>资料还没审核通过也可以先收款：款挂「待处理」，业主提交并审核通过后自动办理。</div> : null}
+          {lots.length && it.status === 'approved' && !garageError && !missingSpace ? renewal(car, it.plate ? `${it.plate}（新办）` : `新办车牌 #${it.id}`, it.vehicleClass, setClass) : <div className="muted">先保存登记、选择授权通道与地库编号并审核通过，再在本页选择月数收款。</div>}
+          {it.status === 'approved' ? <div className="note2">{it.log?.some(l => l.action === '关联车位档案') ? '登记与车位关联已保存。' : '登记已审核；历史登记不自动补写车位关联。'}继续使用本页原车辆收费流程；收款后仍需等待真实授权办理结果。</div> : null}
         </div>
       ) : null}
     </div>
