@@ -29,7 +29,7 @@ test('production integration migration defaults to read-only; no missing table o
   } finally { await pg.close(); }
 });
 
-test('explicit two-migration apply is atomic and idempotent, retains business data and never runs old pending migrations', async () => {
+test('explicit three-migration apply is atomic and idempotent, retains business data and never runs old pending migrations', async () => {
   const pg = new PGlite();
   try {
     await pg.exec("CREATE TABLE business_sentinel(id int PRIMARY KEY,value text); INSERT INTO business_sentinel VALUES(1,'unchanged'); CREATE TABLE migrations(id int,timestamp bigint,name text); INSERT INTO migrations VALUES(1,123,'old-pending-is-not-run')");

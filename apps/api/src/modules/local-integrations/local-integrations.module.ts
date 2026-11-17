@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { StandardParkingQueryService } from './standard-parking-query.service';
 import { StandardCardIssuanceService } from './standard-card-issuance.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { LocalIntegration, LocalIntegrationTask } from '../../entities/local-integration.entity';
@@ -7,6 +8,6 @@ import { LocalIntegrationAgentController, LocalIntegrationsController } from './
 @Module({
   imports: [TypeOrmModule.forFeature([LocalIntegration, LocalIntegrationTask])],
   controllers: [LocalIntegrationsController, LocalIntegrationAgentController],
-  providers: [LocalIntegrationsService, StandardCardIssuanceService], exports: [LocalIntegrationsService, StandardCardIssuanceService],
+  providers: [LocalIntegrationsService, StandardCardIssuanceService, StandardParkingQueryService], exports: [LocalIntegrationsService, StandardCardIssuanceService, StandardParkingQueryService],
 })
 export class LocalIntegrationsModule {}

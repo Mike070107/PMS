@@ -1,3 +1,4 @@
+import { StandardParkingQueryService } from './standard-parking-query.service';
 import { StandardCardIssuanceService } from './standard-card-issuance.service';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -13,7 +14,8 @@ import { PROTOCOL_VERSION, sameJson, validateCommand, validateResources, validat
 export class LocalIntegrationsService {
   constructor(@InjectRepository(LocalIntegration) private readonly integrations: Repository<LocalIntegration>,
     @InjectRepository(LocalIntegrationTask) private readonly tasks: Repository<LocalIntegrationTask>,
-    @Optional() private readonly standardCards?: StandardCardIssuanceService) {}
+    @Optional() private readonly standardCards?: StandardCardIssuanceService,
+    @Optional() private readonly standardParkingQueries?: StandardParkingQueryService) {}
 
   private tenant(user: AuthUser) {
     if (!user.tenantId) throw new ForbiddenException('请选择企业');
@@ -131,6 +133,7 @@ export class LocalIntegrationsService {
       for (const task of expired) {
         task.status = 'unknown';
         await this.standardCards?.acceptResult(manager, task);
+        await this.standardParkingQueries?.acceptResult(manager, task);
         await repo.save(task);
       }
       const task = await repo.createQueryBuilder('task').setLock('pessimistic_write').setOnLocked('skip_locked')
@@ -158,6 +161,7 @@ export class LocalIntegrationsService {
       if (!['running', 'unknown'].includes(task.status)) throw new ConflictException('任务尚未领取');
       task.result = dto.result; task.status = dto.result.outcome as LocalIntegrationTask['status']; task.completedAt = new Date();
       await this.standardCards?.acceptResult(manager, task);
+      await this.standardParkingQueries?.acceptResult(manager, task);
       return this.publicTask(await repo.save(task));
     });
   }

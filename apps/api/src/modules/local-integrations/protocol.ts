@@ -83,8 +83,13 @@ export function validateResult(operation: IntegrationOperation, value: unknown) 
   if (value.records !== undefined) {
     if (!Array.isArray(value.records) || value.records.length > 100) throw new Error('Invalid result records');
     for (const record of value.records) {
-      keys(record, ['cardUid', 'cardNumber', 'plate', 'externalId', 'room', 'name', 'targetId', 'validUntil', 'status']);
-      Object.values(record).forEach(v => text(v));
+      const parkingProjection = operation === 'parking.query' ? ['ownerId', 'phone', 'note', 'plateChangedAt'] : [];
+      keys(record, ['cardUid', 'cardNumber', 'plate', 'externalId', 'room', 'name', 'targetId', 'validUntil', 'status', ...parkingProjection]);
+      for (const [field, entry] of Object.entries(record)) {
+        // Null means an explicitly observed missing value, never an omitted projection.
+        if (operation === 'parking.query' && ['room', 'name', ...parkingProjection].includes(field) && entry === null) continue;
+        text(entry);
+      }
     }
   }
   return value;

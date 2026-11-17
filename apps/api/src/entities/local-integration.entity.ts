@@ -32,4 +32,5 @@ export class LocalIntegrationTask extends TenantEntity {
   @Column({ name: 'completed_at', type: 'timestamptz', nullable: true }) completedAt: Date | null;
   @Column({ name: 'issuance_item_id', type: 'int', nullable: true }) issuanceItemId: number | null;
   @Column({ name: 'allocation_id', type: 'int', nullable: true }) allocationId: number | null;
+  @Column({ name: 'parking_query_id', type: 'int', nullable: true }) parkingQueryId: number | null;
 }

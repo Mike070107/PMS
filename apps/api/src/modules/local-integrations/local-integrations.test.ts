@@ -37,6 +37,8 @@ async function fixture() {
   await migration.up({ query: (sql: string) => pg.query(sql) } as any);
   await migration.up({ query: (sql: string) => pg.query(sql) } as any);
   await new StandardCardIssuance1796200100000().up({ query: (sql: string) => pg.query(sql) } as any);
+  const { StandardParkingQuery1796200200000 } = require('../../migrations/1796200200000-StandardParkingQuery');
+  await new StandardParkingQuery1796200200000().up({ query: (sql: string) => pg.query(sql) } as any);
   return { pg, ds, service: new LocalIntegrationsService(ds.getRepository(LocalIntegration), ds.getRepository(LocalIntegrationTask)) };
 }
 test('business contract rejects vendor SQL, unknown revisions and unverified physical success', () => {

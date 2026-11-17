@@ -10,7 +10,7 @@ PMS 不应按数据库类型或厂商增加业务分支。PMS 只发送标准业
 
 **通用任务 API 仍拒绝 `card.write`**：任意输入一个 `allocationId` 不等于卡号已真实分配。只有正式批次触发 `card.inspect`，取得唯一实卡 UID，再由原 .80 代理查重/分配、保存真实卡号预留后，服务器才事务式创建不可变的绑定写卡命令。回执必须读回一致的 UID 和已分配卡号，才能将原发卡明细保存为写卡完成；这不代表门禁/旧库/控制器或整个批次完成。过期/未知不得自动重写，后续旧库刷新也不得抹去暂停状态。
 
-标准门禁/停车通用命令已有协议、队列和保存回读，但**既有门禁授权/停车正式业务的标准路由迁移仍未完成**。参考适配器仅只读；没有标准协议的实卡适配器或现场硬件验收，不能把本地桥接测试算作新厂商已接通。
+标准门禁/停车通用命令已有协议、队列和保存回读。新增的标准停车**精确完整车牌查询**桥接复用原查询入口、原记录和历史保存；其发布状态以本次台账为准，不因本文存在就算已上线。门禁授权、停车登记/续费/收费/进出记录以及模糊查询的标准路由仍未完成。参考适配器仅支持 SQLite 门禁只读示例；没有生产停车厂商模块、标准实卡适配器或现场硬件验收，不能把本地桥接测试算作新厂商已接通。
 
 ## 现有助手到底兼容什么
 
@@ -39,6 +39,7 @@ PMS 不应按数据库类型或厂商增加业务分支。PMS 只发送标准业
 | POST | `/local-integrations/v1/:key/rotate-secret` | 显式轮换，旧凭据立即失效 |
 | POST | `/local-integrations/v1/:key/tasks` | 创建标准业务任务，幂等键必须匹配完整命令 |
 | GET | `/local-integrations/v1/:key/tasks/:id` | 查询原任务与结果，不返回租约密钥 |
+| GET/POST | `/local-integrations/v1/parking-query-routes` | 读取 / 整体保存本企业的一期、二期只读停车查询资源绑定 |
 
 前端正式封装为 [localIntegrations API 客户端](../packages/api-client/src/endpoints/local-integrations.ts)的 `list/enroll/setEnabled/rotateSecret/createTask/getTask`。注册 UI 在「系统与设备」，不要求写卡电脑持有数据库密码。标准连接资源和能力目前在注册时固定；调整能力应新建独立命名连接并完成现场切换验收，不能通过心跳越权扩容。
 
@@ -81,7 +82,21 @@ PMS 不应按数据库类型或厂商增加业务分支。PMS 只发送标准业
 {"outcome":"succeeded","evidence":"observed","records":[{"cardNumber":"123","name":"合成住户","room":"1/101","status":"active"}]}
 ```
 
-`outcome` 只能为 succeeded/failed/unknown。`records` 至多100条，仅接受 `cardUid/cardNumber/plate/externalId/room/name/targetId/validUntil/status` 标准字符串字段；不是原始数据库行。`code` ≤80，`message` ≤500，不应包含密码、连接串或SQL。写库后必须重新查询核对再给 `database_readback`；控制器 SDK 返回“已提交”不是 `controller_ack`。
+`outcome` 只能为 succeeded/failed/unknown。`records` 至多100条，仅接受 `cardUid/cardNumber/plate/externalId/room/name/targetId/validUntil/status` 标准字符串字段；`parking.query` 额外接受 `ownerId/phone/note/plateChangedAt`，且其 `ownerId/name/phone/room/note/plateChangedAt` 可明确为 null。字符串沿用协议长度和控制字符限制，不是原始数据库行。`code` ≤80，`message` ≤500，不应包含密码、连接串或SQL。写库后必须重新查询核对再给 `database_readback`；控制器 SDK 返回“已提交”不是 `controller_ack`。
+
+## 原停车查询的标准只读绑定（窄范围）
+
+全小区业务编辑权限通过上表配置 API 显式保存完整配置，例如：
+
+```json
+{"routes":{"parking1":null,"parking2":{"integrationKey":"local-<实际连接key>","resourceId":"parking.readonly"}}}
+```
+
+一期、二期必须绑定各自独立的逻辑资源；适配器的外部记录号必须与该原停车库的稳定车辆记录号同义，切换厂商前须验证标识映射，不能复用其他车辆的号码覆盖快照。配置仅含逻辑连接/资源，不含数据库地址、表名或凭据。null/未绑定仍走原旧网关；有绑定但离线、停用、不就绪则明确失败，**不自动回退**。配置 API 不是现场厂商适配器，不能因注册了资源就标记可用。
+
+从原停车查询 API 以明确的 `database: parking1|parking2` 和完整车牌发起。服务器在同一事务创建原 `ParkingQuery` 与服务端 `parkingQueryId` 绑定任务，原查询 GET、页面轮询、PMS 匹配和快照/历史仍复用；不伪造旧网关身份或旧租约。通用任务不接受客户端业务绑定，不会更新原查询。原网关无法领取或报告标准拥有的查询。
+
+成功结果必须提供 `records` 数组（确实无车辆时为 []）；每条包含 `externalId,plate,ownerId,name,phone,room,note,plateChangedAt`。换牌时间须真实读取并规范化（未知/未映射不能伪装为 null），沿用原历史的2000年至当前后一天可信时间窗；null表示源库确无值。记录号稳定唯一，车牌精确等于冻结查询；后六字段缺失不等于 null，不能用部分投影擦除既有快照。适配器必须真实完整查询，不可把截断、异常、映射失败当成空列表。任务回执、原记录、快照和历史同一事务提交；重报不重复历史。租约过期为未知失败，不重新排队；原租约迟到回执可对账。此处仍缺实际生产停车厂商模块/现场验证，不支持尾号、电话、姓名、房号、进出、收费或写操作。
 
 ## 现场执行协议
 
@@ -134,7 +149,7 @@ runner在外部动作之前落盘 `executing`，结果先落盘再报；网络�
 
 ## 生产建表边界
 
-统一 API 部署会在重载服务之前，显式执行冻结包中的 `production-local-integration-migration.js --apply`。仅白名单 `1796200000000` / `1796200100000` 两项：新增接入表、可空绑定字段及索引；不扫描其他待执行迁移、不改迁移台账、不更新历史业务行。默认 `--check` 是只读核对，`--apply` 使用数据库事务、5 秒锁等待/30 秒语句限制和事务级互斥锁；结构不符回滚并停止部署。应用回退保留新增表，不执行 `down()`。真实 PGlite 回归覆盖默认只读、重复执行保留数据、结构漂移回滚。
+统一 API 部署会在重载服务之前，显式执行冻结包中的 `production-local-integration-migration.js --apply`。仅白名单 `1796200000000` / `1796200100000` / `1796200200000` 三项：新增接入表、可空绑定字段及索引；不扫描其他待执行迁移、不改迁移台账、不更新历史业务行。默认 `--check` 是只读核对，`--apply` 使用数据库事务、5 秒锁等待/30 秒语句限制和事务级互斥锁；结构不符回滚并停止部署。应用回退保留新增表，不执行 `down()`。真实 PGlite 回归覆盖默认只读、重复执行保留数据、结构漂移回滚。
 
 ## 新厂商接入验收清单
 

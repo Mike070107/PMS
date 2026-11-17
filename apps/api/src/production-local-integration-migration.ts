@@ -4,12 +4,14 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { LocalIntegrations1796200000000 } from './migrations/1796200000000-LocalIntegrations';
 import { StandardCardIssuance1796200100000 } from './migrations/1796200100000-StandardCardIssuance';
 
-// Explicit two-migration allowlist, never a glob/all-pending runner or API startup hook.
+import { StandardParkingQuery1796200200000 } from './migrations/1796200200000-StandardParkingQuery';
+
+// Explicit three-migration allowlist, never a glob/all-pending runner or API startup hook.
 // Only new integration tables/indexes are added; no existing business row is modified.
 const tables = ['local_integrations', 'local_integration_tasks'];
 const required: Record<string, string[]> = {
   local_integrations: ['id','tenant_id','key','name','kind','token_hash','enabled','resources','ready','version','last_seen_at','created_at','updated_at','created_by','updated_by'],
-  local_integration_tasks: ['id','tenant_id','integration_key','resource_id','operation','revision','idempotency_key','command','status','lease_token','lease_expires_at','result','completed_at','created_at','updated_at','created_by','updated_by','issuance_item_id','allocation_id'],
+  local_integration_tasks: ['id','tenant_id','integration_key','resource_id','operation','revision','idempotency_key','command','status','lease_token','lease_expires_at','result','completed_at','created_at','updated_at','created_by','updated_by','issuance_item_id','allocation_id','parking_query_id'],
 };
 type Sql = Pick<QueryRunner, 'query'>;
 export async function migrateLocalIntegrations(q: Sql, apply = false) {
@@ -22,20 +24,21 @@ export async function migrateLocalIntegrations(q: Sql, apply = false) {
       await q.query('SELECT pg_advisory_xact_lock(1796200, 1)');
       await new LocalIntegrations1796200000000().up(q as QueryRunner);
       await new StandardCardIssuance1796200100000().up(q as QueryRunner);
+      await new StandardParkingQuery1796200200000().up(q as QueryRunner);
       const columns = await q.query("SELECT table_name,column_name,data_type,is_nullable FROM information_schema.columns WHERE table_schema='public' AND table_name=ANY($1)", [tables]);
       for (const [table, names] of Object.entries(required)) for (const name of names) {
         const column = columns.find((c: any) => c.table_name === table && c.column_name === name);
         assert.ok(column, `Integration schema drift: missing ${table}.${name}`);
-        if (['id','tenant_id','issuance_item_id','allocation_id'].includes(name)) assert.equal(column.data_type, 'integer', `Integration schema drift: ${name} type`);
-        if (['issuance_item_id','allocation_id'].includes(name)) assert.equal(column.is_nullable, 'YES', `Integration schema drift: ${name} nullability`);
+        if (['id','tenant_id','issuance_item_id','allocation_id','parking_query_id'].includes(name)) assert.equal(column.data_type, 'integer', `Integration schema drift: ${name} type`);
+        if (['issuance_item_id','allocation_id','parking_query_id'].includes(name)) assert.equal(column.is_nullable, 'YES', `Integration schema drift: ${name} nullability`);
       }
       const indexes = await q.query("SELECT tablename,indexdef FROM pg_indexes WHERE schemaname='public' AND tablename=ANY($1)", [tables]);
-      for (const [table, fragment] of [['local_integrations','(key)'],['local_integrations','(tenant_id, name)'],['local_integration_tasks','(tenant_id, integration_key, idempotency_key)'],['local_integration_tasks','(tenant_id, issuance_item_id, operation) WHERE (issuance_item_id IS NOT NULL)']]) {
+      for (const [table, fragment] of [['local_integrations','(key)'],['local_integrations','(tenant_id, name)'],['local_integration_tasks','(tenant_id, integration_key, idempotency_key)'],['local_integration_tasks','(tenant_id, issuance_item_id, operation) WHERE (issuance_item_id IS NOT NULL)'],['local_integration_tasks','(tenant_id, parking_query_id) WHERE (parking_query_id IS NOT NULL)']]) {
         assert.ok(indexes.some((i: any) => i.tablename === table && i.indexdef.includes('CREATE UNIQUE INDEX') && i.indexdef.includes(fragment)), `Integration schema drift: unique ${fragment}`);
       }
     }
     await q.query(apply ? 'COMMIT' : 'ROLLBACK');
-    return { mode: apply ? 'apply' : 'read-only', migrations: ['1796200000000','1796200100000'], tablesPresentBefore: before.map((r: any) => r.table_name), businessRowsWritten: 0 };
+    return { mode: apply ? 'apply' : 'read-only', migrations: ['1796200000000','1796200100000','1796200200000'], tablesPresentBefore: before.map((r: any) => r.table_name), businessRowsWritten: 0 };
   } catch (error) {
     await q.query('ROLLBACK');
     throw error;

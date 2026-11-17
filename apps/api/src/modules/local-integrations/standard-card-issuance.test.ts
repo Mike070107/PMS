@@ -28,7 +28,7 @@ async function fixture() {
   ds.manager.transaction=((cb:any)=>pg.transaction((tx:any)=>cb(runner(tx,true).manager))) as any;
   await pg.exec('CREATE TABLE houses(id integer PRIMARY KEY); INSERT INTO houses VALUES(1)');
   const qr:any={query:(sql:string)=>pg.query(sql)};
-  for(const migration of [new AccessCardIssuance1789261200000(),new AccessCardLegacyDuplicateCheck1789347600000(),new AccessCardIcNoReservation1792018800000(),new LocalIntegrations1796200000000(),new StandardCardIssuance1796200100000()]) {await migration.up(qr);await migration.up(qr);}
+  for(const migration of [new AccessCardIssuance1789261200000(),new AccessCardLegacyDuplicateCheck1789347600000(),new AccessCardIcNoReservation1792018800000(),new LocalIntegrations1796200000000(),new StandardCardIssuance1796200100000(),new (require('../../migrations/1796200200000-StandardParkingQuery').StandardParkingQuery1796200200000)()]) {await migration.up(qr);await migration.up(qr);}
   const cards = new StandardCardIssuanceService(ds.getRepository(LocalIntegrationTask));
   const service:any = new (LocalIntegrationsService as any)(ds.getRepository(LocalIntegration),ds.getRepository(LocalIntegrationTask),cards);
   return {pg,ds,cards,service};

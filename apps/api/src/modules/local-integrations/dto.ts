@@ -22,6 +22,9 @@ export class IntegrationReportDto {
   @IsString() @Length(64, 64) leaseToken: string;
   @IsObject() result: Record<string, unknown>;
 }
+export class ParkingQueryRoutesDto {
+  @IsObject() routes: Record<string, unknown>;
+}
 export class IntegrationEnabledDto {
   @IsBoolean() enabled: boolean;
 }

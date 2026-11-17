@@ -6,8 +6,9 @@ import { PermissionsGuard } from '../access/permissions.guard';
 import { CurrentAccess } from '../access/current-access.decorator';
 import { ResolvedAccess } from '../access/access.service';
 import { bearerToken } from '../access-card-issuance/agent-auth';
+import { StandardParkingQueryService } from './standard-parking-query.service';
 import { LocalIntegrationsService } from './local-integrations.service';
-import { EnrollIntegrationDto, IntegrationEnabledDto, IntegrationHeartbeatDto, IntegrationReportDto, IntegrationTaskDto } from './dto';
+import { EnrollIntegrationDto, IntegrationEnabledDto, IntegrationHeartbeatDto, IntegrationReportDto, IntegrationTaskDto, ParkingQueryRoutesDto } from './dto';
 
 // Connection administration exposes tenant-wide local resources. Partial community viewers
 // must not gain tenant-wide database access merely by knowing an integration/task identifier.
@@ -17,7 +18,13 @@ function fullScope(access: ResolvedAccess) {
 @Controller('local-integrations/v1')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class LocalIntegrationsController {
-  constructor(private readonly service: LocalIntegrationsService) {}
+  constructor(private readonly service: LocalIntegrationsService, private readonly standardParkingQueries?: StandardParkingQueryService) {}
+  @Get('parking-query-routes')
+  @RequirePermission('business', 'view')
+  parkingRoutes(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) { fullScope(access); return this.standardParkingQueries!.getRoutes(user); }
+  @Post('parking-query-routes')
+  @RequirePermission('business', 'edit')
+  setParkingRoutes(@Body() dto: ParkingQueryRoutesDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) { fullScope(access); return this.standardParkingQueries!.setRoutes(dto.routes, user); }
   @Get()
   @RequirePermission('business', 'view')
   list(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) { fullScope(access); return this.service.list(user); }
