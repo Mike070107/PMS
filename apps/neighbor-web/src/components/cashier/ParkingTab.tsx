@@ -347,7 +347,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
           {intakes.map((i) => (
             <NewPlateCard key={i.id} intake={i} house={house} rules={rules} targets={hh?.targets ?? []} defaultStaffMode={staffRegistration}
               onChange={updateIntake} onDrop={dropIntake} onCart={setCart}
-              renewal={(car, label, cls, onCls) => <CarRenewal car={car} rules={rules} house={house} onCart={setCart} intakeId={i.id} title="新办" label={label} vehicleClass={cls} onClass={onCls} />} />
+              renewal={(car, label, cls, onCls, ready) => <CarRenewal car={car} rules={rules} house={house} onCart={setCart} intakeId={i.id} allowCart={ready} title="新办" label={label} vehicleClass={cls} onClass={onCls} />} />
           ))}
         </div>
       ) : null}
@@ -360,7 +360,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
 }
 
 /** 一辆车的续期设置：续哪几套系统、按哪条收费标准、续几个月；服务端试算后报给上层 */
-export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId, title = '续期', label, vehicleClass = '', onClass }: { car: Car; rules: ParkRule[]; house: ParkHouse; onCart: (plate: string, c: ParkingCart | null) => void; onRemove?: () => void; intakeId?: number; title?: string; label?: string; vehicleClass?: string; onClass?: (v: string) => Promise<void> | void }) {
+export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId, allowCart = true, title = '续期', label, vehicleClass = '', onClass }: { car: Car; rules: ParkRule[]; house: ParkHouse; onCart: (plate: string, c: ParkingCart | null) => void; onRemove?: () => void; intakeId?: number; allowCart?: boolean; title?: string; label?: string; vehicleClass?: string; onClass?: (v: string) => Promise<void> | void }) {
   const [months, setMonths] = useState(6);
   const [ruleId, setRuleId] = useState<number | null>(null);
   const [off, setOff] = useState<string[]>([]);
@@ -385,7 +385,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
   const own = useMemo(() => {
     const keys = new Set(lots.map((l) => l.targetKey).filter(Boolean));
     const tg = (r: ParkRule) => r.config?.parkingTargets ?? (r.config?.parkingTarget ? [r.config.parkingTarget] : []);
-    return rules.filter((r) => r.serviceType === 'parking_monthly' && r.enabled && r.communityId === house.communityId && (!tg(r).length || tg(r).some((k) => keys.has(k))));
+    return rules.filter((r) => r.serviceType === 'parking_monthly' && r.enabled && r.communityId === house.communityId && (!keys.size || !tg(r).length || tg(r).some((k) => keys.has(k))));
   }, [sel, lots, rules, house.communityId]); // eslint-disable-line react-hooks/exhaustive-deps
   const classOptions = useMemo(() => [...new Set(own.map((r) => r.config?.vehicleClass || '').filter(Boolean))], [own]);
   const defaultGroup = own.find((r) => r.config?.isDefault)?.config?.vehicleClass || '';
@@ -418,7 +418,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
   const enteredCents = /^\d+(?:\.\d{1,2})?$/.test(amt.trim()) ? Math.round(Number(amt) * 100) : null;
   const manualCents = enteredCents != null && Number.isSafeInteger(enteredCents) && enteredCents >= 0 ? enteredCents : null;
   // 绑定完整报价上下文（同 id 规则改价、系统引用或身份变化也必须重新试算）。
-  const quoteKey = JSON.stringify([quoteRevision, sel.plate, house.id, house.communityId, house.owner?.id, rule, lots, vehicleClass, months, monthsValid, custom, cs, ce, amt, reason, label, clsBusy]);
+  const quoteKey = JSON.stringify([allowCart, quoteRevision, sel.plate, house.id, house.communityId, house.owner?.id, rule, lots, vehicleClass, months, monthsValid, custom, cs, ce, amt, reason, label, clsBusy]);
   const currentQuoteKey = useRef(quoteKey);
   if (currentQuoteKey.current !== quoteKey) { currentQuoteKey.current = quoteKey; quoteGeneration.current++; }
   const est = estimateKey === quoteKey && (custom || monthsValid) && !clsBusy ? quotedEst : null;
@@ -441,6 +441,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
           setEst(null); onCart(sel.plate, null); setEstErr('试算结果与当前续期不一致，请重新选择月份重试'); return;
         }
         setEst(e); setEstimateKey(quoteKey);
+        if (!allowCart) { onCart(sel.plate, null); return; }
         const base = { plate: label ?? sel.plate, rule, months: e.quantity, currentEndDate: currentEnd, systems: lots.map((l) => l.ref), systemsLabel: lots.map((l) => l.label).join(' + '), ...(intakeId ? { intakeId } : {}) };
         if (!custom) { onCart(sel.plate, { ...base, months, estimate: e, custom: null }); return; }
         if (manualCents == null || !reason.trim()) { onCart(sel.plate, null); return; }

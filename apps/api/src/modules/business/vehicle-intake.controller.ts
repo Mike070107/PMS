@@ -36,6 +36,12 @@ export class VehicleIntakeController {
     return this.service.create(body, user, access);
   }
 
+  @Get(':id/parking-spaces')
+  @RequirePermission([...VIEW, ...MANAGER_REVIEW], 'view')
+  parkingSpaces(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.service.parkingSpaces(id, user, access);
+  }
+
   @Post(':id/show-qr')
   @RequirePermission([...VIEW], 'view')
   showQr(@Param('id', ParseIntPipe) id: number, @Body() body: { formBase: string }, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {

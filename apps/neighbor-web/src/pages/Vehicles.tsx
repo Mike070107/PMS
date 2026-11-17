@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Cashier from './Cashier';
+import { resolveAddressQuery } from '@pms/shared-types';
 import { accessCardIssuance, request } from '@pms/api-client';
 import type { ParkingQuery, ParkingQueryRow, DeliyunVehicle } from '@pms/api-client/src/endpoints/access-card-issuance';
 import { legacyUrl } from '@/lib/legacy';
@@ -118,9 +119,12 @@ export default function Vehicles() {
   // Carry the completed query's stable PMS household, never guess IDs from room text.
   // All rows must agree; incomplete/ambiguous/out-of-scope matches stay manual.
   const queryHouse = useMemo<PickedHouse | null>(() => {
-    if (polling || query?.status !== 'completed' || query.term !== term.trim() || !query.rows.length) return null;
-    const ids = new Set<number>();
-    for (const row of query.rows) {
+    // Address context exists even before a household owns its first vehicle.
+    const addressHit = resolveAddressQuery(term, communities);
+    const addressId = addressHit?.level === 'house' && addressHit.houseIds.length === 1 ? addressHit.houseIds[0] : null;
+    if (!addressId && (polling || query?.status !== 'completed' || query.term !== term.trim() || !query.rows.length)) return null;
+    const ids = new Set<number>(addressId ? [addressId] : []);
+    for (const row of addressId ? [] : query?.rows ?? []) {
       const match = row.pmsMatch;
       if (!match?.houseId || !Number.isSafeInteger(match.houseId) || match.houseId <= 0 || match.status === 'disabled'
         || (match.house && match.house.id !== match.houseId)) return null;

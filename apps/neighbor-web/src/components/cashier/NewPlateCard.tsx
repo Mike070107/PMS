@@ -50,11 +50,11 @@ function FileThumb({ file }: { file: IntakeFile }) {
 }
 
 /** 一条新办车牌 / 亲情车扫码登记：二维码 → 实时看业主填写 → 审核 → （付费车）收款 */
-export default function NewPlateCard({ intake: it, house, targets: targetsProp, onChange, onDrop, onCart, renewal, manage = false, defaultStaffMode = false }: {
+export default function NewPlateCard({ intake: it, house, rules, targets: targetsProp, onChange, onDrop, onCart, renewal, manage = false, defaultStaffMode = false }: {
   intake: Intake; house: ParkHouse; rules: ParkRule[]; targets: ParkTarget[];
   onChange: (x: Intake) => void; onDrop: (id: number) => void;
   onCart: (key: string, c: ParkingCart | null) => void;
-  renewal: (car: Car, label: string, vehicleClass: string, onClass: (v: string) => Promise<void>) => ReactNode;
+  renewal: (car: Car, label: string, vehicleClass: string, onClass: (v: string) => Promise<void>, ready: boolean) => ReactNode;
   /** 车牌登记审核页：审核、选授权车库、看日志；收款仍在收银台。 */
   manage?: boolean;
   defaultStaffMode?: boolean;
@@ -67,6 +67,8 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
   const [converting, setConverting] = useState(false);
   const [kindNote, setKindNote] = useState('');
   const [kindRelation, setKindRelation] = useState(it.relation);
+  const [nextClass, setNextClass] = useState('');
+  const classOptions = [...new Set(rules.filter(r => r.serviceType === 'parking_monthly' && r.enabled && r.communityId === house.communityId).map(r => r.config?.vehicleClass || '').filter(Boolean))];
   // Synchronous lock also covers two clicks before React paints disabled controls.
   // Epochs discard GETs started before a mutation, including old-kind polls.
   const operation = useRef('');
@@ -82,11 +84,11 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
   const uploadInput = useRef<HTMLInputElement>(null);
   const [staffMode, setStaffMode] = useState(defaultStaffMode);
   const canStaff = ['business', 'family-cars'].some(key => can(key, 'edit')) && ['waiting', 'reupload'].includes(it.status) && !it.transaction && !it.familyCarId;
-  type SpaceChoice = { id: number; communityId: number; garage: string; spaceNo: string; plate: string | null; houseNo: string | null };
+  type SpaceChoice = { id: number; garage: string; spaceNo: string; unavailableReason: string };
   const [spaces, setSpaces] = useState<SpaceChoice[]>([]);
   const [spacesError, setSpacesError] = useState('');
-  const loadSpaces = () => request<{ rows: SpaceChoice[] }>({ url: '/business/parking-spaces' }).then(x => { setSpaces(x.rows); setSpacesError(''); }).catch(e => setSpacesError(e instanceof Error ? e.message : '读取车位失败'));
-  useEffect(() => { void loadSpaces(); }, [it.id]);
+  const loadSpaces = () => request<{ rows: SpaceChoice[] }>({ url: `/vehicle-intakes/${it.id}/parking-spaces` }).then(x => { setSpaces(x.rows); setSpacesError(''); }).catch(e => setSpacesError(e instanceof Error ? e.message : '读取车位失败'));
+  useEffect(() => { void loadSpaces(); }, [it.id, it.plate, it.contactPhone, it.status]);
   const acceptResponse = (x: Intake) => {
     const nextQr = x.status === 'void' || x.qrValid === false ? null : x.qr ?? qr;
     setQr(nextQr);
@@ -193,6 +195,16 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
     if (it.kind !== 'paid' || it.status === 'void' || it.transaction) return;
     await call('保存价格分类', () => request<Intake>({ method: 'POST', url: `/vehicle-intakes/${it.id}/class`, data: { vehicleClass: v } }), true);
   };
+  const selectVehicleClass = async (value: string) => {
+    const family = value === '亲情车';
+    if (family !== (it.kind === 'family')) {
+      if (!canConvert) throw new Error('已关联办理，不能更改车辆类别');
+      setNextClass(value); setKindNote(`车辆类别改为${value}`); setConverting(true); setAsk('');
+      onCart(key, null);
+      return;
+    }
+    await setClass(value);
+  };
   const convertKind = async () => {
     if (!canConvert || operation.current || savingGarage.current || !kindNote.trim() || (it.kind === 'paid' && !kindRelation.trim())) return;
     if (!window.confirm('确认转换登记类型？已上传资料及联系人会保留；原车库授权、车位号和价格分类将清空，已审核资料须重新审核。转为亲情车后仍需旧库查重和经理审核，不会自动开通。')) return;
@@ -200,7 +212,7 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
     setBusy('转换登记类型'); setErr('');
     try {
       const x = await request<Intake>({ method: 'POST', url: `/vehicle-intakes/${it.id}/kind`, data: {
-        kind: it.kind === 'paid' ? 'family' : 'paid', note: kindNote.trim(), ...(it.kind === 'paid' ? { relation: kindRelation.trim() } : {}),
+        kind: it.kind === 'paid' ? 'family' : 'paid', note: kindNote.trim(), ...(it.kind === 'paid' ? { relation: kindRelation.trim() } : { vehicleClass: nextClass }),
       } });
       // Do not mirror every poll into these drafts: failed selections must survive.
       // Only a successful conversion deliberately replaces old-kind local state.
@@ -280,12 +292,16 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
         {it.status === 'void' || (it.status === 'approved' && (it.kind === 'family' || it.transaction)) ? <button className="btn g sm" onClick={() => onDrop(it.id)} title="从这里收起（车牌登记审核里仍可查）">✕</button> : null}
       </div>
 
-      <div className="note2" style={{ marginBottom: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <b>登记类型：{it.kind === 'family' ? '亲情车（免费，需关系及经理审核）' : '付费月租车'}</b>
-        <span className="muted">与缴费价格分类不同</span>
-        {canConvert ? <button type="button" className="btn sm" disabled={!!busy || savingGarages} onClick={() => { setConverting(!converting); setAsk(''); }}>{it.kind === 'paid' ? '转为亲情车登记' : '转为付费车登记'}</button> : null}
-        {it.status !== 'void' && (it.transaction || it.familyCarId) ? <span className="muted">已关联财务或办理，不能转换登记类型。</span> : null}
-      </div>
+      {!manage && it.kind === 'paid' && !it.transaction && it.status !== 'void' ? <div style={{ marginBottom: 12 }}>
+        {renewal(car, it.plate ? `${it.plate}（新办）` : `新办车牌 #${it.id}`, it.vehicleClass, selectVehicleClass, it.status === 'approved' && !garageError && !missingSpace && !converting && !busy && !savingGarages)}
+        {it.status !== 'approved' ? <div className="muted">可先选择车辆类别和缴费月数；保存资料、车位并审核通过后，才加入本次收款。</div> : null}
+      </div> : <div className="note2" style={{ marginBottom: 10 }}>
+        <div className="quickMonths" style={{ marginTop: 0 }}><b>车辆类别：</b>
+          {[...new Set(['亲情车', ...classOptions])].map(value => <button type="button" key={value} className={`chip ${(it.kind === 'family' ? '亲情车' : it.vehicleClass) === value ? 'on' : ''}`} disabled={!canConvert || !!busy || savingGarages} onClick={() => { void selectVehicleClass(value).catch(e => setErr(e instanceof Error ? e.message : '类别保存失败')); }}>{value}</button>)}
+        </div>
+        {it.kind === 'family' ? <span className="muted">亲情车免费一年，需填写亲属关系并经经理审核。</span> : null}
+        {it.transaction || it.familyCarId ? <span className="muted">已关联财务或办理，不能更改车辆类别。</span> : null}
+      </div>}
       {converting && canConvert ? <fieldset className="np-garages" disabled={!!busy || savingGarages}>
         <legend>转换登记类型</legend>
         <p className="np-garage-help">保留上传资料、联系人及审计日志；清空原车库、车位号和价格分类，已审核资料须重审。亲情车仍须填写具体关系、旧库查重并走经理审核，不会自动开通。</p>
@@ -392,8 +408,8 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
               </div>
               <div className="np-garage-numbers">{basementKeys.map(k => <label key={k}>{it.kind === 'family' ? k === 'main' ? '大车库车库号' : '人防车位号' : k === 'main' ? '大车库编号（必选）' : '人防车位编号（必选）'}
                 {it.kind === 'family' ? <input className="in" value={nums[k] || ''} disabled={savingGarages || !!busy} onChange={e => setNums({ ...nums, [k]: e.target.value })} onBlur={() => saveGarages(picked, nums)} /> : <select className="in" aria-label={k === 'main' ? '大车库编号（必选）' : '人防车位编号（必选）'} value={nums[k] || ''} disabled={savingGarages || !!busy} onChange={e => { const next = { ...nums, [k]: e.target.value }; setNums(next); saveGarages(picked, next); }}>
-                  <option value="">请选择本小区可用车位</option>
-                  {spaces.filter(s => s.communityId === it.communityId && s.garage === k && (!s.plate || s.plate === it.plate) && (!s.houseNo || s.houseNo === it.houseLabel.split('/').slice(1).join('/'))).map(s => <option key={s.id} value={s.spaceNo}>{s.spaceNo}</option>)}
+                  <option value="">请选择车位号（已占用项不可选）</option>
+                  {spaces.filter(s => s.garage === k).map(s => <option key={s.id} value={s.spaceNo} disabled={!!s.unavailableReason}>{s.spaceNo}{s.unavailableReason ? `（${s.unavailableReason}）` : ''}</option>)}
                 </select>}
               </label>)}</div>
               {basementKeys.length && spacesError ? <div role="alert">{spacesError}<button className="btn sm" onClick={() => void loadSpaces()}>重试读取车位</button></div> : null}
@@ -440,7 +456,6 @@ export default function NewPlateCard({ intake: it, house, targets: targetsProp, 
       {manage && it.kind === 'paid' && !it.transaction && it.status !== 'void' ? <div className="muted" style={{ marginTop: 8 }}>还没收款：<Link className="btn sm" to={`/cashier?intakeId=${it.id}`}>去收银台处理此登记</Link>（定位原登记，不新建计费业务）</div> : null}
       {!manage && it.kind === 'paid' && !it.transaction && it.status !== 'void' ? (
         <div style={{ marginTop: 12 }}>
-          {lots.length && it.status === 'approved' && !garageError && !missingSpace ? renewal(car, it.plate ? `${it.plate}（新办）` : `新办车牌 #${it.id}`, it.vehicleClass, setClass) : <div className="muted">先保存登记、选择授权通道与地库编号并审核通过，再在本页选择月数收款。</div>}
           {it.status === 'approved' ? <div className="note2">{it.log?.some(l => l.action === '关联车位档案') ? '登记与车位关联已保存。' : '登记已审核；历史登记不自动补写车位关联。'}继续使用本页原车辆收费流程；收款后仍需等待真实授权办理结果。</div> : null}
         </div>
       ) : null}

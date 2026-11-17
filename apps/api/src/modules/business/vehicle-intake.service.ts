@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import * as QRCode from 'qrcode';
-import { Brackets, EntityManager, Like, Repository } from 'typeorm';
+import { Brackets, EntityManager, In, Like, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import {
   Building, BusinessLog, BusinessTransaction, Community, FamilyCar, House, Notification, ParkingPlateTag, ParkingSpace, ParkingVehicle, User, VehicleIntake,
@@ -143,6 +143,47 @@ export class VehicleIntakeService {
 
   async get(id: number, user: AuthUser, access?: ResolvedAccess) {
     return this.view(await this.load(id, user, access), true);
+  }
+
+  /** 两期共用车库：档案所在小区不是住户所在小区，按停车目标覆盖范围取号。 */
+  private async spaceCommunityIds(row: VehicleIntake, garage: 'main' | 'civil') {
+    const community = await this.communityRepo.findOne({ where: { id: row.communityId!, tenantId: row.tenantId } });
+    const key = garage === 'main' ? 'local:phase2_main_garage' : 'deliyun:枫桦景苑';
+    const target = targetsForCommunity(community?.name ?? null).find(t => t.key === key);
+    if (!target) return row.communityId ? [row.communityId] : [];
+    const communities = await this.communityRepo.find({ where: { tenantId: row.tenantId, name: In(target.communities) } });
+    return communities.map(c => c.id);
+  }
+
+  private spaceConflict(space: ParkingSpace, row: VehicleIntake): string {
+    if (space.plate?.trim() && normalizeFamilyPlate(space.plate) !== normalizeFamilyPlate(row.plate)) return '已绑定其他车牌';
+    if (!space.houseNo?.trim()) return '';
+    const room = row.houseLabel.split('/').slice(1).join('/');
+    if (space.houseNo.trim() === room) return '';
+    const nums = (text: string) => text.match(/\d+/g)?.map(n => String(Number(n))) ?? [];
+    const source = nums(space.houseNo), current = nums(room);
+    // 全地址允许分隔符差异；旧档案只有楼/室时还须业主姓名或电话一致，不能猜同号房。
+    const sameFull = source.length >= 3 && source.join('/') === current.join('/');
+    const sameShort = source.length === 2 && source.join('/') === current.slice(-2).join('/');
+    const sameOwner = !!space.ownerName?.trim() && space.ownerName.trim() === row.ownerName?.trim();
+    const samePhone = !!space.ownerTel?.trim() && [row.ownerPhone, row.contactPhone].includes(space.ownerTel.trim());
+    if (sameFull || (sameShort && (sameOwner || samePhone))) return '';
+    return '已关联其他房号，需先在车位管理核对';
+  }
+
+  async parkingSpaces(id: number, user: AuthUser, access?: ResolvedAccess) {
+    const row = await this.load(id, user, access);
+    const rows: Array<{ id: number; garage: string; spaceNo: string; unavailableReason: string }> = [];
+    for (const garage of ['main', 'civil'] as const) {
+      const communityIds = await this.spaceCommunityIds(row, garage);
+      if (!communityIds.length) continue;
+      const spaces = await this.repo.manager.getRepository(ParkingSpace).find({ where: { tenantId: row.tenantId, communityId: In(communityIds), garage } });
+      const counts = new Map<string, number>();
+      spaces.forEach(s => counts.set(s.spaceNo, (counts.get(s.spaceNo) ?? 0) + 1));
+      spaces.sort((a, b) => a.spaceNo.localeCompare(b.spaceNo, 'zh-CN', { numeric: true }));
+      rows.push(...spaces.map(s => ({ id: s.id, garage, spaceNo: s.spaceNo, unavailableReason: counts.get(s.spaceNo)! > 1 ? '车位号重复，请先核对档案' : this.spaceConflict(s, row) })));
+    }
+    return { rows };
   }
 
   /** 付费车改「按哪类收费」（收款前） */
@@ -507,11 +548,13 @@ export class VehicleIntakeService {
     for (const garage of Object.keys(selected).sort() as Array<'main' | 'civil'>) {
       const spaceNo = row.garageNumbers[garage]?.trim();
       if (!spaceNo) throw new BadRequestException(`请选择${garage === 'main' ? '大车库' : '人防车库'}编号`);
-      const space = await repo.findOne({ where: { tenantId: row.tenantId, communityId: row.communityId!, garage, spaceNo }, lock: { mode: 'pessimistic_write' } });
-      if (!space) throw new BadRequestException('车位不属于本小区或所选授权通道，请重新选择');
+      const communityIds = await this.spaceCommunityIds(row, garage);
+      const matches = communityIds.length ? await repo.find({ where: { tenantId: row.tenantId, communityId: In(communityIds), garage, spaceNo }, lock: { mode: 'pessimistic_write' } }) : [];
+      if (matches.length !== 1) throw new BadRequestException('车位不属于所选车库或档案编号重复，请重新选择');
+      const space = matches[0];
       const room = row.houseLabel.split('/').slice(1).join('/');
-      // 不覆盖已登记给他户或已有车辆的档案；不猜测旧房号格式属于本户。
-      if ((space.plate && normalizeFamilyPlate(space.plate) !== row.plate) || (space.houseNo && space.houseNo !== room)) throw new BadRequestException('车位已关联其他车辆或房号，请先在车位管理核对，不能抢占');
+      const conflict = this.spaceConflict(space, row);
+      if (conflict) throw new BadRequestException(`${conflict}，不能抢占`);
       const before = structuredClone(space);
       space.plate = row.plate; space.houseNo = room; space.ownerName = row.contactName || row.ownerName;
       space.ownerTel = row.contactPhone; space.updatedBy = user.id;
