@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "description": "邻修工作台 · 物业端微信小程序",
+  "scripts": {
+    "test:place-picker": "node --test test/place-picker-scroll.test.cjs"
+  },
   "dependencies": {
     "@pms/api-client": "workspace:*",
     "@pms/miniapp-ui": "workspace:*",

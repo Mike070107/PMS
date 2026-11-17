@@ -41,7 +41,9 @@
     >{{item.text}}</view>
   </scroll-view>
 
-  <block wx:if="{{!suggestions.length}}">
+  <!-- 当前级公区入口与楼栋/房号一起滚动，避免入口固定挤占列表空间。 -->
+  <scroll-view wx:if="{{!suggestions.length}}" class="list" scroll-y scroll-into-view="place-list-{{level}}">
+    <view id="place-list-{{level}}" class="list__content">
     <!-- 停在当前这一级 = 公共区域单 -->
     <view wx:if="{{stayLabel}}" class="stay-here" catchtap="onStayHere">
       <text class="stay-here__main">{{stayLabel}}</text>
@@ -52,7 +54,6 @@
       不填房号（只报到这栋楼）
     </view>
 
-    <scroll-view class="list" scroll-y>
       <view
         wx:for="{{rows}}"
         wx:key="key"
@@ -65,6 +66,6 @@
         <view wx:if="{{level !== 'house'}}" class="icon icon--chevron"></view>
       </view>
       <view wx:if="{{!rows.length}}" class="list__empty">这一级还没有数据</view>
-    </scroll-view>
-  </block>
+    </view>
+  </scroll-view>
 </view>

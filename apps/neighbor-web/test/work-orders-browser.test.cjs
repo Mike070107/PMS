@@ -7,7 +7,7 @@ const { createRequire } = require('node:module');
 const { chromium } = require('playwright-core');
 const app = path.resolve(__dirname, '..');
 const esbuild = createRequire(require.resolve('vite'))('esbuild');
-const evidence = path.resolve(app, '../../outputs/work-order-browser');
+const evidence = path.resolve(app, '../../outputs/omission-release-20261117/work-orders-browser');
 
 // 只替换 API/身份适配层；页面、详情抽屉、路由与样式使用实际生产源码。
 // 合成数据独立静态服务，不请求 PMS/MIS，不执行任何真实业务写入。
@@ -129,6 +129,45 @@ test('真实浏览器：桌面/窄屏省略号、整行开详情、下一步固�
   assert.ok(await page.locator('.wo-page-head h1').evaluate(el=>el.getBoundingClientRect().height<50), '窄屏标题不能被工具栏挤成竖排');
   assert.ok(await page.locator('.wo-list-table td:nth-child(3)').first().evaluate(el=>el.firstElementChild.getBoundingClientRect().right<=el.getBoundingClientRect().right-10), '状态标签应完整保留');
   await shot(page,'narrow-list');
+ });
+});
+
+test('更多菜单：桌面/窄屏点外部收起，按钮可切换，菜单选项仍进入确认而不直接执行', {timeout:90000},async()=>{
+ await fixture(async(page,url)=>{
+  for (const width of [1440,375]) {
+   await page.setViewportSize({width,height:width===375?812:1000});
+   await page.goto(url+'/?view=list&filter=all');
+   await page.locator('.wo-list-table tbody tr').filter({hasText:'SYN-1'}).locator('td').nth(1).click();
+   await page.locator('.next').waitFor();
+   const trigger=page.getByRole('button',{name:'更多 ▾',exact:true});
+   const menu=page.locator('.more .menu');
+   await trigger.click();
+   await menu.waitFor();
+   await shot(page,`more-${width}-open`);
+   // 标题/空白区域点击不能被Sheet内部的事件拦截吞掉。
+   await page.locator('.next .t').click();
+   await menu.waitFor({state:'detached',timeout:1500});
+   assert.equal(await page.locator('.sheet').count(),1,'仅收起更多，工单详情仍打开');
+   assert.equal(await page.locator('.flow').count(),0,'点空白不得触发危险操作');
+   await shot(page,`more-${width}-outside-closed`);
+   await page.locator('.tabs button').getByText('处理进度',{exact:true}).click();
+   await trigger.click();
+   await menu.waitFor();
+   // 窄屏弹层会盖住右侧页签，点击仍露在外面的概况，不强制穿透菜单。
+   await page.locator('.tabs button').getByText('概况',{exact:true}).click();
+   await menu.waitFor({state:'detached',timeout:1500});
+   assert.equal(await page.locator('.tabs button.on').textContent(),'概况','外部控件原有点击仍生效');
+   await trigger.click(); await menu.waitFor();
+   await trigger.click(); await menu.waitFor({state:'detached'});
+   for (const [label,confirm] of [['撤单','确认撤单'],['作废','确认作废']]) {
+    await trigger.click(); await menu.waitFor();
+    await menu.getByRole('button',{name:label,exact:true}).click();
+    await page.getByRole('button',{name:confirm,exact:true}).waitFor();
+    assert.equal(await menu.count(),0,'点击菜单内选项正常进入流程并收起菜单');
+    await page.locator('.flow').getByRole('button',{name:'取消',exact:true}).click();
+    await page.locator('.next').waitFor();
+   }
+  }
  });
 });
 

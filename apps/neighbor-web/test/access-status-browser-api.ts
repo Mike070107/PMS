@@ -193,6 +193,7 @@ export async function request<T>(options: any): Promise<T> {
 
   if (options.url === '/address-tree') return COMMUNITIES as T;
   if (options.url === '/access-card-issuance/readiness') {
+    if (w.__standardRoutes) return { ...READINESS_NORMAL, features: { ...FEATURES, cardWrite: true }, agents: [...AGENTS, { id: 'issuer-fixture', kind: 'issuer', name: '兼容写卡工作站', status: 'online' }], standardWorkstations: [{ id: 'local-fixture', name: '合成标准工作站', resourceId: 'profile.a', resourceName: '读卡器 A' }, { id: 'local-fixture', name: '合成标准工作站', resourceId: 'profile.b', resourceName: '读卡器 B' }] } as T;
     return (scenario === 'nodoor' ? READINESS_NO_DOOR : READINESS_NORMAL) as T;
   }
   if (options.url === '/access-card-issuance/door/controllers') {
@@ -288,7 +289,13 @@ export async function request<T>(options: any): Promise<T> {
 export const address = { tree: () => request<any[]>({ url: '/address-tree' }) };
 export const accessCardIssuance = {
   readiness: () => request<any>({ url: '/access-card-issuance/readiness' }),
-  createBatch: () => { throw Error('合成夹具不执行真实发卡'); },
-  batch: () => { throw Error('合成夹具不执行真实发卡'); },
+  createBatch: async (data: any) => {
+    if (!w.__standardRoutes) throw Error('合成夹具不执行真实发卡');
+    w.__calls.push({ url: '/access-card-issuance/batches', method: 'POST', data });
+    if (w.__createMode === 'error') throw Error('合成网络失败');
+    if (w.__createMode === 'wait') await new Promise(resolve => { w.__createRelease = resolve; });
+    return w.__syntheticBatch = { id: 901, quantity: data.quantity, status: 'needs_operator', currentSequence: 1, items: [{ id: 1901, sequence: 1, cardStatus: 'writing', accessStatus: 'pending', legacySyncStatus: 'pending', icCardNo: '01AB23CD', lastErrorRef: 'STD_CARD', lastErrorMessage: '合成实卡结果未知，禁止重新写卡' }] };
+  },
+  batch: async () => { if (!w.__standardRoutes) throw Error('合成夹具不执行真实发卡'); return w.__syntheticBatch; },
   retryAccessUpload: () => { throw Error('合成夹具不执行真实发卡'); },
 };

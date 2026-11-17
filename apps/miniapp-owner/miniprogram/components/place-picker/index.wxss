@@ -95,7 +95,7 @@
 
 /* 「就报这一级」——公共区域的主入口，做成显眼的一块 */
 .stay-here {
-  margin: 20rpx 28rpx 0;
+  margin: 20rpx 0 0;
   padding: 24rpx;
   border: 2rpx solid var(--color-brand);
   border-radius: var(--radius-md);
@@ -112,7 +112,7 @@
 }
 
 .skip-room {
-  margin: 16rpx 28rpx 0;
+  margin: 16rpx 0 0;
   padding: 20rpx 24rpx;
   border-radius: var(--radius-md);
   background: var(--color-bg);
@@ -126,8 +126,9 @@
   height: 0;
   min-height: 0;
   margin-top: 12rpx;
-  padding: 0 28rpx 28rpx;
+  overscroll-behavior-y: contain;
 }
+.list__content { padding: 0 28rpx 28rpx; }
 .list__item {
   display: flex;
   align-items: center;

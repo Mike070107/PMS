@@ -1,3 +1,4 @@
+import IntegrationRegistration from '@/components/access/IntegrationRegistration';
 import { useCallback, useEffect, useState } from 'react';
 import { accessCardIssuance } from '@pms/api-client';
 import type { AccessCardReadiness } from '@pms/api-client/src/endpoints/access-card-issuance';
@@ -26,7 +27,7 @@ const FEATURES: Array<[keyof AccessCardReadiness['features'], string]> = [
 
 /**
  * 系统与设备（卡片式，对齐新设计）：现场助手 / 库连接 / 控制器状态集中一页。
- * 数据来自 /access-card-issuance/readiness，和发卡页同一份现场状态；本页只读展示。
+ * 能力状态来自 /access-card-issuance/readiness；注册管理经独立鉴权入口，业务写入仍在正式业务页。
  */
 export default function Devices() {
   const [data, setData] = useState<AccessCardReadiness | null>(null);
@@ -63,6 +64,7 @@ export default function Devices() {
       </div>
 
       {err ? <ErrorNote>{err}</ErrorNote> : null}
+      <IntegrationRegistration agents={agents} legacyKnown={data !== null && !err} onChanged={() => { void load(); }} />
 
       {data ? (
         <>
@@ -143,7 +145,7 @@ export default function Devices() {
         </>
       ) : null}
 
-      <div className="note2" style={{ marginTop: 16 }}><Icon name="alert" />设备注册、远程开门、控制器检测仍在现有「门禁发卡 / 停车管理」页；本页读的是那边的现场状态，集中只读展示。</div>
+      <div className="note2" style={{ marginTop: 16 }}><Icon name="alert" />接入注册与密钥管理在本页；发卡、远程开门与控制器检测仍从「门禁管理 / 停车管理」的正式业务入口操作。心跳就绪不等于写库、控制器或实卡验收成功。</div>
     </>
   );
 }

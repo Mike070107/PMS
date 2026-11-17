@@ -153,6 +153,7 @@ export interface AccessCardReadiness {
     controllerUpload: boolean;
     historicalAccessGrant?: boolean;
   };
+  standardWorkstations?: Array<{ id: string; name: string; resourceId: string; resourceName: string }>;
   agents: Array<{
     id: string;
     kind: 'issuer' | 'access_gateway' | 'legacy_sync' | 'parking_gateway';
@@ -605,6 +606,7 @@ export const createBatch = (data: {
   quantity: number;
   extraBuildingIds: number[];
   workstationId?: string;
+  standardResourceId?: string;
   idempotencyKey: string;
 }) =>
   request<AccessCardIssueBatch>({

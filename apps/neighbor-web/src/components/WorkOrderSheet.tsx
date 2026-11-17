@@ -1,5 +1,5 @@
 import { formatBeijingDateTime, sortTimelineNewestFirst } from '@pms/shared-types';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { WorkOrderStatus, REPAIR_TYPE_OPTIONS } from '@pms/shared-types';
 import type { RollbackPreview, TechnicianOption, WorkOrderDetail, WorkOrderStockOptions } from '@pms/shared-types';
@@ -129,6 +129,7 @@ export default function WorkOrderSheet({
           detail={detail}
           moreOpen={moreOpen}
           toggleMore={() => setMoreOpen((v) => !v)}
+          closeMore={() => setMoreOpen(false)}
           onFlow={(f) => { setFlow(f); setMoreOpen(false); }}
         />
       ) : null}
@@ -173,13 +174,25 @@ export default function WorkOrderSheet({
 
 /* -------------------- 下一步操作 -------------------- */
 function NextActions({
-  detail, onFlow, moreOpen, toggleMore,
+  detail, onFlow, moreOpen, toggleMore, closeMore,
 }: {
   detail: WorkOrderDetail;
   onFlow: (f: Flow) => void;
   moreOpen: boolean;
   toggleMore: () => void;
+  closeMore: () => void;
 }) {
+  const moreRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!moreOpen) return;
+    const dismissOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !moreRef.current?.contains(event.target)) closeMore();
+    };
+    // Capture also observes clicks inside the Sheet, whose bubble handler stops propagation.
+    document.addEventListener('pointerdown', dismissOutside, true);
+    return () => document.removeEventListener('pointerdown', dismissOutside, true);
+  }, [moreOpen, closeMore]);
+
   const s = detail.workOrder.status;
   interface Cfg { t: string; main: [Flow, string] | null; sec: Array<[Flow, string]>; more: Array<[Flow, string]> }
   const cfg: Cfg = (() => {
@@ -213,7 +226,7 @@ function NextActions({
         {cfg.main ? <Btn kind="p" onClick={() => onFlow(cfg.main![0])}>{cfg.main[1]}</Btn> : null}
         {cfg.sec.map(([k, t]) => <Btn key={k} onClick={() => onFlow(k)}>{t}</Btn>)}
         {cfg.more.length ? (
-          <div className="more" style={{ position: 'relative', marginLeft: 'auto' }}>
+          <div ref={moreRef} className="more" style={{ position: 'relative', marginLeft: 'auto' }}>
             <Btn kind="g" onClick={toggleMore}>更多 ▾</Btn>
             {moreOpen ? (
               <div className="menu">

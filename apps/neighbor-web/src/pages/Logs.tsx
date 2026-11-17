@@ -5,6 +5,7 @@ import { request } from '@pms/api-client';
 import { logObjectLabel, safeLogTechnical, type LogPresentation } from '@/lib/logs-presentation';
 import { usagePageLabel } from '@/lib/page-labels';
 import Icon from '@/components/Icon';
+import ImagePreview from '@/components/ImagePreview';
 import type { IconName } from '@/components/Icon';
 import { Loading, Sheet, toast } from '@/components/ui';
 import ToneIcon from '@/components/ToneIcon';
@@ -631,7 +632,7 @@ function UsagePanel({ scopeKey }: { scopeKey: string }) {
 /* ───────────── 用户反馈（合并原「异常反馈」） ───────────── */
 interface FeedbackRow {
   id: number | string;
-  attachments?: Array<{ url?: string; name?: string | null }> | null;
+  attachments?: Array<{ url?: string; name?: string | null; mime?: string | null; contentType?: string | null; type?: string | null }> | null;
   type?: string | null;
   kind?: string | null;
   userName?: string | null;
@@ -660,13 +661,35 @@ const fbSource = (row: FeedbackRow) => /mini|wx|小程序/i.test(String(row.sour
 const fbAttachments = (row: FeedbackRow) => [
   ...(Array.isArray(row.attachments) ? row.attachments : []),
   ...(Array.isArray(row.attachmentUrls) ? row.attachmentUrls : []),
-  ...(Array.isArray(row.imageUrls) ? row.imageUrls : []),
+  ...(Array.isArray(row.imageUrls) ? row.imageUrls.map(url => ({ url, type: 'image' })) : []),
 ].flatMap((item: any) => {
-  if (typeof item === 'string' && item) return [{ url: item, name: null }];
-  if (item && typeof item === 'object' && item.url) return [{ url: String(item.url), name: item.name ? String(item.name) : null }];
+  if (typeof item === 'string' && item) return [{ url: item, name: null, mime: '', type: '' }];
+  if (item && typeof item === 'object' && item.url) return [{ url: String(item.url), name: item.name ? String(item.name) : null, mime: String(item.mime || item.contentType || '').toLowerCase(), type: String(item.type || '') }];
   return [];
-});
-const fileName = (url: string) => { try { const path = decodeURIComponent(url.split('?')[0]); return path.split('/').pop() || '附件'; } catch { return '附件'; } };
+}).filter((file, index, files) => files.findIndex(other => other.url === file.url) === index);
+const fileName = (url: string) => { try { const parsed = new URL(url, window.location.origin); const path = parsed.searchParams.get('key') || decodeURIComponent(parsed.pathname); return path.split('/').pop() || '附件'; } catch { return '附件'; } };
+const fbIsImage = (file: ReturnType<typeof fbAttachments>[number]) => file.mime.startsWith('image/') || file.type === 'image' || ((!file.mime || file.mime === 'application/octet-stream') && [file.name || '', fileName(file.url)].some(name => /\.(?:avif|webp|png|jpe?g|gif|bmp|svg|ico)$/i.test(name)));
+
+function FeedbackThumb({ url }: { url: string }) {
+  const [failed, setFailed] = useState(false);
+  return failed ? <span className="fb-thumb-error">图片未加载<br />点击重试预览</span> : <img src={url} alt="" loading="lazy" onError={() => setFailed(true)} />;
+}
+
+function FeedbackAttachments({ files }: { files: ReturnType<typeof fbAttachments> }) {
+  const [preview, setPreview] = useState<number | null>(null);
+  const images = files.filter(fbIsImage).map(file => ({ fileUrl: file.url, fileName: file.name || fileName(file.url) }));
+  return <>
+    <div className="fb-attachments">{files.map(file => {
+      const name = file.name || fileName(file.url);
+      return <div className="fb-attachment" key={file.url}>
+        {fbIsImage(file) ? <button type="button" className="fb-thumb" aria-label={'预览附件：' + name} onClick={() => setPreview(images.findIndex(image => image.fileUrl === file.url))}><FeedbackThumb url={file.url} /></button> : <a className="fb-attachment-link" href={file.url} target="_blank" rel="noopener">{name}</a>}
+        {fbIsImage(file) ? <span className="fb-attachment-name" title={name}>{name}</span> : null}
+        <a href={file.url} download={name}>下载</a>
+      </div>;
+    })}</div>
+    {preview !== null ? <ImagePreview files={images} initialIndex={preview} title="反馈附件预览" onClose={() => setPreview(null)} /> : null}
+  </>;
+}
 const fbRecentErrors = (row: FeedbackRow): Array<{ at?: string; message?: string; page?: string }> => {
   const list = Array.isArray(row.recentErrors) ? row.recentErrors : Array.isArray(row.context?.recentErrors) ? row.context.recentErrors : [];
   return list.flatMap((item: any) => {
@@ -870,7 +893,7 @@ function FeedbackPanel({ scopeKey }: { scopeKey: string }) {
                               {files.length ? (
                                 <div className="fb-detail-files">
                                   <b>附件</b>
-                                  <div>{files.map((file) => <span className="fb-file" key={file.url}><a href={file.url} target="_blank" rel="noopener">{file.name || fileName(file.url)}</a><a href={file.url} download={file.name || fileName(file.url)}>下载</a></span>)}</div>
+                                  <FeedbackAttachments files={files} />
                                 </div>
                               ) : null}
                               <div className="fb-detail-actions" onClick={(event) => event.stopPropagation()}>

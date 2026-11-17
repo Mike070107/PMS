@@ -31,6 +31,7 @@ import { TelemetryModule } from './modules/telemetry/telemetry.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { RepairExperiencesModule } from './modules/repair-experiences/repair-experiences.module';
 import { AccessCardIssuanceModule } from './modules/access-card-issuance/access-card-issuance.module';
+import { LocalIntegrationsModule } from './modules/local-integrations/local-integrations.module';
 import { ExternalAccessModule } from './modules/external-access/external-access.module';
 import { MetersModule } from './modules/meters/meters.module';
 import { StatisticsModule } from './modules/statistics/statistics.module';
@@ -62,6 +63,7 @@ import { StatisticsModule } from './modules/statistics/statistics.module';
     FeedbackModule,
     RepairExperiencesModule,
     AccessCardIssuanceModule,
+    LocalIntegrationsModule,
     ExternalAccessModule,
     MetersModule,
     StatisticsModule,

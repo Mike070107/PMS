@@ -20,6 +20,7 @@ export type { FeedbackType, FeedbackStatus, UserFeedbackReq } from './endpoints/
 export * as feedback from './endpoints/feedback';
 export * as repairExperiences from './endpoints/repair-experiences';
 export * as accessCardIssuance from './endpoints/access-card-issuance';
+export * as localIntegrations from './endpoints/local-integrations';
 export * as apartmentCashier from './endpoints/apartment-cashier';
 export * as familyCars from './endpoints/family-cars';
 export { meters, METER_READING_STATUS_LABELS } from './endpoints/meters';

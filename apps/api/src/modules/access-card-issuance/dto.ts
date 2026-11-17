@@ -43,6 +43,11 @@ export class CreateAccessCardIssueDto {
   @MaxLength(80)
   workstationId?: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  standardResourceId?: string;
+
   @IsString()
   @MaxLength(80)
   idempotencyKey: string;

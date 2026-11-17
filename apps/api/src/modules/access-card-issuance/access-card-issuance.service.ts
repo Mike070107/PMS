@@ -1,3 +1,4 @@
+import { StandardCardIssuanceService } from '../local-integrations/standard-card-issuance.service';
 import { parkingReceiptCommitted } from './parking-receipts';
 import { requiresVehiclePreservation, validatePreservedOperation, assertPreservedReceipt, plateKey } from './parking-vehicle-preservation';
 import { preservePlateBilling } from './parking-plate-billing';
@@ -5,10 +6,12 @@ import { ParkingPlateTag } from '../../entities/parking-plate-tag.entity';
 import { loadAddressTreeLite, resolveAddressForTenant } from '../../common/address-lookup';
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   HttpException,
   Injectable,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -209,6 +212,7 @@ export class AccessCardIssuanceService {
     private readonly userRepo: Repository<User>,
     private readonly config: ConfigService,
     private readonly deliyun: DeliyunParkingService,
+    @Optional() private readonly standardCards?: StandardCardIssuanceService,
   ) {}
 
   async getHouseContext(houseId: number, user: AuthUser, access?: ResolvedAccess) {
@@ -1570,7 +1574,8 @@ export class AccessCardIssuanceService {
     const historicalAccessGrant = agents.some((agent) =>
       agent.kind === 'access_gateway' && effectiveAgentStatus(agent) === 'online'
       && agent.capabilities?.historicalAccessGrant === true);
-    const cardWrite = agents.some((agent) =>
+    const standardWorkstations = await this.standardCards?.workstations(tenantId) ?? [];
+    const cardWrite = standardWorkstations.length > 0 || agents.some((agent) =>
       agent.kind === 'issuer' && effectiveAgentStatus(agent) === 'online'
       && agent.capabilities?.cardWrite === true);
     const legacyDbWrite = agents.some((agent) =>
@@ -1597,6 +1602,7 @@ export class AccessCardIssuanceService {
         legacyCardQuery,
       },
       parkingQuery,
+      standardWorkstations,
       agents: orderAgentsByAvailability(agents).map((agent) => ({
         id: agent.agentKey,
         kind: agent.kind,
@@ -3568,29 +3574,34 @@ export class AccessCardIssuanceService {
   async reportLegacyCardCheck(agentKey: string, token: string, dto: LegacyCardCheckReportDto) {
     const agent = await this.authenticateAgent(agentKey, token);
     if (agent.kind !== 'legacy_sync') throw new ForbiddenException('只有 .80 旧库同步代理可以上报捷顺卡号查询');
-    const check = await this.legacyCardCheckRepo.findOne({ where: { id: dto.checkId, tenantId: agent.tenantId } });
-    if (!check) throw new NotFoundException('捷顺卡号查询任务不存在');
-    if (check.leaseAgentKey !== agent.agentKey) throw new ForbiddenException('查询任务租约不属于当前代理');
-    if (dto.result === 'success') {
-      check.matches = (dto.matches ?? []).map((match) => ({
-        personId: match.personId,
-        personNo: match.personNo.trim(),
-        personName: match.personName.trim(),
-        icCardNo: this.normalizeIcCardNo(match.icCardNo),
-        issuedAt: match.issuedAt || null,
-      }));
-      check.status = check.matches.length ? 'duplicate' : 'clear';
-      check.allocatedIcNo = check.matches.length ? null : (dto.allocatedIcNo ?? null);
-      check.lastError = null;
-    } else {
-      check.status = dto.result === 'retry' ? 'pending' : 'error';
-      check.lastError = dto.errorMessage || '捷顺系统卡号查询失败';
-    }
-    check.checkedAt = new Date();
-    check.leaseAgentKey = null;
-    check.leaseExpiresAt = null;
-    await this.legacyCardCheckRepo.save(check);
-    return { ok: true, checkId: check.id, status: check.status };
+    return this.legacyCardCheckRepo.manager.transaction(async manager => {
+      const repo = manager.getRepository(AccessCardLegacyCardCheck);
+      const check = await repo.findOne({ where: { id: dto.checkId, tenantId: agent.tenantId }, lock: { mode: 'pessimistic_write' } });
+      if (!check) throw new NotFoundException('捷顺卡号查询任务不存在');
+      if (check.leaseAgentKey !== agent.agentKey) throw new ForbiddenException('查询任务租约不属于当前代理');
+      if (dto.result === 'success') {
+        check.matches = (dto.matches ?? []).map((match) => ({
+          personId: match.personId,
+          personNo: match.personNo.trim(),
+          personName: match.personName.trim(),
+          icCardNo: this.normalizeIcCardNo(match.icCardNo),
+          issuedAt: match.issuedAt || null,
+        }));
+        check.status = check.matches.length ? 'duplicate' : 'clear';
+        check.allocatedIcNo = check.matches.length ? null : (dto.allocatedIcNo ?? null);
+        check.lastError = null;
+      } else {
+        check.status = dto.result === 'retry' ? 'pending' : 'error';
+        check.lastError = dto.errorMessage || '捷顺系统卡号查询失败';
+      }
+      check.checkedAt = new Date();
+      check.leaseAgentKey = null;
+      check.leaseExpiresAt = null;
+      await repo.save(check);
+      // Reservation and bound write are committed together; a failed bridge leaves the original lease retryable.
+      await this.standardCards?.advanceAllocation(agent.tenantId, check.itemId, manager);
+      return { ok: true, checkId: check.id, status: check.status };
+    });
   }
 
   async reportLegacyHistory(agentKey: string, token: string, dto: LegacyHistoryReportDto) {
@@ -3946,15 +3957,20 @@ export class AccessCardIssuanceService {
 
   async create(dto: CreateAccessCardIssueDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
-    const existing = await this.batchRepo.findOne({
-      where: { idempotencyKey: dto.idempotencyKey },
-    });
-    if (existing) {
-      if (existing.tenantId !== tenantId) throw new ForbiddenException('任务幂等键已被占用');
-      return this.getBatch(existing.id, user);
-    }
-
     const context = await this.resolveHouse(dto.houseId, tenantId, access);
+    const replay = async (existing: AccessCardIssueBatch) => {
+      if (existing.tenantId !== tenantId) throw new ForbiddenException('任务幂等键已被占用');
+      const oldExtras = [...new Set(existing.targetBuildingIds ?? [])].filter(id => id !== existing.buildingId).sort((a,b) => a-b);
+      const extras = existing.projectPhase === 'phase2'
+        ? [...new Set(dto.extraBuildingIds ?? [])].filter(id => id !== existing.buildingId).sort((a,b) => a-b)
+        : [];
+      if (existing.houseId !== dto.houseId || existing.quantity !== dto.quantity || (existing.workstationId ?? null) !== (dto.workstationId ?? null) || JSON.stringify(oldExtras) !== JSON.stringify(extras)) throw new ConflictException('幂等键已用于另一发卡请求');
+      await this.standardCards?.assertBatchReplay(existing, dto.standardResourceId);
+      return this.getBatch(existing.id, user);
+    };
+    const existing = await this.batchRepo.findOne({ where: { idempotencyKey: dto.idempotencyKey } });
+    if (existing) return replay(existing);
+
     if (context.phase === 'phase2' && !context.accessSystem) {
       throw new BadRequestException(`二期 ${context.building.buildingNo} 号楼尚未配置门禁路由，不能发卡`);
     }
@@ -3977,53 +3993,64 @@ export class AccessCardIssuanceService {
     const targetBuildingIds = context.phase === 'phase2'
       ? [context.building.id, ...extraIds]
       : [];
-    const created = await this.batchRepo.manager.transaction(async (manager) => {
-      const batch = await manager.save(
-        manager.create(AccessCardIssueBatch, {
-          tenantId,
-          houseId: context.house.id,
-          communityId: context.community.id,
-          buildingId: context.building.id,
-          legacyRoomKey: context.legacyStorageRoomKey,
-          addressSnapshot: context.roomKey,
-          projectPhase: context.phase,
-          accessSystem: context.accessSystem,
-          quantity: dto.quantity,
-          targetBuildingIds,
-          workstationId: dto.workstationId ?? null,
-          status: 'waiting_for_card',
-          currentSequence: 1,
-          idempotencyKey: dto.idempotencyKey,
-          completedAt: null,
-          createdBy: user.id,
-          updatedBy: user.id,
-        }),
-      );
-      const items = Array.from({ length: dto.quantity }, (_, index) =>
-        manager.create(AccessCardIssueItem, {
-          tenantId,
-          batchId: batch.id,
-          sequence: index + 1,
-          cardStatus: 'waiting_for_card',
-          accessStatus: context.phase === 'phase1' ? 'not_required' : 'pending',
-          legacySyncStatus: 'pending',
-          icCardNo: null,
-          wgCardNo: null,
-          legacyPersonId: null,
-          legacyPersonNo: null,
-          controllerResults: [],
-          lastErrorRef: null,
-          lastErrorMessage: null,
-          cardCompletedAt: null,
-          accessCompletedAt: null,
-          legacySyncedAt: null,
-          createdBy: user.id,
-          updatedBy: user.id,
-        }),
-      );
-      await manager.save(items);
-      return batch;
-    });
+    if ((dto.workstationId?.startsWith('local-') || dto.standardResourceId) && !this.standardCards) throw new BadRequestException('标准写卡通道未加载');
+    const standardRoute = await this.standardCards?.resolveRoute(tenantId, dto.workstationId, dto.standardResourceId) ?? null;
+    let created: AccessCardIssueBatch;
+    try {
+      created = await this.batchRepo.manager.transaction(async (manager) => {
+        const batch = await manager.save(
+          manager.create(AccessCardIssueBatch, {
+            tenantId,
+            houseId: context.house.id,
+            communityId: context.community.id,
+            buildingId: context.building.id,
+            legacyRoomKey: context.legacyStorageRoomKey,
+            addressSnapshot: context.roomKey,
+            projectPhase: context.phase,
+            accessSystem: context.accessSystem,
+            quantity: dto.quantity,
+            targetBuildingIds,
+            workstationId: dto.workstationId ?? null,
+            status: 'waiting_for_card',
+            currentSequence: 1,
+            idempotencyKey: dto.idempotencyKey,
+            completedAt: null,
+            createdBy: user.id,
+            updatedBy: user.id,
+          }),
+        );
+        const items = Array.from({ length: dto.quantity }, (_, index) =>
+          manager.create(AccessCardIssueItem, {
+            tenantId,
+            batchId: batch.id,
+            sequence: index + 1,
+            cardStatus: 'waiting_for_card',
+            accessStatus: context.phase === 'phase1' ? 'not_required' : 'pending',
+            legacySyncStatus: 'pending',
+            icCardNo: null,
+            wgCardNo: null,
+            legacyPersonId: null,
+            legacyPersonNo: null,
+            controllerResults: [],
+            lastErrorRef: null,
+            lastErrorMessage: null,
+            cardCompletedAt: null,
+            accessCompletedAt: null,
+            legacySyncedAt: null,
+            createdBy: user.id,
+            updatedBy: user.id,
+          }),
+        );
+        await manager.save(items);
+        await this.standardCards?.startBatch(manager, batch, items, standardRoute);
+        return batch;
+      });
+    } catch (error) {
+      if ((error as { code?: string }).code !== '23505') throw error;
+      const raced = await this.batchRepo.findOne({ where: { idempotencyKey: dto.idempotencyKey } });
+      if (!raced) throw error;
+      return replay(raced);
+    }
     return this.getBatch(created.id, user);
   }
 
@@ -4043,6 +4070,9 @@ export class AccessCardIssuanceService {
     const tenantId = this.requireTenant(user);
     const item = await this.itemRepo.findOne({ where: { id: itemId, batchId, tenantId } });
     if (!item) throw new NotFoundException('发卡记录不存在');
+    if (item.lastErrorRef === 'STD_CARD') {
+      throw new BadRequestException('标准写卡结果需要人工核对，不能通过重试控制器下载清除');
+    }
     if (!['waiting_retry', 'needs_operator'].includes(item.accessStatus)) {
       throw new BadRequestException('当前门禁下载状态不需要重试');
     }
@@ -4546,7 +4576,7 @@ export class AccessCardIssuanceService {
 
   private async refreshBatchStatus(batch: AccessCardIssueBatch, tenantId: number) {
     const items = await this.itemRepo.find({ where: { batchId: batch.id, tenantId } });
-    if (items.some((item) => item.cardStatus === 'duplicate_card' || item.accessStatus === 'needs_operator')) {
+    if (items.some((item) => item.cardStatus === 'duplicate_card' || item.accessStatus === 'needs_operator' || (item.lastErrorRef === 'STD_CARD' && !!item.lastErrorMessage))) {
       batch.status = 'needs_operator';
     } else if (this.isDeliverable(batch, items)) {
       batch.status = 'completed';

@@ -9,6 +9,8 @@ import '../src/styles/large.css';
 import '../src/styles/guards.css';
 import '../src/styles/access-door.css';
 
+if (location.search.includes('standard-route')) (window as any).__standardRoutes = true;
+
 // ?recent-stall：模拟助手一直不回传，验证自动重试耗尽后页面露出「重试」入口。
 if (typeof location !== 'undefined' && location.search.includes('recent-stall')) {
   (window as any).__recentMode = 'stall';

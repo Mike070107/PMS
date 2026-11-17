@@ -1,27 +1,25 @@
-# PMS 本批交接（2026-11-16 北京时间，最新在上）
-## 目标
-未知类别只通知本管理处办公室；派单自学习类别且可删样例；完工小结可关闭、保留原话；当次授权仅部署生产API。
-## 已完成
-- 12:44–12:46独立后验通过：双路TLS/健康/五字段、124实例/目录/PID、3线上dist字节数/SHA、旧回退包完整性；未业务测试写/通知。
-- 12:40正式API-only发布成功：api-b9cbd70／b9cbd70478dad8988774aeb25b2946bf2271e956；sourceHash eb9e963f7b98e944e12dd875694fac1f77d0c2cdeeb394856330401b4a5a536a。
-- 正式门禁10轮均0fail；完整build/stamp/上传前源码复核/远端部署/公网verify-live完成，台账803fd9f8及deployed/api已自动推并回读。
-- 936冻结源码SHA仍一致，3关键dist与2043607a已验收构建一致；本批API隔离195/195，员工Page VM14/14，独立适配17/17。
-- 前6次本机门禁失败证据均保留；有界pnpm适配及Vite-only原库IPC降级后真实Webbuild成功，单一fixture环境字段修复后完整浏览器门禁通过。
-- 员工开发版1.0.20261116c／2043607a，11:23:58官方CLI√upload，AppID wx002fde4bfaa4c7d9，1,124,141bytes；58共享运行文件SHA一致，stamp已还原。
-- 通知只选显式本处任职/有权限/ACTIVE员工；all数据范围不等于收所有处通知，空配置/无office静默；不改历史工单。
-- 成功派单学本处故障→有效类别，不记死人；下次按规则/工种路由；删/停样例有效，office先于take200过滤，删种子不复灌。
-- 地址先定管理处，lite入口沿用学习，跨处重判失败清旧类别；员工小结默认OFF、本机tenant/user偏好，先留原话、候选显式采用、迟到回包失效。
+# 六项遗漏交付账（2026-11-17，最新在上）
+## 目标与授权
+用户明确授权：补齐六项遗漏、逐项验收、自动上线、代设双端体验版；未授权提审/正式发布及真实业务/库存/硬件测试写。
+## 已实现和本地验证
+- 工单更多外点关闭、发卡页删除在用卡区块、反馈缩略图/大图：真实 Chrome 桌面/窄屏，相关 Web 24/24；尚未部署。
+- 双端位置选择恢复：6/6 DOM/触摸回归、员工原生 SDK 隔离 fixture、双端类型检查；尚未上传本次开发包。
+- 标准管理/工作站选择/正式发卡入口：浏览器14/14、API/Web类型检查通过。
+- 标准卡桥接复用原批次、实卡UID、.80真实分配账；只在UID/分配号回读通过后完成写卡阶段，不伪造旧库/控制器完成。
+- 协议/runner/真实TypeORM+PGlite及限定建表18/18；一期忽略额外楼栋的重试先复现409、归一化修复后通过；最终API tsc通过。
+- 旧发卡227/227、停车22/22；限定生产建表只执行两项新接入迁移，事务/幂等/漂移回滚与部署前调用4/4；非全库测试。
+- 原历史目录1917个tracked哈希和工作区状态保持不变；没有覆盖dirty草稿。
 ## 进行中
-无（本次授权API部署与独立复核均完成；现场业务/真机边界见下）。
-## 待办／未验证
-真实管理处建单→派单→下次识别/删样例、通知送达、完工保存+刷新、微信原生语音/开关仍未现场验证；健康/哈希不冒充业务验收。
-员工仅开发上传，未设体验/提审/正式发布；请人工选1.0.20261116c／2043607a为体验版后清手机缓存验证；业主仍1.0.20261116b／74e332d0。
-Web公开2.0.20261115-0154／c0dcec1a、助手2.5.54／d075f81d，匹配历史正式基线；本次未部署且未捕获同时点前测，不宣称现场助手升级。
-学习入库尽力执行，失败不回滚派单；并发未压测。旧API回退包12:09/SHA8a133216…66d5d/1474成员仍在，未执行回滚；禁止退役旧机。
+在D:/00项目开发/PMS-release-simplification-20261117（codex/omissions-20261117），基线bb3c2d69；正在最终差异审查、合入main、统一发布。
+## 未完成（不能标为完成）
+- 标准门禁授权/停车正式业务路由、真实标准硬件适配、现场实卡闭环；SQLite仅只读示例。
+- 本次main推送、Web/API生产版本/提交/哈希及正式入口回读。
+- 双端CLI开发包上传、公众平台体验指针设置和刷新回读；Chrome9223公众平台当前为未登录首页。
+- 真机手势/现场设备验收；健康、心跳、队列、合成fixture不能代替这些证据。
 ## 关键证据
-[部署报告](<../../outputs/repair-learning-deploy-20261116/verification.md>)；[独立后验](<../../outputs/repair-learning-deploy-20261116/review/postcheck-report.md>)；[最终证明](<../../outputs/repair-learning-deploy-20261116/release-proof.json>)。
-[实现逐项对账](<../../outputs/repair-learning-summary-20261116/verification.md>)；[上传审计](<../../outputs/repair-learning-summary-20261116/upload-audit.json>)。
-## 验证命令
-`node outputs/repair-learning-deploy-20261116/finalize-proof.cjs`；`node --test apps/miniapp-staff/test/completion-summary.test.cjs`；API中`& ../../outputs/repair-learning-summary-20261116/rerun-api.ps1`。
+本地证据目录outputs/omission-release-20261117；preservation-final.json、standard-retry-{before-confirmed,after}.log、api-reviewed-tsc.log、access-legacy-reviewed.log、parking-owner-reviewed.log。
+work-orders-browser、logs-feedback-browser、integrations-browser、native-*.png均为隔离测试；非生产业务写。
 ## 下一轮
-人工选员工体验版；明确测试环境再做管理处学习/删除样例和微信原生语音验收，不重放旧单/批改历史、不重复发布未改端。
+先核对并提交明确文件，合入推送main后按./deploy/publish-production.ps1 -Target auto发布；禁止从未提交分支构建生产。
+之后tools/miniapp-ship.mjs双端--upload（共享构建串行），核对同源与版本，再尝试代设体验；不可拿上传当体验指针完成。
+生产唯一124.223.179.214，身份/目录/服务需再核验；不得连接退役旧机。汇报按六项结果→证据→风险。

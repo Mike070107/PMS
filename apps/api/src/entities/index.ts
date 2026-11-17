@@ -48,6 +48,7 @@ import { ParkingRecordSnapshot } from './parking-record-snapshot.entity';
 import { ParkingOperation } from './parking-operation.entity';
 import { AccessCard } from './access-card.entity';
 import { AccessCardAgent } from './access-card-agent.entity';
+import { LocalIntegration, LocalIntegrationTask } from './local-integration.entity';
 import { AccessCardIssueBatch } from './access-card-issue-batch.entity';
 import { AccessCardIssueItem } from './access-card-issue-item.entity';
 import { AccessCardLegacySnapshot } from './access-card-legacy-snapshot.entity';
@@ -171,6 +172,8 @@ export const entities = [
   ParkingOperation,
   AccessCard,
   AccessCardAgent,
+  LocalIntegration,
+  LocalIntegrationTask,
   AccessCardIssueBatch,
   AccessCardIssueItem,
   AccessCardLegacySnapshot,
@@ -271,6 +274,8 @@ export {
   ParkingOperation,
   AccessCard,
   AccessCardAgent,
+  LocalIntegration,
+  LocalIntegrationTask,
   AccessCardIssueBatch,
   AccessCardIssueItem,
   AccessCardLegacySnapshot,

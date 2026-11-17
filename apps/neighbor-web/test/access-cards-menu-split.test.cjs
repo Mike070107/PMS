@@ -80,7 +80,7 @@ test('existing business view permission is identical for direct route, sidebar a
 
 test('existing card page keeps scoped house selection and business edit guards for device actions', async () => {
   for (const edit of [false, true]) {
-    const h = harness(grants(true, edit), '/access-cards', { AccessCards: [[{ id: 22 }, { id: 99 }], { houseId: 3, communityName: '合成小区' }, [], []] });
+    const h = harness(grants(true, edit), '/access-cards', { AccessCards: [[{ id: 22 }, { id: 99 }], { houseId: 3, communityName: '合成小区' }, []] });
     const ui = h.render('pages/AccessCards.tsx');
     assert.match(text(ui), /门禁发卡/);
     const picker = nodes(ui).find(n => n.type === '@/components/HousePicker');
@@ -93,7 +93,7 @@ test('existing card page keeps scoped house selection and business edit guards f
   }
   for (const edit of [false, true]) {
     const batch = { id: 5, items: [{ id: 6, icCardNo: 'synthetic', accessStatus: 'waiting_retry', cardStatus: 'card_completed' }] };
-    const h = harness(grants(true, edit), '/access-cards', { AccessCards: [[], { houseId: 3 }, [], [], '', null, 1, batch] });
+    const h = harness(grants(true, edit), '/access-cards', { AccessCards: [[], { houseId: 3 }, [], '', null, 1, batch] });
     const ui = h.render('pages/AccessCards.tsx');
     const retry = nodes(ui).find(n => n.type === 'button' && text(n).includes('重试下发'));
     assert.equal(!!retry && !retry.props.disabled, edit);
@@ -101,6 +101,16 @@ test('existing card page keeps scoped house selection and business edit guards f
     await Promise.resolve();
     assert.equal(h.requests.some(r => r.key === 'retryAccessUpload'), edit);
   }
+});
+
+test('issuance removes active-card block and its broad business search request', async () => {
+  const h = harness(grants(true, true), '/access-cards', { AccessCards: [[], { houseId: 3, communityId: 22, buildingNo: '6', roomNo: '502' }] });
+  const ui = h.render('pages/AccessCards.tsx');
+  assert.doesNotMatch(text(ui), /在用门禁卡|这一户还没有在用门禁卡/);
+  for (const effect of h.effects) effect();
+  await Promise.resolve();
+  assert.equal(h.requests.some(r => r.url === '/business/search'), false);
+  assert.doesNotMatch(source('pages/AccessCards.tsx'), /interface CardRow|setCards|loadHouse/);
 });
 
 test('vehicle search never requests access cards and contains no access-card tab, state or shortcut', async () => {

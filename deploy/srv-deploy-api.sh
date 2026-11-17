@@ -20,6 +20,14 @@ echo "deploying: $PKG"
 
 cd /opt/pms-repair/apps
 
+# Only the two additive standard-integration migrations in this frozen package.
+# Never run all pending TypeORM migrations or change historical business records.
+migrate_standard_integrations() {
+  if [ -f api/dist/production-local-integration-migration.js ]; then
+    (cd api && node dist/production-local-integration-migration.js --apply)
+  fi
+}
+
 # 快速包只包含新 dist 和运行元数据；依赖未变时保留服务器上的 node_modules，
 # 避免每次发布重复上传约 87MB 的完整 API 包。快速包由 publish-production.ps1 生成，
 # 依赖变化时仍会退回下面的完整包路径。
@@ -52,6 +60,7 @@ if tar -tzf "$PKG" 2>/dev/null | grep -qx 'api/.pms-fast-release'; then
   mv "$STAGE/api/dist" api/dist
   cp "$STAGE/api/package.json" api/package.json
   cp "$STAGE/api/ecosystem.config.cjs" api/ecosystem.config.cjs
+  migrate_standard_integrations
   pm2 reload pms-api --update-env
   wait_for_health() {
     local url="$1"
@@ -154,6 +163,7 @@ echo "--- api/ 目录 ---"
 ls api/ | head -20
 
 # 5) reload pm2（--update-env 确保 .env 变更生效）
+migrate_standard_integrations
 echo "--- pm2 reload ---"
 pm2 reload pms-api --update-env
 

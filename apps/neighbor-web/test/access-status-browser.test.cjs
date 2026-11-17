@@ -9,7 +9,7 @@ const { createRequire } = require('node:module');
 const app = path.resolve(__dirname, '..');
 const esbuild = createRequire(require.resolve('vite/package.json'))('esbuild');
 const chrome = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
-const evidenceDir = path.resolve(app, '../../../..', 'pms-access-status-evidence');
+const evidenceDir = path.resolve(app, '../../outputs/omission-release-20261117/access-status-browser');
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const DOOR_MESSAGE = '当前小区控制器回执来自上次检查，可点「重新检查在线状态」刷新。';
 const LABELS = {
@@ -556,5 +556,37 @@ test('发卡历史：personCreatedAt 倒序、全量倒序序号 30..21/20..11�
     );
     await screenshot('access-history-page2.png');
   });
+});
+
+test('formal issuance selects explicit standard resource, retains choice on failure and never presents unknown as complete', { timeout: 90000 }, async () => {
+  await withPage(async ({ js, call, click, clickText, waitFor, screenshot }) => {
+    await pickHouse({ click, clickText, waitFor });
+    const button = "[...document.querySelectorAll('button')].find(b=>b.textContent.includes('开始发卡'))";
+    await waitFor("document.querySelector('[aria-label=写卡工作站]')?.options.length === 4", 'standard and compatible routes');
+    assert.equal(await js(button + '.disabled'), true, 'multiple physical routes require explicit selection');
+    assert.equal(await js("document.querySelector('[aria-label=写卡工作站]').value"), '');
+    await js("(()=>{const e=document.querySelector('[aria-label=写卡工作站]');e.value='local-fixture|profile.b';e.dispatchEvent(new Event('change',{bubbles:true}));window.__createMode='error';})()");
+    await waitFor(button + '.disabled === false', 'chosen route');
+    for (const width of [1440, 375]) {
+      await call('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: width < 500 });
+      await pause(150); assert.equal(await js('document.documentElement.scrollWidth <= innerWidth + 1'), true);
+      await js("document.querySelector('[aria-label=写卡工作站]').scrollIntoView({block:'center'})"); await screenshot('standard-workstation-'+width+'.png');
+    }
+    await clickText('button', '开始发卡'); await waitFor(button + '.disabled === false', 'failure retained form');
+    assert.equal(await js("document.querySelector('[aria-label=写卡工作站]').value"), 'local-fixture|profile.b');
+    await js("window.__createMode='wait'"); await clickText('button', '开始发卡');
+    await waitFor("!!window.__createRelease && [...document.querySelectorAll('button')].some(b=>b.textContent.includes('建立中') && b.disabled)", 'waiting without duplicate submit');
+    const posted = await js("window.__calls.filter(c=>c.url==='/access-card-issuance/batches').at(-1).data");
+    assert.equal(posted.houseId,111); assert.equal(posted.workstationId,'local-fixture'); assert.equal(posted.standardResourceId,'profile.b'); assert.ok(posted.idempotencyKey);
+    assert.equal(posted.idempotencyKey, await js("window.__calls.filter(c=>c.url==='/access-card-issuance/batches')[0].data.idempotencyKey"), 'unknown creation retries the original intent, never another physical batch');
+    await screenshot('standard-workstation-wait.png'); await js('window.__createRelease()');
+    await waitFor("document.body.textContent.includes('任务已暂停') && document.body.textContent.includes('禁止重新写卡')", 'unknown stays stopped');
+    await screenshot('standard-workstation-unknown.png');
+    await clickText('button', '结束 / 看结果');
+    await js("(()=>{const e=document.querySelector('[aria-label=写卡工作站]');e.value='issuer-fixture|';e.dispatchEvent(new Event('change',{bubbles:true}));window.__createMode='success';})()");
+    await clickText('button', '开始发卡'); await waitFor("document.body.textContent.includes('任务已暂停')", 'compatible route preserved');
+    const legacy = await js("window.__calls.filter(c=>c.url==='/access-card-issuance/batches').at(-1).data");
+    assert.equal(legacy.workstationId,'issuer-fixture'); assert.equal(legacy.standardResourceId,undefined);
+  }, '?standard-route');
 });
 

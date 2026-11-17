@@ -183,6 +183,17 @@
 .fb-trace { color: var(--ink3); font-size: 11.5px; white-space: nowrap; }
 .fb-detail-errors, .fb-detail-files { display: flex; flex-direction: column; gap: 8px; }
 .fb-detail-actions { display: flex; gap: 8px; padding-top: 4px; }
+.fb-detail-files { max-width: calc(100vw - 72px); }
+.fb-attachments { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.fb-attachment { display: flex; flex-direction: column; gap: 6px; width: 128px; min-width: 0; align-items: flex-start; font-size: 13px; }
+.fb-thumb { display: grid; place-items: center; width: 128px; height: 96px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--line2); overflow: hidden; cursor: zoom-in; }
+.fb-thumb:hover { border-color: var(--acc); }
+.fb-thumb:focus-visible { outline: 3px solid var(--acc); outline-offset: 3px; }
+.fb-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.fb-thumb-error { color: var(--ink2); font-size: 12px; text-align: center; }
+.fb-attachment-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-attachment-link { overflow-wrap: anywhere; }
+.fb-attachment > a { min-height: 32px; display: inline-flex; align-items: center; }
 
 /* 使用统计：来源分布 / 登录统计 / 来源下钻 */
 .usage-insights{display:grid;grid-template-columns:1.1fr .9fr;gap:16px;margin-bottom:16px}

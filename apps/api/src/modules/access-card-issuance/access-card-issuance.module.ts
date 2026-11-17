@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { LocalIntegrationsModule } from '../local-integrations/local-integrations.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import {
   AccessCardAgent,
@@ -31,6 +32,7 @@ import { DeliyunParkingService } from './deliyun-parking.service';
 
 @Module({
   imports: [
+    LocalIntegrationsModule,
     UploadModule,
     NotificationsModule,
     TypeOrmModule.forFeature([

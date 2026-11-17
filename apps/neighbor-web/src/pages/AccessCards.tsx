@@ -12,7 +12,6 @@ import HousePicker, { type PickedHouse } from '@/components/HousePicker';
 import { accessStatusLabel, legacyStatusLabel, rawTitle } from '@/lib/access-card-status';
 import '@/styles/access-door.css';
 import ToneIcon from '@/components/ToneIcon';
-interface CardRow { id: number; cardNo: string; houseId: number; status?: string }
 interface CardHistoryRow {
   id: number; personNo?: string | null; sequence: number; roomLabel: string; hidden?: boolean; status?: string | null;
   personCreatedAt?: string | null; icCardNo?: string | null; wgCardNo?: string | null;
@@ -503,14 +502,14 @@ export default function AccessCards() {
   const canEdit = can('business', 'edit');
   const [tree, setTree] = useState<AddressCommunity[]>([]);
   const [picked, setPicked] = useState<PickedHouse | null>(null);
-  const [cards, setCards] = useState<CardRow[] | null>(null);
   const [history, setHistory] = useState<CardHistoryResp | null>(null);
   const [err, setErr] = useState('');
-  const [issuer, setIssuer] = useState<{ id: string; name: string } | null>(null);
+  const [issuer, setIssuer] = useState<{ id: string; name: string; resourceId?: string } | null>(null);
   const [qty, setQty] = useState(1);
   const [batch, setBatch] = useState<AccessCardIssueBatch | null>(null);
   const [busy, setBusy] = useState('');
   const timer = useRef<number | null>(null);
+  const createIntent = useRef<{ signature: string; key: string } | null>(null);
   const [historyError, setHistoryError] = useState('');
   const [historyRetrying, setHistoryRetrying] = useState(false);
   const [historyRetry, setHistoryRetry] = useState(0);
@@ -562,10 +561,12 @@ export default function AccessCards() {
         if (cancelled) return;
         setReadiness(r ?? null);
         setReadinessError('');
-        // 写卡工作站（issuer）只用于创建批次时指定工作站；是否存在看 features.cardWrite。
-        const list = (r?.agents ?? []) as Array<{ id: string; kind: string; name?: string; status: string }>;
-        const iss = list.find((a) => a.kind === 'issuer' && a.status === 'online') ?? null;
-        setIssuer(iss ? { id: iss.id, name: iss.name || '发卡工作站' } : null);
+        const routes = [
+          ...(r?.agents ?? []).filter(a => a.kind === 'issuer' && a.status === 'online').map(a => ({ id: a.id, name: a.name || '发卡工作站', resourceId: undefined as string | undefined })),
+          ...(r?.standardWorkstations ?? []).map(a => ({ id: a.id, name: `${a.name} · ${a.resourceName}`, resourceId: a.resourceId })),
+        ];
+        // Never silently switch a user-selected physical workstation; multiple routes require a choice.
+        setIssuer(previous => routes.find(a => a.id === previous?.id && a.resourceId === previous?.resourceId) ?? (routes.length === 1 ? routes[0] : null));
       })
       .catch((e) => {
         if (cancelled) return;
@@ -584,17 +585,10 @@ export default function AccessCards() {
     return list.filter((c) => ids.has(c.id));
   }, [tree, session.access]);
 
-  const loadHouse = useCallback((houseId: number) => {
-    setCards(null); setErr('');
-    request<{ accessCards: CardRow[] }>({ url: '/business/search', query: { q: '', serviceType: 'access_card' } })
-      .then((r) => setCards((r?.accessCards ?? []).filter((c) => c.houseId === houseId)))
-      .catch(() => setCards([]));
-  }, []);
-
   const historyKey = JSON.stringify([picked?.communityId, picked?.lane, picked?.buildingNo, picked?.roomNo]);
   useEffect(() => {
-    if (!picked?.houseId) { setCards(null); setHistory(null); setBatch(null); setHistoryError(''); setHistoryRetrying(false); return undefined; }
-    loadHouse(picked.houseId);
+    setErr('');
+    if (!picked?.houseId) { setHistory(null); setBatch(null); setHistoryError(''); setHistoryRetrying(false); return undefined; }
     let cancelled = false;
     let attempts = 0;
     let retryTimer = 0;
@@ -620,7 +614,7 @@ export default function AccessCards() {
     };
     void runHistory();
     return () => { cancelled = true; if (retryTimer) window.clearTimeout(retryTimer); };
-  }, [historyKey, historyRetry, loadHouse, picked]);
+  }, [historyKey, historyRetry, picked]);
 
   useEffect(() => {
     if (!recentOpen) return undefined;
@@ -838,22 +832,38 @@ export default function AccessCards() {
     return () => { if (timer.current) window.clearTimeout(timer.current); };
   }, [batch]);
 
+  const workstationOptions = [
+    ...(readiness?.agents ?? []).filter(a => a.kind === 'issuer' && a.status === 'online').map(a => ({ id: a.id, name: a.name || '发卡工作站', resourceId: undefined as string | undefined })),
+    ...(readiness?.standardWorkstations ?? []).map(a => ({ id: a.id, name: `${a.name} · ${a.resourceName}`, resourceId: a.resourceId })),
+  ];
+  const workstationKey = (a: { id: string; resourceId?: string }) => `${a.id}|${a.resourceId ?? ''}`;
   const startBatch = async () => {
     if (!can('business', 'edit')) return;
+    if (workstationOptions.length > 1 && !issuer) { toast('请选择实际写卡工作站'); return; }
     if (!picked?.houseId) { toast('先选一户'); return; }
-    setBusy('create');
+    const signature = JSON.stringify([picked.houseId, qty, issuer?.id ?? null, issuer?.resourceId ?? null]);
+    if (createIntent.current && createIntent.current.signature !== signature) { setErr('原建卡请求结果尚未核对，请恢复原房号、数量和工作站后重试核对；不要另开写卡任务。'); return; }
+    createIntent.current ??= { signature, key: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) };
+    setBusy('create'); setErr('');
     try {
       const r = await accessCardIssuance.createBatch({
         houseId: picked.houseId,
         quantity: qty,
         extraBuildingIds: [],
         workstationId: issuer?.id,
-        idempotencyKey: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+        standardResourceId: issuer?.resourceId,
+        idempotencyKey: createIntent.current.key,
       });
+      createIntent.current = null;
       setBatch(r);
-      toast('发卡任务已建立，请把第 1 张卡放到读卡器上');
+      toast(r.status === 'needs_operator' ? '原任务已暂停，请核对实卡，不要重新写卡' : '发卡任务已建立，请把第 1 张卡放到读卡器上');
     } catch (e) {
-      toast(e instanceof Error ? e.message : '创建发卡任务失败');
+      const status = (e as { httpStatus?: number })?.httpStatus;
+      const definitelyRejected = status !== undefined && [400, 401, 403, 404, 422].includes(status);
+      if (definitelyRejected) createIntent.current = null;
+      const message = e instanceof Error ? e.message : '创建发卡任务失败';
+      setErr(definitelyRejected ? message : `${message}；请求结果尚未核对，请保持原房号、数量和工作站再次点击，按原幂等号核对。不要刷新或另开任务。`);
+      toast(message);
     } finally { setBusy(''); }
   };
 
@@ -961,11 +971,17 @@ export default function AccessCards() {
             </div>
             {!batch ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                {workstationOptions.length ? <label style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, flexBasis: '100%' }}>写卡工作站
+                  <select className="input" style={{ maxWidth: '100%', minHeight: 44 }} aria-label="写卡工作站" disabled={busy === 'create'} value={issuer ? workstationKey(issuer) : ''} onChange={e => setIssuer(workstationOptions.find(a => workstationKey(a) === e.target.value) ?? null)}>
+                    <option value="">请选择实际写卡工作站</option>
+                    {workstationOptions.map(a => <option key={workstationKey(a)} value={workstationKey(a)}>{a.name}</option>)}
+                  </select>
+                </label> : null}
                 <button className="btn" onClick={() => setQty((n) => Math.max(1, n - 1))}>−</button>
                 <b style={{ fontSize: 20, minWidth: 28, textAlign: 'center' }}>{qty}</b>
                 <button className="btn" onClick={() => setQty((n) => Math.min(20, n + 1))}>＋</button>
                 <span className="muted">张</span>
-                <button className="btn p" style={{ marginLeft: 'auto' }} disabled={!canEdit || busy === 'create'} onClick={() => void startBatch()}>
+                <button className="btn p" style={{ marginLeft: 'auto' }} disabled={!canEdit || busy === 'create' || (workstationOptions.length > 1 && !issuer)} onClick={() => void startBatch()}>
                   <Icon name="key" size={16} />{busy === 'create' ? '建立中…' : '开始发卡'}
                 </button>
               </div>
@@ -973,7 +989,7 @@ export default function AccessCards() {
               <>
                 <div className="note" style={{ marginBottom: 10 }}>
                   任务 #{batch.id} · 共 {batch.quantity} 张{batch.currentSequence ? ` · 当前第 ${batch.currentSequence} 张` : ''}
-                  {cur && cur.cardStatus !== 'card_completed' ? '：请把这张卡放到读卡器上' : ''}
+                  {batch.status === 'needs_operator' ? '：任务已暂停，请核对原任务与实卡；结果未知时禁止重新写卡' : cur && cur.cardStatus !== 'card_completed' ? '：请把这张卡放到读卡器上' : ''}
                 </div>
                 <div className="t-scroll">
                   <table className="t" style={{ minWidth: 760 }}>
@@ -1004,7 +1020,7 @@ export default function AccessCards() {
                   <div className="note2" style={{ marginTop: 8, color: 'var(--dang)' }}>{batch.items.filter((i) => i.lastErrorMessage).map((i) => `第 ${i.sequence} 张：${i.lastErrorMessage}`).join('；')}</div>
                 ) : null}
                 <div style={{ marginTop: 12 }}>
-                  <button className="btn" onClick={() => { setBatch(null); if (picked) loadHouse(picked.houseId); }}>结束 / 看结果</button>
+                  <button className="btn" onClick={() => { setBatch(null); setHistoryRetry((value) => value + 1); }}>结束 / 看结果</button>
                 </div>
               </>
             )}
@@ -1015,22 +1031,6 @@ export default function AccessCards() {
                   ? `写卡要读卡器，由${issuer ? `在线工作站「${issuer.name}」` : '工作站'}自动完成；本页负责建任务、看进度、下发失败单张重试。`
                   : '写卡工作站未接入，新卡暂不能写到读卡器；查发卡历史、写入 .88 门禁库和远程开门不受影响，等写卡工作站上线后再写卡。'}
             </div>
-          </div>
-
-          <div className="card" style={{ padding: '14px 16px', marginBottom: 14 }}>
-            <div className="panelHd" style={{ marginBottom: 10 }}>
-              <b>在用门禁卡</b>
-              <span className="tag mute" style={{ marginLeft: 8 }}>{cards?.length ?? 0} 张</span>
-            </div>
-            {cards === null ? <Loading text="读门禁卡…" /> : cards.length === 0 ? (
-              <div className="muted">这一户还没有在用门禁卡</div>
-            ) : cards.map((c) => (
-              <div key={c.id} className="cardItem">
-                <div className="ci"><Icon name="key" /></div>
-                <div className="bt" style={{ flex: 1 }}><b>卡号 {c.cardNo}</b><small className="muted">{c.status === 'active' || !c.status ? '正常' : c.status}</small></div>
-                <span className="tag ok"><Icon name="check" />有效</span>
-              </div>
-            ))}
           </div>
 
           <div className="card" style={{ padding: '14px 16px', marginBottom: 14 }}>

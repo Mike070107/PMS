@@ -41,20 +41,28 @@
     >{{item.text}}</view>
   </scroll-view>
 
-  <block wx:if="{{!suggestions.length}}">
+  <!-- 公区、当前级入口和楼栋/房号共用一个外层滚动区，不固定占住楼栋空间。 -->
+  <scroll-view wx:if="{{!suggestions.length}}" class="list" scroll-y scroll-into-view="place-list-{{level}}">
+    <view id="place-list-{{level}}" class="list__content">
     <view wx:if="{{spotRows.length}}" class="spot-section">
-      <view class="spot-section__title">公共区域</view>
-      <view
-        wx:for="{{spotRows}}"
-        wx:key="key"
-        class="spot-row"
-        data-index="{{index}}"
-        catchtap="onPickSpotRow"
-      >
-        <view class="spot-row__pin"></view>
-        <text class="spot-row__label">{{item.label}}</text>
-        <text class="spot-row__note">{{item.note}}</text>
-      </view>
+      <button class="spot-section__toggle" catchtap="onToggleSpots" aria-label="{{spotsExpanded ? '收起公共区域点位' : '展开公共区域点位'}}">
+        <text class="spot-section__title">公共区域（{{spotRows.length}}）</text>
+        <text class="spot-section__action">{{spotsExpanded ? '收起' : '展开'}}</text>
+      </button>
+      <!-- 普通 view 的 overflow 无法可靠承接小程序触摸滚动，使用定高原生 scroll-view。 -->
+      <scroll-view wx:if="{{spotsExpanded}}" class="spot-list" scroll-y enhanced bounces="{{false}}" style="height: {{spotRows.length < 3 ? spotRows.length * 112 : 336}}rpx;">
+        <view
+          wx:for="{{spotRows}}"
+          wx:key="key"
+          class="spot-row"
+          data-index="{{index}}"
+          catchtap="onPickSpotRow"
+        >
+          <view class="spot-row__pin"></view>
+          <text class="spot-row__label">{{item.label}}</text>
+          <text class="spot-row__note">{{item.note}}</text>
+        </view>
+      </scroll-view>
     </view>
 
     <!-- 停在当前这一级 = 公共区域单 -->
@@ -67,7 +75,6 @@
       不填房号（只报到这栋楼）
     </view>
 
-    <scroll-view class="list" scroll-y>
       <view
         wx:for="{{rows}}"
         wx:key="key"
@@ -80,6 +87,6 @@
         <view wx:if="{{level !== 'house'}}" class="icon icon--chevron"></view>
       </view>
       <view wx:if="{{!rows.length}}" class="list__empty">这一级还没有数据</view>
-    </scroll-view>
-  </block>
+    </view>
+  </scroll-view>
 </view>

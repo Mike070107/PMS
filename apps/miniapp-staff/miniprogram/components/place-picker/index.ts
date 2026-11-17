@@ -114,6 +114,7 @@ Component<
     suggestions: [] as PlaceSuggestion[],
     rows: [] as Row[],
     spotRows: [] as SpotRow[],
+    spotsExpanded: true,
     /** 面包屑：已选到的小区 / 楼栋 */
     communityName: '',
     buildingText: '',
@@ -151,6 +152,7 @@ Component<
         buildingText: '',
         keyword: '',
         suggestions: [],
+        spotsExpanded: true,
       });
       this.renderRows();
     },
@@ -227,6 +229,10 @@ Component<
     },
 
     // ---------------- 交互 ----------------
+
+    onToggleSpots() {
+      this.setData({ spotsExpanded: !this.data.spotsExpanded });
+    },
 
     onOpen() {
       this.setData({ open: true });
