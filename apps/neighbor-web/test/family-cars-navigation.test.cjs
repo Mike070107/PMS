@@ -22,7 +22,8 @@ function harness(access, pathname = '/family-cars', states = {}) {
       require(id) {
         if (id === 'react') return react;
         if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx };
-        if (id === 'react-router-dom') return { Route: 'Route', Routes: 'Routes', Navigate: 'Navigate', Outlet: 'Outlet', useLocation: () => ({ pathname }), useNavigate: () => p => navigations.push(p) };
+        if (id === '@pms/shared-types') return { ...load('../../../packages/shared-types/src/timeline.ts'), ...load('../../../packages/shared-types/src/beijing-time.ts') };
+        if (id === 'react-router-dom') return { useSearchParams: () => [new URLSearchParams(), () => {}], Route: 'Route', Routes: 'Routes', Navigate: 'Navigate', Outlet: 'Outlet', useLocation: () => ({ pathname }), useNavigate: () => p => navigations.push(p) };
         if (id === '@/lib/auth') return { useSession: () => session, auth: { getAccess: () => access, captureIdentity: () => ({ token: 'synthetic', generation: 1 }), isCurrent: () => true } };
         if (id === '@/lib/perm') return { can: (k, action) => !!access.pages?.[k]?.[action] };
         if (id === '@/lib/page-access') return load('lib/page-access.ts');
@@ -104,7 +105,7 @@ test('moved family page preserves search, filters, details, files, garages, vali
     const ui = h.expand(h.render('pages/FamilyCars.tsx'));
     assert.match(text(ui), /亲情车管理/);
     assert.ok(nodes(ui).some(n => n.type === 'input' && n.props.placeholder === '车牌 \/ 房号 \/ 姓名 \/ 电话'));
-    assert.ok(nodes(ui).some(n => n.type === 'a' && n.props.href === '/synthetic.png'));
+    assert.ok(nodes(ui).some(n => n.type === '@/components/ImagePreviewButton' && n.props.fileUrl === '/synthetic.png'));
     assert.match(text(ui), /一期地面二期大车库 91/);
     assert.match(text(ui), /2026-01-01 ~ 2026-12-31/);
     assert.match(text(ui), /待办公室审核待经理审核开通中已生效已过期待上传资料/);

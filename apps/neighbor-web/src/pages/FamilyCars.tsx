@@ -2,6 +2,7 @@ import { formatBeijingDateTime, sortTimelineNewestFirst } from '@pms/shared-type
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { accessCardIssuance, request } from '@pms/api-client';
 import Icon from '@/components/Icon';
+import ImagePreviewButton from '@/components/ImagePreviewButton';
 import { Loading, toast } from '@/components/ui';
 import { dayjs } from '@/lib/format';
 import { can } from '@/lib/perm';
@@ -246,7 +247,9 @@ function FamilyList({ kw }: { kw: string }) {
                     <section data-testid="family-cars-materials" aria-label={`${materials.plate} 办理资料`}>
                       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}><b>{materials.plate} · 办理资料</b><button className="btn sm" onClick={() => { ++materialsGeneration.current; setMaterials(null); }}>关闭资料</button></div>
                       {materials.error ? <div role="alert">办理资料读取失败：{materials.error} <button className="btn sm" onClick={() => void readMaterials(c)}>重试资料</button></div> : materials.files === null ? <div role="status"><Loading />正在读取办理资料…</div> : <div className="np-files">
-                        {materials.files.map(f => <a key={f.index} href={f.fileUrl} target="_blank" rel="noreferrer" title={f.fileName} aria-label={f.fileName}>{f.contentType.startsWith('image/') ? <img src={f.fileUrl} alt={f.fileName} /> : <span className="np-pdf"><Icon name="file" size={22} />{f.contentType === 'application/pdf' ? 'PDF' : '文件'}</span>}</a>)}
+                        {materials.files.map(f => f.contentType.startsWith('image/')
+                          ? <ImagePreviewButton key={f.index} fileUrl={f.fileUrl} fileName={f.fileName} files={materials.files!.filter(item => item.contentType.startsWith('image/'))}><img src={f.fileUrl} alt={f.fileName} /></ImagePreviewButton>
+                          : <a key={f.index} href={f.fileUrl} target="_blank" rel="noreferrer" title={f.fileName} aria-label={f.fileName}><span className="np-pdf"><Icon name="file" size={22} />{f.contentType === 'application/pdf' ? 'PDF' : '文件'}</span></a>)}
                         {!materials.files.length ? <span className="muted">还没有办理资料</span> : null}
                       </div>}
                     </section>
@@ -254,7 +257,9 @@ function FamilyList({ kw }: { kw: string }) {
                   {open?.id === c.id ? (
                     <tr key={`d${c.id}`} style={{ cursor: 'default' }}><td colSpan={9} style={{ background: 'var(--sunken)', padding: 14 }}>
                       <div className="np-files" style={{ marginBottom: 10 }}>
-                        {(open.files ?? []).map((f) => <a key={f.index} href={f.fileUrl} target="_blank" rel="noreferrer" title={f.fileName}>{f.contentType.startsWith('image/') ? <img src={f.fileUrl} alt="" /> : <span className="np-pdf"><Icon name="file" size={22} />PDF</span>}</a>)}
+                        {(open.files ?? []).map(f => f.contentType.startsWith('image/')
+                          ? <ImagePreviewButton key={f.index} fileUrl={f.fileUrl} fileName={f.fileName} files={open.files.filter(item => item.contentType.startsWith('image/'))}><img src={f.fileUrl} alt={f.fileName} /></ImagePreviewButton>
+                          : <a key={f.index} href={f.fileUrl} target="_blank" rel="noreferrer" title={f.fileName}><span className="np-pdf"><Icon name="file" size={22} />{f.contentType === 'application/pdf' ? 'PDF' : '文件'}</span></a>)}
                         {!open.files.length ? <span className="muted">还没有资料</span> : null}
                       </div>
                       {open.lastError ? <div className="note2" style={{ color: 'var(--dang)', marginBottom: 8 }}><Icon name="alert" />{open.lastError}</div> : null}

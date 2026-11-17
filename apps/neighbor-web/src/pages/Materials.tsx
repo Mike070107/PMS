@@ -3,6 +3,7 @@ import { inventory, request } from '@pms/api-client';
 import type { MaterialView, MaterialCategoryView } from '@pms/shared-types';
 import { money } from '@/lib/format';
 import PhotoField from '@/components/PhotoField';
+import ImagePreviewButton from '@/components/ImagePreviewButton';
 import Icon from '@/components/Icon';
 import { Btn, Field, Loading, Sheet, toast } from '@/components/ui';
 import ToneIcon from '@/components/ToneIcon';
@@ -72,7 +73,7 @@ export default function Materials() {
             {rows.map((m) => (
               <div key={m.id} className="lrow" style={{ cursor: 'pointer', opacity: m.enabled ? 1 : 0.55 }} onClick={() => setEditing(m)}>
                 {m.photoUrl
-                  ? <img className="stock-thumb" src={m.photoUrl} alt={m.name} />
+                  ? <ImagePreviewButton fileUrl={m.photoUrl} fileName={m.name}><img className="stock-thumb" src={m.photoUrl} alt={m.name} /></ImagePreviewButton>
                   : <span className="stock-thumb is-empty"><Icon name="box" size={26} /></span>}
                 <div className="lt">
                   <b>{m.name}{m.spec ? <span className="muted" style={{ fontWeight: 400 }}> · {m.spec}</span> : null}{m.enabled ? null : <span className="tag mute" style={{ marginLeft: 6 }}>已停用</span>}</b>

@@ -3,6 +3,7 @@ import { inventory, purchases, request } from '@pms/api-client';
 import { PurchaseRequestStatus } from '@pms/shared-types';
 import type { MaterialCategoryView, MaterialView, PurchaseRequestView } from '@pms/shared-types';
 import Icon from '@/components/Icon';
+import ImagePreviewButton from '@/components/ImagePreviewButton';
 import { Btn, Field, Loading, Sheet, toast } from '@/components/ui';
 import { money } from '@/lib/format';
 
@@ -131,7 +132,7 @@ export default function RequestComposer({ onClose, onCreated }: { onClose: () =>
                     const s = stockBy.get(m.id);
                     return (
                       <div key={m.id} className="pr-hit" onClick={() => { add(m); setQ(''); }}>
-                        {m.photoUrl ? <img src={m.photoUrl} alt="" /> : <div className="ph0"><Icon name="box" size={18} /></div>}
+                        {m.photoUrl ? <ImagePreviewButton fileUrl={m.photoUrl} fileName={m.name}><img src={m.photoUrl} alt={m.name} /></ImagePreviewButton> : <div className="ph0"><Icon name="box" size={18} /></div>}
                         <div style={{ flex: 1 }}><b>{m.name}</b>{m.spec ? <span className="muted"> · {m.spec}</span> : null}<div className="muted" style={{ fontSize: 13 }}>{m.code} · {m.category || '未分类'} · 库存 {s ? s.qty : 0}{m.unit}{s && s.safety > 0 && s.qty < s.safety ? <span style={{ color: 'var(--dang)' }}>（低于安全库存 {s.safety}）</span> : null}</div></div>
                         <span className="muted">{m.defaultCostCents ? `${money(m.defaultCostCents / 100)}/${m.unit}` : ''}</span>
                       </div>
@@ -173,7 +174,7 @@ export default function RequestComposer({ onClose, onCreated }: { onClose: () =>
                   const s = stockBy.get(l.materialId);
                   return (
                     <tr key={l.key} style={{ cursor: 'default' }}>
-                      <td><div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>{l.photo ? <img src={l.photo} alt="" className="pr-thumb" /> : <div className="pr-thumb ph0"><Icon name="box" size={16} /></div>}<div><b>{l.name}</b><span className="sub">{l.spec || '—'}</span></div></div></td>
+                      <td><div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>{l.photo ? <ImagePreviewButton fileUrl={l.photo} fileName={l.name}><img src={l.photo} alt={l.name} className="pr-thumb" /></ImagePreviewButton> : <div className="pr-thumb ph0"><Icon name="box" size={16} /></div>}<div><b>{l.name}</b><span className="sub">{l.spec || '—'}</span></div></div></td>
                       <td style={{ textAlign: 'right' }} className={s && s.safety > 0 && s.qty < s.safety ? 'over' : 'muted'}>{s ? s.qty : 0}{l.unit}{s && s.safety > 0 ? <span className="sub">安全 {s.safety}</span> : null}</td>
                       <td><div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><input className="in" type="number" min={0} step="any" style={{ height: 36 }} value={l.qty} onChange={(e) => setLine(l.key, { qty: num(e.target.value) })} /><span className="muted">{l.unit}</span></div></td>
                       <td><input className="in" type="number" min={0} step="0.01" style={{ height: 36 }} value={l.costYuan} placeholder="选填" onChange={(e) => setLine(l.key, { costYuan: e.target.value })} /></td>

@@ -207,6 +207,11 @@
 .photo-item .btn { position: absolute; top: 3px; right: 3px; height: 24px; padding: 0 6px; }
 .photo-drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 150px; min-height: 64px; padding: 8px 12px;
   border: 1.5px dashed var(--line2, #c9d1dc); border-radius: 9px; color: var(--ink3); background: var(--sunken); cursor: text; outline: none; text-align: center; font-size: 13px; }
+.photo-drop { max-width: 100%; min-width: min(150px, 100%); height: auto; overflow-wrap: anywhere; }
+.photo-drop > svg { flex-shrink: 0; }
+.photo-drop > b, .photo-drop > span { max-width: 100%; }
+.photo-drop:focus-visible, .photo-preview-trigger:focus-visible { outline: 3px solid var(--acc); outline-offset: 2px; }
+.photo-preview-trigger { display: block; width: 100%; height: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
 .photo-drop b { color: var(--ink2); font-size: 14.5px; }
 .photo-drop a { color: var(--acc-t, var(--acc)); cursor: pointer; text-decoration: underline; }
 .photo-drop:hover { border-color: var(--acc); }
@@ -257,7 +262,7 @@
 .np-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-bottom: 8px; }
 .np-fields label { display: flex; flex-direction: column; gap: 3px; font-size: 13.5px; color: var(--ink2); }
 .np-files { display: flex; gap: 8px; flex-wrap: wrap; }
-.np-files a { width: 88px; height: 88px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; background: #fff; }
+.np-files a, .np-files > button { width: 88px; height: 88px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; background: #fff; }
 .np-files img { width: 100%; height: 100%; object-fit: cover; }
 .np-pdf { display: flex; flex-direction: column; align-items: center; font-size: 12px; color: var(--ink2); }
 .np-log { list-style: none; margin: 12px 0 0; padding: 10px 0 0; border-top: 1px dashed var(--line); font-size: 13.5px; max-height: 220px; overflow: auto; }
@@ -296,7 +301,7 @@
 .pf-files { display: flex; flex-wrap: wrap; gap: 8px; }
 .pf-thumb { position: relative; width: 92px; height: 92px; border-radius: 8px; overflow: hidden; border: 1px solid #d5dbe3; display: flex; align-items: center; justify-content: center; }
 .pf-thumb img { width: 100%; height: 100%; object-fit: cover; }
-.pf-thumb button { position: absolute; top: 2px; right: 2px; width: 24px; height: 24px; border-radius: 12px; border: 0; background: rgba(0,0,0,.55); color: #fff; }
+.pf-thumb .pf-remove { position: absolute; top: 2px; right: 2px; width: 24px; height: 24px; border-radius: 12px; border: 0; background: rgba(0,0,0,.55); color: #fff; }
 .pf-add { width: 92px; height: 92px; border: 1px dashed #b7c0cc; border-radius: 8px; background: #fafbfc; font-size: 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .pf-add span { font-size: 13px; color: #6b7785; }
 .pf-keep { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; font-size: 15px; }

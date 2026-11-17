@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { request } from '@pms/api-client';
+import ImagePreviewButton from '@/components/ImagePreviewButton';
 
 const API = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
@@ -150,9 +151,9 @@ export default function PlateForm() {
           {picks.map((p, i) => (
             <div key={p.url} className="pf-thumb">
               {p.isImg && !p.broken
-                ? <img src={p.url} alt="" onError={() => setPicks((l) => l.map((x, j) => (j === i ? { ...x, broken: true } : x)))} />
+                ? <ImagePreviewButton fileUrl={p.url} fileName={p.file.name || `照片 ${i + 1}`} style={{ width: '100%', height: '100%' }} files={picks.filter(x => x.isImg && !x.broken).map((x, j) => ({ fileUrl: x.url, fileName: x.file.name || `照片 ${j + 1}` }))}><img src={p.url} alt={p.file.name || `照片 ${i + 1}`} onError={() => setPicks((l) => l.map((x, j) => (j === i ? { ...x, broken: true } : x)))} /></ImagePreviewButton>
                 : <span className="pf-doc">{p.isImg ? '照片' : 'PDF'}<small>{p.file.name.slice(-12)}</small></span>}
-              <button type="button" aria-label="删除" onClick={() => remove(i)}>×</button>
+              <button type="button" className="pf-remove" aria-label="删除" onClick={() => remove(i)}>×</button>
             </div>
           ))}
           {picks.length < 10 ? (

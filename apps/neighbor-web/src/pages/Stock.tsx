@@ -10,6 +10,7 @@ import { InboundForm, InboundList, TransferForm, TransferList } from '@/componen
 import { can } from '@/lib/perm';
 import { Btn, Card, ErrorNote, Loading, Sheet, toast } from '@/components/ui';
 import Icon from '@/components/Icon';
+import ImagePreview from '@/components/ImagePreview';
 import { dayjs, money } from '@/lib/format';
 import ToneIcon from '@/components/ToneIcon';
 
@@ -330,26 +331,7 @@ export default function Stock() {
       </Sheet>
       <WarehouseManager open={warehouseOpen} onClose={() => setWarehouseOpen(false)} warehouses={warehouses} canEdit={canEdit} onChanged={() => void load()} />
       {photos ? (
-        <div className="photo-viewer" onClick={() => setPhotos(null)}>
-          <div className="pv-inner" onClick={(e) => e.stopPropagation()}>
-            <img src={photos.urls[photos.index]} alt={photos.name} />
-            <div className="pv-bar">
-              <b>{photos.name}</b>
-              <span className="muted">{photos.index + 1} / {photos.urls.length}</span>
-              <button className="btn sm" onClick={() => setPhotos(null)}>关闭</button>
-            </div>
-            {photos.urls.length > 1 ? (
-              <div className="pv-thumbs">
-                {photos.urls.map((url, index) => (
-                  <button key={url} type="button" className={index === photos.index ? 'on' : ''}
-                    onClick={() => setPhotos({ ...photos, index })}>
-                    <img src={url} alt="" />
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </div>
+        <ImagePreview files={photos.urls.map(fileUrl => ({ fileUrl, fileName: photos.name }))} initialIndex={photos.index} title={photos.name} onClose={() => setPhotos(null)} />
       ) : null}
     </>
   );

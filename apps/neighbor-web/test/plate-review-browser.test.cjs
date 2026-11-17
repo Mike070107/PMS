@@ -143,7 +143,7 @@ test('image lightbox zoom, gallery, broken image, PDF original, Escape/backdrop/
       await noOverflow(page);
       assert.ok(await dialog.locator('button').evaluateAll(bs=>bs.filter(b=>!b.disabled).every(b=>{const r=b.getBoundingClientRect();return r.height>=44&&r.width>=44;})));
       for(let i=0;i<18;i++){await page.keyboard.press('Tab');assert.equal(await dialog.evaluate(d=>d.contains(document.activeElement)),true);}
-      await page.getByRole('button',{name:'关闭图片预览',exact:true}).focus();await page.keyboard.press('Shift+Tab');assert.equal(await page.getByRole('button',{name:'下一张',exact:true}).evaluate(e=>document.activeElement===e),true);
+      await page.getByRole('button',{name:'关闭图片预览',exact:true}).focus();await page.keyboard.press('Shift+Tab');assert.equal(await page.getByRole('button',{name:'复位',exact:true}).evaluate(e=>document.activeElement===e),true);
       assert.equal(await page.evaluate(()=>document.body.style.overflow),'hidden');
       await page.screenshot({path:path.join(evidence,`preview-${width}.png`)});
       await page.keyboard.press('Escape');assert.equal(await dialog.count(),0);assert.equal(await opener.evaluate(e=>e===document.activeElement),true);

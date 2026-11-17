@@ -508,6 +508,8 @@ textarea.in{height:auto;padding:9px 12px;min-height:72px;resize:vertical}
 /* 工单用料选择（完工扣料 / 缺料登记共用） */
 .matpick-list{max-height:248px;overflow:auto;border:1px solid var(--line);border-radius:10px;margin-top:8px;padding:4px}
 .matpick-item{display:flex;align-items:center;gap:10px;width:100%;padding:7px 8px;border-radius:8px;background:none;border:0;text-align:left;cursor:pointer;font-size:15px}
+.matpick-select{display:flex;align-items:center;gap:10px;flex:1;min-width:0;min-height:44px;padding:0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.matpick-select:disabled{cursor:default}
 .matpick-item:hover{background:var(--bg2,#f4f6f9)}
 .matpick-item.on{opacity:.55;cursor:default}
 .matpick-item img,.matpick-item .ph{width:34px;height:34px;border-radius:6px;object-fit:cover;background:#eef1f5;flex:none}

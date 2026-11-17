@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { request } from '@pms/api-client';
 import { uploadImage } from '@/lib/upload';
 import Icon from '@/components/Icon';
+import ImagePreview from '@/components/ImagePreview';
 import { Sheet, toast } from '@/components/ui';
 import '@/styles/feedback.css';
 
@@ -69,17 +70,7 @@ export default function FeedbackDialog({ open, onClose, defaultType = 'suggestio
     textarea.style.height = 'auto';
     textarea.style.height = Math.min(240, Math.max(72, textarea.scrollHeight)) + 'px';
   }, [content, open]);
-  // 灯箱键盘：Esc 关闭，左右切换
-  useEffect(() => {
-    if (previewIndex === null) return undefined;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setPreviewIndex(null); }
-      if (event.key === 'ArrowLeft') { event.preventDefault(); setPreviewIndex((index) => index === null ? index : (index - 1 + images.length) % images.length); }
-      if (event.key === 'ArrowRight') { event.preventDefault(); setPreviewIndex((index) => index === null ? index : (index + 1) % images.length); }
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [previewIndex, images.length]);
+
 
   const hasOversize = attachments.some((item) => item.oversize);
   const canSend = !busy && !hasOversize && !!content.trim();
@@ -237,13 +228,7 @@ export default function FeedbackDialog({ open, onClose, defaultType = 'suggestio
         ) : null}
 
         {previewIndex !== null && images[previewIndex] ? (
-          <div className="fb-lightbox" role="dialog" aria-modal="true" onClick={() => setPreviewIndex(null)}>
-            <button type="button" className="fb-lb-close" aria-label="关闭预览" onClick={(event) => { event.stopPropagation(); setPreviewIndex(null); }}>×</button>
-            {images.length > 1 ? <button type="button" className="fb-lb-arrow fb-lb-prev" aria-label="上一张" onClick={(event) => { event.stopPropagation(); setPreviewIndex((index) => index === null ? index : (index - 1 + images.length) % images.length); }}>‹</button> : null}
-            <img className="fb-lb-img" src={images[previewIndex].preview} alt={images[previewIndex].file.name} onClick={(event) => event.stopPropagation()} />
-            {images.length > 1 ? <button type="button" className="fb-lb-arrow fb-lb-next" aria-label="下一张" onClick={(event) => { event.stopPropagation(); setPreviewIndex((index) => index === null ? index : (index + 1) % images.length); }}>›</button> : null}
-            <div className="fb-lb-count">{previewIndex + 1} / {images.length}</div>
-          </div>
+          <ImagePreview files={images.map(item => ({ fileUrl: item.preview!, fileName: item.file.name }))} initialIndex={previewIndex} title="反馈图片预览" onClose={() => setPreviewIndex(null)} />
         ) : null}
       </div>
     </Sheet>

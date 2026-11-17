@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { inventory, request } from '@pms/api-client';
 import type { MaterialView, StockView, WarehouseView } from '@pms/shared-types';
 import Icon from '@/components/Icon';
+import ImagePreviewButton from '@/components/ImagePreviewButton';
 import { can } from '@/lib/perm';
 import PhotoField from '@/components/PhotoField';
 import { Btn, Field, Loading, Sheet, toast } from '@/components/ui';
@@ -39,7 +40,7 @@ function SkuLines({ materials, lines, onChange, avail, withCost, unitOf }: {
               const a = avail?.(m.id);
               return (
                 <div key={m.id} className="pr-hit" onClick={() => add(m)}>
-                  {m.photoUrl ? <img src={m.photoUrl} alt="" /> : <div className="ph0"><Icon name="box" size={18} /></div>}
+                  {m.photoUrl ? <ImagePreviewButton fileUrl={m.photoUrl} fileName={m.name}><img src={m.photoUrl} alt={m.name} /></ImagePreviewButton> : <div className="ph0"><Icon name="box" size={18} /></div>}
                   <div style={{ flex: 1 }}><b>{m.name}</b>{m.spec ? <span className="muted"> · {m.spec}</span> : null}<div className="muted" style={{ fontSize: 13 }}>{m.code}{a !== undefined && a !== null ? ` · 可调 ${a}${m.unit}` : ''}</div></div>
                 </div>
               );
@@ -56,7 +57,7 @@ function SkuLines({ materials, lines, onChange, avail, withCost, unitOf }: {
               const over = a !== undefined && a !== null && num(l.qty) > a;
               return (
                 <tr key={l.key} style={{ cursor: 'default' }}>
-                  <td><div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>{m?.photoUrl ? <img src={m.photoUrl} alt="" className="pr-thumb" /> : <div className="pr-thumb ph0"><Icon name="box" size={16} /></div>}<div><b>{m?.name || `#${l.materialId}`}</b><span className="sub">{m?.spec || '—'}</span></div></div></td>
+                  <td><div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>{m?.photoUrl ? <ImagePreviewButton fileUrl={m.photoUrl} fileName={m.name}><img src={m.photoUrl} alt={m.name} className="pr-thumb" /></ImagePreviewButton> : <div className="pr-thumb ph0"><Icon name="box" size={16} /></div>}<div><b>{m?.name || `#${l.materialId}`}</b><span className="sub">{m?.spec || '—'}</span></div></div></td>
                   {avail ? <td style={{ textAlign: 'right' }} className={over ? 'over' : 'muted'}>{a ?? 0}{unitOf(l.materialId)}</td> : null}
                   <td><div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><input className="in" type="number" min={0} step="any" style={{ height: 36, borderColor: over ? 'var(--dang)' : undefined }} value={l.qty} onChange={(e) => set(l.key, { qty: e.target.value })} /><span className="muted">{unitOf(l.materialId)}</span></div></td>
                   {withCost ? <td><input className="in" type="number" min={0} step="0.01" style={{ height: 36 }} value={l.cost} onChange={(e) => set(l.key, { cost: e.target.value })} /></td> : null}

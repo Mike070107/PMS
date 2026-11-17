@@ -198,19 +198,36 @@ export default function Cashier() {
           await new Promise((r) => setTimeout(r, 800));
           q = await accessCardIssuance.parkingQuery(q.id);
         }
+        if (q.status === 'failed') throw new Error(q.error || '现场停车查询失败，请重试或检查现场助手');
+        if (q.status !== 'completed') throw new Error(`现场停车查询仍未完成（查询 ${q.id}），请稍后重试；当前不能判定没有车辆`);
         const rows = (q.rows ?? []) as Array<{ database: string; fields: Record<string, unknown> }>;
         for (const row of rows) {
           const f = row.fields || {};
-          const plate = String(f.P_plate ?? f.p_plate ?? f.Car_No ?? '').trim().toUpperCase();
-          const room = String(f.Owner__owner_Name ?? f.P_note ?? '').trim();
-          if (!plate || !room) continue;
+          // SQL providers preserve different identifier casing. Prefer the dedicated
+          // room snapshot; older gateways used owner_Name or the vehicle note.
+          const fields = new Map(Object.entries(f).map(([key, value]) => [key.toLowerCase(), value]));
+          const textField = (...keys: string[]) => keys.map(key => String(fields.get(key) ?? '').trim()).find(Boolean) || '';
+          const plate = textField('p_plate', 'car_no').toUpperCase();
+          const rawRoom = textField('owner__room', 'owner__owner_name', 'p_note');
+          // Legacy parking uses zero-padded building numbers (198/03/301),
+          // while the address book stores 3. Normalize only numeric address paths,
+          // never the plate/suffix (03212 must retain its leading zero).
+          const room = /^\d+\/\d+\/\d+$/.test(rawRoom)
+            ? rawRoom.split('/').map(part => part.replace(/^0+(?=\d)/, '')).join('/') : rawRoom;
+          if (!plate) continue;
+          if (!room) throw new Error(`已查到车牌 ${plate}，但停车档案未提供关联房号，请先核对档案`);
           const rr = normSearch(await request<unknown>({ url: '/business/search', query: { q: room } }));
-          const hit = rr.houses[0];
-          if (!hit) continue;
+          const parts = /^\d+\/\d+\/\d+$/.test(room) ? room.split('/') : null;
+          const candidates = parts ? rr.houses.filter(h => [h.lane, h.buildingNo, h.roomNo]
+            .every((part, index) => String(part ?? '').replace(/^0+(?=\d)/, '') === parts[index])) : rr.houses;
+          if (candidates.length !== 1) throw new Error(`已查到车牌 ${plate}，但关联房号无法唯一确认，请核对停车档案；不会自动选择其他住户`);
+          const hit = candidates[0];
           if (!merged.houses.some((h) => h.id === hit.id)) merged.houses.push(hit);
           if (!merged.vehicles.some((v) => v.plateNo === plate)) merged.vehicles.push({ id: hit.id * 1000 + merged.vehicles.length, plateNo: plate, houseId: hit.id, ownerId: hit.owner?.id ?? null, validUntil: null });
         }
-      } catch { /* 现场库不可用时保持空结果，不报错打断查询 */ }
+      } catch (error) {
+        throw new Error(`车牌查询未完成：${error instanceof Error ? error.message : '现场停车库暂不可用'}。不能据此判断车辆不存在。`);
+      }
     }
     return merged;
   }, []);

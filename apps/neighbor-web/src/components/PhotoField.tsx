@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import Icon from '@/components/Icon';
+import ImagePreview from '@/components/ImagePreview';
+import ImagePreviewButton from '@/components/ImagePreviewButton';
 import { toast } from '@/components/ui';
 import { uploadImage } from '@/lib/upload';
 
@@ -31,6 +33,7 @@ interface FailedUpload { file: File; message: string }
 
 export default function PhotoField({ value, onChange, max = 6, size = 104, accept = 'image/*', asTags = false, disabled = false, onStatusChange }: Props) {
   const id = useId();
+  const [preview, setPreview] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<FailedUpload[]>([]);
   const [pasteTarget, setPasteTarget] = useState(false);
@@ -112,19 +115,22 @@ export default function PhotoField({ value, onChange, max = 6, size = 104, accep
     <div className="photo-field" onFocusCapture={activate} onPointerDownCapture={activate}>
       {value.map((url, index) => asTags ? (
         <span key={`${url}-${index}`} className="tag">
-          <a href={url} target="_blank" rel="noreferrer">附件 {index + 1}</a>
+          {/\.pdf(?:[?#]|$)/i.test(url) ? <a href={url} target="_blank" rel="noreferrer">附件 {index + 1}（PDF）</a>
+            : <ImagePreviewButton fileUrl={url} fileName={`附件 ${index + 1}`} files={value.map((fileUrl, i) => ({ fileUrl, fileName: `附件 ${i + 1}` })).filter(file => !/\.pdf(?:[?#]|$)/i.test(file.fileUrl))}>
+              <img src={url} alt={`附件 ${index + 1}`} style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 4 }} />
+            </ImagePreviewButton>}
           {disabled ? null : <button type="button" className="btn g sm" aria-label={`移除附件 ${index + 1}`} onClick={() => onChange(value.filter((_, i) => i !== index))}>✕</button>}
         </span>
       ) : (
         <div key={`${url}-${index}`} className="photo-item" style={{ width: size, height: size }}>
-          <a href={url} target="_blank" rel="noreferrer"><img src={url} alt={`报修照片 ${index + 1}`} /></a>
+          <button type="button" className="photo-preview-trigger" aria-label={`预览照片 ${index + 1}`} onClick={() => setPreview(index)}><img src={url} alt={`报修照片 ${index + 1}`} /></button>
           {disabled ? null : <button type="button" className="btn sm" title="移除" aria-label={`移除附件 ${index + 1}`} onClick={() => onChange(value.filter((_, i) => i !== index))}>✕</button>}
         </div>
       ))}
       {room > 0 && !disabled ? (
         <div tabIndex={0} role="button" aria-label="添加照片：点击、拖拽或 Ctrl+V 粘贴" aria-busy={busy}
           data-paste-target={pasteTarget ? 'active' : undefined}
-          className={`photo-drop ${pasteTarget ? 'on' : ''} ${over ? 'over' : ''}`} style={asTags ? undefined : { width: size * 1.6, height: size }}
+          className={`photo-drop ${pasteTarget ? 'on' : ''} ${over ? 'over' : ''}`} style={asTags ? undefined : { width: size * 1.6, minHeight: size }}
           onClick={() => { if (!latest.current.busy) fileRef.current?.click(); }}
           onPaste={event => { if (isTextTarget(document.activeElement) && event.clipboardData.getData('text/plain')) return; const files = filesFrom(event.clipboardData, accept); if (files.length) { event.preventDefault(); void add(files); } }}
           onDragOver={event => { event.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
@@ -136,6 +142,7 @@ export default function PhotoField({ value, onChange, max = 6, size = 104, accep
             onChange={event => { void add(Array.from(event.target.files || [])); event.target.value = ''; }} />
         </div>
       ) : null}
+      {preview !== null && value[preview] ? <ImagePreview files={value.map((fileUrl, i) => ({ fileUrl, fileName: `照片 ${i + 1}` }))} initialIndex={preview} title="照片预览" onClose={() => setPreview(null)} /> : null}
       {room <= 0 ? <span className="muted">已满 {max} 张</span> : null}
       {failed.length > 0 ? <div className="photo-upload-errors" role="alert" style={{ flexBasis: '100%', overflowWrap: 'anywhere' }}>
         {failed.map((item, index) => <div key={index}>{item.file.name}：{item.message}</div>)}

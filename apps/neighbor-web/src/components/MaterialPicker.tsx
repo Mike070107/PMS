@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { WorkOrderStockOptions } from '@pms/shared-types';
 import { repairs } from '@pms/api-client';
 import { Btn, Loading } from '@/components/ui';
+import ImagePreviewButton from '@/components/ImagePreviewButton';
 
 /** 一行用料：从材料SKU选的带 materialId/warehouseId（扣库存），手填的只记名称数量 */
 export interface MatLine {
@@ -84,13 +85,15 @@ export default function MaterialPicker({
           {matches.length === 0 ? <div className="muted" style={{ padding: '8px 4px', fontSize: 14 }}>{q ? '材料SKU里没找到，可在下面手填' : mode === 'use' ? '这个仓没有有货的材料' : '没有材料'}</div> : matches.map((it) => {
             const on = lines.some((l) => l.materialId === it.materialId && l.warehouseId === (stock.warehouseId ?? undefined));
             return (
-              <button key={it.materialId} className={`matpick-item ${on ? 'on' : ''}`} disabled={on}
-                onClick={() => add({ materialId: it.materialId, warehouseId: stock.warehouseId ?? undefined, name: it.name, spec: it.spec, unit: it.unit, qty: '1', stockQty: it.qty })}>
-                {it.photoUrl ? <img src={it.photoUrl} alt="" /> : <span className="ph" />}
-                <span className="nm">{it.name}{it.spec ? <small> · {it.spec}</small> : null}</span>
-                <span className={`st ${it.qty > 0 ? '' : 'zero'}`}>{it.qty > 0 ? `库存 ${it.qty}${it.unit}` : '无货'}</span>
-                <span className="add">{on ? '已加' : '＋'}</span>
-              </button>
+              <div key={it.materialId} className={`matpick-item ${on ? 'on' : ''}`}>
+                {it.photoUrl ? <ImagePreviewButton fileUrl={it.photoUrl} fileName={it.name}><img src={it.photoUrl} alt={it.name} /></ImagePreviewButton> : <span className="ph" />}
+                <button type="button" className="matpick-select" aria-label={`选择材料：${it.name}`} disabled={on}
+                  onClick={() => add({ materialId: it.materialId, warehouseId: stock.warehouseId ?? undefined, name: it.name, spec: it.spec, unit: it.unit, qty: '1', stockQty: it.qty })}>
+                  <span className="nm">{it.name}{it.spec ? <small> · {it.spec}</small> : null}</span>
+                  <span className={`st ${it.qty > 0 ? '' : 'zero'}`}>{it.qty > 0 ? `库存 ${it.qty}${it.unit}` : '无货'}</span>
+                  <span className="add">{on ? '已加' : '＋'}</span>
+                </button>
+              </div>
             );
           })}
         </div>

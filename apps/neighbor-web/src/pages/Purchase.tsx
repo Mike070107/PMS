@@ -8,6 +8,7 @@ import type { MaterialView, PurchaseRequestView, WarehouseView } from '@pms/shar
 import { downloadPurchaseRequestForms } from '@legacy/lib/purchaseRequestForm';
 import RequestComposer from '@/components/purchase/RequestComposer';
 import Icon from '@/components/Icon';
+import ImagePreviewButton from '@/components/ImagePreviewButton';
 import { useSession } from '@/lib/auth';
 import { can } from '@/lib/perm';
 import { purchaseFormOf, requestSourceText, sourceAddressText } from '@/lib/purchase-form';
@@ -221,7 +222,7 @@ export default function Purchase() {
                 <tbody>
                   {detail.items.map((i) => (
                     <tr key={i.lineId || i.name} style={i.rejectReason ? { opacity: 0.5 } : undefined}>
-                      <td><div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>{i.photoUrl ? <img src={i.photoUrl} alt="" className="pr-thumb" /> : null}<div>{i.name}{!i.materialId ? <span className="tag warn" style={{ marginLeft: 6 }}>未关联SKU</span> : null}{i.rejectReason ? <div className="muted" style={{ fontSize: 13 }}>已驳回：{i.rejectReason}</div> : null}</div></div></td>
+                      <td><div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>{i.photoUrl ? <ImagePreviewButton fileUrl={i.photoUrl} fileName={i.name}><img src={i.photoUrl} alt={i.name} className="pr-thumb" /></ImagePreviewButton> : null}<div>{i.name}{!i.materialId ? <span className="tag warn" style={{ marginLeft: 6 }}>未关联SKU</span> : null}{i.rejectReason ? <div className="muted" style={{ fontSize: 13 }}>已驳回：{i.rejectReason}</div> : null}</div></div></td>
                       <td className="sub" style={{ minWidth: 150 }}>
                         {sourceAddressText(i) || '—'}
                         {i.sourceWorkOrderId ? (

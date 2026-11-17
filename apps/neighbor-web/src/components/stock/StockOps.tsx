@@ -5,6 +5,7 @@ import type { MaterialCategoryView, MaterialView, StockView, WarehouseView } fro
 import Icon from '@/components/Icon';
 import { Btn, Empty, Field, Loading, Sheet, toast } from '@/components/ui';
 import PhotoField from '@/components/PhotoField';
+import ImagePreviewButton from '@/components/ImagePreviewButton';
 import { can } from '@/lib/perm';
 import { ago, dayjs, money } from '@/lib/format';
 
@@ -45,7 +46,7 @@ export function MaterialSearch({ materials, onPick, onCreated, extra, only }: {
         <div className="pr-pop">
           {hits.map((m) => (
             <div key={m.id} className="pr-hit" onClick={() => { onPick(m); setQ(''); }}>
-              {m.photoUrl ? <img src={m.photoUrl} alt="" /> : <div className="ph0"><Icon name="box" size={18} /></div>}
+              {m.photoUrl ? <ImagePreviewButton fileUrl={m.photoUrl} fileName={m.name}><img src={m.photoUrl} alt={m.name} /></ImagePreviewButton> : <div className="ph0"><Icon name="box" size={18} /></div>}
               <div style={{ flex: 1 }}><b>{m.name}</b>{m.spec ? <span className="muted"> · {m.spec}</span> : null}<div className="muted" style={{ fontSize: 13 }}>{m.code} · {m.category || '未分类'}</div></div>
               <span className="muted">{extra ? extra(m) : ''}</span>
             </div>
@@ -176,7 +177,7 @@ export function InboundList({ warehouses, materials }: { warehouses: WarehouseVi
                 <tr key={k}><td>{m?.name || `#${i.materialId}`}<span className="sub">{m?.spec || ''}</span></td><td className="muted">{i.locationLabel || '默认'}</td><td style={{ textAlign: 'right' }}>{i.qty}{m?.unit || ''}</td><td style={{ textAlign: 'right' }}>{money(i.unitCostCents / 100)}</td><td style={{ textAlign: 'right' }}>{money(i.qty * i.unitCostCents / 100)}</td></tr>
               ); })}</tbody>
             </table>
-            {open.attachments?.length ? <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>{open.attachments.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer"><img src={u} alt="" style={{ width: 90, height: 90, objectFit: 'cover', borderRadius: 8 }} /></a>)}</div> : null}
+            {open.attachments?.length ? <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>{open.attachments.map((u, index) => <ImagePreviewButton key={u} fileUrl={u} fileName={`入库附件 ${index + 1}`} files={open.attachments!.map((fileUrl, i) => ({ fileUrl, fileName: `入库附件 ${i + 1}` }))}><img src={u} alt={`入库附件 ${index + 1}`} style={{ width: 90, height: 90, objectFit: 'cover', borderRadius: 8 }} /></ImagePreviewButton>)}</div> : null}
           </>
         ) : null}
       </Sheet>
