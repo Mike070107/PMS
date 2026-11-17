@@ -1,0 +1,11 @@
+{
+  "at": "2026-11-17T14:22:43.063Z",
+  "url": "https://prsznh.cn/login",
+  "status": 200,
+  "title": "邻修 · 物业管理平台",
+  "body": "邻\n邻修\n物业管理平台\n打开本机微信登录\n在微信中确认后自动登录；未唤起请扫码。\n用微信扫码，在【邻修管理】里确认\n首次使用请先在【邻修管理】小程序用微信手机号登录一次；手机号需与管理员登记的一致。\n\n操作将直接保存至你有权限访问的正式数据，请核对后再提交。",
+  "pageErrors": [],
+  "blockedNonReadRequests": [],
+  "allowedAnonymousQrTicketCreation": true,
+  "authenticatedBusinessTest": false
+}
