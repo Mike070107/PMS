@@ -7482,3 +7482,10 @@
 - 自上次（091d92df）以来上线的相关提交：
   - 37acc988 fix: restore omitted UI and pickers with standard issuance bridge
 
+## 2026-11-17 15:33 · web · 37acc988
+
+- 包：`pms-web-20261117-152914.tar.gz`
+- 提交：37acc988 fix: restore omitted UI and pickers with standard issuance bridge
+- 自上次（a09dedfc）以来上线的相关提交：
+  - 37acc988 fix: restore omitted UI and pickers with standard issuance bridge
+
