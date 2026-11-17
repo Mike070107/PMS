@@ -7475,3 +7475,10 @@
   - a09dedfc test(web): configure shared API adapter in apartment browser fixture
   - 73dec874 refactor(web): reuse verified meter, fee and upload interfaces across portals
 
+## 2026-11-17 15:33 · api · 37acc988
+
+- 包：`pms-api-fast-20261117-152914.tar.gz`
+- 提交：37acc988 fix: restore omitted UI and pickers with standard issuance bridge
+- 自上次（091d92df）以来上线的相关提交：
+  - 37acc988 fix: restore omitted UI and pickers with standard issuance bridge
+
