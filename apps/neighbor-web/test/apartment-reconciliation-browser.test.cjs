@@ -23,6 +23,7 @@ test('公寓三个查询页携带分类，对账按日/方式/退费下钻并支
         if (args.path.endsWith('/auth')) return { contents: `const session={user:{id:1},access:{isTenantAdmin:true}};export const useSession=()=>session;export const auth={getToken:()=>null};`, loader: 'js' };
         return { loader: 'js', contents: `
           window.__calls=[];window.__failDetail=false;
+          export const configure = () => undefined;
           export class ApiError extends Error {}
           const cell={amountCents:8000,chargedCents:10000,refundedCents:2000,count:2};
           const byMethod={wechat:{...cell,amountCents:10000,count:1},unknown:{...cell,amountCents:-2000,count:1}};
