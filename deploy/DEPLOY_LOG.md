@@ -7594,3 +7594,9 @@
 - 自上次（d075f81d）以来上线的相关提交：
   - c9242807 fix(parking): require scoped garage spaces and reuse selection flow
 
+## 2026-11-18 10:51 · assistant · ae8827e2
+
+- 提交：ae8827e2 feat(assistant): publish managed installer with verified transactional upgrades
+- 自上次（c9242807）以来上线的相关提交：
+  - ae8827e2 feat(assistant): publish managed installer with verified transactional upgrades
+
