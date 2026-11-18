@@ -5,7 +5,6 @@ using System.Diagnostics;
 using System.Linq;
 using System.IO;
 using System.Reflection;
-using System.Diagnostics;
 using System.ServiceProcess;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
@@ -156,9 +155,9 @@ namespace Pms.DataSyncAssistant
                     {
                         var target = Assembly.GetExecutingAssembly().Location;
                         AssistantUpdateService.StartApply(result.DownloadedFile, target, Process.GetCurrentProcess().Id);
-                        UpgradeStatusText.Text = "正在退出并替换程序，请稍候…";
-                        // Close the WPF window and terminate this process explicitly. The
-                        // elevated updater waits for this PID before touching the EXE.
+                        UpgradeStatusText.Text = "正在安装到固定目录，配置和密码会保留，请稍候…";
+                        // Installation stages a new version without overwriting this EXE.
+                        // Close the settings window so the fixed launcher can reopen the new UI.
                         Application.Current.Shutdown();
                         // WPF may keep the dispatcher alive because of a tray/timer
                         // callback. The updater owns this exact PID, so release the
@@ -207,12 +206,12 @@ namespace Pms.DataSyncAssistant
             ProductUpdateStage.Text = StateLabel(state.Phase);
             ProductUpdateTitle.Text = String.IsNullOrWhiteSpace(state.Message) ? "自动更新" : state.Message;
             ProductUpdateDetail.Text = state.Phase == "failed" && !String.IsNullOrWhiteSpace(state.Error)
-                ? state.Error + "；已保留现有版本，可点击右上角重试。"
+                ? state.Error + "；若提示旧版恢复未通过验证，请保留安装目录并联系维护人员。"
                 : VersionDetail(state);
             CheckUpdateButton.Content = state.Phase == "failed" ? "重试更新" : state.Phase == "current" ? "已是最新" : "检查更新";
 
             var canOpen = state.Phase == "installed" && !String.IsNullOrWhiteSpace(state.InstalledExecutable) &&
-                UpdateManager.IsVersionAtLeast(state.InstalledVersion, AppVersion) && File.Exists(state.InstalledExecutable) &&
+                UpdateManager.IsNewerVersion(state.InstalledVersion, AppVersion) && File.Exists(state.InstalledExecutable) &&
                 !String.Equals(Path.GetFullPath(state.InstalledExecutable),
                     Path.GetFullPath(Process.GetCurrentProcess().MainModule.FileName), StringComparison.OrdinalIgnoreCase);
             OpenNewVersionButton.Visibility = canOpen ? Visibility.Visible : Visibility.Collapsed;

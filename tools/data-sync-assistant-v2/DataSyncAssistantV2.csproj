@@ -25,6 +25,7 @@
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
     <Reference Include="System.Drawing" />
@@ -65,6 +66,9 @@
     <Compile Include="AssistantUpdateService.cs" />
     <Compile Include="UnifiedWindowsService.cs" />
     <Compile Include="UpdateManager.cs" />
+    <Compile Include="ProductInstallation.cs" />
+    <Compile Include="InstallationSelfTest.cs" />
+    <Compile Include="InstallationScmTest.cs" />
     <Compile Include="ConnectionAgentRuntime.cs" />
     <Compile Include="Building3ControllerTest.cs" />
     <Compile Include="TrayApplication.cs" />

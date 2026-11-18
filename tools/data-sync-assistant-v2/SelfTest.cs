@@ -129,11 +129,14 @@ namespace Pms.DataSyncAssistant
                 catch (System.Security.Cryptography.CryptographicException) { corruptRejected = true; }
                 if (!corruptRejected) throw new InvalidOperationException("损坏原值快照必须停止恢复，不能猜测成功");
                 VerifyActivityHistory(root);
+                InstallationSelfTest.Run(root);
                 VerifyAssistantUpdater(root);
                 VerifyProductUpdater();
                 VerifySafeUpgradeRecovery();
                 var accessQueryLog = VerifyAccessQueries();
                 WriteSelfTestLog(
+                    "PASS fixed installer: first-install/reinstall/lock/corrupt-package/path validation/readiness rollback/stopped-state rollback/rollback failure + journal recovery/pointer commit failure/first-install removal\r\n" +
+                    "PASS cleanup: loaded/unknown processes protected, marked releases only, 7-day download retention, configuration + DPAPI secrets unchanged\r\n" +
                     "PASS parking blocked-probe / throwing-probe / long-parking-task: >=4 read heartbeats within 1200ms each\r\n" +
                     "PASS permission initial-false / true-cache / expiry / late-result rejection / no overlapping probes / bounded blocked-probe stop\r\n" +
                     "PASS heartbeat transport failure -> recovery / no late callbacks or new sends after stop\r\n" +

@@ -175,7 +175,9 @@ namespace Pms.DataSyncAssistant
                     updatedAt = agent == null ? null : agent.UpdatedAt
                 });
             }
-            return new { checkedAt = DateTimeOffset.Now.ToString("o"), connections = checks };
+            return new { checkedAt = DateTimeOffset.Now.ToString("o"), connections = checks,
+                executable = ProductInstallation.CurrentExecutable, processId = Process.GetCurrentProcess().Id,
+                version = UpdateManager.CurrentVersion };
         }
 
         private static void WriteHealth(object value)
@@ -203,38 +205,45 @@ namespace Pms.DataSyncAssistant
 
         public static void Install()
         {
-            var executable = Process.GetCurrentProcess().MainModule.FileName;
+            ProductInstallation.Install(ProductInstallation.CurrentExecutable);
+            StartTray();
+        }
+
+        internal static string ReadServiceExecutable()
+        {
+            if (!Exists()) return null;
+            using (var key = Registry.LocalMachine.OpenSubKey("SYSTEM\\CurrentControlSet\\Services\\" + ServiceName))
+            {
+                var command = key == null ? null : Convert.ToString(key.GetValue("ImagePath"));
+                if (String.IsNullOrWhiteSpace(command)) throw new InvalidOperationException("无法读取原服务路径，停止更新");
+                command = Environment.ExpandEnvironmentVariables(command).Trim();
+                var end = command.StartsWith("\"", StringComparison.Ordinal) ? command.IndexOf('"', 1) : command.IndexOf(" --service", StringComparison.OrdinalIgnoreCase);
+                if (end < 1) throw new InvalidOperationException("原服务路径格式不明确，停止更新");
+                var path = command.StartsWith("\"", StringComparison.Ordinal) ? command.Substring(1, end - 1) : command.Substring(0, end);
+                if (!File.Exists(path)) throw new InvalidOperationException("原服务程序不存在，不能保证回退：" + path);
+                return Path.GetFullPath(path);
+            }
+        }
+
+        internal static void ConfigureAndStart(string executable)
+        {
+            if (!File.Exists(executable)) throw new InvalidOperationException("服务程序不存在");
+            if (Exists()) Stop();
             var command = "\\\"" + executable + "\\\" --service";
             if (RunSc("create \"" + ServiceName + "\" binPath= \"" + command + "\" start= auto DisplayName= \"PMS 数据同步助手\"") != 0)
                 RequireSc("config \"" + ServiceName + "\" binPath= \"" + command + "\" start= auto DisplayName= \"PMS 数据同步助手\"");
             RequireSc("description \"" + ServiceName + "\" \"连接 PMS 与本机数据库、门禁和发卡设备\"");
             RequireSc("failure \"" + ServiceName + "\" reset= 86400 actions= restart/60000/restart/60000/restart/60000");
-            if (ServiceExists(ServiceName))
-            {
-                RunSc("stop \"" + ServiceName + "\"");
-                try
-                {
-                    using (var service = new ServiceController(ServiceName))
-                    {
-                        service.Refresh();
-                        if (service.Status != ServiceControllerStatus.Stopped)
-                            service.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(20));
-                    }
-                }
-                catch { }
-            }
             RequireSc("start \"" + ServiceName + "\"");
             using (var service = new ServiceController(ServiceName))
                 service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(20));
-            InstallTrayStartup(executable);
-            StartTray();
         }
 
         public static void StartTray()
         {
             Process.Start(new ProcessStartInfo
             {
-                FileName = Process.GetCurrentProcess().MainModule.FileName,
+                FileName = File.Exists(ProductInstallation.Launcher) ? ProductInstallation.Launcher : ProductInstallation.CurrentExecutable,
                 Arguments = "--tray",
                 UseShellExecute = true
             });
@@ -244,28 +253,13 @@ namespace Pms.DataSyncAssistant
         {
             if (String.IsNullOrWhiteSpace(executable) || !File.Exists(executable))
                 throw new InvalidOperationException("新版程序文件不存在");
-            var command = "\\\"" + executable + "\\\" --service";
-            RunSc("stop \"" + ServiceName + "\"");
-            try
-            {
-                using (var service = new ServiceController(ServiceName))
-                {
-                    service.Refresh();
-                    if (service.Status != ServiceControllerStatus.Stopped)
-                        service.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(25));
-                }
-            }
-            catch { }
-            RequireSc("config \"" + ServiceName + "\" binPath= \"" + command + "\" start= auto DisplayName= \"PMS 数据同步助手\"");
-            RequireSc("start \"" + ServiceName + "\"");
-            using (var service = new ServiceController(ServiceName))
-                service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(25));
+            ConfigureAndStart(executable);
         }
 
         public static void InstallTrayStartupForCurrentUser(string executable)
         {
             if (String.IsNullOrWhiteSpace(executable) || !File.Exists(executable)) return;
-            InstallTrayStartup(executable);
+            InstallTrayStartup(File.Exists(ProductInstallation.Launcher) ? ProductInstallation.Launcher : executable);
         }
 
         public static void Uninstall()
@@ -309,6 +303,12 @@ namespace Pms.DataSyncAssistant
                 service.Start();
                 service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(20));
             }
+        }
+
+        internal static bool HasLegacyServices()
+        {
+            return new[] { ConnectionTypes.LegacyAccess, ConnectionTypes.BuildingAccess, ConnectionTypes.Parking,
+                ConnectionTypes.CardReader }.Select(LegacyServiceName).Any(ServiceExists);
         }
 
         public static void UpgradeFromLegacy()

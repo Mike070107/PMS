@@ -55,9 +55,10 @@ namespace Pms.DataSyncAssistant
                 throw new InvalidOperationException("更新下载地址不是 HTTPS，已停止更新以保护助手和配置");
             if (!IsSha256(manifest.Sha256)) throw new InvalidOperationException("更新清单缺少有效的 SHA-256 校验值");
 
+            if (!UpdateManager.IsTrustedDownloadUrl(downloadUrl)) throw new InvalidOperationException("更新包必须来自 PMS 官方下载目录");
             var updateDirectory = Path.Combine(rootPath, "updates");
             Directory.CreateDirectory(updateDirectory);
-            var fileName = "Pms.DataSyncAssistant.V2-" + available.ToString(3) + ".exe";
+            var fileName = "Pms.DataSyncAssistant.V2-" + available.ToString(3) + "-" + Guid.NewGuid().ToString("N") + ".exe";
             var destination = Path.Combine(updateDirectory, fileName);
             Download(packageUri, destination);
             var actualHash = ComputeSha256(destination);
@@ -65,6 +66,11 @@ namespace Pms.DataSyncAssistant
             {
                 TryDelete(destination);
                 throw new InvalidOperationException("更新包校验失败，文件可能已损坏或被篡改");
+            }
+            if (new Version(FileVersionInfo.GetVersionInfo(destination).FileVersion).ToString(3) != available.ToString(3))
+            {
+                TryDelete(destination);
+                throw new InvalidOperationException("新版程序与清单版本不一致");
             }
             return new AssistantUpdateResult { CurrentVersion = currentVersion, Manifest = manifest, HasUpdate = true, DownloadedFile = destination };
         }
@@ -75,15 +81,10 @@ namespace Pms.DataSyncAssistant
             var target = Path.GetFullPath(targetExecutable);
             if (String.Equals(source, target, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("更新包不能与当前程序是同一个文件");
             if (!File.Exists(source)) throw new FileNotFoundException("更新包不存在", source);
-            foreach (var staleRunner in Directory.GetFiles(Path.GetDirectoryName(source), "*.runner-*.exe")) TryDelete(staleRunner);
-            var runner = source + ".runner-" + Guid.NewGuid().ToString("N") + ".exe";
-            CopyFileWithRetry(source, runner, true);
             Process.Start(new ProcessStartInfo
             {
-                FileName = runner,
-                // The runner is a temporary copy; the original downloaded file is not
-                // running and can therefore be copied over the installed EXE safely.
-                Arguments = "--apply-update \"" + target + "\" " + previousProcessId + " \"" + source + "\"",
+                FileName = source,
+                Arguments = "--apply-product-update " + ProductInstallation.Quote(target) + " --interactive",
                 UseShellExecute = true,
                 Verb = "runas"
             });
@@ -96,34 +97,11 @@ namespace Pms.DataSyncAssistant
             var target = Path.GetFullPath(targetExecutable);
             if (String.Equals(source, target, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("更新源和目标不能相同");
             if (!File.Exists(source)) throw new FileNotFoundException("更新源文件不存在", source);
-            WaitForProcess(previousProcessId);
-            var backup = target + ".previous";
-            var serviceWasRunning = UnifiedServiceManager.IsRunning();
-            try
-            {
-                if (serviceWasRunning) UnifiedServiceManager.Stop();
-                // The settings window and the tray icon intentionally run in separate
-                // processes. Waiting for the settings PID alone leaves the tray process
-                // holding the installed EXE open. Stop every remaining process whose
-                // executable path is exactly the file being replaced; never terminate
-                // another assistant copy installed in a different directory.
-                StopProcessesUsingTargetExecutable(target);
-                CopyFileWithRetry(target, backup, true);
-                CopyFileWithRetry(source, target, true);
-                if (serviceWasRunning) UnifiedServiceManager.StartExisting();
-                Process.Start(new ProcessStartInfo { FileName = target, Arguments = "--tray", UseShellExecute = true });
-                Process.Start(new ProcessStartInfo { FileName = target, Arguments = "--updated", UseShellExecute = true });
-            }
-            catch (Exception exception)
-            {
-                try
-                {
-                    if (File.Exists(backup)) File.Copy(backup, target, true);
-                    if (serviceWasRunning) UnifiedServiceManager.StartExisting();
-                }
-                catch { }
-                throw new InvalidOperationException("助手更新失败，已尝试恢复上一版程序：" + exception.Message, exception);
-            }
+            // Compatibility for old clients that still invoke --apply-update.
+            // Never overwrite their original EXE or terminate their tray/settings processes.
+            ProductInstallation.Install(source);
+            Process.Start(new ProcessStartInfo { FileName = ProductInstallation.Launcher, Arguments = "--tray", UseShellExecute = true });
+            Process.Start(new ProcessStartInfo { FileName = ProductInstallation.Launcher, UseShellExecute = true });
         }
 
         private static AssistantUpdateManifest LoadManifest(string rootPath)
@@ -147,7 +125,10 @@ namespace Pms.DataSyncAssistant
             using (var response = (HttpWebResponse)request.GetResponse())
             using (var stream = response.GetResponseStream())
             using (var reader = new StreamReader(stream, Encoding.UTF8))
+            {
+                if (response.ResponseUri.Scheme != Uri.UriSchemeHttps) throw new InvalidOperationException("更新清单重定向到非 HTTPS 地址");
                 return ParseManifest(reader.ReadToEnd(), url);
+            }
         }
 
         private static AssistantUpdateManifest ParseManifest(string json, string source)
@@ -172,6 +153,8 @@ namespace Pms.DataSyncAssistant
             request.UserAgent = "PMS-DataSyncAssistant/" + AssemblyVersion();
             using (var response = (HttpWebResponse)request.GetResponse())
             {
+                if (!UpdateManager.IsTrustedDownloadUrl(response.ResponseUri.AbsoluteUri))
+                    throw new InvalidOperationException("更新包重定向到非官方地址，已停止下载");
                 if (response.ContentLength > MaxPackageBytes) throw new InvalidOperationException("更新包超过 100 MB，已停止下载");
                 using (var input = response.GetResponseStream())
                 using (var output = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None))
@@ -199,7 +182,8 @@ namespace Pms.DataSyncAssistant
         private static bool IsSha256(string value)
         {
             if (String.IsNullOrWhiteSpace(value) || value.Length != 64) return false;
-            return value.All(char.IsLetterOrDigit);
+            return value.All(character => (character >= '0' && character <= '9') ||
+                (character >= 'a' && character <= 'f') || (character >= 'A' && character <= 'F'));
         }
 
         private static Version ParseVersion(string value)

@@ -83,9 +83,9 @@ namespace Pms.DataSyncAssistant
                         return;
                     }
 
-                    var releaseDirectory = Path.Combine(root, "releases", target.ToString(3));
+                    var releaseDirectory = Path.Combine(root, "updates");
                     Directory.CreateDirectory(releaseDirectory);
-                    var executable = Path.Combine(releaseDirectory, "Pms.DataSyncAssistant.V2.exe");
+                    var executable = Path.Combine(releaseDirectory, "Pms.DataSyncAssistant.V2-" + target.ToString(3) + "-" + Guid.NewGuid().ToString("N") + ".exe");
                     var temporary = executable + ".download";
                     DownloadPackage(manifest, temporary);
                     WriteState("verifying", 82, "正在校验下载文件…", manifest.Version, null, null);
@@ -128,23 +128,18 @@ namespace Pms.DataSyncAssistant
         internal static void ApplyDownloadedUpdate(string previousExecutable)
         {
             var currentExecutable = Process.GetCurrentProcess().MainModule.FileName;
-            var version = FileVersionInfo.GetVersionInfo(currentExecutable).FileVersion;
+            var version = new Version(FileVersionInfo.GetVersionInfo(currentExecutable).FileVersion).ToString(3);
             try
             {
                 WriteState("installing", 93, "正在停止旧版后台服务…", version, null, currentExecutable);
-                if (UnifiedServiceManager.Exists()) UnifiedServiceManager.SwitchServiceExecutable(currentExecutable);
-                else UnifiedServiceManager.Install();
-                WriteState("installed", 100, "新版已安装，后台服务已自动恢复运行", version, version, currentExecutable);
+                ProductInstallation.Install(currentExecutable);
+                WriteState("installed", 100, "新版已安装，后台服务本机就绪检查通过（联网/设备状态请查看连接卡片）" +
+                    (ProductInstallation.ShellIntegrationWarning == null ? "" : "；" + ProductInstallation.ShellIntegrationWarning), version, version, ProductInstallation.Launcher);
             }
             catch (Exception exception)
             {
-                try
-                {
-                    if (!String.IsNullOrWhiteSpace(previousExecutable) && File.Exists(previousExecutable))
-                        UnifiedServiceManager.SwitchServiceExecutable(previousExecutable);
-                }
-                catch { }
-                WriteFailure("新版切换失败，已尝试恢复旧版服务：" + exception.Message);
+                // Install owns verified rollback and durable recovery; never attempt a second, unverified switch here.
+                WriteFailure(exception.Message);
                 throw;
             }
         }
@@ -161,9 +156,17 @@ namespace Pms.DataSyncAssistant
         {
             Uri uri;
             return Uri.TryCreate(value, UriKind.Absolute, out uri) &&
-                   uri.Scheme == Uri.UriSchemeHttps &&
+                   uri.Scheme == Uri.UriSchemeHttps && uri.IsDefaultPort && String.IsNullOrEmpty(uri.UserInfo) &&
                    String.Equals(uri.Host, "prsznh.cn", StringComparison.OrdinalIgnoreCase) &&
                    uri.AbsolutePath.StartsWith("/downloads/pms-data-sync-assistant/", StringComparison.Ordinal);
+        }
+
+        internal static bool IsNewerVersion(string candidate, string current)
+        {
+            Version available, running;
+            if (!Version.TryParse(candidate, out available) || !Version.TryParse(current, out running)) return false;
+            return new Version(available.Major, available.Minor, Math.Max(0, available.Build)).CompareTo(
+                new Version(running.Major, running.Minor, Math.Max(0, running.Build))) > 0;
         }
 
         internal static bool IsVersionAtLeast(string candidate, string minimum)
@@ -186,6 +189,7 @@ namespace Pms.DataSyncAssistant
                 using (var response = request.GetResponse())
                 using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8))
                 {
+                    if (!IsTrustedDownloadUrl(response.ResponseUri.AbsoluteUri)) throw new InvalidOperationException("更新清单重定向到非官方地址");
                     UpdateManifest manifest;
                     try
                     {
@@ -218,7 +222,9 @@ namespace Pms.DataSyncAssistant
             using (var input = response.GetResponseStream())
             using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
+                if (!IsTrustedDownloadUrl(response.ResponseUri.AbsoluteUri)) throw new InvalidOperationException("更新包重定向到非官方地址");
                 var length = response.ContentLength;
+                if (length > 100 * 1024 * 1024) throw new InvalidOperationException("更新包超过 100 MB");
                 var buffer = new byte[64 * 1024];
                 long received = 0;
                 int read;
@@ -226,6 +232,7 @@ namespace Pms.DataSyncAssistant
                 {
                     output.Write(buffer, 0, read);
                     received += read;
+                    if (received > 100 * 1024 * 1024) throw new InvalidOperationException("更新包超过 100 MB");
                     var percent = length > 0 ? 12 + (int)Math.Min(66, received * 66 / length) : 35;
                     WriteState("downloading", percent, length > 0
                         ? "正在下载新版… " + Math.Min(100, received * 100 / length) + "%"
