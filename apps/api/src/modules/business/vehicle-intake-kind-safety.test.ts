@@ -19,9 +19,10 @@ function fixture() {
   let tail = Promise.resolve(); let locks = 0; let familyCreates = 0; let failAttach = false;
   const committedPayments = new Set<number>();
   const clone = <T>(v: T): T => structuredClone(v);
-  const matches = (r: any, w: any): boolean => Array.isArray(w) ? w.some(item => matches(r, item)) : Object.entries(w || {}).every(([k, v]: [string, any]) => v?._type === 'like' ? String(r[k] ?? '').startsWith(v._value.slice(0, -1)) : r[k] === v);
+  const matches = (r: any, w: any): boolean => Array.isArray(w) ? w.some(item => matches(r, item)) : Object.entries(w || {}).every(([k, v]: [string, any]) => v?._type === 'like' ? String(r[k] ?? '').startsWith(v._value.slice(0, -1)) : v?._type === 'in' ? v._value.includes(r[k]) : r[k] === v);
   const repository = (entity: any, manager: any): any => ({
     manager, create: (v: any) => clone(v),
+    find: async ({ where, lock }: any) => { if (lock) locks++; return clone(tables.get(entity)!.filter(r => matches(r, where))); },
     findOne: async ({ where, lock }: any) => { if (lock) { assert.equal(lock.mode, 'pessimistic_write'); locks++; } return clone(tables.get(entity)!.find(r => matches(r, where)) ?? null); },
     save: async (v: any): Promise<any> => {
       if (Array.isArray(v)) return Promise.all(v.map(x => repository(entity, manager).save(x)));
@@ -47,10 +48,10 @@ function fixture() {
   };
   const intakes = manager.getRepository(VehicleIntake), txns = manager.getRepository(BusinessTransaction), logs = manager.getRepository(BusinessLog);
   const user = { id: 8, tenantId: 1 } as any;
-  const family = { createFromIntake: async (input: any, files: any[]) => { familyCreates++; assert.ok(input.duplicateCheckQueryId); assert.ok(files.length); await Promise.resolve(); return { id: 77 }; } };
+  const family = { createFromIntake: async (input: any, files: any[], _note: any, _user: any, _access: any, attachmentsOptional?: boolean) => { familyCreates++; assert.ok(input.duplicateCheckQueryId); assert.ok(files.length || attachmentsOptional); await Promise.resolve(); return { id: 77 }; } };
   const kicked: number[] = [];
   const execution = { initialFor: () => ({ status: 'queued', execution: { attempts: 0 } }), kick: (id: number) => { assert.ok(committedPayments.has(id), 'execution cannot start before payment commit'); kicked.push(id); } };
-  const communityRepo = { findOne: async () => ({ id: 3, name: '枫桦景苑二期' }) } as any;
+  const communityRepo = { findOne: async () => ({ id: 3, name: '枫桦景苑二期' }), find: async () => [{ id: 3, name: '枫桦景苑二期' }] } as any;
   const houseRepo = { findOne: async () => ({ id: 5, tenantId: 1, buildingId: 2, roomNo: '502' }) } as any;
   const buildingRepo = { findOne: async () => ({ communityId: 3 }) } as any;
   const service = new VehicleIntakeService(intakes, txns, logs, houseRepo, buildingRepo, communityRepo,
@@ -246,11 +247,39 @@ test('新版登记绕过前端直接complete或attach也不能先收费跳过编
   await assert.rejects(old.pay(), /须先提交/); assert.equal(old.transactions().length, 0);
 });
 
-test('扫码付费新车可无附件；亲情车仍必须提供资料', async () => {
+test('扫码付费新车可无附件；亲情车仅本地代填附件选填且仍须关系、查重、经理审批', async () => {
   const h = staffFixture(); const result = await h.service.publicSubmit(h.token, [], staffBody);
   assert.equal(result.status, 'submitted'); assert.equal(result.fileCount, 0);
-  const family = staffFixture(); family.row().kind = 'family';
-  await assert.rejects(family.service.staffSubmit(1, { ...staffBody, relation: '子女' }, family.user), /资料/);
+  const family = staffFixture(); family.row().kind = 'family'; family.row().garages = ['phase2'];
+  await assert.rejects(family.service.staffSubmit(1, staffBody, family.user), /关系/);
+  await family.service.staffSubmit(1, { ...staffBody, relation: '子女' }, family.user);
+  assert.equal(family.row().files.length, 0);
+  assert.equal(family.row().log.at(-1).attachmentsOptional, true);
+  await assert.rejects(family.service.review(1, { decision: 'approve' }, family.user), /旧停车库查重/);
+  await family.service.review(1, { decision: 'approve', duplicateCheckQueryId: 12 }, family.user);
+  assert.equal(family.familyCreates(), 1); assert.equal(family.row().familyCarId, 77);
+  const publicFamily = staffFixture(); publicFamily.row().kind = 'family';
+  await assert.rejects(publicFamily.service.publicSubmit(publicFamily.token, [], { ...staffBody, relation: '子女', attachmentsOptional: true }), /资料/);
+});
+
+test('本地代填附件选填不能被后续扫码提交继承', async () => {
+  const h = staffFixture(); h.row().kind = 'family'; h.row().garages = ['phase2'];
+  await h.service.staffSubmit(1, { ...staffBody, relation: '子女' }, h.user);
+  await h.service.review(1, { decision: 'reupload', note: '重新核对' }, h.user);
+  await assert.rejects(h.service.publicSubmit(h.token, [], { ...staffBody, relation: '子女' }), /资料/);
+  h.row().status = 'submitted'; h.row().log.push({ action: '业主重新提交资料', userId: null });
+  await assert.rejects(h.service.review(1, { decision: 'approve', duplicateCheckQueryId: 12 }, h.user), /关系证明/);
+  assert.equal(h.familyCreates(), 0);
+});
+
+test('同户不同车牌保存再读各自联系电话，不覆盖业主电话', async () => {
+  const h = staffFixture();
+  const second = structuredClone(h.row()); second.id = 2; h.tables.get(VehicleIntake)!.push(second);
+  await h.service.staffSubmit(1, { ...staffBody, contactPhone: '13911112222', ownerPhone: '13099998888' }, h.user);
+  await h.service.staffSubmit(2, { ...staffBody, plate: '沪B12345', contactPhone: '13733334444' }, h.user);
+  const first = await h.service.get(1, h.user); const other = await h.service.get(2, h.user);
+  assert.equal(first.contactPhone, '13911112222'); assert.equal(other.contactPhone, '13733334444');
+  assert.equal(first.ownerPhone, '13800000000'); assert.equal(other.ownerPhone, '13800000000');
 });
 
 test('工作人员附件校验、数量上限和扫码交接保留已传资料', async () => {
@@ -292,7 +321,7 @@ test('代填/附件均拒绝跨租户与越权小区；路由只读权限不能�
   assert.equal(h.row().files.length, 0);
 });
 
-test('地下车位必选且只绑定同小区同通道空位；另一户车位拒绝，完整事务回滚', async () => {
+test('地下车位须有效且一位多车只关联，不覆盖原车牌和房号', async () => {
   const h = staffFixture(); await h.service.staffSubmit(1, staffBody, h.user);
   await h.service.setGarages(1, ['local:phase2_parking', 'local:phase2_main_garage', 'deliyun:枫桦景苑'], { main: 'B12', civil: 'C12' }, h.user);
   h.tables.set(ParkingSpace, [
@@ -300,14 +329,12 @@ test('地下车位必选且只绑定同小区同通道空位；另一户车位�
     { id: 2, tenantId: 1, communityId: 3, garage: 'main', spaceNo: 'B12', plate: '沪B22222', houseNo: '228弄3号999' },
   ]);
   const before = structuredClone(h.tables.get(ParkingSpace));
-  await assert.rejects(h.service.review(1, { decision: 'approve' }, h.user), /不能抢占/);
-  assert.deepEqual(h.tables.get(ParkingSpace), before, '先写入civil后main失败必须整体回滚');
-  assert.equal(h.row().status, 'submitted'); assert.equal(h.row().plate, staffBody.plate);
-  assert.deepEqual(h.row().garageNumbers, { main: 'B12', civil: 'C12' });
-  Object.assign(h.tables.get(ParkingSpace)![1], { plate: null, houseNo: null });
   await h.service.review(1, { decision: 'approve' }, h.user);
-  assert.ok(h.tables.get(ParkingSpace)!.every(s => s.plate === staffBody.plate && s.houseNo === '228弄3号502'));
-  assert.ok(h.locks() >= 4);
+  assert.deepEqual(h.tables.get(ParkingSpace), before, '共用车位主档不能被本车覆盖');
+  assert.equal(h.row().status, 'approved'); assert.equal(h.row().plate, staffBody.plate);
+  assert.deepEqual(h.row().garageNumbers, { main: 'B12', civil: 'C12' });
+  assert.equal(h.row().log.find((l: any) => l.action === '关联共用车位').spaceReferences.length, 2);
+  assert.ok(h.locks() >= 2);
   await assert.rejects(h.service.setGarages(1, ['local:phase2_parking'], {}, h.user), /不能再改/);
 });
 
@@ -318,18 +345,18 @@ async function boundFixture() {
   await h.service.review(1, { decision: 'approve' }, h.user); return h;
 }
 
-test('绑定后未收款转换/作废恢复原档案，重复操作不重复释放；已付费禁止释放', async () => {
+test('共用车位未收款转换/作废均不改主档；已付费禁止转换作废', async () => {
   for (const action of ['convert', 'void']) {
     const h = await boundFixture();
     const run = () => action === 'convert' ? h.service.setKind(1, { kind: 'family' }, h.user) : h.service.review(1, { decision: 'void', note: '合成撤销' }, h.user);
     await run(); await run();
     assert.ok(h.tables.get(ParkingSpace)!.every(s => s.plate === null && s.houseNo === null && s.ownerName === '旧档案名字' && s.ownerTel === null));
-    assert.equal(h.row().log.filter((l: any) => l.action === '恢复登记前车位档案').length, 1);
+    assert.equal(h.row().log.filter((l: any) => l.action === '恢复登记前车位档案').length, 0);
   }
   const h = await boundFixture(); await h.pay();
   await assert.rejects(h.service.setKind(1, { kind: 'family' }, h.user), /收款/);
   await assert.rejects(h.service.review(1, { decision: 'void', note: '不准释放' }, h.user), /收款/);
-  assert.ok(h.tables.get(ParkingSpace)!.every(s => s.plate === staffBody.plate));
+  assert.ok(h.tables.get(ParkingSpace)!.every(s => s.plate === null));
 });
 
 test('历史已收款待资料地下通道无编号仍可审核，不追溯占位', async () => {
@@ -353,7 +380,14 @@ test('历史已审核无绑定快照登记仍可转换/作废，不能猜测释�
 });
 
 test('绑定后人工修改任一档案，双车位恢复操作整体回滚且保留登记状态', async () => {
-  const h = await boundFixture(); h.tables.get(ParkingSpace)![1].ownerName = '人工修订';
+  const h = await boundFixture();
+  const bindings = h.tables.get(ParkingSpace)!.map(before => {
+    const after = { ...before, plate: staffBody.plate, houseNo: '228弄3号502', ownerName: '合成业主', ownerTel: '13900000000' };
+    return { before: structuredClone(before), after };
+  });
+  h.tables.set(ParkingSpace, bindings.map(b => structuredClone(b.after)));
+  h.row().log.push({ action: '关联车位档案', at: new Date().toISOString(), spaceBindings: bindings });
+  h.tables.get(ParkingSpace)![1].ownerName = '人工修订';
   const before = structuredClone(h.tables.get(ParkingSpace));
   await assert.rejects(h.service.setKind(1, { kind: 'family' }, h.user), /已被修改/);
   assert.deepEqual(h.tables.get(ParkingSpace), before); assert.equal(h.row().status, 'approved'); assert.equal(h.row().kind, 'paid');
@@ -368,9 +402,9 @@ test('未选编号、错误小区与错误通道均拒绝；移除通道清理�
   await h.service.setGarages(1, ['local:phase2_main_garage'], { main: 'B12', civil: 'STALE' }, h.user);
   assert.deepEqual(h.row().garageNumbers, { main: 'B12' });
   h.tables.set(ParkingSpace, [{ id: 2, tenantId: 1, communityId: 99, garage: 'main', spaceNo: 'B12', plate: null, houseNo: null }]);
-  await assert.rejects(h.service.review(1, { decision: 'approve' }, h.user), /本小区/);
+  await assert.rejects(h.service.review(1, { decision: 'approve' }, h.user), /所选车库/);
   Object.assign(h.tables.get(ParkingSpace)![0], { communityId: 3, garage: 'civil' });
-  await assert.rejects(h.service.review(1, { decision: 'approve' }, h.user), /本小区/);
+  await assert.rejects(h.service.review(1, { decision: 'approve' }, h.user), /所选车库/);
   await h.service.setGarages(1, ['local:phase2_parking'], { main: 'B12' }, h.user);
   assert.deepEqual(h.row().garageNumbers, {});
 });

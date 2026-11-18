@@ -18,9 +18,24 @@
 .intake-plate-keys button{min-height:44px;border:1px solid var(--line);border-radius:6px;background:var(--paper,#fff);color:var(--ink);cursor:pointer;font-size:16px;transition:background .15s}
 .intake-plate-keys{display:grid;grid-template-columns:repeat(auto-fit,minmax(44px,1fr));gap:8px;max-width:560px}
 .intake-plate-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:10px}
+@media(max-width:600px){.intake-plate-picker{padding:8px}.intake-plate-slots{gap:2px}.intake-plate-keys{gap:6px;grid-template-columns:repeat(5,minmax(0,1fr))}.intake-plate-picker legend{font-size:13px}}
+@media(prefers-reduced-motion:reduce){.intake-plate-picker button{transition:none}}
 .intake-upload{padding:12px;border:1px dashed var(--line);border-radius:8px;margin:10px 0;outline-offset:3px}
 .intake-upload:focus{outline:2px solid var(--acc)}
 .intake-upload p{margin:6px 0;color:var(--ink2);font-size:13px}
-.intake-registration-form{min-width:0;margin-bottom:16px}
-@media(max-width:600px){.intake-plate-picker{padding:8px}.intake-plate-slots{gap:2px}.intake-plate-keys{gap:6px;grid-template-columns:repeat(5,minmax(0,1fr))}.intake-plate-picker legend{font-size:13px}}
-@media(prefers-reduced-motion:reduce){.intake-plate-picker button{transition:none}}
+.intake-registration-form{min-width:0;margin:0 0 24px;padding:20px;border:1px solid var(--line);border-top:3px solid var(--brand,var(--acc));border-radius:10px;background:var(--card,#fff)}
+.intake-registration-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12px}
+.intake-registration-heading h3{margin:4px 0 0;font-size:19px;line-height:1.4}
+.intake-eyebrow{color:var(--ink2);font-size:12px;font-weight:600;letter-spacing:.08em}
+.intake-registration-form>p,.intake-contact-help{font-size:14px;line-height:1.6;color:var(--ink2)}
+.intake-registration-form .np-fields{margin-top:16px}
+.intake-registration-form .intake-upload{margin:20px 0;background:var(--sunken,#f4f6f9);padding:16px}
+.vehicle-class-choices{border:0;min-width:0;padding:0;margin:0 0 12px}
+.vehicle-class-choices legend{font-size:14px;font-weight:600;margin-bottom:12px;padding:0}
+.vehicle-class-row{display:grid;grid-template-columns:72px minmax(0,1fr);gap:12px;align-items:start;margin-bottom:8px}
+.vehicle-class-group{font-size:13px;color:var(--ink2);padding-top:12px}
+.vehicle-class-options{display:flex;flex-wrap:wrap;gap:8px}
+.vehicle-class-options .chip{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:104px;min-height:44px;border-radius:6px;font-variant-numeric:tabular-nums}
+.vehicle-class-options small{font-size:11px;font-weight:400}
+.vehicle-class-options button:focus-visible{outline:2px solid var(--brand,var(--acc));outline-offset:3px}
+@media(max-width:600px){.intake-registration-form{padding:16px 12px}.intake-registration-heading{align-items:flex-start}.intake-registration-heading .btn{max-width:50%}.vehicle-class-row{grid-template-columns:1fr;gap:6px}.vehicle-class-group{padding-top:0}.vehicle-class-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.vehicle-class-options .chip{min-width:0;padding:8px 4px;font-size:13px;flex-wrap:wrap}}

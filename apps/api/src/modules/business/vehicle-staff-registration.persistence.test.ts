@@ -7,7 +7,7 @@ import { BusinessLog, BusinessTransaction, ParkingSpace, VehicleIntake } from '.
 
 // Real PostgreSQL/WASM transaction persistence and rollback, not a live DB or multi-session contention test.
 // Repository adapter stores entity-shaped JSONB and executes real SELECT FOR UPDATE + advisory SQL on the same transaction.
-test('staff approval persists garage binding and rolls back all prior writes on conflict (PGlite SQL)', async () => {
+test('staff contact isolation persists; shared-space approval never overwrites master records (PGlite SQL)', async () => {
   const db = new PGlite();
   await db.exec('CREATE TABLE fixture_entities (entity text, id int, data jsonb NOT NULL, PRIMARY KEY(entity,id))');
   const sqlCalls: string[] = [];
@@ -24,6 +24,11 @@ test('staff approval persists garage binding and rolls back all prior writes on 
   function repository(entity: any, manager: any, connection: any): any {
     return {
       manager, create: (data: any) => data,
+      find: async (options: any) => {
+        const where = { ...options.where }; const ids = where.communityId?._value; delete where.communityId;
+        const sql = 'SELECT data FROM fixture_entities WHERE entity=$1 AND data @> $2::jsonb AND (data->>\'communityId\')::int=ANY($3::int[])' + (options.lock ? ' FOR UPDATE' : '');
+        sqlCalls.push(sql); return (await connection.query(sql, [entity.name, JSON.stringify(where), ids])).rows.map((r: any) => revive(r.data));
+      },
       findOne: async (options: any) => {
         const sql = 'SELECT data FROM fixture_entities WHERE entity=$1 AND data @> $2::jsonb ORDER BY id LIMIT 1' + (options.lock ? ' FOR UPDATE' : '');
         sqlCalls.push(sql); return revive((await connection.query(sql, [entity.name, JSON.stringify(options.where)])).rows[0]?.data);
@@ -34,7 +39,10 @@ test('staff approval persists garage binding and rolls back all prior writes on 
         return revive(structuredClone(result));
       },
       createQueryBuilder: () => {
-        let params: any; const qb: any = { where: (_s: string, p: any) => { params = p; return qb; }, getOne: async () => revive((await connection.query(`SELECT data FROM fixture_entities WHERE entity=$1 AND (data->>'tenantId')::int=$2 AND data->>'plate'=$3 AND id<>$4 AND data->>'status'<>$5 LIMIT 1`, [entity.name, params.tenantId, params.plate, params.id, params.status])).rows[0]?.data) }; return qb;
+        let params: any, patch: any; const qb: any = { update: () => qb, set: (data: any) => { patch = data; return qb; }, execute: async () => {
+          const result = await connection.query('UPDATE fixture_entities SET data=data || $1::jsonb WHERE entity=$2 AND id=$3 AND data->>\'status\'=ANY($4::text[]) RETURNING id', [JSON.stringify(patch), entity.name, params.id, params.st]);
+          return { affected: result.rows.length };
+        }, where: (_s: string, p: any) => { params = p; return qb; }, getOne: async () => revive((await connection.query(`SELECT data FROM fixture_entities WHERE entity=$1 AND (data->>'tenantId')::int=$2 AND data->>'plate'=$3 AND id<>$4 AND data->>'status'<>$5 LIMIT 1`, [entity.name, params.tenantId, params.plate, params.id, params.status])).rows[0]?.data) }; return qb;
       },
     };
   }
@@ -44,24 +52,32 @@ test('staff approval persists garage binding and rolls back all prior writes on 
   const spaces = manager.getRepository(ParkingSpace);
   await spaces.save({ id: 1, tenantId: 1, communityId: 3, garage: 'civil', spaceNo: 'C12', plate: null, houseNo: null });
   await spaces.save({ id: 2, tenantId: 1, communityId: 3, garage: 'main', spaceNo: 'B12', plate: '沪B22222', houseNo: '另一户' });
-  const service = new VehicleIntakeService(intakes, manager.getRepository(BusinessTransaction), manager.getRepository(BusinessLog), {} as any, {} as any, { findOne: async () => ({ name: '枫桦景苑二期' }) } as any, { findOne: async () => ({ id: 8, name: '合成前台' }) } as any, {} as any, {} as any, {} as any, {} as any);
+  const service = new VehicleIntakeService(intakes, manager.getRepository(BusinessTransaction), manager.getRepository(BusinessLog), {} as any, {} as any, { findOne: async () => ({ id: 3, name: '枫桦景苑二期' }), find: async () => [{ id: 3, name: '枫桦景苑二期' }] } as any, { findOne: async () => ({ id: 8, name: '合成前台' }) } as any, {} as any, {} as any, {} as any, {} as any);
   try {
-    await assert.rejects(service.review(1, { decision: 'approve' }, user), /不能抢占/);
-    assert.equal((await spaces.findOne({ where: { id: 1 } })).plate, null, 'civil write rolled back after main conflict');
+    // Separate plates in the same household: real JSONB update, commit and service reload.
+    for (const [id, plate, phone] of [[2, '沪C12345', '13711112222'], [3, '沪D12345', '13633334444']] as const) {
+      await intakes.save({ ...(await intakes.findOne({ where: { id: 1 } })), id, status: 'waiting', plate: '', ownerPhone: '13800000000', garages: ['local:phase2_parking'], garageNumbers: {} });
+      await service.staffSubmit(id, { plate, contactPhone: phone, ownerPhone: '13099998888' }, user);
+    }
+    const firstCar = await service.get(2, user), secondCar = await service.get(3, user);
+    assert.equal(firstCar.contactPhone, '13711112222'); assert.equal(secondCar.contactPhone, '13633334444');
+    assert.equal(firstCar.ownerPhone, '13800000000'); assert.equal(secondCar.ownerPhone, '13800000000');
+    const original = await intakes.findOne({ where: { id: 1 } });
+    await intakes.save({ ...original, garageNumbers: { main: 'INVALID', civil: 'C12' } });
+    await assert.rejects(service.review(1, { decision: 'approve' }, user), /所选车库/);
     assert.equal((await intakes.findOne({ where: { id: 1 } })).status, 'submitted');
-    await spaces.save({ id: 2, tenantId: 1, communityId: 3, garage: 'main', spaceNo: 'B12', plate: null, houseNo: null });
+    assert.equal((await spaces.findOne({ where: { id: 1 } })).plate, null);
+    await intakes.save(original);
     await service.review(1, { decision: 'approve' }, user);
-    assert.equal((await intakes.findOne({ where: { id: 1 } })).status, 'approved');
-    for (const id of [1, 2]) { const stored = await spaces.findOne({ where: { id } }); assert.equal(stored.plate, '沪A12345'); assert.equal(stored.houseNo, '228弄3号502'); }
-    const manual = await spaces.findOne({ where: { id: 2 } }); await spaces.save({ ...manual, ownerName: '人工后改' });
-    await assert.rejects(service.review(1, { decision: 'void', note: '合成撤回' }, user), /已被修改/);
-    assert.equal((await spaces.findOne({ where: { id: 1 } })).plate, '沪A12345', 'earlier civil restoration must roll back on later manual conflict');
-    assert.equal((await intakes.findOne({ where: { id: 1 } })).status, 'approved');
-    await spaces.save(manual);
+    const approved = await service.get(1, user);
+    assert.equal(approved.status, 'approved');
+    assert.equal((approved.log!.find((l: any) => l.action === '关联共用车位') as any).spaceReferences.length, 2);
+    assert.equal((await spaces.findOne({ where: { id: 1 } })).plate, null);
+    assert.equal((await spaces.findOne({ where: { id: 2 } })).plate, '沪B22222');
     await service.review(1, { decision: 'void', note: '合成撤回' }, user);
     await service.review(1, { decision: 'void', note: '合成撤回重试' }, user);
     assert.equal((await spaces.findOne({ where: { id: 1 } })).plate, null);
-    assert.equal((await spaces.findOne({ where: { id: 2 } })).plate, null);
+    assert.equal((await spaces.findOne({ where: { id: 2 } })).plate, '沪B22222');
     assert.equal((await intakes.findOne({ where: { id: 1 } })).status, 'void');
     assert.ok(sqlCalls.some(sql => sql.includes('pg_advisory_xact_lock')));
     assert.ok(sqlCalls.filter(sql => sql.includes('FOR UPDATE')).length >= 6);

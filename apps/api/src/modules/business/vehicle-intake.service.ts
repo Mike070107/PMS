@@ -298,7 +298,7 @@ export class VehicleIntakeService {
     }
     // 通过
     if (row.status !== 'submitted' && row.status !== 'reupload') throw new BadRequestException(row.status === 'approved' ? '已经审核通过了' : '业主还没有提交资料');
-    if (row.kind === 'family' && !row.files.length) throw new BadRequestException('亲情车仍需关系证明资料，不能通过');
+    if (row.kind === 'family' && !row.files.length && !this.localAttachmentsOptional(row)) throw new BadRequestException('亲情车仍需关系证明资料，不能通过');
     // 办公室可以更正业主填错的车牌、电话
     if (input.plate !== undefined) row.plate = normalizeFamilyPlate(input.plate);
     if (input.contactName !== undefined) row.contactName = input.contactName.trim().slice(0, 50);
@@ -333,7 +333,7 @@ export class VehicleIntakeService {
         carOwnerPhone: row.contactPhone, relation: listed ? row.relation : '其他亲属',
         garages: row.garages, garageNumbers: row.garageNumbers,
         remark: `收银台扫码登记 #${row.id}${listed ? '' : ` · 关系：${row.relation}`}`.slice(0, 200),
-      }, row.files.map((f) => ({ ...f, source: 'owner' as const })), note || '收银台已审核业主扫码资料', user, access);
+      }, row.files.map((f) => ({ ...f, source: this.localAttachmentsOptional(row) ? 'office' as const : 'owner' as const })), note || '收银台已审核登记资料', user, access, this.localAttachmentsOptional(row));
       row.familyCarId = (car as { id: number }).id;
     }
     row.status = 'approved';
@@ -486,7 +486,7 @@ export class VehicleIntakeService {
     if (row.kind === 'family' && (!relation || relation === '其他亲属' || relation.length > 12)) throw new BadRequestException('请选择车主与业主的关系；选「其他」请写明是什么关系');
     const files = input ?? [];
     const keep = actor || row.status === 'waiting' || (row.status === 'reupload' && body?.keepFiles === '1') ? row.files : [];
-    if (row.kind === 'family' && !files.length && !keep.length) throw new BadRequestException('亲情车请上传资料照片（关系证明等）');
+    if (row.kind === 'family' && !actor && !files.length && !keep.length) throw new BadRequestException('亲情车请上传资料照片（关系证明等）');
     if (row.kind === 'paid') await this.assertNewPlate(row, plate);
     if (files.length + keep.length > 10) throw new BadRequestException('资料最多 10 份');
     const types = files.map((file) => detectUploadContentType(file.buffer));
@@ -503,7 +503,7 @@ export class VehicleIntakeService {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         files: [...keep, ...stored] as any, status: 'submitted', submittedAt: new Date(),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        log: [...row.log, actor ? { ...await this.entry(actor, '工作人员代填新车登记', `${plate} · ${stored.length + keep.length} 份附件${row.kind === 'paid' ? '（附件可选）' : ''}`), registrationVersion: 2 } : { at: new Date().toISOString(), userId: null, userName: '业主手机', action: row.status === 'reupload' ? '业主重新提交资料' : '业主提交车牌和资料', note: `${plate} · ${contactName} ${contactPhone} · ${stored.length + keep.length} 份资料` }] as any,
+        log: [...row.log, actor ? { ...await this.entry(actor, '工作人员代填新车登记', `${plate} · ${stored.length + keep.length} 份附件（附件可选）`), registrationVersion: 2, attachmentsOptional: true } : { at: new Date().toISOString(), userId: null, userName: '业主手机', action: row.status === 'reupload' ? '业主重新提交资料' : '业主提交车牌和资料', note: `${plate} · ${contactName} ${contactPhone} · ${stored.length + keep.length} 份资料` }] as any,
       })
       .where('id = :id AND status IN (:...st)', { id: row.id, st: ['waiting', 'reupload'] }).execute();
     if (!done.affected) throw new BadRequestException('资料已经提交，请等待物业办公室审核');
@@ -512,6 +512,12 @@ export class VehicleIntakeService {
   }
 
   // ---------------- 内部 ----------------
+
+  private localAttachmentsOptional(row: VehicleIntake) {
+    // Latest submission wins: a subsequent public re-submission cannot inherit a staff-only exception.
+    const submission = [...row.log].reverse().find(entry => ['工作人员代填新车登记', '业主重新提交资料', '业主提交车牌和资料'].includes(entry.action));
+    return submission?.action === '工作人员代填新车登记' && submission.userId != null && submission.attachmentsOptional === true;
+  }
 
   /** 同一物业车牌串行查重；已有车辆必须走续费/归属核对，绝不伪装新车。 */
   private async assertNewPlate(row: VehicleIntake, plate: string) {

@@ -15,6 +15,10 @@ function fixture(){
  s.log=async()=>{};s.deliyun={findVehiclesByPlate:async()=>{throw Error('不应查德立云')}};
  return {s,txn,intake,ops,setQuery:(q:any)=>query=q};
 }
+test('停车新增任务使用本车联系手机，保留业主电话快照',async()=>{
+ const h=fixture();h.intake.ownerPhone='13800000000';h.intake.contactPhone='13711112222';await h.s.runOne(90);
+ assert.equal(h.ops[0].payload.ownerPhone,'13711112222');assert.equal(h.intake.ownerPhone,'13800000000');
+});
 test('先收款后扫码时从原收款快照取类别，四类均映射月租车且不改金额',async()=>{
  for(const [cls,identity] of [['住户车-1','住户车'],['住户车-3','住户车'],['租户车-1','租户车'],['租户车-2','租户车'],['产权车位','住户车']]) {
   const h=fixture();h.txn.amountCents=15000;h.intake.vehicleClass='';h.txn.snapshot.estimate={vehicleClass:cls};

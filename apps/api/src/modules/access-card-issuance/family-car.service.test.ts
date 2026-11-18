@@ -85,6 +85,20 @@ function setup(legacyRows: any[] = []) {
 
 const tokenOf = (url: string) => url.split('/parking-proof/')[1];
 
+test('本地代填亲情车无附件仍可经理审批，经理退回后办公室不再强制补附件', async () => {
+  const { family, check, complete, repos } = setup(); const q = await check('沪A12345');
+  const car = await family.createFromIntake({ houseId: 502, plate: '沪A12345', duplicateCheckQueryId: q.id, carOwnerName: '本车联系人', carOwnerPhone: '13711112222', relation: '子女', garages: ['phase2'] }, [], '现场已核验关系，附件选填', office, undefined, true);
+  assert.equal(car.files.length, 0); assert.equal(car.status, 'office');
+  complete(car.operations.registration); await family.tick();
+  let read = await family.get(car.id, office); assert.equal(read.status, 'manager');
+  await family.managerReview(car.id, 'return', '请复核关系', manager);
+  await family.officeReview(car.id, 'approve', '已复核', office);
+  read = await family.get(car.id, office); assert.equal(read.status, 'manager');
+  const approved = await family.managerReview(car.id, 'approve', '同意', manager);
+  assert.equal(approved.status, 'opening'); assert.notEqual(approved.status, 'active');
+  assert.equal(repos.user.rows.find((row: any) => row.id === 77).phone, '13900000000');
+});
+
 test('完整流程：登记 → 业主扫码填信息上传 → 办公室审核 → 经理审核 → 开通 → 续期一年 → 已生效', async () => {
   const { repos, operations, notices, family, proofs, check, complete } = setup();
   const q = await check('豫GQ3N07');

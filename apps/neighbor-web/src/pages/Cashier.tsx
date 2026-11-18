@@ -540,7 +540,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
               </div>
             </div>
 
-            <OwnerBusinessContact key={house.id} houseId={house.id} preferredOwnerId={house.owner?.id} source="cashier" onSaved={owner => { setHouse(h => h && h.id === house.id && h.owner?.id === owner.id ? { ...h, owner: {id:owner.id,name:owner.name,phone:owner.phone} } : h); }} />
+            {!embedded ? <OwnerBusinessContact key={house.id} houseId={house.id} preferredOwnerId={house.owner?.id} source="cashier" onSaved={owner => { setHouse(h => h && h.id === house.id && h.owner?.id === owner.id ? { ...h, owner: {id:owner.id,name:owner.name,phone:owner.phone} } : h); }} /> : <p className="muted">房屋业主资料只读；本车联系电话请在下方登记卡填写，不会覆盖业主电话。</p>}
             <div className="projTabs" style={{ marginTop: 18, display: embedded ? 'none' : undefined }}>
               <button className={`projTab ${tab === 'wy' ? 'on' : ''}`} onClick={() => { setTab('wy'); if (bills === null) loadBills(house); }}>
                 <Icon name="home" /><b>物业费</b><small>{bills === null ? '查询中' : billErr ? '查询失败' : wyBills.length ? `待缴 ${wyBills.length} 笔` : '无待缴'}</small>

@@ -687,7 +687,7 @@ export class FamilyCarService {
   async submit(id: number, user: AuthUser, access?: ResolvedAccess) {
     const car = await this.load(id, user, access);
     if (car.status !== 'upload') throw new BadRequestException('当前状态不能提交审核');
-    if (!car.files.length) throw new BadRequestException('请先上传资料');
+    if (!car.files.length && !car.log.some(entry => entry.attachmentsOptional === true && entry.userId !== null)) throw new BadRequestException('请先上传资料');
     car.status = 'office';
     await this.appendLog(car, user, '提交办公室审核');
     return this.detail(car);
@@ -716,7 +716,7 @@ export class FamilyCarService {
       await this.appendLog(car, user, '要求业主补资料，已重新生成二维码', text || undefined);
       return { ...this.detail(car), qr };
     }
-    if (!car.files.length) throw new BadRequestException('还没有资料，不能审核通过');
+    if (!car.files.length && !car.log.some(entry => entry.attachmentsOptional === true && entry.userId !== null)) throw new BadRequestException('还没有资料，不能审核通过');
     if (!car.carOwnerName || !car.carOwnerPhone || !car.relation) throw new BadRequestException('请先补全车主姓名、电话和与业主关系');
     if (car.mode === 'new') {
       const registration = car.registrationOperationId ? await this.operationRepo.findOne({ where: { id: car.registrationOperationId, tenantId: car.tenantId } }) : null;
@@ -814,7 +814,7 @@ export class FamilyCarService {
    * 这里按原流程建亲情车登记（含旧库查重、暂存），带上资料，并记下办公室已审核；
    * 新车牌的旧库暂存完成后自动提交物业经理（定时任务推进），不用办公室再审一遍。
    */
-  async createFromIntake(input: CreateFamilyCarInput, files: FamilyCarFile[], note: string, user: AuthUser, access?: ResolvedAccess) {
+  async createFromIntake(input: CreateFamilyCarInput, files: FamilyCarFile[], note: string, user: AuthUser, access?: ResolvedAccess, attachmentsOptional = false) {
     const created = await this.create({ ...input, ownerFill: false }, user, access);
     const car = await this.load(created.id, user, access);
     car.files = files;
@@ -827,6 +827,7 @@ export class FamilyCarService {
       const proof = await this.proofRepo.findOne({ where: { id: car.proofUploadId, tenantId: car.tenantId } });
       if (proof && !proof.submittedAt && proof.expiresAt.getTime() > Date.now()) { proof.expiresAt = new Date(); await this.proofRepo.save(proof); }
     }
+    if (attachmentsOptional) car.log = [...car.log, { at: new Date().toISOString(), userId: user.id, userName: '办公室', action: '工作人员代填登记，附件选填', attachmentsOptional: true }];
     await this.appendLog(car, user, '收银台扫码登记，办公室已审核资料', car.officeNote);
     await this.advancePreReviewed(car, user).catch(() => undefined);
     return this.detail(car);

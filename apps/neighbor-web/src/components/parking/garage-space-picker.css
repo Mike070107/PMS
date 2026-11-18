@@ -1,0 +1,11 @@
+.garage-space-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:88px;gap:8px;max-height:40vh;overflow-y:auto;padding:4px}
+.garage-space-tile{display:grid;grid-template-columns:16px minmax(0,1fr) 18px;grid-template-rows:24px 28px;align-content:center;align-items:center;column-gap:6px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--card,#fff);cursor:pointer;min-width:0;color:var(--ink)}
+.garage-space-tile input{width:16px;height:16px;margin:0;accent-color:var(--brand,var(--acc))}
+.garage-space-number{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.garage-space-tile svg{color:var(--ink2)}
+.garage-space-tile.is-selected{border-color:var(--brand,var(--acc));background:var(--pri-w,#edf3fc)}
+.garage-space-tile:focus-within{outline:2px solid var(--brand,var(--acc));outline-offset:2px}
+.garage-space-tile:hover{border-color:var(--brand,var(--acc))}
+.garage-space-tile.is-unavailable{cursor:not-allowed;background:var(--sunken,#f4f6f9);color:var(--ink2)}
+.garage-space-reason{grid-column:1/-1;font-size:11px;line-height:14px;overflow:hidden;max-height:28px}
+@media(max-width:400px){.garage-space-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}

@@ -11,12 +11,13 @@ export const accessCardIssuance = {};
 export async function request(o: any): Promise<any> {
   w.__calls.push(structuredClone(o)); const d = o.data || {};
   if (o.url === '/business/parking-targets') return targets;
-  if (o.url === '/business/parking-spaces') return { rows: [
-    { id: 1, communityId: 3, garage: 'main', spaceNo: 'B12', plate: '', houseNo: '' },
-    { id: 2, communityId: 99, garage: 'main', spaceNo: '跨小区', plate: '', houseNo: '' },
-    { id: 3, communityId: 3, garage: 'civil', spaceNo: '错误通道', plate: '', houseNo: '' },
-    { id: 4, communityId: 3, garage: 'main', spaceNo: '其他户', plate: '沪Z12345', houseNo: '另一户' },
+  if (o.url.endsWith('/parking-spaces')) return { rows: [
+    { id: 1, garage: 'main', spaceNo: 'B12' },
+    { id: 4, garage: 'main', spaceNo: 'B123456', unavailableReason: '车位档案需先核对' },
+    { id: 3, garage: 'civil', spaceNo: 'R01' },
   ] };
+  if (o.url.endsWith('/class')) current = { ...current, vehicleClass: d.vehicleClass };
+  if (o.url.endsWith('/kind')) current = { ...current, ...d, status: 'waiting', vehicleClass: d.kind === 'family' ? '' : d.vehicleClass, garages: d.kind === 'family' ? ['phase2'] : [], garageNumbers: {} };
   if (o.url.endsWith('/staff-submit')) {
     if (w.__holdSubmit) await new Promise(r => { w.__releaseSubmit = r; });
     current = { ...current, ...d, status: 'submitted', submittedAt: '2026-11-17T09:00:00+08:00' };

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Modal } from 'antd';
 import { request } from '@pms/api-client';
+import Icon from '@/components/Icon';
+import './garage-space-picker.css';
 import { basementLabel, type BasementGarage } from '@/lib/garage-selection';
 
 export interface SpaceChoice { id: number; garage: string; spaceNo: string; unavailableReason?: string }
@@ -39,10 +41,11 @@ export default function GarageSpacePicker({ garage, value, source, onCancel, onC
       <input ref={search} className="in" aria-label="搜索车位号" value={query} onChange={e => setQuery(e.target.value)} style={{ width: '100%', marginTop: 6 }} />
     </label>
     {source.loading ? <p role="status">正在读取车位…</p> : source.error ? <div role="alert">{source.error}<button type="button" className="btn sm" onClick={source.reload}>重试读取车位</button></div> :
-      <div role="radiogroup" aria-label="档案车位" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(100px,1fr))', gap: 8, maxHeight: '40vh', overflowY: 'auto', padding: 2 }}>
-        {visible.map(s => <label key={s.id} title={s.unavailableReason || undefined} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '10px 8px', minHeight: 44, border: '1px solid var(--line)', borderRadius: 8, background: selected === s.spaceNo ? 'var(--pri-w)' : 'var(--bg)', cursor: s.unavailableReason ? 'not-allowed' : 'pointer' }}>
-          <input type="radio" name="garage-space" value={s.spaceNo} checked={selected === s.spaceNo} disabled={!!s.unavailableReason} onChange={() => setSelected(s.spaceNo)} />
-          <span>{s.spaceNo}{s.unavailableReason ? <small style={{ display: 'block' }}>{s.unavailableReason}</small> : null}</span>
+      <div role="radiogroup" aria-label="档案车位" className="garage-space-grid">
+        {visible.map(s => <label key={s.id} title={s.unavailableReason || s.spaceNo} className={`garage-space-tile ${selected === s.spaceNo ? 'is-selected' : ''} ${s.unavailableReason ? 'is-unavailable' : ''}`}>
+          <input type="radio" name="garage-space" aria-label={s.spaceNo + (s.unavailableReason ? ` · ${s.unavailableReason}` : '')} value={s.spaceNo} checked={selected === s.spaceNo} disabled={!!s.unavailableReason} onChange={() => setSelected(s.spaceNo)} />
+          <span className="garage-space-number">{s.spaceNo}</span><Icon name="car" size={18} />
+          {s.unavailableReason ? <small className="garage-space-reason">{s.unavailableReason}</small> : null}
         </label>)}
         {!visible.length ? <p>{choices.length ? '没有匹配的车位号' : '该车库暂无可选车位，请先完善对应车库档案。'}</p> : null}
       </div>}

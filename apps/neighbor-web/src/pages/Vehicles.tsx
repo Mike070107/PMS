@@ -217,7 +217,7 @@ export default function Vehicles() {
               <>
                 <div className="muted" style={{ fontSize: 13, marginBottom: 6 }}>1. 选这辆车挂在哪一户</div>
                 <HousePicker communities={communities} value={newHouse} disabled={newBusy} placeholder="输入 228/5/201 或业主姓名" onPick={setNewHouse} onClear={() => setNewHouse(null)} />
-                {newHouse?.houseId ? <OwnerBusinessContact key={newHouse.houseId} houseId={newHouse.houseId} preferredOwnerId={newHouse.ownerId ?? undefined} source="parking" disabled={newBusy} onSaved={owner => setNewHouse(current => current && current.ownerId === owner.id ? { ...current, ownerName: owner.name, ownerPhone: owner.phone } : current)} /> : null}
+                {newHouse?.houseId ? <p className="muted">业主：{newHouse.ownerName || '未登记'}（只读）。下一步填写本车联系手机，不修改业主资料。</p> : null}
                 <div className="muted" style={{ fontSize: 13, margin: '14px 0 6px' }}>2. 类型</div>
                 <div className="chips">
                   <button className={`chip ${newKind === 'paid' ? 'on' : ''}`} disabled={newBusy} onClick={() => setNewKind('paid')}>新办车牌（按月收费）</button>

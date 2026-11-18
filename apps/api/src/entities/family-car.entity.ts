@@ -32,6 +32,8 @@ export interface FamilyCarFile {
 }
 
 export interface FamilyCarLogEntry {
+  /** Preserves the authenticated local intake attachment policy through manager returns. */
+  attachmentsOptional?: boolean;
   at: string;
   userId: number | null;
   userName: string;

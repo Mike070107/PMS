@@ -25,6 +25,8 @@ export interface VehicleIntakeFile {
 }
 
 export interface VehicleIntakeLog {
+  /** Server-authenticated staff submission only; public submissions never set this. */
+  attachmentsOptional?: boolean;
   at: string;
   userId: number | null;
   userName: string;

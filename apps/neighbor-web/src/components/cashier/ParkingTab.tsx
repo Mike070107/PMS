@@ -6,6 +6,7 @@ import Icon from '@/components/Icon';
 import { dayjs, money } from '@/lib/format';
 import { field as fieldOf, vehicleIdentity, identityTone, deliyunVehicleIdentity as deliyunIdentity } from '@/lib/parking-fields';
 import NewPlateCard, { type Intake } from './NewPlateCard';
+import VehicleClassChoices from './VehicleClassChoices';
 import RenewalMonths from './RenewalMonths';
 
 
@@ -470,10 +471,9 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
               {mismatch ? <div className="note2" style={{ marginTop: 8 }}><Icon name="alert" />各系统到期日不一致，按最晚的 {currentEnd} 往后续；比目标还晚的系统会转人工核对，不会被改短。</div> : null}
             </div>
           ) : null}
-          {classOptions.length ? (
-            <div className="quickMonths" style={{ marginTop: 0, marginBottom: 10 }}>
-              <span style={{ fontSize: 14, color: 'var(--ink2)', marginRight: 4 }}>车辆类别：</span>
-              {classOptions.map((c) => <button key={c} className={`chip ${group === c ? 'on' : ''}`} disabled={clsBusy} onClick={() => pickClass(c)}>{c}{c === defaultGroup ? '（默认）' : ''}</button>)}
+          {classOptions.length || intakeId ? (
+            <div style={{ marginBottom: 16 }}>
+              <VehicleClassChoices options={intakeId ? [...classOptions, '亲情车'] : classOptions} value={group} defaultValue={defaultGroup} disabled={clsBusy} onChange={c => { void pickClass(c); }} />
               {needClass ? <span style={{ color: 'var(--warn, #b7791f)', fontSize: 14 }}>先选这辆车属于哪个类别（选了会记住，下次自动带出）</span>
                 : group && group !== vehicleClass ? <span className="muted" style={{ fontSize: 13.5 }}>未分类，按默认类别收</span> : null}
               {clsErr ? <span style={{ color: 'var(--dang)', fontSize: 14 }}>{clsErr}</span> : null}

@@ -10,6 +10,7 @@ import '@/styles/app.css';
 import '@/styles/erp-reference.css';
 import '@/components/cashier/plate-review.css';
 const rules: any[] = [{ id: 2, communityId: 3, enabled: true, serviceType: 'parking_monthly', name: '合成住户月租', unitPriceCents: 10000, config: { vehicleClass: '住户车-1', isDefault: true, parkingTargets: targets.map(t => t.key) } }];
+for (const [i, vehicleClass] of ['租户车-2', '住户车-3', '产权车位', '租户车-1', '住户车-2'].entries()) rules.push({ ...rules[0], id: 20 + i, name: vehicleClass, config: { ...rules[0].config, vehicleClass, isDefault: false } });
 const house: any = { id: 5, communityId: 3, communityName: '枫桦景苑二期', houseLabel: '228弄3号502', owner: { id: 8 } };
 function App() {
   const [intake, setIntake] = useState(seed); const [cart, setCart] = useState<any>(null);

@@ -8,6 +8,8 @@ import { accessCardIssuance, request, uploadBlobTo } from '@pms/api-client';
 import IntakePlatePicker from './IntakePlatePicker';
 import GarageSpacePicker, { useGarageSpaces, type SpaceChoice } from '@/components/parking/GarageSpacePicker';
 import { toggleGarage, garageNumbersFor, GARAGE_KEYS, PAID_GARAGE_KEYS, type BasementGarage } from '@/lib/garage-selection';
+import './intake-registration.css';
+import VehicleClassChoices from './VehicleClassChoices';
 import Icon from '@/components/Icon';
 import { dayjs, money } from '@/lib/format';
 import { formBase, type Car, type Lot, type ParkHouse, type ParkingCart, type ParkRule, type ParkTarget } from './ParkingTab';
@@ -82,7 +84,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
   const canConvert = can('business', 'edit') && it.status !== 'void' && !finalized && !it.transaction && !it.familyCarId;
   const handedOff = !!it.familyCarId || finalized || (!!it.transaction && !['awaiting_docs', 'review'].includes(it.transaction.externalSyncStatus));
   const canVoid = can('business', 'edit') && it.status !== 'void' && !handedOff;
-  const [edit, setEdit] = useState({ plate: it.plate, contactName: it.contactName, contactPhone: it.contactPhone || it.ownerPhone, relation: it.relation });
+  const [edit, setEdit] = useState({ plate: it.plate, contactName: it.contactName, contactPhone: it.contactPhone || '', relation: it.relation });
   const uploadInput = useRef<HTMLInputElement>(null);
   const [staffMode, setStaffMode] = useState(defaultStaffMode);
   const canStaff = ['business', 'family-cars'].some(key => can(key, 'edit')) && ['waiting', 'reupload'].includes(it.status) && !it.transaction && !it.familyCarId;
@@ -156,7 +158,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
     return () => window.clearInterval(t);
   }, [it.id, live, qr]); // eslint-disable-line react-hooks/exhaustive-deps
   // 业主提交后，把填的内容带进可更正的输入框
-  useEffect(() => { if (!operation.current) setEdit({ plate: it.plate, contactName: it.contactName, contactPhone: it.contactPhone || it.ownerPhone, relation: it.relation }); }, [it.submittedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!operation.current) setEdit({ plate: it.plate, contactName: it.contactName, contactPhone: it.contactPhone || '', relation: it.relation }); }, [it.submittedAt]); // eslint-disable-line react-hooks/exhaustive-deps
   // 收过款 / 作废后，从收款车里拿掉
   useEffect(() => { if (it.transaction || it.status === 'void' || it.kind === 'family') onCart(key, null); }, [it.transaction?.id, it.status, it.kind]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -300,9 +302,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
         {renewal(car, it.plate ? `${it.plate}（新办）` : `新办车牌 #${it.id}`, it.vehicleClass, selectVehicleClass, it.status === 'approved' && !garageError && !missingSpace && !converting && !busy && !savingGarages)}
         {it.status !== 'approved' ? <div className="muted">可先选择车辆类别和缴费月数；保存资料、车位并审核通过后，才加入本次收款。</div> : null}
       </div> : <div className="note2" style={{ marginBottom: 10 }}>
-        <div className="quickMonths" style={{ marginTop: 0 }}><b>车辆类别：</b>
-          {[...new Set(['亲情车', ...classOptions])].map(value => <button type="button" key={value} className={`chip ${(it.kind === 'family' ? '亲情车' : it.vehicleClass) === value ? 'on' : ''}`} disabled={!canConvert || !!busy || savingGarages} onClick={() => { void selectVehicleClass(value).catch(e => setErr(e instanceof Error ? e.message : '类别保存失败')); }}>{value}</button>)}
-        </div>
+        <VehicleClassChoices options={['亲情车', ...classOptions]} value={it.kind === 'family' ? '亲情车' : it.vehicleClass} disabled={!canConvert || !!busy || savingGarages} onChange={value => { void selectVehicleClass(value).catch(e => setErr(e instanceof Error ? e.message : '类别保存失败')); }} />
         {it.kind === 'family' ? <span className="muted">亲情车免费一年，需填写亲属关系并经经理审核。</span> : null}
         {it.transaction || it.familyCarId ? <span className="muted">已关联财务或办理，不能更改车辆类别。</span> : null}
       </div>}
@@ -327,6 +327,23 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
           {i < 3 ? <span className="np-step-arrow" aria-hidden="true">→</span> : null}
         </li>)}
       </ol>
+          {canStaff ? <section className="intake-registration-form" aria-label="工作人员代填">
+            <header className="intake-registration-heading"><div><span className="intake-eyebrow">现场办理</span><h3>工作人员代填</h3></div><button type="button" className="btn" aria-expanded={staffMode} disabled={!!busy} onClick={() => setStaffMode(!staffMode)}>{staffMode ? '收起工作人员代填' : '工作人员直接代填'}</button></header>
+            <p className="muted">填写本车车牌及联系人，保存后继续选择车库。附件选填，不上传也可提交。{it.kind === 'family' ? '亲情车仍须核实具体关系、旧库查重及经理审核。' : ''}</p>
+            {staffMode ? <fieldset disabled={!!busy || savingGarages} style={{ border: 0, padding: 0, minWidth: 0 }}>
+              <IntakePlatePicker value={edit.plate} onChange={plate => setEdit({ ...edit, plate })} disabled={!!busy} />
+              <div className="np-fields"><label>车主（选填）<input className="in" value={edit.contactName} onChange={e => setEdit({ ...edit, contactName: e.target.value })} /></label><label>本车联系手机（必填）<input className="in" inputMode="tel" autoComplete="off" maxLength={11} placeholder="填写此车牌的联系手机" value={edit.contactPhone} onChange={e => setEdit({ ...edit, contactPhone: e.target.value })} /></label>{it.kind === 'family' ? <label>与业主关系<input className="in" value={edit.relation} onChange={e => setEdit({ ...edit, relation: e.target.value })} /></label> : null}</div>
+              <p className="intake-contact-help">此手机仅用于当前车牌，不会修改房屋业主电话。</p>
+              <div className="intake-upload" tabIndex={0} aria-label="本条登记附件上传区" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); void uploadFiles(e.dataTransfer.files); }} onPaste={e => { if (e.clipboardData.files.length) { e.preventDefault(); e.stopPropagation(); void uploadFiles(e.clipboardData.files); } }}>
+                <input ref={uploadInput} type="file" accept="image/*,application/pdf" multiple hidden onChange={e => { if (e.target.files) void uploadFiles(e.target.files); e.target.value = ''; }} />
+                <button type="button" className="btn" onClick={() => uploadInput.current?.click()}>本地上传附件（选填）</button>
+                <p>点击选择、拖入，或先点击本区域再 Ctrl+V 粘贴。最多 10 份，每份 20MB；二维码上传仍可用。</p>
+                <span role="status">已上传 {it.files.length} 份{busy === '上传附件' ? ' · 上传中…' : ''}</span>
+                {it.files.map(f => <div key={f.index}>{f.fileName}</div>)}
+              </div>
+              <button type="button" className="btn p" disabled={!/^[\u4e00-\u9fa5][A-HJ-NP-Z][A-HJ-NP-Z0-9]{5,6}$/.test(edit.plate) || !/^1\d{10}$/.test(edit.contactPhone) || (it.kind === 'family' && (!edit.relation.trim() || edit.relation.trim() === '其他亲属' || edit.relation.trim().length > 12))} onClick={staffSubmit}>{busy === '保存登记' ? '保存中…' : '保存登记，继续授权'}</button>
+            </fieldset> : null}
+          </section> : null}
       <div className="np-grid">
         {/* 左：二维码 / 业主进度 */}
         <div className="np-qr">
@@ -357,28 +374,12 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
         <div>
           {it.status === 'reupload' && it.reviewNote ? <div className="note2" style={{ marginBottom: 8 }}><Icon name="alert" />已退回：{it.reviewNote}</div> : null}
 
-          {canStaff ? <div className="intake-registration-form">
-            <button type="button" className="btn p" disabled={!!busy} onClick={() => setStaffMode(!staffMode)}>{staffMode ? '收起工作人员代填' : '工作人员直接代填'}</button>
-            <p className="muted">可由工作人员填写，也可保留二维码让住户上传。{it.kind === 'paid' ? '附件选填，不上传也可登记。' : '亲情车仍需关系证明资料及经理审核。'}</p>
-            {staffMode ? <fieldset disabled={!!busy || savingGarages} style={{ border: 0, padding: 0, minWidth: 0 }}>
-              <IntakePlatePicker value={edit.plate} onChange={plate => setEdit({ ...edit, plate })} disabled={!!busy} />
-              <div className="np-fields"><label>车主（选填）<input className="in" value={edit.contactName} onChange={e => setEdit({ ...edit, contactName: e.target.value })} /></label><label>联系手机（必填）<input className="in" inputMode="tel" value={edit.contactPhone} onChange={e => setEdit({ ...edit, contactPhone: e.target.value })} /></label>{it.kind === 'family' ? <label>与业主关系<input className="in" value={edit.relation} onChange={e => setEdit({ ...edit, relation: e.target.value })} /></label> : null}</div>
-              <div className="intake-upload" tabIndex={0} aria-label="本条登记附件上传区" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); void uploadFiles(e.dataTransfer.files); }} onPaste={e => { if (e.clipboardData.files.length) { e.preventDefault(); e.stopPropagation(); void uploadFiles(e.clipboardData.files); } }}>
-                <input ref={uploadInput} type="file" accept="image/*,application/pdf" multiple hidden onChange={e => { if (e.target.files) void uploadFiles(e.target.files); e.target.value = ''; }} />
-                <button type="button" className="btn" onClick={() => uploadInput.current?.click()}>本地上传附件（{it.kind === 'paid' ? '选填' : '必填'}）</button>
-                <p>点击选择、拖入，或先点击本区域再 Ctrl+V 粘贴。最多 10 份，每份 20MB；二维码上传仍可用。</p>
-                <span role="status">已上传 {it.files.length} 份{busy === '上传附件' ? ' · 上传中…' : ''}</span>
-                {it.files.map(f => <div key={f.index}>{f.fileName}</div>)}
-              </div>
-              <button type="button" className="btn p" disabled={!/^[\u4e00-\u9fa5][A-HJ-NP-Z][A-HJ-NP-Z0-9]{5,6}$/.test(edit.plate) || !/^1\d{10}$/.test(edit.contactPhone) || (it.kind === 'family' && (!edit.relation || !it.files.length))} onClick={staffSubmit}>{busy === '保存登记' ? '保存中…' : '保存登记，继续授权'}</button>
-            </fieldset> : null}
-          </div> : null}
           {it.submittedAt ? (
             <>
               {!staffMode ? <IntakePlatePicker value={edit.plate} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={plate => setEdit({ ...edit, plate })} /> : null}
               <div className="np-fields">
                 <label>车主（选填）<input className="in" value={edit.contactName} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={(e) => setEdit({ ...edit, contactName: e.target.value })} /></label>
-                <label>手机<input className="in" value={edit.contactPhone} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={(e) => setEdit({ ...edit, contactPhone: e.target.value })} /></label>
+                <label>本车联系手机<input className="in" value={edit.contactPhone} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={(e) => setEdit({ ...edit, contactPhone: e.target.value })} /></label>
                 {it.kind === 'family' ? (
                   <label>与业主关系<select aria-label="与业主关系" className="in" value={edit.relation} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={(e) => setEdit({ ...edit, relation: e.target.value })}>
                     <option value="">请选择</option>{[...RELATIONS, ...(edit.relation && !RELATIONS.includes(edit.relation) ? [edit.relation] : [])].map((r) => <option key={r}>{r}</option>)}
@@ -392,7 +393,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
                 ))}
               </div>
             </>
-          ) : <div className="muted" style={{ padding: '6px 0 10px' }}>业主填好后这里会实时显示车牌、电话和上传的资料</div>}
+          ) : <div className="muted" style={{ padding: '6px 0 10px' }}>扫码填写是另一种登记方式；住户提交后，这里会显示本车资料。</div>}
 
           {/* 开通哪些车库 */}
           {!canEditGarages && picked.length ? (
