@@ -7574,3 +7574,10 @@
 - 自上次（843bbb81）以来上线的相关提交：
   - d0bc402f fix(parking): prefill renewal community and saved billing class
 
+## 2026-11-18 09:09 · api · c9242807
+
+- 包：`pms-api-fast-20261118-090637.tar.gz`
+- 提交：c9242807 fix(parking): require scoped garage spaces and reuse selection flow
+- 自上次（843bbb81）以来上线的相关提交：
+  - c9242807 fix(parking): require scoped garage spaces and reuse selection flow
+
