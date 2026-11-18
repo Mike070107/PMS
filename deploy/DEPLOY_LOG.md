@@ -7607,3 +7607,11 @@
 - 自上次（c9242807）以来上线的相关提交：
   - 78ac428a fix(parking): isolate vehicle contacts and optional staff attachments
 
+## 2026-11-18 13:51 · web · 6d2506a5
+
+- 包：`pms-web-20261118-134754.tar.gz`
+- 提交：6d2506a5 test(parking): preserve read-only intake contact contract
+- 自上次（c9242807）以来上线的相关提交：
+  - 6d2506a5 test(parking): preserve read-only intake contact contract
+  - 78ac428a fix(parking): isolate vehicle contacts and optional staff attachments
+
