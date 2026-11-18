@@ -9,6 +9,7 @@ import { dayjs } from '@/lib/format';
 import { field, vehicleIdentity, garageState, GARAGES, normPlate } from '@/lib/parking-fields';
 import { createIdempotencyKey, renewalEndDate, allocateRenewalAmounts, submitAndPoll, type OpOutcome } from '@/lib/parking-ops';
 import RenewalMonths from '@/components/cashier/RenewalMonths';
+import { renewalCommunity, renewalRule } from '@/lib/parking-renewal-defaults';
 
 type CloudState = 'loading' | DeliyunVehicle | null | undefined;
 interface FeeCommunity { id: number; name: string }
@@ -62,6 +63,9 @@ export default function RenewSheet({
   const [rules, setRules] = useState<FeeRule[]>([]);
   const [communities, setCommunities] = useState<FeeCommunity[]>([]);
   const [communityId, setCommunityId] = useState<number | null>(null);
+  const communityEdited = useRef(false);
+  const ruleEdited = useRef(false);
+  const [savedClass, setSavedClass] = useState<{ plate: string; value: string | null }>({ plate, value: null });
   const [ruleId, setRuleId] = useState<number | null>(null);
   const [quote, setQuote] = useState<{ key: string; value: FeeQuote } | null>(null);
   const [quoteError, setQuoteError] = useState('');
@@ -86,14 +90,27 @@ export default function RenewSheet({
       request<FeeCommunity[]>({ url: '/business/communities' }),
     ]).then(([rs, cs]) => {
       if (!alive) return;
-      setRules(rs); setCommunities(cs); setCommunityId(initialCommunityId != null && cs.some(c => c.id === initialCommunityId) ? initialCommunityId : cs.length === 1 ? cs[0].id : null);
+      setRules(rs); setCommunities(cs);
     }).catch(() => { if (alive) setRatesErr('车辆类别和收费标准读取失败，请关闭后重试'); });
     return () => { alive = false; };
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+    setSavedClass({ plate, value: null });
+    request<Array<{ plate: string; vehicleClass: string }>>({ url: '/business/plate-tags', query: { plates: plate } })
+      .then(tags => { if (alive) setSavedClass({ plate, value: tags.find(t => normPlate(t.plate) === normPlate(plate))?.vehicleClass || '' }); })
+      .catch(() => { if (alive) setRatesErr('已保存的车辆类别读取失败，可手动选择本次收费类别'); });
+    return () => { alive = false; };
+  }, [plate]);
+
+  useEffect(() => {
+    if (!communityEdited.current) setCommunityId(renewalCommunity(plate, rows, communities, initialCommunityId));
+  }, [plate, rows, communities, initialCommunityId]);
+
   const identity = vehicleIdentity(field(rows[0]?.fields, 'identity'));
   const pmsContact = rows.find(r => r.pmsMatch?.houseId)?.pmsMatch;
-  // 旧库身份只作资料展示，收费类别由本次明确选择的规则决定。
+  // 优先带入已保存收费分组；旧库宽泛身份仅在可唯一匹配时使用。
   const targets = useMemo(() => rows.filter(r =>
     normPlate(field(r.fields, 'plate')) === normPlate(plate) && !!pidOf(r.fields) &&
     GARAGES.some(g => g.db === r.database && garageState([r], g).authorized)), [rows, plate]);
@@ -102,7 +119,7 @@ export default function RenewSheet({
     return ends.length ? ends[ends.length - 1] : '';
   }, [targets]);
 
-  const context = JSON.stringify([plate, targets, identity]);
+  const context = JSON.stringify([plate, targets.map(r => [r.database, r.fields]), identity]);
   const [formContext, setFormContext] = useState(context);
   useEffect(() => {
     setFormContext(context); setMonths(1); setMonthsValid(true); setAmountStr(''); setEndOverride(''); setErr(''); setLog([]);
@@ -114,6 +131,10 @@ export default function RenewSheet({
     const keys = r.config?.parkingTargets ?? (r.config?.parkingTarget ? [r.config.parkingTarget] : []);
     return !keys.length || targets.some(t => GARAGES.some(g => g.db === t.database && garageState([t], g).authorized && keys.includes(g.key === 'phase1' ? 'local:phase1_parking' : g.key === 'phase2' ? 'local:phase2_parking' : 'local:phase2_main_garage'))) || !!(cloud && cloud !== 'loading' && cloud.civilDefenseAuthorized && keys.includes('deliyun:枫桦景苑'));
   })());
+  const defaultRuleId = renewalRule(plate, rows, applicableRules, savedClass.plate === plate ? savedClass.value : null);
+  useEffect(() => {
+    if (!ruleEdited.current) setRuleId(defaultRuleId);
+  }, [defaultRuleId, context, communityId]);
   const selectedRule = applicableRules.find(r => r.id === ruleId) ?? null;
   const cloudKnown = cloud !== undefined && cloud !== 'loading';
   const civil = cloudKnown && cloud ? (cloud as DeliyunVehicle) : null;
@@ -289,12 +310,12 @@ export default function RenewSheet({
         {ratesErr ? <div className="note" style={{ background: 'var(--dang-w)', color: 'var(--dang)' }}>{ratesErr}</div> : null}
 
         <label style={{ display: 'block', marginBottom: 12 }}>适用小区
-          <select className="in" aria-label="续期适用小区" style={{ width: '100%', marginTop: 6 }} value={communityId ?? ''} disabled={running || submitted.current} onChange={e => { setCommunityId(e.target.value ? Number(e.target.value) : null); selectRule(''); }}>
+          <select className="in" aria-label="续期适用小区" style={{ width: '100%', marginTop: 6 }} value={communityId ?? ''} disabled={running || submitted.current} onChange={e => { communityEdited.current = true; ruleEdited.current = false; setCommunityId(e.target.value ? Number(e.target.value) : null); selectRule(''); }}>
             <option value="">请选择小区</option>{communities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </label>
         <label style={{ display: 'block', marginBottom: 12 }}>车辆类别（决定收费标准）
-          <select className="in" aria-label="续期车辆类别" style={{ width: '100%', marginTop: 6 }} value={selectedRule?.id ?? ''} disabled={running || submitted.current || communityId == null} onChange={e => selectRule(e.target.value)}>
+          <select className="in" aria-label="续期车辆类别" style={{ width: '100%', marginTop: 6 }} value={selectedRule?.id ?? ''} disabled={running || submitted.current || communityId == null} onChange={e => { ruleEdited.current = true; selectRule(e.target.value); }}>
             <option value="">请先选择车辆类别</option>{applicableRules.map(r => <option key={r.id} value={r.id}>{r.config?.vehicleClass || r.name}</option>)}
           </select>
         </label>
