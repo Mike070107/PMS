@@ -6,6 +6,8 @@ import { can } from '@/lib/perm';
 import './plate-review.css';
 import { accessCardIssuance, request, uploadBlobTo } from '@pms/api-client';
 import IntakePlatePicker from './IntakePlatePicker';
+import GarageSpacePicker, { useGarageSpaces, type SpaceChoice } from '@/components/parking/GarageSpacePicker';
+import { toggleGarage, garageNumbersFor, GARAGE_KEYS, PAID_GARAGE_KEYS, type BasementGarage } from '@/lib/garage-selection';
 import Icon from '@/components/Icon';
 import { dayjs, money } from '@/lib/format';
 import { formBase, type Car, type Lot, type ParkHouse, type ParkingCart, type ParkRule, type ParkTarget } from './ParkingTab';
@@ -84,11 +86,8 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
   const uploadInput = useRef<HTMLInputElement>(null);
   const [staffMode, setStaffMode] = useState(defaultStaffMode);
   const canStaff = ['business', 'family-cars'].some(key => can(key, 'edit')) && ['waiting', 'reupload'].includes(it.status) && !it.transaction && !it.familyCarId;
-  type SpaceChoice = { id: number; garage: string; spaceNo: string; unavailableReason: string };
-  const [spaces, setSpaces] = useState<SpaceChoice[]>([]);
-  const [spacesError, setSpacesError] = useState('');
-  const loadSpaces = () => request<{ rows: SpaceChoice[] }>({ url: `/vehicle-intakes/${it.id}/parking-spaces` }).then(x => { setSpaces(x.rows); setSpacesError(''); }).catch(e => setSpacesError(e instanceof Error ? e.message : '读取车位失败'));
-  useEffect(() => { void loadSpaces(); }, [it.id, it.plate, it.contactPhone, it.status]);
+  const spaceSource = useGarageSpaces(`/vehicle-intakes/${it.id}/parking-spaces`, `${it.plate}|${it.contactPhone}|${it.status}`);
+  const [spaceGarage, setSpaceGarage] = useState<BasementGarage | null>(null);
   const acceptResponse = (x: Intake) => {
     const nextQr = x.status === 'void' || x.qrValid === false ? null : x.qr ?? qr;
     setQr(nextQr);
@@ -121,16 +120,21 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
   };
   // 二期大车库 / 人防都在二期小区内，进库先过二期地面：选它们自动带上 phase2，取消 phase2 连带取消
   const togglePick = (k: string) => {
-    const has = picked.includes(k);
-    let next = has ? picked.filter((x) => x !== k) : [...picked, k];
-    const main = it.kind === 'paid' ? 'local:phase2_main_garage' : 'main';
-    const civil = it.kind === 'paid' ? 'deliyun:枫桦景苑' : 'civil';
-    const ground = it.kind === 'paid' ? 'local:phase2_parking' : 'phase2';
-    if (!has && (k === main || k === civil) && !next.includes(ground)) next = [...next, ground];
-    if (has && k === ground) next = next.filter((x) => x !== main && x !== civil);
-    const nextNums = Object.fromEntries(Object.entries(nums).filter(([key]) => next.includes(key === 'main' ? main : key === 'civil' ? civil : key)));
+    const keys = it.kind === 'paid' ? PAID_GARAGE_KEYS : GARAGE_KEYS;
+    if (!picked.includes(k) && (k === keys.main || k === keys.civil)) {
+      setSpaceGarage(k === keys.main ? 'main' : 'civil'); return;
+    }
+    const next = toggleGarage(picked, k, keys);
+    const nextNums = garageNumbersFor(next, nums, keys);
     setNums(nextNums);
     void saveGarages(next, nextNums);
+  };
+  const confirmSpace = (space: SpaceChoice) => {
+    const keys = it.kind === 'paid' ? PAID_GARAGE_KEYS : GARAGE_KEYS;
+    const key = space.garage === 'main' ? keys.main : keys.civil;
+    const next = toggleGarage(picked.filter(g => g !== key), key, keys);
+    const nextNums = { ...nums, [space.garage]: space.spaceNo };
+    setNums(nextNums); setSpaceGarage(null); saveGarages(next, nextNums);
   };
   // 付费车还没选过车库：目录到了默认选第一个（一般是地面车库），前台可再改
   useEffect(() => { if (allowInitialPaidDefault.current && it.kind === 'paid' && !picked.length && !it.garages.length && targets.length && canEditGarages) saveGarages([targets[0].key]); }, [targets.length]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -190,7 +194,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
   const staffSubmit = () => call('保存登记', () => request<Intake>({ method: 'POST', url: `/vehicle-intakes/${it.id}/staff-submit`, data: edit }));
   const basementKeys = ['main', 'civil'].filter(k => picked.includes(it.kind === 'family' ? k : k === 'main' ? 'local:phase2_main_garage' : 'deliyun:枫桦景苑'));
   // 历史已审核单可能没有车位绑定记录；不追溯改写、也不阻断原收款。
-  const missingSpace = it.kind === 'paid' && !it.transaction && it.status !== 'approved' && basementKeys.some(k => !nums[k]);
+  const missingSpace = !it.transaction && it.status !== 'approved' && basementKeys.some(k => !spaceSource.rows.some(s => s.garage === k && s.spaceNo === nums[k] && !s.unavailableReason));
   const setClass = async (v: string) => {
     if (it.kind !== 'paid' || it.status === 'void' || it.transaction) return;
     await call('保存价格分类', () => request<Intake>({ method: 'POST', url: `/vehicle-intakes/${it.id}/class`, data: { vehicleClass: v } }), true);
@@ -371,8 +375,8 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
           </div> : null}
           {it.submittedAt ? (
             <>
+              {!staffMode ? <IntakePlatePicker value={edit.plate} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={plate => setEdit({ ...edit, plate })} /> : null}
               <div className="np-fields">
-                <label>车牌<input className="in" value={edit.plate} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={(e) => setEdit({ ...edit, plate: e.target.value.toUpperCase() })} /></label>
                 <label>车主（选填）<input className="in" value={edit.contactName} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={(e) => setEdit({ ...edit, contactName: e.target.value })} /></label>
                 <label>手机<input className="in" value={edit.contactPhone} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={(e) => setEdit({ ...edit, contactPhone: e.target.value })} /></label>
                 {it.kind === 'family' ? (
@@ -406,14 +410,12 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
                 ))}
                 {it.kind === 'paid' && !targets.length ? <span className="muted">{catalog === null ? '正在读取本小区停车场…' : '本小区没有接入停车系统'}</span> : null}
               </div>
-              <div className="np-garage-numbers">{basementKeys.map(k => <label key={k}>{it.kind === 'family' ? k === 'main' ? '大车库车库号' : '人防车位号' : k === 'main' ? '大车库编号（必选）' : '人防车位编号（必选）'}
-                {it.kind === 'family' ? <input className="in" value={nums[k] || ''} disabled={savingGarages || !!busy} onChange={e => setNums({ ...nums, [k]: e.target.value })} onBlur={() => saveGarages(picked, nums)} /> : <select className="in" aria-label={k === 'main' ? '大车库编号（必选）' : '人防车位编号（必选）'} value={nums[k] || ''} disabled={savingGarages || !!busy} onChange={e => { const next = { ...nums, [k]: e.target.value }; setNums(next); saveGarages(picked, next); }}>
-                  <option value="">请选择车位号</option>
-                  {spaces.filter(s => s.garage === k).map(s => <option key={s.id} value={s.spaceNo} disabled={!!s.unavailableReason}>{s.spaceNo}{s.unavailableReason ? `（${s.unavailableReason}）` : ''}</option>)}
-                </select>}
-              </label>)}</div>
+              <div className="np-garage-numbers">{basementKeys.map(k => <div key={k}>
+                <span>{k === 'main' ? '大车库编号（必选）' : '人防车位编号（必选）'}</span>
+                <button type="button" className="btn" disabled={savingGarages || !!busy} onClick={() => setSpaceGarage(k as BasementGarage)}>{nums[k] || '请选择车位号'} · 更换车位</button>
+              </div>)}</div>
+              <GarageSpacePicker garage={spaceGarage} value={spaceGarage ? nums[spaceGarage] || '' : ''} source={spaceSource} onCancel={() => setSpaceGarage(null)} onConfirm={confirmSpace} />
               {basementKeys.length > 0 ? <p className="np-garage-help">同一车位号可关联多个车牌，同时在库限制由停车系统控制。</p> : null}
-              {basementKeys.length && spacesError ? <div role="alert">{spacesError}<button className="btn sm" onClick={() => void loadSpaces()}>重试读取车位</button></div> : null}
               <div className="np-garage-status" role="status">{savingGarages ? '正在保存授权…' : garageError ? <><span>{garageError}</span><button type="button" className="btn" disabled={!!busy || savingGarages} onClick={() => saveGarages(picked, nums)}>重试保存授权</button></> : `已选择 ${picked.length} 个车库`}</div>
             </fieldset>
           ) : null}

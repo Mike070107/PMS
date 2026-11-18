@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import GarageSpacePicker, { useGarageSpaces, type SpaceChoice } from '@/components/parking/GarageSpacePicker';
+import { toggleGarage, garageNumbersFor, basementLabel, type BasementGarage } from '@/lib/garage-selection';
 import { accessCardIssuance } from '@pms/api-client';
 import type { ParkingQueryRow, DeliyunVehicle } from '@pms/api-client/src/endpoints/access-card-issuance';
 import { Sheet, toast } from '@/components/ui';
@@ -107,7 +109,18 @@ export function GaragesSheet({ plate, rows, cloud, onClose, onDone }: OpProps) {
     return set;
   }, [rows, civilV]);
   const [sel, setSel] = useState<Set<string>>(() => new Set(initial));
-  const [civilSpace, setCivilSpace] = useState(civilV?.parkingSpace || '');
+  const [nums, setNums] = useState<Record<string, string>>(() => ({ main: field(rows.find(r => r.database === 'parking2')?.fields, 'space'), civil: civilV?.parkingSpace || '' }));
+  const [spaceGarage, setSpaceGarage] = useState<BasementGarage | null>(null);
+  const spaceSource = useGarageSpaces('/access-card-issuance/parking/space-choices');
+  const [submitted, setSubmitted] = useState(false);
+  const batch = useRef(createIdempotencyKey());
+  const civilTouched = useRef(false);
+  // 云端可比抽屉晚返回，只初始化未编辑的人防状态，不覆盖用户点选。
+  useEffect(() => {
+    if (!cloudKnown || civilTouched.current || submitted) return;
+    setSel(s => { const next = new Set(s); if (civilV?.civilDefenseAuthorized) next.add('civil'); else next.delete('civil'); return next; });
+    setNums(n => ({ ...n, civil: civilV?.parkingSpace || '' }));
+  }, [cloudKnown, civilV, submitted]);
   const [running, setRunning] = useState(false);
   const [log, setLog] = useState<string[]>([]);
   const [err, setErr] = useState('');
@@ -115,19 +128,20 @@ export function GaragesSheet({ plate, rows, cloud, onClose, onDone }: OpProps) {
   const ownerRoom = field(targets[0]?.fields, 'room', true) || '';
   const oldDbSel = [...sel].filter((k) => k !== 'civil');
   const prevOldDb = GARAGES.filter((g) => g.key !== 'civil' && garageState(rows, g).authorized).map((g) => g.key);
-  const toggle = (k: string) => setSel((s) => {
-    const n = new Set(s);
-    if (n.has(k)) {
-      n.delete(k);
-      // 取消二期地面时，依赖它的二期大车库/人防一起取消（不然授权了也进不去）
-      if (k === 'phase2') GARAGES.filter((g) => g.requires === 'phase2').forEach((g) => n.delete(g.key));
-    } else {
-      n.add(k);
-      // 选二期大车库/人防一定带上二期地面
-      GARAGES.filter((g) => g.key === k && g.requires).forEach((g) => n.add(g.requires!));
-    }
-    return n;
-  });
+  const toggle = (k: string) => {
+    if (running || submitted) return;
+    if (k === 'civil' || k === 'phase2') civilTouched.current = true;
+    if (!sel.has(k) && (k === 'main' || k === 'civil')) { setSpaceGarage(k); return; }
+    const next = toggleGarage([...sel], k);
+    setSel(new Set(next)); setNums(n => garageNumbersFor(next, n));
+  };
+  const confirmSpace = (space: SpaceChoice) => {
+    const next = toggleGarage([...sel].filter(g => g !== space.garage), space.garage);
+    if (space.garage === 'civil') civilTouched.current = true;
+    setSel(new Set(next)); setNums(n => ({ ...n, [space.garage]: space.spaceNo })); setSpaceGarage(null);
+  };
+  const needsChoices = sel.has('main') || sel.has('civil');
+  const missingSpace = (['main', 'civil'] as const).some(g => sel.has(g) && !spaceSource.rows.some(s => s.garage === g && s.spaceNo === nums[g] && !s.unavailableReason));
 
   // 一二期到期日一致性（phase1 在 parking1，phase2/main 在 parking2）
   const end1 = ymd(field(rows.find((r) => r.database === 'parking1')?.fields, 'expiry'));
@@ -142,28 +156,31 @@ export function GaragesSheet({ plate, rows, cloud, onClose, onDone }: OpProps) {
     if (!ownerRoom) { setErr('读不到房号，无法调整授权，请在旧页处理'); return; }
     if (oldDbSel.length === 0 && !needCivil) { setErr('至少选一个车库'); return; }
     if (mixing && end1 && end2 && end1 !== end2) { setErr(`一期(${end1})和二期(${end2})到期日不一致，请先续期同步再一起授权`); return; }
-    if (sel.has('civil') && !civilSpace.trim()) { setErr('开通人防车库要填人防车位号'); return; }
-    setRunning(true); setLog([]);
-    const batch = createIdempotencyKey();
+    if (spaceGarage || missingSpace || (needsChoices && (spaceSource.loading || spaceSource.error))) { setErr('请先从对应车库档案选定有效车位号'); return; }
+    if (!targets.length) { setErr('读不到原车辆记录，无法安全调整授权'); return; }
+    setRunning(true); setSubmitted(true); setLog([]);
+    try {
     // 旧库：一个操作里现场助手会跨 parking1/parking2 处理（提交到任一现存库即可）
     if (oldDbSel.length) {
       const srcDb = (targets[0].database as 'parking1' | 'parking2');
       setLog((l) => [...l, '正在写旧库车库授权…']);
       const r = await runOnTargets([targets[0]], 'update_garages', (row) => ({
         plate, ownerRoom, garages: oldDbSel, previousGarages: prevOldDb.join(','), sourceDatabase: srcDb,
-      }), { batchKey: batch, onLog: (l) => setLog((x) => [...x, l]) });
+        spaceSelection: 1, selectedGarages: [...sel], garageNumbers: garageNumbersFor([...sel], nums),
+      }), { batchKey: batch.current, onLog: (l) => setLog((x) => [...x, l]) });
       if (!r.ok) { setErr(r.error || '车库授权失败'); setRunning(false); return; }
     }
     // 人防：期望态 ≠ 当前态时同步德立云
     const wantCivil = sel.has('civil');
-    if (wantCivil !== !!civilV?.civilDefenseAuthorized) {
+    if (wantCivil !== !!civilV?.civilDefenseAuthorized || (wantCivil && nums.civil !== civilV?.parkingSpace)) {
       setLog((l) => [...l, `正在${wantCivil ? '开通' : '关闭'}人防（德立云）…`]);
       try {
-        await accessCardIssuance.setDeliyunCivilDefenseAuthorization({
+        const result = await accessCardIssuance.setDeliyunCivilDefenseAuthorization({
           plate, authorized: wantCivil, ownerRoom: /^\d+\/\d+\/\d+$/.test(ownerRoom) ? ownerRoom : undefined,
-          parkingSpace: civilSpace.trim() || undefined, vehicleId: civilV?.id, endDate: end2 || undefined,
-          idempotencyKey: `${batch}-deliyun`,
+          parkingSpace: nums.civil?.trim() || undefined, vehicleId: civilV?.id, endDate: end2 || undefined,
+          idempotencyKey: `${batch.current}-deliyun`,
         });
+        if (result.status !== 'completed') throw new Error(result.error || '人防任务尚未完成，请核对原任务');
         setLog((l) => [...l, '✓ 人防已同步']);
       } catch (e) {
         setErr(`旧库授权已完成，但人防同步未完成：${e instanceof Error ? e.message : '失败'}，请在办理记录只重试人防`);
@@ -172,17 +189,19 @@ export function GaragesSheet({ plate, rows, cloud, onClose, onDone }: OpProps) {
     }
     toast('车库授权已更新');
     onDone();
+    } catch (e) { setErr(`${e instanceof Error ? e.message : '授权结果未知'}；请核对原任务，不要重复办理`); }
+    finally { setRunning(false); }
   };
 
   return (
-    <Sheet open onClose={() => (running ? null : onClose())} title={`调整车库授权 · ${plate}`}
+    <Sheet open onClose={() => (running || spaceGarage ? null : onClose())} title={`调整车库授权 · ${plate}`}
       subtitle={targets.map((t) => dbShort(t.database)).join(' + ')} width={560}>
       <div style={{ padding: '4px 2px' }}>
         <div className="note" style={{ marginBottom: 12, fontSize: 13 }}>勾选这张车牌能进的车库。保存后现场会重新下发；去掉的车库会被收回。</div>
         <div className="veh-garages" style={{ marginBottom: 14 }}>
           {GARAGES.map((g) => {
             const on = sel.has(g.key);
-            const disabled = g.key === 'civil' && !cloudKnown;
+            const disabled = running || submitted || (g.key === 'civil' && !cloudKnown);
             return (
               <label key={g.key} className={`veh-garage ${on ? 'on' : ''}`} style={{ cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1 }}>
                 <input type="checkbox" checked={on} disabled={disabled} onChange={() => toggle(g.key)} style={{ width: 16, height: 16 }} />
@@ -192,19 +211,21 @@ export function GaragesSheet({ plate, rows, cloud, onClose, onDone }: OpProps) {
             );
           })}
         </div>
-        {sel.has('civil') ? (
-          <div className="veh-dl" style={{ gridTemplateColumns: 'auto 1fr', gap: '10px 12px', marginBottom: 12 }}>
-            <dt className="muted">人防车位号</dt>
-            <dd><input className="in" value={civilSpace} onChange={(e) => setCivilSpace(e.target.value)} placeholder="如 R-012" style={{ width: 160 }} /></dd>
-          </div>
-        ) : null}
+        {(['main', 'civil'] as const).filter(g => sel.has(g)).map(g => <div key={g} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+          <b>{basementLabel(g)}车位号（必选）</b>
+          <button type="button" className="btn" disabled={running || submitted} onClick={() => setSpaceGarage(g)}>{nums[g] || '请选择车位号'} · 更换车位</button>
+        </div>)}
+        <GarageSpacePicker garage={spaceGarage} value={spaceGarage && sel.has(spaceGarage) ? nums[spaceGarage] || '' : ''} source={spaceSource} onCancel={() => setSpaceGarage(null)} onConfirm={confirmSpace} />
+        {spaceSource.error ? <div role="alert">{spaceSource.error}<button type="button" className="btn sm" onClick={spaceSource.reload}>重试读取车位</button></div> : null}
+        {missingSpace ? <p role="alert">请为勾选的地下车库选择对应档案中的有效车位号。</p> : null}
+        {submitted ? <p className="muted">请求已保留，选择已锁定；再次核对沿用原任务，不会重复新建。</p> : null}
         {mixing && end1 && end2 && end1 !== end2 ? <div className="note" style={{ background: 'var(--warn-w)', color: 'var(--warn)', marginBottom: 12, fontSize: 13 }}>一期({end1})和二期({end2})到期日不一致，混选前请先续期同步</div> : null}
         {sel.has('civil') && !cloudKnown ? <div className="note" style={{ background: 'var(--warn-w)', color: 'var(--warn)', marginBottom: 12, fontSize: 13 }}>人防状态还在查，可先保存其它车库；人防要等状态查回再勾</div> : null}
         {log.length ? <div className="card" style={{ padding: '10px 12px', marginBottom: 12, background: 'var(--bg)' }}>{[...log].reverse().map((l, i) => <div key={i} style={{ fontSize: 13, lineHeight: 1.9 }}>{l}</div>)}</div> : null}
         {err ? <div className="note" style={{ background: 'var(--dang-w)', color: 'var(--dang)', marginBottom: 12 }}>{err}</div> : null}
         <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn p" style={{ flex: 1 }} disabled={running || (sel.has('civil') && !cloudKnown)} onClick={() => void run()}>
-            <Icon name="car" size={16} />{running ? '现场执行中…' : '保存车库授权'}
+          <button className="btn p" style={{ flex: 1 }} disabled={running || !!spaceGarage || missingSpace || (needsChoices && (spaceSource.loading || !!spaceSource.error)) || (sel.has('civil') && !cloudKnown) || (!sel.has('civil') && !!civilV?.civilDefenseAuthorized && !cloudKnown)} onClick={() => void run()}>
+            <Icon name="car" size={16} />{running ? '现场执行中…' : submitted ? '核对原任务（不重复办理）' : '保存车库授权'}
           </button>
           <button className="btn" disabled={running} onClick={onClose}>取消</button>
         </div>

@@ -79,6 +79,12 @@ export class AccessCardIssuanceController {
     return this.service.enrollAgent(dto, user);
   }
 
+  @Get('parking/space-choices')
+  @RequirePermission('business', 'view')
+  parkingSpaceChoices(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.service.parkingSpaceChoices(user, access);
+  }
+
   @Post('parking/queries')
   @RequirePermission('business', 'view')
   createParkingQuery(@Body() dto: CreateParkingQueryDto, @CurrentUser() user: AuthUser) {

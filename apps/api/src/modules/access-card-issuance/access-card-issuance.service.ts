@@ -43,10 +43,14 @@ import {
   ParkingRecordSnapshot,
   ParkingOperation,
   ParkingProofUpload,
+  ParkingSpace,
   User,
 } from '../../entities';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
+import { PARKING_TARGETS } from '../business/parking-targets';
+import { parkingSpaceChoices, validateSelectedSpaces } from '../business/parking-space-choices';
+import { supportsGarageSpaceSelection } from './parking-owner-update.util';
 import {
   accessBuildingsForHouse,
   accessCardHistoryRoomLabel,
@@ -1985,6 +1989,18 @@ export class AccessCardIssuanceService {
     return this.parkingOwnerUpdateResponse(task);
   }
 
+  /** 与停车查询同一权限读取最小车位目录，不返回业主资料。 */
+  async parkingSpaceChoices(user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    if (!access) throw new ForbiddenException('缺少车位访问范围');
+    const scope = scopeCommunityIds(access);
+    const names = PARKING_TARGETS.find(t => t.key === 'local:phase2_main_garage')!.communities;
+    const communities = await this.communityRepo.find({ where: { tenantId, name: In(names), ...(scope ? { id: In(scope) } : {}) } });
+    if (!communities.length) return { rows: [] };
+    const spaces = await this.parkingOperationRepo.manager.getRepository(ParkingSpace).find({ where: { tenantId, communityId: In(communities.map(c => c.id)), garage: In(['main', 'civil']) } });
+    return { rows: parkingSpaceChoices(spaces) };
+  }
+
   async createParkingOperation(dto: CreateParkingOperationDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
     const idempotencyKey = dto.idempotencyKey.trim();
@@ -1998,6 +2014,14 @@ export class AccessCardIssuanceService {
       return this.parkingOperationResponse(existing);
     }
     const payload = normalizeParkingOperationPayload(dto.payload);
+    if (dto.kind === 'update_garages' && payload.spaceSelection === 1) {
+      const selected = payload.selectedGarages;
+      const needsChoices = Array.isArray(selected) && selected.some(g => g === 'main' || g === 'civil');
+      const numbers = validateSelectedSpaces(selected, payload.garageNumbers, needsChoices ? (await this.parkingSpaceChoices(user, access)).rows : []);
+      const local = (selected as string[]).filter(g => g !== 'civil');
+      if (!Array.isArray(payload.garages) || local.length !== payload.garages.length || local.some(g => !(payload.garages as string[]).includes(g))) throw new BadRequestException('本地授权与车位选择不一致');
+      payload.garageNumbers = numbers;
+    }
     validatePreservedOperation(dto.kind, payload, dto.sourceRecordId);
     const agents = await this.agentRepo.find({ where: { tenantId, kind: 'parking_gateway', enabled: true } });
     const gateway = orderAgentsByAvailability(agents).find((agent) =>
@@ -2007,8 +2031,9 @@ export class AccessCardIssuanceService {
       (dto.kind !== 'rebind_owner' || supportsParkingOwnerRebind(agent.version)) &&
       (dto.kind !== 'sync_vehicle_info' || supportsParkingVehicleSync(agent.version)) &&
       (!['update_garages', 'update_vehicle_type', 'download_vehicle'].includes(dto.kind) || supportsParkingAuthorizationFixes(agent.version)) &&
-      (dto.kind !== 'download_vehicle' || supportsParkingDeviceConfirmation(agent.version)));
-    if (!gateway) throw new ServiceUnavailableException(requiresVehiclePreservation(dto.kind) ? '换牌和修改车型需要现场助手具备 parkingVehiclePreservationV1 原值保护能力，请先升级现场助手' : dto.payload?.identity === '亲情车' || dto.payload?.familyReviewId ? '亲情车待审核登记与自动开通需要现场助手升级到 2.5.40' : dto.kind === 'rebind_owner'
+      (dto.kind !== 'download_vehicle' || supportsParkingDeviceConfirmation(agent.version)) &&
+      (payload.spaceSelection !== 1 || supportsGarageSpaceSelection(agent.version)));
+    if (!gateway) throw new ServiceUnavailableException(payload.spaceSelection === 1 ? '选择车位调整授权需要 PMS 数据同步助手 2.5.55 及以上版本，请先更新现场助手' : requiresVehiclePreservation(dto.kind) ? '换牌和修改车型需要现场助手具备 parkingVehiclePreservationV1 原值保护能力，请先升级现场助手' : dto.payload?.identity === '亲情车' || dto.payload?.familyReviewId ? '亲情车待审核登记与自动开通需要现场助手升级到 2.5.40' : dto.kind === 'rebind_owner'
       ? '变更绑定用户需要 PMS 数据同步助手 2.5.20 及以上版本，请先更新现场助手'
       : dto.kind === 'sync_vehicle_info' ? '车辆资料复用需要 PMS 数据同步助手 2.5.23 及以上版本，请先在现场电脑升级'
       : dto.kind === 'download_vehicle' ? '停车设备下发需要 PMS 数据同步助手 2.5.47 或更新版本，旧版只能写入队列、不能确认设备完成'
@@ -2357,6 +2382,7 @@ export class AccessCardIssuanceService {
         .andWhere(canSyncVehicleInfo ? '1=1' : "task.kind <> 'sync_vehicle_info'")
         .andWhere(canUseAuthorizationFixes ? '1=1' : "task.kind NOT IN ('update_garages', 'update_vehicle_type', 'download_vehicle')")
         .andWhere(canConfirmParkingDevice ? '1=1' : "task.kind <> 'download_vehicle'")
+        .andWhere(supportsGarageSpaceSelection(agent.version) ? '1=1' : "COALESCE(task.payload->>'spaceSelection', '') <> '1'")
         .andWhere(agent.capabilities?.parkingVehiclePreservationV1 === true ? '1=1' : "task.kind NOT IN ('change_plate', 'update_vehicle_type')")
         .andWhere("(task.kind NOT IN ('change_plate', 'update_vehicle_type') OR (task.expected->>'preservationContract' = '1' AND (task.attempt = 0 OR task.expected->>'preservationAgentKey' = :preservationAgentKey)))", { preservationAgentKey: agent.agentKey })
         .andWhere("(task.kind <> 'change_plate' OR (task.expected ? 'billingTag' AND task.expected ? 'batchTargets' AND task.payload ? 'sourceQueryId' AND task.source_record_id IS NOT NULL))")
@@ -2440,6 +2466,9 @@ export class AccessCardIssuanceService {
             if (!row || !garageBitsMatch(textValue(row.effective), requested, database)) {
               throw new BadRequestException(`${database === 'parking1' ? '一期' : '二期'}车库授权读回结果与本次勾选不一致，不能标为成功`);
             }
+            if (task.payload.spaceSelection === 1 && requested.includes('main') && database === 'parking2' &&
+                textValue(row.parkingSpace) !== textValue((task.payload.garageNumbers as Record<string, unknown>)?.main))
+              throw new BadRequestException('大车库车位号未按本次选择读回，不能标为成功');
             if (task.payload.familyReviewId && row.existed !== false && Number(row.state) !== 1)
               throw new BadRequestException('亲情车开通状态未读回验证，不能标为成功');
           }

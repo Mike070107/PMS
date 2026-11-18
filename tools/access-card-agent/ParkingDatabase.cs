@@ -1483,6 +1483,8 @@ SELECT id FROM @created;";
             Dictionary<string, object> payload, string plate, string admin)
         {
             var requested = RequestedGarageKeys(payload);
+            // 在任何库提交前先校验车位，避免先改一期、后发现二期参数缺失。
+            var selectedMainSpace = SelectedMainSpace(payload, requested, "parking2");
             var results = new List<Dictionary<string, object>>();
             Dictionary<string, object> source = null;
             using (var sourceConnection = new SqlConnection(ConnectionString(config, password, task.database)))
@@ -1526,6 +1528,7 @@ SELECT id FROM @created;";
                                 AddBindingProcedureParameters(command, before, Value(before, "owner_Name") ?? LegacyOwnerRoom(payload));
                                 command.Parameters["@P_Effective"].Value = nextEffective;
                                 command.Parameters["@P_Download"].Value = nextDownload;
+                                if (database == "parking2" && selectedMainSpace != null) command.Parameters["@P_Spaces"].Value = selectedMainSpace;
                                 if (Number(payload, "familyReviewId", 0) > 0) command.Parameters["@Car_Zt"].Value = 1;
                                 command.Parameters["@admin"].Value = admin;
                                 command.ExecuteNonQuery();
@@ -1533,13 +1536,16 @@ SELECT id FROM @created;";
                         }
                         var after = ReadBindingVehicle(connection, transaction, plate);
                         AssertGarageSelection(after, requested, database);
+                        if (database == "parking2" && selectedMainSpace != null && (Value(after, "P_Spaces") ?? "").Trim() != selectedMainSpace)
+                            throw new InvalidOperationException("大车库车位号读回不一致，已撤销该库本次修改");
                         if (Number(payload, "familyReviewId", 0) > 0 && Number(after, "Car_Zt", -1) != 1)
                             throw new InvalidOperationException("亲情车审核开通后车辆状态读回不一致，已撤销本次操作");
                         transaction.Commit();
                         results.Add(new Dictionary<string, object> {
                             { "database", database },
                             { "existed", before != null },
-                            { "changed", before == null || Value(before, "P_Effective") != Value(after, "P_Effective") },
+                            { "changed", before == null || Value(before, "P_Effective") != Value(after, "P_Effective") || Value(before, "P_Spaces") != Value(after, "P_Spaces") },
+                            { "parkingSpace", Value(after, "P_Spaces") },
                             { "issueId", Value(after, "P_id") },
                             { "effective", Value(after, "P_Effective") },
                             { "download", Value(after, "P_Download") }
@@ -1549,6 +1555,18 @@ SELECT id FROM @created;";
                 }
             }
             return new Dictionary<string, object> { { "verified", true }, { "plate", plate }, { "garages", String.Join(",", requested.ToArray()) }, { "databases", results } };
+        }
+
+        internal static string SelectedMainSpace(Dictionary<string, object> payload, ISet<string> requested, string database)
+        {
+            // 旧任务保持原值；人防编号不得写到本地大车库字段，一期车位不受影响。
+            if (Number(payload, "spaceSelection", 0) != 1 || database != "parking2" || !requested.Contains("main")) return null;
+            object raw;
+            var numbers = payload.TryGetValue("garageNumbers", out raw) ? raw as IDictionary<string, object> : null;
+            var number = numbers != null && numbers.TryGetValue("main", out raw) ? Convert.ToString(raw).Trim() : "";
+            if (number.Length == 0 || System.Text.Encoding.GetEncoding(936).GetByteCount(number) > 20)
+                throw new InvalidOperationException("二期大车库必须选择有效车位号（旧库字段最多20字节）");
+            return number;
         }
 
         private static void InsertVehicleCopy(SqlConnection connection, SqlTransaction transaction, Dictionary<string, object> source,
@@ -1574,7 +1592,7 @@ SELECT id FROM @created;";
                 Add(command, "@Car_Zt", SqlDbType.Int, 0, Number(payload, "familyReviewId", 0) > 0 ? 1 : NumberFromObject(source.ContainsKey("Car_Zt") ? source["Car_Zt"] : null, 1));
                 Add(command, "@P_note", SqlDbType.VarChar, 200, Value(source, "P_note") ?? AppendPmsSource(null));
                 Add(command, "@P_Admin", SqlDbType.VarChar, 20, admin);
-                Add(command, "@P_Spaces", SqlDbType.VarChar, 20, Value(source, "P_Spaces") ?? "");
+                Add(command, "@P_Spaces", SqlDbType.VarChar, 20, SelectedMainSpace(payload, requested, database) ?? Value(source, "P_Spaces") ?? "");
                 Add(command, "@P_Effective", SqlDbType.VarChar, 256, ApplyGarageSelection(ZeroBits(), requested, database));
                 Add(command, "@P_Download", SqlDbType.VarChar, 256, ZeroBits());
                 command.ExecuteNonQuery();

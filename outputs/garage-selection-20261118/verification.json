@@ -1,0 +1,21 @@
+{
+  "fixtureOnly": true,
+  "productionSqlDevicesTested": false,
+  "results": [
+    "cancel/Escape do not authorize or close drawer",
+    "adjust 1440: isolated choices, required confirmation, payload, no overflow",
+    "adjust 375: isolated choices, required confirmation, payload, no overflow",
+    "intake 1440: isolated choices, required confirmation, payload, no overflow",
+    "intake 375: isolated choices, required confirmation, payload, no overflow",
+    "ground-only authorization does not depend on archive availability",
+    "family registration uses same isolated picker and dependencies",
+    "registration failure retains selected number and original retry payload",
+    "empty archive blocks confirmation",
+    "archive load failure and retry",
+    "loading cannot confirm",
+    "failed: values retained, locked, original task reused",
+    "waiting: values retained, locked, original task reused",
+    "already authorized civil space change is synchronized"
+  ],
+  "errors": []
+}

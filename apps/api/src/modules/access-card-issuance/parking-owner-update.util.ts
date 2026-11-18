@@ -93,6 +93,14 @@ export function supportsParkingAuthorizationFixes(version?: string | null): bool
   return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 21)));
 }
 
+/** 2.5.55 起调整车库授权同时写入二期大车库车位，并在事务内读回。 */
+export function supportsGarageSpaceSelection(version?: string | null): boolean {
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:\.|$)/.exec(version ?? '');
+  if (!match) return false;
+  const [major, minor, patch] = match.slice(1).map(Number);
+  return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 55)));
+}
+
 /** 2.5.47 起停车下发必须等待 P_Download 覆盖全部现行授权通道，不能只确认入队。 */
 export function supportsParkingDeviceConfirmation(version?: string | null): boolean {
   const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version ?? '');

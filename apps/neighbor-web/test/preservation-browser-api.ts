@@ -44,6 +44,9 @@ const methods = {
 };
 export const accessCardIssuance: any = new Proxy(methods, { get(target, name) { return (target as any)[name] || (async () => ({ rows: [], total: 0 })); } });
 export const address = { tree: async () => [] };
+const unrelatedWrite = async () => { throw new Error('本测试禁止无关业务写入'); };
+export const uploadBlobTo = unrelatedWrite;
+export const repairs = new Proxy({}, { get: () => unrelatedWrite });
 export class ApiError extends Error {}
 export function configure() { /* Controlled transport only. */ }
 export async function request(input: any) { record('request', input); return { rows: [], total: 0 }; }

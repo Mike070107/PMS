@@ -16,6 +16,7 @@ import { FamilyCarService } from '../access-card-issuance/family-car.service';
 import { FAMILY_RELATIONS, isValidFamilyPlate, normalizeFamilyPlate } from '../access-card-issuance/family-car.util';
 import { normalizeVehicleClass } from './parking-pricing';
 import { targetsForCommunity } from './parking-targets';
+import { parkingSpaceChoices } from './parking-space-choices';
 import { detectUploadContentType } from '../upload/upload.controller';
 import { ObjectStorageService } from '../upload/object-storage.service';
 import { BusinessExecutionService } from './business-execution.service';
@@ -162,10 +163,7 @@ export class VehicleIntakeService {
       const communityIds = await this.spaceCommunityIds(row, garage);
       if (!communityIds.length) continue;
       const spaces = await this.repo.manager.getRepository(ParkingSpace).find({ where: { tenantId: row.tenantId, communityId: In(communityIds), garage } });
-      const counts = new Map<string, number>();
-      spaces.forEach(s => counts.set(s.spaceNo, (counts.get(s.spaceNo) ?? 0) + 1));
-      spaces.sort((a, b) => a.spaceNo.localeCompare(b.spaceNo, 'zh-CN', { numeric: true }));
-      rows.push(...spaces.map(s => ({ id: s.id, garage, spaceNo: s.spaceNo, unavailableReason: counts.get(s.spaceNo)! > 1 ? '车位号重复，请先核对档案' : '' })));
+      rows.push(...parkingSpaceChoices(spaces));
     }
     return { rows };
   }

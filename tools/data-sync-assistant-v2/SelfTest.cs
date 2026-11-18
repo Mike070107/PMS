@@ -1066,6 +1066,18 @@ namespace Pms.DataSyncAssistant
                 throw new InvalidOperationException("一期车库授权不能写入二期通道");
             if (phase2[4] != '0' || phase2[8] != '1' || phase2[14] != '1')
                 throw new InvalidOperationException("二期车库授权不能写入一期通道");
+            var spacePayload = new Dictionary<string, object> { { "spaceSelection", 1 }, { "garageNumbers", new Dictionary<string, object> { { "main", " A-012 " }, { "civil", "R-099" } } } };
+            if (ParkingDatabase.SelectedMainSpace(spacePayload, garages, "parking2") != "A-012" || ParkingDatabase.SelectedMainSpace(spacePayload, garages, "parking1") != null)
+                throw new InvalidOperationException("大车库必须使用 main 车位，不能串用人防或写入一期");
+            if (ParkingDatabase.SelectedMainSpace(spacePayload, new HashSet<string> { "phase2" }, "parking2") != null || ParkingDatabase.SelectedMainSpace(new Dictionary<string, object>(), garages, "parking2") != null)
+                throw new InvalidOperationException("未授权大车库及旧任务必须保留原车位");
+            foreach (var invalid in new[] { "", "123456789012345678901", "车位车位车位车位车位车" })
+            {
+                spacePayload["garageNumbers"] = new Dictionary<string, object> { { "main", invalid }, { "civil", "R-099" } };
+                var rejected = false;
+                try { ParkingDatabase.SelectedMainSpace(spacePayload, garages, "parking2"); } catch (InvalidOperationException) { rejected = true; }
+                if (!rejected) throw new InvalidOperationException("无效大车库车位未被阻止");
+            }
         }
 
         private static void VerifyActivityHistory(string root)
