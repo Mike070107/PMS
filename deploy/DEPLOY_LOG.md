@@ -7567,3 +7567,10 @@
 - 自上次（a61c26d7）以来上线的相关提交：
   - 843bbb81 fix(vehicle-intake): allow shared parking spaces and render realistic plates
 
+## 2026-11-18 08:13 · web · d0bc402f
+
+- 包：`pms-web-20261118-080834.tar.gz`
+- 提交：d0bc402f fix(parking): prefill renewal community and saved billing class
+- 自上次（843bbb81）以来上线的相关提交：
+  - d0bc402f fix(parking): prefill renewal community and saved billing class
+
