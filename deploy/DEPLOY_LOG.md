@@ -7615,3 +7615,10 @@
   - 6d2506a5 test(parking): preserve read-only intake contact contract
   - 78ac428a fix(parking): isolate vehicle contacts and optional staff attachments
 
+## 2026-11-18 22:36 · api · 3ad2c376
+
+- 包：`pms-api-fast-20261118-223622.tar.gz`
+- 提交：3ad2c376 feat(approvals): unified staff approval center and audit history
+- 自上次（78ac428a）以来上线的相关提交：
+  - 3ad2c376 feat(approvals): unified staff approval center and audit history
+
