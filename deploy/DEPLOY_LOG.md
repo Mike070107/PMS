@@ -7600,3 +7600,10 @@
 - 自上次（c9242807）以来上线的相关提交：
   - ae8827e2 feat(assistant): publish managed installer with verified transactional upgrades
 
+## 2026-11-18 13:37 · api · 78ac428a
+
+- 包：`pms-api-fast-20261118-133712.tar.gz`
+- 提交：78ac428a fix(parking): isolate vehicle contacts and optional staff attachments
+- 自上次（c9242807）以来上线的相关提交：
+  - 78ac428a fix(parking): isolate vehicle contacts and optional staff attachments
+
