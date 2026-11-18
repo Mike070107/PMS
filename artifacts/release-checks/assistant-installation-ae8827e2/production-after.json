@@ -1,0 +1,42 @@
+﻿{
+    "verifiedAt":  "2026-11-18T02:54:00.3885130Z",
+    "assistant":  {
+                      "version":  "2.6.0",
+                      "downloadUrl":  "https://prsznh.cn/downloads/pms-data-sync-assistant/2.6.0/Pms.DataSyncAssistant.V2.exe",
+                      "url":  "https://prsznh.cn/downloads/pms-data-sync-assistant/2.6.0/Pms.DataSyncAssistant.V2.exe",
+                      "installerUrl":  "https://prsznh.cn/downloads/pms-data-sync-assistant/2.6.0/Pms.DataSyncAssistant.Setup.exe",
+                      "sha256":  "2a03e6a81c48d9fc4bd42b51b43301407f9e0650f806f0242a66cc140d422240",
+                      "releaseNotes":  "PMS 数据同步助手 2.6.0：固定安装入口、统一升级事务、就绪验证与可靠回退；保留配置及密码，安全清理旧程序。",
+                      "notes":  "PMS 数据同步助手 2.6.0：固定安装入口、统一升级事务、就绪验证与可靠回退；保留配置及密码，安全清理旧程序。",
+                      "publishedAt":  "2026-11-18T02:51:45.3175121Z",
+                      "sourceCommit":  "ae8827e24b201f27a31da0315f392a35225c9694"
+                  },
+    "installerSha256":  "2a03e6a81c48d9fc4bd42b51b43301407f9e0650f806f0242a66cc140d422240",
+    "signatureStatus":  "NotSigned",
+    "api":  {
+                "status":  "ok",
+                "db":  "up",
+                "release":  {
+                                "target":  "api",
+                                "version":  "api-c924280",
+                                "commit":  "c92428071e112c0fc23b5def5293ad4d66276e06",
+                                "sourceHash":  "865db2de1065a78a0eda855f2cf567e0ef0e5853df4aba35064176bed19c66bf",
+                                "builtAt":  "2026-11-18T01:09:23.115Z"
+                            },
+                "ts":  "2026-11-18T02:53:59.081Z"
+            },
+    "web":  {
+                "target":  "web",
+                "version":  "2.0.20261118-0905",
+                "commit":  "c92428071e112c0fc23b5def5293ad4d66276e06",
+                "sourceHash":  "828e8023a62bf38f362cc172db4234c6e9512c319e2d206041e39a9fcd33738d",
+                "builtAt":  "2026-11-18T01:09:53.940Z",
+                "files":  {
+                              "index.html":  "05a65c51d9e2283b2ff400b39f3eba1ad908b9150c2a8cbc0bb2adade0f49aa8",
+                              "assets/index-CQu6Lqpu.js":  "c887aec110c17a66c1138d2135d62100bf220f5258a84ce68beaa56a22f04630"
+                          }
+            },
+    "isolatedTestServicesRemaining":  0,
+    "onsiteInstallation":  "not performed",
+    "onsiteBusinessAndHardware":  "not verified"
+}

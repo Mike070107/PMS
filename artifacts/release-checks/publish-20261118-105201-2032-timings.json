@@ -1,0 +1,39 @@
+﻿{
+    "startedAt":  "2026-11-18T02:51:11.0971312Z",
+    "elapsedMs":  50203,
+    "passed":  true,
+    "commit":  "ae8827e24b201f27a31da0315f392a35225c9694",
+    "target":  "assistant",
+    "phases":  [
+                   {
+                       "label":  "同步远端 main 与部署标记",
+                       "startedAt":  "2026-11-18T02:51:11.2324725Z",
+                       "elapsedMs":  1802,
+                       "passed":  true
+                   },
+                   {
+                       "label":  "发布检查自测",
+                       "startedAt":  "2026-11-18T02:51:13.2035541Z",
+                       "elapsedMs":  1306,
+                       "passed":  true
+                   },
+                   {
+                       "label":  "assistant 源码与相关回归",
+                       "startedAt":  "2026-11-18T02:51:14.9379613Z",
+                       "elapsedMs":  1360,
+                       "passed":  true
+                   },
+                   {
+                       "label":  "发布数据同步助手",
+                       "startedAt":  "2026-11-18T02:51:16.3010315Z",
+                       "elapsedMs":  32793,
+                       "passed":  true
+                   },
+                   {
+                       "label":  "标记助手已发布（不代表现场已安装）",
+                       "startedAt":  "2026-11-18T02:51:49.0957006Z",
+                       "elapsedMs":  12208,
+                       "passed":  true
+                   }
+               ]
+}

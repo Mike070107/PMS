@@ -1,0 +1,17 @@
+﻿self-test ok
+PASS fixed installer: first-install/reinstall/lock/corrupt-package/path validation/readiness rollback/stopped-state rollback/rollback failure + journal recovery/pointer commit failure/first-install removal
+PASS cleanup: loaded/unknown processes protected, marked releases only, 7-day download retention, configuration + DPAPI secrets unchanged
+PASS parking blocked-probe / throwing-probe / long-parking-task: >=4 read heartbeats within 1200ms each
+PASS permission initial-false / true-cache / expiry / late-result rejection / no overlapping probes / bounded blocked-probe stop
+PASS heartbeat transport failure -> recovery / no late callbacks or new sends after stop
+PASS heartbeat client same token/version, independent serializer/connection group, 5000ms network timeouts
+PASS runtime/UI/tray shared 15s freshness / fresh root cannot mask stale connection / local cache expiry
+PASS blocked local detection does not block five health publications / stop suppresses late local result
+按卡号=06234735 查到 1 张卡（MjSystem）
+补零/去零变体=6234735 命中同一张卡：1 张
+按房号=228/26/602 查到 10 张卡
+按姓名=228/26/602/9 查到 1 张卡
+最近通行记录= 0 条（iCCard 未装密码时仅 MjSystem）
+楼栋权限组= 3 组
+库不可读提示：iCCard：打开失败（请先在 .88 本机执行 --install-iccard-password 保存 MDB 密码）：打开 iCCard 失败（进程位数 x86；Microsoft.Jet.OLEDB.4.0：密码无效。（OleDbException HR=0x80040E4D）；Microsoft.ACE.OLEDB.12.0：密码无效。（OleDbException HR=0x80040E4D））。请确认该电脑已安装 Microsoft Jet 4.0 或 ACE OLEDB 12.0 驱动。
+accessCardQuery 探测=true；MjSystem：房号/姓名/卡号(含补零变体)/最近通行/楼栋权限查询均可执行；iCCard：未安装 MDB 密码，跳过（现场允许的暂态，只影响 iCCard 查询）

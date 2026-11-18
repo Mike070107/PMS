@@ -1,0 +1,3 @@
+PASS real Windows SCM: create/start/ready, injected readiness failure, verified legacy rollback, original stopped-state restored, successful retry.
+Service=PmsAssistantInstallTest_5d328eb095694edfa3d48b82c07199ce
+Production service/config/secrets/devices untouched.
