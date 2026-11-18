@@ -9,7 +9,7 @@ const app=path.resolve(__dirname,'..');
 const esbuild=createRequire(require.resolve('vite'))('esbuild');
 // Production entry components and shared contact component; deterministic API/auth adapters only.
 // This verifies entry wiring and interactions, not a running API, real auth, persistence or payments.
-test('正式收银/公寓/新车登记/已存车牌/续费入口可逐号确认，加载不写且不触发收费/设备动作',async()=>{
+test('新车登记业主信息只读；正式收银/公寓/已存车牌/续费可逐号确认，加载不写且不触发收费/设备动作',async()=>{
  const built=await esbuild.build({stdin:{contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {BrowserRouter} from 'react-router-dom';import {App,ConfigProvider} from 'antd';import Cashier from '@/pages/Cashier';import ApartmentCashier from '@/pages/ApartmentCashier';import Vehicles from '@/pages/Vehicles';import RenewSheet from '@/components/vehicle-ops/RenewSheet';import {fixtureRow} from '@pms/api-client';import '@/styles/design.css';import '@/styles/app.css';
  const route=location.pathname;createRoot(document.getElementById('root')).render(<BrowserRouter><ConfigProvider><App>{route==='/cashier'?<Cashier/>:route==='/apartment'?<ApartmentCashier/>:route==='/vehicles'?<Vehicles/>:<RenewSheet plate="沪A00001" rows={[fixtureRow]} cloud={null} onClose={()=>{}} onDone={()=>{}}/>}</App></ConfigProvider></BrowserRouter>);`,loader:'tsx',resolveDir:app},bundle:true,write:false,outfile:'entry.js',format:'iife',jsx:'automatic',alias:{'@':path.join(app,'src')},define:{'process.env.NODE_ENV':'"development"','import.meta.env.BASE_URL':'"/"','import.meta.env.VITE_LEGACY_BASE':'""','import.meta.env.VITE_API_BASE_URL':'"/api/v1"'},plugins:[{name:'entry-fixtures',setup(b){b.onResolve({filter:/^(@pms\/api-client|@\/lib\/auth|@\/lib\/perm)$/},a=>({path:a.path,namespace:'entry-fixture'}));b.onLoad({filter:/.*/,namespace:'entry-fixture'},a=>{
  if(a.path.endsWith('/perm'))return {contents:`export const can=()=>true;`,loader:'js'};
@@ -32,7 +32,7 @@ test('正式收银/公寓/新车登记/已存车牌/续费入口可逐号确认�
  if(url==='/houses')return [house];
  if(url==='/vehicle-intakes/1')return {id:1,houseId:1,houseLabel:'测试小区/198弄3号/101',ownerName:owner.name,ownerPhone:owner.phone,kind:'paid',status:'submitted',plate:'沪A00001',contactName:owner.name,contactPhone:owner.phone,relation:'本人',vehicleClass:'small',garages:[],garageNumbers:{},expiresAt:'2026-12-01T00:00:00Z',qrValid:true,openedAt:null,submittedAt:'2026-11-12T00:00:00Z',reviewedAt:null,reviewNote:'',files:[],transaction:null,familyCarId:null,createdAt:'2026-11-12T00:00:00Z'};
  if(url==='/business/search')return {houses:[house],vehicles:[],accessCards:[]};
- if(url==='/business/parking-spaces')return {rows:[]};
+ if(url==='/business/parking-spaces'||/^\\/vehicle-intakes\\/\\d+\\/parking-spaces$/.test(url))return {rows:[]};
  if(url==='/business/rules')return [];if(url==='/business/household-parking')return {room:'3/101',roomTerm:'3/101',targets:[],localDatabases:[],deliyun:[]};
  if(url==='/fees/cashier/payment-methods')return ['cash'];
  if(url==='/fees/houses/1')return {standards:[]};
@@ -53,7 +53,16 @@ test('正式收银/公寓/新车登记/已存车牌/续费入口可逐号确认�
  if(entry==='apartment'){await page.locator('.ant-select').filter({has:page.getByText('选择房号',{exact:true})}).getByRole('combobox').click();await page.locator('.ant-select-dropdown:visible .ant-select-item-option-content').filter({hasText:/^101室?$/}).click();}
  if(entry==='vehicles'){await page.getByRole('button',{name:'新车登记',exact:true}).click();const picker=page.locator('.hp').getByRole('combobox');await picker.fill('101');await picker.press('Enter');}
   if(entry==='vehicle-existing'){await page.locator('.addr-search').getByRole('combobox').fill('沪A00001');await page.getByRole('button',{name:'查询',exact:true}).click();await page.locator('.veh-card').waitFor();}
- const contact=page.getByRole('region',{name:'业务联系人'});await contact.getByRole('button',{name:/业务联系人/}).waitFor();
+ if(entry==='vehicles'){
+   await page.getByText(/下一步填写本车联系手机，不修改业主资料/).waitFor();
+   assert.equal(await page.getByRole('region',{name:'业务联系人'}).count(),0,'new registration cannot edit owner master contacts');
+   const calls=await page.evaluate(()=>window.__entryCalls);
+   assert.equal(calls.filter(c=>c.method&&c.method!=='GET').length,0);
+   assert.equal(calls.filter(c=>/execute|complete|issue|renew|addVehicle/i.test(c.methodName||'')).length,0);
+   await page.getByRole('dialog').screenshot({path:path.join(evidence,entry+'-contacts.png')});
+   results.push({entry,ownerContactsReadOnly:true,contactWrites:0,businessWrites:0});continue;
+  }
+  const contact=page.getByRole('region',{name:'业务联系人'});await contact.getByRole('button',{name:/业务联系人/}).waitFor();
  assert.equal((await page.evaluate(()=>window.__entryCalls)).filter(c=>c.method==='PATCH').length,0,entry+' does not write on opening');
  await contact.getByRole('button',{name:/业务联系人/}).click();await contact.getByLabel('业主姓名',{exact:true}).waitFor();
  assert.equal(await contact.getByLabel('业主姓名',{exact:true}).inputValue(),'入口测试业主');
