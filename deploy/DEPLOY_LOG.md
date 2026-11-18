@@ -7581,3 +7581,10 @@
 - 自上次（843bbb81）以来上线的相关提交：
   - c9242807 fix(parking): require scoped garage spaces and reuse selection flow
 
+## 2026-11-18 09:10 · web · c9242807
+
+- 包：`pms-web-20261118-090637.tar.gz`
+- 提交：c9242807 fix(parking): require scoped garage spaces and reuse selection flow
+- 自上次（d0bc402f）以来上线的相关提交：
+  - c9242807 fix(parking): require scoped garage spaces and reuse selection flow
+
