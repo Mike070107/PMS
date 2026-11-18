@@ -1,0 +1,52 @@
+{
+  "verifiedAt": "2026-11-18T01:10:46.691Z",
+  "commit": "c92428071e112c0fc23b5def5293ad4d66276e06",
+  "web": {
+    "target": "web",
+    "version": "2.0.20261118-0905",
+    "commit": "c92428071e112c0fc23b5def5293ad4d66276e06",
+    "sourceHash": "828e8023a62bf38f362cc172db4234c6e9512c319e2d206041e39a9fcd33738d",
+    "builtAt": "2026-11-18T01:09:53.940Z",
+    "files": {
+      "index.html": "05a65c51d9e2283b2ff400b39f3eba1ad908b9150c2a8cbc0bb2adade0f49aa8",
+      "assets/index-CQu6Lqpu.js": "c887aec110c17a66c1138d2135d62100bf220f5258a84ce68beaa56a22f04630"
+    }
+  },
+  "api": {
+    "status": "ok",
+    "db": "up",
+    "release": {
+      "target": "api",
+      "version": "api-c924280",
+      "commit": "c92428071e112c0fc23b5def5293ad4d66276e06",
+      "sourceHash": "865db2de1065a78a0eda855f2cf567e0ef0e5853df4aba35064176bed19c66bf",
+      "builtAt": "2026-11-18T01:09:23.115Z"
+    },
+    "ts": "2026-11-18T01:10:43.846Z"
+  },
+  "assistant": {
+    "version": "2.5.55",
+    "downloadUrl": "https://prsznh.cn/downloads/pms-data-sync-assistant/2.5.55/Pms.DataSyncAssistant.V2.exe",
+    "url": "https://prsznh.cn/downloads/pms-data-sync-assistant/2.5.55/Pms.DataSyncAssistant.V2.exe",
+    "sha256": "3130c3b6e827e945f911bb56397df62899aa04e384346186c260d7dbcff52ab0",
+    "releaseNotes": "PMS 数据同步助手 2.5.55",
+    "notes": "PMS 数据同步助手 2.5.55",
+    "publishedAt": "2026-11-18T01:10:29.4302453Z",
+    "sourceCommit": "c92428071e112c0fc23b5def5293ad4d66276e06"
+  },
+  "assistantDownload": {
+    "bytes": 547328,
+    "sha256": "3130c3b6e827e945f911bb56397df62899aa04e384346186c260d7dbcff52ab0"
+  },
+  "assets": [
+    {
+      "filename": "ParkingTab-Bkt8AvSF.js",
+      "sha256": "b5ff265049194075741e1e7410a5db7482e88ca98f97da861364cb8a13101d5e"
+    },
+    {
+      "filename": "Vehicles-C0vMeag3.js",
+      "sha256": "335fa67bb4173e3864e0dab43787e3ac544c1a20e643af8a449bee243f02b1c0"
+    }
+  ],
+  "scope": "Read-only public release identity, DB health, exact Web assets, assistant manifest and executable SHA256. No production business writes, field SQL or device tests. Field installation not verified."
+}
