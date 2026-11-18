@@ -35,6 +35,7 @@ import { LocalIntegrationsModule } from './modules/local-integrations/local-inte
 import { ExternalAccessModule } from './modules/external-access/external-access.module';
 import { MetersModule } from './modules/meters/meters.module';
 import { StatisticsModule } from './modules/statistics/statistics.module';
+import { ApprovalsModule } from './modules/approvals/approvals.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { StatisticsModule } from './modules/statistics/statistics.module';
     FeesModule,
     HealthModule,
     InventoryModule,
+    ApprovalsModule,
     MaintenanceModule,
     NotificationsModule,
     UploadModule,

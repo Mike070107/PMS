@@ -8,6 +8,9 @@ export type StocktakeStatus = 'counting' | 'submitted' | 'approved' | 'rejected'
 @Index(['tenantId', 'taskNo'], { unique: true })
 @Index(['tenantId', 'warehouseId', 'status'])
 export class StocktakeTask extends TenantEntity {
+  @Column({ name: 'approval_log', type: 'jsonb', default: () => "'[]'::jsonb" })
+  approvalLog: import('../common/approval-log').ApprovalLogEntry[];
+
   @Column({ name: 'task_no', type: 'varchar', length: 40 })
   taskNo: string;
 

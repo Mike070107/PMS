@@ -30,5 +30,6 @@ import { StocktakeService } from './stocktake.service';
   ],
   controllers: [StocktakeController],
   providers: [StocktakeService],
+  exports: [StocktakeService],
 })
 export class StocktakeModule {}

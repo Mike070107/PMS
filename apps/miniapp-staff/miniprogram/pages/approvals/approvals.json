@@ -1,5 +1,5 @@
 {
-  "navigationBarTitleText": "采购审批",
+  "navigationBarTitleText": "审批中心",
   "enablePullDownRefresh": true,
   "backgroundTextStyle": "dark",
   "usingComponents": {

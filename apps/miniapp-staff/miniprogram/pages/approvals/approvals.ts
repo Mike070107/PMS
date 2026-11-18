@@ -1,7 +1,7 @@
-import { familyCars, maintenance, purchases } from '@pms/api-client';
+import { approvals, familyCars, maintenance, purchases } from '@pms/api-client';
 import { formatDateTimeCn } from '@pms/miniapp-ui';
 import { getSession } from '../../utils/session';
-import { cachedApprovalMode, setTabBadge, syncTabBar } from '../../utils/tabbar';
+import { cachedApprovalMode, rememberApprovalMode, setTabBadge, syncTabBar } from '../../utils/tabbar';
 import { refreshTabBadges } from '../../utils/badges';
 import {
   PURCHASE_STATUS_LABELS,
@@ -54,6 +54,7 @@ function toFamilyRow(item: familyCars.FamilyCarDetail): FamilyRow {
   const absolute = (url: string) => (!url || /^https?:\/\//.test(url) ? url : `${origin}${url}`);
   const files: FamilyFile[] = (item.files || []).map((file) => ({
     ...file,
+    fileUrl: absolute(file.fileUrl),
     photo: String(file.contentType || '').startsWith('image/') ? absolute(file.fileUrl) : '',
   }));
   return {
@@ -101,7 +102,17 @@ function toRow(item: PurchaseRequestView): ApprovalRow {
 
 Page({
   ...guideHandlers(),
+  _loadSerial: 0,
   data: {
+    centerTab: 'pending' as 'pending' | 'done',
+    category: 'all' as approvals.Category | 'all',
+    keyword: '',
+    categories: [] as approvals.CenterResponse['categories'],
+    centerTabs: { pending: 0, done: 0 },
+    centerRows: [] as approvals.CenterRow[],
+    genericRows: [] as any[],
+    allCount: 0, centerTotal: 0, centerPage: 1, centerHasMore: false,
+    loadingCenter: false, centerError: '', centerBusyKey: '',
     /** 指导层：说明文字默认收起，点右上角「?」展开，见 utils/guide.ts */
     guide: false,
     mode: 'approvals' as 'approvals' | 'maintenance',
@@ -139,17 +150,11 @@ Page({
   _entryMode: '' as '' | 'approvals' | 'maintenance',
 
   onLoad(options: Record<string, string | undefined>) {
-    const mode = options?.mode;
-    if (mode === 'maintenance' || mode === 'approvals') {
-      this._entryMode = mode;
-      this.setData({ mode });
-    }
-    // 服务端发的「亲情车待经理审批」通知直接跳这一档
-    if (options?.section === 'family') {
-      this._entryMode = 'approvals';
-      this.setData({ section: 'family', mode: 'approvals' });
-      wx.setNavigationBarTitle({ title: '亲情车审批' });
-    }
+    this._entryMode = options.mode === 'maintenance' ? 'maintenance' : 'approvals';
+    rememberApprovalMode(this._entryMode);
+    if (options.section === 'family') this.setData({ category: 'family' });
+    else if (options.category) this.setData({ category: options.category as approvals.Category });
+    wx.setNavigationBarTitle({ title: this._entryMode === 'maintenance' ? '养护单' : '审批中心' });
   },
 
   onShow() {
@@ -163,124 +168,116 @@ Page({
     this.load().finally(() => wx.stopPullDownRefresh());
   },
 
-  async load() {
+  async load(append = false) {
+    const serial = (this._loadSerial || 0) + 1;
+    this._loadSerial = serial;
+    this.setData({ loadingCenter: true, centerError: '' });
     try {
-      // 权限走共用会话（一次登录只打一遍 /auth/me），别每页各调各的
       const session = await getSession(this);
       const requestedMode = this._entryMode || cachedApprovalMode();
       const canUseMaintenance = session.canInspectMaintenance || session.canSignMaintenance;
-      const mode = requestedMode === 'maintenance' && canUseMaintenance
-        ? 'maintenance'
-        : requestedMode === 'approvals' && session.canApprove
-          ? 'approvals'
-          : canUseMaintenance ? 'maintenance' : 'approvals';
+      const mode = requestedMode === 'maintenance' && canUseMaintenance ? 'maintenance' : 'approvals';
       this.setData({ mode, canInspectMaintenance: session.canInspectMaintenance, canSignMaintenance: session.canSignMaintenance });
       syncTabBar(this, mode === 'maintenance' ? 'more' : 'approvals');
-      wx.setNavigationBarTitle({ title: mode === 'maintenance' ? '养护单' : this.data.section === 'family' ? '亲情车审批' : '采购审批' });
-
+      wx.setNavigationBarTitle({ title: mode === 'maintenance' ? '养护单' : '审批中心' });
       if (mode === 'maintenance') {
-        if (!canUseMaintenance) {
-          this.setData({ maintenanceList: [], loaded: true });
-          setTabBadge(this, 'maintenance', 0);
-          return;
-        }
-        const list = await maintenance.signTasks();
-        const maintenanceList = list.map((item) => ({
-          ...item,
-          createdAtText: formatDateTimeCn(item.createdAt),
-          amountText: yuan(item.totalCents),
-        }));
-        this.setData({ maintenanceList, loaded: true });
-        setTabBadge(this, 'maintenance', maintenanceList.length);
+        const rows = await maintenance.signTasks();
+        if (serial !== this._loadSerial) return;
+        this.setData({ maintenanceList: rows.map(item => ({ ...item, createdAtText: formatDateTimeCn(item.createdAt), amountText: yuan(item.totalCents) })), loaded: true });
+        setTabBadge(this, 'maintenance', rows.length);
         return;
       }
-
-      // 办公室汇总用的是「材料与库存·操作」这一格 —— 和 Web 上合并提交是同一个权限
-      const canSummarize = session.canEditMaterials;
-      const canApproveFamilyCar = session.canApproveFamilyCar;
-      // 本地变量记着这一轮拿到的亲情车条数：setData 之后立刻读 this.data 不保险
-      let familyRows: FamilyRow[] = this.data.familyList;
-      if (session.canApprove || canSummarize || canApproveFamilyCar) {
-        // 亲情车待审：和采购各占一档，没这一格权限的人不请求（接口会 403）
-        this.setData({
-          canApproveFamilyCar,
-          section: canApproveFamilyCar && !(session.canApprove || canSummarize) ? 'family' : this.data.section,
-        });
-        if (canApproveFamilyCar) {
-          const family = await familyCars.pendingManager().catch(() => [] as familyCars.FamilyCarDetail[]);
-          familyRows = family.map(toFamilyRow);
-          this.setData({ familyList: familyRows, familyEmpty: familyRows.length === 0 });
-        } else {
-          familyRows = [];
-          this.setData({ familyList: [], familyEmpty: false });
-        }
-      }
-      if (!session.canApprove && !canSummarize && !canApproveFamilyCar) {
-        this.setData({
-          canApprove: false,
-          canSummarize: false,
-          // 说清楚去哪儿开，不然人对着一句「没权限」不知道找谁
-          roleHint:
-            '你的角色没有采购审批权限。请管理员在管理后台「业务角色」页，' +
-            '把你的角色在「邻修小程序页面权限」里勾上「采购审批（经理这一步）」' +
-            '或「采购审批（采购这一步）」的「批 / 驳回」；办公室汇总要勾「材料与库存」的「操作」；' +
-            '亲情车审批要勾「亲情车经理审批」。' +
-            '改完在这一页下拉刷新即可。',
-          list: [],
-          summaryList: [],
-          loaded: true,
-        });
-        setTabBadge(this, 'approvals', 0);
-        return;
-      }
-
-      // 两步审批各看各的那批单。两步都有权限时先看经理那一步
-      // （采购申请必须先过经理，先处理前一步才不会积压）
-      const status = session.canApproveAsManager
-        ? PurchaseRequestStatus.MANAGER_REVIEW
-        : PurchaseRequestStatus.PURCHASER_REVIEW;
-      const [reviewList, summaryList] = await Promise.all([
-        session.canApprove ? purchases.listRequests({ status }) : Promise.resolve([]),
-        canSummarize
-          ? purchases.listRequests({ status: PurchaseRequestStatus.OFFICE_REVIEW })
-          : Promise.resolve([]),
-      ]);
-      // 人切到哪一档就留在哪一档；只有一档权限的直接落到那档
-      const stage: 'review' | 'summary' =
-        this.data.stage === 'summary' && canSummarize
-          ? 'summary'
-          : session.canApprove
-            ? 'review'
-            : 'summary';
-      const summaryRows = summaryList.map(toRow);
+      const response = await approvals.list({ tab: this.data.centerTab, category: this.data.category, q: this.data.keyword, page: append ? this.data.centerPage + 1 : 1 });
+      if (serial !== this._loadSerial) return;
+      const rows = append ? [...this.data.centerRows, ...response.rows] : response.rows;
+      const isPending = this.data.centerTab === 'pending';
+      const reviewRows = isPending ? rows.filter(r => r.category === 'purchase').map(r => toRow(r.detail as PurchaseRequestView)) : [];
+      const summaryRows = isPending ? rows.filter(r => r.category === 'summary').map(r => toRow(r.detail as PurchaseRequestView)) : [];
       const selectedMap: Record<number, boolean> = {};
-      for (const row of summaryRows) if (this.data.selectedMap[row.id]) selectedMap[row.id] = true;
-      this.setData({
-        canApprove: session.canApprove,
-        canSummarize,
-        stage,
-        isPurchaserStage: status === PurchaseRequestStatus.PURCHASER_REVIEW,
-        roleHint: PURCHASE_STATUS_LABELS[status],
-        list: reviewList.map(toRow),
-        summaryList: summaryRows,
-        reviewEmpty: session.canApprove && reviewList.length === 0,
-        summaryEmpty: canSummarize && summaryRows.length === 0,
-        selectedMap,
-        selectedCount: Object.keys(selectedMap).length,
-        loaded: true,
+      if (isPending) for (const r of summaryRows) if (this.data.selectedMap[r.id]) selectedMap[r.id] = true;
+      const labels = Object.fromEntries(response.categories.map(c => [c.key, c.label]));
+      const genericRows = rows.map(r => {
+        const detail = (r.detail || {}) as Record<string, any>;
+        const origin = String(getApp<{ baseURL?: string }>()?.baseURL || '').replace(/\/api\/v1\/?$/, '');
+        const files = (detail.files || []).map((f: any) => ({ ...f, photo: String(f.contentType || '').startsWith('image/'), url: /^https?:\/\//.test(f.fileUrl || '') ? f.fileUrl : `${origin}${f.fileUrl || ''}` }));
+        return { ...r, label: labels[r.category] || r.category, atText: formatDateTimeCn(r.at), lines: detail.lines || [detail.ownerName, detail.contactName || detail.carOwnerName, detail.contactPhone || detail.carOwnerPhone, detail.relation, (detail.garages || []).join('、')].filter(Boolean).join(' · '), files, photos: files.filter((f: any) => String(f.contentType).startsWith('image/')).map((f: any) => f.url), actionable: ['transfer', 'business', 'vehicle', 'familyOffice'].includes(r.category) };
       });
-      // 角标 = 轮到我审的 + 等我汇总的 + 亲情车待我审的
-      setTabBadge(this, 'approvals', reviewList.length + summaryList.length + familyRows.length);
+      this.setData({
+        centerRows: rows, genericRows: isPending ? genericRows.filter(r => !['purchase', 'summary', 'family'].includes(r.category)) : genericRows,
+        categories: response.categories, centerTabs: response.tabs, allCount: response.allCount,
+        centerPage: response.page, centerHasMore: response.hasMore, centerTotal: response.total,
+        list: isPending ? reviewRows : [], summaryList: isPending ? summaryRows : [],
+        familyList: isPending ? rows.filter(r => r.category === 'family').map(r => toFamilyRow(r.detail as familyCars.FamilyCarDetail)) : [],
+        canApprove: response.categories.some(c => c.key === 'purchase'),
+        canSummarize: response.categories.some(c => c.key === 'summary'),
+        canApproveFamilyCar: response.categories.some(c => c.key === 'family'),
+        selectedMap, selectedCount: Object.keys(selectedMap).length, loaded: true,
+      });
+      setTabBadge(this, 'approvals', response.tabs.pending);
     } catch (e: any) {
-      this.setData({ loaded: true });
+      if (serial === this._loadSerial) this.setData({ loaded: true, centerError: e?.message || '加载失败，请重试' });
       wx.showToast({ icon: 'none', title: e?.message || '加载失败' });
+    } finally {
+      if (serial === this._loadSerial) this.setData({ loadingCenter: false });
     }
+  },
+
+  onCenterTab(e: WechatMiniprogram.BaseEvent) {
+    const tab = e.currentTarget.dataset.tab === 'done' ? 'done' : 'pending';
+    if (tab === this.data.centerTab) return;
+    this.setData({ centerTab: tab, centerRows: [], genericRows: [], list: [], familyList: [], summaryList: [], selectedMap: {}, selectedCount: 0 });
+    this.load();
+  },
+  onCenterCategory(e: WechatMiniprogram.BaseEvent) {
+    this.setData({ category: e.currentTarget.dataset.category || 'all', centerRows: [], genericRows: [], list: [], familyList: [], summaryList: [], selectedMap: {}, selectedCount: 0 });
+    this.load();
+  },
+  onSearchInput(e: WechatMiniprogram.Input) { this.setData({ keyword: e.detail.value }); },
+  onSearchCenter() { this.load(); },
+  onLoadMoreCenter() { if (!this.data.loadingCenter && this.data.centerHasMore) this.load(true); },
+  onRetryCenter() { this.load(); },
+  onOpenCenterDetail(e: WechatMiniprogram.BaseEvent) {
+    const { id, category } = e.currentTarget.dataset;
+    if (category === 'stocktake') wx.navigateTo({ url: `/pages/stocktake-review/stocktake-review?id=${id}` });
+    if (category === 'maintenance') wx.navigateTo({ url: `/pages/maintenance-sign/maintenance-sign?id=${id}` });
+    if (category === 'purchase' || category === 'summary') wx.navigateTo({ url: `/pages/purchase-request/purchase-request?id=${id}` });
+  },
+  async onCenterDecision(e: WechatMiniprogram.BaseEvent) {
+    const { id, category, approved } = e.currentTarget.dataset;
+    const key = `${category}:${id}`;
+    if (this.data.centerBusyKey) return;
+    this.setData({ centerBusyKey: key });
+    try {
+      const approve = approved === true || approved === 'true';
+      const response = await wx.showModal({
+        title: approve ? '确认审批通过？' : '填写退回原因',
+        content: approve && category === 'transfer' ? '通过后立即扣减发货仓库存并进入在途，接收仓需另行确认收货。' : approve ? '请确认已核对单据和附件。' : '',
+        editable: !approve, placeholderText: '请填写原因（必填）', confirmText: approve ? '确认通过' : '确认退回',
+      });
+      if (!response.confirm) return;
+      const note = String(response.content || '').trim();
+      if (!approve && !note) { wx.showToast({ icon: 'none', title: '请填写退回原因' }); return; }
+      await approvals.decide(category, Number(id), approve, note);
+      wx.showToast({ title: approve ? '已通过' : '已退回' });
+      await this.load();
+      refreshTabBadges(this);
+    } catch (err: any) { wx.showToast({ icon: 'none', title: err?.message || '操作失败' }); }
+    finally { this.setData({ centerBusyKey: '' }); }
+  },
+  async onOpenApprovalFile(e: WechatMiniprogram.BaseEvent) {
+    const url = String(e.currentTarget.dataset.url || '');
+    if (!url) return;
+    try {
+      const download = await new Promise<WechatMiniprogram.DownloadFileSuccessCallbackResult>((resolve, reject) => wx.downloadFile({ url, success: resolve, fail: reject }));
+      if (download.statusCode !== 200) throw new Error('资料下载失败');
+      await wx.openDocument({ filePath: download.tempFilePath, showMenu: true });
+    } catch (err: any) { wx.showToast({ icon: 'none', title: err?.message || '资料打开失败' }); }
   },
 
   onSwitchSection(e: WechatMiniprogram.BaseEvent) {
     const section = e.currentTarget.dataset.section === 'family' ? 'family' : 'purchase';
     this.setData({ section });
-    wx.setNavigationBarTitle({ title: section === 'family' ? '亲情车审批' : '采购审批' });
+    wx.setNavigationBarTitle({ title: '审批中心' });
   },
 
   onPreviewFamilyPhoto(e: WechatMiniprogram.BaseEvent) {
@@ -295,14 +292,16 @@ Page({
     const id = Number(e.currentTarget.dataset.id);
     const plate = String(e.currentTarget.dataset.plate || '');
     if (!id || this.data.familyBusyId) return;
-    const res = await wx.showModal({
-      title: `通过 ${plate} 的亲情车？`,
-      content: '通过后立即下发车库授权并续期一年，有效期从今天起算。',
-      confirmText: '通过并开通',
-    });
-    if (!res.confirm) return;
+    // Lock before opening the native dialog as well as during the API request.
     this.setData({ familyBusyId: id });
     try {
+      const res = await wx.showModal({
+        title: `通过 ${plate} 的亲情车？`,
+        content: '通过后立即下发车库授权并续期一年，有效期从今天起算。',
+        // wx.showModal button text allows at most four characters.
+        confirmText: '确认开通',
+      });
+      if (!res.confirm) return;
       await familyCars.managerReview(id, 'approve');
       wx.showToast({ title: '已通过，正在开通' });
       await this.load();
@@ -318,6 +317,8 @@ Page({
     const id = Number(e.currentTarget.dataset.id);
     const plate = String(e.currentTarget.dataset.plate || '');
     if (!id || this.data.familyBusyId) return;
+    this.setData({ familyBusyId: id });
+    try {
     const res = await wx.showModal({
       title: `退回 ${plate}？`,
       editable: true,
@@ -327,8 +328,6 @@ Page({
     if (!res.confirm) return;
     const reason = (res.content || '').trim();
     if (!reason) return wx.showToast({ icon: 'none', title: '请填写退回原因' });
-    this.setData({ familyBusyId: id });
-    try {
       await familyCars.managerReview(id, 'return', reason);
       wx.showToast({ title: '已退回办公室' });
       await this.load();
@@ -440,7 +439,7 @@ Page({
     if (this.data.busyId) return;
     this.setData({ busyId: id });
     try {
-      if (this.data.isPurchaserStage) {
+      if (this.data.list.find(row => row.id === id)?.status === PurchaseRequestStatus.PURCHASER_REVIEW) {
         await purchases.purchaserApprove(id);
       } else {
         await purchases.managerApprove(id);
@@ -456,6 +455,9 @@ Page({
 
   async onReject(e: WechatMiniprogram.BaseEvent) {
     const id = Number(e.currentTarget.dataset.id);
+    if (!id || this.data.busyId) return;
+    this.setData({ busyId: id });
+    try {
     const res = await wx.showModal({
       title: '驳回采购申请',
       editable: true,
@@ -467,8 +469,6 @@ Page({
     if (!reason) {
       return wx.showToast({ icon: 'none', title: '请填写驳回原因' });
     }
-    this.setData({ busyId: id });
-    try {
       await purchases.reject(id, { reason });
       wx.showToast({ title: '已驳回' });
       this.load();
@@ -484,6 +484,8 @@ Page({
     const lineId = String(e.currentTarget.dataset.line || '');
     const name = String(e.currentTarget.dataset.name || '该明细');
     if (!id || !lineId || this.data.busyId) return;
+    this.setData({ busyId: id });
+    try {
     const res = await wx.showModal({
       title: `驳回单项：${name}`,
       content: '只驳回这一行，申请会退回办公室修改后重新提审。',
@@ -494,8 +496,6 @@ Page({
     if (!res.confirm) return;
     const reason = (res.content || '').trim();
     if (!reason) return wx.showToast({ icon: 'none', title: '请填驳回原因' });
-    this.setData({ busyId: id });
-    try {
       await purchases.rejectItem(id, { lineId, reason });
       wx.showToast({ title: '已驳回该项' });
       this.load();

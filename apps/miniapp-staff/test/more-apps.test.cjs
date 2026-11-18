@@ -21,7 +21,7 @@ function fixture(route, session = {}, mode = 'more') {
       rememberApprovalMode: value => { remembered = value; },
       syncTabBar: (_, key) => calls.push({ method: 'syncTabBar', key }), setTabBadge: () => {} },
     '/guide': { guideHandlers: () => ({ syncGuide() {} }) },
-    '/badges': { refreshTabBadges: () => {} },
+    '/badges': { refreshTabBadges: () => {}, syncMaintenanceBadge: () => {} },
   };
   vm.runInNewContext(ts.transpileModule(read(route + '.ts'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, {
     exports: {}, Page: value => { definition = value; }, wx, console,

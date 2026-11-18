@@ -49,5 +49,6 @@ import { SignController } from './sign.controller';
   ],
   controllers: [MaintenanceController, SignController],
   providers: [MaintenanceService],
+  exports: [MaintenanceService],
 })
 export class MaintenanceModule {}

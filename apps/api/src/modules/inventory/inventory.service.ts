@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { appendApproval } from '../../common/approval-log';
 import { AccessService, ResolvedAccess } from '../access/access.service';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, FindOptionsWhere, In, Repository } from 'typeorm';
@@ -589,6 +590,13 @@ export class InventoryService {
    *   · 管理处范围的人 → 只有自己管理处的仓（员工端默认选第一个）；别的管理处的仓和公司级总仓都不出现
    * 工单选料的候选仓（listWorkOrderStockOptions）也是同一条规则，两处别各写一套。
    */
+  /** Approval lists/badges must not trigger warehouse metadata backfill writes. */
+  async approvalWarehouses(user: AuthUser, access: ResolvedAccess) {
+    const tenantId = this.resolveTenantId(user);
+    const all = await this.warehouseRepo.find({ where: { tenantId }, order: { id: 'ASC' } });
+    return this.scopeWarehouses(tenantId, user, all, 'visible', access);
+  }
+
   async listWarehouses(query: WarehousesQueryDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.resolveTenantId(user, query.tenantId);
     const all = await this.warehouseRepo.find({
@@ -1937,6 +1945,7 @@ export class InventoryService {
       // 办公室环节配成「汇总并审批」时，这一步就是办公室审批，记下是谁批的
       primary.officeReviewerId = flow.office === 'approve' ? user.id : null;
       primary.officeReviewedAt = flow.office === 'approve' ? new Date() : null;
+      appendApproval(primary, user.id, 'office', flow.office === 'approve' ? '办公室通过' : '已汇总提交');
       primary.rejectReason = null;
       primary.managerId = null;
       primary.managerAt = null;
@@ -1962,6 +1971,7 @@ export class InventoryService {
       request.status = nextPurchaseStatus(flow, 'manager', request.estTotalCents);
       request.managerId = user.id;
       request.managerAt = new Date();
+      appendApproval(request, user.id, 'manager', '经理通过');
       request.updatedBy = user.id;
       const saved = await manager.save(PurchaseRequest, request);
       await this.notifyPendingStep(manager, tenantId, saved, user.id);
@@ -2063,6 +2073,7 @@ export class InventoryService {
       });
       if (!found) throw new NotFoundException('采购申请明细不存在');
       // 修改数量/描述后必须从经理再审；不允许修改过的行绕过前一级。
+      appendApproval(request, user.id, stage, '单项驳回', dto.reason.trim());
       request.status = PurchaseRequestStatus.OFFICE_REVIEW;
       request.rejectReason = `单项驳回：${dto.reason.trim()}`;
       request.managerId = null;
@@ -2085,6 +2096,7 @@ export class InventoryService {
       request.status = PurchaseRequestStatus.APPROVED;
       request.purchaserId = user.id;
       request.purchaserAt = new Date();
+      appendApproval(request, user.id, 'purchaser', '采购通过');
       request.updatedBy = user.id;
       return manager.save(PurchaseRequest, request);
     });
@@ -2125,6 +2137,7 @@ export class InventoryService {
       if (!allowed) {
         throw new ForbiddenException('当前审批环节不能由你驳回');
       }
+      appendApproval(request, user.id, request.status, '整单驳回', dto.reason);
       request.status = PurchaseRequestStatus.REJECTED;
       request.rejectReason = dto.reason;
       request.updatedBy = user.id;
@@ -2739,7 +2752,7 @@ export class InventoryService {
       await this.notifyByPermission(manager, tenantId, ['app:approve-purchase-manager', 'app:approve-manager'], {
         eventKey: 'transfer_pending_review',
         title: `调拨单 ${saved.transferNo} 待审批`,
-        payload: { transferId: saved.id, transferNo: saved.transferNo },
+        payload: { transferId: saved.id, transferNo: saved.transferNo, page: 'pages/approvals/approvals?category=transfer' },
         operatorId: user.id,
       });
       return saved;

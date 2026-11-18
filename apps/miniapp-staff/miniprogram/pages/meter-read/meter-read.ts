@@ -925,7 +925,7 @@ Page({
       content: `表号 ${meter.meterNo}\n本次读数 ${this.data.valueText} ${meter.unit}\n${
         this.data.usageText ? `预计用量 ${this.data.usageText}\n` : ''
       }${this.data.amountText ? `预计金额 ${this.data.amountText}\n` : ''}${this.data.photoSource==='album'?'抄表登记时间':'拍照时间'} ${this.data.readAtText || formatMeterTime(new Date())}\n${this.data.photoTakenAtText}\n${hasLocation ? this.data.captureLocationText : this.data.photoSource==='album'?'照片无可用定位，本次按无定位提交':'未获取现场定位，本次将标记“无现场定位”'}${warning}`,
-      confirmText: hasLocation ? '读数无误' : '无定位提交',
+      confirmText: hasLocation ? '读数无误' : '仍然提交',
       cancelText: '再核对',
     });
     if (!confirm.confirm) return;

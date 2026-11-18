@@ -34,7 +34,7 @@ const ALL_TABS: TabDef[] = [
   { key: 'pool', pagePath: '/pages/pool/pool', text: '工单池' },
   { key: 'mine', pagePath: '/pages/my-orders/my-orders', text: '在手工单' },
   { key: 'materials', pagePath: '/pages/inventory/inventory', text: '材料与库存' },
-  { key: 'approvals', pagePath: '/pages/approvals/approvals?mode=approvals', text: '审批' },
+  { key: 'approvals', pagePath: '/pages/approvals/approvals?mode=approvals', text: '审批中心' },
   { key: 'cashier', pagePath: '/pages/apartment-cashier/apartment-cashier', text: '公寓收费' },
   { key: 'more', pagePath: '/pages/me/me?mode=more', text: '更多' },
   { key: 'me', pagePath: '/pages/me/me', text: '我的' },

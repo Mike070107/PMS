@@ -32,6 +32,13 @@ type Row = NotificationItem & {
 };
 type FilterOption = { key: FilterKey; label: string; count: number };
 
+// Some server notifications use Web-only routes (e.g. /plates). Resolve review tasks to native pages.
+const APPROVAL_ROUTES: Record<string, string> = {
+  transfer_pending_review: 'transfer', family_car_pending_manager: 'family',
+  purchase_pending_office: 'summary', purchase_pending_manager: 'purchase', purchase_pending_purchaser: 'purchase',
+  'business.review_requested': 'business', 'vehicle_intake.submitted': 'vehicle',
+};
+
 const CATEGORY_FILTERS: Array<{ key: NotificationCategory; label: string }> = [
   { key: 'work_order', label: '工单' },
   { key: 'approval', label: '审批' },
@@ -93,7 +100,7 @@ Page({
         ...item,
         ...classifyNotification(item.eventKey),
         timeText: formatDateTimeCn(item.createdAt),
-        page: String(item.payload?.page || ''),
+        page: APPROVAL_ROUTES[item.eventKey] ? `pages/approvals/approvals?category=${APPROVAL_ROUTES[item.eventKey]}` : String(item.payload?.page || ''),
         // 派单备注和故障描述都在 payload 里，直接铺在标题下面——
         // 「有新工单」四个字没法让人判断要不要现在去
         desc: notificationDescription(item.eventKey, item.payload),
@@ -133,7 +140,7 @@ Page({
       refreshUnread();
     }
     if (row.page) {
-      wx.navigateTo({ url: `/${row.page}` });
+      wx.navigateTo({ url: `/${row.page.replace(/^\/+/, '')}` });
       return;
     }
     this.load();

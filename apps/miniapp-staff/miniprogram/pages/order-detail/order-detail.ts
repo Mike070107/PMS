@@ -1285,7 +1285,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         title: '已交回办公室',
         content: '工单类型和原维修工已清空，所属管理处会收到微信及站内提醒，重新分类派单。',
         showCancel: false,
-        confirmText: '返回工单池',
+        confirmText: '回工单池',
         success: () => wx.switchTab({ url: '/pages/pool/pool' }),
       });
     } catch (e: any) {

@@ -6,6 +6,7 @@ import {
   NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
+import { appendApproval } from '../../common/approval-log';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -803,7 +804,7 @@ export class MaintenanceService implements OnModuleInit {
       this.assertInScope(row.communityId, access);
       const slot = this.assertInternalSigner(row, user, access);
       slotLabel = SIGN_SLOTS[slot].label;
-      this.applySignedSlot(row, slot, stored.fileUrl, user.id, me?.name || '');
+      this.applySignedSlot(row, slot, stored.fileUrl, user.id, me?.name || '', true);
       row.updatedBy = user.id;
       await manager.save(MaintenanceOrder, row);
       resultStatus = row.status;
@@ -1195,8 +1196,11 @@ export class MaintenanceService implements OnModuleInit {
     url: string,
     signerId: number,
     signerName: string,
+    authenticated = false,
   ) {
     this.assertExpectedSlot(row, slot);
+    // Public QR tokens identify the intended signer/requester, not an authenticated actor.
+    if (authenticated) appendApproval(row, signerId, slot, '已签字');
     if (slot === 'filler') {
       row.fillerSignUrl = url;
       row.fillerId = row.fillerId || signerId;

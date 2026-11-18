@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { appendApproval } from '../../common/approval-log';
 import { AuthUser } from '../../common/current-user.decorator';
 import { StockMovementType } from '../../common/enums';
 import {
@@ -248,6 +249,7 @@ export class StocktakeService {
         task.reviewNote = dto.note.trim();
         task.reviewerId = user.id;
         task.reviewedAt = new Date();
+        appendApproval(task, user.id, 'review', dto.approved ? '复核通过' : '复核退回', dto.note);
         task.updatedBy = user.id;
         await manager.save(task);
         return null;
@@ -316,6 +318,7 @@ export class StocktakeService {
         task.reviewerId = user.id;
         task.reviewedAt = new Date();
         task.reviewNote = `实盘后又发生库存变动，已自动刷新账面数并退回重盘：${shownNames}${extra}`.slice(0, 500);
+        appendApproval(task, user.id, 'review', '复核退回重盘', task.reviewNote);
         await this.refreshProgress(manager, task, user.id);
         return { names };
       }
@@ -368,6 +371,7 @@ export class StocktakeService {
       task.status = 'approved';
       task.reviewerId = user.id;
       task.reviewedAt = new Date();
+      appendApproval(task, user.id, 'review', '复核通过', dto.note);
       task.reviewNote = dto.note?.trim() || null;
       task.updatedBy = user.id;
       await manager.save(task);
@@ -400,6 +404,13 @@ export class StocktakeService {
     });
     if (!task) throw new NotFoundException('盘点任务不存在');
     return task;
+  }
+
+  async approvalRows(user: AuthUser, access: ResolvedAccess) {
+    const tenantId = this.tenantId(user);
+    const ids = await this.visibleWarehouseIds(tenantId, user, access);
+    if (ids && !ids.length) return [];
+    return this.decorateTasks(await this.taskRepo.find({ where: { tenantId, ...(ids ? { warehouseId: In(ids) } : {}) } }), tenantId);
   }
 
   private async decorateTasks(tasks: StocktakeTask[], tenantId: number) {

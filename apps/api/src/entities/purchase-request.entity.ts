@@ -13,6 +13,9 @@ export class PurchaseRequest extends TenantEntity {
   @Column({ name: 'request_no', type: 'varchar', length: 40 })
   requestNo: string;
 
+  @Column({ name: 'approval_log', type: 'jsonb', default: () => "'[]'::jsonb" })
+  approvalLog: import('../common/approval-log').ApprovalLogEntry[];
+
   // 关联触发的工单（缺料场景），手工申请时为 null
   @Column({ name: 'work_order_id', type: 'int', nullable: true })
   workOrderId: number | null;

@@ -209,6 +209,9 @@ export class MaintenanceOrder extends TenantEntity {
   @Column({ name: 'voucher_issue', type: 'varchar', length: 120, nullable: true })
   voucherIssue: string | null;
 
+  @Column({ name: 'approval_log', type: 'jsonb', default: () => "'[]'::jsonb" })
+  approvalLog: import('../common/approval-log').ApprovalLogEntry[];
+
   // ===== 签名（一律手写，存图片地址） =====
   @Column({ name: 'filler_id', type: 'int', nullable: true })
   fillerId: number | null;

@@ -47,5 +47,6 @@ import { BusinessLedgerService } from './business-ledger.service';
   ],
   controllers: [BusinessLedgerController, BusinessController, VehicleIntakeController, VehicleIntakeFormController],
   providers: [BusinessLedgerService, BusinessService, BusinessExecutionService, VehicleIntakeService],
+  exports: [BusinessService, VehicleIntakeService],
 })
 export class BusinessModule {}

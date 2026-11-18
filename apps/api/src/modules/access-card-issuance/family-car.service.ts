@@ -1140,6 +1140,13 @@ export class FamilyCarService {
     };
   }
 
+  /** Approval center uses the same tenant/house scope as the original review endpoints. */
+  async approvalRows(user: AuthUser, access: ResolvedAccess) {
+    const rows = await this.repo.find({ where: { tenantId: this.requireTenant(user) } });
+    const scope = scopeCommunityIds(access);
+    return scope ? this.filterByScope(rows, scope) : rows;
+  }
+
   private async filterByScope(rows: FamilyCar[], scope: number[]) {
     if (!rows.length) return rows;
     const houseIds = rows.map((row) => row.houseId).filter((id): id is number => !!id);

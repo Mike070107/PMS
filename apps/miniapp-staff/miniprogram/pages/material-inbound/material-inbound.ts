@@ -707,7 +707,7 @@ Page({
     return new Promise((resolve) => wx.showModal({
       title: '确认入库仓库',
       content: `目标仓库：${warehouse.name}（编号 ${warehouse.id}）\n${summary}\n请确认实物确实存放在此仓库。`,
-      confirmText: '确认入此仓',
+      confirmText: '确认入仓',
       success: (result) => resolve(!!result.confirm && this.selectedWarehouse()?.id === warehouse.id),
       fail: () => resolve(false),
     }));

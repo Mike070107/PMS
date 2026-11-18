@@ -56,7 +56,10 @@ export function canSeeTab(key: TabKey, access: TabAccess): boolean {
       pages['app:approve-manager'] ||
       pages['app:approve-business-manager'] ||
       pages['app:family-car-approve'] ||
-      pages['app:approve-purchaser']
+      pages['app:approve-purchaser'] ||
+      pages['app:inventory'] || pages['app:stocktakes'] ||
+      pages['app:maintenance-sign'] || pages['app:maintenance-inspect'] ||
+      pages['family-cars'] || pages['family-cars-approve'] || pages['business']
     );
   }
   if (key === 'maintenance') {
