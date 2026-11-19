@@ -525,8 +525,9 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
         <div role={embedded ? "region" : undefined} aria-label={embedded ? `本次登记 #${intakeParam}` : undefined} className={embedded ? "registration-workspace" : "cash2"} style={{ marginTop: embedded ? 0 : 18 }}>
           <div className="cashier-mis-bills">
             {embedded && linkedIntake ? <header className="registration-house" aria-label="登记住户">
-              <Icon name="home" size={20}/><div><strong>{house.communityName} · {house.buildingNo}/{house.roomNo}</strong><small>{house.owner?.name || '未登记业主'}　{maskPhone(house.owner?.phone)}</small></div>
-              <span>登记 #{linkedIntake.id}</span>
+              <span className="permit-sign" aria-hidden="true">P</span>
+              <div className="permit-resident"><small>登记住户</small><strong>{house.communityName} · {house.buildingNo}/{house.roomNo}</strong><span>{house.owner?.name || '未登记业主'}　{maskPhone(house.owner?.phone)}</span></div>
+              <div className="permit-stub"><small>登记编号</small><b>#{linkedIntake.id}</b></div>
             </header> : <div className="card">
               <div className="ownerHead">
                 <div className="ownerAv">{initial}</div>

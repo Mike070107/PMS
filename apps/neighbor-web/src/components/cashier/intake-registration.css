@@ -39,33 +39,83 @@
 .vehicle-class-options small{font-size:11px;font-weight:400}
 .vehicle-class-options button:focus-visible{outline:2px solid var(--brand,var(--acc));outline-offset:3px}
 @media(max-width:600px){.intake-registration-form{padding:16px 12px}.intake-registration-heading{align-items:flex-start}.intake-registration-heading .btn{max-width:50%}.vehicle-class-row{grid-template-columns:1fr;gap:6px}.vehicle-class-group{padding-top:0}.vehicle-class-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.vehicle-class-options .chip{min-width:0;padding:8px 4px;font-size:13px;flex-wrap:wrap}}
-.registration-workspace { display:grid; gap:18px; min-width:0 }
-.registration-workspace .cashier-mis-bills { min-width:0 }
-.registration-house { display:flex;align-items:center;gap:12px;padding:14px 18px;background:var(--sunken);border-radius:10px;color:var(--ink2);margin-bottom:14px }
-.registration-house strong,.registration-house small { display:block;overflow-wrap:anywhere }
-.registration-house strong { color:var(--ink);font-size:17px }
-.registration-house>span { margin-left:auto;white-space:nowrap;font-size:13px }
-.registration-workspace .np-card { padding:clamp(14px,3vw,28px) }
-.registration-workspace .intake-registration-form { border:0;border-top:1px solid var(--line);border-radius:0;padding:18px 0 0;margin:16px 0 }
-.registration-plate label { display:grid;gap:6px;font-weight:650 }
-.registration-plate input { max-width:360px;font-size:20px;letter-spacing:.1em }
-.registration-plate summary,.registration-options summary { cursor:pointer;padding:10px 0;color:var(--acc-t);font-weight:600 }
-.registration-options { border-top:1px solid var(--line);margin-top:12px;padding:4px 0 }
-.registration-options summary span { margin-left:12px;font-weight:400;color:var(--ink2) }
-.registration-workspace .side-h { flex-wrap:wrap }
-.registration-workspace .cart2 { width:100%;position:static }
-.registration-workspace .intake-upload { padding:10px }
-@media(max-width:600px){.registration-house{padding:10px;gap:8px}.registration-house>span{font-size:12px}.registration-workspace .np-fields{grid-template-columns:1fr}.registration-workspace .intake-registration-heading{align-items:center;flex-wrap:wrap}}
-.registration-label{margin:16px 0 8px;font-size:16px;color:var(--ink)}
-.registration-types{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-.registration-types button{height:auto;min-height:52px;white-space:normal}
+
+/* Vehicle registration follows the typography and markings of a parking permit. */
+.registration-sheet {
+  --permit-dark: #103d40;
+  --permit-accent: #c1ef98;
+  --permit-line: #d2dedb;
+  --permit-muted: #506660;
+  color: var(--ink);
+}
+.sheet:has(.registration-sheet) .sh-h {
+  display:flex; flex-direction:row-reverse; align-items:center; justify-content:space-between;
+  padding-block:13px; gap:12px;
+}
+.sheet:has(.registration-sheet) .sh-h h2 { margin:0; }
+.sheet:has(.registration-sheet) .sh-b { background:var(--sunken); }
+.registration-workspace { display:grid; gap:16px; min-width:0; }
+.registration-workspace .cashier-mis-bills { min-width:0; }
+.registration-house, .registration-start {
+  position:relative; isolation:isolate; overflow:hidden; display:flex; align-items:center;
+  gap:20px; padding:22px 28px; margin-bottom:14px; border-radius:12px;
+  background:var(--permit-dark); color:white;
+}
+.registration-house::before, .registration-start::before {
+  content:""; position:absolute; inset:0 0 0 58%; z-index:-1; opacity:.24;
+  background:repeating-linear-gradient(118deg,transparent 0 24px,#76b39d 25px 26px,transparent 27px 54px);
+}
+.permit-sign { display:grid; place-items:center; flex:none; width:52px; height:52px; border:2px solid var(--permit-accent); border-radius:10px; color:var(--permit-accent); font:700 36px/1 Arial,sans-serif; }
+.permit-resident { min-width:0; display:grid; gap:3px; }
+.permit-resident small,.permit-stub small { color:#cae1dc; font-size:13px; }
+.permit-resident strong,.registration-start h3 { margin:0; color:white; font-size:clamp(20px,2.2vw,28px); line-height:1.25; overflow-wrap:anywhere; }
+.permit-resident span { color:#e7f4ef; font-size:14px; }
+.permit-stub { align-self:stretch; margin-left:auto; padding-left:24px; border-left:1px dashed #8db6a9; display:grid; align-content:center; gap:4px; text-align:right; }
+.permit-stub b { color:var(--permit-accent); font:600 23px/1.2 Consolas,monospace; }
+.registration-workspace .np-card { padding:clamp(16px,2.6vw,32px); border:1px solid var(--permit-line); box-shadow:none; }
+.registration-workspace .side-h { flex-wrap:wrap; }
+.registration-workspace .intake-registration-form { border:0; border-radius:0; border-top:1px solid var(--line); margin:16px 0; padding:20px 0 0; }
+.registration-workspace .intake-registration-heading { margin-bottom:18px; }
+.registration-workspace .intake-registration-heading h3 { font-size:23px; }
+.registration-workspace .intake-registration-form > fieldset {
+  display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px 24px; align-items:start;
+}
+.registration-plate { padding:16px; background:#edf5ef; border:1px solid #d2e2d7; border-radius:10px; color:#183f37; }
+.registration-plate label { display:grid; gap:9px; font-weight:650; }
+.plate-input-wrap { display:block; position:relative; }
+.registration-plate .in { width:100%; height:52px; border:1px solid #809b92; color:#133e36; background:white; font:650 22px/1.2 Consolas,"Microsoft YaHei",monospace; letter-spacing:.06em; }
+.plate-electric .in { background:#efffdf; }
+.plate-blanks { pointer-events:none; position:absolute; inset:0 14px; display:flex; align-items:center; gap:6px; }
+.plate-blanks i { width:15px; height:3px; background:#a4b9ae; }
+.plate-blanks i:nth-child(2){margin-right:5px}
+.registration-plate summary,.registration-attachments summary,.registration-options summary { cursor:pointer; padding:10px 0; font-weight:600; }
+.registration-plate summary { color:#245b49; padding-bottom:0; }
+.registration-plate:has(details[open]) { grid-column:1/-1; }
+.registration-workspace .registration-contacts { margin:0; display:grid; grid-template-columns:1fr; gap:10px; }
+.registration-workspace .registration-contacts label { max-width:none; }
+.registration-workspace .intake-contact-help { grid-column:2; font-size:13px; margin:-8px 0 0; }
+.registration-attachments { grid-column:1/-1; border-top:1px dashed var(--permit-line); }
+.registration-workspace .intake-upload { padding:12px; }
+.registration-workspace .intake-registration-form > fieldset > .btn.p { grid-column:1/-1; justify-self:end; min-height:44px; background:var(--permit-dark); border-color:var(--permit-dark); color:white; }
+.registration-options { border-top:1px solid var(--line); padding:3px 0; }
+.registration-options summary { color:var(--ink); }
+.registration-options summary span { margin-left:12px; font-weight:400; color:var(--ink2); }
+.registration-workspace .cart2 { width:100%; position:static; }
+.registration-workspace .cartHd { border-top:3px solid var(--permit-dark); }
+.registration-label { margin:20px 0 8px; font-size:16px; }
+.registration-types { display:flex; flex-wrap:wrap; gap:10px; }
+.registration-types button { flex:1; height:auto; min-height:52px; white-space:normal; }
+.registration-types button[aria-pressed=true] { background:#e7f4e9; border-color:#45816a; color:#184e40; }
 .registration-workspace input[aria-invalid=true]{border-color:#b63332}
-.registration-workspace [aria-invalid=true]+small{color:#a52223;font-weight:500}
-.registration-attachments{margin:12px 0}
-.registration-attachments summary{cursor:pointer;color:var(--ink2);padding:8px 0}
-.sheet:has(.registration-sheet) .sh-h { display:flex;align-items:center;justify-content:space-between;flex-direction:row-reverse;gap:12px;padding-block:12px }
-.sheet:has(.registration-sheet) .sh-h h2 { margin:0 }
-.registration-workspace .np-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));gap:14px}
-.registration-workspace .np-fields label{max-width:none}
-.registration-workspace .registration-house { border-left:3px solid var(--acc-t) }
-@media(max-width:600px){.registration-workspace .registration-house{margin-bottom:8px}.registration-workspace .intake-registration-form fieldset>.btn.p{width:100%;justify-content:center}.registration-workspace .side-h{gap:6px}.registration-workspace .side-h .tag{margin-left:0!important}.registration-workspace .intake-registration-heading{flex-direction:row;justify-content:space-between}}
+.registration-workspace [aria-invalid=true]+small,.registration-plate label>small {color:#a52223;font-weight:500}
+@media(max-width:600px){
+  .registration-house,.registration-start { padding:14px; gap:10px; }
+  .permit-sign { width:38px; height:38px; font-size:26px; }
+  .permit-stub { padding-left:10px; }
+  .permit-stub b { font-size:18px; }
+  .permit-resident strong { font-size:18px; }
+  .registration-workspace .intake-registration-form > fieldset { grid-template-columns:1fr; gap:12px; }
+  .registration-workspace .intake-contact-help { grid-column:1; }
+  .registration-workspace .intake-registration-form > fieldset > .btn.p { width:100%; justify-content:center; }
+  .registration-workspace .intake-registration-heading{flex-direction:row;justify-content:space-between;flex-wrap:wrap}
+}

@@ -55,3 +55,8 @@
 ## 2026-11-19 新车登记交互重设计（本地完成）
 - 授权为重新设计页面。实际修改车辆管理的新车登记弹层、嵌入登记的收银布局和共用登记卡；登记住户摘要、工作人员/住户扫码切换、车牌键入或点选、逐字段错误及选填附件。亲情车隐藏收款，付费登记生成可收款清单时显示收款区。
 - Web 构建 pnpm --filter @pms/neighbor-web build 通过；vehicle-intake-navigation-browser 和 vehicle-staff-registration-browser 共 17/17。隔离业务数据，1440、390、375px 浏览器覆盖登记、扫码、审核、撤销和收费保护。证据 D:/00项目开发/PMS-vehicle-release-20261119/outputs/vehicle-registration-design-20261119。未发布，未写生产业务数据。
+
+## 2026-11-19 新车登记第二版 · 停车证样式
+- 范围为 Web 新车登记。住户摘要采用停车证式票头，车牌和联系资料在桌面并排、手机单列，保留扫码、授权及按需收费流程。仅本地改版。
+- 当前验证记录目录为 outputs/vehicle-design-permit-20261119；1440px 和 390px 使用浏览器隔离业务数据。验收结果见后续记录。
+- 验收通过：pnpm --filter @pms/neighbor-web build（Vite 31.09 秒）；node --test 运行 vehicle-intake-navigation-browser 与 vehicle-staff-registration-browser 共 17/17。证据为上述目录 build.log、browser-final.log 和停车证桌面/手机实页截图。未部署。

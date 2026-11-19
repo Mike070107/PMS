@@ -231,6 +231,10 @@ for (const width of [1440, 390]) {
       assert.equal(await dialog.getByRole('button', { name: '去收银台收费', exact: true }).count(), 0);
       assert.equal(await dialog.locator('.cart2').count(),0);
       await shot(page, `family-registration-${width}`);
+      const plate = dialog.locator('.registration-plate .in');
+      const plateBox = await plate.boundingBox();
+      assert.ok(plateBox && plateBox.x >= 0 && plateBox.x + plateBox.width <= width + 1);
+      await dialog.screenshot({path:path.join(evidence,`parking-permit-${width}.png`),animations:'disabled'});
       await dialog.getByRole('button',{name:'改由住户扫码'}).click();
       await dialog.getByRole('img',{name:'扫码填写',exact:true}).waitFor();
       await dialog.getByRole('button', { name: '撤销 / 作废登记', exact: true }).click();

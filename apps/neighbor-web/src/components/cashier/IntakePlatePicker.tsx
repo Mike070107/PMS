@@ -27,11 +27,11 @@ export default function IntakePlatePicker({ value, onChange, disabled = false, c
     <div className="intake-plate-actions"><button type="button" className="btn sm" onClick={() => { onChange(value.slice(0, -1)); setPosition(Math.max(0, value.length - 1)); }}>退一位</button><button type="button" className="btn sm" onClick={() => { onChange(''); setPosition(0); }}>清空车牌</button><output aria-live="polite">{value || '请选择省份'}</output></div>
   </fieldset>;
   if (!compact) return keypad;
-  return <div className="registration-plate">
-    <label>车牌号码（必填）<input id={inputId} aria-invalid={invalid} aria-describedby={invalid ? inputId + '-error' : undefined} className="in" value={value} maxLength={10} disabled={disabled} autoComplete="off" onChange={event => {
+  return <div className={`registration-plate${value.length === 8 ? ' plate-electric' : ''}`}>
+    <label>车牌号码（必填）<span className="plate-input-wrap"><input id={inputId} aria-invalid={invalid} aria-describedby={invalid ? inputId + '-error' : undefined} className="in" value={value} maxLength={10} disabled={disabled} autoComplete="off" onChange={event => {
       const plate = event.target.value.toUpperCase().replace(/[\s·.．・]/g, '').slice(0,8);
       onChange(plate); setPosition(Math.min(plate.length,7));
-    }}/>{invalid && <small id={inputId + '-error'}>请输入完整的 7 位或 8 位车牌</small>}</label>
+    }}/>{!value && <span className="plate-blanks" aria-hidden="true">{Array.from({length:7},(_,i)=><i key={i}/>)}</span>}</span>{invalid && <small id={inputId + '-error'}>请输入完整的 7 位或 8 位车牌</small>}</label>
     <details><summary>点选车牌</summary>{keypad}</details>
   </div>;
 }

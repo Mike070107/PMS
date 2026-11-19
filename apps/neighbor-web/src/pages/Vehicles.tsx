@@ -218,11 +218,11 @@ export default function Vehicles() {
             <Card style={{ padding: 36 }}><div className="empty">停车库里没有查到「{query.term}」的记录</div></Card>
           ) : null}
       {newOpen ? (
-        <Sheet open onClose={() => { if (!creating.current && !newBusy) { setNewOpen(false); setNewQr(null); setNewErr(''); } }} width={newQr ? 900 : 620} title="新车登记">
+        <Sheet open onClose={() => { if (!creating.current && !newBusy) { setNewOpen(false); setNewQr(null); setNewErr(''); } }} width={newQr ? 960 : 640} title="新车登记">
           <div className="registration-sheet">
             {!newQr ? (
               <>
-                <h3 className="registration-label">登记住户</h3>
+                <header className="registration-start"><span className="permit-sign" aria-hidden="true">P</span><h3>选择登记住户</h3></header>
                 <HousePicker communities={communities} value={newHouse} disabled={newBusy} placeholder="输入 228/5/201 或业主姓名" onPick={setNewHouse} onClear={() => setNewHouse(null)} />
                 {newHouse?.houseId ? <p className="muted">业主：{newHouse.ownerName || '未登记'}</p> : null}
                 <h3 className="registration-label">登记类型</h3>
