@@ -9,7 +9,7 @@ import { cachedBuild, findPackage, rememberPackage, buildEnvironment, packageMan
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const TARGETS = {
   api: { label: '线上 API', paths: ['apps/api', 'packages/shared-types', 'pnpm-lock.yaml', 'deploy/srv-deploy-api.sh'] },
-  web: { label: '管理后台', paths: ['apps/neighbor-web', 'apps/admin-web', 'packages/shared-types', 'packages/api-client', 'pnpm-lock.yaml'] },
+  web: { label: '管理后台', paths: ['apps/neighbor-web', 'apps/admin-web', 'packages/shared-types', 'packages/api-client', 'pnpm-lock.yaml', 'patches/esbuild@0.21.3.patch'] },
   assistant: { label: 'Windows 数据同步助手', paths: ['tools/data-sync-assistant-v2', 'tools/access-card-agent'] },
   'miniapp-staff': { label: '员工端小程序', paths: ['apps/miniapp-staff', 'packages/shared-types', 'packages/api-client'] },
   'miniapp-owner': { label: '业主端小程序', paths: ['apps/miniapp-owner', 'packages/shared-types', 'packages/api-client'] },
@@ -201,7 +201,10 @@ function stamp(target, commit) {
     const entry = html.match(/src="\/([^" ]+\.js)"/)?.[1];
     if (!entry) throw new Error('Web 主入口不存在');
     const code = readFileSync(join(dist, entry), 'utf8');
-    version = code.match(/2\.0\.\d{8}-\d{4}/)?.[0];
+    version = process.env.VITE_APP_VERSION;
+    if (!/^2\.0\.\d{8}-\d{6}$/.test(version || '') || !code.includes(JSON.stringify(version))) {
+      throw new Error('Web 主入口与本次发布版本不一致');
+    }
     if (!version || !code.includes(commit)) throw new Error('Web 未注入版本/完整源码提交');
     for (const file of ['index.html', entry, ...readdirSync(join(dist, 'assets')).filter(x => /^ParkingManagementPage-.*\.js$/.test(x)).map(x=>'assets/'+x)]) files[file] = sha(readFileSync(join(dist, file)));
   }

@@ -83,7 +83,7 @@ export function tokenizeAddress(input: string): string[] {
 
 /** 楼栋在下拉里的短标签：小区已经表达了主弄号，这里就不重复 */
 export function formatBuildingLabel(
-  community: Pick<AddressCommunity, 'mainLane'>,
+  community: Pick<AddressCommunity, 'mainLane'> & Partial<Pick<AddressCommunity, 'name'>>,
   building: Pick<AddressBuilding, 'lane' | 'buildingNo' | 'roadName'>,
 ): string {
   if (!building.buildingNo) return '本栋（无楼号）';
@@ -91,7 +91,8 @@ export function formatBuildingLabel(
     return `${building.lane}弄${building.buildingNo}号`;
   }
   if (!building.lane && building.roadName) {
-    return `${building.roadName}${building.buildingNo}号`;
+    const road = building.roadName.trim();
+    return `${road === community.name?.trim() ? '' : road}${building.buildingNo}号`;
   }
   return `${building.buildingNo}号楼`;
 }

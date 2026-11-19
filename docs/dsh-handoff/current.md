@@ -26,3 +26,13 @@
 - 保留历史dirty artifacts/release-checks/api-{expected,source,verified}.json、outputs/image-preview-unification-20261117/coverage.md，已有SHA备份，不能覆盖或冒充新证据。
 - 正式发布：main推送后./deploy/publish-production.ps1 -Target auto；核身DNS/机器/服务、公网版本hash、deployed标记；不得上传工作区半成品。
 - SSH ubuntu@124.223.179.214 -i ~/.ssh/pms_repair_key.pem；VM-4-8-ubuntu/machine-id005acd736e534836bddf1997a7cc0636；/opt/pms-repair/apps/api/pm2 pms-api。
+
+## 2026-11-19 地址选择与框架版本显示
+
+- 范围为修复收银等正式入口共用的地址选择器，并在主页左侧导航底部显示 Web 版本。授权为开发与本地验证。实现位于 main 工作目录 D:/00项目开发/PMS-vehicle-release-20261119。
+- 楼栋显示省略与小区同名的道路前缀，保留其他道路；三列按可用空间缩放，室号和业主名换行，室号列保留滚动条空间。Chromium 使用隔离的 50 户数据，在 1024/640/375/320px 均能滚动到末户并点选。
+- 左下角版本复用页面运行版本。Web 发布脚本按本次发布北京时间生成 2.0.yyyyMMdd-HHmmss，制品核验完整版本。实际 Shell 在 1440/1024/390/320px 核验文字和位置；手机通过导航菜单查看。
+- 本地证据：address-picker-browser.test.cjs 6/6，address-picker-shared + apartment-address-picker 19/19，共享地址一致性及房产地址 4/4，erp-browser.test.cjs 1/1（截图 D:/pms-erp-browser-evidence），release-check + neighbor-production + release-cache 27/27。命令均为 node --test，TS 地址测试从 apps/api 加载 ts-node/register。
+- Web 构建 pnpm --filter @pms/neighbor-web build 的 tsc 通过，Vite 转换 4247 个模块后，esbuild 在渲染分块阶段删除临时文件收到 Access is denied；独立临时目录定向重试仍失败。日志 D:/00项目开发/pms-build-tmp-824718d52d57489eb60c49b61f85ff56/build.log。未生成经验证的正式制品，待正常构建环境复核。无生产操作、无现场手机验收；Web/API/助手/小程序没有发布新版本。
+
+- 续办：用户已明确授权将地址选择器、左下角版本号一起部署生产 Web，核对线上版本及手机宽度点选室号。生产基线为 2.0.20261119-1001 / 2ee1a9a6，DNS、实例、私网、部署目录和 nginx 已核对。Windows 构建修复改用锁定 esbuild 的管道传入大块源码；生产不需要安装此构建工具。等待正式制品、发布和窄屏核验。

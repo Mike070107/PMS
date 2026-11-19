@@ -24,7 +24,11 @@ test('共享地址控件真实鼠标三级、跨期公区回填、收银回车DO
     outfile: path.join(dir, 'fixture.js'), define: { 'process.env.NODE_ENV': '"development"' },
   });
   for (const f of result.outputFiles) fs.writeFileSync(f.path, f.contents);
-  fs.writeFileSync(path.join(dir, 'fixture.html'), '<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="fixture.css"><div id="root"></div><script src="fixture.js"></script>');
+  // Optionally exercise the released stylesheet with isolated address data.
+  if (process.env.PMS_ADDRESS_RELEASE_CSS) {
+    fs.copyFileSync(process.env.PMS_ADDRESS_RELEASE_CSS, path.join(dir, 'fixture.css'));
+  }
+  fs.writeFileSync(path.join(dir, 'fixture.html'), '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="fixture.css"><div id="root"></div><script src="fixture.js"></script>');
   const server = http.createServer((req, res) => {
     const name = req.url.split('?')[0].slice(1);
     if (!['fixture.html', 'fixture.js', 'fixture.css'].includes(name)) { res.writeHead(404); res.end(); return; }
@@ -120,6 +124,32 @@ test('共享地址控件真实鼠标三级、跨期公区回填、收银回车DO
     await js("document.querySelector('#list input').focus();document.querySelector('#list input').select()");
     await call('Input.insertText', { text: '维修单ABC' }); await click('#outside'); await pause(450);
     assert.equal(await js("document.querySelector('#list output').textContent"), '维修单ABC');
+    await t.test('楼栋短标签、长室号换行、滚动到末户', async () => {
+      for (const width of [1024, 640, 375, 320]) {
+        await call('Emulation.setDeviceMetricsOverride', {width, height:740, deviceScaleFactor:1, mobile:width<=375});
+        await click('#house .ant-select-selector');
+        await click(menu, '吴泾一村');
+        await click(menu, '18号');
+        const wheel = await js(`(()=>{
+          const room=document.querySelector('.ant-cascader-dropdown:not(.ant-select-dropdown-hidden) .ant-cascader-menu:last-child');
+          room.scrollTop=0;
+          const r=room.getBoundingClientRect();
+          return {x:r.left+r.width/2,y:r.top+r.height/2,deltaX:0,deltaY:room.scrollHeight};
+        })()`);
+        await call('Input.dispatchMouseEvent',{type:'mouseWheel',...wheel});
+        await pause(250);
+        const layout = await js(`(()=>{
+          const menus = [...document.querySelectorAll('.ant-cascader-dropdown:not(.ant-select-dropdown-hidden) .ant-cascader-menu')];
+          const room = menus[2], item = room.lastElementChild.querySelector('.ant-cascader-menu-item-content');
+          const r = room.getBoundingClientRect();
+          return {visible:r.left>=0 && r.right<=innerWidth, wrapped:item.scrollWidth<=item.clientWidth+1,
+            bar:room.offsetWidth-room.clientWidth>=8, scroll:room.scrollTop>0, last:item.getBoundingClientRect().bottom<=r.bottom+1};
+        })()`);
+        assert.deepEqual(layout,{visible:true,wrapped:true,bar:true,scroll:true,last:true},String(width));
+        await click(menu,'150 · '+'测试长名称'.repeat(12));
+        assert.match(await js("document.querySelector('#house').innerText"),/150/);
+      }
+    });
     t.diagnostic('real mouse columns, full→other phase→public, UniSearch columns, Enter DOM selection/replacement, arbitrary text blur: passed');
   } finally {
     ws?.close();

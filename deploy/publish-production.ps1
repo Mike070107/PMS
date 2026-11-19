@@ -180,9 +180,6 @@ try {
     $env:CI = 'true'
     $env:VITE_API_BASE_URL = '/api/v1'
     $env:VITE_BASE = '/'
-    # 同一冻结提交的门禁构建/打包/失败重试使用相同编译输入，不因墙钟分钟变化重编。
-    $commitTime = [DateTimeOffset]::Parse((Git @('show', '-s', '--format=%cI', $SourceCommit)))
-    $env:VITE_APP_VERSION = "2.0.$($commitTime.ToString('yyyyMMdd-HHmm'))"
     Run '发布检查自测' { node --test deploy/release-check.test.mjs deploy/neighbor-production.test.mjs deploy/release-cache.test.mjs }
     $targets = if ($Target -eq 'auto') { @('api', 'web', 'assistant') } else { @($Target) }
     $definitions = (& node deploy/release-check.mjs definitions) | ConvertFrom-Json
@@ -200,6 +197,11 @@ try {
         if ($changedFiles.Count -eq 0) {
             Write-Host "✓ $targetName 没有运行源码差异，跳过构建和上传。" -ForegroundColor Green
             continue
+        }
+        if ($targetName -eq 'web') {
+            # 本次 Web 发布统一使用北京时间，构建和制品核验读取同一个版本号。
+            $releaseTime = [DateTimeOffset]::UtcNow.ToOffset([TimeSpan]::FromHours(8))
+            $env:VITE_APP_VERSION = "2.0.$($releaseTime.ToString('yyyyMMdd-HHmmss'))"
         }
         Run "$targetName 源码与相关回归" { node deploy/release-check.mjs check $targetName $SourceCommit }
         if ($targetName -eq 'assistant') {

@@ -31,3 +31,5 @@ supportedArchitectures:
   libc:
     - current
     - glibc
+patchedDependencies:
+  esbuild@0.21.3: patches/esbuild@0.21.3.patch

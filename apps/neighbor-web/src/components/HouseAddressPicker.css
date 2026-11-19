@@ -1,11 +1,39 @@
 @import "../../../admin-web/src/components/HouseAddressPicker.css";
 
-/* Keep all navigation levels reachable on phones rather than clipping the room
- * column behind the global dropdown max-width. Desktop column sizes stay intact. */
+.house-address-picker-popup.ant-cascader-dropdown .ant-cascader-menu {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.house-address-picker-popup .ant-cascader-menu::-webkit-scrollbar {
+  width: 8px;
+}
+
+.house-address-picker-popup .ant-cascader-menu::-webkit-scrollbar-thumb {
+  background: #777;
+  border-radius: 4px;
+}
+
+.house-address-picker-popup .ant-cascader-menu::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.house-address-picker-popup.ant-cascader-dropdown .ant-cascader-menu:last-child {
+  flex-grow: 1.6;
+}
+
+.house-address-picker-popup.ant-cascader-dropdown .ant-cascader-menu-item-content {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 600px) {
-  .house-address-picker-popup.ant-cascader-dropdown { width: calc(100vw - 32px); max-width: calc(100vw - 32px); }
-  .house-address-picker-popup.ant-cascader-dropdown .ant-cascader-menus { width: 100%; max-width: 100%; }
-  .house-address-picker-popup.ant-cascader-dropdown .ant-cascader-menu { flex: 1 1 0; width: 0; min-width: 0; max-width: 100%; }
-  .house-address-picker-popup.ant-cascader-dropdown .ant-cascader-menu-item { padding: 10px 6px; min-height: 44px; white-space: normal; overflow-wrap: anywhere; }
-  .house-address-picker-popup.ant-cascader-dropdown .ant-cascader-menu-item-content { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+  .house-address-picker-popup.ant-cascader-dropdown .ant-cascader-menu-item {
+    min-height: 44px;
+    padding: 10px 6px;
+  }
 }

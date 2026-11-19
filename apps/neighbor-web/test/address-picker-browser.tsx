@@ -4,7 +4,14 @@ import { createRoot } from 'react-dom/client';
 import HousePicker from '../src/components/HousePicker';
 import AddressSearch from '../src/components/AddressSearch';
 import UniSearch from '../src/components/cashier/UniSearch';
+import '../src/styles/app.css';
+import '../src/styles/guards.css';
 const communities: any[] = [{id:1,name:'测试一期',mainLane:'198',buildings:[{id:11,lane:'198',buildingNo:'2',houses:[{id:111,roomNo:'201',ownerName:'甲'}]}]},{id:2,name:'测试二期',mainLane:'228',buildings:[{id:22,lane:'228',buildingNo:'6',houses:[{id:222,roomNo:'502',ownerName:'乙'}]}]}];
+communities.push({
+ id:3, name:'吴泾一村', mainLane:null,
+ buildings:[{id:33, lane:null, roadName:'吴泾一村', buildingNo:'18',
+ houses:Array.from({length:50}, (_,i)=>({id:300+i,roomNo:String(101+i),ownerName:'测试长名称'.repeat(12)}))}],
+});
 function Fixture(){
  const [query,setQuery]=useState(''),[house,setHouse]=useState<any>(null),[pub,setPub]=useState<any>(null);
  return <div style={{padding:20,maxWidth:900}}>

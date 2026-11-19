@@ -557,3 +557,12 @@
 .findBar .uni-box{flex:1;min-width:0}
 .uni-box .addr-search-row{width:100%}
 .uni-box .in{font-size:16px}
+
+.shell-version {
+  flex: none;
+  padding: 4px 6px 0;
+  color: var(--ink2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}

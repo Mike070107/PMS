@@ -19,6 +19,9 @@ overrides:
   '@azure-rest/core-client': 2.5.0
   '@typespec/ts-http-runtime': 0.3.1
 
+patchedDependencies:
+  esbuild@0.21.3: a89acf9804717dbee51a60b025f2393cac693171cdd4651f3e2d9150d784e746
+
 importers:
 
   .:
@@ -7343,7 +7346,7 @@ snapshots:
       has-tostringtag: 1.0.2
       hasown: 2.0.4
 
-  esbuild@0.21.3:
+  esbuild@0.21.3(patch_hash=a89acf9804717dbee51a60b025f2393cac693171cdd4651f3e2d9150d784e746):
     optionalDependencies:
       '@esbuild/aix-ppc64': 0.21.3
       '@esbuild/android-arm': 0.21.3
@@ -9423,7 +9426,7 @@ snapshots:
       terser: 5.48.0
       webpack: 5.94.0(esbuild@0.21.3)(postcss@8.5.15)
     optionalDependencies:
-      esbuild: 0.21.3
+      esbuild: 0.21.3(patch_hash=a89acf9804717dbee51a60b025f2393cac693171cdd4651f3e2d9150d784e746)
       postcss: 8.5.15
 
   terser@5.48.0:
@@ -9637,7 +9640,7 @@ snapshots:
 
   vite@5.4.10(@types/node@22.19.19)(terser@5.48.0):
     dependencies:
-      esbuild: 0.21.3
+      esbuild: 0.21.3(patch_hash=a89acf9804717dbee51a60b025f2393cac693171cdd4651f3e2d9150d784e746)
       postcss: 8.5.15
       rollup: 4.61.0
     optionalDependencies:

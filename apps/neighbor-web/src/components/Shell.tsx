@@ -242,6 +242,7 @@ export default function Shell() {
           <div className="meName"><b>{name}</b><small>{roleLabel}</small></div>
           <button className="logout" title="退出登录" onClick={() => { auth.clear(); nav('/login'); }}>退出</button>
         </div>
+        <small className="shell-version">版本 {document.documentElement.dataset.appVersion}</small>
       </aside>
 
       <section className="main">
