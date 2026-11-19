@@ -40,6 +40,7 @@ export function pageForPath(pathname: string) {
 
 export function canViewPath(pathname: string, access: AdminAccess | null | undefined): boolean {
   const page = pageForPath(pathname);
+  if (pathname === '/access-staff') return access?.isTenantAdmin === true && access.scopeAll === true;
   if (!page || !access) return false;
   if (access.isPlatformAdmin || access.isTenantAdmin) return true;
   return page.keys.some(key => access.pages?.[key]?.view === true);

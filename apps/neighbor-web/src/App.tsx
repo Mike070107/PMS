@@ -241,6 +241,7 @@ export default function App() {
             <Route path="/maint" element={<Maintenance />} />
             <Route path="/vehicles" element={<Vehicles />} />
             <Route path="/access-cards" element={<AccessCards />} />
+            <Route path="/access-staff" element={<iframe title="员工授权" src="/access-api/manage/staff" style={{ width: "100%", height: "80vh", border: 0 }} />} />
             <Route path="/access-devices" element={<AccessDevices />} />
             <Route path="/devices" element={<Devices />} />
             <Route path="/purchase" element={<Purchase />} />
