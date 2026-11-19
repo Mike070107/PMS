@@ -34,6 +34,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth, usePagePerm } from '../lib/auth';
 import { sortedHouses } from '@pms/shared-types';
 import { request } from '../lib/api';
+import { printApartmentReceipt } from './printApartmentReceipt';
 import './ApartmentCashierPage.css';
 
 type Owner = { id: number; name: string | null; phone: string | null };
@@ -317,7 +318,9 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
   };
 
   /** 补打：先记一条补打日志再出票面，小票是凭证，重复打印必须查得到。 */
+  const reprintInFlight = useRef(false);
   const reprint = async (no: string) => {
+    if (reprintInFlight.current) return;
     if (preview) {
       const row = todayRows.find((item) => item.receiptNo === no);
       setReceiptDetail({
@@ -329,6 +332,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
       setReceiptOpen(true);
       return;
     }
+    reprintInFlight.current = true;
     setOpeningReceipt(no);
     try {
       await request({ method: 'POST', url: `/fees/cashier/receipts/${encodeURIComponent(no)}/reprint` });
@@ -351,6 +355,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
     } catch (error: any) {
       message.error(error?.message || '小票取数失败');
     } finally {
+      reprintInFlight.current = false;
       setOpeningReceipt(undefined);
     }
   };
@@ -465,6 +470,19 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
     }
   };
 
+  const receiptStage = useRef<HTMLDivElement>(null);
+  const [printing, setPrinting] = useState(false);
+  useEffect(() => {
+    if (!receiptOpen) return;
+    const printShortcut = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'p') {
+        event.preventDefault();
+        if (!event.repeat) receiptStage.current?.closest('.ant-modal')?.querySelector<HTMLButtonElement>('[data-print-ticket]')?.click();
+      }
+    };
+    window.addEventListener('keydown', printShortcut);
+    return () => window.removeEventListener('keydown', printShortcut);
+  }, [receiptOpen]);
   const closeReceipt = () => { setReceiptOpen(false); setReceiptDetail(null); };
 
   /** 票面只有一个来源：补打时用后端取回的收据，否则用当前表单。 */
@@ -482,6 +500,17 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
       feeCode: item.feeCode, feeName: item.feeName, quantity: item.quantity, unit: item.unit, amountCents: item.amountCents, serviceFrom:item.serviceFrom,serviceTo:item.serviceTo,vehiclePlate:item.vehiclePlate,
     })),
   } : null);
+
+  const printCurrent = async () => {
+    if (printing || !receiptPaper) return;
+    setPrinting(true);
+    try {
+      await printApartmentReceipt(receiptStage.current?.querySelector('article.cashier-receipt') ?? null,
+        receiptPaper.receiptNo, receiptPaper.items.length);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '打印失败，请核对小票。');
+    } finally { setPrinting(false); }
+  };
 
   const addressCommunities = useMemo<AddressCommunity[]>(() => communities.map((community) => ({
     ...community, parentId: null, isGroup: false, mainLane: null,
@@ -639,8 +668,8 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
         </aside>
       </div>
 
-      <Modal open={receiptOpen} onCancel={closeReceipt} width={520} title={<span><PrinterOutlined /> {receiptDetail ? `补打小票 · ${receiptDetail.receiptNo}` : '打印预览 · 热敏小票'}</span>} footer={<><Button onClick={closeReceipt}>关闭</Button><Button type="primary" icon={<PrinterOutlined />} onClick={() => window.print()}>打印</Button></>} centered className="cashier-receipt-modal">
-        <div className="cashier-receipt-stage">
+      <Modal open={receiptOpen} onCancel={closeReceipt} width={520} title={<span><PrinterOutlined /> {receiptDetail ? `补打小票 · ${receiptDetail.receiptNo}` : '打印预览 · 热敏小票'}</span>} footer={<><Button onClick={closeReceipt}>关闭</Button><Button type="primary" icon={<PrinterOutlined />} data-print-ticket disabled={!!openingReceipt} loading={printing} onClick={() => void printCurrent()}>打印</Button></>} centered className="cashier-receipt-modal">
+        <div className="cashier-receipt-stage" ref={receiptStage}>
           {receiptPaper?.originalReceiptNo && <Button type="link" onClick={() => void reprint(receiptPaper.originalReceiptNo!)}>查看原收据 {receiptPaper.originalReceiptNo}</Button>}
           {receiptPaper?.reversalReceiptNo && <Button type="link" onClick={() => void reprint(receiptPaper.reversalReceiptNo!)}>查看红冲单 {receiptPaper.reversalReceiptNo}</Button>}
           <ReceiptPaper data={receiptPaper} />

@@ -43,3 +43,5 @@
 - 生产切换前版本 2.0.20261119-1001 / 2ee1a9a6；已核实服务器 /opt/pms-repair/web.bak.1795056255/release.json 为该版本。需要回退时复核当前版本、保留现版，只切换 Web 静态目录到该备份并复核公网哈希。
 - 证据根 D:/00项目开发/PMS-vehicle-release-20261119/outputs/address-release-20261119：publish.log、live-verification.json、mobile-width.log。10:44 从公网取得正式 CSS 并比对 SHA256，配合同源码地址组件和隔离数据执行 node --test apps/neighbor-web/test/address-picker-browser.test.cjs，6/6；320、375px 可完整换行、滚动到第50户、点选并回显150。现场浏览器控制因无法可靠识别当前网址而停止，线上已登录收银页面的实际点选待验。
 - 发布耗时 286.7 秒，其中源码及回归 256.7 秒、制品上传 1.29 秒；上一轮 240.8 秒中对应 214.3 秒、1.1 秒。未改生产网络。计时文件 artifacts/release-checks/publish-20261119-104432-45744-timings.json。
+## 2026-11-19 公寓 XP-80C 连续卷纸
+- 用户授权修复、发布 Web，并验证收费后打印、历史补打、超长和重复拦截。生产基线 bbde3167；历史样式隐藏背景仍参与分页，已在 80mm 宽复现五页。对生产只取制品和版本，收费/补打日志写入用隔离业务数据验证。实机出纸另记。
