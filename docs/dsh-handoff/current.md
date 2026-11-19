@@ -36,3 +36,10 @@
 - Web 构建 pnpm --filter @pms/neighbor-web build 的 tsc 通过，Vite 转换 4247 个模块后，esbuild 在渲染分块阶段删除临时文件收到 Access is denied；独立临时目录定向重试仍失败。日志 D:/00项目开发/pms-build-tmp-824718d52d57489eb60c49b61f85ff56/build.log。未生成经验证的正式制品，待正常构建环境复核。无生产操作、无现场手机验收；Web/API/助手/小程序没有发布新版本。
 
 - 续办：用户已明确授权将地址选择器、左下角版本号一起部署生产 Web，核对线上版本及手机宽度点选室号。生产基线为 2.0.20261119-1001 / 2ee1a9a6，DNS、实例、私网、部署目录和 nginx 已核对。Windows 构建修复改用锁定 esbuild 的管道传入大块源码；生产不需要安装此构建工具。等待正式制品、发布和窄屏核验。
+
+## 2026-11-19 10:44 地址选择器与框架版本号生产 Web 发布
+- 已按用户当次授权发布 Web：main bbde3167759163f79798b342e72ac7fddd3ada62；线上版本 2.0.20261119-103949。deployed/web 已远端回读。已比对公网 release.json、首页 HTML、入口 JS 与 CSS 的版本及哈希。API api-78988f8，助手更新清单 2.6.0；均未发布，小程序未发布。
+- 构建修复为 esbuild@0.21.3 锁定补丁，Windows 大输入用进程管道。2MB 转换、pnpm --filter @pms/neighbor-web build、正式构建与发布检查通过。
+- 生产切换前版本 2.0.20261119-1001 / 2ee1a9a6；已核实服务器 /opt/pms-repair/web.bak.1795056255/release.json 为该版本。需要回退时复核当前版本、保留现版，只切换 Web 静态目录到该备份并复核公网哈希。
+- 证据根 D:/00项目开发/PMS-vehicle-release-20261119/outputs/address-release-20261119：publish.log、live-verification.json、mobile-width.log。10:44 从公网取得正式 CSS 并比对 SHA256，配合同源码地址组件和隔离数据执行 node --test apps/neighbor-web/test/address-picker-browser.test.cjs，6/6；320、375px 可完整换行、滚动到第50户、点选并回显150。现场浏览器控制因无法可靠识别当前网址而停止，线上已登录收银页面的实际点选待验。
+- 发布耗时 286.7 秒，其中源码及回归 256.7 秒、制品上传 1.29 秒；上一轮 240.8 秒中对应 214.3 秒、1.1 秒。未改生产网络。计时文件 artifacts/release-checks/publish-20261119-104432-45744-timings.json。
