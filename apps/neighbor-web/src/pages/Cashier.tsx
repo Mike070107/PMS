@@ -1,3 +1,4 @@
+import RegistrationPermit from '@/components/cashier/RegistrationPermit';
 import { formatBeijingDateTime } from '@pms/shared-types';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import OwnerBusinessContact from '@/components/OwnerBusinessContact';
@@ -15,7 +16,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { INTAKE_STATUS, TXN_STATUS, type Intake } from '@/components/cashier/NewPlateCard';
 import { ErrorNote, Loading, toast } from '@/components/ui';
 import { useSession } from '@/lib/auth';
-import { dayjs, money } from '@/lib/format';
+import { dayjs, money, maskPhone } from '@/lib/format';
 import { accessStatusLabel, legacyStatusLabel, rawTitle } from '@/lib/access-card-status';
 import NewOrderSheet, { type RepairPrefill } from '@/components/NewOrderSheet';
 import FeeIcon from '@/components/FeeIcon';
@@ -64,7 +65,6 @@ const PAYMENTS: Array<{ k: string; icon: IconName }> = [
   { k: '现金', icon: 'cash' }, { k: '微信', icon: 'wechat' }, { k: '支付宝', icon: 'alipay' },
 ];
 
-const maskPhone = (p?: string | null) => (p && p.length >= 7 ? `${p.slice(0, 3)}****${p.slice(-4)}` : p || '无电话');
 
 /**
  * 社区收银台（新版）：找住户 → 一屏看清欠费/车/卡 → 按项目独立办理 → 一次确认 → 结果与后续任务。
@@ -524,18 +524,14 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
       ) : (
         <div role={embedded ? "region" : undefined} aria-label={embedded ? `本次登记 #${intakeParam}` : undefined} className={embedded ? "registration-workspace" : "cash2"} style={{ marginTop: embedded ? 0 : 18 }}>
           <div className="cashier-mis-bills">
-            {embedded && linkedIntake ? <header className="registration-house" aria-label="登记住户">
-              <span className="permit-sign" aria-hidden="true">P</span>
-              <div className="permit-resident"><small>登记住户</small><strong>{house.communityName} · {house.buildingNo}/{house.roomNo}</strong><span>{house.owner?.name || '未登记业主'}　{maskPhone(house.owner?.phone)}</span></div>
-              <div className="permit-stub"><small>登记编号</small><b>#{linkedIntake.id}</b></div>
-            </header> : <div className="card">
+            {embedded && linkedIntake ? <RegistrationPermit house={house} intakeId={linkedIntake.id} /> : <div className="card">
               <div className="ownerHead">
                 <div className="ownerAv">{initial}</div>
                 <div className="ownerMeta">
                   <div className="nm">{house.owner?.name || '未登记业主'}</div>
                   <div className="addr">
                     <Icon name="home" />{house.communityName} {house.buildingNo}/{house.roomNo}
-                    <Icon name="phone" />{maskPhone(house.owner?.phone)}
+                    <Icon name="phone" />{house.owner?.phone ? maskPhone(house.owner.phone) : '无电话'}
                   </div>
                 </div>
                 <button className="btn" style={{ marginLeft: 'auto' }} onClick={() => setRepairOpen(true)}>

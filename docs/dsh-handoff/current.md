@@ -60,3 +60,6 @@
 - 范围为 Web 新车登记。住户摘要采用停车证式票头，车牌和联系资料在桌面并排、手机单列，保留扫码、授权及按需收费流程。仅本地改版。
 - 当前验证记录目录为 outputs/vehicle-design-permit-20261119；1440px 和 390px 使用浏览器隔离业务数据。验收结果见后续记录。
 - 验收通过：pnpm --filter @pms/neighbor-web build（Vite 31.09 秒）；node --test 运行 vehicle-intake-navigation-browser 与 vehicle-staff-registration-browser 共 17/17。证据为上述目录 build.log、browser-final.log 和停车证桌面/手机实页截图。未部署。
+
+## 2026-11-19 新车登记与收银台新增车牌统一主题（本地完成）
+- 两个入口共用 PMS 主题变量、住户票头及登记表单；收银台支持直接录入或扫码续办。浏览器使用隔离数据核对手机、桌面、扫码和重复办理。pnpm --filter @pms/neighbor-web build 及三个登记浏览器套件通过，日志与截图在 D:/00项目开发/PMS-vehicle-release-20261119/outputs/vehicle-registration-theme。无生产发布。

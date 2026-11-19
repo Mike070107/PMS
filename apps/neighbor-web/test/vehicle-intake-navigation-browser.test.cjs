@@ -232,6 +232,14 @@ for (const width of [1440, 390]) {
       assert.equal(await dialog.locator('.cart2').count(),0);
       await shot(page, `family-registration-${width}`);
       const plate = dialog.locator('.registration-plate .in');
+      assert.equal(await dialog.locator('.registration-house').evaluate(header => {
+        const probe = document.createElement('span');
+        probe.style.backgroundColor = 'var(--acc)';
+        header.append(probe);
+        const matches = getComputedStyle(header).backgroundColor === getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return matches;
+      }), true, 'registration header follows the active PMS theme');
       const plateBox = await plate.boundingBox();
       assert.ok(plateBox && plateBox.x >= 0 && plateBox.x + plateBox.width <= width + 1);
       await dialog.screenshot({path:path.join(evidence,`parking-permit-${width}.png`),animations:'disabled'});

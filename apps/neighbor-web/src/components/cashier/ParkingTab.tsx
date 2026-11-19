@@ -1,3 +1,4 @@
+import RegistrationPermit from './RegistrationPermit';
 import DateInput from '@/components/DateInput';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { accessCardIssuance, request } from '@pms/api-client';
@@ -5,7 +6,7 @@ import type { ParkingQuery } from '@pms/api-client/src/endpoints/access-card-iss
 import Icon from '@/components/Icon';
 import { dayjs, money } from '@/lib/format';
 import { field as fieldOf, vehicleIdentity, identityTone, deliyunVehicleIdentity as deliyunIdentity } from '@/lib/parking-fields';
-import NewPlateCard, { type Intake } from './NewPlateCard';
+import NewPlateCard, { canEnterVehicleDetails, type Intake } from './NewPlateCard';
 import VehicleClassChoices from './VehicleClassChoices';
 import RenewalMonths from './RenewalMonths';
 import { Sheet } from '@/components/ui';
@@ -22,7 +23,7 @@ const identityOf = (f: Record<string, unknown>): string | null => {
 /* ───── 类型 ───── */
 export interface ParkRule { id: number; serviceType: string; name: string; communityId: number | null; unitPriceCents: number; enabled: boolean; config?: { parkingTarget?: string; parkingTargets?: string[]; vehicleClass?: string; isDefault?: boolean; priceMode?: 'table' | 'monthly'; tiers?: Array<{ months: number; amountCents: number }> } | null }
 export interface ParkTarget { key: string; label: string; short?: string; system: 'deliyun' | 'local'; billing: 'vehicle' | 'space'; deliyunPark?: string; database?: string }
-export interface ParkHouse { id: number; communityId: number | null; lane?: string | null; buildingNo: string; roomNo: string; owner?: { id: number } | null }
+export interface ParkHouse { id: number; communityId: number | null; lane?: string | null; buildingNo: string; roomNo: string; communityName?: string | null; owner?: { id: number; name?: string | null; phone?: string | null } | null }
 export type SystemRef =
   | { kind: 'local'; database: 'parking1' | 'parking2'; sourceRecordId: string; previousEndDate: string | null; label: string }
   | { kind: 'deliyun'; park: string; label: string };
@@ -137,7 +138,8 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
     await request({ method: 'POST', url: '/business/plate-tags', data: { plate, vehicleClass: cls, houseId: house.id } });
     setTags((t) => ({ ...t, [plate]: cls }));
   }, [house.id]);
-  const createIntake = async (kind: 'paid' | 'family', anotherVehicle = false) => {
+  const [selectedEntry, setSelectedEntry] = useState<{ id: number; staff: boolean } | null>(null);
+  const createIntake = async (kind: 'paid' | 'family', anotherVehicle = false, staff = true) => {
     if (creatingIntake.current) return;
     creatingIntake.current = true; setNewBusy(true); setNewErr('');
     try {
@@ -145,6 +147,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
       const r = await request<Intake>({ method: 'POST', url: '/vehicle-intakes', data: { houseId: house.id, kind, formBase: formBase(), operationKey: operation.operationKey, anotherVehicle: operation.anotherVehicle } });
       operation.resolve();
       setIntakes((l) => [r, ...l.filter(i => i.id !== r.id)]);
+      setSelectedEntry({ id: r.id, staff });
       setEntryKind(null);
     } catch (e) { setNewErr(e instanceof Error ? e.message : '生成失败，重试将继续原操作'); }
     finally { creatingIntake.current = false; setNewBusy(false); }
@@ -347,14 +350,16 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
       <div className="newplate-bar">
         <button className="btn" disabled={newBusy || !hh || !hh.targets.length} onClick={() => { setNewErr(''); setEntryKind('paid'); }}><Icon name="plus" size={16} />新办车牌（付费）</button>
         <button className="btn" disabled={newBusy} onClick={() => { setNewErr(''); setEntryKind('family'); }}><Icon name="plus" size={16} />亲情车（免费 · 一年）</button>
-        <span className="muted" style={{ fontSize: 13.5 }}>生成二维码让业主扫码填车牌、上传资料；钱可以先收</span>
+        <span className="muted" style={{ fontSize: 13.5 }}>工作人员可直接登记，也可由住户扫码填写。</span>
       </div>
       </>}
-      {entryKind ? <Sheet open title="新车登记" subtitle="打开入口不会新建登记" width={520} onClose={() => { if (!creatingIntake.current) setEntryKind(null); }}>
-        <div style={{ display: 'grid', gap: 14, padding: '4px 2px' }}>
-          <div className="note">当前住户：{roomTermOf(house)}。{entryKind === 'paid' ? '付费新车' : '亲情车'}；默认继续本户同类型最新待填登记，保留原资料与收款关联。</div>
+      {entryKind ? <Sheet open title="新车登记" width={520} onClose={() => { if (!creatingIntake.current) setEntryKind(null); }}>
+        <div className="registration-sheet" style={{ display: 'grid', gap: 14 }}>
+          <RegistrationPermit house={house} />
+          <div className="note">{entryKind === 'paid' ? '付费新车' : '亲情车'}；默认继续本户同类型最新待填登记，保留原资料与收款关联。</div>
           {newErr ? <div role="alert" style={{ color: 'var(--dang)' }}>{newErr}</div> : null}
-          <button className="btn p" disabled={newBusy} onClick={() => void createIntake(entryKind)}><Icon name="qr" size={16} />{newBusy ? '正在读取原登记…' : '生成/继续登记二维码'}</button>
+          {canEnterVehicleDetails() && <button className="btn p" disabled={newBusy} onClick={() => void createIntake(entryKind)}>工作人员直接登记</button>}
+          <button className="btn" disabled={newBusy} onClick={() => void createIntake(entryKind, false, false)}><Icon name="qr" size={16} />{newBusy ? '正在读取原登记…' : '生成/继续登记二维码'}</button>
           <button className="btn" disabled={newBusy} onClick={() => { if (window.confirm('将为另一辆车新建办理单，不是继续原登记。确认再登记一辆？')) void createIntake(entryKind, true); }}>再登记一辆（另建办理单）</button>
         </div>
       </Sheet> : null}
@@ -362,9 +367,12 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
       {intakes.length ? (
         <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
           {intakes.map((i) => (
-            <NewPlateCard key={i.id} intake={i} house={house} rules={rules} targets={hh?.targets ?? []} defaultStaffMode={staffRegistration}
+            <section className="registration-workspace" key={i.id}>
+            {!staffRegistration && <RegistrationPermit house={house} intakeId={i.id} />}
+            <NewPlateCard intake={i} house={house} rules={rules} targets={hh?.targets ?? []} defaultStaffMode entryMode={selectedEntry?.id === i.id ? selectedEntry : undefined}
               onChange={updateIntake} onDrop={dropIntake} onCart={setCart}
               renewal={(car, label, cls, onCls, ready) => <CarRenewal car={car} rules={rules} house={house} onCart={setCart} intakeId={i.id} allowCart={ready} title="新办" label={label} vehicleClass={cls} onClass={onCls} />} />
+            </section>
           ))}
         </div>
       ) : null}

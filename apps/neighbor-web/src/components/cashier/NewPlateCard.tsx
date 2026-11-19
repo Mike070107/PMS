@@ -63,8 +63,10 @@ function FileThumb({ file }: { file: IntakeFile }) {
     : <img src={file.fileUrl} alt="" loading="lazy" onError={() => setFailed(true)} />;
 }
 
+export const canEnterVehicleDetails = () => ['business', 'family-cars'].some(key => can(key, 'edit'));
+
 /** 一条新办车牌 / 亲情车扫码登记：二维码 → 实时看业主填写 → 审核 → （付费车）收款 */
-export default function NewPlateCard({ intake: it, house, rules, targets: targetsProp, onChange, onDrop, onCart, renewal, manage = false, defaultStaffMode = false }: {
+export default function NewPlateCard({ intake: it, house, rules, targets: targetsProp, onChange, onDrop, onCart, renewal, manage = false, defaultStaffMode = false, entryMode }: {
   intake: Intake; house: ParkHouse; rules: ParkRule[]; targets: ParkTarget[];
   onChange: (x: Intake) => void; onDrop: (id: number) => void;
   onCart: (key: string, c: ParkingCart | null) => void;
@@ -72,6 +74,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
   /** 车牌登记审核页：审核、选授权车库、看日志；收款仍在收银台。 */
   manage?: boolean;
   defaultStaffMode?: boolean;
+  entryMode?: { staff: boolean };
 }) {
   const [qr, setQr] = useState(it.qr ?? null);
   const [busy, setBusy] = useState('');
@@ -97,7 +100,13 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
   const [edit, setEdit] = useState({ plate: it.plate, contactName: it.contactName, contactPhone: it.contactPhone || '', relation: it.relation });
   const uploadInput = useRef<HTMLInputElement>(null);
   const [staffMode, setStaffMode] = useState(defaultStaffMode);
-  const canStaff = ['business', 'family-cars'].some(key => can(key, 'edit')) && ['waiting', 'reupload'].includes(it.status) && !it.transaction && !it.familyCarId;
+  const cardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!entryMode) return;
+    setStaffMode(entryMode.staff);
+    cardRef.current?.closest('.registration-workspace')?.scrollIntoView({ block: 'start' });
+  }, [entryMode]);
+  const canStaff = canEnterVehicleDetails() && ['waiting', 'reupload'].includes(it.status) && !it.transaction && !it.familyCarId;
   const spaceSource = useGarageSpaces(`/vehicle-intakes/${it.id}/parking-spaces`, `${it.plate}|${it.contactPhone}|${it.status}`);
   const [spaceGarage, setSpaceGarage] = useState<BasementGarage | null>(null);
   const acceptResponse = (x: Intake) => {
@@ -115,7 +124,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
   }, [catalog, community, targetsProp]);
   const [picked, setPicked] = useState<string[]>(() => (it.garages.length ? it.garages : it.kind === 'family' ? [String(house.lane || '').includes('198') ? 'phase1' : 'phase2'] : []));
   const [nums, setNums] = useState<Record<string, string>>(it.garageNumbers || {});
-  const canEditGarages = ['business', 'family-cars'].some(key => can(key, 'edit')) && it.status !== 'void' && it.status !== 'approved' && !(it.kind === 'paid' && it.transaction);
+  const canEditGarages = canEnterVehicleDetails() && it.status !== 'void' && it.status !== 'approved' && !(it.kind === 'paid' && it.transaction);
   const [savingGarages, setSavingGarages] = useState(false);
   const [garageError, setGarageError] = useState('');
   // 选的车库存到登记单上：收银台和车牌登记审核看到的是同一份。
@@ -342,7 +351,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
         {it.transaction || it.familyCarId ? <span className="muted">已关联财务或办理，不能更改车辆类别。</span> : null}
       </div>;
   return (
-    <div className="card np-card np-review">
+    <div ref={cardRef} className="card np-card np-review">
       {preview ? <ImagePreview files={preview.files} initialIndex={preview.index} title={preview.title} onClose={() => setPreview(null)} /> : null}
       <div className="side-h" style={{ marginBottom: 10 }}>
         <Icon name="car" size={18} />{it.kind === 'family' ? '亲情车登记' : '新办车牌'}
@@ -392,7 +401,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
       </fieldset> : null}
       {it.status !== 'void' && handedOff ? <div className="note2" style={{ marginBottom: 10 }}>{it.familyCarId || (it.kind === 'family' && it.status === 'approved') ? '已转亲情车办理，请到「亲情车管理」核对；' : '原收款已进入执行或待核对阶段，请到「待处理」核对原流水；'}已入库车辆请到「车辆管理」注销，不在登记审核硬删，也不在这里退款。</div> : null}
       {['waiting', 'reupload', 'submitted'].includes(it.status) && !it.familyCarId && (it.kind === 'family' || !it.transaction)
-        ? defaultStaffMode && canStaff ? <details className="registration-options"><summary>办公室资料确认与申请期限</summary><OfficeIntakeEditor intake={it} onSaved={acceptResponse} /></details> : <OfficeIntakeEditor intake={it} onSaved={acceptResponse} /> : null}
+        ? defaultStaffMode ? <details className="registration-options" open={!canStaff || undefined}><summary>办公室资料确认与申请期限</summary><OfficeIntakeEditor intake={it} onSaved={acceptResponse} /></details> : <OfficeIntakeEditor intake={it} onSaved={acceptResponse} /> : null}
 
       {!defaultStaffMode ? progress : null}
       <div className={defaultStaffMode && staffMode ? "registration-review" : "np-grid"}>

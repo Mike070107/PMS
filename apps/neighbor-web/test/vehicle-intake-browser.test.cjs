@@ -74,13 +74,17 @@ test('real vehicle/cashier entries: opening is read-only, lock/reuse, explicit a
     assert.equal(await js("!!document.querySelector('.sheet')"), false);
     await click('.newplate-bar button', '亲情车（免费 · 一年）');
     assert.equal(await posts(), 0);
-    await click('.sheet button', '生成/继续登记二维码');
+    await click('.sheet button', '工作人员直接登记');
     assert.equal(await js("[...document.querySelectorAll('.sheet button')].filter(b=>b.textContent.includes('读取原登记')).every(b=>b.disabled)"), true);
     // A synchronous double dispatch before React's paint must not add another request.
     await js("document.querySelector('.sheet .btn.p')?.click()");
     await shot('mobile-waiting');
     await until("!document.querySelector('.sheet')&&document.querySelectorAll('.np-card').length===1");
     assert.equal(await posts(), 1); assert.equal(await count(), 1);
+    await until("!!document.querySelector('.registration-workspace .registration-plate input')");
+    assert.equal(await js("getComputedStyle(document.querySelector('.registration-house')).backgroundColor"), await js("(()=>{const p=document.createElement('span');p.style.background='var(--acc)';document.body.append(p);const c=getComputedStyle(p).backgroundColor;p.remove();return c})()"));
+    await shot('cashier-registration-theme-390');
+    await click('.intake-registration-heading button', '改由住户扫码');
     await click('.newplate-bar button', '亲情车（免费 · 一年）'); await click('.sheet button', '生成/继续登记二维码');
     await until("!document.querySelector('.sheet')");
     assert.equal(await count(), 1); assert.equal(await js("document.querySelectorAll('.np-card').length"), 1);
@@ -100,6 +104,7 @@ test('real vehicle/cashier entries: opening is read-only, lock/reuse, explicit a
     await shot('mobile-success-reused');
     // 办公室代填：真实组件 + 合成 multipart 接口；失败保留输入，确认后版本绑定
     const setInput = async (selector, value) => js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+    await click('.np-card .registration-options summary', '办公室资料确认与申请期限');
     await click('.np-card .np-office-head button');
     await setInput('.np-card .np-office input[aria-label="办公室代填车牌"]', '豫GQ3N07');
     await setInput('.np-card .np-office input[aria-label="办公室代填手机"]', '13900000000');
@@ -128,9 +133,9 @@ test('real vehicle/cashier entries: opening is read-only, lock/reuse, explicit a
     const before = await posts(); assert.equal(await count(), 3);
     await click('.sheet .house-address-picker input'); await call('Input.insertText', { text: '228/3/502' }); await pause(400);
     await call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter' }); await call('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter' });
-    await until("[...document.querySelectorAll('.sheet button')].some(b=>b.textContent.includes('生成/继续登记二维码')&&!b.disabled)");
+    await until("[...document.querySelectorAll('.sheet button')].some(b=>b.textContent.includes('工作人员直接登记')&&!b.disabled)");
     assert.equal(await posts(), before, 'address/type selection is still read-only');
-    await click('.sheet button', '生成/继续登记二维码'); await until("document.querySelector('.sheet')?.textContent.includes('已继续原登记')");
+    await click('.sheet button', '工作人员直接登记'); await until("!!document.querySelector('.sheet [aria-label^=本次登记]')");
     assert.equal(await count(), 3);
     const geometry = [];
     for (const width of [390, 1440]) {
