@@ -1,5 +1,9 @@
 import { request } from '../request';
 
+export type VehicleRegistrationTerm =
+  | { mode: 'months'; months: number }
+  | { mode: 'dates'; startDate: string; endDate: string; reason: string };
+
 export type FamilyCarStatus = 'upload' | 'office' | 'manager' | 'returned' | 'opening' | 'active' | 'expired' | 'void';
 
 export interface FamilyCarRow {
@@ -20,6 +24,7 @@ export interface FamilyCarRow {
   statusLabel: string;
   mode: 'new' | 'existing';
   ownerFill: boolean;
+  registrationTerm?: VehicleRegistrationTerm;
   startDate: string | null;
   endDate: string | null;
   daysLeft: number | null;
@@ -52,6 +57,10 @@ export interface FamilyCarOperationState {
 export interface FamilyCarDetail extends FamilyCarRow {
   files: FamilyCarFile[];
   proofUploadId: number | null;
+  dataVersion: number;
+  officeConfirmedVersion: number | null;
+  managerApprovedVersion: number | null;
+  materialHistory: Array<{ version: number; at: string; actorId: number | null; reason: string; officeConfirmedVersion: number | null; managerApprovedVersion: number | null }>;
   officeNote: string;
   officeReviewedAt: string | null;
   managerNote: string;
@@ -90,6 +99,7 @@ export interface CreateFamilyCarReq {
   garages: string[];
   garageNumbers?: Record<string, string>;
   previousId?: number;
+  registrationTerm?: VehicleRegistrationTerm;
 }
 
 export const list = (params: { status?: string; lane?: string; q?: string } = {}) => {
@@ -108,7 +118,7 @@ export const houseContext = (houseId: number) =>
 export const create = (data: CreateFamilyCarReq) =>
   request<FamilyCarDetail & { qr: FamilyCarQr }>({ url: '/family-cars', method: 'POST', data });
 
-export const update = (id: number, data: Partial<Pick<FamilyCarRow, 'carOwnerName' | 'carOwnerPhone' | 'relation' | 'remark' | 'garages' | 'garageNumbers'>>) =>
+export const update = (id: number, data: Partial<Pick<FamilyCarRow, 'carOwnerName' | 'carOwnerPhone' | 'relation' | 'remark' | 'garages' | 'garageNumbers' | 'registrationTerm'>>) =>
   request<FamilyCarDetail>({ url: `/family-cars/${id}`, method: 'PATCH', data });
 
 export const regenerateQr = (id: number) =>
@@ -119,11 +129,11 @@ export const removeFile = (id: number, index: number) =>
 
 export const submit = (id: number) => request<FamilyCarDetail>({ url: `/family-cars/${id}/submit`, method: 'POST' });
 
-export const officeReview = (id: number, decision: 'approve' | 'reupload' | 'void', note?: string) =>
-  request<FamilyCarDetail & { qr?: FamilyCarQr }>({ url: `/family-cars/${id}/office-review`, method: 'POST', data: { decision, note } });
+export const officeReview = (id: number, decision: 'approve' | 'reupload' | 'void', note?: string, expectedVersion?: number) =>
+  request<FamilyCarDetail & { qr?: FamilyCarQr }>({ url: `/family-cars/${id}/office-review`, method: 'POST', data: { decision, note, ...(expectedVersion === undefined ? {} : { expectedVersion }) } });
 
-export const managerReview = (id: number, decision: 'approve' | 'return', note?: string) =>
-  request<FamilyCarDetail>({ url: `/family-cars/${id}/manager-review`, method: 'POST', data: { decision, note } });
+export const managerReview = (id: number, decision: 'approve' | 'return', note?: string, expectedVersion?: number) =>
+  request<FamilyCarDetail>({ url: `/family-cars/${id}/manager-review`, method: 'POST', data: { decision, note, ...(expectedVersion === undefined ? {} : { expectedVersion }) } });
 
 export const retry = (id: number) => request<FamilyCarDetail>({ url: `/family-cars/${id}/retry`, method: 'POST' });
 

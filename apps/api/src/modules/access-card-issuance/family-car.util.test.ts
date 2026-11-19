@@ -16,10 +16,11 @@ import {
   shanghaiDate,
 } from './family-car.util';
 
-test('有效期一年：生效日起至次年前一天，闰日按 2 月 28 日到期', () => {
+test('默认12个月：钳制到次年同日后减一天，闰日不滚到三月', () => {
   assert.deepEqual(familyValidity('2026-10-21'), { startDate: '2026-10-21', endDate: '2027-10-20' });
   assert.deepEqual(familyValidity('2026-01-01'), { startDate: '2026-01-01', endDate: '2026-12-31' });
-  assert.equal(familyValidity('2028-02-29').endDate, '2029-02-28');
+  assert.equal(familyValidity('2028-02-29').endDate, '2029-02-27');
+  assert.equal(familyValidity('2026-01-31', 1).endDate, '2026-02-27');
 });
 
 test('生效日按上海日期：UTC 16:30 已是上海次日', () => {

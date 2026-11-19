@@ -1,5 +1,7 @@
 import { Column, Entity, Index } from 'typeorm';
 import { TenantEntity } from '../common/base.entity';
+import type { VehicleRegistrationTerm } from '../common/vehicle-registration-term';
+import type { VehicleMaterialHistory } from '../common/vehicle-registration-material';
 
 /**
  * 车牌办理单：前台在收银台给一户「新办车牌」时生成，业主手机扫码自己填车牌、车主电话并上传资料。
@@ -18,6 +20,8 @@ export type VehicleIntakeStatus =
   | 'void'; //      已作废
 
 export interface VehicleIntakeFile {
+  /** Older intake attachments were owner uploads. Never trust a browser-provided source. */
+  source?: 'owner' | 'office';
   objectKey: string;
   fileName: string;
   contentType: string;
@@ -124,6 +128,22 @@ export class VehicleIntake extends TenantEntity {
   /** 亲情车：审核通过后生成的亲情车登记 */
   @Column({ name: 'family_car_id', type: 'int', nullable: true })
   familyCarId: number | null;
+
+  @Column({ name: 'input_source', type: 'varchar', length: 10, default: 'owner' })
+  inputSource: 'owner' | 'office';
+
+  /** 0 denotes historical data; migration never fabricates an approval. */
+  @Column({ name: 'data_version', type: 'int', default: 0 })
+  dataVersion: number;
+
+  @Column({ name: 'office_confirmed_version', type: 'int', nullable: true })
+  officeConfirmedVersion: number | null;
+
+  @Column({ name: 'registration_term', type: 'jsonb', nullable: true })
+  registrationTerm: VehicleRegistrationTerm | null;
+
+  @Column({ name: 'material_history', type: 'jsonb', default: () => "'[]'::jsonb" })
+  materialHistory: VehicleMaterialHistory[];
 
   @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
   log: VehicleIntakeLog[];

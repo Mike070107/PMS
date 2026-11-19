@@ -7,7 +7,9 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { In, IsNull, Not, Repository } from 'typeorm';
+import { EntityManager, In, IsNull, Not, Repository } from 'typeorm';
+import { claimVehicleRegistration, releaseVehicleRegistration, VEHICLE_CLAIM_CONFLICT } from '../../common/vehicle-registration-claim';
+import { reviseVehicleMaterial } from '../../common/vehicle-registration-material';
 import { AuthUser } from '../../common/current-user.decorator';
 import { UserRole, UserStatus } from '../../common/enums';
 import {
@@ -24,6 +26,7 @@ import type { FamilyCarFile, FamilyCarStatus } from '../../entities';
 import { AccessService, ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
 import { addNaturalOrderBy } from '../../common/natural-order';
+import { normalizeRegistrationTerm, registrationWindow, VehicleRegistrationTerm } from '../../common/vehicle-registration-term';
 import { NotificationsService } from '../notifications/notifications.service';
 import { detectUploadContentType } from '../upload/upload.controller';
 import { ObjectStorageService } from '../upload/object-storage.service';
@@ -31,6 +34,7 @@ import { AccessCardIssuanceService } from './access-card-issuance.service';
 import {
   FAMILY_GARAGES,
   FAMILY_RELATIONS,
+  addDays,
   classifyPlateCheck,
   legacyIdentity,
   legacyPlate,
@@ -77,6 +81,7 @@ export interface CreateFamilyCarInput {
   garages: string[];
   garageNumbers?: Record<string, string>;
   previousId?: number | null;
+  registrationTerm?: VehicleRegistrationTerm;
 }
 
 export interface UpdateFamilyCarInput {
@@ -86,6 +91,7 @@ export interface UpdateFamilyCarInput {
   remark?: string;
   garages?: string[];
   garageNumbers?: Record<string, string>;
+  registrationTerm?: VehicleRegistrationTerm;
 }
 
 export const FAMILY_STATUS_LABEL: Record<FamilyCarStatus, string> = {
@@ -123,6 +129,33 @@ export class FamilyCarService {
     private readonly access: AccessService,
     private readonly notifications: NotificationsService,
   ) {}
+
+  private inTransaction = false;
+  private afterCommit?: Array<() => Promise<unknown> | unknown>;
+
+  private withManager(manager: EntityManager, afterCommit?: Array<() => Promise<unknown> | unknown>): FamilyCarService {
+    const service = Object.create(this) as FamilyCarService;
+    Object.assign(service, {
+      inTransaction: true, afterCommit,
+      repo: manager.getRepository(FamilyCar), houseRepo: manager.getRepository(House),
+      buildingRepo: manager.getRepository(Building), communityRepo: manager.getRepository(Community),
+      userRepo: manager.getRepository(User), queryRepo: manager.getRepository(ParkingQuery),
+      operationRepo: manager.getRepository(ParkingOperation), proofRepo: manager.getRepository(ParkingProofUpload),
+      proofs: this.proofs.withManager(manager),
+    });
+    return service;
+  }
+
+  private async locked<T>(id: number, user: AuthUser, work: (service: FamilyCarService) => Promise<T>): Promise<T> {
+    const afterCommit: Array<() => Promise<unknown> | unknown> = [];
+    const result = await this.repo.manager.transaction(async manager => {
+      await manager.getRepository(FamilyCar).createQueryBuilder('car').setLock('pessimistic_write')
+        .where('car.id = :id AND car.tenantId = :tenantId', { id, tenantId: this.requireTenant(user) }).getOne();
+      return work(this.withManager(manager, afterCommit));
+    });
+    for (const callback of afterCommit) await Promise.resolve().then(callback).catch(error => this.logger.warn(`提交后通知失败：${error?.message || error}`));
+    return result;
+  }
 
   // ---------------- 查询 ----------------
 
@@ -499,7 +532,14 @@ export class FamilyCarService {
   // ---------------- 登记 ----------------
 
   async create(input: CreateFamilyCarInput, user: AuthUser, access?: ResolvedAccess) {
+    if (!this.inTransaction) return this.repo.manager.transaction(manager => this.withManager(manager).createInTransaction(input, user, access));
+    return this.createInTransaction(input, user, access);
+  }
+
+  private async createInTransaction(input: CreateFamilyCarInput, user: AuthUser, access?: ResolvedAccess, intakeId?: number) {
     const tenantId = this.requireTenant(user);
+    const registrationTerm = normalizeRegistrationTerm(input.registrationTerm);
+    if (registrationTerm.mode === 'dates' && registrationTerm.endDate < shanghaiDate()) throw new BadRequestException('自定义有效期已经结束');
     const house = await this.resolveHouse(Number(input.houseId), tenantId, access);
     const plate = normalizeFamilyPlate(input.plate);
     if (!isValidFamilyPlate(plate)) throw new BadRequestException('车牌格式不正确，例如 豫GQ3N07（不加点）');
@@ -511,22 +551,22 @@ export class FamilyCarService {
     const previousId = input.previousId ? Number(input.previousId) : null;
     const blocking = live.find((row) => !(row.status === 'active' && row.id === previousId));
     if (blocking) {
-      throw new BadRequestException(`车牌 ${plate} 已有亲情车登记（${blocking.lane}/${blocking.buildingNo}/${blocking.roomNo} · ${FAMILY_STATUS_LABEL[blocking.status]}），不能重复登记`);
+      throw new BadRequestException(VEHICLE_CLAIM_CONFLICT);
     }
     if (previousId) {
       const previous = await this.repo.findOne({ where: { id: previousId, tenantId } });
-      if (!previous || previous.plate !== plate) throw new BadRequestException('续登来源记录与车牌不一致');
+      if (!previous || previous.plate !== plate || previous.houseId !== house.houseId || !['active', 'expired'].includes(previous.status)) throw new BadRequestException('续登来源记录、车牌或房号不一致');
     }
 
     // 旧库查重：网页先通过停车网关按车牌真实查询，这里复核结果并决定是新登记还是续登
     const check = await this.queryRepo.findOne({ where: { id: Number(input.duplicateCheckQueryId) || 0, tenantId, queryKind: 'vehicle' } });
     if (!check || check.status !== 'completed' || !check.completedAt) throw new BadRequestException('车牌查重尚未完成，请重新查重');
     if (normalizeFamilyPlate(check.term) !== plate) throw new BadRequestException('查重结果与当前车牌不一致，请重新查重');
-    if (Date.now() - new Date(check.completedAt).getTime() > 5 * 60 * 1000) throw new BadRequestException('车牌查重结果已超过 5 分钟，请重新查重');
+    const checkAge = Date.now() - new Date(check.completedAt).getTime();
+    if (!Number.isFinite(checkAge) || checkAge < 0 || checkAge > 5 * 60_000) throw new BadRequestException('车牌查重结果时间无效或已超过 5 分钟，请重新查重');
     const outcome = classifyPlateCheck(check.rows, plate, house.roomKey);
-    if (outcome.mode === 'conflict') throw new BadRequestException(outcome.message);
+    if (outcome.mode === 'conflict') throw new BadRequestException('该车牌已有不兼容的登记，请联系有权限的管理人员核对');
 
-    const now = new Date();
     let car = await this.repo.save(this.repo.create({
       tenantId,
       houseId: house.houseId,
@@ -549,6 +589,12 @@ export class FamilyCarService {
       ownerFill,
       files: [],
       proofUploadId: null,
+      duplicateCheckQueryId: check.id,
+      registrationTerm,
+      dataVersion: 1,
+      officeConfirmedVersion: null,
+      managerApprovedVersion: null,
+      materialHistory: [],
       registrationOperationId: null,
       openOperationId: null,
       renewOperationId: null,
@@ -569,55 +615,30 @@ export class FamilyCarService {
       createdBy: user.id,
       updatedBy: user.id,
     }));
+    await claimVehicleRegistration(this.repo.manager, { tenantId, plate, familyCarId: car.id, intakeId });
     const qr = await this.proofs.createFamilySession(car, user, null);
     car.proofUploadId = qr.id;
     await this.appendLog(car, user, previousId ? '办公室续登 / 补登记' : '办公室登记', outcome.mode === 'existing' ? '旧库已是本户亲情车，审核通过后调整授权并续期' : undefined);
 
-    if (outcome.mode === 'new') {
-      // 新车牌：先在旧库暂存为待审核亲情车（零授权、零收费），审核通过后再开通
-      try {
-        const validity = familyValidity(shanghaiDate(now));
-        const op = await this.parking.createParkingOperation({
-          kind: 'add_vehicle',
-          database: house.database,
-          idempotencyKey: `family-car-${car.id}-register`,
-          pmsUserId: house.ownerUserId,
-          payload: {
-            plate,
-            ownerName: house.ownerName || house.roomKey,
-            ownerPhone: house.ownerPhone,
-            ownerAddress: house.roomKey,
-            identity: '亲情车',
-            amount: 0,
-            months: 12,
-            startDate: validity.startDate,
-            endDate: validity.endDate,
-            proofUploadId: qr.id,
-            garages: car.garages,
-            garageNumbers: car.garageNumbers,
-            spaces: car.garageNumbers.main || '',
-            requiresProofReview: true,
-            duplicateCheckQueryId: check.id,
-            note: ['亲情车管理登记', car.remark, '操作来源：PMS系统'].filter(Boolean).join('；'),
-          },
-        }, user, access);
-        car.registrationOperationId = op.id;
-        await this.repo.save(car);
-      } catch (error) {
-        // 旧库暂存没有建立就不留半条记录，办公室可直接重试
-        await this.proofRepo.delete({ id: qr.id, tenantId });
-        await this.repo.delete({ id: car.id, tenantId });
-        throw error;
-      }
-    }
+    // 审批前只保存 PMS 登记、证明及只读查重结果，不向旧库创建任何写任务。
+    // 登记任务与授权/续期均由经理通过后的 startOpening 串行推进。
     car = (await this.repo.findOne({ where: { id: car.id, tenantId } }))!;
     return { ...this.detail(car), qr };
   }
 
   async update(id: number, input: UpdateFamilyCarInput, user: AuthUser, access?: ResolvedAccess) {
+    if (!this.inTransaction) return this.locked(id, user, service => service.update(id, input, user, access));
     const car = await this.load(id, user, access);
     if (!['upload', 'office', 'returned'].includes(car.status)) throw new BadRequestException('当前状态不能修改登记信息');
     const changes: string[] = [];
+    if (input.registrationTerm !== undefined) {
+      const term = normalizeRegistrationTerm(input.registrationTerm);
+      if (term.mode === 'dates' && term.endDate < shanghaiDate()) throw new BadRequestException('自定义有效期已经结束');
+      if (JSON.stringify(term) !== JSON.stringify(car.registrationTerm ?? normalizeRegistrationTerm(null))) {
+        changes.push(`登记期限：${JSON.stringify(car.registrationTerm)} → ${JSON.stringify(term)}`);
+        car.registrationTerm = term;
+      }
+    }
     const set = (key: 'carOwnerName' | 'carOwnerPhone' | 'relation' | 'remark', value: string | undefined, label: string, max: number) => {
       if (value === undefined) return;
       const next = value.trim().slice(0, max);
@@ -640,12 +661,14 @@ export class FamilyCarService {
       car.garageNumbers = garages.garageNumbers;
     }
     if (!changes.length) return this.detail(car);
-    await this.appendLog(car, user, '修改登记信息', changes.join('；'));
+    this.revise(car, user.id, '修改登记信息');
+    await this.appendLog(car, user, '修改登记信息，原确认与审批失效', changes.join('；'));
     return this.detail(car);
   }
 
   /** 重新生成 1 小时上传二维码（旧二维码立即失效） */
   async regenerateQr(id: number, user: AuthUser, access?: ResolvedAccess) {
+    if (!this.inTransaction) return this.locked(id, user, service => service.regenerateQr(id, user, access));
     const car = await this.load(id, user, access);
     if (!['upload', 'office', 'returned'].includes(car.status)) throw new BadRequestException('当前状态不需要上传资料');
     const qr = await this.proofs.createFamilySession(car, user, car.proofUploadId);
@@ -655,6 +678,7 @@ export class FamilyCarService {
   }
 
   async addFiles(id: number, files: Express.Multer.File[] | undefined, user: AuthUser, access?: ResolvedAccess) {
+    if (!this.inTransaction) return this.locked(id, user, service => service.addFiles(id, files, user, access));
     const car = await this.load(id, user, access);
     if (!['upload', 'office', 'returned'].includes(car.status)) throw new BadRequestException('当前状态不能再上传资料');
     const list = files ?? [];
@@ -670,21 +694,25 @@ export class FamilyCarService {
       added.push({ objectKey: stored.objectKey, fileName: list[index].originalname.slice(0, 255), contentType: types[index]!, source: 'office', uploadedAt: new Date().toISOString() });
     }
     car.files = [...car.files, ...added];
+    this.revise(car, user.id, '办公室上传资料');
     await this.appendLog(car, user, '办公室上传资料', added.map((file) => file.fileName).join('、'));
     return this.detail(car);
   }
 
   async removeFile(id: number, index: number, user: AuthUser, access?: ResolvedAccess) {
+    if (!this.inTransaction) return this.locked(id, user, service => service.removeFile(id, index, user, access));
     const car = await this.load(id, user, access);
     if (!['upload', 'office', 'returned'].includes(car.status)) throw new BadRequestException('当前状态不能删除资料');
     const file = car.files[index];
     if (!file) throw new NotFoundException('资料不存在');
     car.files = car.files.filter((_, i) => i !== index);
+    this.revise(car, user.id, '删除资料');
     await this.appendLog(car, user, '删除资料', file.fileName);
     return this.detail(car);
   }
 
   async submit(id: number, user: AuthUser, access?: ResolvedAccess) {
+    if (!this.inTransaction) return this.locked(id, user, service => service.submit(id, user, access));
     const car = await this.load(id, user, access);
     if (car.status !== 'upload') throw new BadRequestException('当前状态不能提交审核');
     if (!car.files.length && !car.log.some(entry => entry.attachmentsOptional === true && entry.userId !== null)) throw new BadRequestException('请先上传资料');
@@ -695,14 +723,19 @@ export class FamilyCarService {
 
   // ---------------- 审核 ----------------
 
-  async officeReview(id: number, decision: 'approve' | 'reupload' | 'void', note: string | undefined, user: AuthUser, access?: ResolvedAccess) {
+  async officeReview(id: number, decision: 'approve' | 'reupload' | 'void', note: string | undefined, user: AuthUser, access?: ResolvedAccess, expectedVersion?: number) {
+    if (!this.inTransaction) return this.locked(id, user, service => service.officeReview(id, decision, note, user, access, expectedVersion));
+    if (!['approve', 'reupload', 'void'].includes(decision)) throw new BadRequestException('审核决定无效');
     const car = await this.load(id, user, access);
+    if (expectedVersion !== undefined && expectedVersion !== (car.dataVersion ?? 0)) throw new BadRequestException('登记资料已更新，请刷新后重新审核，未覆盖他人修改');
     const text = (note || '').trim().slice(0, 500);
     if (decision === 'void') {
       if (['opening', 'active', 'expired', 'void'].includes(car.status)) throw new BadRequestException('当前状态不能作废');
       if (!text) throw new BadRequestException('请填写作废原因');
+      if ([car.registrationOperationId, car.openOperationId, car.renewOperationId, car.civilOperationId].some(Boolean)) throw new BadRequestException('已关联旧库写任务，请先核对实际执行结果，不允许直接作废');
       car.status = 'void';
-      await this.appendLog(car, user, '办公室驳回并作废', text);
+      await this.appendLog(car, user, '办公室独立作废登记', text);
+      await releaseVehicleRegistration(this.repo.manager, car.tenantId, 'family', car.id);
       return this.detail(car);
     }
     if (!['office', 'returned'].includes(car.status)) throw new BadRequestException('当前不在办公室审核环节');
@@ -711,6 +744,8 @@ export class FamilyCarService {
       // 重传后要重新经办公室审核，不能沿用之前的审核结果自动推进
       car.officeReviewedBy = null;
       car.officeReviewedAt = null;
+      car.officeConfirmedVersion = null;
+      car.managerApprovedVersion = null;
       const qr = await this.proofs.createFamilySession(car, user, car.proofUploadId);
       car.proofUploadId = qr.id;
       await this.appendLog(car, user, '要求业主补资料，已重新生成二维码', text || undefined);
@@ -718,27 +753,27 @@ export class FamilyCarService {
     }
     if (!car.files.length && !car.log.some(entry => entry.attachmentsOptional === true && entry.userId !== null)) throw new BadRequestException('还没有资料，不能审核通过');
     if (!car.carOwnerName || !car.carOwnerPhone || !car.relation) throw new BadRequestException('请先补全车主姓名、电话和与业主关系');
-    if (car.mode === 'new') {
-      const registration = car.registrationOperationId ? await this.operationRepo.findOne({ where: { id: car.registrationOperationId, tenantId: car.tenantId } }) : null;
-      if (registration?.status !== 'completed') {
-        throw new BadRequestException(registration?.status === 'failed'
-          ? `旧库暂存失败：${registration.lastError || '请联系管理员'}；请作废后重新登记`
-          : '旧库暂存还在执行，请确认停车网关在线后稍候再审核');
-      }
-    }
+    await claimVehicleRegistration(this.repo.manager, { tenantId: car.tenantId, plate: car.plate, familyCarId: car.id });
     const returned = car.status === 'returned';
     car.status = 'manager';
     car.officeReviewedBy = user.id;
     car.officeReviewedAt = new Date();
+    car.officeConfirmedVersion = car.dataVersion ?? 0;
+    // 办公室重新确认后，之前任何经理审批都不再对应当前资料版本
+    car.managerApprovedVersion = null;
     car.officeNote = text || '资料齐全';
     await this.appendLog(car, user, returned ? '办公室处理退回后重新提交经理审核' : '办公室审核通过', car.officeNote);
     await this.notifyManagers(car, user);
     return this.detail(car);
   }
 
-  async managerReview(id: number, decision: 'approve' | 'return', note: string | undefined, user: AuthUser, access?: ResolvedAccess) {
+  async managerReview(id: number, decision: 'approve' | 'return', note: string | undefined, user: AuthUser, access?: ResolvedAccess, expectedVersion?: number) {
+    if (!['approve', 'return'].includes(decision)) throw new BadRequestException('审批决定无效');
     const car = await this.load(id, user, access);
     if (car.status !== 'manager') throw new BadRequestException('当前不在物业经理审核环节');
+    if (expectedVersion !== undefined && expectedVersion !== (car.dataVersion ?? 0)) throw new BadRequestException('登记资料已更新，请刷新后重新审批，未覆盖他人修改');
+    // 经理只能审批办公室最后确认的那一版资料
+    if ((car.dataVersion ?? 0) > 0 && car.officeConfirmedVersion !== car.dataVersion) throw new BadRequestException('办公室确认已失效（资料有变更），请办公室重新确认后再审批');
     const text = (note || '').trim().slice(0, 500);
     car.managerReviewedBy = user.id;
     car.managerReviewedAt = new Date();
@@ -751,6 +786,7 @@ export class FamilyCarService {
       return this.detail(car);
     }
     car.managerNote = text || '同意';
+    car.managerApprovedVersion = car.dataVersion ?? 0;
     car.status = 'opening';
     car.lastError = null;
     await this.appendLog(car, user, '物业经理审核通过，开始开通车库', car.managerNote);
@@ -763,7 +799,12 @@ export class FamilyCarService {
   async retry(id: number, user: AuthUser, access?: ResolvedAccess) {
     const car = await this.load(id, user, access);
     if (car.status !== 'opening') throw new BadRequestException('只有开通中的记录需要重试');
-    for (const opId of [car.openOperationId, car.renewOperationId]) {
+    this.assertOpeningApproval(car);
+    if (car.duplicateCheckQueryId && !car.registrationOperationId && !car.openOperationId) {
+      const check = await this.queryRepo.findOne({ where: { id: car.duplicateCheckQueryId, tenantId: car.tenantId } });
+      if (check?.status === 'failed') car.duplicateCheckQueryId = null;
+    }
+    for (const opId of [car.registrationOperationId, car.openOperationId, car.renewOperationId]) {
       if (!opId) continue;
       const op = await this.operationRepo.findOne({ where: { id: opId, tenantId: car.tenantId } });
       if (op?.status === 'failed') {
@@ -778,6 +819,7 @@ export class FamilyCarService {
     }
     car.lastError = null;
     if (!car.openOperationId) await this.startOpening(car, user);
+    else if (car.garages.includes('civil') && !car.civilOperationId) await this.openCivil(car, user, false);
     await this.appendLog(car, user, '重试开通');
     await this.sync(car, user);
     return this.detail(car);
@@ -797,12 +839,19 @@ export class FamilyCarService {
   async ownerSubmitted(familyCarId: number, files: FamilyCarFile[], form: Record<string, string> | null) {
     const car = await this.repo.findOne({ where: { id: familyCarId } });
     if (!car) return;
+    if (!this.inTransaction) return this.locked(car.id, this.systemUser(car), service => service.ownerSubmitted(familyCarId, files, form));
+    if (!['upload', 'office', 'returned'].includes(car.status)) throw new BadRequestException('当前登记已提交经理审批或进入执行，不能再通过旧二维码修改资料');
     car.files = [...car.files, ...files];
+    car.officeReviewedBy = null;
+    car.officeReviewedAt = null;
+    car.managerReviewedBy = null;
+    car.managerReviewedAt = null;
     if (form) {
       if (form.carOwnerName) car.carOwnerName = form.carOwnerName.trim().slice(0, 50);
       if (form.carOwnerPhone) car.carOwnerPhone = form.carOwnerPhone.trim().slice(0, 30);
       if (form.relation && (FAMILY_RELATIONS as readonly string[]).includes(form.relation)) car.relation = form.relation;
     }
+    this.revise(car, null, '业主扫码填写资料');
     if (car.status === 'upload') car.status = 'office';
     car.log = [...car.log, { at: new Date().toISOString(), userId: null, userName: '业主扫码', action: '业主扫码填写并上传资料', note: files.map((file) => file.fileName).join('、') }];
     await this.repo.save(car);
@@ -811,16 +860,22 @@ export class FamilyCarService {
 
   /**
    * 收银台「新办车牌 · 亲情车」：业主扫码填的车牌、车主和资料已由办公室在收银台审核过。
-   * 这里按原流程建亲情车登记（含旧库查重、暂存），带上资料，并记下办公室已审核；
-   * 新车牌的旧库暂存完成后自动提交物业经理（定时任务推进），不用办公室再审一遍。
+   * 这里在原登记事务内建亲情车档案及证明，带上资料，并记下办公室已审核；
+   * 办公室确认后直接提交物业经理，不在审批前创建旧库暂存，也不要求重复审核。
    */
-  async createFromIntake(input: CreateFamilyCarInput, files: FamilyCarFile[], note: string, user: AuthUser, access?: ResolvedAccess, attachmentsOptional = false) {
-    const created = await this.create({ ...input, ownerFill: false }, user, access);
+  async createFromIntake(input: CreateFamilyCarInput, files: FamilyCarFile[], note: string, user: AuthUser, access: ResolvedAccess | undefined,
+    context: { manager: EntityManager; intakeId: number; afterCommit?: Array<() => Promise<unknown> | unknown> }, attachmentsOptional = false) {
+    return this.withManager(context.manager, context.afterCommit).createFromIntakeInTransaction(input, files, note, user, access, context.intakeId, attachmentsOptional);
+  }
+
+  private async createFromIntakeInTransaction(input: CreateFamilyCarInput, files: FamilyCarFile[], note: string, user: AuthUser, access: ResolvedAccess | undefined, intakeId: number, attachmentsOptional = false) {
+    const created = await this.createInTransaction({ ...input, ownerFill: false }, user, access, intakeId);
     const car = await this.load(created.id, user, access);
     car.files = files;
     car.status = 'office';
     car.officeReviewedBy = user.id;
     car.officeReviewedAt = new Date();
+    car.officeConfirmedVersion = car.dataVersion ?? 0;
     car.officeNote = (note || '收银台已审核业主扫码资料').slice(0, 500);
     // 收银台的二维码已经收齐资料，亲情车自己的上传码不再需要
     if (car.proofUploadId) {
@@ -829,20 +884,15 @@ export class FamilyCarService {
     }
     if (attachmentsOptional) car.log = [...car.log, { at: new Date().toISOString(), userId: user.id, userName: '办公室', action: '工作人员代填登记，附件选填', attachmentsOptional: true }];
     await this.appendLog(car, user, '收银台扫码登记，办公室已审核资料', car.officeNote);
-    await this.advancePreReviewed(car, user).catch(() => undefined);
+    await this.advancePreReviewed(car, user);
     return this.detail(car);
   }
 
-  /** 办公室已审核（收银台）、只等旧库暂存完成的登记：完成后自动提交物业经理 */
+  /** 办公室已审核（收银台）的登记直接提交物业经理，执行仍须等经理通过。 */
   private async advancePreReviewed(car: FamilyCar, user: AuthUser) {
     if (car.status !== 'office' || !car.officeReviewedAt) return;
-    if (car.mode === 'new') {
-      const registration = car.registrationOperationId ? await this.operationRepo.findOne({ where: { id: car.registrationOperationId, tenantId: car.tenantId } }) : null;
-      if (registration?.status === 'failed') { await this.setError(car, `旧库暂存失败：${registration.lastError || '请联系管理员'}`); return; }
-      if (registration?.status !== 'completed') return;
-    }
     car.status = 'manager';
-    await this.appendLog(car, user, '旧库暂存完成，自动提交物业经理审核');
+    await this.appendLog(car, user, '办公室已确认资料，提交物业经理审核');
     await this.notifyManagers(car, user);
   }
 
@@ -886,12 +936,113 @@ export class FamilyCarService {
 
   // ---------------- 内部 ----------------
 
-  private async startOpening(car: FamilyCar, user: AuthUser) {
+  private assertOpeningApproval(car: FamilyCar) {
+    if (car.status !== 'opening' || !car.officeReviewedAt || !car.officeReviewedBy || !car.managerReviewedAt || !car.managerReviewedBy) {
+      throw new BadRequestException('当前登记尚未完成办公室确认和经理审批，不能执行旧库任务');
+    }
+    // 历史记录（dataVersion 0，迁移前已审批）沿用时间戳证明；任何迁移后的资料变更都必须重新逐级确认。
+    const version = car.dataVersion ?? 0;
+    if (version > 0 && (car.officeConfirmedVersion !== version || car.managerApprovedVersion !== version)) {
+      throw new BadRequestException('登记资料已变更，原办公室确认和经理审批已失效，请重新审核后再执行');
+    }
+  }
+
+  /** 只读查重过期时等待新的查询结果，不把“未查到”当成新车。 */
+  private async refreshExecutionCheck(car: FamilyCar, user: AuthUser): Promise<boolean> {
+    let check = car.duplicateCheckQueryId
+      ? await this.queryRepo.findOne({ where: { id: car.duplicateCheckQueryId, tenantId: car.tenantId, queryKind: 'vehicle' } })
+      : null;
+    const checkedAt = check?.completedAt ?? check?.createdAt;
+    const age = checkedAt ? Date.now() - new Date(checkedAt).getTime() : NaN;
+    if (!check || !Number.isFinite(age) || age > 5 * 60_000 || (check.completedAt && age < 0)) {
+      const query = await this.parking.createParkingQuery({ term: car.plate }, user);
+      car.duplicateCheckQueryId = query.id;
+      await this.repo.save(car);
+      check = await this.queryRepo.findOne({ where: { id: query.id, tenantId: car.tenantId, queryKind: 'vehicle' } });
+    }
+    if (!check || check.status !== 'completed' || !check.completedAt) {
+      await this.setError(car, check?.status === 'failed' ? '开通前只读查重失败，请核对后重试' : '等待开通前只读查重完成，尚未创建旧库写任务');
+      return false;
+    }
+    if (normalizeFamilyPlate(check.term) !== car.plate) throw new BadRequestException('执行查重结果与当前车牌不一致');
+    const outcome = classifyPlateCheck(check.rows, car.plate, roomKey(car.lane, car.buildingNo, car.roomNo));
+    if (outcome.mode === 'conflict') { await this.setError(car, '该车牌已有不兼容的登记，请联系有权限的管理人员核对'); return false; }
+    car.mode = outcome.mode;
+    car.lastError = null;
+    await this.repo.save(car);
+    return true;
+  }
+
+  private async isExecutionDateAllowed(car: FamilyCar): Promise<boolean> {
     const today = shanghaiDate();
-    const validity = familyValidity(today);
-    car.startDate = validity.startDate;
-    car.endDate = validity.endDate;
+    if (car.startDate && car.startDate > today) {
+      await this.setError(car, `已审批，等待 ${car.startDate} 起始日，尚未释放旧库写任务`);
+      return false;
+    }
+    if (car.endDate && car.endDate < today) {
+      await this.setError(car, '已审批期限已经结束，不再释放旧库写任务');
+      return false;
+    }
+    return true;
+  }
+
+  private async startOpening(car: FamilyCar, user: AuthUser) {
+    this.assertOpeningApproval(car);
+    const term = normalizeRegistrationTerm(car.registrationTerm);
+    if (term.mode === 'dates') {
+      car.startDate = term.startDate; car.endDate = term.endDate;
+      await this.repo.save(car);
+    }
+    if (!await this.isExecutionDateAllowed(car)) return;
+    if (car.openOperationId) return;
+    // 已存在历史暂存任务：只核对原任务，不重建、不删除旧库记录。
+    if (car.registrationOperationId) {
+      const registration = await this.operationRepo.findOne({ where: { id: car.registrationOperationId, tenantId: car.tenantId } });
+      if (!registration || registration.status !== 'completed') {
+        await this.setError(car, registration?.status === 'failed' ? `旧库登记失败：${registration.lastError || '请重试原步骤'}` : '等待原旧库登记任务完成');
+        return;
+      }
+    } else if (!await this.refreshExecutionCheck(car, user)) return;
+    // 开始写任务后期限固定；重试不按重试当天重算或延长。
+    if (!car.startDate && !car.endDate) {
+      let activationDate = shanghaiDate();
+      if (car.previousId) {
+        const previous = await this.repo.findOne({ where: { id: car.previousId, tenantId: car.tenantId } });
+        if (previous?.endDate && previous.endDate >= activationDate) activationDate = addDays(previous.endDate, 1);
+      }
+      const validity = registrationWindow(term, activationDate);
+      car.startDate = validity.startDate;
+      car.endDate = validity.endDate;
+      await this.repo.save(car);
+    }
+    if (!await this.isExecutionDateAllowed(car)) return;
+    if (!car.startDate || !car.endDate) throw new BadRequestException('登记期限不完整，请核对后处理');
+    if (car.previousId) {
+      const previous = await this.repo.findOne({ where: { id: car.previousId, tenantId: car.tenantId } });
+      if (previous?.endDate && car.endDate < previous.endDate) { await this.setError(car, '本次登记不能缩短原有有效期'); return; }
+    }
     const proofId = await this.approveProof(car, user);
+    if (car.mode === 'new' && !car.registrationOperationId) {
+      try {
+        const op = await this.parking.createParkingOperation({
+          kind: 'add_vehicle', database: car.database as 'parking1' | 'parking2',
+          idempotencyKey: `family-car-${car.id}-register`, pmsUserId: car.ownerUserId,
+          payload: {
+            plate: car.plate, ownerName: car.ownerName || roomKey(car.lane, car.buildingNo, car.roomNo), ownerPhone: car.ownerPhone,
+            ownerAddress: roomKey(car.lane, car.buildingNo, car.roomNo), identity: '亲情车', amount: 0,
+            ...(term.mode === 'months' ? { months: term.months } : {}),
+            startDate: car.startDate, endDate: car.endDate, proofUploadId: proofId,
+            garages: car.garages, garageNumbers: car.garageNumbers, spaces: car.garageNumbers.main || '',
+            requiresProofReview: true, duplicateCheckQueryId: car.duplicateCheckQueryId,
+            note: ['亲情车经理审批后登记', car.remark, '操作来源：PMS系统'].filter(Boolean).join('；'),
+          },
+        }, user);
+        car.registrationOperationId = op.id;
+        car.lastError = null;
+        await this.repo.save(car);
+      } catch (error) { await this.setError(car, `旧库登记任务创建失败：${error instanceof Error ? error.message : ''}`); }
+      return;
+    }
     const localGarages = car.garages.filter((key) => key !== 'civil');
     try {
       const op = await this.parking.createParkingOperation({
@@ -961,19 +1112,26 @@ export class FamilyCarService {
   /** 推进开通：车库授权完成 → 续期一年（调用停车续期）→ 已生效 */
   private async sync(car: FamilyCar, user: AuthUser) {
     if (car.status !== 'opening') return;
-    if (!car.openOperationId) return;
+    this.assertOpeningApproval(car);
+    if (!await this.isExecutionDateAllowed(car)) return;
+    if (!car.openOperationId) {
+      await this.startOpening(car, user);
+      if (!car.openOperationId) return;
+    }
     const open = await this.operationRepo.findOne({ where: { id: car.openOperationId, tenantId: car.tenantId } });
     if (!open) return;
     if (open.status === 'failed') { await this.setError(car, `车库授权失败：${open.lastError || ''}`); return; }
     if (open.status !== 'completed') return;
     if (!car.renewOperationId) {
       try {
+        const term = normalizeRegistrationTerm(car.registrationTerm);
         const renew = await this.parking.createParkingOperation({
           kind: 'renew_vehicle',
           database: car.database as 'parking1' | 'parking2',
           idempotencyKey: `family-car-${car.id}-renew-${car.endDate}`,
           pmsUserId: car.ownerUserId,
-          payload: { plate: car.plate, endDate: car.endDate, amount: 0, months: 12, identity: '亲情车', note: '亲情车年度登记，不收费' },
+          payload: { plate: car.plate, startDate: car.startDate, endDate: car.endDate, amount: 0,
+            ...(term.mode === 'months' ? { months: term.months } : {}), identity: '亲情车', note: '亲情车审批期限登记，不收费' },
         }, user);
         car.renewOperationId = renew.id;
         car.lastError = null;
@@ -987,9 +1145,10 @@ export class FamilyCarService {
     if (!renew) return;
     if (renew.status === 'failed') { await this.setError(car, `续期失败：${renew.lastError || ''}`); return; }
     if (renew.status !== 'completed') return;
-    if (car.civilOperationId) {
-      const civil = await this.operationRepo.findOne({ where: { id: car.civilOperationId, tenantId: car.tenantId } });
+    if (car.garages.includes('civil')) {
+      const civil = car.civilOperationId ? await this.operationRepo.findOne({ where: { id: car.civilOperationId, tenantId: car.tenantId } }) : null;
       if (civil?.status === 'failed') { await this.setError(car, `人防车库开通失败：${civil.lastError || ''}`); return; }
+      if (!civil || civil.status !== 'completed') return;
     }
     car.status = 'active';
     car.lastError = null;
@@ -1045,6 +1204,12 @@ export class FamilyCarService {
   }
 
   private async notifyManagers(car: FamilyCar, user: AuthUser) {
+    if (this.afterCommit) {
+      const service = Object.create(this) as FamilyCarService;
+      Object.assign(service, { afterCommit: undefined });
+      this.afterCommit.push(() => service.notifyManagers(car, user));
+      return;
+    }
     const ids = new Set<number>();
     for (const key of MANAGER_KEYS) (await this.access.userIdsWithPermission(car.tenantId, key, 'edit')).forEach((id) => ids.add(id));
     ids.delete(user.id);
@@ -1061,6 +1226,12 @@ export class FamilyCarService {
   }
 
   private async notifyOffice(car: FamilyCar, title: string, note?: string) {
+    if (this.afterCommit) {
+      const service = Object.create(this) as FamilyCarService;
+      Object.assign(service, { afterCommit: undefined });
+      this.afterCommit.push(() => service.notifyOffice(car, title, note));
+      return;
+    }
     const ids = new Set<number>((await this.access.userIdsWithPermission(car.tenantId, 'family-cars', 'edit')));
     if (car.createdBy) ids.add(car.createdBy);
     for (const receiverId of ids) {
@@ -1079,6 +1250,19 @@ export class FamilyCarService {
 
   private systemUser(car: FamilyCar): AuthUser {
     return { id: car.managerReviewedBy || car.officeReviewedBy || car.createdBy || 0, tenantId: car.tenantId, role: 'admin' };
+  }
+
+  /** Append-only snapshot before any material change; clears both confirmations for the new version. */
+  private revise(car: FamilyCar, actorId: number | null, reason: string) {
+    reviseVehicleMaterial(car, {
+      houseId: car.houseId, lane: car.lane, buildingNo: car.buildingNo, roomNo: car.roomNo,
+      ownerName: car.ownerName, ownerPhone: car.ownerPhone, carOwnerName: car.carOwnerName, carOwnerPhone: car.carOwnerPhone,
+      relation: car.relation, plate: car.plate, remark: car.remark, database: car.database,
+      garages: car.garages, garageNumbers: car.garageNumbers, mode: car.mode, files: car.files,
+      registrationTerm: car.registrationTerm, proofUploadId: car.proofUploadId,
+    }, actorId, reason);
+    car.officeReviewedBy = null; car.officeReviewedAt = null; car.managerReviewedBy = null; car.managerReviewedAt = null;
+    if (car.status === 'manager') car.status = 'office';
   }
 
   private async appendLog(car: FamilyCar, user: AuthUser, action: string, note?: string) {
@@ -1187,10 +1371,10 @@ export class FamilyCarService {
       relation: car.relation,
       plate: car.plate,
       remark: car.remark,
-      status: car.status,
-      statusLabel: FAMILY_STATUS_LABEL[car.status],
+      status: car.status,      statusLabel: FAMILY_STATUS_LABEL[car.status],
       mode: car.mode,
       ownerFill: car.ownerFill,
+      registrationTerm: car.registrationTerm ?? { mode: 'months' as const, months: 12 },
       startDate: car.startDate,
       endDate: car.endDate,
       daysLeft: car.endDate && car.status === 'active' ? daysUntil(car.endDate, today) : null,
@@ -1212,6 +1396,10 @@ export class FamilyCarService {
   private detail(car: FamilyCar, today = shanghaiDate()) {
     return {
       ...this.view(car, today),
+      dataVersion: car.dataVersion ?? 0,
+      officeConfirmedVersion: car.officeConfirmedVersion ?? null,
+      managerApprovedVersion: car.managerApprovedVersion ?? null,
+      materialHistory: car.materialHistory ?? [],
       files: this.materialFiles(car),
       proofUploadId: car.proofUploadId,
       officeNote: car.officeNote,

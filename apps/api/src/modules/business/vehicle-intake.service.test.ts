@@ -6,11 +6,16 @@ import { VehicleIntake, BusinessTransaction, BusinessLog } from '../../entities'
 /** 极简内存仓库：支持 findOne/save/create、update().set().where(id + 状态).execute() */
 function repo<T extends { id?: number }>(rows: T[]) {
   let seq = rows.length;
-  const match = (row: any, where: any) => Object.entries(where || {}).every(([k, v]) => row[k] === v);
+  const match = (row: any, where: any) => Object.entries(where || {}).every(([k, v]: [string, any]) => v?._type === 'in' ? v._value.includes(row[k]) : v?._type === 'isNull' ? row[k] == null : row[k] === v);
+  const selected = (where: any, order?: any) => {
+    const matches = rows.filter((row) => match(row, where));
+    return order?.id === 'DESC' ? matches.sort((a, b) => Number(b.id) - Number(a.id)) : matches;
+  };
   const r: any = {
     rows,
     create: (x: any) => ({ ...x }),
-    findOne: async ({ where }: any) => rows.find((row) => match(row, where)) ?? null,
+    findOne: async ({ where, order }: any) => selected(where, order)[0] ?? null,
+    find: async ({ where, order }: any) => selected(where, order),
     save: async (x: any) => {
       if (Array.isArray(x)) return Promise.all(x.map(r.save));
       if (!x.id) { x.id = ++seq; x.createdAt = new Date(); x.updatedAt = new Date(); rows.push(x); }
@@ -45,11 +50,25 @@ function setup(mode: 'queued' | 'mocked' = 'queued') {
   // Existing sequential workflow fixture now exposes the transaction-scoped repositories.
   // Lock/race/rollback semantics are covered by vehicle-intake-kind-safety.test.ts.
   const repositories = new Map<any, any>([[VehicleIntake, intakes], [BusinessTransaction, txns], [BusinessLog, logs]]);
+  const operations: any[] = [];
   const manager: any = {
-    query: async () => [],
+    queryRunner: { isTransactionActive: true },
     save: async () => undefined, create: (_entity: any, value: any) => value,
     getRepository: (entity: any) => { if (!repositories.has(entity)) repositories.set(entity, repo<any>([])); return repositories.get(entity); },
     transaction: async (work: any) => work(manager),
+    query: async (sql: string, params: any[]) => {
+      if (/SELECT id FROM houses .* FOR UPDATE/.test(sql)) { assert.deepEqual(params, [5, 1]); return [{ id: 5 }]; }
+      if (/^INSERT INTO vehicle_intake_operations/.test(sql)) {
+        operations.push({ tenant_id: params[0], operation_key: params[1], house_id: params[2], request_hash: params[3], intake_id: params[4] });
+        return [];
+      }
+      if (/FROM vehicle_intake_operations/.test(sql)) {
+        return operations.filter((row) => row.tenant_id === params[0] && row.operation_key === params[1]);
+      }
+      // Dedicated persistence tests execute these statements against isolated PostgreSQL.
+      assert.match(sql, /pg_advisory_xact_lock|FROM vehicle_intakes i|FROM family_cars f|vehicle_registration_claims/);
+      return [];
+    },
   };
   for (const repository of repositories.values()) repository.manager = manager;
   const house = { id: 5, buildingId: 2, roomNo: '502', tenantId: 1 };
@@ -76,6 +95,7 @@ const tokenOf = (url: string) => url.split('/').pop()!;
 test('paid intake: owner fills plate on phone, payment waits for docs, approval releases it into execution', async () => {
   const { service, intakes, txns, user, kicked } = setup();
   const created = await service.create({ houseId: 5, kind: 'paid', garages: ['local:phase2_parking'], formBase: 'https://prsznh.cn/beta/m/plate' }, user);
+  assert.ok(created.qr, 'new unexpired draft returns its QR');
   assert.equal(created.status, 'waiting');
   assert.match(created.qr.url, /^https:\/\/prsznh\.cn\/beta\/m\/plate\/[A-Za-z0-9_-]{20,}$/);
   assert.equal(created.houseLabel, '枫桦景苑二期/228弄3号502');
@@ -113,6 +133,7 @@ test('paid intake: owner fills plate on phone, payment waits for docs, approval 
 test('reupload keeps the same QR usable; regenerating invalidates the old one', async () => {
   const { service, user } = setup();
   const created = await service.create({ houseId: 5, kind: 'paid', garages: ['local:phase2_parking'], formBase: 'https://prsznh.cn/beta/m/plate' }, user);
+  assert.ok(created.qr, 'new unexpired draft returns its QR');
   const token = tokenOf(created.qr.url);
   await service.publicSubmit(token, [file()], { plate: '豫GQ3N07', contactName: '李四', contactPhone: '13900000000' });
   await assert.rejects(() => service.review(created.id, { decision: 'reupload' }, user), /补什么/);
@@ -134,13 +155,16 @@ test('expired QR is refused; foreign form hosts are refused', async () => {
   const { service, intakes, user } = setup();
   await assert.rejects(() => service.create({ houseId: 5, kind: 'paid', formBase: 'https://evil.example.com/m' }, user), /不属于本系统/);
   const created = await service.create({ houseId: 5, kind: 'family', formBase: 'https://prsznh.cn/beta/m/plate' }, user);
+  assert.ok(created.qr, 'new unexpired draft returns its QR');
+  const token = tokenOf(created.qr.url);
   intakes.rows[0].expiresAt = new Date(Date.now() - 1000);
-  await assert.rejects(() => service.publicSession(tokenOf(created.qr.url)), /已过期/);
+  await assert.rejects(() => service.publicSession(token), /已过期/);
 });
 
 test('family intake: relation required, needs duplicate check, converts to a family-car registration', async () => {
   const { service, intakes, user } = setup();
   const created = await service.create({ houseId: 5, kind: 'family', garages: ['phase2'], formBase: 'https://prsznh.cn/beta/m/plate' }, user);
+  assert.ok(created.qr, 'new unexpired draft returns its QR');
   const token = tokenOf(created.qr.url);
   await assert.rejects(() => service.publicSubmit(token, [file()], { plate: '豫GQ3N07', contactName: '李四', contactPhone: '13900000000' }), /关系/);
   await assert.rejects(() => service.publicSubmit(token, [file()], { plate: '豫GQ3N07', contactPhone: '13900000000', relation: '其他亲属' }), /写明/);
@@ -152,9 +176,55 @@ test('family intake: relation required, needs duplicate check, converts to a fam
   assert.equal(intakes.rows[0].status, 'approved');
 });
 
+test('office fills and confirms intake material itself, with version guard and provenance', async () => {
+  const { service, intakes, txns, user } = setup();
+  const created = await service.create({ houseId: 5, kind: 'paid', garages: ['local:phase2_parking'], formBase: 'https://prsznh.cn/beta/m/plate' }, user);
+  const key = (n: number) => `office-op-${String(n).padStart(8, '0')}`;
+  const v0 = created.dataVersion;
+  await assert.rejects(() => service.saveOffice(created.id, { operationKey: 'short', expectedVersion: v0, confirm: false }, [], user), /操作编号/);
+  await assert.rejects(() => service.saveOffice(created.id, { operationKey: key(1), expectedVersion: v0, confirm: true }, [], user), /上传资料|车库|手机号|车牌/);
+  const saved = await service.saveOffice(created.id, {
+    operationKey: key(1), expectedVersion: v0, confirm: false,
+    plate: '豫GQ3N07', contactName: '李四', contactPhone: '13900000000',
+    garages: ['local:phase2_parking'], garageNumbers: { 'local:phase2_parking': '' },
+  }, [], user);
+  assert.equal(saved.status, 'waiting');
+  assert.equal(saved.inputSource, 'office');
+  assert.equal(saved.dataVersion, v0 + 1);
+  assert.equal(intakes.rows[0].inputSource, 'office');
+  // 版本过期不能覆盖他人修改
+  await assert.rejects(() => service.saveOffice(created.id, { operationKey: key(2), expectedVersion: v0, confirm: false, plate: '豫GQ3N07' }, [], user), /已更新/);
+  // 同一操作编号可安全重放，且不重复计版本
+  const replay = await service.saveOffice(created.id, {
+    operationKey: key(1), expectedVersion: v0, confirm: false,
+    plate: '豫GQ3N07', contactName: '李四', contactPhone: '13900000000',
+    garages: ['local:phase2_parking'], garageNumbers: { 'local:phase2_parking': '' },
+  }, [], user);
+  assert.equal(replay.dataVersion, v0 + 1);
+  const confirmed = await service.saveOffice(created.id, { operationKey: key(3), expectedVersion: v0 + 1, confirm: true }, [file('office-xsz.jpg')], user);
+  assert.equal(confirmed.status, 'submitted');
+  assert.equal(intakes.rows[0].files[0].source, 'office', 'office upload keeps its own provenance');
+  // 办公室确认后资料版本再次变化，审批绑定失效
+  const revised = await service.saveOffice(created.id, { operationKey: key(4), expectedVersion: v0 + 2, confirm: false, contactName: '李四四' }, [], user);
+  assert.equal(revised.dataVersion, v0 + 3);
+  assert.equal(intakes.rows[0].officeConfirmedVersion, null);
+  await assert.rejects(() => service.review(created.id, { decision: 'approve', expectedVersion: v0 + 1, duplicateCheckQueryId: 12 }, user), /已更新/);
+  // 收款前必须重新提交并审核通过（新版顺序：资料确认 → 办公室审核 → 收款）
+  await service.saveOffice(created.id, { operationKey: key(5), expectedVersion: v0 + 3, confirm: true }, [], user);
+  await service.review(created.id, { decision: 'approve', expectedVersion: v0 + 3 }, user);
+  // 收款后禁止修改车牌/车库/期限等执行依据
+  const claim = await service.claimForPayment(created.id, 5, user);
+  const txn = await txns.save({ tenantId: 1, txnNo: 'P3', amountCents: 45000, externalSyncStatus: 'awaiting_docs', snapshot: {} });
+  await service.attachPayment(claim.row, txn, user);
+  await assert.rejects(() => service.saveOffice(created.id, { operationKey: key(6), expectedVersion: v0 + 3, confirm: false, plate: '豫GA1234' }, [], user), /已经进入办理|已收款/);
+  const noteOnly = await service.saveOffice(created.id, { operationKey: key(7), expectedVersion: v0 + 3, confirm: false, contactName: '王五' }, [], user);
+  assert.equal(noteOnly.plate, '豫GQ3N07', 'non-execution fields can still be corrected after payment');
+});
+
 test('voiding a paid intake after payment hands the money to manual handling', async () => {
   const { service, intakes, txns, user } = setup();
   const created = await service.create({ houseId: 5, kind: 'paid', garages: ['local:phase2_parking'], formBase: 'https://prsznh.cn/beta/m/plate' }, user);
+  assert.ok(created.qr, 'new unexpired draft returns its QR');
   intakes.rows[0].log.forEach((entry: any) => delete entry.registrationVersion); // 历史已收费待资料单
   const claim = await service.claimForPayment(created.id, 5, user);
   const txn = await txns.save({ tenantId: 1, txnNo: 'P2', amountCents: 15000, externalSyncStatus: 'awaiting_docs', snapshot: {} });
@@ -164,3 +234,4 @@ test('voiding a paid intake after payment hands the money to manual handling', a
   assert.equal(txns.rows[0].externalSyncStatus, 'manual');
   assert.match(txns.rows[0].snapshot.execution.lastError, /业主不办了.*退款/);
 });
+

@@ -27,6 +27,7 @@ function harness(access, pathname = '/family-cars', states = {}) {
         if (id === '@/lib/auth') return { useSession: () => session, auth: { getAccess: () => access, captureIdentity: () => ({ token: 'synthetic', generation: 1 }), isCurrent: () => true } };
         if (id === '@/lib/perm') return { can: (k, action) => !!access.pages?.[k]?.[action] };
         if (id === '@/lib/page-access') return load('lib/page-access.ts');
+        if (id === '@/components/VehicleRegistrationTerm') return load('components/VehicleRegistrationTerm.tsx');
         if (id === '@/components/UiPreferencesProvider') return { useUiPreferences: () => ({ preferences: {}, update() {} }) };
         if (id === '@pms/api-client') return { notifications: { unreadCount: async () => ({ count: 0 }) }, request: async o => { requests.push(o); return o.url === '/family-cars' ? { rows: [], today: '2026-11-05', total: 0, page: 1, pageSize: 20 } : []; } };
         if (id === '@/lib/format') return { dayjs: () => ({ format: () => '测试日期' }) };
@@ -92,7 +93,7 @@ test('moved family component uses exactly the three backend manager edit grants,
       const h = harness(access, '/family-cars', { FamilyList: ['', [family], family] });
       const ui = h.expand(h.render('pages/FamilyCars.tsx'));
       const expected = edit && ['family-cars-approve', 'app:family-car-approve', 'app:approve-business-manager'].includes(key);
-      if (text(ui).includes('经理审核通过（开通一年）') !== expected) failures.push(`${key} edit=${edit}`);
+      if (text(ui).includes('经理审核通过（按申请期限）') !== expected) failures.push(`${key} edit=${edit}`);
     }
   }
   assert.deepEqual(failures, []);
@@ -110,7 +111,7 @@ test('moved family page preserves search, filters, details, files, garages, vali
     assert.match(text(ui), /2026-01-01 ~ 2026-12-31/);
     assert.match(text(ui), /待办公室审核待经理审核开通中已生效已过期待上传资料/);
     assert.match(text(ui), /从旧停车库拉取/);
-    const labels = { manager: '经理审核通过（开通一年）', office: '办公室审核通过', expired: '续登一年', active: '停用', opening: '失败重试' };
+    const labels = { manager: '经理审核通过（按申请期限）', office: '办公室审核通过', expired: '续登一年', active: '停用', opening: '失败重试' };
     assert.ok(text(ui).includes(labels[status]), status);
     h.effects.forEach(f => f()); await Promise.resolve();
     assert.ok(h.requests.some(r => r.url === '/family-cars' && r.query.q === '沪A'));

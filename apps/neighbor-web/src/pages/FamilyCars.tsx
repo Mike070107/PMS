@@ -8,6 +8,7 @@ import { dayjs } from '@/lib/format';
 import { can } from '@/lib/perm';
 import { useSession } from '@/lib/auth';
 import ToneIcon from '@/components/ToneIcon';
+import { RegistrationTermEditor, RegistrationTermSummary, type RegistrationTerm } from '@/components/VehicleRegistrationTerm';
 
 interface FamilyCar {
   id: number; houseId: number; lane: string; buildingNo: string; roomNo: string; roomKey: string;
@@ -15,6 +16,7 @@ interface FamilyCar {
   status: string; statusLabel: string; mode: 'new' | 'existing'; startDate: string | null; endDate: string | null;
   daysLeft: number | null; expiringSoon: boolean; garages: string[]; garageNumbers: Record<string, string>;
   fileCount: number; lastError: string | null; createdAt: string;
+  registrationTerm?: RegistrationTerm;
 }
 interface FamilyMaterials {
   id: number; plate: string;
@@ -54,7 +56,10 @@ function FamilyList({ kw }: { kw: string }) {
   const [rows, setRows] = useState<FamilyCar[] | null>(null);
   const [open, setOpen] = useState<FamilyDetail | null>(null);
   const [busy, setBusy] = useState(false);
+  const actionBusy = useRef(false);
   const [note, setNote] = useState('');
+  const [editingTerm, setEditingTerm] = useState(false);
+  const [termDraft, setTermDraft] = useState<RegistrationTerm>({ mode: 'months', months: 12 });
   const [qr, setQr] = useState<{ plate: string; dataUrl: string; expiresAt: string } | null>(null);
   const canEdit = can('family-cars', 'edit');
   // 与亲情车控制器 MANAGER 保持一致；旧采购经理键不授予亲情车审批权。
@@ -124,17 +129,19 @@ function FamilyList({ kw }: { kw: string }) {
     ++materialsGeneration.current; setMaterials(null);
     try {
       const r = await request<FamilyDetail>({ url: `/family-cars/${id}` });
-      if (mounted.current && turn === detailGeneration.current) setOpen(r);
+      if (mounted.current && turn === detailGeneration.current) { setOpen(r); setEditingTerm(false); setTermDraft(r.registrationTerm ?? { mode: 'months', months: 12 }); }
     } catch { if (mounted.current && turn === detailGeneration.current) toast('办理详情读取失败，请重新点击办理详情重试'); }
   };
   const toggleDetail = (id: number) => {
     if (open?.id === id) { ++detailGeneration.current; setOpen(null); } else void detail(id);
   };
   const act = async (label: string, fn: () => Promise<unknown>) => {
+    if (actionBusy.current) return;
+    actionBusy.current = true;
     setBusy(true);
     try { await fn(); toast(`${label}：已提交`); setNote(''); if (open) await detail(open.id); load(); }
     catch (e) { toast(e instanceof Error ? e.message : `${label}失败`); }
-    finally { setBusy(false); }
+    finally { actionBusy.current = false; setBusy(false); }
   };
   // 续登一年：旧库查重 → 新登记（带上上一年的信息），业主扫码上传今年的资料
   const renew = (c: FamilyDetail) => act('续登', async () => {
@@ -226,7 +233,7 @@ function FamilyList({ kw }: { kw: string }) {
       {error ? <div className="card" role="alert" data-testid="family-cars-error">
         <p>亲情车查询失败：{error}</p><button className="btn sm" onClick={load}>重试</button>
       </div> : rows === null ? <div role="status" data-testid="family-cars-loading"><Loading />正在查询亲情车…</div> : (
-        <div className="card t-scroll" style={{ overflowX: 'auto' }}>
+        <div className="card t-scroll" style={{ overflowX: 'auto', containerType: 'inline-size' }}>
           <table className="tbl" data-testid="family-cars-table" style={{ minWidth: 1120 }}>
             <thead><tr><th>车牌</th><th>房号</th><th>车主 · 关系</th><th>授权车库</th><th>有效期</th><th>状态</th><th>办理资料</th><th>问题</th><th>操作</th></tr></thead>
             <tbody>
@@ -256,21 +263,33 @@ function FamilyList({ kw }: { kw: string }) {
                   </td></tr> : null}
                   {open?.id === c.id ? (
                     <tr key={`d${c.id}`} style={{ cursor: 'default' }}><td colSpan={9} style={{ background: 'var(--sunken)', padding: 14 }}>
+                      <div data-testid="family-cars-detail-panel" style={{ position: 'sticky', left: 14, width: 'min(calc(100cqw - 28px), 1050px)', maxWidth: 'calc(100vw - 76px)', whiteSpace: 'normal' }}>
                       <div className="np-files" style={{ marginBottom: 10 }}>
                         {(open.files ?? []).map(f => f.contentType.startsWith('image/')
                           ? <ImagePreviewButton key={f.index} fileUrl={f.fileUrl} fileName={f.fileName} files={open.files.filter(item => item.contentType.startsWith('image/'))}><img src={f.fileUrl} alt={f.fileName} /></ImagePreviewButton>
                           : <a key={f.index} href={f.fileUrl} target="_blank" rel="noreferrer" title={f.fileName}><span className="np-pdf"><Icon name="file" size={22} />{f.contentType === 'application/pdf' ? 'PDF' : '文件'}</span></a>)}
                         {!open.files.length ? <span className="muted">还没有资料</span> : null}
                       </div>
+                      <div style={{ marginBottom: 12 }}><RegistrationTermSummary term={open.registrationTerm} /></div>
+                      {canEdit && ['upload', 'office', 'returned'].includes(open.status) ? <div style={{ marginBottom: 12, maxWidth: 520 }}>
+                        {editingTerm ? <>
+                          <RegistrationTermEditor value={termDraft} onChange={setTermDraft} disabled={busy} />
+                          <div className="muted" style={{ marginTop: 8 }}>修改期限后，原办公室确认与经理审批失效，需重新审核。</div>
+                          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                            <button className="btn p sm" disabled={busy} onClick={() => act('保存申请期限', () => request({ method: 'PATCH', url: `/family-cars/${open.id}`, data: { registrationTerm: termDraft } }))}>保存期限</button>
+                            <button className="btn sm" disabled={busy} onClick={() => setEditingTerm(false)}>取消修改</button>
+                          </div>
+                        </> : <button className="btn sm" disabled={busy} onClick={() => { setTermDraft(open.registrationTerm ?? { mode: 'months', months: 12 }); setEditingTerm(true); }}>修改申请期限</button>}
+                      </div> : null}
                       {open.lastError ? <div className="note2" style={{ color: 'var(--dang)', marginBottom: 8 }}><Icon name="alert" />{open.lastError}</div> : null}
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                         <input className="in" style={{ width: 240, height: 38 }} value={note} onChange={(e) => setNote(e.target.value)} placeholder="备注 / 原因（退回、作废必填）" />
                         {canEdit && ['office', 'returned'].includes(open.status) ? <>
-                          <button className="btn p sm" disabled={busy} onClick={() => act('办公室审核', () => request({ method: 'POST', url: `/family-cars/${open.id}/office-review`, data: { decision: 'approve', note } }))}>办公室审核通过</button>
+                          <button className="btn p sm" disabled={busy || editingTerm} onClick={() => act('办公室审核', () => request({ method: 'POST', url: `/family-cars/${open.id}/office-review`, data: { decision: 'approve', note } }))}>办公室审核通过</button>
                           <button className="btn sm" disabled={busy} onClick={() => act('要求补资料', () => request({ method: 'POST', url: `/family-cars/${open.id}/office-review`, data: { decision: 'reupload', note } }))}>要求补资料</button>
                         </> : null}
                         {canManager && open.status === 'manager' ? <>
-                          <button className="btn p sm" disabled={busy} onClick={() => act('经理审核', () => request({ method: 'POST', url: `/family-cars/${open.id}/manager-review`, data: { decision: 'approve', note } }))}>经理审核通过（开通一年）</button>
+                          <button className="btn p sm" disabled={busy} onClick={() => act('经理审核', () => request({ method: 'POST', url: `/family-cars/${open.id}/manager-review`, data: { decision: 'approve', note } }))}>经理审核通过（按申请期限）</button>
                           <button className="btn sm" disabled={busy || !note.trim()} onClick={() => act('退回办公室', () => request({ method: 'POST', url: `/family-cars/${open.id}/manager-review`, data: { decision: 'return', note } }))}>退回办公室</button>
                         </> : null}
                         {canEdit && (open.status === 'opening' || open.lastError) ? <button className="btn sm" disabled={busy} onClick={() => act('重试', () => request({ method: 'POST', url: `/family-cars/${open.id}/retry` }))}><Icon name="refresh" size={15} />失败重试</button> : null}
@@ -278,6 +297,7 @@ function FamilyList({ kw }: { kw: string }) {
                         {canEdit && open.status === 'active' ? <button className="btn sm d" disabled={busy || !note.trim()} onClick={() => act('停用', () => request({ method: 'POST', url: `/family-cars/${open.id}/stop`, data: { note } }))}>停用</button> : null}
                       </div>
                       <ol className="np-log">{sortTimelineNewestFirst(open.log, l => l.at).map((l, i) => <li key={i}><time>{formatBeijingDateTime(l.at, 'MM-DD HH:mm')}</time><b>{l.userName}</b>{l.action}{l.note ? <small> · {l.note}</small> : null}</li>)}</ol>
+                      </div>
                     </td></tr>
                   ) : null}
                 </Fragment>
@@ -293,7 +313,7 @@ function FamilyList({ kw }: { kw: string }) {
         <button className="btn sm" disabled={!meta || meta.page * meta.pageSize >= meta.total} onClick={() => meta && setPaging({ kw, page: meta.page + 1, pageSize })}>下一页</button>
         <label>每页 <select className="in" aria-label="每页条数" style={{ width: 'auto' }} value={pageSize} onChange={e => setPaging({ kw, page: 1, pageSize: Number(e.target.value) })}>{[20, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}</select> 辆</label>
       </div>
-      <div className="note2" style={{ marginTop: 12 }}><Icon name="alert" />亲情车不收费、每次有效一年；到期前 30 天提醒，到期自动停用车库权限。新登记在收银台「停车缴费 → 亲情车」生成二维码。</div>
+      <div className="note2" style={{ marginTop: 12 }}><Icon name="alert" />亲情车不收费，默认12个月，可申请其他月数或指定起止日期，按最终审批期限开通；到期前30天提醒，到期自动停用车库权限。新登记在收银台「停车缴费 → 亲情车」生成二维码。</div>
     </>
   );
 }

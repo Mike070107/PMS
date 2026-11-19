@@ -4,7 +4,7 @@ import { ModuleRef } from '@nestjs/core';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes } from 'node:crypto';
 import * as QRCode from 'qrcode';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import { FamilyCar, ParkingProofUpload, TenantConfig } from '../../entities';
 import { detectUploadContentType } from '../upload/upload.controller';
@@ -29,6 +29,13 @@ export class ParkingProofService {
     @InjectRepository(TenantConfig) private readonly configRepo: Repository<TenantConfig>,
     private readonly moduleRef: ModuleRef,
   ) {}
+
+  /** Session/proof rows must share the family/intake transaction, never an independent connection. */
+  withManager(manager: EntityManager): ParkingProofService {
+    const service = Object.create(this) as ParkingProofService;
+    Object.assign(service, { repo: manager.getRepository(ParkingProofUpload), configRepo: manager.getRepository(TenantConfig) });
+    return service;
+  }
 
   /** 亲情车管理延迟取用，避免两个服务互相注入 */
   private familyCars(): FamilyCarService {

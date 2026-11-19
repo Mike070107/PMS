@@ -8,6 +8,8 @@ import { field as fieldOf, vehicleIdentity, identityTone, deliyunVehicleIdentity
 import NewPlateCard, { type Intake } from './NewPlateCard';
 import VehicleClassChoices from './VehicleClassChoices';
 import RenewalMonths from './RenewalMonths';
+import { Sheet } from '@/components/ui';
+import { vehicleIntakeOperation } from '@/lib/vehicle-intake-operation';
 
 
 
@@ -112,6 +114,8 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
   const [intakes, setIntakes] = useState<Intake[]>([]);
   const [newBusy, setNewBusy] = useState(false);
   const [newErr, setNewErr] = useState('');
+  const [entryKind, setEntryKind] = useState<'paid' | 'family' | null>(null);
+  const creatingIntake = useRef(false);
   useEffect(() => {
     let alive = true;
     setIntakes([]); setNewErr('');
@@ -133,13 +137,17 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
     await request({ method: 'POST', url: '/business/plate-tags', data: { plate, vehicleClass: cls, houseId: house.id } });
     setTags((t) => ({ ...t, [plate]: cls }));
   }, [house.id]);
-  const createIntake = async (kind: 'paid' | 'family') => {
-    setNewBusy(true); setNewErr('');
+  const createIntake = async (kind: 'paid' | 'family', anotherVehicle = false) => {
+    if (creatingIntake.current) return;
+    creatingIntake.current = true; setNewBusy(true); setNewErr('');
     try {
-      const r = await request<Intake>({ method: 'POST', url: '/vehicle-intakes', data: { houseId: house.id, kind, formBase: formBase() } });
-      setIntakes((l) => [r, ...l]);
-    } catch (e) { setNewErr(e instanceof Error ? e.message : '生成失败'); }
-    finally { setNewBusy(false); }
+      const operation = vehicleIntakeOperation(house.id, kind, anotherVehicle);
+      const r = await request<Intake>({ method: 'POST', url: '/vehicle-intakes', data: { houseId: house.id, kind, formBase: formBase(), operationKey: operation.operationKey, anotherVehicle: operation.anotherVehicle } });
+      operation.resolve();
+      setIntakes((l) => [r, ...l.filter(i => i.id !== r.id)]);
+      setEntryKind(null);
+    } catch (e) { setNewErr(e instanceof Error ? e.message : '生成失败，重试将继续原操作'); }
+    finally { creatingIntake.current = false; setNewBusy(false); }
   };
 
   // 选中住户 → 查德立云（服务端）+ 发起本地旧库查询（现场助手）
@@ -337,12 +345,20 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
       ) : cars.length ? <div className="muted" style={{ marginTop: 10 }}>勾选要缴费的车（可多选）</div> : null}
 
       <div className="newplate-bar">
-        <button className="btn" disabled={newBusy || !hh || !hh.targets.length} onClick={() => createIntake('paid')}><Icon name="plus" size={16} />新办车牌（付费）</button>
-        <button className="btn" disabled={newBusy} onClick={() => createIntake('family')}><Icon name="plus" size={16} />亲情车（免费 · 一年）</button>
+        <button className="btn" disabled={newBusy || !hh || !hh.targets.length} onClick={() => { setNewErr(''); setEntryKind('paid'); }}><Icon name="plus" size={16} />新办车牌（付费）</button>
+        <button className="btn" disabled={newBusy} onClick={() => { setNewErr(''); setEntryKind('family'); }}><Icon name="plus" size={16} />亲情车（免费 · 一年）</button>
         <span className="muted" style={{ fontSize: 13.5 }}>生成二维码让业主扫码填车牌、上传资料；钱可以先收</span>
       </div>
       </>}
-      {newErr ? <div className="note2" role="alert" style={{ color: 'var(--dang)' }}>{newErr}</div> : null}
+      {entryKind ? <Sheet open title="新车登记" subtitle="打开入口不会新建登记" width={520} onClose={() => { if (!creatingIntake.current) setEntryKind(null); }}>
+        <div style={{ display: 'grid', gap: 14, padding: '4px 2px' }}>
+          <div className="note">当前住户：{roomTermOf(house)}。{entryKind === 'paid' ? '付费新车' : '亲情车'}；默认继续本户同类型最新待填登记，保留原资料与收款关联。</div>
+          {newErr ? <div role="alert" style={{ color: 'var(--dang)' }}>{newErr}</div> : null}
+          <button className="btn p" disabled={newBusy} onClick={() => void createIntake(entryKind)}><Icon name="qr" size={16} />{newBusy ? '正在读取原登记…' : '生成/继续登记二维码'}</button>
+          <button className="btn" disabled={newBusy} onClick={() => { if (window.confirm('将为另一辆车新建办理单，不是继续原登记。确认再登记一辆？')) void createIntake(entryKind, true); }}>再登记一辆（另建办理单）</button>
+        </div>
+      </Sheet> : null}
+      {!entryKind && newErr ? <div className="note2" role="alert" style={{ color: 'var(--dang)' }}>{newErr}</div> : null}
       {intakes.length ? (
         <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
           {intakes.map((i) => (

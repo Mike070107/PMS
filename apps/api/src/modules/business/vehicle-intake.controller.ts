@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, ParseIntPipe, Post, Query, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { AuthUser, CurrentUser } from '../../common/current-user.decorator';
 import { RequirePermission } from '../../common/require-permission.decorator';
@@ -6,7 +6,7 @@ import { ResolvedAccess } from '../access/access.service';
 import { CurrentAccess } from '../access/current-access.decorator';
 import { PermissionsGuard } from '../access/permissions.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { ChangeIntakeKindInput, CreateIntakeInput, ReviewIntakeInput, VehicleIntakeService } from './vehicle-intake.service';
+import { ChangeIntakeKindInput, CreateIntakeInput, OfficeIntakeInput, ReviewIntakeInput, VehicleIntakeService } from './vehicle-intake.service';
 
 const VIEW = ['business', 'family-cars'] as const;
 /** 新办车牌待审的经理这一步：新 key 或拆分前的旧 key 任一命中 */
@@ -40,6 +40,19 @@ export class VehicleIntakeController {
   @RequirePermission([...VIEW, ...MANAGER_REVIEW], 'view')
   parkingSpaces(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
     return this.service.parkingSpaces(id, user, access);
+  }
+
+  @Post(':id/office')
+  @RequirePermission([...VIEW], 'edit')
+  @UseInterceptors(FilesInterceptor('file', 10, { limits: { fileSize: 20 * 1024 * 1024 } }))
+  saveOffice(@Param('id', ParseIntPipe) id: number, @Body() body: { data?: string }, @UploadedFiles() files: Express.Multer.File[], @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    let input: OfficeIntakeInput;
+    try {
+      const value: unknown = JSON.parse(body?.data ?? '');
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('object required');
+      input = value as OfficeIntakeInput;
+    } catch { throw new BadRequestException('办公室资料格式无效'); }
+    return this.service.saveOffice(id, input, files, user, access);
   }
 
   @Post(':id/show-qr')

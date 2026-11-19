@@ -144,10 +144,18 @@ export class BusinessService {
     const selfApproval = txn.createdBy === user.id;
     if (selfApproval && !isAdmin) throw new ForbiddenException('不能审核自己收款登记的续期，请由其他有审批权限的人处理');
     if (!approve && !reason?.trim()) throw new BadRequestException('驳回请写原因');
-    const review = { ...((txn.snapshot?.review as Record<string, unknown>) || {}), decidedBy: user.id, decidedAt: new Date().toISOString(), decision: approve ? 'approved' : 'rejected', decisionReason: reason?.trim() || null, selfApproval: selfApproval && isAdmin ? '超管自审' : null };
+    const review: Record<string, unknown> = { ...((txn.snapshot?.review as Record<string, unknown>) || {}), decidedBy: user.id, decidedAt: new Date().toISOString(), decision: approve ? 'approved' : 'rejected', decisionReason: reason?.trim() || null, selfApproval: selfApproval && isAdmin ? '超管自审' : null };
     const exec = this.execution.initialFor(BusinessServiceType.PARKING_MONTHLY);
     // 新办车牌：金额通过了，但业主资料还没审核通过的，继续等资料
     const intakeId = (txn.snapshot?.intake as { id?: number } | undefined)?.id;
+    if (intakeId) {
+      const current = await this.intakes.dataVersionOf(intakeId, tenantId);
+      const quoted = (txn.snapshot?.intake as { dataVersion?: number } | undefined)?.dataVersion;
+      if (approve && quoted !== undefined && current !== null && current !== quoted && (txn.snapshot?.review as { manualAmountCents?: unknown } | undefined)?.manualAmountCents !== undefined) {
+        throw new BadRequestException('登记资料已更新（含非标准金额依据），请让前台按最新资料重新登记；原报价审批不能直接执行');
+      }
+      if (approve && current !== null) review.approvedIntakeVersion = current;
+    }
     const waitDocs = approve && intakeId ? !(await this.intakes.isApproved(intakeId, tenantId)) : false;
     const next = !approve ? 'rejected' : waitDocs ? 'awaiting_docs' : exec.status;
     const claimed = await this.txnRepo.createQueryBuilder().update(BusinessTransaction)
@@ -609,23 +617,27 @@ export class BusinessService {
 
   private async completePayment(dto: CompleteBusinessDto, user: AuthUser, access?: ResolvedAccess, manager?: EntityManager) {
     const tenantId = this.requireTenant(user);
+    // 新办车牌：车牌由业主扫码或办公室填写，登记期限以登记单为准，服务端重新报价。
+    const intake = dto.intakeId && dto.serviceType === BusinessServiceType.PARKING_MONTHLY
+      ? await this.intakes.claimForPayment(dto.intakeId, dto.houseId, user, manager, access) : null;
+    const term = intake?.row.registrationTerm ?? null;
+    if (intake) {
+      dto.plateNo = intake.plate || undefined;
+      dto.currentEndDate = undefined;
+      if (term?.mode === 'months') { dto.months = term.months; dto.startDate = undefined; dto.endDate = undefined; }
+      else if (term?.mode === 'dates') { dto.startDate = term.startDate; dto.endDate = term.endDate; dto.months = undefined; }
+    }
     const estimate = await this.estimate(dto, user);
     const rule = await this.findRule(tenantId, dto.ruleId, dto.serviceType);
     // 非标准续期：前台自定开始/结束日期并手填实收金额 → 先登记收款，等物业经理审核通过再执行
-    const custom = dto.serviceType === BusinessServiceType.PARKING_MONTHLY && (dto.manualAmountCents != null || !!dto.startDate || !!dto.endDate);
+    const custom = dto.serviceType === BusinessServiceType.PARKING_MONTHLY
+      && (dto.manualAmountCents != null || (!term && (!!dto.startDate || !!dto.endDate)));
     if (custom) {
       if (!dto.startDate || !dto.endDate) throw new BadRequestException('非标准续期要填开始日期和结束日期');
       if (dto.manualAmountCents == null) throw new BadRequestException('非标准续期要填实收金额');
       if (!dto.customReason?.trim()) throw new BadRequestException('请写明非标准续期的原因，供物业经理审核');
     }
     const amountCents = custom ? dto.manualAmountCents! : estimate.amountCents;
-    // 新办车牌：车牌由业主扫码填写，可能还没填；资料没审核通过前收款挂「待业主资料」
-    const intake = dto.intakeId && dto.serviceType === BusinessServiceType.PARKING_MONTHLY
-      ? await this.intakes.claimForPayment(dto.intakeId, dto.houseId, user, manager, access) : null;
-    if (intake) {
-      dto.plateNo = intake.plate || undefined;
-      dto.currentEndDate = undefined;
-    }
     // 车牌所在的缴费规则分组要和所用价格表对上：业主车不能按租客车价收，反之亦然
     if (dto.serviceType === BusinessServiceType.PARKING_MONTHLY) {
       const ruleClass = ((rule.config ?? {}) as ParkingRuleConfig).vehicleClass || '';
@@ -659,6 +671,15 @@ export class BusinessService {
     let targetType: string | null = null;
     let targetId: number | null = null;
     const snapshot: Record<string, unknown> = { estimate, ruleName: rule.name };
+    if (intake) {
+      snapshot.registrationTerm = term;
+      snapshot.quote = {
+        amountCents, standardAmountCents: 'standardAmountCents' in estimate ? estimate.standardAmountCents : estimate.amountCents,
+        quantity: estimate.quantity, startDate: estimate.startDate, endDate: estimate.endDate,
+        ruleId: rule.id, unitPriceCents: rule.unitPriceCents, computedAt: new Date().toISOString(),
+        source: 'server-intake-term',
+      };
+    }
     const exec = this.execution.initialFor(dto.serviceType);
     if (exec.execution) snapshot.execution = exec.execution;
     if (custom) {
@@ -682,7 +703,7 @@ export class BusinessService {
         snapshot.parking = { plate: (dto.plateNo || '').trim().toUpperCase(), target: target?.key ?? null, systems: dto.parkingSystems, ...(intake ? { newVehicle: true } : {}) };
       }
       if (intake) {
-        snapshot.intake = { id: intake.row.id };
+        snapshot.intake = { id: intake.row.id, plate: intake.row.plate, dataVersion: intake.row.dataVersion ?? 0 };
         snapshot.vehicle = { plateNo: intake.plate || '', validUntil: estimate.endDate };
         targetType = 'vehicle_intake';
         targetId = intake.row.id;

@@ -42,6 +42,8 @@ interface FamilyRow extends Omit<familyCars.FamilyCarDetail, 'files'> {
   roomText: string;
   carOwnerText: string;
   garageText: string;
+  termText: string;
+  termReason: string;
   createdAtText: string;
   photos: string[];
 }
@@ -62,6 +64,10 @@ function toFamilyRow(item: familyCars.FamilyCarDetail): FamilyRow {
     files,
     roomText: `${item.lane} 弄 ${item.buildingNo} 号 ${item.roomNo} 室`,
     carOwnerText: [item.carOwnerName || '车主待填', item.relation].filter(Boolean).join(' · '),
+    termText: item.registrationTerm?.mode === 'dates'
+      ? `${item.registrationTerm.startDate} 至 ${item.registrationTerm.endDate}（自定义日期）`
+      : `${item.registrationTerm?.months ?? 12}个月（允许生效日起算）`,
+    termReason: item.registrationTerm?.mode === 'dates' ? item.registrationTerm.reason : '',
     garageText: (item.garages || []).map((key) => ({ phase1: '一期停车库', phase2: '二期地面车库', main: '二期大车库', civil: '二期人防车库' } as Record<string, string>)[key] || key).join('、'),
     createdAtText: formatDateTimeCn(item.createdAt),
     photos: files.map((file) => file.photo).filter(Boolean),
@@ -287,7 +293,7 @@ Page({
     wx.previewImage({ current: url || urls[0], urls });
   },
 
-  /** 经理通过：车库授权 + 续期一年由服务端接着做，成功后这条从待审里消失 */
+  /** 经理通过：按申请期限由服务端推进，未来起始日仍需等待。 */
   async onApproveFamily(e: WechatMiniprogram.BaseEvent) {
     const id = Number(e.currentTarget.dataset.id);
     const plate = String(e.currentTarget.dataset.plate || '');
@@ -295,15 +301,16 @@ Page({
     // Lock before opening the native dialog as well as during the API request.
     this.setData({ familyBusyId: id });
     try {
+      const row = this.data.familyList.find(item => item.id === id);
       const res = await wx.showModal({
         title: `通过 ${plate} 的亲情车？`,
-        content: '通过后立即下发车库授权并续期一年，有效期从今天起算。',
+        content: `申请期限：${row?.termText || '12个月'}。${row?.termReason ? `自定义原因：${row.termReason}。` : ''}按审批期限办理；未来起始日需等待。`,
         // wx.showModal button text allows at most four characters.
-        confirmText: '确认开通',
+        confirmText: '确认通过',
       });
       if (!res.confirm) return;
       await familyCars.managerReview(id, 'approve');
-      wx.showToast({ title: '已通过，正在开通' });
+      wx.showToast({ title: '已通过，按期办理' });
       await this.load();
     } catch (err: any) {
       wx.showToast({ icon: 'none', title: err?.message || '操作失败' });

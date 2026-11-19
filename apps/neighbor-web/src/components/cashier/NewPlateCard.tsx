@@ -12,6 +12,9 @@ import './intake-registration.css';
 import VehicleClassChoices from './VehicleClassChoices';
 import Icon from '@/components/Icon';
 import { dayjs, money } from '@/lib/format';
+import type { RegistrationTerm } from '@/components/VehicleRegistrationTerm';
+import { RegistrationTermSummary } from '@/components/VehicleRegistrationTerm';
+import OfficeIntakeEditor from './OfficeIntakeEditor';
 import { formBase, type Car, type Lot, type ParkHouse, type ParkingCart, type ParkRule, type ParkTarget } from './ParkingTab';
 
 export interface IntakeFile { index: number; fileName: string; contentType: string; fileUrl: string; uploadedAt: string }
@@ -24,8 +27,15 @@ export interface Intake {
   files: IntakeFile[];
   transaction: { id: number; txnNo: string; amountCents: number; startDate: string | null; endDate: string | null; externalSyncStatus: string; execution: { lastError?: string | null } | null } | null;
   familyCarId: number | null;
+  inputSource?: 'owner' | 'office';
+  dataVersion?: number;
+  officeConfirmedVersion?: number | null;
+  registrationTerm?: RegistrationTerm | null;
   createdAt: string;
   qr?: { url: string; dataUrl: string; expiresAt: string };
+  reused?: boolean;
+  qrExpired?: boolean;
+  otherDraftIds?: number[];
   log?: Array<{ at: string; userName: string; action: string; note?: string }>;
 }
 
@@ -93,7 +103,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
   const acceptResponse = (x: Intake) => {
     const nextQr = x.status === 'void' || x.qrValid === false ? null : x.qr ?? qr;
     setQr(nextQr);
-    onChange({ ...x, log: x.log ?? it.log, qr: nextQr ?? undefined });
+    onChange({ ...x, log: x.log ?? it.log, qr: nextQr ?? undefined, reused: x.reused ?? it.reused, otherDraftIds: x.otherDraftIds ?? it.otherDraftIds });
   };
   // 本小区的停车场：直接读停车场目录（瞬时），不等「这一户的车」查询（德立云 + 现场库要十几秒）
   const community = it.houseLabel.split('/')[0];
@@ -292,7 +302,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
         <Icon name="car" size={18} />{it.kind === 'family' ? '亲情车登记' : '新办车牌'}
         {it.plate ? <b className="plate" style={{ marginLeft: 6 }}>{it.plate}</b> : null}
         <span className={`tag ${stTone}`} style={{ marginLeft: 8 }}>{stLabel}</span>
-        {it.kind === 'family' ? <span className="tag mute" style={{ marginLeft: 6 }}>免费 · 有效期一年</span> : it.vehicleClass ? <span className="tag acc" style={{ marginLeft: 6 }}>{it.vehicleClass}</span> : null}
+        {it.kind === 'family' ? <span className="tag mute" style={{ marginLeft: 6 }}>免费 · 按申请期限</span> : it.vehicleClass ? <span className="tag acc" style={{ marginLeft: 6 }}>{it.vehicleClass}</span> : null}
         <span style={{ marginLeft: 'auto' }} />
         {canVoid ? <button className="btn g sm" disabled={!!busy || savingGarages} onClick={() => { setConverting(false); setAsk(ask === 'void' ? '' : 'void'); }}>撤销 / 作废登记</button> : null}
         {it.status === 'void' || (it.status === 'approved' && (it.kind === 'family' || it.transaction)) ? <button className="btn g sm" onClick={() => onDrop(it.id)} title="从这里收起（车牌登记审核里仍可查）">✕</button> : null}
@@ -303,9 +313,12 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
         {it.status !== 'approved' ? <div className="muted">可先选择车辆类别和缴费月数；保存资料、车位并审核通过后，才加入本次收款。</div> : null}
       </div> : <div className="note2" style={{ marginBottom: 10 }}>
         <VehicleClassChoices options={['亲情车', ...classOptions]} value={it.kind === 'family' ? '亲情车' : it.vehicleClass} disabled={!canConvert || !!busy || savingGarages} onChange={value => { void selectVehicleClass(value).catch(e => setErr(e instanceof Error ? e.message : '类别保存失败')); }} />
-        {it.kind === 'family' ? <span className="muted">亲情车免费一年，需填写亲属关系并经经理审核。</span> : null}
+        {it.kind === 'family' ? <span className="muted">亲情车免费，需填写亲属关系并经经理审核，期限按申请。</span> : null}
         {it.transaction || it.familyCarId ? <span className="muted">已关联财务或办理，不能更改车辆类别。</span> : null}
       </div>}
+      {it.reused ? <div className="note2">已继续原登记 #{it.id}，未新增单据；原资料及收款关联保留。</div> : null}
+      {it.otherDraftIds?.length ? <details className="note2"><summary>发现其他历史待填登记（{it.otherDraftIds.length}）</summary><div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{it.otherDraftIds.map(id => <a key={id} className="btn" href={`${import.meta.env.BASE_URL}plates?intakeId=${id}`}>核对登记 #{id}</a>)}</div></details> : null}
+      {it.registrationTerm ? <div className="note2" style={{ marginBottom: 10 }}><RegistrationTermSummary term={it.registrationTerm} /></div> : null}
       {converting && canConvert ? <fieldset className="np-garages" disabled={!!busy || savingGarages}>
         <legend>转换登记类型</legend>
         <p className="np-garage-help">保留上传资料、联系人及审计日志；清空原车库、车位号和价格分类，已审核资料须重审。亲情车仍须填写具体关系、旧库查重并走经理审核，不会自动开通。</p>
@@ -319,6 +332,8 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
         </div>
       </fieldset> : null}
       {it.status !== 'void' && handedOff ? <div className="note2" style={{ marginBottom: 10 }}>{it.familyCarId || (it.kind === 'family' && it.status === 'approved') ? '已转亲情车办理，请到「亲情车管理」核对；' : '原收款已进入执行或待核对阶段，请到「待处理」核对原流水；'}已入库车辆请到「车辆管理」注销，不在登记审核硬删，也不在这里退款。</div> : null}
+      {['waiting', 'reupload', 'submitted'].includes(it.status) && !it.familyCarId && (it.kind === 'family' || !it.transaction)
+        ? <OfficeIntakeEditor intake={it} onSaved={acceptResponse} /> : null}
       <ol className="np-steps np-review-steps" aria-label="车牌登记办理流程">
         {steps.map((step, i) => <li key={step.label} data-state={step.state}>
           <span className="np-step-heading"><span className="np-step-number" aria-hidden="true">{i + 1}</span><b>{step.label}</b></span>
@@ -442,7 +457,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
           {okMsg ? <div className="note2" style={{ marginTop: 8 }}><Icon name="check" />{okMsg}</div> : null}
 
           {/* 结果 */}
-          {it.kind === 'family' && it.status === 'approved' ? <div className="note2" style={{ marginTop: 10 }}><Icon name="check" />已转亲情车登记，等物业经理审核后自动开通车库并续期一年；进度在「车牌登记审核」。</div> : null}
+          {it.kind === 'family' && it.status === 'approved' ? <div className="note2" style={{ marginTop: 10 }}><Icon name="check" />已转亲情车登记，等物业经理审核后按申请期限开通车库并续期；进度在「车牌登记审核」。</div> : null}
           {it.transaction ? (
             <div className="note2" style={{ marginTop: 10, display: 'block' }}>
               <Icon name="cash" />已收款 <b className="money">{money(it.transaction.amountCents / 100)}</b>（{it.transaction.startDate} 至 {it.transaction.endDate}）· {TXN_STATUS[it.transaction.externalSyncStatus] || it.transaction.externalSyncStatus}

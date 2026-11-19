@@ -23,6 +23,7 @@ import {
   IsOptional,
   IsString,
   MaxLength,
+  Min,
   MinLength,
   ValidateNested,
 } from 'class-validator';
@@ -33,6 +34,7 @@ import { ResolvedAccess } from '../access/access.service';
 import { PermissionsGuard } from '../access/permissions.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { FamilyCarService } from './family-car.service';
+import type { VehicleRegistrationTerm } from '../../common/vehicle-registration-term';
 
 export class CreateFamilyCarDto {
   @Type(() => Number) @IsInt() houseId: number;
@@ -45,6 +47,7 @@ export class CreateFamilyCarDto {
   @IsOptional() @IsString() @MaxLength(200) remark?: string;
   @IsArray() @IsString({ each: true }) garages: string[];
   @IsOptional() @IsObject() garageNumbers?: Record<string, string>;
+  @IsOptional() @IsObject() registrationTerm?: VehicleRegistrationTerm;
   @IsOptional() @Type(() => Number) @IsInt() previousId?: number;
 }
 
@@ -55,16 +58,19 @@ export class UpdateFamilyCarDto {
   @IsOptional() @IsString() @MaxLength(200) remark?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) garages?: string[];
   @IsOptional() @IsObject() garageNumbers?: Record<string, string>;
+  @IsOptional() @IsObject() registrationTerm?: VehicleRegistrationTerm;
 }
 
 export class OfficeReviewFamilyCarDto {
   @IsIn(['approve', 'reupload', 'void']) decision: 'approve' | 'reupload' | 'void';
   @IsOptional() @IsString() @MaxLength(500) note?: string;
+  @IsOptional() @IsInt() @Min(0) expectedVersion?: number;
 }
 
 export class ManagerReviewFamilyCarDto {
   @IsIn(['approve', 'return']) decision: 'approve' | 'return';
   @IsOptional() @IsString() @MaxLength(500) note?: string;
+  @IsOptional() @IsInt() @Min(0) expectedVersion?: number;
 }
 
 export class StopFamilyCarDto {
@@ -198,13 +204,13 @@ export class FamilyCarController {
   @Post(':id/office-review')
   @RequirePermission('family-cars', 'edit')
   officeReview(@Param('id', ParseIntPipe) id: number, @Body() dto: OfficeReviewFamilyCarDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
-    return this.service.officeReview(id, dto.decision, dto.note, user, access);
+    return this.service.officeReview(id, dto.decision, dto.note, user, access, dto.expectedVersion);
   }
 
   @Post(':id/manager-review')
   @RequirePermission([...MANAGER], 'edit')
   managerReview(@Param('id', ParseIntPipe) id: number, @Body() dto: ManagerReviewFamilyCarDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
-    return this.service.managerReview(id, dto.decision, dto.note, user, access);
+    return this.service.managerReview(id, dto.decision, dto.note, user, access, dto.expectedVersion);
   }
 
   @Post(':id/retry')

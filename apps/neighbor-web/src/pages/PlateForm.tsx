@@ -111,7 +111,7 @@ export default function PlateForm() {
         <h2>{s.status === 'approved' ? '物业已审核通过' : '已提交，等待物业审核'}</h2>
         <p className="pf-line">{s.houseLabel}</p>
         {plateBox(s.plate)}
-        <p className="pf-muted" style={{ marginTop: 12 }}>{s.status === 'approved' ? (s.kind === 'family' ? '亲情车登记会在物业经理审核后开通，有效期一年。' : '物业会按缴费办理开通。') : '物业办公室已经收到，如资料不清楚会联系您重新上传。可以关闭此页面。'}</p>
+        <p className="pf-muted" style={{ marginTop: 12 }}>{s.status === 'approved' ? (s.kind === 'family' ? '亲情车登记会在物业经理审核后按申请期限开通。' : '物业会按缴费办理开通。') : '物业办公室已经收到，如资料不清楚会联系您重新上传。可以关闭此页面。'}</p>
       </div></div>
     );
   }

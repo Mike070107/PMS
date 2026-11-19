@@ -1,5 +1,7 @@
 import { Column, Entity, Index } from 'typeorm';
 import { TenantEntity } from '../common/base.entity';
+import type { VehicleRegistrationTerm } from '../common/vehicle-registration-term';
+import type { VehicleMaterialHistory } from '../common/vehicle-registration-material';
 
 /**
  * 亲情车登记（每年一次）。
@@ -112,6 +114,14 @@ export class FamilyCar extends TenantEntity {
   @Column({ name: 'proof_upload_id', type: 'int', nullable: true })
   proofUploadId: number | null;
 
+  /** null 为历史默认12个月，不回填、不自动执行历史记录。 */
+  @Column({ name: 'registration_term', type: 'jsonb', nullable: true })
+  registrationTerm: VehicleRegistrationTerm | null;
+
+  /** 最近一次只读车牌查重；实际开通前过期必须重新查询。 */
+  @Column({ name: 'duplicate_check_query_id', type: 'int', nullable: true })
+  duplicateCheckQueryId: number | null;
+
   @Column({ name: 'registration_operation_id', type: 'int', nullable: true })
   registrationOperationId: number | null;
 
@@ -162,6 +172,18 @@ export class FamilyCar extends TenantEntity {
 
   @Column({ name: 'last_error', type: 'varchar', length: 500, nullable: true })
   lastError: string | null;
+
+  @Column({ name: 'data_version', type: 'int', default: 0 })
+  dataVersion: number;
+
+  @Column({ name: 'office_confirmed_version', type: 'int', nullable: true })
+  officeConfirmedVersion: number | null;
+
+  @Column({ name: 'manager_approved_version', type: 'int', nullable: true })
+  managerApprovedVersion: number | null;
+
+  @Column({ name: 'material_history', type: 'jsonb', default: () => "'[]'::jsonb" })
+  materialHistory: VehicleMaterialHistory[];
 
   @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
   log: FamilyCarLogEntry[];

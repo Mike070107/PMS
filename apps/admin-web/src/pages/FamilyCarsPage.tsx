@@ -25,6 +25,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth, pagePerm, auth } from '../lib/auth';
 import { buildParkingRoomOptions, type ParkingRoomOption } from '../lib/parkingVehicleMerge';
 import { exportXlsx } from '../lib/exportXlsx';
+import VehicleRegistrationTermEditor, { DEFAULT_TERM, RegistrationTermSummary, termValid, type RegistrationTerm } from '../components/VehicleRegistrationTerm';
 import './FamilyCarsPage.css';
 
 const { Text } = Typography;
@@ -326,6 +327,7 @@ function RegisterDrawer({ source, onClose, onCreated }: { source?: Row; onClose:
   const [remark, setRemark] = useState(source ? (source.status === 'expired' || source.status === 'active' ? '续登' : '') : '');
   const [garages, setGarages] = useState<string[]>(source?.garages || []);
   const [garageNumbers, setGarageNumbers] = useState<Record<string, string>>(source?.garageNumbers || {});
+  const [term, setTerm] = useState<RegistrationTerm>(source?.registrationTerm ?? DEFAULT_TERM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
@@ -367,9 +369,10 @@ function RegisterDrawer({ source, onClose, onCreated }: { source?: Row; onClose:
     for (const row of matches) {
       const where = row.database === 'parking1' ? '一期停车库' : '二期停车库';
       if (!legacyIdentity(row).includes('亲情')) return { state: 'conflict', message: `该车牌已在${where}登记为「${legacyIdentity(row) || '未知身份'}」，不能登记为亲情车` };
-      if (room && legacyRoom(row) && legacyRoom(row) !== room) return { state: 'conflict', message: `该车牌已在${where}登记为 ${legacyRoom(row)} 的亲情车` };
+      // 不回显他人房号：只说明是否本户，避免把别户住址泄露给当前经办人。
+      if (room && legacyRoom(row) && legacyRoom(row) !== room) return { state: 'conflict', message: `该车牌已在${where}登记为其他住户的亲情车，不能重复登记；如有疑问请管理员核对` };
     }
-    return { state: 'ok', queryId: query.id, mode: 'existing', at: Date.now(), message: '旧库已是本户亲情车：审核通过后重新授权并续期一年' };
+    return { state: 'ok', queryId: query.id, mode: 'existing', at: Date.now(), message: '旧库已是本户亲情车：审核通过后重新授权并按申请期限续期' };
   }, []);
 
   useEffect(() => {
@@ -392,7 +395,8 @@ function RegisterDrawer({ source, onClose, onCreated }: { source?: Row; onClose:
 
   const infoOk = who === 'owner' || (carOwnerName.trim() && /^1\d{10}$/.test(carOwnerPhone.trim()) && relation);
   const garagesOk = garages.length > 0 && (!garages.includes('main') || !!garageNumbers.main?.trim()) && (!garages.includes('civil') || !!garageNumbers.civil?.trim());
-  const ready = !!selected && check.state === 'ok' && !samePlateLive && infoOk && garagesOk;
+  const termOk = termValid(term);
+  const ready = !!selected && check.state === 'ok' && !samePlateLive && infoOk && garagesOk && termOk;
 
   const save = async () => {
     if (!selected || !houseId || check.state !== 'ok') return;
@@ -410,6 +414,7 @@ function RegisterDrawer({ source, onClose, onCreated }: { source?: Row; onClose:
         houseId, plate, duplicateCheckQueryId: current.queryId, ownerFill: who === 'owner',
         carOwnerName: carOwnerName.trim(), carOwnerPhone: carOwnerPhone.trim(), relation, remark: remark.trim(),
         garages, garageNumbers: Object.fromEntries(Object.entries(garageNumbers).filter(([key]) => garages.includes(key))),
+        registrationTerm: term,
         previousId: source && source.plate === plate ? source.id : undefined,
       });
       message.success(who === 'owner' ? '已保存，二维码已生成' : '已保存，请上传资料');
@@ -419,7 +424,7 @@ function RegisterDrawer({ source, onClose, onCreated }: { source?: Row; onClose:
     } finally { setSaving(false); }
   };
 
-  const hint = !selected ? '请选择房号' : check.state !== 'ok' ? '请输入车牌并等待查重通过' : samePlateLive ? '该车牌已在办理中' : !infoOk ? '请填写车主信息，或选择由业主扫码填写' : !garagesOk ? '请选择开通车库并填写车库号' : who === 'owner' ? '保存后立即弹出二维码给业主扫' : '保存后进入资料上传';
+  const hint = !selected ? '请选择房号' : check.state !== 'ok' ? '请输入车牌并等待查重通过' : samePlateLive ? '该车牌已在办理中' : !infoOk ? '请填写车主信息，或选择由业主扫码填写' : !garagesOk ? '请选择开通车库并填写车库号' : !termOk ? '请填写有效的申请期限' : who === 'owner' ? '保存后立即弹出二维码给业主扫' : '保存后进入资料上传';
 
   return <Drawer open width={1080} onClose={onClose} title={source ? `续登亲情车 · ${normalizePlate(source.plate)}` : '登记亲情车'} destroyOnClose
     footer={<div className="family-drawer-foot"><Text type="secondary">{hint}</Text><Space><Button onClick={onClose}>取消</Button><Button type="primary" size="large" disabled={!ready} loading={saving} onClick={() => void save()}>{who === 'owner' ? '保存并生成二维码' : '保存，下一步上传资料'}</Button></Space></div>}>
@@ -465,7 +470,8 @@ function RegisterDrawer({ source, onClose, onCreated }: { source?: Row; onClose:
             {(g.key === 'main' || g.key === 'civil') && garages.includes(g.key) && <Input size="small" placeholder={g.key === 'civil' ? '地库车位号（必填）' : '车库号（必填）'} value={garageNumbers[g.key] || ''} maxLength={20} onChange={(e) => setGarageNumbers((cur) => ({ ...cur, [g.key]: e.target.value }))} />}
           </div>)}</div>
           <div className="family-hint">{context ? `已按 ${context.house.lane} 弄自动选择，可调整。` : ''}</div>
-          <Alert type="info" showIcon style={{ marginTop: 12 }} message="有效期 1 年，从物业经理审核通过、车库开通成功当天起算" description="到期前 30 天提醒，到期自动停用车库权限。亲情车办公室不收费。" />
+          <VehicleRegistrationTermEditor value={term} onChange={setTerm} disabled={saving} />
+          <Alert type="info" showIcon style={{ marginTop: 12 }} message="按申请期限开通，不按固定一年" description="到期前 30 天提醒，到期自动停用车库权限。亲情车办公室不收费；自定义日期需经理审批，未来起始日审批后仍等待。" />
         </section>
       </div>
       <div>
@@ -511,6 +517,7 @@ function DetailDrawer({ id, canEdit, canApprove, onClose, onChanged, onShowQr, o
   const [note, setNote] = useState('');
   const [qr, setQr] = useState<Qr | null>(() => recallQr(id));
   const [editing, setEditing] = useState<null | { carOwnerName: string; carOwnerPhone: string; relation: string; remark: string }>(null);
+  const [termEdit, setTermEdit] = useState<RegistrationTerm | null>(null);
   const [uploading, setUploading] = useState(false);
   const [newFiles, setNewFiles] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -543,7 +550,8 @@ function DetailDrawer({ id, canEdit, canApprove, onClose, onChanged, onShowQr, o
       setCar((prev) => ({ ...(prev || {}), ...next }) as Detail);
       message.success(ok); setNote(''); onChanged();
       if (close) onClose(); else void refresh();
-    } catch (e) { message.error(e instanceof Error ? e.message : '操作失败'); }
+      return true;
+    } catch (e) { message.error(e instanceof Error ? e.message : '操作失败'); return false; }
     finally { setBusy(false); }
   };
 
@@ -588,12 +596,25 @@ function DetailDrawer({ id, canEdit, canApprove, onClose, onChanged, onShowQr, o
         <div><label className="family-label">与业主关系</label><Select style={{ width: '100%' }} value={editing.relation || undefined} onChange={(relation) => setEditing({ ...editing, relation })} options={RELATIONS.map((value) => ({ value, label: value }))} /></div>
         <div><label className="family-label">备注</label><Input value={editing.remark} onChange={(e) => setEditing({ ...editing, remark: e.target.value })} /></div>
       </div>
-      <Space><Button onClick={() => setEditing(null)}>取消</Button><Button type="primary" loading={busy} onClick={() => void run(() => familyCars.update(car.id, editing), '已保存').then(() => setEditing(null))}>保存</Button></Space>
+      <Space><Button onClick={() => setEditing(null)}>取消</Button><Button type="primary" loading={busy} onClick={async () => { if (await run(() => familyCars.update(car.id, editing), '已保存')) setEditing(null); }}>保存</Button></Space>
     </div> : <table className="family-kv"><tbody>
       <tr><td>地址</td><td>{car.lane} 弄 {car.buildingNo} 号 {car.roomNo} 室 · 业主 {car.ownerName || '—'} {car.ownerPhone}</td><td>车牌号</td><td><Plate value={car.plate} /></td></tr>
       <tr><td>车主姓名</td><td>{car.carOwnerName || <Text type="secondary">待业主填写</Text>}</td><td>联系电话</td><td>{car.carOwnerPhone || <Text type="secondary">待业主填写</Text>}</td></tr>
       <tr><td>与业主关系</td><td>{car.relation || <Text type="secondary">待业主填写</Text>}</td><td>开通车库</td><td>{car.garages.map((g) => GARAGE_LABEL[g] + (car.garageNumbers[g] ? `（${car.garageNumbers[g]}）` : '')).join('、')}</td></tr>
-      <tr><td>办理方式</td><td>{car.mode === 'new' ? '新车牌：旧库先暂存待审核，通过后开通' : '旧库已是本户亲情车：通过后重新授权并续期'}</td><td>备注</td><td>{car.remark || '—'}</td></tr>
+      <tr><td>申请期限</td><td colSpan={3}>
+        {termEdit ? <div style={{ display: 'grid', gap: 8 }}>
+          <VehicleRegistrationTermEditor value={termEdit} onChange={setTermEdit} disabled={busy} />
+          <Space><Button onClick={() => setTermEdit(null)}>取消</Button>
+            <Button type="primary" loading={busy} disabled={!termValid(termEdit)} onClick={async () => {
+              if (await run(() => familyCars.update(car.id, { registrationTerm: termEdit }), '申请期限已保存，原确认与审批失效，需重新审核')) setTermEdit(null);
+            }}>保存期限</Button></Space>
+        </div> : <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <RegistrationTermSummary term={car.registrationTerm} />
+          {canEdit && ['upload', 'office', 'returned'].includes(status) && !editing ? <Button size="small" type="link" onClick={() => setTermEdit(car.registrationTerm ?? DEFAULT_TERM)}>修改申请期限</Button> : null}
+          {status === 'manager' ? <Text type="secondary">经理审批阶段只读，不能再改期限</Text> : null}
+        </div>}
+      </td></tr>
+      <tr><td>办理方式</td><td>{car.mode === 'new' ? '新车牌：审批前不写旧库，经理通过后才登记并开通' : '旧库已是本户亲情车：通过后重新授权并按申请期限续期'}</td><td>备注</td><td>{car.remark || '—'}</td></tr>
     </tbody></table>}
   </section>;
 
@@ -614,8 +635,8 @@ function DetailDrawer({ id, canEdit, canApprove, onClose, onChanged, onShowQr, o
 
   if (status === 'upload') {
     body = <>
-      {registrationFailed && <Alert type="error" showIcon style={{ marginBottom: 14 }} message="旧库暂存失败" description={`${opStates?.registration?.error || ''}。请作废后重新登记。`} />}
-      {opStates?.registration && ['pending', 'running'].includes(opStates.registration.status) && <Alert type="info" showIcon style={{ marginBottom: 14 }} message="正在旧停车库暂存待审核车辆（零授权，不开通）" description="需要现场停车网关在线；不影响上传资料。" />}
+      {registrationFailed && <Alert type="error" showIcon style={{ marginBottom: 14 }} message="原旧库步骤执行失败" description={`${opStates?.registration?.error || ''}。先核实旧库实际结果再重试原步骤；不要重复登记或作废重建。`} />}
+      {opStates?.registration && ['pending', 'running'].includes(opStates.registration.status) && <Alert type="info" showIcon style={{ marginBottom: 14 }} message="正在旧停车库执行原登记步骤（按审批后的车库授权）" description="需要现场停车网关在线；不影响上传资料。此处不新建暂存车辆。" />}
       <div className="family-2col family-2col-wide">
         <section className="family-sec"><h3>方式一 · 办公室本地上传</h3>
           <div className={`family-drop ${uploading ? 'is-busy' : ''}`} tabIndex={0} role="button"
@@ -669,17 +690,17 @@ function DetailDrawer({ id, canEdit, canApprove, onClose, onChanged, onShowQr, o
     if (can && isOffice) foot = <><Text type="secondary" className="family-foot-tip">通过后进入物业经理审核，并提醒经理</Text>
       <Button danger onClick={() => voidConfirm()}>驳回并作废</Button>
       <Button loading={busy} onClick={() => void run(() => familyCars.officeReview(car.id, 'reupload', note), '已退回资料上传，并生成新二维码')}>要求业主补资料</Button>
-      <Button type="primary" size="large" loading={busy} onClick={() => void run(() => familyCars.officeReview(car.id, 'approve', note), '已提交物业经理审核', true)}>{status === 'returned' ? '重新提交经理审核' : '审核通过'}</Button></>;
-    else if (can) foot = <><Text type="secondary" className="family-foot-tip">通过后自动开通车库并续期一年，有效期从今天起算</Text>
+      <Button type="primary" size="large" loading={busy} onClick={() => void run(() => familyCars.officeReview(car.id, 'approve', note, car.dataVersion), '已提交物业经理审核', true)}>{status === 'returned' ? '重新提交经理审核' : '审核通过'}</Button></>;
+    else if (can) foot = <><Text type="secondary" className="family-foot-tip">通过后按申请期限开通车库并计算到期日；有效期从实际生效日起算</Text>
       <Button danger loading={busy} onClick={() => { if (!note.trim()) { message.warning('请填写退回原因'); return; } void run(() => familyCars.managerReview(car.id, 'return', note), '已退回办公室', true); }}>退回办公室</Button>
-      <Button type="primary" size="large" loading={busy} onClick={() => void run(() => familyCars.managerReview(car.id, 'approve', note), '审核通过，开始开通车库')}>审核通过并开通</Button></>;
+      <Button type="primary" size="large" loading={busy} onClick={() => void run(() => familyCars.managerReview(car.id, 'approve', note, car.dataVersion), '审核通过，开始开通车库')}>审核通过并开通</Button></>;
   } else if (status === 'opening') {
     const item = (label: string, state?: familyCars.FamilyCarOperationState | null, waiting?: string) => <div className="family-prog">
       <b>{label}</b><span>{!state ? (waiting || '排队中') : state.status === 'completed' ? <Text type="success">✓ 已写入并读回确认</Text> : state.status === 'failed' ? <Text type="danger">✗ {state.error}</Text> : <><SyncOutlined spin /> 执行中…</>}</span></div>;
     body = <>
       <section className="family-sec"><h3>正在调用停车模块开通（有效期 {car.startDate} ~ {car.endDate}）</h3>
         {item(`车库授权：${car.garages.filter((g) => g !== 'civil').map((g) => GARAGE_LABEL[g]).join('、') || '—'}`, opStates?.open, car.lastError || '等待停车网关')}
-        {item('续期一年（停车续期，不收费）', opStates?.renew, '车库授权完成后自动续期')}
+        {item('按申请期限续期（停车续期，不收费）', opStates?.renew, '车库授权完成后自动续期')}
         {car.garages.includes('civil') && item('二期人防车库（德立云）', opStates?.civil)}
         {car.lastError && <Alert type="error" showIcon style={{ marginTop: 10 }} message={car.lastError} description="只重试失败的那一步，不会重复登记。" />}
         <Alert type="info" showIcon style={{ marginTop: 10 }} message="复用停车管理的下发任务，结果以旧库读回为准；可以关闭窗口，开通在后台继续。" />

@@ -43,8 +43,9 @@ function fixture({ confirm = true, modalError, reviewError, modalWait, reviewWai
       },
     },
   };
-  vm.runInNewContext(script, {
-    exports: {}, wx, console, Page: (options) => { config = options; },
+  const exposed = {};
+  vm.runInNewContext(script + '\nexports.toFamilyRow = toFamilyRow;', {
+    exports: exposed, wx, console, getApp: () => ({ baseURL: 'https://synthetic.invalid/api/v1' }), Page: (options) => { config = options; },
     require(name) {
       if (name === '@pms/api-client') return client;
       if (name === '@pms/miniapp-ui') return { formatDateTimeCn: String };
@@ -58,7 +59,7 @@ function fixture({ confirm = true, modalError, reviewError, modalWait, reviewWai
     setData(patch) { Object.assign(this.data, patch); },
     async load() { refreshes++; this.data.familyList = []; },
   };
-  return { page, dialogs, reviews, toasts, get refreshes() { return refreshes; } };
+  return { page, dialogs, reviews, toasts, toFamilyRow: exposed.toFamilyRow, get refreshes() { return refreshes; } };
 }
 
 function deferred() {
@@ -72,14 +73,38 @@ test('苏FM05P3模拟待审：确认弹窗合法、只提交一次approve并刷�
   await f.page.onApproveFamily(tap);
   assert.equal(f.dialogs.length, 1);
   assert.match(f.dialogs[0].title, /苏FM05P3/);
-  assert.equal(f.dialogs[0].confirmText, '确认开通');
-  assert.match(f.dialogs[0].content, /车库授权.*续期一年/);
+  assert.equal(f.dialogs[0].confirmText, '确认通过');
+  assert.match(f.dialogs[0].content, /申请期限：12个月/);
+  assert.doesNotMatch(f.dialogs[0].content, /从今天|续期一年/);
   assert.deepEqual(f.reviews, [[73, 'approve']]);
   assert.equal(f.refreshes, 1);
   assert.equal(f.page.data.familyList.length, 0);
   assert.equal(f.page.data.familyBusyId, 0);
-  assert.equal(f.toasts.at(-1).title, '已通过，正在开通');
+  assert.equal(f.toasts.at(-1).title, '已通过，按期办理');
 });
+
+for (const [name, registrationTerm, expected] of [
+  ['历史空期限', null, '12个月（允许生效日起算）'],
+  ['一个月', { mode: 'months', months: 1 }, '1个月（允许生效日起算）'],
+  ['其他月数', { mode: 'months', months: 6 }, '6个月（允许生效日起算）'],
+  ['自定义未来日期', { mode: 'dates', startDate: '2099-01-01', endDate: '2099-01-31', reason: '合成验收：短期亲属探访' }, '2099-01-01 至 2099-01-31（自定义日期）'],
+]) {
+  test(`员工端实际卡片转换与经理确认展示申请期限：${name}`, async () => {
+    const f = fixture();
+    const row = f.toFamilyRow({ ...f.page.data.familyList[0], registrationTerm });
+    assert.equal(row.termText, expected);
+    f.page.data.familyList = [row];
+    await f.page.onApproveFamily(tap);
+    assert.ok(f.dialogs[0].content.includes(expected));
+    assert.match(f.dialogs[0].content, /未来起始日需等待/);
+    if (registrationTerm?.mode === 'dates') {
+      assert.equal(row.termReason, registrationTerm.reason);
+      assert.ok(f.dialogs[0].content.includes(`自定义原因：${registrationTerm.reason}`));
+    } else assert.equal(row.termReason, '');
+    assert.deepEqual(f.reviews, [[73, 'approve']]);
+    assert.doesNotMatch(f.toasts.at(-1).title, /正在开通/);
+  });
+}
 
 test('取消确认不审批、不刷新，释放按钮后可以再次打开', async () => {
   const f = fixture({ confirm: false });

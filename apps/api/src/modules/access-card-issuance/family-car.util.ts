@@ -3,6 +3,8 @@
  * 不依赖数据库，便于单测锁住业务规则。
  */
 
+import { normalizeRegistrationTerm, registrationWindow } from '../../common/vehicle-registration-term';
+
 export const FAMILY_RELATIONS = ['父母', '子女', '配偶', '兄弟姐妹', '祖父母/外祖父母', '孙子女/外孙子女', '其他亲属'] as const;
 export const FAMILY_GARAGES = ['phase1', 'phase2', 'main', 'civil'] as const;
 export const FAMILY_EXPIRY_REMIND_DAYS = 30;
@@ -27,13 +29,9 @@ export function addDays(date: string, days: number): string {
   return value.toISOString().slice(0, 10);
 }
 
-/** 有效期 1 年：生效日起至次年同日的前一天；2 月 29 日生效按 2 月 28 日到期。 */
-export function familyValidity(startDate: string): { startDate: string; endDate: string } {
-  const [y, m, d] = startDate.split('-').map(Number);
-  const anniversary = new Date(Date.UTC(y + 1, m - 1, d));
-  // 闰日次年没有 2/29，Date 会滚到 3/1，再减一天就是 2/28
-  const end = new Date(anniversary.getTime() - 24 * 60 * 60 * 1000);
-  return { startDate, endDate: end.toISOString().slice(0, 10) };
+/** 默认12个月；与收费车共用钳制到月末后减一天的算法。 */
+export function familyValidity(startDate: string, months = 12): { startDate: string; endDate: string } {
+  return registrationWindow(normalizeRegistrationTerm({ mode: 'months', months }), startDate);
 }
 
 export function daysUntil(endDate: string, today: string): number {

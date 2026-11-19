@@ -70,6 +70,8 @@
       <view class="kv"><text class="kv__k">车主</text><text class="kv__v">{{item.carOwnerText}}</text></view>
       <view wx:if="{{item.carOwnerPhone}}" class="kv"><text class="kv__k">车主电话</text><text class="kv__v">{{item.carOwnerPhone}}</text></view>
       <view class="kv"><text class="kv__k">开通车库</text><text class="kv__v">{{item.garageText || '未选择'}}</text></view>
+      <view class="kv"><text class="kv__k">申请期限</text><text class="kv__v">{{item.termText}}</text></view>
+      <view wx:if="{{item.termReason}}" class="kv"><text class="kv__k">日期原因</text><text class="kv__v">{{item.termReason}}</text></view>
       <view wx:if="{{item.remark}}" class="kv"><text class="kv__k">备注</text><text class="kv__v">{{item.remark}}</text></view>
       <view class="kv"><text class="kv__k">办公室</text><text class="kv__v">{{item.officeNote || '资料齐全'}}</text></view>
 

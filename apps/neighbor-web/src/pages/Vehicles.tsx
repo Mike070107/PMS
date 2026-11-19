@@ -20,6 +20,7 @@ import { RebindSheet, GaragesSheet } from '@/components/vehicle-ops/RebindGarage
 import { HistorySheet, OwnerInfoSheet, CreatePmsOwnerSheet } from '@/components/vehicle-ops/HistoryAndOwnerSheets';
 import ToneIcon from '@/components/ToneIcon';
 import type { Intake } from '@/components/cashier/NewPlateCard';
+import { vehicleIntakeOperation } from '@/lib/vehicle-intake-operation';
 
 type CloudState = 'loading' | DeliyunVehicle | null | undefined;
 
@@ -56,12 +57,18 @@ export default function Vehicles() {
     if (!newHouse?.houseId || creating.current || newQr) return;
     creating.current = true;
     setNewBusy(true); setNewErr('');
+    // 操作编号跨超时/刷新保留：重试继续原登记，不重复建单；只有明确成功才释放。
+    const operation = vehicleIntakeOperation(newHouse.houseId, newKind);
     try {
       const formBase = `${window.location.origin}${import.meta.env.BASE_URL.replace(/\/+$/, '')}/m/plate`;
-      const r = await request<Intake>({ method: 'POST', url: '/vehicle-intakes', data: { houseId: newHouse.houseId, kind: newKind, formBase } });
+      const r = await request<Intake>({ method: 'POST', url: '/vehicle-intakes', data: {
+        houseId: newHouse.houseId, kind: newKind, formBase,
+        operationKey: operation.operationKey, anotherVehicle: operation.anotherVehicle,
+      } });
+      operation.resolve();
       setNewQr(r);
     } catch (e) {
-      setNewErr(e instanceof Error ? e.message : '生成二维码失败');
+      setNewErr(e instanceof Error ? `${e.message}；已保留本次操作编号，直接重试会继续原登记，不会重复建单` : '生成二维码失败');
     } finally { creating.current = false; setNewBusy(false); }
   };
 

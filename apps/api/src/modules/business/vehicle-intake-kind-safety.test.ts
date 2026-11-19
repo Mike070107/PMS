@@ -40,7 +40,7 @@ function fixture() {
       }}; return qb;
     },
   });
-  const manager: any = { query: async () => [], getRepository: (e: any) => { if (!tables.has(e)) tables.set(e, []); return repository(e, manager); }, save: async () => {}, create: (_e: any, v: any) => v };
+  const manager: any = { queryRunner: { isTransactionActive: true }, query: async (sql: string) => { assert.match(sql, /pg_advisory_xact_lock|FROM vehicle_intakes i|FROM family_cars f|vehicle_registration_claims/); return []; }, getRepository: (e: any) => { if (!tables.has(e)) tables.set(e, []); return repository(e, manager); }, save: async () => {}, create: (_e: any, v: any) => v };
   manager.transaction = async (work: any) => {
     const previous = tail; let done!: () => void; tail = new Promise<void>(r => { done = r; }); await previous;
     const backup = new Map([...tables].map(([e, rows]) => [e, clone(rows)]));
