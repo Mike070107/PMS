@@ -39,3 +39,33 @@
 .vehicle-class-options small{font-size:11px;font-weight:400}
 .vehicle-class-options button:focus-visible{outline:2px solid var(--brand,var(--acc));outline-offset:3px}
 @media(max-width:600px){.intake-registration-form{padding:16px 12px}.intake-registration-heading{align-items:flex-start}.intake-registration-heading .btn{max-width:50%}.vehicle-class-row{grid-template-columns:1fr;gap:6px}.vehicle-class-group{padding-top:0}.vehicle-class-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.vehicle-class-options .chip{min-width:0;padding:8px 4px;font-size:13px;flex-wrap:wrap}}
+.registration-workspace { display:grid; gap:18px; min-width:0 }
+.registration-workspace .cashier-mis-bills { min-width:0 }
+.registration-house { display:flex;align-items:center;gap:12px;padding:14px 18px;background:var(--sunken);border-radius:10px;color:var(--ink2);margin-bottom:14px }
+.registration-house strong,.registration-house small { display:block;overflow-wrap:anywhere }
+.registration-house strong { color:var(--ink);font-size:17px }
+.registration-house>span { margin-left:auto;white-space:nowrap;font-size:13px }
+.registration-workspace .np-card { padding:clamp(14px,3vw,28px) }
+.registration-workspace .intake-registration-form { border:0;border-top:1px solid var(--line);border-radius:0;padding:18px 0 0;margin:16px 0 }
+.registration-plate label { display:grid;gap:6px;font-weight:650 }
+.registration-plate input { max-width:360px;font-size:20px;letter-spacing:.1em }
+.registration-plate summary,.registration-options summary { cursor:pointer;padding:10px 0;color:var(--acc-t);font-weight:600 }
+.registration-options { border-top:1px solid var(--line);margin-top:12px;padding:4px 0 }
+.registration-options summary span { margin-left:12px;font-weight:400;color:var(--ink2) }
+.registration-workspace .side-h { flex-wrap:wrap }
+.registration-workspace .cart2 { width:100%;position:static }
+.registration-workspace .intake-upload { padding:10px }
+@media(max-width:600px){.registration-house{padding:10px;gap:8px}.registration-house>span{font-size:12px}.registration-workspace .np-fields{grid-template-columns:1fr}.registration-workspace .intake-registration-heading{align-items:center;flex-wrap:wrap}}
+.registration-label{margin:16px 0 8px;font-size:16px;color:var(--ink)}
+.registration-types{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.registration-types button{height:auto;min-height:52px;white-space:normal}
+.registration-workspace input[aria-invalid=true]{border-color:#b63332}
+.registration-workspace [aria-invalid=true]+small{color:#a52223;font-weight:500}
+.registration-attachments{margin:12px 0}
+.registration-attachments summary{cursor:pointer;color:var(--ink2);padding:8px 0}
+.sheet:has(.registration-sheet) .sh-h { display:flex;align-items:center;justify-content:space-between;flex-direction:row-reverse;gap:12px;padding-block:12px }
+.sheet:has(.registration-sheet) .sh-h h2 { margin:0 }
+.registration-workspace .np-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));gap:14px}
+.registration-workspace .np-fields label{max-width:none}
+.registration-workspace .registration-house { border-left:3px solid var(--acc-t) }
+@media(max-width:600px){.registration-workspace .registration-house{margin-bottom:8px}.registration-workspace .intake-registration-form fieldset>.btn.p{width:100%;justify-content:center}.registration-workspace .side-h{gap:6px}.registration-workspace .side-h .tag{margin-left:0!important}.registration-workspace .intake-registration-heading{flex-direction:row;justify-content:space-between}}

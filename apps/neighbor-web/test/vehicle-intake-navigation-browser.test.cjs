@@ -40,13 +40,13 @@ async function openCreation(page, kind = 'paid') {
   await page.locator('.ant-cascader-menu-item[data-path-key="1"]').click();
   await page.locator('.ant-cascader-menu-item[data-path-key="1__RC_CASCADER_SPLIT__11"]').click();
   await page.locator('.ant-cascader-menu-item').filter({ hasText: '901' }).click();
-  if (kind === 'family') await dialog.getByRole('button', { name: '亲情车（免费 · 一年）', exact: true }).click();
+  if (kind === 'family') await dialog.getByRole('button', { name: '亲情车（免费）', exact: true }).click();
   return dialog;
 }
 async function create(page, kind = 'paid') {
   const dialog = await openCreation(page, kind);
   await dialog.getByRole('button', { name: '工作人员直接登记', exact: true }).click();
-  await dialog.getByRole('img', { name: '扫码填写', exact: true }).waitFor();
+  await dialog.getByLabel('车牌号码（必填）').waitFor();
   return dialog;
 }
 
@@ -64,7 +64,7 @@ for (const width of [1440, 390]) test(`Vehicles unique query household prefills 
     assert.equal(await dialog.getByRole('button', { name: '工作人员直接登记', exact: true }).isDisabled(), false);
     await shot(page, `vehicles-prefilled-${width}`); await noOverflow(page);
     await dialog.getByRole('button', { name: '工作人员直接登记', exact: true }).click();
-    await dialog.getByRole('img', { name: '扫码填写', exact: true }).waitFor();
+    await dialog.getByLabel('车牌号码（必填）').waitFor();
     assert.equal((await calls(page)).find(c => c.url === '/vehicle-intakes' && c.method === 'POST').data.houseId, 501);
     assert.equal(f.errors.length, 0, f.errors.join('\n'));
   } finally { await f.close(); }
@@ -134,11 +134,11 @@ test('creation in flight locks household and type and collapses double-clicks', 
     await page.evaluate(() => { window.__waitFor = ['POST /vehicle-intakes']; });
     await dialog.getByRole('button', { name: '工作人员直接登记', exact: true }).evaluate(b => { b.click(); b.click(); });
     await page.waitForFunction(() => !!window.__holds['POST /vehicle-intakes']);
-    assert.equal(await dialog.getByRole('button', { name: '亲情车（免费 · 一年）', exact: true }).isDisabled(), true);
+    assert.equal(await dialog.getByRole('button', { name: '亲情车（免费）', exact: true }).isDisabled(), true);
     assert.ok(await dialog.locator('.ant-select-disabled').count());
     assert.equal((await calls(page)).filter(c => c.url === '/vehicle-intakes' && c.method === 'POST').length, 1);
     await page.evaluate(() => { window.__waitFor = []; window.__release('POST /vehicle-intakes'); });
-    await dialog.getByRole('img', { name: '扫码填写', exact: true }).waitFor();
+    await dialog.getByLabel('车牌号码（必填）').waitFor();
     assert.equal((await calls(page)).find(c => c.url === '/vehicle-intakes' && c.method === 'POST').data.kind, 'paid');
     assert.equal(f.errors.length, 0, f.errors.join('\n'));
   } finally { await f.close(); }
@@ -187,11 +187,10 @@ for (const width of [1440, 390]) {
       assert.ok(page.url().endsWith('/vehicles'), 'registration and payment stay inside Vehicles');
       assert.equal(await dialog.getByRole('button', { name: '去收银台收费', exact: true }).count(), 0);
       assert.equal((await calls(page)).filter(c => c.url === '/business/complete').length, 0);
-      await page.getByText('已按房屋稳定 ID 定位授权住户。', { exact: false }).waitFor();
-      await page.getByRole('button', { name: /确认收款 ·/ }).waitFor();
-      assert.equal(await page.getByRole('button', { name: /确认收款 ·/ }).isDisabled(), true, 'unsubmitted registration must not enter the payment cart');
-      await dialog.getByRole('button', { name: '收起工作人员代填', exact: true }).waitFor();
-      for (const key of '沪A12345') await page.locator('.intake-plate-keys').getByRole('button', { name: key, exact: true }).click();
+      assert.equal(await dialog.locator('.cart2').count(),0);
+      await dialog.getByRole('button',{ name:'保存登记，继续授权' }).click();
+      assert.equal(await dialog.getByLabel('车牌号码（必填）',{exact:false}).getAttribute('aria-invalid'),'true');
+      await dialog.getByLabel('车牌号码（必填）',{exact:false}).fill('沪A12345');
       await page.getByLabel('联系手机（必填）').fill('13900000000');
       await page.getByRole('button', { name: '保存登记，继续授权', exact: true }).click();
       await page.getByRole('button', { name: '资料无误，通过', exact: true }).click();
@@ -230,6 +229,10 @@ for (const width of [1440, 390]) {
       await page.goto(origin + '/vehicles');
       const dialog = await create(page, 'family');
       assert.equal(await dialog.getByRole('button', { name: '去收银台收费', exact: true }).count(), 0);
+      assert.equal(await dialog.locator('.cart2').count(),0);
+      await shot(page, `family-registration-${width}`);
+      await dialog.getByRole('button',{name:'改由住户扫码'}).click();
+      await dialog.getByRole('img',{name:'扫码填写',exact:true}).waitFor();
       await dialog.getByRole('button', { name: '撤销 / 作废登记', exact: true }).click();
       const cancel = dialog.getByRole('button', { name: '确认作废', exact: true });
       assert.equal(await cancel.isDisabled(), true);
@@ -240,7 +243,7 @@ for (const width of [1440, 390]) {
       await dialog.getByText('合成服务端拒绝：原状态已变化', { exact: true }).waitFor();
       assert.equal(await dialog.getByLabel('作废原因', { exact: true }).inputValue(), '合成撤销原因：登记重复，保留审计');
       assert.equal(await dialog.getByRole('img', { name: '扫码填写' }).count(), 1);
-      assert.equal(await dialog.getByRole('button', { name: /确认收款 ·/ }).isDisabled(), true, 'family intake cannot charge');
+      assert.equal(await dialog.getByRole('button', { name: /确认收款 ·/ }).count(), 0, 'family intake cannot charge');
       await shot(page, `vehicles-void-error-${width}`); await noOverflow(page);
       await page.evaluate(() => { delete window.__failures['POST /vehicle-intakes/71/review']; });
       await cancel.click();

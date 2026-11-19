@@ -491,7 +491,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
 
       {err ? <ErrorNote>{err}</ErrorNote> : null}
       {treeError ? <ErrorNote>{treeError}</ErrorNote> : null}
-      {intakeParam !== null ? <section role="region" aria-label={`本次登记 #${intakeParam}`} className="card" style={{ padding: 16, marginBottom: 16 }}>
+      {intakeParam !== null && !(embedded && linkedIntake && deepReady && house) ? <section role="region" aria-label={`本次登记 #${intakeParam}`} className="card" style={{ padding: 16, marginBottom: 16 }}>
         <h2 style={{ fontSize: 18, marginBottom: 10 }}>本次登记 #{intakeParam}</h2>
         {!validIntakeId ? <ErrorNote>登记编号必须是正整数</ErrorNote>
           : deep?.query === intakeParam && deep.error ? <ErrorNote>{deep.error}</ErrorNote>
@@ -522,9 +522,12 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
           <div className="muted" style={{ fontSize: 15 }}>{intakeParam === null ? '输入房号点选，或按车牌 / 姓名查找，开始收费办理' : '登记及授权住户确认前不展示收费选择'}</div>
         </div>
       ) : (
-        <div className="cash2" style={{ marginTop: 18 }}>
+        <div role={embedded ? "region" : undefined} aria-label={embedded ? `本次登记 #${intakeParam}` : undefined} className={embedded ? "registration-workspace" : "cash2"} style={{ marginTop: embedded ? 0 : 18 }}>
           <div className="cashier-mis-bills">
-            <div className="card">
+            {embedded && linkedIntake ? <header className="registration-house" aria-label="登记住户">
+              <Icon name="home" size={20}/><div><strong>{house.communityName} · {house.buildingNo}/{house.roomNo}</strong><small>{house.owner?.name || '未登记业主'}　{maskPhone(house.owner?.phone)}</small></div>
+              <span>登记 #{linkedIntake.id}</span>
+            </header> : <div className="card">
               <div className="ownerHead">
                 <div className="ownerAv">{initial}</div>
                 <div className="ownerMeta">
@@ -538,9 +541,9 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
                   <Icon name="wrench" size={16} />报修
                 </button>
               </div>
-            </div>
+            </div>}
 
-            {!embedded ? <OwnerBusinessContact key={house.id} houseId={house.id} preferredOwnerId={house.owner?.id} source="cashier" onSaved={owner => { setHouse(h => h && h.id === house.id && h.owner?.id === owner.id ? { ...h, owner: {id:owner.id,name:owner.name,phone:owner.phone} } : h); }} /> : <p className="muted">房屋业主资料只读；本车联系电话请在下方登记卡填写，不会覆盖业主电话。</p>}
+            {!embedded ? <OwnerBusinessContact key={house.id} houseId={house.id} preferredOwnerId={house.owner?.id} source="cashier" onSaved={owner => { setHouse(h => h && h.id === house.id && h.owner?.id === owner.id ? { ...h, owner: {id:owner.id,name:owner.name,phone:owner.phone} } : h); }} /> : null}
             <div className="projTabs" style={{ marginTop: 18, display: embedded ? 'none' : undefined }}>
               <button className={`projTab ${tab === 'wy' ? 'on' : ''}`} onClick={() => { setTab('wy'); if (bills === null) loadBills(house); }}>
                 <Icon name="home" /><b>物业费</b><small>{bills === null ? '查询中' : billErr ? '查询失败' : wyBills.length ? `待缴 ${wyBills.length} 笔` : '无待缴'}</small>
@@ -636,7 +639,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
             ) : null}
           </div>
 
-          {isBillTab?<MisCollectionPanel key={`${house.id}-${tab}`} houseId={house.id} label={billLabel} bills={selBillRows} loading={bills===null||!!billErr} onSaved={()=>{setSelBills([]);void loadBills(house);}}/>:<div className="card cart2">
+          {embedded && (linkedBlocked || !parkCarts.length) ? null : isBillTab?<MisCollectionPanel key={`${house.id}-${tab}`} houseId={house.id} label={billLabel} bills={selBillRows} loading={bills===null||!!billErr} onSaved={()=>{setSelBills([]);void loadBills(house);}}/>:<div className="card cart2">
             <div className="cartHd"><Icon name="receipt" /><b>本次办理</b><span className="cnt">{isBillTab ? billLabel : tab === 'pk' ? '停车缴费' : '门禁卡'}</span></div>
             <div className="cartBody">
               {isBillTab ? (

@@ -218,24 +218,24 @@ export default function Vehicles() {
             <Card style={{ padding: 36 }}><div className="empty">停车库里没有查到「{query.term}」的记录</div></Card>
           ) : null}
       {newOpen ? (
-        <Sheet open onClose={() => { if (!creating.current && !newBusy) { setNewOpen(false); setNewQr(null); setNewErr(''); } }} width={newQr ? 1180 : 620} title="新车登记" subtitle="工作人员直接登记，或由住户扫码填写；授权与收费均在本页完成">
-          <div style={{ padding: '4px 2px' }}>
+        <Sheet open onClose={() => { if (!creating.current && !newBusy) { setNewOpen(false); setNewQr(null); setNewErr(''); } }} width={newQr ? 900 : 620} title="新车登记">
+          <div className="registration-sheet">
             {!newQr ? (
               <>
-                <div className="muted" style={{ fontSize: 13, marginBottom: 6 }}>1. 选这辆车挂在哪一户</div>
+                <h3 className="registration-label">登记住户</h3>
                 <HousePicker communities={communities} value={newHouse} disabled={newBusy} placeholder="输入 228/5/201 或业主姓名" onPick={setNewHouse} onClear={() => setNewHouse(null)} />
-                {newHouse?.houseId ? <p className="muted">业主：{newHouse.ownerName || '未登记'}（只读）。下一步填写本车联系手机，不修改业主资料。</p> : null}
-                <div className="muted" style={{ fontSize: 13, margin: '14px 0 6px' }}>2. 类型</div>
-                <div className="chips">
-                  <button className={`chip ${newKind === 'paid' ? 'on' : ''}`} disabled={newBusy} onClick={() => setNewKind('paid')}>新办车牌（按月收费）</button>
-                  <button className={`chip ${newKind === 'family' ? 'on' : ''}`} disabled={newBusy} onClick={() => setNewKind('family')}>亲情车（免费 · 一年）</button>
+                {newHouse?.houseId ? <p className="muted">业主：{newHouse.ownerName || '未登记'}</p> : null}
+                <h3 className="registration-label">登记类型</h3>
+                <div className="registration-types">
+                  <button className={`chip ${newKind === 'paid' ? 'on' : ''}`} aria-pressed={newKind === 'paid'} disabled={newBusy} onClick={() => setNewKind('paid')}>新办车牌（按月收费）</button>
+                  <button className={`chip ${newKind === 'family' ? 'on' : ''}`} aria-pressed={newKind === 'family'} disabled={newBusy} onClick={() => setNewKind('family')}>亲情车（免费）</button>
                 </div>
                 {newErr ? <div className="note" style={{ background: 'var(--dang-w)', color: 'var(--dang)', margin: '12px 0' }}>{newErr}</div> : null}
                 <div style={{ marginTop: 16 }}>
                   <button className="btn p" style={{ width: '100%' }} disabled={newBusy || !newHouse?.houseId} onClick={() => void createIntakeNow()}>
                     <Icon name="plus" size={16} />{newBusy ? '正在创建登记…' : '工作人员直接登记'}
                   </button>
-                  <p className="muted">下一步可鼠标点选车牌、本地上传附件或不上传；也保留二维码供住户上传。</p>
+                  <p className="muted">也可在下一步邀请住户扫码填写。</p>
                 </div>
               </>
             ) : (

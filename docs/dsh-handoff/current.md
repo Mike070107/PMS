@@ -51,3 +51,7 @@
 - 收费成功预览与历史补打使用独立票面文档，按实测内容高度定义 80mm 纸张。浏览器打印对话框关闭前加锁，同凭证 15 秒内禁止重复，超过 40 项、4000 字符或 500mm 拦截。异常不自动重试。
 - 上线后 PMS_VERIFY_RECEIPT_RELEASE=1 node --test apps/neighbor-web/test/apartment-receipt-print.test.cjs 通过。公网 16 个静态资源与本地制品逐字节一致；隔离收费数据运行正式 /apartment 路由。收费一页 80.1×82.9mm；历史补打一页 80.1×126.0mm；票尾余量均小于 2mm。重复和超长测试通过。现场 XP-80C 未连接到本机，驱动送纸、实际裁切未验。证据在 D:/00项目开发/PMS-vehicle-release-20261119/outputs/apartment-roll-20261119。
 - 回退仅针对 Web 静态资源，核对 /opt/pms-repair/web.bak.1795057121 的 release.json 为 2.0.20261119-103949 后恢复该备份并复核公网哈希。
+
+## 2026-11-19 新车登记交互重设计（本地完成）
+- 授权为重新设计页面。实际修改车辆管理的新车登记弹层、嵌入登记的收银布局和共用登记卡；登记住户摘要、工作人员/住户扫码切换、车牌键入或点选、逐字段错误及选填附件。亲情车隐藏收款，付费登记生成可收款清单时显示收款区。
+- Web 构建 pnpm --filter @pms/neighbor-web build 通过；vehicle-intake-navigation-browser 和 vehicle-staff-registration-browser 共 17/17。隔离业务数据，1440、390、375px 浏览器覆盖登记、扫码、审核、撤销和收费保护。证据 D:/00项目开发/PMS-vehicle-release-20261119/outputs/vehicle-registration-design-20261119。未发布，未写生产业务数据。

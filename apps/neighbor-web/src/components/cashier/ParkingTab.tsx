@@ -287,7 +287,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
 
   return (
     <div className="parking-household" style={{ marginTop: 16 }}>
-      {focusedIntake ? <div className="note2">仅处理本次新办登记 #{focusedIntake.id}，同户其他登记及续费车辆不参与本次收款。</div> : <>
+      {focusedIntake ? staffRegistration ? null : <div className="note2">仅处理本次新办登记 #{focusedIntake.id}，同户其他登记及续费车辆不参与本次收款。</div> : <>
       <div className="panelHd">
         <b>这一户的车</b>
       {missPlate ? (

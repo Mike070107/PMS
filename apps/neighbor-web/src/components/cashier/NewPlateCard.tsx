@@ -295,27 +295,86 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
     { label: '办公室审核', state: reviewed ? 'done' : ['reupload', 'void'].includes(it.status) ? 'attention' : 'pending', detail: reviewed ? '已通过' : it.status === 'reupload' ? '已退回' : it.status === 'void' ? '已作废' : '待办公室审核', at: it.reviewedAt },
     { label: it.kind === 'family' ? '经理审核 · 开通' : '收款 · 开通', state: it.status === 'void' ? 'attention' : sync === 'synced' ? 'done' : ['failed', 'rejected', 'manual'].includes(sync || '') ? 'attention' : 'pending', detail: it.status === 'void' ? '登记已作废' : it.kind === 'family' ? (it.familyCarId ? '已转登记 · 待经理审核' : '待经理审核') : it.transaction ? `已收款 · ${TXN_STATUS[sync || ''] || sync}` : '未收款', at: null },
   ];
-  return (
-    <div className="card np-card np-review">
-      {preview ? <ImagePreview files={preview.files} initialIndex={preview.index} title={preview.title} onClose={() => setPreview(null)} /> : null}
-      <div className="side-h" style={{ marginBottom: 10 }}>
-        <Icon name="car" size={18} />{it.kind === 'family' ? '亲情车登记' : '新办车牌'}
-        {it.plate ? <b className="plate" style={{ marginLeft: 6 }}>{it.plate}</b> : null}
-        <span className={`tag ${stTone}`} style={{ marginLeft: 8 }}>{stLabel}</span>
-        {it.kind === 'family' ? <span className="tag mute" style={{ marginLeft: 6 }}>免费 · 按申请期限</span> : it.vehicleClass ? <span className="tag acc" style={{ marginLeft: 6 }}>{it.vehicleClass}</span> : null}
-        <span style={{ marginLeft: 'auto' }} />
-        {canVoid ? <button className="btn g sm" disabled={!!busy || savingGarages} onClick={() => { setConverting(false); setAsk(ask === 'void' ? '' : 'void'); }}>撤销 / 作废登记</button> : null}
-        {it.status === 'void' || (it.status === 'approved' && (it.kind === 'family' || it.transaction)) ? <button className="btn g sm" onClick={() => onDrop(it.id)} title="从这里收起（车牌登记审核里仍可查）">✕</button> : null}
-      </div>
-
-      {!manage && it.kind === 'paid' && !it.transaction && it.status !== 'void' ? <div style={{ marginBottom: 12 }}>
+  const [attempted, setAttempted] = useState(false);
+  const plateInvalid = !/^[\u4e00-\u9fa5][A-HJ-NP-Z][A-HJ-NP-Z0-9]{5,6}$/.test(edit.plate);
+  const phoneInvalid = !/^1\d{10}$/.test(edit.contactPhone);
+  const relationInvalid = it.kind === 'family' && (!edit.relation.trim() || edit.relation.trim() === '其他亲属' || edit.relation.trim().length > 12);
+  const fieldId = (field: string) => `intake-${it.id}-${field}`;
+  const submitStaffFields = () => {
+    setAttempted(true);
+    const first = plateInvalid ? 'plate' : phoneInvalid ? 'phone' : relationInvalid ? 'relation' : '';
+    if (first) { document.getElementById(fieldId(first))?.focus(); return; }
+    void staffSubmit();
+  };
+  const garageFields = (<fieldset className="np-garages" aria-busy={savingGarages}>
+              <legend>开通车库授权 <span>可多选</span></legend>
+              <p className="np-garage-help">大车库、人防车库需同时授权二期地面；取消二期地面会一并取消这两项。</p>
+              <div className="np-garage-options">
+                {(it.kind === 'family' ? FAMILY_GARAGES : targets.map((t) => [t.key, t.short || t.label.replace(`${community} `, '')])).map(([k, label]) => (
+                  <label key={k} className={`np-garage-option ${picked.includes(k) ? 'is-checked' : ''}`}>
+                    <input type="checkbox" checked={picked.includes(k)} disabled={savingGarages || !!busy} onChange={() => togglePick(k)} /><span>{label}</span>
+                  </label>
+                ))}
+                {it.kind === 'paid' && !targets.length ? <span className="muted">{catalog === null ? '正在读取本小区停车场…' : '本小区没有接入停车系统'}</span> : null}
+              </div>
+              <div className="np-garage-numbers">{basementKeys.map(k => <div key={k}>
+                <span>{k === 'main' ? '大车库编号（必选）' : '人防车位编号（必选）'}</span>
+                <button type="button" className="btn" disabled={savingGarages || !!busy} onClick={() => setSpaceGarage(k as BasementGarage)}>{nums[k] || '请选择车位号'} · 更换车位</button>
+              </div>)}</div>
+              <GarageSpacePicker garage={spaceGarage} value={spaceGarage ? nums[spaceGarage] || '' : ''} source={spaceSource} onCancel={() => setSpaceGarage(null)} onConfirm={confirmSpace} />
+              {basementKeys.length > 0 ? <p className="np-garage-help">同一车位号可关联多个车牌，同时在库限制由停车系统控制。</p> : null}
+              <div className="np-garage-status" role="status">{savingGarages ? '正在保存授权…' : garageError ? <><span>{garageError}</span><button type="button" className="btn" disabled={!!busy || savingGarages} onClick={() => saveGarages(picked, nums)}>重试保存授权</button></> : `已选择 ${picked.length} 个车库`}</div>
+            </fieldset>);
+  const progress = (<ol className="np-steps np-review-steps" aria-label="车牌登记办理流程">
+        {steps.map((step, i) => <li key={step.label} data-state={step.state}>
+          <span className="np-step-heading"><span className="np-step-number" aria-hidden="true">{i + 1}</span><b>{step.label}</b></span>
+          <span className="np-step-detail">{step.detail}</span>
+          {step.at ? <time dateTime={step.at} title={formatBeijingDateTime(step.at, 'YYYY-MM-DD HH:mm:ss')}>{formatBeijingDateTime(step.at, 'MM-DD HH:mm')}</time> : <span className="np-step-time">{i === 3 && sync === 'synced' ? '接口未提供开通时间' : '—'}</span>}
+          {i < 3 ? <span className="np-step-arrow" aria-hidden="true">→</span> : null}
+        </li>)}
+      </ol>);
+  const categoryPanel = !manage && it.kind === 'paid' && !it.transaction && it.status !== 'void' ? <div style={{ marginBottom: 12 }}>
         {renewal(car, it.plate ? `${it.plate}（新办）` : `新办车牌 #${it.id}`, it.vehicleClass, selectVehicleClass, it.status === 'approved' && !garageError && !missingSpace && !converting && !busy && !savingGarages)}
         {it.status !== 'approved' ? <div className="muted">可先选择车辆类别和缴费月数；保存资料、车位并审核通过后，才加入本次收款。</div> : null}
       </div> : <div className="note2" style={{ marginBottom: 10 }}>
         <VehicleClassChoices options={['亲情车', ...classOptions]} value={it.kind === 'family' ? '亲情车' : it.vehicleClass} disabled={!canConvert || !!busy || savingGarages} onChange={value => { void selectVehicleClass(value).catch(e => setErr(e instanceof Error ? e.message : '类别保存失败')); }} />
         {it.kind === 'family' ? <span className="muted">亲情车免费，需填写亲属关系并经经理审核，期限按申请。</span> : null}
         {it.transaction || it.familyCarId ? <span className="muted">已关联财务或办理，不能更改车辆类别。</span> : null}
-      </div>}
+      </div>;
+  return (
+    <div className="card np-card np-review">
+      {preview ? <ImagePreview files={preview.files} initialIndex={preview.index} title={preview.title} onClose={() => setPreview(null)} /> : null}
+      <div className="side-h" style={{ marginBottom: 10 }}>
+        <Icon name="car" size={18} />{it.kind === 'family' ? '亲情车登记' : '新办车牌'}
+        {it.plate ? <b className="plate" style={{ marginLeft: 6 }}>{it.plate}</b> : null}
+        <span className={`tag ${stTone}`} style={{ marginLeft: 8 }}>{defaultStaffMode && it.transaction ? `已收款 · ${TXN_STATUS[it.transaction.externalSyncStatus] || it.transaction.externalSyncStatus}` : defaultStaffMode && canStaff && staffMode && it.status === 'waiting' ? '待录入资料' : stLabel}</span>
+        {it.kind === 'family' ? <span className="tag mute" style={{ marginLeft: 6 }}>{defaultStaffMode ? '免费' : '免费 · 按申请期限'}</span> : it.vehicleClass ? <span className="tag acc" style={{ marginLeft: 6 }}>{it.vehicleClass}</span> : null}
+        <span style={{ marginLeft: 'auto' }} />
+        {canVoid ? <button className="btn g sm" disabled={!!busy || savingGarages} onClick={() => { setConverting(false); setAsk(ask === 'void' ? '' : 'void'); }}>撤销 / 作废登记</button> : null}
+        {it.status === 'void' || (it.status === 'approved' && (it.kind === 'family' || it.transaction)) ? <button className="btn g sm" onClick={() => onDrop(it.id)} title="从这里收起（车牌登记审核里仍可查）">✕</button> : null}
+      </div>
+
+          {canStaff ? <section className="intake-registration-form" aria-label="工作人员代填">
+            <header className="intake-registration-heading"><div><h3>{defaultStaffMode ? '车辆资料' : '工作人员代填'}</h3></div><button type="button" className="btn" aria-expanded={staffMode} disabled={!!busy} onClick={() => setStaffMode(!staffMode)}>{staffMode ? defaultStaffMode ? '改由住户扫码' : '收起工作人员代填' : '工作人员直接代填'}</button></header>
+            {!defaultStaffMode && <p className="muted">填写本车车牌及联系人，保存后继续选择车库。附件选填，不上传也可提交。{it.kind === 'family' ? '亲情车仍须核实具体关系、旧库查重及经理审核。' : ''}</p>}
+            {staffMode ? <fieldset disabled={!!busy || savingGarages} style={{ border: 0, padding: 0, minWidth: 0 }}>
+              <IntakePlatePicker compact={defaultStaffMode} inputId={fieldId('plate')} invalid={attempted && plateInvalid} value={edit.plate} onChange={plate => setEdit({ ...edit, plate })} disabled={!!busy} />
+              <div className="np-fields"><label>本车联系手机（必填）<input id={fieldId('phone')} aria-invalid={attempted && phoneInvalid} aria-describedby={attempted && phoneInvalid ? fieldId('phone-error') : undefined} className="in" inputMode="tel"  autoComplete="off" maxLength={11} placeholder="填写此车牌的联系手机" value={edit.contactPhone} onChange={e => setEdit({ ...edit, contactPhone: e.target.value })} />{attempted && phoneInvalid && <small id={fieldId('phone-error')}>请输入本车联系人 11 位手机号</small>}</label>{it.kind === 'family' ? <label>与业主关系（必填）<input id={fieldId('relation')} aria-invalid={attempted && relationInvalid} aria-describedby={attempted && relationInvalid ? fieldId('relation-error') : undefined} className="in" maxLength={12} value={edit.relation} onChange={e => setEdit({ ...edit, relation: e.target.value })} />{attempted && relationInvalid && <small id={fieldId('relation-error')}>请填写具体亲属关系</small>}</label> : null}<label>车主（选填）<input className="in" value={edit.contactName} onChange={e => setEdit({ ...edit, contactName: e.target.value })} /></label></div>
+              <p className="intake-contact-help">此手机仅用于当前车牌，不会修改房屋业主电话。</p>
+              <details open={!defaultStaffMode || undefined} className="registration-attachments"><summary>附件（选填） · {it.files.length} 份</summary><div className="intake-upload" tabIndex={0} aria-label="本条登记附件上传区" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); void uploadFiles(e.dataTransfer.files); }} onPaste={e => { if (e.clipboardData.files.length) { e.preventDefault(); e.stopPropagation(); void uploadFiles(e.clipboardData.files); } }}>
+                <input ref={uploadInput} type="file" accept="image/*,application/pdf" multiple hidden onChange={e => { if (e.target.files) void uploadFiles(e.target.files); e.target.value = ''; }} />
+                <button type="button" className="btn" onClick={() => uploadInput.current?.click()}>本地上传附件（选填）</button>
+                <p>点击选择、拖入，或先点击本区域再 Ctrl+V 粘贴。最多 10 份，每份 20MB；二维码上传仍可用。</p>
+                <span role="status">已上传 {it.files.length} 份{busy === '上传附件' ? ' · 上传中…' : ''}</span>
+                {it.files.map(f => <div key={f.index}>{f.fileName}</div>)}
+              </div>
+              </details><button type="button" className="btn p" disabled={!!busy || savingGarages || (!defaultStaffMode && (plateInvalid || phoneInvalid || relationInvalid))} onClick={submitStaffFields}>{busy === '保存登记' ? '保存中…' : '保存登记，继续授权'}</button>
+            </fieldset> : null}
+          </section> : null}
+      {defaultStaffMode ? <details className="registration-options" key={it.kind + it.status} open={it.kind === 'paid' && it.status === 'approved'}>
+        <summary>{it.kind === 'family' ? '车辆类别' : '车辆类别与收费标准'}<span>{it.kind === 'family' ? '亲情车 · 免费' : it.vehicleClass || '选择标准'}</span></summary>
+        {categoryPanel}
+      </details> : categoryPanel}
       {it.reused ? <div className="note2">已继续原登记 #{it.id}，未新增单据；原资料及收款关联保留。</div> : null}
       {it.otherDraftIds?.length ? <details className="note2"><summary>发现其他历史待填登记（{it.otherDraftIds.length}）</summary><div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{it.otherDraftIds.map(id => <a key={id} className="btn" href={`${import.meta.env.BASE_URL}plates?intakeId=${id}`}>核对登记 #{id}</a>)}</div></details> : null}
       {it.registrationTerm ? <div className="note2" style={{ marginBottom: 10 }}><RegistrationTermSummary term={it.registrationTerm} /></div> : null}
@@ -333,35 +392,12 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
       </fieldset> : null}
       {it.status !== 'void' && handedOff ? <div className="note2" style={{ marginBottom: 10 }}>{it.familyCarId || (it.kind === 'family' && it.status === 'approved') ? '已转亲情车办理，请到「亲情车管理」核对；' : '原收款已进入执行或待核对阶段，请到「待处理」核对原流水；'}已入库车辆请到「车辆管理」注销，不在登记审核硬删，也不在这里退款。</div> : null}
       {['waiting', 'reupload', 'submitted'].includes(it.status) && !it.familyCarId && (it.kind === 'family' || !it.transaction)
-        ? <OfficeIntakeEditor intake={it} onSaved={acceptResponse} /> : null}
-      <ol className="np-steps np-review-steps" aria-label="车牌登记办理流程">
-        {steps.map((step, i) => <li key={step.label} data-state={step.state}>
-          <span className="np-step-heading"><span className="np-step-number" aria-hidden="true">{i + 1}</span><b>{step.label}</b></span>
-          <span className="np-step-detail">{step.detail}</span>
-          {step.at ? <time dateTime={step.at} title={formatBeijingDateTime(step.at, 'YYYY-MM-DD HH:mm:ss')}>{formatBeijingDateTime(step.at, 'MM-DD HH:mm')}</time> : <span className="np-step-time">{i === 3 && sync === 'synced' ? '接口未提供开通时间' : '—'}</span>}
-          {i < 3 ? <span className="np-step-arrow" aria-hidden="true">→</span> : null}
-        </li>)}
-      </ol>
-          {canStaff ? <section className="intake-registration-form" aria-label="工作人员代填">
-            <header className="intake-registration-heading"><div><span className="intake-eyebrow">现场办理</span><h3>工作人员代填</h3></div><button type="button" className="btn" aria-expanded={staffMode} disabled={!!busy} onClick={() => setStaffMode(!staffMode)}>{staffMode ? '收起工作人员代填' : '工作人员直接代填'}</button></header>
-            <p className="muted">填写本车车牌及联系人，保存后继续选择车库。附件选填，不上传也可提交。{it.kind === 'family' ? '亲情车仍须核实具体关系、旧库查重及经理审核。' : ''}</p>
-            {staffMode ? <fieldset disabled={!!busy || savingGarages} style={{ border: 0, padding: 0, minWidth: 0 }}>
-              <IntakePlatePicker value={edit.plate} onChange={plate => setEdit({ ...edit, plate })} disabled={!!busy} />
-              <div className="np-fields"><label>车主（选填）<input className="in" value={edit.contactName} onChange={e => setEdit({ ...edit, contactName: e.target.value })} /></label><label>本车联系手机（必填）<input className="in" inputMode="tel" autoComplete="off" maxLength={11} placeholder="填写此车牌的联系手机" value={edit.contactPhone} onChange={e => setEdit({ ...edit, contactPhone: e.target.value })} /></label>{it.kind === 'family' ? <label>与业主关系<input className="in" value={edit.relation} onChange={e => setEdit({ ...edit, relation: e.target.value })} /></label> : null}</div>
-              <p className="intake-contact-help">此手机仅用于当前车牌，不会修改房屋业主电话。</p>
-              <div className="intake-upload" tabIndex={0} aria-label="本条登记附件上传区" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); void uploadFiles(e.dataTransfer.files); }} onPaste={e => { if (e.clipboardData.files.length) { e.preventDefault(); e.stopPropagation(); void uploadFiles(e.clipboardData.files); } }}>
-                <input ref={uploadInput} type="file" accept="image/*,application/pdf" multiple hidden onChange={e => { if (e.target.files) void uploadFiles(e.target.files); e.target.value = ''; }} />
-                <button type="button" className="btn" onClick={() => uploadInput.current?.click()}>本地上传附件（选填）</button>
-                <p>点击选择、拖入，或先点击本区域再 Ctrl+V 粘贴。最多 10 份，每份 20MB；二维码上传仍可用。</p>
-                <span role="status">已上传 {it.files.length} 份{busy === '上传附件' ? ' · 上传中…' : ''}</span>
-                {it.files.map(f => <div key={f.index}>{f.fileName}</div>)}
-              </div>
-              <button type="button" className="btn p" disabled={!/^[\u4e00-\u9fa5][A-HJ-NP-Z][A-HJ-NP-Z0-9]{5,6}$/.test(edit.plate) || !/^1\d{10}$/.test(edit.contactPhone) || (it.kind === 'family' && (!edit.relation.trim() || edit.relation.trim() === '其他亲属' || edit.relation.trim().length > 12))} onClick={staffSubmit}>{busy === '保存登记' ? '保存中…' : '保存登记，继续授权'}</button>
-            </fieldset> : null}
-          </section> : null}
-      <div className="np-grid">
+        ? defaultStaffMode && canStaff ? <details className="registration-options"><summary>办公室资料确认与申请期限</summary><OfficeIntakeEditor intake={it} onSaved={acceptResponse} /></details> : <OfficeIntakeEditor intake={it} onSaved={acceptResponse} /> : null}
+
+      {!defaultStaffMode ? progress : null}
+      <div className={defaultStaffMode && staffMode ? "registration-review" : "np-grid"}>
         {/* 左：二维码 / 业主进度 */}
-        <div className="np-qr">
+        {(!defaultStaffMode || !staffMode || !canStaff && canQr) && <div className="np-qr">
           {canQr && qr && !expired ? (
             <>
               <button type="button" className="np-qr-trigger" onClick={previewQr} aria-label="放大扫码登记二维码"><img src={qr.dataUrl} alt="扫码填写" title="点击放大，方便业主扫码或拍照" /></button>
@@ -383,7 +419,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
           ) : (
             <div className="np-qr-empty"><Icon name={it.status === 'void' ? 'x' : 'check'} size={30} /><div className="muted" style={{ fontSize: 13.5 }}>{it.status === 'void' ? '已作废' : '资料已收齐'}</div></div>
           )}
-        </div>
+        </div>}
 
         {/* 右：业主填写内容 + 审核 */}
         <div>
@@ -391,7 +427,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
 
           {it.submittedAt ? (
             <>
-              {!staffMode ? <IntakePlatePicker value={edit.plate} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={plate => setEdit({ ...edit, plate })} /> : null}
+              {!(staffMode && canStaff) ? <IntakePlatePicker value={edit.plate} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={plate => setEdit({ ...edit, plate })} /> : null}
               <div className="np-fields">
                 <label>车主（选填）<input className="in" value={edit.contactName} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={(e) => setEdit({ ...edit, contactName: e.target.value })} /></label>
                 <label>本车联系手机<input className="in" value={edit.contactPhone} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={(e) => setEdit({ ...edit, contactPhone: e.target.value })} /></label>
@@ -408,32 +444,14 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
                 ))}
               </div>
             </>
-          ) : <div className="muted" style={{ padding: '6px 0 10px' }}>扫码填写是另一种登记方式；住户提交后，这里会显示本车资料。</div>}
+          ) : defaultStaffMode ? null : <div className="muted" style={{ padding: '6px 0 10px' }}>扫码填写是另一种登记方式；住户提交后，这里会显示本车资料。</div>}
 
           {/* 开通哪些车库 */}
           {!canEditGarages && picked.length ? (
             <div style={{ marginTop: 6, fontSize: 14 }}><span style={{ color: 'var(--ink2)' }}>开通车库：</span>{picked.map((k) => <span key={k} className="tag mute" style={{ marginRight: 4 }}>{(it.kind === 'family' ? FAMILY_GARAGES.find(([x]) => x === k)?.[1] : (targets.find((t) => t.key === k)?.short || targets.find((t) => t.key === k)?.label)) || k}{nums[k] ? ` ${nums[k]}` : ''}</span>)}</div>
           ) : null}
           {canEditGarages ? (
-            <fieldset className="np-garages" aria-busy={savingGarages}>
-              <legend>开通车库授权 <span>可多选</span></legend>
-              <p className="np-garage-help">大车库、人防车库需同时授权二期地面；取消二期地面会一并取消这两项。</p>
-              <div className="np-garage-options">
-                {(it.kind === 'family' ? FAMILY_GARAGES : targets.map((t) => [t.key, t.short || t.label.replace(`${community} `, '')])).map(([k, label]) => (
-                  <label key={k} className={`np-garage-option ${picked.includes(k) ? 'is-checked' : ''}`}>
-                    <input type="checkbox" checked={picked.includes(k)} disabled={savingGarages || !!busy} onChange={() => togglePick(k)} /><span>{label}</span>
-                  </label>
-                ))}
-                {it.kind === 'paid' && !targets.length ? <span className="muted">{catalog === null ? '正在读取本小区停车场…' : '本小区没有接入停车系统'}</span> : null}
-              </div>
-              <div className="np-garage-numbers">{basementKeys.map(k => <div key={k}>
-                <span>{k === 'main' ? '大车库编号（必选）' : '人防车位编号（必选）'}</span>
-                <button type="button" className="btn" disabled={savingGarages || !!busy} onClick={() => setSpaceGarage(k as BasementGarage)}>{nums[k] || '请选择车位号'} · 更换车位</button>
-              </div>)}</div>
-              <GarageSpacePicker garage={spaceGarage} value={spaceGarage ? nums[spaceGarage] || '' : ''} source={spaceSource} onCancel={() => setSpaceGarage(null)} onConfirm={confirmSpace} />
-              {basementKeys.length > 0 ? <p className="np-garage-help">同一车位号可关联多个车牌，同时在库限制由停车系统控制。</p> : null}
-              <div className="np-garage-status" role="status">{savingGarages ? '正在保存授权…' : garageError ? <><span>{garageError}</span><button type="button" className="btn" disabled={!!busy || savingGarages} onClick={() => saveGarages(picked, nums)}>重试保存授权</button></> : `已选择 ${picked.length} 个车库`}</div>
-            </fieldset>
+            defaultStaffMode && canStaff ? <details className="registration-options"><summary>车库授权<span>已选 {picked.length} 项</span></summary>{garageFields}</details> : garageFields
           ) : null}
 
           {/* 审核 */}
@@ -478,6 +496,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
           {it.status === 'approved' ? <div className="note2">{it.log?.some(l => l.action === '关联车位档案') ? '登记与车位关联已保存。' : '登记已审核；历史登记不自动补写车位关联。'}继续使用本页原车辆收费流程；收款后仍需等待真实授权办理结果。</div> : null}
         </div>
       ) : null}
+      {defaultStaffMode ? <details className="registration-options"><summary>办理记录</summary>{progress}</details> : null}
     </div>
   );
 }
