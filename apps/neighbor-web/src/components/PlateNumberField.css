@@ -15,6 +15,7 @@
 }
 .plate-input-wrap::before { left:12px; }
 .plate-input-wrap::after { right:12px; }
+#web .registration-plate .plate-input-wrap input.in,
 .registration-plate .plate-input-wrap input.in {
   display:block; width:100%; min-width:0; height:clamp(68px,22cqi,104px); padding:0 10px; box-sizing:border-box;
   border:2px solid #174787; border-radius:8px; background:#1754a0; color:white;

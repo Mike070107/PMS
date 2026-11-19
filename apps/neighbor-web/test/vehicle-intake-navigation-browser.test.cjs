@@ -400,6 +400,8 @@ for (const width of [1440,390]) test('office plate legibility '+width, async () 
     const dialog=await create(f.page);
     const plate=dialog.getByLabel('车牌号码（必填）');
     await plate.fill('沪AD12345');
+    await f.page.addStyleTag({ content: '#web .in { font-size: 16px; }' });
+    await plate.evaluate(el => { document.body.id = 'web'; });
     const metrics=await plate.evaluate(el=>({
       font:parseFloat(getComputedStyle(el).fontSize),width:el.clientWidth,content:el.scrollWidth,
       box:el.getBoundingClientRect().height,
@@ -408,6 +410,7 @@ for (const width of [1440,390]) test('office plate legibility '+width, async () 
     assert.ok(metrics.font >= (width===1440 ? 36 : 24), JSON.stringify(metrics));
     assert.ok(metrics.content <= metrics.width+1 && metrics.box>=64,JSON.stringify(metrics));
     await dialog.locator('.registration-plate').screenshot({path:path.join(evidence,'office-plate-'+width+'.png')});
+    await plate.evaluate(el => { document.body.removeAttribute('id'); });
     const data = await f.page.evaluate(() => {
       const canvas = document.createElement('canvas');
       canvas.width = canvas.height = 80;
