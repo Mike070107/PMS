@@ -54,7 +54,7 @@ test('新车登记业主信息只读；正式收银/公寓/已存车牌/续费�
  if(entry==='vehicles'){await page.getByRole('button',{name:'新车登记',exact:true}).click();const picker=page.locator('.hp').getByRole('combobox');await picker.fill('101');await picker.press('Enter');}
   if(entry==='vehicle-existing'){await page.locator('.addr-search').getByRole('combobox').fill('沪A00001');await page.getByRole('button',{name:'查询',exact:true}).click();await page.locator('.veh-card').waitFor();}
  if(entry==='vehicles'){
-   await page.getByText(/下一步填写本车联系手机，不修改业主资料/).waitFor();
+   await page.getByRole('dialog').getByText('业主：入口测试业主', { exact: true }).waitFor();
    assert.equal(await page.getByRole('region',{name:'业务联系人'}).count(),0,'new registration cannot edit owner master contacts');
    const calls=await page.evaluate(()=>window.__entryCalls);
    assert.equal(calls.filter(c=>c.method&&c.method!=='GET').length,0);
