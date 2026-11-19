@@ -72,7 +72,7 @@ test('real vehicle/cashier entries: opening is read-only, lock/reuse, explicit a
     await shot('mobile-open-readonly');
     await call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape' }); await pause(80);
     assert.equal(await js("!!document.querySelector('.sheet')"), false);
-    await click('.newplate-bar button', '亲情车（免费 · 一年）');
+    await click('.newplate-bar button', '亲情车（免费）');
     assert.equal(await posts(), 0);
     await click('.sheet button', '工作人员直接登记');
     assert.equal(await js("[...document.querySelectorAll('.sheet button')].filter(b=>b.textContent.includes('读取原登记')).every(b=>b.disabled)"), true);
@@ -85,10 +85,10 @@ test('real vehicle/cashier entries: opening is read-only, lock/reuse, explicit a
     assert.equal(await js("getComputedStyle(document.querySelector('.registration-house')).backgroundColor"), await js("(()=>{const p=document.createElement('span');p.style.background='var(--acc)';document.body.append(p);const c=getComputedStyle(p).backgroundColor;p.remove();return c})()"));
     await shot('cashier-registration-theme-390');
     await click('.intake-registration-heading button', '改由住户扫码');
-    await click('.newplate-bar button', '亲情车（免费 · 一年）'); await click('.sheet button', '生成/继续登记二维码');
+    await click('.newplate-bar button', '亲情车（免费）'); await click('.sheet button', '生成/继续登记二维码');
     await until("!document.querySelector('.sheet')");
     assert.equal(await count(), 1); assert.equal(await js("document.querySelectorAll('.np-card').length"), 1);
-    await click('.newplate-bar button', '亲情车（免费 · 一年）'); await click('.sheet button', '再登记一辆（另建办理单）');
+    await click('.newplate-bar button', '亲情车（免费）'); await click('.sheet button', '再登记一辆（另建办理单）');
     await until("!document.querySelector('.sheet')&&document.querySelectorAll('.np-card').length===2");
     assert.equal(await count(), 2);
     await click('.newplate-bar button', '新办车牌（付费）'); await js('window.__failNext=true'); await click('.sheet button', '生成/继续登记二维码');
@@ -155,18 +155,18 @@ test('real vehicle/cashier entries: opening is read-only, lock/reuse, explicit a
       await js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});const p=e.tagName==='SELECT'?HTMLSelectElement.prototype:e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(p,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
       await pause(80);
     };
-    await setControl('fieldset select', 'other'); await setControl('fieldset input[type=number]', '6');
+    await click('fieldset button', '6 个月');
     assert.equal(await js("[...document.querySelectorAll('button')].find(b=>b.textContent==='办公室审核通过').disabled"), true, 'unsaved term cannot be silently approved');
     await js('window.__failFamily=true'); await click('button', '保存期限'); await shot('family-term-waiting');
     await until("document.body.textContent.includes('合成保存失败')");
-    assert.equal(await js("document.querySelector('fieldset input[type=number]').value"), '6', 'failed save retains office input');
+    assert.equal(await js("document.querySelector('fieldset input[aria-label=自定义续期月数]').value"), '6', 'failed save retains office input');
     await shot('family-term-error-keeps-input');
     const patches = () => js("window.__intakeCalls.filter(o=>o.url==='/family-cars/901'&&o.method==='PATCH').length");
     const beforePatches = await patches();
     await js("(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.textContent==='保存期限');b.click();b.click();})()");
     await until("!document.querySelector('fieldset')"); assert.equal(await patches(), beforePatches + 1, 'synchronous save guard');
     await click('button', '办理详情'); await until("document.body.textContent.includes('6个月（允许生效日起算）')");
-    await click('button', '修改申请期限'); await setControl('fieldset select', 'dates');
+    await click('button', '修改申请期限'); await click('fieldset button', '自定日期');
     await setControl('fieldset input[type=date]', '2099-01-01');
     // Date fields live in separate labels: explicitly address the second date input.
     await js("(()=>{const e=document.querySelectorAll('fieldset input[type=date]')[1];Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'2099-01-31');e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()");

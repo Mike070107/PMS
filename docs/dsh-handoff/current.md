@@ -68,3 +68,8 @@
 - 本次仅部署 Web。域名 prsznh.cn 解析 124.223.179.214，VM-4-8-ubuntu / 10.0.4.8，nginx 静态目录 /opt/pms-repair/web。公网版本 2.0.20261119-145128，源码 d0c2c7ca，远端 deployed/web 已核对。
 - 发布回归修正旧提示文字断言，继续验证业主只读和无业务写入。线上两入口验收使用公网制品、隔离业务数据；车辆管理 1440px，收银台 390px，主题、车牌输入及切换扫码均通过。与构建逐字节核对 30 个文件。证据 outputs/vehicle-registration-theme/production-final.log、online-verification.log、online-vehicles.png、online-cashier.png。
 - 回退时仅恢复 Web 静态资源，备份 /opt/pms-repair/web.bak.1795071364 已核实为 2.0.20261119-135242 / c3bbeb20。API api-78988f8，助手更新清单 2.6.0。本次未发布 API、助手或小程序，未提交真实登记或收费。
+
+## 2026-11-19 车辆类别单选与授权期限（本地验收）
+- 车辆管理和收银台共用原生 radio，每类单独一行、跨行只选一种。住户车1/2/3 同行，旧收费分组“产权车位”显示为“产权车”，锁定只显示结果。
+- 亲情车默认 12 个整月，可选快捷月数、手输 1～60 个月或自定义日期。工作人员提交的期限随登记原子保存；已关联亲情车从办理详情核对及按原权限修改。付费新车在类别与授权期限内按原收费规则试算。
+- 本地 pnpm --filter @pms/neighbor-web build、API tsc --noEmit 通过；18 项浏览器回归、27 项服务及 SQL 测试通过，含 375px 同行、跨行单选，以及自定义五个月保存和重读。证据 outputs/vehicle-class-term。未部署。

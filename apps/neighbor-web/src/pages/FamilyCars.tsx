@@ -34,8 +34,8 @@ const familyTone = (s: string) => (s === 'active' ? 'ok' : ['expired', 'void'].i
 export default function FamilyCars() {
   useSession();
   const canFamily = ['family-cars', 'family-cars-approve', 'app:family-car-approve', 'app:approve-business-manager'].some(key => can(key, 'view'));
-  const [q, setQ] = useState('');
-  const [kw, setKw] = useState('');
+  const [q, setQ] = useState(() => new URLSearchParams(window.location.search).get('plate') || '');
+  const [kw, setKw] = useState(q);
   if (!canFamily) return null;
   return (
     <>
@@ -132,6 +132,14 @@ function FamilyList({ kw }: { kw: string }) {
       if (mounted.current && turn === detailGeneration.current) { setOpen(r); setEditingTerm(false); setTermDraft(r.registrationTerm ?? { mode: 'months', months: 12 }); }
     } catch { if (mounted.current && turn === detailGeneration.current) toast('办理详情读取失败，请重新点击办理详情重试'); }
   };
+  const initialDetail = useRef(Number(new URLSearchParams(window.location.search).get('detail')));
+  useEffect(() => {
+    const id = initialDetail.current;
+    if (id > 0 && rows?.some(row => row.id === id)) {
+      initialDetail.current = 0;
+      void detail(id);
+    }
+  }, [rows]);
   const toggleDetail = (id: number) => {
     if (open?.id === id) { ++detailGeneration.current; setOpen(null); } else void detail(id);
   };
@@ -313,7 +321,6 @@ function FamilyList({ kw }: { kw: string }) {
         <button className="btn sm" disabled={!meta || meta.page * meta.pageSize >= meta.total} onClick={() => meta && setPaging({ kw, page: meta.page + 1, pageSize })}>下一页</button>
         <label>每页 <select className="in" aria-label="每页条数" style={{ width: 'auto' }} value={pageSize} onChange={e => setPaging({ kw, page: 1, pageSize: Number(e.target.value) })}>{[20, 50, 100].map(size => <option key={size} value={size}>{size}</option>)}</select> 辆</label>
       </div>
-      <div className="note2" style={{ marginTop: 12 }}><Icon name="alert" />亲情车不收费，默认12个月，可申请其他月数或指定起止日期，按最终审批期限开通；到期前30天提醒，到期自动停用车库权限。新登记在收银台「停车缴费 → 亲情车」生成二维码。</div>
     </>
   );
 }

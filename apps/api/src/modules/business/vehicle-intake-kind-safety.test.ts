@@ -252,7 +252,9 @@ test('扫码付费新车可无附件；亲情车仅本地代填附件选填且�
   assert.equal(result.status, 'submitted'); assert.equal(result.fileCount, 0);
   const family = staffFixture(); family.row().kind = 'family'; family.row().garages = ['phase2'];
   await assert.rejects(family.service.staffSubmit(1, staffBody, family.user), /关系/);
-  await family.service.staffSubmit(1, { ...staffBody, relation: '子女' }, family.user);
+  await assert.rejects(family.service.staffSubmit(1, { ...staffBody, relation: '子女', registrationTerm: { mode:'months', months:0 } }, family.user), /月数/);
+  await family.service.staffSubmit(1, { ...staffBody, relation: '子女', registrationTerm: { mode:'months', months:3 } }, family.user);
+  assert.deepEqual(family.row().registrationTerm, { mode:'months', months:3 });
   assert.equal(family.row().files.length, 0);
   assert.equal(family.row().log.at(-1).attachmentsOptional, true);
   await assert.rejects(family.service.review(1, { decision: 'approve' }, family.user), /旧停车库查重/);

@@ -1,25 +1,40 @@
+import { useId } from 'react';
 import './intake-registration.css';
 
+export function vehicleClassLabel(value: string) {
+  return value === '产权车位' ? '产权车' : value.replace(/[-－\s]/g, '');
+}
+
 /** Display grouping never changes the configured billing rule value. */
-export default function VehicleClassChoices({ options, value, disabled, defaultValue, onChange }: {
-  options: string[]; value: string; disabled?: boolean; defaultValue?: string; onChange: (value: string) => void;
+export default function VehicleClassChoices({ options, value, disabled, readOnly, defaultValue, onChange }: {
+  options: string[]; value: string; disabled?: boolean; readOnly?: boolean; defaultValue?: string; onChange: (value: string) => void;
 }) {
-  const compact = (s: string) => s.replace(/[-－\s]/g, '');
-  const groups = [
-    { label: '住户车', match: (s: string) => /^住户车\d*$/.test(compact(s)) },
-    { label: '租户车', match: (s: string) => /^租户车\d*$/.test(compact(s)) },
-    { label: '亲情车', match: (s: string) => compact(s) === '亲情车' },
-    { label: '其他类别', match: (s: string) => !/^(住户车\d*|租户车\d*|亲情车)$/.test(compact(s)) },
-  ];
-  return <fieldset className="vehicle-class-choices" disabled={disabled}>
+  const name = useId();
+  const choices = [...new Set([...options, ...(value ? [value] : [])])];
+  const byLabel = new Map<string, string>();
+  for (const option of choices) {
+    const label = vehicleClassLabel(option);
+    if (!byLabel.has(label) || option === value) byLabel.set(label, option);
+  }
+  const groups = new Map<string, string[]>(['住户车', '租户车', '亲情车', '产权车'].map(label => [label, []]));
+  for (const [label, option] of byLabel) {
+    const group = label.match(/^(住户车|租户车)\d*$/)?.[1] || label;
+    if (!groups.has(group)) groups.set(group, []);
+    groups.get(group)!.push(option);
+  }
+  if (readOnly) return <div className="vehicle-class-field"><b>车辆类别</b><span>{value ? vehicleClassLabel(value) : '未设置'}</span></div>;
+  return <fieldset className="vehicle-class-radios" disabled={disabled}>
     <legend>车辆类别</legend>
-    {groups.map(g => {
-      const rows = [...new Set(options)].filter(g.match).sort((a, b) => compact(a).localeCompare(compact(b), 'zh-CN', { numeric: true }));
-      return rows.length ? <div className="vehicle-class-row" key={g.label} role="group" aria-label={g.label}>
-        <span className="vehicle-class-group">{g.label}</span><div className="vehicle-class-options">
-          {rows.map(option => <button type="button" key={option} className={`chip ${value === option ? 'on' : ''}`} aria-pressed={value === option} onClick={() => onChange(option)}>{compact(option)}{option === defaultValue ? <small>默认</small> : null}</button>)}
-        </div>
-      </div> : null;
-    })}
+    <div className="vehicle-class-groups">
+      {Array.from(groups, ([group, rows]) => {
+        rows.sort((a,b) => vehicleClassLabel(a).localeCompare(vehicleClassLabel(b), 'zh-CN', { numeric: true }));
+        return rows.length > 0 && <div className="vehicle-class-group" key={group} role="group" aria-label={group}>
+          {rows.map(option => <label key={option}>
+            <input type="radio" name={name} value={option} checked={value === option} onChange={() => onChange(option)} />
+            {vehicleClassLabel(option)}{option === defaultValue && !value && <small>默认</small>}
+          </label>)}
+        </div>;
+      })}
+    </div>
   </fieldset>;
 }

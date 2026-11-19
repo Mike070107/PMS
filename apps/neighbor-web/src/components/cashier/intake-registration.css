@@ -30,15 +30,7 @@
 .intake-registration-form>p,.intake-contact-help{font-size:14px;line-height:1.6;color:var(--ink2)}
 .intake-registration-form .np-fields{margin-top:16px}
 .intake-registration-form .intake-upload{margin:20px 0;background:var(--sunken,#f4f6f9);padding:16px}
-.vehicle-class-choices{border:0;min-width:0;padding:0;margin:0 0 12px}
-.vehicle-class-choices legend{font-size:14px;font-weight:600;margin-bottom:12px;padding:0}
-.vehicle-class-row{display:grid;grid-template-columns:72px minmax(0,1fr);gap:12px;align-items:start;margin-bottom:8px}
-.vehicle-class-group{font-size:13px;color:var(--ink2);padding-top:12px}
-.vehicle-class-options{display:flex;flex-wrap:wrap;gap:8px}
-.vehicle-class-options .chip{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:104px;min-height:44px;border-radius:6px;font-variant-numeric:tabular-nums}
-.vehicle-class-options small{font-size:11px;font-weight:400}
-.vehicle-class-options button:focus-visible{outline:2px solid var(--brand,var(--acc));outline-offset:3px}
-@media(max-width:600px){.intake-registration-form{padding:16px 12px}.intake-registration-heading{align-items:flex-start}.intake-registration-heading .btn{max-width:50%}.vehicle-class-row{grid-template-columns:1fr;gap:6px}.vehicle-class-group{padding-top:0}.vehicle-class-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.vehicle-class-options .chip{min-width:0;padding:8px 4px;font-size:13px;flex-wrap:wrap}}
+@media(max-width:600px){.intake-registration-form{padding:16px 12px}.intake-registration-heading{align-items:flex-start}.intake-registration-heading .btn{max-width:50%}}
 
 /* Vehicle registration follows the typography and markings of a parking permit. */
 .registration-sheet, .registration-workspace {
@@ -119,3 +111,15 @@
   .registration-workspace .intake-registration-form > fieldset > .btn.p { width:100%; justify-content:center; }
   .registration-workspace .intake-registration-heading{flex-direction:row;justify-content:space-between;flex-wrap:wrap}
 }
+
+.vehicle-class-field { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.vehicle-class-radios { min-width:0; width:100%; margin:0; padding:0; border:0; }
+.vehicle-class-radios legend { padding:0; font-weight:650; }
+.vehicle-class-groups { display:grid; }
+.vehicle-class-group { display:flex; flex-wrap:wrap; align-items:center; gap:0 12px; }
+.vehicle-class-group { max-width:100%; }
+.vehicle-class-group label { display:inline-flex; align-items:center; gap:4px; min-height:40px; white-space:nowrap; cursor:pointer; }
+.vehicle-class-group input { margin:0; accent-color:var(--acc); }
+@media(max-width:600px){.vehicle-class-group{gap:0 6px}.vehicle-class-group label{font-size:14px;min-height:44px}}
+
+.registration-term-field { grid-column:1/-1; min-width:0; }

@@ -36,12 +36,21 @@ for (const width of [1440, 375]) test(`staff no-attachment registration + garage
     assert.equal(await p.getByLabel('本车联系手机（必填）').inputValue(), '', 'owner phone must not be silently reused');
     await p.getByLabel('本车联系手机（必填）').fill('13711112222');
     assert.equal(await p.locator('.np-grid .intake-registration-form').count(), 0, 'staff card is independent from QR grid');
-    assert.equal(await p.getByRole('group', { name: '住户车', exact: true }).getByRole('button').count(), 3);
-    assert.equal(await p.getByRole('group', { name: '租户车', exact: true }).getByRole('button').count(), 2);
-    assert.equal(await p.getByRole('button', { name: '产权车位', exact: true }).count(), 1);
-    assert.equal(await button(p, '亲情车').count(), 1);
-    await button(p, '租户车2').click(); await p.waitForFunction(() => window.__rendered.vehicleClass === '租户车-2');
-    await p.getByRole('button', { name: /^住户车1/ }).click(); await p.waitForFunction(() => window.__rendered.vehicleClass === '住户车-1');
+    const category = p.getByRole('group', { name: '车辆类别', exact: true });
+    for (const label of ['租户车2','住户车1','产权车','亲情车']) assert.equal(await category.getByRole('radio',{name:label,exact:true}).count(),1);
+    const positions = await category.locator('label').filter({hasText:/住户车[123]/}).evaluateAll(labels => labels.map(label => label.offsetTop));
+    assert.equal(new Set(positions).size,1,'three resident classes share one row');
+    await category.screenshot({path:path.join(out, 'vehicle-types-' + width + '.png')});
+    const rows = await category.locator('.vehicle-class-group').evaluateAll(groups => groups.map(group => group.getBoundingClientRect().top));
+    assert.equal(new Set(rows).size, rows.length, 'one row per class');
+    await category.getByRole('radio',{name:'产权车',exact:true}).check();
+    await p.waitForFunction(() => window.__rendered.vehicleClass === '产权车位');
+    assert.equal(await category.locator('input:checked').count(),1);
+
+    await category.getByRole('radio',{name:'租户车2'}).check(); await p.waitForFunction(() => window.__rendered.vehicleClass === '租户车-2');
+    assert.equal(await category.getByRole('radio',{name:'产权车',exact:true}).isChecked(),false);
+    assert.equal(await category.locator('input:checked').count(),1);
+    await category.getByRole('radio',{name:'住户车1'}).check(); await p.waitForFunction(() => window.__rendered.vehicleClass === '住户车-1');
     assert.equal(await button(p, '保存登记，继续授权').isEnabled(), true);
     await screenshot(p, `staff-optional-${width}.png`);
     await p.evaluate(() => { window.__holdSubmit = true; });
@@ -96,16 +105,22 @@ for (const width of [1440, 375]) test(`staff no-attachment registration + garage
 test('family choice keeps conversion safeguards and local submission needs no attachment', { timeout: 30000 }, async () => {
   const f = await fixture(375); const p = f.page;
   try {
-    await button(p, '亲情车').click();
+    await p.getByRole('radio', { name: '亲情车', exact: true }).click();
     assert.equal(await button(p, '确认转换登记类型').isDisabled(), true);
     await p.getByLabel('转换后与业主关系', { exact: true }).fill('父母');
     p.once('dialog', d => d.accept()); await button(p, '确认转换登记类型').click();
     await p.waitForFunction(() => window.__rendered.kind === 'family');
     await button(p, '工作人员直接代填').click();
+    const term = p.getByRole('group', { name: '车牌授权期限' });
+    assert.equal(await term.getByRole('button',{name:'12 个月',exact:true}).getAttribute('aria-pressed'),'true');
+    await term.screenshot({path:path.join(out,'family-term-375.png')});
+    await term.getByRole('button',{name:'6 个月',exact:true}).click();
+    await term.getByLabel('自定义续期月数').fill('5');
     for (const key of '沪A12345') await p.locator('.intake-plate-keys').getByRole('button', { name: key, exact: true }).click();
     await p.getByLabel('本车联系手机（必填）').fill('13711112222');
     assert.equal(await button(p, '保存登记，继续授权').isEnabled(), true);
     await button(p, '保存登记，继续授权').click(); await p.waitForFunction(() => window.__rendered.status === 'submitted');
+    assert.deepEqual(await p.evaluate(() => window.__current().registrationTerm), {mode:'months',months:5});
     assert.equal(await p.evaluate(() => window.__current().files.length), 0);
     assert.equal(await p.evaluate(() => window.__current().relation), '父母');
     assert.equal(await p.evaluate(() => window.__current().ownerPhone), '13900000000');

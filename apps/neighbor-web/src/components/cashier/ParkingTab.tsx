@@ -349,7 +349,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
 
       <div className="newplate-bar">
         <button className="btn" disabled={newBusy || !hh || !hh.targets.length} onClick={() => { setNewErr(''); setEntryKind('paid'); }}><Icon name="plus" size={16} />新办车牌（付费）</button>
-        <button className="btn" disabled={newBusy} onClick={() => { setNewErr(''); setEntryKind('family'); }}><Icon name="plus" size={16} />亲情车（免费 · 一年）</button>
+        <button className="btn" disabled={newBusy} onClick={() => { setNewErr(''); setEntryKind('family'); }}><Icon name="plus" size={16} />亲情车（免费）</button>
         <span className="muted" style={{ fontSize: 13.5 }}>工作人员可直接登记，也可由住户扫码填写。</span>
       </div>
       </>}
@@ -514,15 +514,15 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
           ) : !candidates.length ? (
             <div className="note2" style={{ marginBottom: 10 }}><Icon name="alert" />本小区还没有给「{lots.map((l) => l.label).join('、') || '该停车场'}」建车辆类别，暂按通用规则「{rule?.name}」计价。</div>
           ) : null}
-          {!lots.length ? <div className="muted">至少勾选一个要续期的系统</div> : (
+          {!lots.length && !intakeId ? <div className="muted">至少勾选一个要续期的系统</div> : (
             <>
               <div className="quickMonths" style={{ marginTop: 0 }}>
-                <span style={{ fontSize: 14, color: 'var(--ink2)', marginRight: 4 }}>续：</span>
+                <span style={{ fontSize: 14, color: 'var(--ink2)', marginRight: 4 }}>{intakeId ? '车牌授权期限' : '续：'}</span>
                 <RenewalMonths value={months} active={!custom} onValidityChange={valid => { if (!valid) invalidateQuote(); setMonthsValid(valid); }} onChange={m => { invalidateQuote(); setCustom(false); setMonthsValid(true); setMonths(m); }} />
                 <button className={`chip ${custom ? 'on' : ''}`} onClick={() => { invalidateQuote(); setCustom(true); }}><Icon name="clock" size={14} />自定日期</button>
                 {!custom ? (
                   <span style={{ marginLeft: 'auto', fontSize: 14 }}>
-                    {est ? <>{est.startDate} → <b>{est.endDate}</b> · <b className="money">{money(est.amountCents / 100)}</b>{est.breakdown && /套餐/.test(est.breakdown) ? <small className="muted">（{est.breakdown}）</small> : null}</> : estErr ? <span style={{ color: 'var(--dang)' }}>{estErr}</span> : !monthsValid ? <span style={{ color: 'var(--dang)' }}>月份未填写正确，不能试算或收款</span> : usable.length ? <span className="muted">计算中…</span> : null}
+                    {est ? <>{est.startDate} → <b>{est.endDate}</b> · <b className="money">{money(est.amountCents / 100)}</b>{est.breakdown && /套餐/.test(est.breakdown) ? <small className="muted">（{est.breakdown}）</small> : null}</> : estErr ? <span style={{ color: 'var(--dang)' }}>{estErr}</span> : !monthsValid ? <span style={{ color: 'var(--dang)' }}>月份未填写正确，不能试算或收款</span> : !lots.length ? <span className="muted">选好车库后试算</span> : usable.length ? <span className="muted">计算中…</span> : null}
                   </span>
                 ) : null}
               </div>

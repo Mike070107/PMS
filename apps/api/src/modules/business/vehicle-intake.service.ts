@@ -708,6 +708,8 @@ export class VehicleIntakeService {
     const done = await this.repo.createQueryBuilder().update(VehicleIntake)
       .set({
         plate, contactName, contactPhone, relation: row.kind === 'family' ? relation : '',
+        ...(actor && row.kind === 'family' && body?.registrationTerm !== undefined
+          ? { registrationTerm: normalizeRegistrationTerm(body.registrationTerm) } : {}),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         files: [...keep, ...stored] as any, status: 'submitted', submittedAt: new Date(),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -10,10 +10,19 @@ import { BusinessLog, BusinessTransaction, ParkingSpace, VehicleIntake } from '.
 test('staff contact isolation persists; shared-space approval never overwrites master records (PGlite SQL)', async () => {
   const db = new PGlite();
   await db.exec('CREATE TABLE fixture_entities (entity text, id int, data jsonb NOT NULL, PRIMARY KEY(entity,id))');
+  await db.exec(`
+    CREATE VIEW vehicle_intakes AS SELECT id, (data->>'tenantId')::int AS tenant_id,
+      (data->>'houseId')::int AS house_id, data->>'plate' AS plate, data->>'status' AS status,
+      (data->>'transactionId')::int AS transaction_id, (data->>'familyCarId')::int AS family_car_id
+      FROM fixture_entities WHERE entity='VehicleIntake';
+    CREATE TABLE family_cars (id int, tenant_id int, previous_id int, house_id int, plate text, status text);
+    CREATE TABLE vehicle_registration_claims (tenant_id int, plate text, intake_id int, family_car_id int, PRIMARY KEY(tenant_id,plate));
+  `);
   const sqlCalls: string[] = [];
   const revive = (row: any) => { if (!row) return null; for (const key of ['expiresAt', 'createdAt', 'updatedAt', 'submittedAt', 'reviewedAt', 'openedAt']) if (row[key]) row[key] = new Date(row[key]); return row; };
   function managerFor(connection: any): any {
     const manager: any = {
+      queryRunner: { isTransactionActive: connection !== db },
       query: async (sql: string, parameters: any[]) => { sqlCalls.push(sql); return (await connection.query(sql, parameters)).rows; },
       save: async () => {}, create: (_entity: any, value: any) => value,
       getRepository: (entity: any) => repository(entity, manager, connection),
@@ -48,7 +57,7 @@ test('staff contact isolation persists; shared-space approval never overwrites m
   }
   const manager = managerFor(db), intakes = manager.getRepository(VehicleIntake);
   const now = new Date(); const user: any = { id: 8, tenantId: 1 };
-  await intakes.save({ id: 1, tenantId: 1, communityId: 3, houseId: 5, houseLabel: '枫桦景苑二期/228弄3号502', kind: 'paid', status: 'submitted', plate: '沪A12345', contactName: '合成车主', contactPhone: '13900000000', ownerName: '合成业主', ownerPhone: '', relation: '', vehicleClass: '', garages: ['local:phase2_parking', 'local:phase2_main_garage', 'deliyun:枫桦景苑'], garageNumbers: { main: 'B12', civil: 'C12' }, files: [], log: [], expiresAt: new Date(Date.now() + 3600000), createdAt: now, submittedAt: now, transactionId: null });
+  await intakes.save({ id: 1, tenantId: 1, communityId: 3, houseId: 5, houseLabel: '枫桦景苑二期/228弄3号502', kind: 'paid', status: 'submitted', plate: '沪A12345', contactName: '合成车主', contactPhone: '13900000000', ownerName: '合成业主', ownerPhone: '', relation: '', vehicleClass: '', garages: ['local:phase2_parking', 'local:phase2_main_garage', 'deliyun:枫桦景苑'], garageNumbers: { main: 'B12', civil: 'C12' }, files: [], log: [{ action: '工作人员代填新车登记', userId: 8, attachmentsOptional: true, registrationVersion: 2 }], expiresAt: new Date(Date.now() + 3600000), createdAt: now, submittedAt: now, transactionId: null });
   const spaces = manager.getRepository(ParkingSpace);
   await spaces.save({ id: 1, tenantId: 1, communityId: 3, garage: 'civil', spaceNo: 'C12', plate: null, houseNo: null });
   await spaces.save({ id: 2, tenantId: 1, communityId: 3, garage: 'main', spaceNo: 'B12', plate: '沪B22222', houseNo: '另一户' });
@@ -59,6 +68,9 @@ test('staff contact isolation persists; shared-space approval never overwrites m
       await intakes.save({ ...(await intakes.findOne({ where: { id: 1 } })), id, status: 'waiting', plate: '', ownerPhone: '13800000000', garages: ['local:phase2_parking'], garageNumbers: {} });
       await service.staffSubmit(id, { plate, contactPhone: phone, ownerPhone: '13099998888' }, user);
     }
+    await intakes.save({ ...(await intakes.findOne({ where: { id: 1 } })), id: 4, kind: 'family', status: 'waiting', plate: '', garages: ['phase2'], garageNumbers: {} });
+    await service.staffSubmit(4, { plate: '沪E12345', contactPhone: '13711112222', relation: '父母', registrationTerm: { mode: 'months', months: 5 } }, user);
+    assert.deepEqual((await service.get(4, user)).registrationTerm, { mode: 'months', months: 5 });
     const firstCar = await service.get(2, user), secondCar = await service.get(3, user);
     assert.equal(firstCar.contactPhone, '13711112222'); assert.equal(secondCar.contactPhone, '13633334444');
     assert.equal(firstCar.ownerPhone, '13800000000'); assert.equal(secondCar.ownerPhone, '13800000000');
