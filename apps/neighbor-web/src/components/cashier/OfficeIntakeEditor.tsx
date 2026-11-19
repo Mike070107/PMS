@@ -1,3 +1,4 @@
+import { IntakeAttachment } from '../attachments/IntakeAttachment';
 import PlateNumberField from '@/components/PlateNumberField';
 import { useEffect, useRef, useState } from 'react';
 import Icon from '@/components/Icon';
@@ -7,7 +8,7 @@ import type { Intake } from './NewPlateCard';
 
 const MAX = 10;
 const MAX_BYTES = 20 * 1024 * 1024;
-const isImage = (file: File) => file.type.startsWith('image/');
+
 
 /**
  * 办公室直接办理入口：代业主填写车牌/联系人/关系/期限并上传资料。
@@ -20,7 +21,7 @@ export default function OfficeIntakeEditor({ intake, onSaved }: { intake: Intake
   const [contactPhone, setContactPhone] = useState(intake.contactPhone);
   const [relation, setRelation] = useState(intake.relation);
   const [term, setTerm] = useState<RegistrationTerm>(intake.registrationTerm ?? { mode: 'months', months: 12 });
-  const [picks, setPicks] = useState<Array<{ file: File; url: string; isImg: boolean }>>([]);
+  const [picks, setPicks] = useState<Array<{ file: File; key: string }>>([]);
   const [keep, setKeep] = useState<number[]>(() => intake.files.map(file => file.index));
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
@@ -30,7 +31,7 @@ export default function OfficeIntakeEditor({ intake, onSaved }: { intake: Intake
   const mounted = useRef(true);
 
   useEffect(() => () => { mounted.current = false; }, []);
-  useEffect(() => () => picks.forEach(pick => URL.revokeObjectURL(pick.url)), [picks]);
+
 
   const add = (list: FileList | File[] | null) => {
     if (!list) return;
@@ -40,10 +41,10 @@ export default function OfficeIntakeEditor({ intake, onSaved }: { intake: Intake
     const room = MAX - keep.length - picks.length;
     if (room <= 0) { setErr('资料最多 10 份'); return; }
     if (files.length > room) setErr(`最多再放 ${room} 份，多出的已忽略`);
-    const next = files.slice(0, room).map(file => ({ file, url: URL.createObjectURL(file), isImg: isImage(file) }));
+    const next = files.slice(0, room).map(file => ({ file, key: newOfficeKey() }));
     setPicks(current => [...current, ...next]);
   };
-  const removePick = (index: number) => setPicks(current => { URL.revokeObjectURL(current[index].url); return current.filter((_, i) => i !== index); });
+  const removePick = (index: number) => setPicks(current => current.filter((_, i) => i !== index));
   const paste = (event: React.ClipboardEvent) => {
     const files = Array.from(event.clipboardData?.files ?? []);
     if (!files.length) return;
@@ -54,7 +55,7 @@ export default function OfficeIntakeEditor({ intake, onSaved }: { intake: Intake
   const reset = () => {
     setPlate(intake.plate); setContactName(intake.contactName); setContactPhone(intake.contactPhone);
     setRelation(intake.relation); setTerm(intake.registrationTerm ?? { mode: 'months', months: 12 });
-    setPicks(current => { current.forEach(pick => URL.revokeObjectURL(pick.url)); return []; });
+    setPicks([]);
     setKeep(intake.files.map(file => file.index));
     setErr(''); setOk('');
   };
@@ -78,7 +79,7 @@ export default function OfficeIntakeEditor({ intake, onSaved }: { intake: Intake
       }, picks.map(pick => pick.file));
       if (!mounted.current) return;
       onSaved(saved as Intake);
-      setPicks(current => { current.forEach(pick => URL.revokeObjectURL(pick.url)); return []; });
+      setPicks([]);
       setKeep(((saved as Intake).files ?? []).map(file => file.index));
       setOk(confirm ? '已确认并提交办公室审核' : '草稿已保存，尚未提交审核');
     } catch (error) {
@@ -126,13 +127,11 @@ export default function OfficeIntakeEditor({ intake, onSaved }: { intake: Intake
       {intake.files.length || picks.length ? <div className="np-files">
         {intake.files.map(file => keep.includes(file.index) ?
           <span key={`kept-${file.index}`} className="np-office-file">
-            {file.contentType.startsWith('image/') ? <img src={file.fileUrl} alt="" loading="lazy" /> : <Icon name="file" size={20} />}
-            <span className="np-file-caption">{file.fileName}</span>
+            <IntakeAttachment file={file}/>
             <button type="button" className="btn sm" disabled={!!busy} onClick={() => setKeep(current => current.filter(index => index !== file.index))} aria-label={`本次不保留 ${file.fileName}`}>移除</button>
           </span> : null)}
-        {picks.map((pick, index) => <span key={`new-${index}`} className="np-office-file">
-          {pick.isImg ? <img src={pick.url} alt="" /> : <Icon name="file" size={20} />}
-          <span className="np-file-caption">{pick.file.name || '照片'}</span>
+        {picks.map((pick, index) => <span key={pick.key} className="np-office-file">
+          <IntakeAttachment file={pick.file}/>
           <button type="button" className="btn sm" disabled={!!busy} onClick={() => removePick(index)} aria-label={`移除 ${pick.file.name}`}>移除</button>
         </span>)}
       </div> : null}

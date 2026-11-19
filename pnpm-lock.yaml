@@ -334,6 +334,9 @@ importers:
       dayjs:
         specifier: ^1.11.13
         version: 1.11.21
+      pdfjs-dist:
+        specifier: 5.4.296
+        version: 5.4.296
       react:
         specifier: ^18.3.1
         version: 18.3.1

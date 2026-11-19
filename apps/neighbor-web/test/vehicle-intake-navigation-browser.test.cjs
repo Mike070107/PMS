@@ -408,6 +408,21 @@ for (const width of [1440,390]) test('office plate legibility '+width, async () 
     assert.ok(metrics.font >= (width===1440 ? 36 : 24), JSON.stringify(metrics));
     assert.ok(metrics.content <= metrics.width+1 && metrics.box>=64,JSON.stringify(metrics));
     await dialog.locator('.registration-plate').screenshot({path:path.join(evidence,'office-plate-'+width+'.png')});
+    const data = await f.page.evaluate(() => {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 80;
+      return canvas.toDataURL('image/png').split(',')[1];
+    });
+    await f.page.route('**/synthetic-upload/*', route => route.fulfill({body: Buffer.from(data, 'base64'), contentType: 'image/png'}));
+    await dialog.locator('input[type="file"]').first().setInputFiles({
+      name: '合成登记附件.png', mimeType: 'image/png', buffer: Buffer.from(data, 'base64')
+    });
+    const thumb = dialog.getByRole('button', { name: '预览图片：合成登记附件.png' });
+    await thumb.click();
+    await f.page.locator('.ant-image-preview-img').waitFor();
+    await f.page.keyboard.press('Escape');
+    await f.page.locator('.ant-image-preview-img').waitFor({ state: 'hidden' });
+    assert.ok(await plate.isVisible(), '关闭灯箱应返回登记抽屉');
     await noOverflow(f.page);
   } finally { await f.close(); }
 });

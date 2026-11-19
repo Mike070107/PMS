@@ -1,3 +1,4 @@
+import { IntakeAttachment } from '../attachments/IntakeAttachment';
 import { formatBeijingDateTime, sortTimelineNewestFirst } from '@pms/shared-types';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import ImagePreview from '@/components/ImagePreview';
@@ -65,19 +66,11 @@ export const TXN_STATUS: Record<string, string> = {
 };
 export const RELATIONS = ['父母', '子女', '配偶', '兄弟姐妹', '祖父母/外祖父母', '孙子女/外孙子女', '其他亲属'];
 const FAMILY_GARAGES: Array<[string, string]> = [['phase1', '一期地面'], ['phase2', '二期地面'], ['main', '二期大车库'], ['civil', '二期人防车库']];
-const isImg = (f: IntakeFile) => f.contentType.startsWith('image/');
+
 let targetsCache: Promise<ParkTarget[]> | null = null;
 /** 停车场目录（静态，按小区过滤），整个页面只拉一次 */
 const loadTargets = () => (targetsCache ??= request<ParkTarget[]>({ url: '/business/parking-targets' }).catch((e) => { targetsCache = null; throw e; }));
 export const hm = (v: string | null) => (v ? formatBeijingDateTime(v, 'HH:mm') : '');
-
-/** 原附件不改写；只有图片进入预览，PDF 等仍直接打开原 URL。 */
-function FileThumb({ file }: { file: IntakeFile }) {
-  const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [file.fileUrl]);
-  return failed ? <span className="np-thumb-error"><Icon name="file" size={22} />图片未加载</span>
-    : <img src={file.fileUrl} alt="" loading="lazy" onError={() => setFailed(true)} />;
-}
 
 export const canEnterVehicleDetails = () => ['business', 'family-cars'].some(key => can(key, 'edit'));
 
@@ -273,7 +266,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
     finally { operation.current = ''; setBusy(''); }
   };
   const [preview, setPreview] = useState<{ files: IntakeFile[]; index: number; title: string } | null>(null);
-  const images = it.files.filter(isImg);
+
   const previewQr = () => { if (qr) setPreview({ files: [{ index: -1, fileName: `${it.kind === 'family' ? '亲情车登记' : '新车登记'} · ${it.houseLabel} · ${hm(it.expiresAt)} 前有效`, contentType: 'image/png', fileUrl: qr.dataUrl, uploadedAt: '' }], index: 0, title: '扫码登记二维码' }); };
   const toastOk = (t: string) => { setErr(''); setOkMsg(t); window.setTimeout(() => setOkMsg(''), 1800); };
   const [okMsg, setOkMsg] = useState('');
@@ -406,7 +399,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
                 <button type="button" className="btn" onClick={() => uploadInput.current?.click()}>本地上传附件（选填）</button>
                 <p>点击选择、拖入，或先点击本区域再 Ctrl+V 粘贴。最多 10 份，每份 20MB。</p>
                 <span role="status">已上传 {it.files.length} 份{busy === '上传附件' ? ' · 上传中…' : ''}</span>
-                {it.files.map(f => <div key={f.index}>{f.fileName}</div>)}
+                <div className="np-files">{it.files.map(f => <IntakeAttachment key={f.fileUrl} file={f}/>)}</div>
               </div>
               </details><button type="button" className="btn p" disabled={!!busy || savingGarages || (!defaultStaffMode && (plateInvalid || phoneInvalid || relationInvalid))} onClick={submitStaffFields}>{busy === '保存登记' ? '保存中…' : '保存资料，进入预览'}</button>
             </fieldset> : null}
@@ -493,10 +486,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
                 ) : null}
               </div>
               <div className="np-files">
-                {it.files.map((f) => (
-                  isImg(f) ? <button type="button" key={f.index} className="np-file-trigger" title={f.fileName} aria-label={`预览图片：${f.fileName}`} onClick={() => setPreview({ files: images, index: images.indexOf(f), title: '登记资料图片预览' })}><FileThumb file={f} /><span className="np-file-caption">{f.fileName}</span></button>
-                    : <a key={f.index} href={f.fileUrl} target="_blank" rel="noreferrer" title={f.fileName} aria-label={`打开原附件：${f.fileName}`}><span className="np-pdf"><Icon name="file" size={22} />{f.contentType === 'application/pdf' ? 'PDF' : '附件'}</span><span className="np-file-caption">{f.fileName}</span></a>
-                ))}
+                {it.files.map(f => <IntakeAttachment key={f.fileUrl} file={f}/>)}
               </div>
             </>
           ) : defaultStaffMode ? null : <div className="muted" style={{ padding: '6px 0 10px' }}>扫码填写是另一种登记方式；住户提交后，这里会显示本车资料。</div>}

@@ -14,7 +14,14 @@ w.__intakes = { 61: seed(), 62: seed(62, { houseId: 502, plate: '浙ADD422', sta
 w.__failures ||= {};
 w.__waitFor ||= [];
 async function record(o: any) { w.__calls.push(structuredClone(o)); const key = `${o.method || 'GET'} ${o.url}`; if (w.__waitFor.includes(key)) await new Promise<void>(r => { w.__holds[key] = r; }); if (w.__failures[key]) throw Error(w.__failures[key]); }
-export const uploadBlobTo = async () => { throw Error('附件上传不在本fixture范围'); };
+export async function uploadBlobTo<T>(file: File, url: string, fileName: string): Promise<T> {
+  const id = /^\/vehicle-intakes\/(\d+)\/files$/.exec(url)?.[1];
+  const intake = id && w.__intakes[id];
+  if (!intake) throw Error('未知附件上传入口');
+  const index = intake.files.length;
+  intake.files = [...intake.files, { index, fileName, contentType: file.type, fileUrl: '/synthetic-upload/' + index }];
+  return { ...intake };
+}
 export async function request(o: any): Promise<any> {
   await record(o);
   const d = o.data || {};
