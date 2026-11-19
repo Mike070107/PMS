@@ -40,6 +40,7 @@ export const NAV: NavItem[] = [
   { key: 'cashier', name: '收银台', rail: '收银台', icon: 'cash', to: '/cashier', group: '收费' },
   { key: 'vehicles', name: '车辆管理', rail: '车辆', icon: 'car', to: '/vehicles', group: '车辆管理' },
   { key: 'access-cards', name: '门禁发卡', rail: '门禁', icon: 'key', to: '/access-cards', group: '门禁管理' },
+  { key: 'access-orbit', name: '启旭耀门禁管理', rail: '门禁', icon: 'key', to: '/access-orbit', newTab: '/access-orbit', group: '门禁管理' },
   { key: 'access-staff', name: '员工授权', rail: '授权', icon: 'key', to: '/access-staff', group: '门禁管理' },
   { key: 'access-devices', name: '设备管理', rail: '设备', icon: 'server', to: '/access-devices', group: '门禁管理' },
   { key: 'plates', name: '车牌登记审核', rail: '车牌', icon: 'key', to: '/plates', group: '车辆管理' },
@@ -80,7 +81,7 @@ export const GROUPS: Array<{ title: string; keys: string[]; icon: IconName; tone
   { title: '总览', keys: ['today'], icon: 'today', tone: 'green' },
   { title: '收费办理', keys: ['cashier', 'meters', 'apartment', 'bills', 'records', 'pending', 'standards', 'apartment-standards'], icon: 'wallet', tone: 'blue' },
   { title: '车辆管理', keys: ['vehicles', 'plates', 'family-cars', 'garage-main', 'garage-civil'], icon: 'car', tone: 'slate' },
-  { title: '门禁管理', keys: ['access-cards', 'access-devices', 'access-staff'], icon: 'key', tone: 'blue' },
+  { title: '门禁管理', keys: ['access-cards', 'access-devices', 'access-staff', 'access-orbit'], icon: 'key', tone: 'blue' },
   { title: '报修养护', keys: ['work-orders', 'maint', 'notes'], icon: 'wrench', tone: 'orange' },
   { title: '库存与盘点', keys: ['purchase', 'stock', 'count', 'sku'], icon: 'box', tone: 'green' },
   { title: '统计分析', keys: ['reports', 'screen', 'screen-settings', 'statistics'], icon: 'chart', tone: 'violet' },
@@ -150,6 +151,15 @@ export default function Shell() {
     if (!item.to || !canViewPath(item.to,session.access)) return;
     setMobileOpen(false);
     setCmdk(false);
+    if (item.key === 'access-orbit') {
+      // The initial same-origin document inherits this tab's PMS session.
+      const tab = window.open('about:blank', '_blank');
+      if (tab) {
+        tab.opener = null;
+        tab.location.replace(import.meta.env.BASE_URL + 'access-orbit');
+      }
+      return;
+    }
     if (item.newTab) { window.open(item.newTab, '_blank', 'noopener'); return; }
     if (item.prod) { window.location.href = item.prod; return; }
     if (item.legacy) { window.location.href = legacyUrl(item.legacy); return; }
@@ -224,7 +234,7 @@ export default function Shell() {
                     target={item.newTab?'_blank':undefined}
                     rel={item.newTab?'noopener':undefined}
                     aria-current={on?'page':undefined}
-                    onClick={(e)=>{if(item.newTab)return;if(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;e.preventDefault();goto(item)}}
+                    onClick={(e)=>{if(item.newTab && item.key!=='access-orbit')return;if(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;e.preventDefault();goto(item)}}
                     title={item.name}
                   >
                     <Icon name={item.icon} size={22} />

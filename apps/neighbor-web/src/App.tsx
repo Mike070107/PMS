@@ -208,6 +208,7 @@ export default function App() {
       <Suspense fallback={<div style={{ padding: 60 }}><Loading /></div>}>
         <Routes>
           <Route path="/login" element={<Navigate to={landing} replace />} />
+          <Route path="/access-orbit" element={<iframe title="启旭耀门禁管理" src="/access-api/console/" style={{ display: "block", width: "100%", height: "100dvh", border: 0 }} />} />
           <Route path="/screen" element={screenAllowed ? <ScreenPage /> : <Navigate to={landing} replace />} />
           <Route element={<Shell />}>
             <Route path="/screen-settings" element={<ScreenSettings />} />
