@@ -7637,3 +7637,10 @@
   - 78988f8f feat(vehicle): office save/confirm, versioned approvals, registration claims and terms
   - 3ad2c376 feat(approvals): unified staff approval center and audit history
 
+## 2026-11-19 10:44 · web · bbde3167
+
+- 包：`pms-web-20261119-103949.tar.gz`
+- 提交：bbde3167 修复地址选择器窄屏显示，展示部署版本并修复 Windows Web 构建
+- 自上次（2ee1a9a6）以来上线的相关提交：
+  - bbde3167 修复地址选择器窄屏显示，展示部署版本并修复 Windows Web 构建
+
