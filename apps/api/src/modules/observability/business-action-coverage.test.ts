@@ -43,7 +43,7 @@ function controllerWrites() {
 
 test('所有 Controller 写接口均有明确中文业务动作及筛选模块（保留历史口径并覆盖新增MIS）', () => {
   const routes = controllerWrites();
-  const added=[['POST','/fees/mis/collections/followups'],['POST','/fees/mis/collections/:id/prints'],['POST','/fees/mis/postings'],['POST','/fees/mis/postings/:id/retry'],['POST','/fees/mis/collections/:id/sms'],['POST','/fees/mis/sms/callback'],['POST','/observability/intro-view'],['PATCH','/feedback/:id']];
+  const added=[['POST','/receipt-printers/register'],['POST','/receipt-printers/:id/reset'],['POST','/receipt-printers/:id/grants'],['POST','/receipt-printers/:id/jobs'],['POST','/receipt-print-agent/bind'],['POST','/receipt-print-agent/next'],['POST','/receipt-print-agent/report'],['POST','/fees/mis/collections/followups'],['POST','/fees/mis/collections/:id/prints'],['POST','/fees/mis/postings'],['POST','/fees/mis/postings/:id/retry'],['POST','/fees/mis/collections/:id/sms'],['POST','/fees/mis/sms/callback'],['POST','/observability/intro-view'],['PATCH','/feedback/:id']];
   assert.equal(routes.length, LEGACY_ACTION_CODES.length+added.length);
   assert.deepEqual(new Set(routes.map((r) => `${r.method} ${r.path}`)), new Set([...LEGACY_ACTION_CODES,...added].map(([m, p]) => `${m} ${p}`)));
   const issues: string[] = [];
@@ -126,5 +126,13 @@ test('审核措辞不由方法猜通过，打印仅记录请求且扩展规则�
 test('既有规则和 AI 报修分支显式已标注', () => {
   for (const path of ['/repair-requests', '/work-orders/31/assign']) {
     assert.equal((resolveBusinessAction('POST', path) as any).known, true);
+  }
+});
+test('公寓打印的七个写接口记录业务动作，不记录绑定码、服务密钥或票面',()=>{
+  for(const path of ['/receipt-printers/register','/receipt-printers/31/reset','/receipt-printers/31/grants','/receipt-printers/31/jobs','/receipt-print-agent/bind','/receipt-print-agent/next','/receipt-print-agent/report']){
+    const action=resolveBusinessAction('POST',path,{receiptNo:'PRIVATE_RECEIPT'},{code:'PRIVATE_PAIR',token:'PRIVATE_SECRET',job:{lines:['PRIVATE_PAPER']}});
+    assert.equal(action.known,true,path);
+    assert.equal(action.area,'公寓收费',path);
+    assert.ok(!JSON.stringify(action).includes('PRIVATE_'),path);
   }
 });

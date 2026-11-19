@@ -1,3 +1,4 @@
+import { ReceiptPrintersController, ReceiptPrintAgentController } from './receipt-printers.controller';
 import { MisCollectionPromise, MisCollectionHold, MisCollectionEvent, MisCollectionPrint } from '../../entities/mis-collection-followup.entity';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -23,7 +24,7 @@ import { MisCollectionBatch } from '../../entities/mis-collection-batch.entity';
   imports: [SettingsModule,
     TypeOrmModule.forFeature([MisCollectionPromise, MisCollectionHold, MisCollectionEvent, MisCollectionPrint, BusinessTransaction, MisCollectionBatch, FeeBill, FeeStandard, House, Building, Community, User, TenantConfig]),
   ],
-  controllers: [ScreenSettingsController, FeesController, FeeTemplatesController, MisPostingController],
+  controllers: [ReceiptPrintersController, ReceiptPrintAgentController, ScreenSettingsController, FeesController, FeeTemplatesController, MisPostingController],
   providers: [FeesService, FeeTemplatesService, MisFeesService, MisCollectionSmsService, MisPostingService, MisPostingConnector, MisMirrorService, CollectionTargetsService, ScreenSettingsService, { provide: 'MIS_POSTING_CONNECTOR', useExisting: MisPostingConnector }],
   exports: [MisMirrorService],
 })

@@ -108,3 +108,8 @@ export const today = (page = 1) =>
 
 export const charge = (data: CashierChargeReq) =>
   request<{ receiptNo: string }>({ method: 'POST', url: '/fees/cashier/charges', data: data as any });
+export interface ReceiptPrinter { id:number; name:string; online:boolean }
+export const receiptPrinters = () => request<ReceiptPrinter[]>({url:'/receipt-printers/mine'});
+export const queueReceipt = (printer:number,receiptNo:string,reprint:boolean,requestId:string) =>
+  request<{id:number;state:string}>({method:'POST',url:'/receipt-printers/'+printer+'/jobs',data:{receiptNo,reprint,requestId}});
+export const receiptPrintStatus = (id:number) => request<{state:string}>({url:'/receipt-printers/jobs/'+id});

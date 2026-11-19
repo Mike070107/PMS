@@ -4,6 +4,13 @@
  * 请求受理不等于设备执行完成、消息送达或纸张打印完成。
  */
 const TEMPLATES: ReadonlyArray<readonly [string, string, string, string, string]> = [
+  ["POST", "/receipt-printers/register", "post_receipt_printers_register", "登记小票打印机", "公寓收费"],
+  ["POST", "/receipt-printers/:id/reset", "post_receipt_printers_id_reset", "重置小票打印机绑定", "公寓收费"],
+  ["POST", "/receipt-printers/:id/grants", "post_receipt_printers_id_grants", "设置员工打印机授权", "公寓收费"],
+  ["POST", "/receipt-printers/:id/jobs", "post_receipt_printers_id_jobs", "申请公寓小票打印", "公寓收费"],
+  ["POST", "/receipt-print-agent/bind", "post_receipt_print_agent_bind", "绑定小票打印助手", "公寓收费"],
+  ["POST", "/receipt-print-agent/next", "post_receipt_print_agent_next", "领取小票打印任务", "公寓收费"],
+  ["POST", "/receipt-print-agent/report", "post_receipt_print_agent_report", "回报小票打印队列结果", "公寓收费"],
   ["PATCH", "/feedback/:id", "patch_feedback_id", "标记用户反馈已处理", "用户反馈"],
   ["POST", "/fees/mis/collections/followups", "post_fees_mis_collections_followups", "登记催缴跟进", "账单催缴"],
   ["POST", "/fees/mis/collections/:id/prints", "post_fees_mis_collections_id_prints", "登记通知单打印请求", "账单催缴"],

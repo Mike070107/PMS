@@ -8,7 +8,7 @@ import { dedupeAddressText, formatBeijingDateTime } from '@pms/shared-types';
  *
  * 手机上做了两处收敛：
  *   · 选址用原生 picker（小区 → 楼栋 → 房号），不做联想搜索；公寓楼栋房号本来就少；
- *   · 不做补打和红冲。小票是凭证，红冲要留原因、要对账，在电脑上办更稳妥；
+ *   · 打印和补打使用员工获授权的现场打印机。红冲仍在电脑上办理；
  *     这一页只管「收一笔、出一张」和「查这间房交过什么」。
  */
 import { apartmentCashier } from '@pms/api-client';
@@ -119,6 +119,9 @@ Page({
     /** 收完款弹出的小票 */
     receiptOpen: false,
     receiptNo: '',
+    printAvailable: false,
+    printListError: '',
+    printBusy: false,
     receiptItems: [] as Array<{ feeName: string; qtyText: string; amountText: string; vehiclePlate?:string; serviceFrom?:string; serviceTo?:string }>,
     receiptAmountText: '',
 
@@ -139,6 +142,7 @@ Page({
 
   onShow() {
     this.syncGuide();
+    if (!this.data.loading && this.data.canSeeCashier) void this.refreshPrinters();
     syncTabBar(this, 'cashier');
     if (!this.data.loading && this.data.canSeeCashier && this.data.activeTab === 'today') void this.onRefreshToday();
   },
@@ -163,6 +167,7 @@ Page({
         return;
       }
       this.setData({ canCharge: session.canCharge });
+      void this.refreshPrinters();
       const rows = await apartmentCashier.communities();
       // 他的数据范围只有一个小区时，那就是「他自己的小区」，直接选上。
       // 范围是多个（或全公司）时不替他猜，让他自己点。
@@ -664,6 +669,7 @@ Page({
         totalCents: 0,
         totalText: formatFeeMoney(0),
       });
+      void this.offerPrint(result.receiptNo, false);
       // 隐藏面板不预取明细；切到对应Tab时再读最新结果。
       this.setData({ history: [], historyPage: 0, historyTotal: 0, todayLoaded: false, todayRows: [], todayPage: 0 });
     } catch (e: any) {
@@ -672,6 +678,53 @@ Page({
     }
   },
 
+  async refreshPrinters() {
+    try {
+      const printers = await apartmentCashier.receiptPrinters();
+      this.setData({ printAvailable: printers.length > 0, printListError: '' });
+      return printers;
+    } catch { this.setData({ printAvailable: false, printListError: '暂时无法获取打印机' }); return []; }
+  },
+  onRetryPrinters() { void this.refreshPrinters(); },
+  onPrintRow(e: WechatMiniprogram.TouchEvent) {
+    const receipt = e.currentTarget.dataset.receipt;
+    if (receipt) void this.offerPrint(receipt, true);
+  },
+  async offerPrint(receiptNo: string, reprint: boolean) {
+    if (this.data.printBusy) return;
+    this.setData({ printBusy: true });
+    try {
+      const allowed = await this.refreshPrinters();
+      if (!allowed.length) {
+        if (reprint) wx.showToast({title:'未获取到可用打印授权',icon:'none'});
+        return;
+      }
+      const answer = await wx.showModal({ title: reprint?'补打这张小票？':'收款成功，打印小票？', content:'小票号 '+receiptNo,confirmText:'选打印机',cancelText:'取消' });
+      if (!answer.confirm) return;
+      const printers = allowed.filter(p=>p.online);
+      if (!printers.length) { await wx.showModal({title:'打印机离线',content:'请检查打印电脑和助手，可稍后从收费记录补打。',showCancel:false}); return; }
+      let index=0;
+      for (;;) {
+        const group=printers.slice(index,index+5), names=group.map(p=>p.name);
+        const more=printers.length>5;
+        if(more) names.push(index+5<printers.length?'下一组打印机':'返回第一组');
+        const choice=await wx.showActionSheet({itemList:names});
+        if(choice.tapIndex===group.length){index=index+5<printers.length?index+5:0;continue;}
+        const requestId=Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);
+        const job=await apartmentCashier.queueReceipt(group[choice.tapIndex].id,receiptNo,reprint,requestId);
+        let state=job.state;
+        for(let i=0;i<6 && (state==='waiting'||state==='claimed');i++) {
+          await new Promise(resolve=>setTimeout(resolve,1300));
+          state=(await apartmentCashier.receiptPrintStatus(job.id)).state;
+        }
+        const message=state==='spooled'?'已送入打印队列，请核对出纸':state==='cancelled'||state==='expired'?'任务已取消或过期，请核对后补打':'打印结果待确认，请先核对现场出纸';
+        await wx.showModal({title:'小票打印',content:message,showCancel:false});
+        return;
+      }
+    } catch(e:any) {
+      if(!String(e?.errMsg||'').includes('cancel')) await wx.showModal({title:'小票打印',content:e?.message||'未确认打印结果，请检查打印机。',showCancel:false});
+    } finally { this.setData({printBusy:false}); }
+  },
   onCloseReceipt() {
     this.setData({ receiptOpen: false });
   },

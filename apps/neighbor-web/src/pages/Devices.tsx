@@ -1,3 +1,4 @@
+import { ReceiptPrinters } from '../components/access/ReceiptPrinters';
 import IntegrationRegistration from '@/components/access/IntegrationRegistration';
 import { useCallback, useEffect, useState } from 'react';
 import { accessCardIssuance } from '@pms/api-client';
@@ -64,6 +65,7 @@ export default function Devices() {
       </div>
 
       {err ? <ErrorNote>{err}</ErrorNote> : null}
+      <ReceiptPrinters />
       <IntegrationRegistration agents={agents} legacyKnown={data !== null && !err} onChanged={() => { void load(); }} />
 
       {data ? (

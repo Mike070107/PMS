@@ -199,12 +199,14 @@
       <!-- ============ 这间房交过什么 ============ -->
       <view class="cashier-section">
         <view class="label">本户历史缴费记录</view>
+        <button wx:if="{{printListError}}" class="btn btn--ghost" bindtap="onRetryPrinters">{{printListError}} · 重试</button>
         <view wx:if="{{historyLoading}}" class="muted">加载中…</view>
         <view wx:if="{{historyError}}" class="field-error">{{historyError}}（下方如有记录为上次读取结果）</view>
         <button wx:if="{{historyError}}" class="btn btn--ghost" disabled="{{historyLoading}}" bindtap="onRetryHistory">重新读取历史记录</button>
         <pms-empty wx:if="{{!historyLoading && !historyError && !history.length}}" text="这间房还没有缴费记录" />
         <block wx:else>
           <view wx:for="{{history}}" wx:key="receiptNo" class="his-row">
+            <button wx:if="{{printAvailable}}" class="btn btn--ghost" disabled="{{printBusy}}" data-receipt="{{item.receiptNo}}" bindtap="onPrintRow">补打小票</button>
             <view class="his-row__main">
               <text class="his-row__items">{{item.itemsText || '—'}}</text>
               <text class="his-row__amount {{item.refunded ? 'his-row__amount--off' : ''}}">{{item.amountText}}</text>
@@ -243,7 +245,9 @@
         <view wx:if="{{todayLoading}}" class="muted mt-sm">正在读取今日明细…</view>
         <view wx:if="{{todayError}}" class="field-error mt-sm">{{todayError}}，请点刷新重试。</view>
         <pms-empty wx:if="{{!todayRows.length && !todayLoading && !todayError}}" text="今日暂无收费记录" />
+        <button wx:if="{{printListError}}" class="btn btn--ghost" bindtap="onRetryPrinters">{{printListError}} · 重试</button>
         <view wx:for="{{todayRows}}" wx:key="key" class="his-row">
+            <button wx:if="{{printAvailable}}" class="btn btn--ghost" disabled="{{printBusy}}" data-receipt="{{item.receiptNo}}" bindtap="onPrintRow">补打小票</button>
           <view class="daily-place">{{item.placeText}}</view>
           <view class="his-row__main">
             <text class="his-row__items">{{item.itemsText || '—'}}</text>

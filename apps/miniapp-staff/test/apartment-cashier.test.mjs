@@ -19,15 +19,15 @@ test('公寓收费底部入口按权限展示，不再放更多；收费页复�
   assert.doesNotMatch(more, /bindtap="onOpenCashier"/);
   assert.match(readFileSync(new URL('../miniprogram/pages/apartment-cashier/apartment-cashier.wxml', import.meta.url), 'utf8'), /staff-tabbar id="cashier-tabbar"/);
 });
-function fixture({ confirm = true, fail = false } = {}) {
+function fixture({ confirm = true, fail = false, printApi = {}, wxOverrides = {} } = {}) {
   let page, modalCalls = 0; const charges = [];
   const shared = { ...feeExports, APARTMENT_FEE_TYPES: [{ code: 'rent', name: '房租', unit: '月' }], FEE_PAYMENT_METHOD_LABELS: { cash: '现金' },
     cashierQuantityFromAmount: (amount, price) => price > 0 ? Number((Math.abs(amount) / price).toFixed(3)) : null, formatFeeMoney: (n) => String(n / 100), buildingLabel: (n) => n, roomLabel: (n) => n, placeLabel: (b, r) => `${b}-${r}` };
-  const cashier = { charge: async (payload) => { charges.push(payload); if (fail) throw new Error('写入失败'); return { receiptNo: 'TEST-001' }; }, history: async () => ({ rows: [], total: 0 }), today: async () => ({ rows: [], total: 0, totalCents: charges.length * 18000 }) };
+  const cashier = { ...printApi, charge: async (payload) => { charges.push(payload); if (fail) throw new Error('写入失败'); return { receiptNo: 'TEST-001' }; }, history: async () => ({ rows: [], total: 0 }), today: async () => ({ rows: [], total: 0, totalCents: charges.length * 18000 }) };
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, {
     exports: {}, Page: (value) => { page = value; }, require: (name) => name === '@pms/api-client' ? { apartmentCashier: cashier }
       : name === '@pms/shared-types' ? shared : name.includes('guide') ? { guideHandlers: () => ({}) } : {},
-    wx: { showModal: async () => { modalCalls++; return { confirm }; } },
+    wx: { showModal: async () => { modalCalls++; return { confirm }; }, ...wxOverrides },
   });
   page.rateQuote = null; page.data = JSON.parse(JSON.stringify(page.data)); page.setData = (patch) => Object.assign(page.data, patch);
   Object.assign(page.data, { canCharge: true, houses: [{ id: 42 }], houseIndex: 0, placeText: '13号-130室',
@@ -54,4 +54,20 @@ test('收款失败保留费用、收款方式和备注，不能显示成功小�
 test('手工金额提交保持实收额，不被数量乘单价覆盖', async () => {
   const f = fixture(); f.page.onRowInput({ currentTarget: { dataset: { code: 'rent', field: 'amountYuan' } }, detail: { value: '175.50' } });
   await f.page.onSubmit(); assert.equal(f.charges[0].items[0].amountCents, 17550); assert.equal(f.charges[0].items[0].unitPriceCents, 18000);
+});
+
+test('确认授权打印机才创建一张任务，补打不调用收款', async () => {
+  const jobs=[];
+  const f=fixture({printApi:{
+    receiptPrinters:async()=>[{id:1,name:'离线',online:false},{id:2,name:'前台',online:true}],
+    queueReceipt:async(...args)=>{jobs.push(args);return {id:41,state:'spooled'};}
+  },wxOverrides:{showActionSheet:async({itemList})=>{assert.deepEqual([...itemList],['前台']);return {tapIndex:0};}}});
+  await Promise.all([f.page.offerPrint('S-1',true),f.page.offerPrint('S-1',true)]);
+  assert.equal(jobs.length,1);assert.deepEqual(jobs[0].slice(0,3),[2,'S-1',true]);assert.equal(f.charges.length,0);
+});
+test('收款后无打印授权或用户取消均不创建打印任务',async()=>{
+  for(const printers of [[],[{id:2,name:'前台',online:true}]]){
+    let sent=0;const f=fixture({confirm:false,printApi:{receiptPrinters:async()=>printers,queueReceipt:async()=>{sent++;}}});
+    await f.page.offerPrint('S-2',false);assert.equal(sent,0);assert.equal(f.modalCalls(),printers.length?1:0);
+  }
 });

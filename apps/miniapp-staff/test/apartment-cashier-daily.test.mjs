@@ -114,7 +114,7 @@ test('历史分页、分页失败保留已读内容，切房后旧请求失效',
 test('历史不展示订单号，费用图示有独立颜色和文字，今日卡片位于选房块之外', () => {
   assert.match(wxml, /本户历史缴费记录/);
   const history = wxml.slice(wxml.indexOf('本户历史缴费记录'), wxml.indexOf('<!-- 今日收费'));
-  assert.doesNotMatch(history, /\{\{item\.receiptNo\}\}/);
+  assert.doesNotMatch(history.replace(/data-receipt="{{item\.receiptNo}}"/g, ""), /\{\{item\.receiptNo\}\}/);
   assert.match(wxml, /fee-icon--\{\{item.code\}\}/);
   const styles = readFileSync(new URL('../miniprogram/pages/apartment-cashier/apartment-cashier.wxss', import.meta.url), 'utf8');
   assert.match(styles, /\.container\.container--with-bar\s*\{\s*padding-bottom: calc\(340rpx/);
