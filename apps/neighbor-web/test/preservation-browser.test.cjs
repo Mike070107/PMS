@@ -35,10 +35,10 @@ test('real new and legacy entries: preservation, isolated type, unknown recovery
       }
       const dialog = page.getByRole('dialog').last(); await dialog.waitFor(); return dialog;
     }
-    async function fill(dialog, entry, kind) {
+    async function fill(dialog, entry, kind, identity = '亲情车') {
       if (kind === 'plate') await dialog.getByLabel('新车牌', { exact: true }).fill('沪BTEST02');
-      else if (entry === 'modern') { await dialog.getByLabel('修改停车库（仅所选库）').selectOption('parking2'); await dialog.getByLabel('新的车辆类型').selectOption('亲情车'); }
-      else { await dialog.locator('.ant-select-selector').click(); await page.getByTitle('亲情车', { exact: true }).click(); }
+      else if (entry === 'modern') { await dialog.getByLabel('修改停车库（仅所选库）').selectOption('parking2'); await dialog.getByLabel('新的车辆类型').selectOption(identity); }
+      else { await dialog.locator('.ant-select-selector').click(); await page.getByTitle(identity, { exact: true }).click(); }
     }
     const submit = (dialog, entry, kind) => dialog.getByRole('button', { name: entry === 'legacy' ? '提交操作' : kind === 'plate' ? '确认换牌' : '确认修改车辆类型', exact: true }).click();
     for (const entry of ['modern', 'legacy']) for (const kind of ['plate', 'type']) {
@@ -48,6 +48,17 @@ test('real new and legacy entries: preservation, isolated type, unknown recovery
       if (kind === 'plate') { assert.equal(data.rows[0].fields.Car_Brand, null); assert.equal(data.rows[1].fields.Car_Brand, '租户车'); assert.ok(writes.every(c => Object.keys(c.data.payload).sort().join(',') === 'batchId,newPlate,plate,sourceQueryId')); }
       else { const selected = writes[0].data.database; for (const row of data.rows) assert.equal(row.fields.Car_Brand, row.database === selected ? '亲情车' : row.database === 'parking1' ? null : '租户车'); }
       assert.ok(data.calls.filter(c => c.name === 'createParkingQuery').length >= (entry === 'modern' ? 3 : kind === 'plate' ? 2 : 1)); await shot(`${entry}-${kind}-success`); results.push({ entry, kind, writes: writes.length, independentReadback: true });
+    }
+    for (const entry of ['modern', 'legacy']) {
+      const dialog = await open(entry, 'type', 'success', 390);
+      await fill(dialog, entry, 'type', '产权车'); await submit(dialog, entry, 'type');
+      await dialog.waitFor({ state: 'hidden' });
+      const writes = await posts(), data = await state();
+      assert.equal(writes.length, 1);
+      assert.equal(writes[0].data.payload.identity, '住户车');
+      assert.equal(data.billed, '产权车位');
+      for (const row of data.rows) assert.equal(row.fields.Car_Brand,
+        row.database === writes[0].data.database ? '住户车' : row.database === 'parking1' ? null : '租户车');
     }
     for (const entry of ['modern', 'legacy']) for (const width of [390, 320]) for (const kind of ['plate', 'type']) {
       const dialog = await open(entry, kind, 'success', width); await fill(dialog, entry, kind); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false); await shot(`${entry}-${kind}-${width}`); await submit(dialog, entry, kind); await dialog.waitFor({ state: 'hidden' }); results.push({ entry, width, kind, horizontalOverflow: false });

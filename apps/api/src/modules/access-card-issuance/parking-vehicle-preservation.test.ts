@@ -189,3 +189,27 @@ test('completed duplicate receipt is acknowledged once with no history/tag write
   agent.capabilities.parkingVehiclePreservationV1 = false;
   await assert.rejects(() => service.reportParkingOperation('gateway', 'token', { taskId: 1, result: 'success', values: receipt() }));
 });
+
+test('property billing changes only after a verified resident receipt and only once', async () => {
+  const op: any = { ...task(), kind: 'update_vehicle_type', leaseAgentKey: 'gateway',
+    payload: { plate: '测A12345', identity: '住户车', propertyBillingClass: '产权车位' } };
+  const values = { ...receipt(), identity: '住户车', plate: op.payload.plate, after: before('住户车') };
+  const service: any = Object.create(AccessCardIssuanceService.prototype);
+  service.authenticateAgent = async () => ({ kind: 'parking_gateway', agentKey: 'gateway', tenantId: 2, capabilities: { parkingVehiclePreservationV1: true } });
+  let updates = 0;
+  const tags = {
+    findOne: async ({ where }: any) => { assert.deepEqual(where, { tenantId: 2, plate: op.payload.plate }); return { id: 9, houseId: 7 }; },
+    update: async (id: number, changes: any) => { assert.equal(id, 9); assert.deepEqual(changes, { vehicleClass: '产权车位', updatedBy: 3 }); updates++; },
+  };
+  const history = { create: (v: any) => v, save: async () => undefined };
+  const ops = { findOne: async () => op, save: async () => op };
+  service.parkingOperationRepo = { manager: { transaction: (run: any) => run({
+    getRepository: (entity: any) => entity === ParkingOperation ? ops : entity.name === 'ParkingPlateTag' ? tags : history,
+  }) } };
+  const report = (value: any) => service.reportParkingOperation('gateway', 'token', { taskId: 1, result: 'success', values: value });
+  await assert.rejects(() => report({ ...values, after: before('产权车') }));
+  assert.equal(updates, 0);
+  await report(values);
+  await report(values);
+  assert.equal(updates, 1);
+});

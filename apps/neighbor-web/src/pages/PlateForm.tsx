@@ -1,3 +1,4 @@
+import PlateNumberField from '@/components/PlateNumberField';
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { request } from '@pms/api-client';
@@ -12,10 +13,6 @@ interface Session {
 }
 interface Pick { file: File; url: string; isImg: boolean; broken?: boolean }
 
-// 与旧停车管理页同一套车牌键盘：省份 → 发牌机关字母 → 序号（不含 I、O）
-const PROVINCES = '京津冀晋蒙辽吉黑沪苏浙皖闽赣鲁豫鄂湘粤桂琼渝川贵云藏陕甘青宁新'.split('');
-const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'.split('');
-const ALNUM = '0123456789ABCDEFGHJKLMNPQRSTUVWXYZ'.split('');
 const OTHER = '其他';
 const isImage = (f: File) => f.type.startsWith('image/') || /\.(jpe?g|png|gif|webp|heic|heif|bmp)$/i.test(f.name) || (!f.type && !/\.pdf$/i.test(f.name));
 
@@ -62,7 +59,7 @@ export default function PlateForm() {
 
   const add = (list: FileList | null) => {
     if (!list) return;
-    const next = Array.from(list).slice(0, Math.max(0, 10 - picks.length)).map((file) => {
+    const next = Array.from(list).slice(0, Math.max(0, 10 - picks.length - keptCount)).map((file) => {
       const url = URL.createObjectURL(file);
       allocatedUrls.current.add(url);
       return { file, url, isImg: isImage(file) };
@@ -71,14 +68,11 @@ export default function PlateForm() {
   };
   const remove = (i: number) => setPicks((p) => p.filter((_, j) => j !== i));
 
-  const mode = !PROVINCES.includes(plate.slice(0, 1)) ? 'province' : plate.length === 1 ? 'letter' : 'number';
-  const keys = mode === 'province' ? PROVINCES : mode === 'letter' ? LETTERS : ALNUM;
-  const type = (k: string) => setPlate((p) => (mode === 'province' ? k : `${p}${k}`).slice(0, 8));
   const plateOk = /^[\u4e00-\u9fa5][A-HJ-NP-Z][A-HJ-NP-Z0-9]{5,6}$/.test(plate);
   const phoneOk = /^1\d{10}$/.test(phone);
   const rel = relation === OTHER ? otherText.trim() : relation;
-  const keptCount = s?.status === 'reupload' && keep ? s.fileCount : 0;
-  const ready = plateOk && phoneOk && (!s?.requiresFiles || picks.length + keptCount > 0) && (s?.kind !== 'family' || (!!rel && picks.length + keptCount > 0));
+  const keptCount = s && (s.status === 'waiting' || (s.status === 'reupload' && keep)) ? s.fileCount : 0;
+  const ready = plateOk && phoneOk && picks.length + keptCount <= 10 && (!s?.requiresFiles || picks.length + keptCount > 0) && (s?.kind !== 'family' || (!!rel && picks.length + keptCount > 0));
 
   const submit = async () => {
     if (!ready || busy) return;
@@ -129,19 +123,7 @@ export default function PlateForm() {
         </div>
         {s.status === 'reupload' && s.reviewNote ? <div className="pf-warn">物业退回：{s.reviewNote}</div> : null}
 
-        <label className="pf-label">车牌号</label>
-        {plateBox(plate, true)}
-        {!s.homeUpload && <div className="pf-kb">
-          <div className="pf-kb-hd">
-            <b>{mode === 'province' ? '第 1 步 · 选省份简称' : mode === 'letter' ? '第 2 步 · 选字母' : '继续输入车牌号'}</b>
-            <span>普通 7 位，新能源 8 位</span>
-          </div>
-          <div className={`pf-keys ${mode}`}>{keys.map((k) => <button key={k} type="button" disabled={mode === 'number' && plate.length >= 8} onClick={() => type(k)}>{k}</button>)}</div>
-          <div className="pf-kb-act">
-            <button type="button" disabled={!plate} onClick={() => setPlate((p) => p.slice(0, -1))}>退格</button>
-            <button type="button" disabled={!plate} onClick={() => setPlate('')}>清空</button>
-          </div>
-        </div>}
+        {s.homeUpload ? plateBox(plate, true) : <PlateNumberField value={plate} onChange={setPlate} disabled={busy} />}
         {plate.length >= 7 && !plateOk ? <div className="pf-err">车牌格式不对，请检查</div> : null}
 
         <label className="pf-label">手机号</label>
@@ -161,6 +143,7 @@ export default function PlateForm() {
 
         <label className="pf-label">上传资料（{s.kind === 'family' ? '亲情车须提供关系证明' : s.requiresFiles ? '必填' : '选填'}）</label>
         <p className="pf-muted">{s.kind === 'family' ? '行驶证、车主身份证、与业主关系证明（户口本 / 结婚证等）' : '行驶证（正副页）、车主身份证或驾驶证'}，可多张，最多 10 张</p>
+        {s.status === 'waiting' && s.fileCount > 0 && <p>原登记已保留 {s.fileCount} 份资料，可继续补充。</p>}
         {s.status === 'reupload' && s.fileCount ? <label className="pf-keep"><input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />保留上次上传的 {s.fileCount} 张</label> : null}
         <div className="pf-files">
           {picks.map((p, i) => (

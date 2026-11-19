@@ -1,3 +1,5 @@
+import { BusinessRule } from '../../entities/business-rule.entity';
+import { BusinessServiceType } from '../../common/enums';
 import {
   captureParkingQueryHistory, normalizeParkingFieldName, parkingFieldValue, normalizeParkingPhone,
   normalizeParkingText, parkingSourceRecordId, parkingExternalOwnerId, parkingSnapshotValues,
@@ -2014,6 +2016,12 @@ export class AccessCardIssuanceService {
       return this.parkingOperationResponse(existing);
     }
     const payload = normalizeParkingOperationPayload(dto.payload);
+    if (dto.kind === 'update_vehicle_type' && payload.propertyBillingClass) {
+      const rules = await this.parkingOperationRepo.manager.getRepository(BusinessRule).findBy({
+        tenantId, enabled:true, serviceType:BusinessServiceType.PARKING_MONTHLY,
+      });
+      if (!rules.some(rule => rule.config?.vehicleClass === payload.propertyBillingClass)) throw new BadRequestException('未配置启用的产权车收费分组');
+    }
     if (dto.kind === 'update_garages' && payload.spaceSelection === 1) {
       const selected = payload.selectedGarages;
       const needsChoices = Array.isArray(selected) && selected.some(g => g === 'main' || g === 'civil');
@@ -2402,7 +2410,8 @@ export class AccessCardIssuanceService {
       }
       item.status = 'running'; item.attempt += 1; item.leaseAgentKey = agent.agentKey;
       item.leaseExpiresAt = new Date(now.getTime() + 90_000); item.updatedBy = null; await repo.save(item);
-      return { taskId: item.id, kind: item.kind, database: item.database, sourceRecordId: item.sourceRecordId, payload: item.payload, expected: item.expected };
+      const { propertyBillingClass: _pmsClass, ...parkingPayload } = item.payload;
+      return { taskId: item.id, kind: item.kind, database: item.database, sourceRecordId: item.sourceRecordId, payload: parkingPayload, expected: item.expected };
     });
     return { task };
   }
@@ -2436,6 +2445,14 @@ export class AccessCardIssuanceService {
           if (agent.capabilities?.parkingVehiclePreservationV1 !== true)
             throw new BadRequestException('当前助手没有车辆原值保护能力');
           assertPreservedReceipt(task, dto.values ?? {});
+        }
+        if (task.kind === 'update_vehicle_type' && task.payload.propertyBillingClass) {
+          const tags = manager.getRepository(ParkingPlateTag);
+          const plate = plateKey(task.payload.plate);
+          const vehicleClass = String(task.payload.propertyBillingClass);
+          const existing = await tags.findOne({where:{tenantId:task.tenantId, plate}, lock:{mode:'pessimistic_write'}});
+          if (existing) await tags.update(existing.id, {vehicleClass, updatedBy:task.createdBy});
+          else await tags.insert({tenantId:task.tenantId, plate, vehicleClass, createdBy:task.createdBy, updatedBy:task.createdBy});
         }
         if (task.kind === 'change_plate') await preservePlateBilling(task, manager.getRepository(ParkingPlateTag), repo);
         if (task.kind === 'add_vehicle' && task.payload.requiresProofReview) {

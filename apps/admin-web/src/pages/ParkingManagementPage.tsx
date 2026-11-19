@@ -1,3 +1,4 @@
+import PlateNumberField from '../../../neighbor-web/src/components/PlateNumberField';
 import { formatBeijingDateTime } from '@pms/shared-types';
 import {
   Alert,
@@ -431,7 +432,7 @@ export default function ParkingManagementPage({
           recordOf: item => ({ database: parkingDatabase(item.database)!, sourceRecordId: parkingHistoryRef(item).sourceRecordId || '', plate: plateValue(item.fields) }),
           onTask: setLastOperation,
         });
-        message.success(kind === 'change_plate' ? '全部原来源换牌及独立读回完成，车型、授权与 PMS 原类别保持' : '所选旧库车型已独立读回；授权与 PMS 类别保持');
+        message.success(kind === 'change_plate' ? '全部原来源换牌及独立读回完成，车型、授权与 PMS 原类别保持' : payload.identity === '产权车' ? '已核对 PMS 产权车收费分类及所选停车库住户车身份' : '所选旧库车型已独立读回；授权与 PMS 类别保持');
         setOperationTarget(null);
         await searchParking(afterPlate);
         return;
@@ -1704,7 +1705,7 @@ function ParkingOperationModal({ open, kind, row, roomOptions, communitiesOverri
       {kind === 'renew_vehicle' && targetRows?.length === 2 && <Alert type="info" showIcon message={deliyunVehicle?.civilDefenseAuthorized ? '一期、二期、德立云三个系统将共同续期' : '一期、二期将同时续期'} description={deliyunVehicle?.civilDefenseAuthorized
         ? '两个旧库和德立云人防会同步到同一到期日；金额只记入一期，二期和人防不重复收费。三方读回验证后才显示整体成功。'
         : '两个旧库都会更新到期日；本次填写的金额只记入一期，二期同步金额为 0，避免报表重复计费。两边读回验证后才显示整体成功。'} />}
-      <label>车牌<Input value={plate} disabled={!row} readOnly={kind === 'rebind_owner'} onChange={(e) => setPlate(e.target.value.toUpperCase())} /></label>
+      <PlateNumberField label="车牌" value={plate} disabled={!row || kind === 'rebind_owner'} onChange={setPlate} />
       {kind === 'change_plate' && <ParkingPlateEntry id="parking-change-plate-input" label="新车牌" value={newPlate} onChange={setNewPlate} />}
       {kind === 'change_plate' && <Alert type="info" showIcon message="只改车牌号，保留本库原车型、授权类型、期限与 PMS 计费类别" />}
       {kind === 'rebind_owner' && <ParkingOwnerPicker open={open} value={binding} onChange={setBinding} />}
@@ -1715,7 +1716,7 @@ function ParkingOperationModal({ open, kind, row, roomOptions, communitiesOverri
           : '德立云写入开关未开启，人防授权暂不可修改。'} />
         <label>车库授权<Checkbox.Group value={selectedGarages} onChange={(values) => setSelectedGarages(values as string[])} options={[{ label: '一期地面车库', value: 'phase1' }, { label: '二期地面车库', value: 'phase2' }, { label: '二期大车库', value: 'main' }, { label: '二期人防车库', value: 'civil', disabled: !deliyunWriteEnabled }]} /></label>
         {selectedGarages.includes('civil') && <label>地库车位号（必填）<Input aria-required="true" maxLength={20} value={civilParkingSpace} placeholder="将写入德立云卡号栏位" onChange={(event) => setCivilParkingSpace(event.target.value)} /></label>}</>}
-      {kind === 'update_vehicle_type' && <><Alert type="info" showIcon message={`仅修改 ${row?.database || ''} 的车牌 ${plate}，其他库需另行办理`} description="不续费、不修改授权编码或 PMS 收费档位。确认停车库和车牌后再提交。" /><label>车辆类型<Select value={identity} options={['住户车', '租户车', '亲情车'].map((value) => ({ value, label: value }))} onChange={setIdentity} /></label></>}
+      {kind === 'update_vehicle_type' && <><Alert type="info" showIcon message={`仅修改 ${row?.database || ''} 的车牌 ${plate}，其他库需另行办理`} description={identity === '产权车' ? 'PMS 按产权车收费，所选停车库写入住户车。' : undefined} /><label>车辆类型<Select value={identity} options={['住户车', '租户车', '亲情车', '产权车'].map((value) => ({ value, label: value }))} onChange={setIdentity} /></label></>}
       {kind === 'download_vehicle' && <Alert type="info" showIcon message="重新下发并等待设备确认" description="系统会按当前授权通道重新生成下载任务，并等待旧停车系统确认所有现行通道已下载；只写入队列不会显示成功，60秒未确认会列出未完成通道，可排查现场下载服务后再次下发。" />}
       {kind === 'delete_vehicle' && <Alert type="warning" showIcon message="注销会调用旧系统 Add_Del_Plate" description="车辆从旧库移除并写入注销流水，网页不会直接删除 Car_Issue。" />}
       {task?.status === 'completed' && <Button danger onClick={onRollback}>为本次操作创建反向回滚任务</Button>}
@@ -1762,8 +1763,6 @@ function ParkingOwnerPicker({ open, value, onChange }: { open: boolean; value: P
 }
 
 const parkingPlateProvinces = '京津冀晋蒙辽吉黑沪苏浙皖闽赣鲁豫鄂湘粤桂琼渝川贵云藏陕甘青宁新'.split('');
-const parkingPlateLetters = 'ABCDEFGHJKLMNPQRSTUVWXYZ'.split('');
-const parkingPlateAlphaNumeric = 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789'.split('');
 
 function DeliyunVehicleCard({ row, writeEnabled, onRenew }: {
   row: accessCardIssuance.DeliyunVehicle;
@@ -2053,23 +2052,7 @@ function AddVehicleOperationModal({ open, loading, error, task, communitiesOverr
 function ParkingPlateEntry({ id, label, value, onChange, suffix }: {
   id: string; label: string; value: string; onChange: (value: string) => void; suffix?: React.ReactNode;
 }) {
-  const normalized = value.replace(/[\s·]/g, '').toUpperCase().slice(0, 8);
-  const provinceSelected = parkingPlateProvinces.includes(normalized.slice(0, 1));
-  const mode = !provinceSelected ? 'province' : normalized.length === 1 ? 'letter' : 'number';
-  const keys = mode === 'province' ? parkingPlateProvinces : mode === 'letter' ? parkingPlateLetters : parkingPlateAlphaNumeric;
-  return <>
-    <div className="parking-plate-entry parking-plate-entry-design">
-      <label htmlFor={id}>{label}</label>
-      <Input id={id} size="large" value={normalized} onChange={(event) => onChange(event.target.value.replace(/[\s·]/g, '').toUpperCase().slice(0, 8))} suffix={suffix} placeholder="请输入车牌，例如 沪EDK889" />
-      <div className={`parking-license-plate is-${normalized.length === 8 ? 'green' : 'blue'} is-large`}><span>{normalized ? `${normalized.slice(0, 1)} ${normalized.slice(1, 2)}·${normalized.slice(2)}` : '请选择省市简称'}</span></div>
-      <Text type="secondary"><InfoCircleOutlined /> 可点击下方键盘，也可使用电脑键盘输入。</Text>
-    </div>
-    <div className={`parking-plate-keyboard is-${mode}`}>
-      <div className="parking-keyboard-heading"><div><strong>{mode === 'province' ? '第 1 步 · 选择省市简称' : mode === 'letter' ? '第 2 步 · 选择发牌机关字母' : '继续输入车牌序号'}</strong><span>普通车牌共 7 位，新能源车牌共 8 位</span></div>{provinceSelected && <Button type="link" onClick={() => onChange('')}>重选省市简称</Button>}</div>
-      <div className="parking-key-grid">{keys.map((key) => <button type="button" key={key} aria-label={`输入 ${key}`} onClick={() => onChange(`${normalized}${key}`.slice(0, 8))}>{key}</button>)}</div>
-      <div className="parking-key-actions"><Button disabled={!normalized} onClick={() => onChange(normalized.slice(0, -1))}>退格</Button><Button danger disabled={!normalized} onClick={() => onChange('')}>清空</Button></div>
-    </div>
-  </>;
+  return <><PlateNumberField inputId={id} label={label} value={value} onChange={onChange}/>{suffix}</>;
 }
 
 function operationLabel(kind: accessCardIssuance.ParkingOperationKind): string {

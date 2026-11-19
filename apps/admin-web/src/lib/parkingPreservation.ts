@@ -1,3 +1,4 @@
+import { propertyCarBillingClass, readPlateBillingClass } from '../../../neighbor-web/src/components/vehicle-ops/propertyCarBilling';
 import { accessCardIssuance as api } from '@pms/api-client';
 
 type Target = { database: 'parking1' | 'parking2'; sourceRecordId: string; id?: number };
@@ -22,7 +23,7 @@ export async function runPreservedParkingOperation(args: {
   } catch { throw new Error('原请求记录无法读取，已禁止新提交；请核对办理记录'); }
   const persist = (p: Plan) => localStorage.setItem(key, JSON.stringify(p));
   if (plan) {
-    if (args.kind === 'change_plate' ? normalize(args.payload.newPlate) !== plan.payload.newPlate : args.payload.identity !== plan.payload.identity ||
+    if (args.kind === 'change_plate' ? normalize(args.payload.newPlate) !== plan.payload.newPlate : args.payload.identity !== (plan.payload.propertyBillingClass ? '产权车' : plan.payload.identity) ||
       plan.targets[0].database !== args.database || plan.targets[0].sourceRecordId !== args.sourceRecordId)
       throw new Error(`尚有原请求未确认：${args.kind === 'change_plate' ? `新牌 ${plan.payload.newPlate}` : `${plan.targets[0].database} 车型 ${plan.payload.identity}`}。请恢复原输入核对原任务，不要创建新任务`);
   } else {
@@ -41,9 +42,11 @@ export async function runPreservedParkingOperation(args: {
           !targets.some(t => t.database === args.database && t.sourceRecordId === args.sourceRecordId)) throw new Error('原牌来源缺失、重复或已变化，请重新查询');
       payload = { plate, newPlate, batchId, sourceQueryId: query.id };
     } else {
-      if (!['住户车', '租户车', '亲情车'].includes(String(args.payload.identity))) throw new Error('请选择允许的车型文字值');
+      if (!['住户车', '租户车', '亲情车', '产权车'].includes(String(args.payload.identity))) throw new Error('请选择允许的车型文字值');
       targets = [{ database: args.database, sourceRecordId: args.sourceRecordId }];
-      payload = { plate, ownerRoom: args.payload.ownerRoom, identity: args.payload.identity };
+      const propertyClass = args.payload.identity === '产权车' ? await propertyCarBillingClass(plate) : undefined;
+      payload = { plate, ownerRoom: args.payload.ownerRoom, identity: propertyClass ? '住户车' : args.payload.identity,
+        ...(propertyClass && { propertyBillingClass: propertyClass }) };
     }
     plan = { kind: args.kind, batchId, plate, payload, targets, cloudId: args.kind === 'change_plate' ? args.cloudId : null };
     persist(plan); // Must succeed before first POST.
@@ -85,6 +88,8 @@ export async function runPreservedParkingOperation(args: {
       if (!identities.length || identities.some(([, value]) => value !== plan!.payload.identity)) throw new Error('车型独立读回不一致，原请求已保留');
     }
   }
+  if (plan.payload.propertyBillingClass && await readPlateBillingClass(plate) !== plan.payload.propertyBillingClass)
+    throw new Error('产权车收费分组读回不一致，请核对原任务');
   localStorage.removeItem(key);
   return String(plan.payload.newPlate || plate);
 }

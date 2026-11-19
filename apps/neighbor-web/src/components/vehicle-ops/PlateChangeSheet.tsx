@@ -1,3 +1,4 @@
+import PlateNumberField from '@/components/PlateNumberField';
 import { useRef, useState } from 'react';
 import { accessCardIssuance } from '@pms/api-client';
 import type { ParkingOperation, ParkingQueryRow, DeliyunVehicle } from '@pms/api-client/src/endpoints/access-card-issuance';
@@ -97,7 +98,7 @@ export function ChangePlateSheet({ plate, rows, cloud, onClose, onDone }: {
   return <Sheet open onClose={() => { if (!lock.current) onClose(); }} title={`变更车牌 · ${plate}`} width={520}>
     <div style={{ display: 'grid', gap: 14, overflowWrap: 'anywhere' }}>
       <div className="note">只改车牌号，逐库保留原车型、授权编码、期限、车位及 PMS 实际计费类别。两库原值不同也不会互相覆盖。</div>
-      <label className="fl">新车牌<input className="in" style={{ minHeight: 44 }} value={newPlate} disabled={busy || !!plan || !writable} onChange={e => setNewPlate(e.target.value.toUpperCase())} /></label>
+      <PlateNumberField label="新车牌" value={newPlate} disabled={busy || !!plan || !writable} onChange={setNewPlate} />
       <div className="muted">办理来源：{(plan?.targets || targets).map(t => dbShort(t.database)).join(' + ') || '无旧库记录'}</div>
       {!cloudKnown && !plan ? <div role="alert" className="note">人防状态未知，请先重新查询；当前禁止换牌。</div> : null}
       {progress ? <div role="status" className="note">{progress}</div> : null}

@@ -1,0 +1,7 @@
+.wo-form-section { border-top:1px solid var(--line); padding:10px 0; }
+.wo-form-section > summary { cursor:pointer; font-weight:650; padding:6px 0; }
+.wo-form-section > summary span { margin-left:10px; font-weight:400; font-size:13px; color:var(--ink2); }
+.wo-form-section[open] > summary { color:var(--acc); margin-bottom:8px; }
+
+.wo-form-section[data-invalid="true"] { border-color: var(--dang, #b3261e); }
+.wo-field-error { color: var(--dang, #b3261e); }

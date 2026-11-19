@@ -1,3 +1,4 @@
+import PlateNumberField from '../../../neighbor-web/src/components/PlateNumberField';
 import { formatBeijingDateTime, sortTimelineNewestFirst } from '@pms/shared-types';
 import {
   App as AntdApp,
@@ -445,8 +446,7 @@ function RegisterDrawer({ source, onClose, onCreated }: { source?: Row; onClose:
             <button type="button" className={who === 'owner' ? 'is-on' : ''} onClick={() => setWho('owner')}><b>业主扫码时自己填</b><span>办公室只填车牌，审核时可修改</span></button>
           </div>
           <div className="family-2col">
-            <div><label className="family-label"><em>*</em>车牌号</label>
-              <Input value={plate} maxLength={10} onChange={(e) => setPlate(normalizePlate(e.target.value))} placeholder="豫GQ3N07" suffix={check.state === 'checking' ? <SyncOutlined spin /> : null} />
+            <div><PlateNumberField label="车牌号（必填）" value={plate} onChange={setPlate} />
               <div className="family-hint">
                 {!selected ? '先选择房号' : check.state === 'checking' ? '正在查询一期、二期停车库及德立云…'
                   : check.state === 'ok' ? <span className="family-ok">✓ {check.message}</span>

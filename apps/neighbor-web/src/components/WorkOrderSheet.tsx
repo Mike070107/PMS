@@ -1,3 +1,5 @@
+import './workorder-form.css';
+import PhotoField, { type PhotoUploadStatus } from '@/components/PhotoField';
 import { formatBeijingDateTime, sortTimelineNewestFirst } from '@pms/shared-types';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
@@ -59,7 +61,7 @@ const ACTION_LABEL: Record<string, string> = {
   assign: '派单',
   accept: '维修工接单',
   claim: '认领接单',
-  progress: '添加进度',
+  progress: '添加进度备注',
   complete: '登记完工',
   review: '业主验收',
   need_material: '标记缺料',
@@ -304,15 +306,15 @@ function NextActions({
         }
         return { t: '待派单', main: ['dispatch', '派给维修工'], sec: [['claim', '我来接单'], ['intake', '更正录入'], ['progress', '补充信息']], more: [['cancel', '撤单'], ['void', '作废']] };
       case WorkOrderStatus.DISPATCHED:
-        return { t: `已派给 ${detail.workOrder.assigneeName || '维修工'}，等接单`, main: ['accept', '代维修工接单'], sec: [['dispatch', '改派'], ['intake', '更正录入'], ['urge', '催一下'], ['undo', '撤回上一步']], more: [['material', '代登记缺料'], ['cancel', '撤单'], ['void', '作废']] };
+        return { t: `已派给 ${detail.workOrder.assigneeName || '维修工'}，等接单`, main: ['accept', '代维修工接单'], sec: [['dispatch', '改派'], ['intake', '更正录入'], ['urge', '催一下']], more: [['undo', '撤回上一步'], ['material', '代登记缺料'], ['cancel', '撤单'], ['void', '作废']] };
       case WorkOrderStatus.IN_PROGRESS:
-        return { t: `${detail.workOrder.assigneeName || '维修工'} 维修中`, main: ['finish', '登记完工 · 用料扣料'], sec: [['material', '登记缺料'], ['progress', '添加进度'], ['undo', '撤回上一步']], more: [['dispatch', '改派'], ['transfer', '退回办公室重派'], ['cancel', '撤单'], ['void', '作废']] };
+        return { t: `${detail.workOrder.assigneeName || '维修工'} 维修中`, main: ['finish', '登记完工'], sec: [['material', '登记缺料'], ['progress', '添加进度备注']], more: [['undo', '撤回上一步'], ['dispatch', '改派'], ['transfer', '退回办公室重派'], ['cancel', '撤单'], ['void', '作废']] };
       case WorkOrderStatus.WAITING_MATERIAL:
-        return { t: '等材料到位（已退回工单池）', main: ['finish', '材料已到 · 登记完工'], sec: [['claim', '我来接回维修'], ['dispatch', '派给维修工'], ['material', '修改缺料清单'], ['undo', '撤回上一步']], more: [['cancel', '撤单'], ['void', '作废']] };
+        return { t: '等材料到位（已退回工单池）', main: ['finish', '材料已到 · 登记完工'], sec: [['claim', '我来接回维修'], ['dispatch', '派给维修工'], ['material', '修改缺料清单']], more: [['undo', '撤回上一步'], ['cancel', '撤单'], ['void', '作废']] };
       case WorkOrderStatus.DONE_PENDING_REVIEW:
-        return { t: '等业主验收', main: ['rate', '代业主验收'], sec: [['urge', '提醒业主'], ['progress', '添加进度'], ['undo', '撤回上一步']], more: [['void', '作废']] };
+        return { t: '等业主验收', main: ['rate', '代业主验收'], sec: [['urge', '提醒业主'], ['progress', '添加进度备注']], more: [['undo', '撤回上一步'], ['void', '作废']] };
       case WorkOrderStatus.COMPLETED:
-        return { t: '已完成', main: null, sec: [['progress', '补充维修记录'], ['undo', '撤回上一步']], more: [['void', '作废']] };
+        return { t: '已完成', main: null, sec: [['progress', '补充维修记录']], more: [['undo', '撤回上一步'], ['void', '作废']] };
       default:
         return { t: statusOf(s).name, main: null, sec: [], more: [] };
     }
@@ -390,10 +392,12 @@ function InfoTab({ detail }: { detail: WorkOrderDetail }) {
         </>
       ) : null}
 
-      {wo.actionNote || wo.resultAttachments?.length ? (
+      {wo.actionNote || wo.repairContent || wo.faultLocation || wo.faultSymptom || wo.resultAttachments?.length ? (
         <section aria-label="维修结果" style={{ marginBottom: 18 }}>
           <div className="sec-t">维修结果</div>
-          {wo.actionNote ? <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{wo.actionNote}</p> : null}
+          {wo.faultLocation && <p>实际位置 · {wo.faultLocation}</p>}
+          {wo.faultSymptom && <p>现场现象 · {wo.faultSymptom}</p>}
+          {(wo.actionNote || wo.repairContent) && <p style={{whiteSpace:'pre-wrap'}}>维修说明 · {wo.actionNote || wo.repairContent}</p>}
           {wo.resultAttachments?.length ? <WorkOrderMedia urls={wo.resultAttachments} /> : null}
         </section>
       ) : null}
@@ -707,9 +711,10 @@ function FinishFlow({ detail, busy, run, shell }: { detail: WorkOrderDetail; bus
   // 位置、现象默认带出报修时登记的地址和描述（和小程序一致）：只是初值，现场看到的不一样就改，提交以改后的为准
   const [faultLocation, setFaultLocation] = useState(draft?.faultLocation || wo.faultLocation || detail.request?.addressText || '');
   const [faultSymptom, setFaultSymptom] = useState(draft?.faultSymptom || wo.faultSymptom || detail.request?.content || '');
-  const [repairContent, setRepairContent] = useState(draft?.repairContent ?? wo.repairContent ?? '');
+  const [repairContent, setRepairContent] = useState(draft?.repairContent || draft?.actionNote || wo.repairContent || wo.actionNote || '');
   const [fee, setFee] = useState(String((draft?.feeCents ?? wo.feeCents ?? 0) / 100));
-  const [note, setNote] = useState('');
+  const [photos, setPhotos] = useState<string[]>(draft?.resultAttachments ?? wo.resultAttachments ?? []);
+  const [photoStatus, setPhotoStatus] = useState<PhotoUploadStatus>({ uploading:false, failedCount:0 });
   // 撤回过的完工会带回上次清单作草稿，不用重选
   const [lines, setLines] = useState<MatLine[]>(() => (draft?.materials ?? []).map((m, i) => ({
     key: `d${i}`, materialId: m.materialId ?? undefined, warehouseId: m.warehouseId ?? undefined, name: m.name || '', unit: m.unit, qty: String(m.qty),
@@ -717,37 +722,33 @@ function FinishFlow({ detail, busy, run, shell }: { detail: WorkOrderDetail; bus
   const [idem] = useState(() => (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())));
   const feeCents = Math.round((Number(fee) || 0) * 100);
 
-  return shell('登记完工 · 用料扣料',
+  return shell('登记完工',
     <>
       <ProxyBanner detail={detail} />
-      <Field label="实际维修位置">
-        <input className="in" value={faultLocation} onChange={(e) => setFaultLocation(e.target.value)} placeholder="例如：卫生间地漏" />
+      <Field label="维修说明">
+        <textarea className="in" rows={3} value={repairContent} onChange={e => setRepairContent(e.target.value)} placeholder="做了哪些维修？处理结果如何？" />
       </Field>
-      <Field label="故障现象（选填）">
-        <input className="in" value={faultSymptom} onChange={(e) => setFaultSymptom(e.target.value)} placeholder="已带出报修描述，可改" />
+      <Field label="完工照片">
+        <PhotoField value={photos} onChange={setPhotos} disabled={busy} onStatusChange={setPhotoStatus}/>
       </Field>
-      <Field label="处理内容">
-        <textarea className="in" value={repairContent} onChange={(e) => setRepairContent(e.target.value)} placeholder="换了什么、怎么处理的、试水/试电结果" />
-      </Field>
-
-      <div className="sec-t">用了哪些材料<span className="r muted">从材料SKU选的按所选仓扣库存</span></div>
-      <MaterialPicker workOrderId={wo.id} mode="use" lines={lines} onChange={setLines} />
-
-      <Field label="向业主收费（元）">
-        <input className="in" type="number" min={0} value={fee} onChange={(e) => setFee(e.target.value)} />
-      </Field>
-      <Field label="维修备注（选填）">
-        <input className="in" value={note} onChange={(e) => setNote(e.target.value)} />
-      </Field>
-      <div className="note">材料不够？先点「取消」改走「登记缺料」：有货的可以同时领用，没货的生成采购申请。照片和签字暂在小程序补。</div>
+      <details className="wo-form-section"><summary>现场实际情况<span>位置与故障现象</span></summary>
+        <Field label="实际维修位置"><input className="in" value={faultLocation} onChange={e => setFaultLocation(e.target.value)} /></Field>
+        <Field label="现场故障现象"><input className="in" value={faultSymptom} onChange={e => setFaultSymptom(e.target.value)} /></Field>
+      </details>
+      <details className="wo-form-section"><summary>选择使用材料<span>{lines.length ? `已选 ${lines.length} 项` : '未选材料'}</span></summary>
+        <MaterialPicker workOrderId={wo.id} mode="use" lines={lines} onChange={setLines}/>
+      </details>
+      <details className="wo-form-section"><summary>向业主收费<span>{feeCents ? money(feeCents / 100) : '未收费'}</span></summary>
+        <Field label="实收金额（元）"><input className="in" type="number" min="0" step="0.01" value={fee} onChange={e => setFee(e.target.value)} /></Field>
+      </details>
     </>,
-    <Btn kind="p" size="lg" disabled={busy}
+    <Btn kind="p" size="lg" disabled={busy || photoStatus.uploading || photoStatus.failedCount > 0 || !Number.isFinite(feeCents) || feeCents < 0}
       onClick={() => {
         const parsed = linesToPayload(lines, 'use');
         if ('error' in parsed) { toast(parsed.error); return; }
         void run(() => repairs.complete(wo.id, {
           faultLocation, faultSymptom, repairContent,
-          actionNote: note || undefined,
+          actionNote: repairContent || undefined, resultAttachments: photos,
           feeCents,
           materials: parsed.rows,
           idempotencyKey: idem,
@@ -764,31 +765,33 @@ function MaterialFlow({ detail, busy, run, shell }: { detail: WorkOrderDetail; b
     key: `m${i}`, materialId: m.materialId ?? undefined, warehouseId: m.warehouseId ?? undefined, name: m.name, unit: m.unit, qty: String(m.qty),
   })));
   const [used, setUsed] = useState<MatLine[]>([]);
-  const [showUsed, setShowUsed] = useState(false);
   const [note, setNote] = useState('');
+
+  const [missingError, setMissingError] = useState('');
+  const missingSummary = useRef<HTMLElement>(null);
+  const showMissingError = (message: string) => {
+    setMissingError(message);
+    missingSummary.current?.focus();
+  };
 
   return shell('登记缺料 / 申请采购',
     <>
       <ProxyBanner detail={detail} />
-      <p className="note" style={{ marginTop: 0 }}>提交后工单转「等材料」并退回工单池，同时自动生成采购申请进入审批。材料到了再派单或由人接回。</p>
-      <div className="sec-t">缺哪些材料</div>
-      <MaterialPicker workOrderId={wo.id} mode="missing" lines={missing} onChange={setMissing} />
-
-      <div className="sec-t" style={{ marginTop: 14 }}>
-        本次已经领用的有货材料<span className="r"><Btn size="sm" kind="g" onClick={() => setShowUsed((v) => !v)}>{showUsed ? '收起' : '有，登记一下'}</Btn></span>
-      </div>
-      {showUsed ? <MaterialPicker workOrderId={wo.id} mode="use" lines={used} onChange={setUsed} />
-        : <div className="muted" style={{ fontSize: 13.5, marginBottom: 8 }}>例如先用了 2 米水管、阀门没货——水管在这里登记会同时扣库存。</div>}
-
-      <Field label="原因 / 说明">
-        <input className="in" value={note} onChange={(e) => setNote(e.target.value)} placeholder="例如：原阀门锈死，仓库无货" />
-      </Field>
+      <details className="wo-form-section" data-invalid={!!missingError}><summary ref={missingSummary} aria-invalid={!!missingError} aria-describedby={missingError ? "wo-missing-error" : undefined}>选择缺少的材料<span>{missing.length ? `已选 ${missing.length} 项` : '待选择'}</span></summary>
+        <MaterialPicker workOrderId={wo.id} mode="missing" lines={missing} onChange={lines => { setMissing(lines); setMissingError(''); }} />
+      </details>
+      {missingError && <span id="wo-missing-error" role="alert" className="wo-field-error">{missingError}</span>}
+      <Field label="缺料说明（选填）"><textarea className="in" rows={2} value={note} onChange={e => setNote(e.target.value)} placeholder="哪些工作需要等材料到齐后继续？" /></Field>
+      <details className="wo-form-section"><summary>登记已领用材料<span>{used.length ? `已选 ${used.length} 项` : '选填'}</span></summary>
+        <MaterialPicker workOrderId={wo.id} mode="use" lines={used} onChange={setUsed} />
+      </details>
+      <p className="muted">提交后生成采购申请，工单退回工单池等待材料。</p>
     </>,
     <Btn kind="p" size="lg" disabled={busy}
       onClick={() => {
         const m = linesToPayload(missing, 'missing');
-        if ('error' in m) { toast(m.error); return; }
-        if (!m.rows.length) { toast('至少填一种缺的材料和数量'); return; }
+        if ('error' in m) { showMissingError(m.error); return; }
+        if (!m.rows.length) { showMissingError('请选择至少一种缺少的材料并填写数量'); return; }
         const u = linesToPayload(used, 'use');
         if ('error' in u) { toast(u.error); return; }
         void run(() => repairs.needMaterial(wo.id, {
@@ -894,10 +897,10 @@ function UndoFlow({ detail, busy, run, shell }: { detail: WorkOrderDetail; busy:
 function ProgressFlow({ detail, busy, run, shell }: { detail: WorkOrderDetail; busy: boolean; run: RunFn; shell: ShellFn }) {
   const wo = detail.workOrder;
   const [note, setNote] = useState('');
-  return shell('添加进度',
-    <Field label="内容"><textarea className="in" value={note} onChange={(e) => setNote(e.target.value)} placeholder="现场情况、约定时间等，会记入时间轴" /></Field>,
+  return shell('添加进度备注',
+    <Field label="进度备注"><textarea className="in" rows={4} value={note} onChange={(e) => setNote(e.target.value)} placeholder="记录当前进展、待处理事项或约定时间" /></Field>,
     <Btn kind="p" size="lg" disabled={busy || !note.trim()}
-      onClick={() => void run(() => repairs.addProgress(wo.id, { note: note.trim() }), '已记录进度')}>确认</Btn>,
+      onClick={() => void run(() => repairs.addProgress(wo.id, { note: note.trim() }), '进度备注已保存')}>保存进度备注</Btn>,
   );
 }
 

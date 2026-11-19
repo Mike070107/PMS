@@ -14,6 +14,7 @@ const finish = (op: any) => {
   const row = rows.find(row => row.database === op.database && String(row.fields.P_id) === op.sourceRecordId);
   const before = structuredClone(row.fields);
   if (op.kind === 'change_plate') row.fields.P_plate = op.payload.newPlate; else row.fields.Car_Brand = op.payload.identity;
+  if (op.payload.propertyBillingClass) fixture.billed = op.payload.propertyBillingClass;
   op.status = 'completed'; op.result = { verified: true, preserved: true, preservationContract: 1, database: op.database,
     plate: row.fields.P_plate, previousPlate: before.P_plate, identity: row.fields.Car_Brand, issueId: op.sourceRecordId, before, after: structuredClone(row.fields) };
   if (scenario === 'badReceipt') op.result.preserved = false;
@@ -49,6 +50,9 @@ export const uploadBlobTo = unrelatedWrite;
 export const repairs = new Proxy({}, { get: () => unrelatedWrite });
 export class ApiError extends Error {}
 export function configure() { /* Controlled transport only. */ }
-export async function request(input: any) { record('request', input); return { rows: [], total: 0 }; }
+export async function request(input: any) { record('request', input);
+  if (input.url === '/business/rules') return [{ enabled: true, serviceType: 'parking_monthly', config: { vehicleClass: '产权车位' } }];
+  if (input.url === '/business/plate-tags') return [{ plate, vehicleClass: fixture.billed }];
+  return { rows: [], total: 0 }; }
 export const fixtureRows = rows;
 export const fixtureReadiness = { agents: [{ id: 1, kind: 'parking_gateway', status: 'online', version: '2.5.53', capabilities: { parkingDbWrite: true, parkingVehiclePreservationV1: true } }], features: { parkingDbRead: true }, deliyun: { configured: true, writeEnabled: true } };

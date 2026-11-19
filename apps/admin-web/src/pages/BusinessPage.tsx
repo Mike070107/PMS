@@ -1,3 +1,4 @@
+import PlateNumberField from '../../../neighbor-web/src/components/PlateNumberField';
 import {
   App as AntdApp,
   Button,
@@ -384,8 +385,8 @@ function BusinessFlow({ serviceType }: { serviceType: ServiceType }) {
                 {isParking ? (
                   <>
                     <Col xs={24} md={8}>
-                      <Form.Item name="plateNo" label="车牌号" rules={[{ required: true, message: '请输入车牌号' }]}>
-                        <Input placeholder="如：沪A12345" />
+                      <Form.Item name="plateNo" rules={[{ required: true, message: '请输入车牌号' }]}>
+                        <PlateNumberField label="车牌号（必填）" />
                       </Form.Item>
                     </Col>
                     <Col xs={24} md={8}>

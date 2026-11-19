@@ -28,7 +28,7 @@ test('新增与换牌复用同一个点选车牌组件，不替换旧车牌输�
   assert.match(source, /ParkingPlateEntry id="parking-change-plate-input" label="新车牌" value=\{newPlate\} onChange=\{setNewPlate\}/);
   assert.match(source, /ParkingPlateEntry id="parking-add-plate-input"/);
   assert.equal((source.match(/function ParkingPlateEntry\(/g) || []).length, 1);
-  assert.match(source, /onChange\(normalized.slice\(0, -1\)\)/);
+  assert.match(source, /<PlateNumberField inputId=\{id\} label=\{label\} value=\{value\} onChange=\{onChange\}/);
 });
 test('停车历史短字段不撑满整行，时间靠近操作类型', () => {
   assert.match(parking, /\.parking-history-list dl > div \{ flex: 0 1 auto; width: fit-content; max-width: 100%/);
@@ -53,7 +53,7 @@ test('历史缴费和今日收费流水展示备注，新增列保持对齐', ()
 });
 test('收费明细显示到分钟，导出与房间明细使用相同收款时间口径', () => {
   assert.equal((feesPage.match(/title: '收款时间'/g) || []).length, 3);
-  assert.ok((feesPage.match(/format\('YYYY-MM-DD HH:mm'\)/g) || []).length >= 3);
+  assert.ok((feesPage.match(/formatBeijingDateTime\((?:r\.paidAt|v), 'YYYY-MM-DD HH:mm'\)/g) || []).length >= 3);
 });
 test('授权类型位于信息右侧，不独占一整行；保留手机单列', () => {
   assert.doesNotMatch(parking.match(/\.parking-vehicle-type \{[^}]+\}/)[0], /grid-column: 1 \/ -1/);

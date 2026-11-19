@@ -179,8 +179,8 @@ async function openFinishOrder(page,url,mode='') {
  await page.locator('.wo-list-table tbody tr').filter({hasText:'SYN-4'}).locator('td').nth(1).click();
  await finishTrigger(page).waitFor();
 }
-const finishTrigger=page=>page.getByRole('button',{name:/^(登记完工 · 用料扣料|材料已到 · 登记完工)$/});
-const panel=page=>page.locator('.flow:visible').filter({has:page.getByRole('heading',{name:'登记完工 · 用料扣料'})});
+const finishTrigger=page=>page.getByRole('button',{name:/^(登记完工|材料已到 · 登记完工)$/});
+const panel=page=>page.locator('.flow:visible').filter({has:page.getByRole('heading',{name:'登记完工'})});
 
 test('真实浏览器：完工面板在按钮下方覆盖Tab区域，桌面/窄屏/横屏可独立滚动', {timeout:90000},async()=>{
  await fixture(async(page,url)=>{
@@ -252,12 +252,18 @@ test('真实浏览器：完工失败保留输入及幂等键，等待期间切Ta
   await openFinishOrder(page,url,'completion-error');
   await finishTrigger(page).click();
   await panel(page).locator('textarea').fill('合成维修结果，禁止生产写入');
-  await panel(page).getByPlaceholder('例如：卫生间地漏').fill('合成卫生间');
-  await panel(page).getByPlaceholder('已带出报修描述，可改').fill('合成接头漏水');
+  await panel(page).locator('summary').filter({hasText:'现场实际情况'}).click();
+  await panel(page).locator('.field').filter({hasText:'实际维修位置'}).locator('input').fill('合成卫生间');
+  await panel(page).locator('.field').filter({hasText:'现场故障现象'}).locator('input').fill('合成接头漏水');
+  await panel(page).locator('summary').filter({hasText:'选择使用材料'}).click();
   await panel(page).locator('.matpick-item').first().click();
   await panel(page).locator('.mp-row input[inputmode="decimal"]').fill('2');
+  await panel(page).locator('summary').filter({hasText:'向业主收费'}).click();
   await panel(page).locator('input[type="number"]').fill('12.5');
-  await panel(page).locator('.field').filter({hasText:'维修备注'}).locator('input').fill('合成备注');
+  await panel(page).getByText('完工照片',{exact:true}).waitFor();
+  await page.route('**/upload',r=>r.fulfill({json:{objectKey:'test-only/finish.jpg'}}));
+  await panel(page).locator('input[type=file]').setInputFiles({name:'finish.png',mimeType:'image/png',buffer:fs.readFileSync(path.join(app,'test/fixtures/work-order-media/sample.png'))});
+  await panel(page).locator('img').filter({visible:true}).first().waitFor();
   await panel(page).getByRole('button',{name:'提交完工 · 通知业主验收',exact:true}).click();
   const error=page.getByRole('alert').filter({hasText:'合成完工错误：请重试'});
   await error.waitFor();
@@ -276,9 +282,10 @@ test('真实浏览器：完工失败保留输入及幂等键，等待期间切Ta
   assert.equal(calls.length,2); assert.deepEqual(calls[0].payload,calls[1].payload,'位置/现象/内容/用料/费用/备注及幂等键均须保留');
   assert.equal(calls[1].payload.faultLocation,'合成卫生间');
   assert.equal(calls[1].payload.faultSymptom,'合成接头漏水');
+  assert.ok(calls[1].payload.resultAttachments.some(url=>url.includes('finish.jpg')));
   assert.equal(calls[1].payload.feeCents,1250);
   assert.equal(calls[1].payload.materials[0].qty,2);
-  assert.equal(calls[1].payload.actionNote,'合成备注');
+  assert.equal(calls[1].payload.actionNote,'合成维修结果，禁止生产写入');
   await shot(page,'finish-submit-success');
   await openFinishOrder(page,url,'completion-wait');
   await finishTrigger(page).click();
@@ -297,6 +304,7 @@ test('真实浏览器：完工失败保留输入及幂等键，等待期间切Ta
   assert.equal(await page.locator('.flow:visible').count(),0);
   await openFinishOrder(page,url,'stock-error');
   await finishTrigger(page).click();
+  await panel(page).locator('summary').filter({hasText:'选择使用材料'}).click();
   await page.getByText('合成库存读取失败',{exact:true}).waitFor();
   await shot(page,'finish-stock-error');
  });

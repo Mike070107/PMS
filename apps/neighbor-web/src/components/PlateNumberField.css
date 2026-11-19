@@ -1,0 +1,28 @@
+.intake-plate-keys button{min-height:44px;border:1px solid var(--line);border-radius:6px;background:var(--paper,#fff);color:var(--ink);cursor:pointer;font-size:16px;transition:background .15s}
+.intake-plate-keys{display:grid;grid-template-columns:repeat(auto-fit,minmax(44px,1fr));gap:8px;max-width:560px}
+.intake-plate-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:10px}
+@media(max-width:600px){.intake-plate-keys{gap:6px;grid-template-columns:repeat(5,minmax(0,1fr))}}
+
+.registration-plate { min-width:0; padding:16px; background:var(--acc-w); border:1px solid var(--line); border-radius:10px; color:var(--acc-t); }
+.registration-plate label { display:block; font-weight:650; }
+.plate-input-wrap {
+  position:relative; display:block; width:100%; max-width:370px; margin:8px 0;
+  color:white;
+}
+.plate-input-wrap::before,.plate-input-wrap::after {
+  content:""; position:absolute; top:7px; height:4px; width:4px; border-radius:50%;
+  background:#c9d8eb; pointer-events:none;
+}
+.plate-input-wrap::before { left:12px; }
+.plate-input-wrap::after { right:12px; }
+.registration-plate .plate-input-wrap .in {
+  display:block; width:100%; min-width:0; height:60px; padding:0 12px; box-sizing:border-box;
+  border:2px solid #174787; border-radius:8px; background:#1754a0; color:white;
+  box-shadow:inset 0 0 0 2px white; text-align:center; letter-spacing:.09em;
+  font:700 clamp(22px,4vw,32px)/1.2 Consolas,"Microsoft YaHei",monospace; caret-color:white;
+}
+.registration-plate .plate-input-wrap .in:focus-visible { outline:2px solid var(--acc-b); outline-offset:2px; }
+.registration-plate .plate-input-wrap .in[aria-invalid=true] { border-color:var(--dang); }
+.registration-plate > small {display:block;color:var(--dang);}
+.plate-keypad-toggle { margin:4px 0; }
+.registration-plate:has(.plate-keypad-toggle[aria-expanded=true]) { grid-column:1/-1; }

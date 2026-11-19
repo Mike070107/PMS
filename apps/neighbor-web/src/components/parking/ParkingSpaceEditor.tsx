@@ -1,3 +1,4 @@
+import PlateNumberField from '@/components/PlateNumberField';
 import { useRef, useState } from 'react';
 import { accessCardIssuance, request } from '@pms/api-client';
 import type { DeliyunVehicle, ParkingQueryRow } from '@pms/api-client/src/endpoints/access-card-issuance';
@@ -94,7 +95,7 @@ export default function ParkingSpaceEditor({ row, onClose, onDone }: {
     <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
       <div className="note" style={{ background: 'var(--bg)', color: 'var(--ink2)' }}>档案资料与现场有效期分别办理。保存档案不会收费、续期或新增授权。</div>
       <fieldset disabled={busy} style={{ display: 'grid', gap: 12, border: 0, margin: 0, padding: 0, minWidth: 0 }}>
-        <label className="fl">车牌<input className="in" value={plate} onChange={e => setPlate(e.target.value.toUpperCase().replace(/\s/g, ''))} placeholder="空着表示未绑车牌" /></label>
+        <PlateNumberField label="车牌（选填）" required={false} value={plate} disabled={busy} onChange={setPlate} />
         <label className="fl">类别<select className="in" aria-label="车位类别" value={category} onChange={e => setCategory(e.target.value as typeof category)}>
           <option value="property">产权</option><option value="rental">租赁</option><option value="vacant">空</option>
         </select></label>

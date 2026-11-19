@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react';
-import { accessCardIssuance } from '@pms/api-client';
+import { propertyCarBillingClass } from './propertyCarBilling';
+import { useEffect, useRef, useState } from 'react';
+import { accessCardIssuance, request } from '@pms/api-client';
 import type { ParkingOperation, ParkingQueryRow } from '@pms/api-client/src/endpoints/access-card-issuance';
 import { Sheet, toast } from '@/components/ui';
 import { useSession } from '@/lib/auth';
@@ -7,11 +8,11 @@ import { can } from '@/lib/perm';
 import { field, normPlate, vehicleIdentity } from '@/lib/parking-fields';
 import { createIdempotencyKey, dbShort, pidOf } from '@/lib/parking-ops';
 
-const IDENTITIES = ['住户车', '租户车', '亲情车'];
+const IDENTITIES = ['住户车', '租户车', '亲情车', '产权车'];
 type Database = 'parking1' | 'parking2';
 interface Plan {
   database: Database; sourceRecordId: string; idempotencyKey: string; id?: number;
-  payload: { plate: string; ownerRoom: string; identity: string };
+  payload: { plate: string; ownerRoom: string; identity: string; propertyBillingClass?: string };
 }
 const wait = (ms: number) => new Promise<void>(resolve => window.setTimeout(resolve, ms));
 async function freshRows(plate: string) {
@@ -47,11 +48,18 @@ export default function VehicleTypeSheet({ plate, rows, onClose, onDone }: {
   const targets = rows.filter(row => ['parking1', 'parking2'].includes(row.database) && normPlate(field(row.fields, 'plate')) === normPlate(plate));
   const [database, setDatabase] = useState(initial.plan?.database || (targets.length === 1 ? targets[0].database : ''));
   const target = targets.find(row => row.database === database);
-  const [identity, setIdentity] = useState(initial.plan?.payload.identity || '');
+  const [identity, setIdentity] = useState(initial.plan?.payload.propertyBillingClass ? '产权车' : initial.plan?.payload.identity || '');
   const [plan, setPlan] = useState<Plan | null>(initial.plan);
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   const [err, setErr] = useState(initial.error || (initial.plan ? '有已提交的修改，请先核对原任务；不会另建任务。' : ''));
+  const [billing, setBilling] = useState('');
+  useEffect(() => {
+    let current = true;
+    request<Array<{vehicleClass:string}>>({url:'/business/plate-tags',query:{plates:plate}})
+      .then(rows=>{if(current) setBilling(rows[0]?.vehicleClass || '未设置');}).catch(()=>{if(current) setBilling('未读取');});
+    return ()=>{current=false;};
+  },[plate]);
   const [progress, setProgress] = useState('');
   const writable = can('business', 'edit');
   const sourceRecordId = target ? pidOf(target.fields) : '';
@@ -74,8 +82,12 @@ export default function VehicleTypeSheet({ plate, rows, onClose, onDone }: {
         const current = uniqueRow(await freshRows(plate), database, sourceRecordId);
         if (field(current.fields, 'room', true) !== ownerRoom || field(current.fields, 'identity') !== field(target?.fields, 'identity'))
           throw new Error('现场房号或车辆类型已变化，请重新查询后再修改；未提交任务');
-        if (field(current.fields, 'identity') === identity) throw new Error('所选类型与现场相同，无需修改；未提交任务');
-        active = { database: database as Database, sourceRecordId, idempotencyKey: createIdempotencyKey(), payload: { plate: field(current.fields, 'plate'), ownerRoom, identity } };
+        let propertyBillingClass: string | undefined;
+        if (identity === '产权车') {
+          propertyBillingClass = await propertyCarBillingClass(plate);
+        }
+        if (!propertyBillingClass && field(current.fields, 'identity') === identity) throw new Error('所选类型与现场相同，无需修改；未提交任务');
+        active = { database: database as Database, sourceRecordId, idempotencyKey: createIdempotencyKey(), payload: { plate: field(current.fields, 'plate'), ownerRoom, identity:propertyBillingClass ? '住户车' : identity, ...(propertyBillingClass ? {propertyBillingClass} : {}) } };
         // Persist BEFORE POST: response loss/reload must retain the original key and immutable payload.
         store(active);
       }
@@ -84,7 +96,7 @@ export default function VehicleTypeSheet({ plate, rows, onClose, onDone }: {
       let operation = active.id ? await accessCardIssuance.parkingOperation(active.id) : await accessCardIssuance.createParkingOperation({ ...active, kind: 'update_vehicle_type' });
       const assertOperation = (op: ParkingOperation) => {
         if (op.kind !== 'update_vehicle_type' || op.database !== active!.database || op.sourceRecordId !== active!.sourceRecordId ||
-            normPlate(String(op.payload.plate || '')) !== normPlate(active!.payload.plate) || op.payload.identity !== active!.payload.identity || op.payload.ownerRoom !== active!.payload.ownerRoom)
+            normPlate(String(op.payload.plate || '')) !== normPlate(active!.payload.plate) || op.payload.identity !== active!.payload.identity || op.payload.propertyBillingClass !== active!.payload.propertyBillingClass || op.payload.ownerRoom !== active!.payload.ownerRoom)
           throw new Error('原任务与本次车牌、记录或类型不一致，已停止；请核对办理记录');
       };
       active = { ...active, id: operation.id }; store(active);
@@ -104,14 +116,19 @@ export default function VehicleTypeSheet({ plate, rows, onClose, onDone }: {
       setProgress(`任务 #${operation.id} 已回报，正在独立查询现场读回…`);
       const after = uniqueRow(await freshRows(plate), active.database, active.sourceRecordId);
       if (field(after.fields, 'identity') !== active.payload.identity) throw new Error('写后独立读回类型不一致，尚未确认成功；请核对原任务，不会重新修改');
-      clear(); toast(`${dbShort(active.database)} ${plate} 已改为${active.payload.identity}，现场读回一致`); onDone();
+      if (active.payload.propertyBillingClass) {
+        const tags = await request<Array<{vehicleClass:string}>>({url:'/business/plate-tags',query:{plates:plate}});
+        if (tags[0]?.vehicleClass !== active.payload.propertyBillingClass) throw new Error('现场身份已核对，PMS 收费分类尚未核对一致，请核对原任务');
+        setBilling(tags[0].vehicleClass);
+      }
+      clear(); toast(active.payload.propertyBillingClass ? 'PMS 已记为产权车，所选停车库住户车身份读回一致' : `${dbShort(active.database)} ${plate} 已改为${active.payload.identity}，现场读回一致`); onDone();
     } catch (e) { setErr(e instanceof Error ? e.message : '修改未确认，输入与原请求已保留'); }
     finally { lock.current = false; setBusy(false); setProgress(''); }
   };
 
   return <Sheet open onClose={() => { if (!lock.current) onClose(); }} width={540} title={`修改车辆类型 · ${plate}`} subtitle="按车牌修改旧库车辆身份 · 仅本次所选停车库">
     <div style={{ display: 'grid', gap: 14, minWidth: 0, overflowWrap: 'anywhere' }}>
-      <div className="note">此处修改住户车／租户车等车辆身份，不是车位“产权／租赁／空”，也不是德立云车型。不收费、不续期、不调整授权或下发设备；不改同户其他车牌。</div>
+      <div className="note">PMS 收费分类 · {billing === '产权车位' ? '产权车' : billing || '读取中…'}{identity === '产权车' && '。选择产权车后，所选停车库按住户车授权。'}</div>
       <div className="card" style={{ padding: 12 }}>
         {targets.map((row, index) => <div key={`${row.database}-${index}`} style={{ lineHeight: 1.9 }}><b>{dbShort(row.database)}</b> · {vehicleIdentity(field(row.fields, 'identity'))} · 记录 {pidOf(row.fields) || '缺失'}</div>)}
         {targets.length > 1 ? <div className="muted" style={{ marginTop: 6 }}>一期、二期分开办理；本次不会自动同步另一库或德立云。</div> : null}

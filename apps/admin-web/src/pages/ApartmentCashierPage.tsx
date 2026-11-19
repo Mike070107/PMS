@@ -1,3 +1,4 @@
+import PlateNumberField from '../../../neighbor-web/src/components/PlateNumberField';
 import { formatBeijingDateTime } from '@pms/shared-types';
 import { PaymentMethodIcon as LegacyPaymentIcon } from '../components/PaymentMethodIcon';
 import {
@@ -553,7 +554,7 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
                 {(item.feeCode === 'network' || item.feeCode === 'parking') && <div className="cashier-fee-extra">
                   <label>开始日期<DatePicker value={item.serviceFrom ? dayjs(item.serviceFrom) : null} onChange={(value) => updateItem(item.feeCode, { serviceFrom: value?.format('YYYY-MM-DD') })} /></label>
                   <label>结束日期<DatePicker value={item.serviceTo ? dayjs(item.serviceTo) : null} onChange={(value) => updateItem(item.feeCode, { serviceTo: value?.format('YYYY-MM-DD') })} /></label>
-                  {item.feeCode === 'parking' && <label>车牌号<Input value={item.vehiclePlate} onChange={(event) => updateItem(item.feeCode, { vehiclePlate: event.target.value })} /></label>}
+                  {item.feeCode === 'parking' && <PlateNumberField label="车牌号" required={false} value={item.vehiclePlate} onChange={vehiclePlate=>updateItem(item.feeCode,{vehiclePlate})} />}
                 </div>}
               </div>) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="点击上方图标添加收费项目" />}
             </div>

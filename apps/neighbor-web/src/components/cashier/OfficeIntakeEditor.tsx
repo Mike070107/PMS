@@ -1,3 +1,4 @@
+import PlateNumberField from '@/components/PlateNumberField';
 import { useEffect, useRef, useState } from 'react';
 import Icon from '@/components/Icon';
 import { RegistrationTermEditor, type RegistrationTerm } from '@/components/VehicleRegistrationTerm';
@@ -97,7 +98,7 @@ export default function OfficeIntakeEditor({ intake, onSaved }: { intake: Intake
     {open ? <div className="np-office-body">
       <p className="np-garage-help">业主不用手机也能办：办公室在这里代填并上传资料，确认后进入办公室审核。与业主扫码提交互不覆盖；任何修改都会生成新资料版本，原确认和审批失效。</p>
       <div className="np-fields">
-        <label>车牌<input className="in" aria-label="办公室代填车牌" value={plate} maxLength={12} disabled={!!busy} onChange={event => setPlate(event.target.value.toUpperCase())} placeholder="例如 豫GQ3N07" /></label>
+        <PlateNumberField label="车牌" ariaLabel="办公室代填车牌" value={plate} disabled={!!busy} onChange={setPlate} />
         <label>车主（选填）<input className="in" aria-label="办公室代填车主" value={contactName} maxLength={50} disabled={!!busy} onChange={event => setContactName(event.target.value)} /></label>
         <label>手机<input className="in" aria-label="办公室代填手机" value={contactPhone} maxLength={30} disabled={!!busy} onChange={event => setContactPhone(event.target.value)} placeholder="11 位手机号" /></label>
         {intake.kind === 'family' ? <label>与业主关系<input className="in" aria-label="办公室代填关系" value={relation} maxLength={12} disabled={!!busy} onChange={event => setRelation(event.target.value)} placeholder="如父母、子女、表姐" /></label> : null}
