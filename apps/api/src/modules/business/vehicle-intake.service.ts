@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import * as QRCode from 'qrcode';
-import { Brackets, EntityManager, In, IsNull, Like, Repository } from 'typeorm';
+import { Brackets, EntityManager, In, IsNull, Like, MoreThan, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import { claimVehicleRegistration, releaseVehicleRegistration } from '../../common/vehicle-registration-claim';
 import { reviseVehicleMaterial } from '../../common/vehicle-registration-material';
@@ -163,10 +163,10 @@ export class VehicleIntakeService {
       }
     }
     if (!input.anotherVehicle) {
-      const previous = await this.repo.findOne({
-        where: { tenantId, houseId: house.id, kind: input.kind, status: In(['waiting', 'reupload']), familyCarId: IsNull() },
-        order: { id: 'DESC' }, lock: { mode: 'pessimistic_write' },
-      });
+      const draft = { tenantId, houseId: house.id, kind: input.kind, status: In(['waiting', 'reupload']), familyCarId: IsNull() };
+      const latest = { order: { id: 'DESC' as const }, lock: { mode: 'pessimistic_write' as const } };
+      const previous = await this.repo.findOne({ ...latest, where: { ...draft, expiresAt: MoreThan(new Date()) } })
+        ?? await this.repo.findOne({ ...latest, where: draft });
       if (previous) {
         this.checkScope(previous, access);
         // Paid-but-waiting-for-documents stays on the same registration and payment.
@@ -214,7 +214,7 @@ export class VehicleIntakeService {
     };
   }
 
-  async list(query: { status?: string; kind?: string; q?: string; houseId?: number; open?: boolean }, user: AuthUser, access?: ResolvedAccess) {
+  async list(query: { status?: string; kind?: string; q?: string; houseId?: number; open?: boolean; reviewList?: string }, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.tenant(user);
     const scope = scopeCommunityIds(access);
     if (scope && !scope.length) return [];
@@ -222,7 +222,20 @@ export class VehicleIntakeService {
     if (scope) qb.andWhere('i.community_id IN (:...scope)', { scope });
     if (query.houseId) qb.andWhere('i.house_id = :houseId', { houseId: Number(query.houseId) });
     if (query.kind) qb.andWhere('i.kind = :kind', { kind: query.kind });
-    if (query.status) qb.andWhere('i.status IN (:...st)', { st: String(query.status).split(',') });
+    qb.leftJoinAndMapOne('i.familyReview', FamilyCar, 'family',
+      "i.kind = 'family' AND i.status = 'approved' AND family.id = i.family_car_id AND family.tenant_id = i.tenant_id AND family.house_id = i.house_id")
+      .select('i').addSelect(['family.id', 'family.status', 'family.managerNote', 'family.managerReviewedAt']);
+    if (query.status) {
+      const statusColumn = query.reviewList === '1' ? `CASE
+        WHEN i.status IN ('waiting','reupload') AND (i.status = 'reupload' OR i.input_source <> 'office')
+          AND i.expires_at <= CURRENT_TIMESTAMP THEN 'timeout_closed'
+        WHEN family.status IN ('returned','office','upload') THEN 'submitted'
+        WHEN family.status = 'manager' THEN 'manager'
+        WHEN family.status = 'void' THEN 'void'
+        WHEN i.kind = 'family' AND i.status = 'approved' AND family.id IS NULL THEN 'unknown'
+        ELSE i.status END` : 'i.status';
+      qb.andWhere(`${statusColumn} IN (:...st)`, { st: String(query.status).split(',') });
+    }
     if (query.open) qb.andWhere("(i.status IN ('waiting','submitted','reupload') OR (i.status = 'approved' AND i.kind = 'paid' AND i.transaction_id IS NULL))");
     const q = (query.q || '').trim();
     if (q) {
@@ -234,7 +247,7 @@ export class VehicleIntakeService {
       }));
     }
     const rows = await qb.orderBy('i.id', 'DESC').take(200).getMany();
-    return Promise.all(rows.map((row) => this.view(row)));
+    return Promise.all(rows.map((row) => this.view(row, false, (row as VehicleIntake & { familyReview?: FamilyCar }).familyReview ?? null)));
   }
 
   async get(id: number, user: AuthUser, access?: ResolvedAccess) {
@@ -395,9 +408,13 @@ export class VehicleIntakeService {
   }
 
   /** 换新码：旧码立即失效，新码 1 小时有效（二维码过期了、或怕旧码被别人拿到时用） */
-  async regenerate(id: number, formBase: string, user: AuthUser, access?: ResolvedAccess) {
-    if (!this.inTransaction) return this.locked(id, user, access, (service) => service.regenerate(id, formBase, user, access));
+  async regenerate(id: number, formBase: string, user: AuthUser, access?: ResolvedAccess, resume = false) {
+    if (!this.inTransaction) return this.locked(id, user, access, (service) => service.regenerate(id, formBase, user, access, resume));
     const row = await this.load(id, user, access);
+    if (resume) {
+      if (!['waiting', 'reupload'].includes(row.status)) throw new BadRequestException('资料已提交或登记已结束，请刷新登记状态');
+      if (row.expiresAt.getTime() > Date.now()) return this.showQr(id, formBase, user, access);
+    }
     if (!['waiting', 'reupload', 'submitted'].includes(row.status)) throw new BadRequestException('这条登记已审核完成，不能再生成二维码');
     const base = this.checkFormBase(formBase);
     row.tokenNonce = randomBytes(18).toString('base64url');
@@ -407,7 +424,7 @@ export class VehicleIntakeService {
     row.openedAt = null;
     if (row.status === 'submitted') row.status = 'reupload';
     row.updatedBy = user.id;
-    row.log = [...row.log, await this.entry(user, '重新生成二维码（旧码作废）', `有效至 ${this.hm(row.expiresAt)}`)];
+    row.log = [...row.log, await this.entry(user, resume ? '重新启用原登记二维码' : '重新生成二维码（旧码作废）', `有效至 ${this.hm(row.expiresAt)}`)];
     await this.repo.save(row);
     return { ...(await this.view(row)), qr: await this.qr(base, token, row.expiresAt) };
   }
@@ -875,7 +892,12 @@ export class VehicleIntakeService {
     }))).catch((e) => { if (this.isHomeUpload(row)) throw e; this.logger.warn(`通知失败：${e?.message || e}`); });
   }
 
-  private async view(row: VehicleIntake, withLog = false) {
+  private async view(row: VehicleIntake, withLog = false, joinedFamily?: FamilyCar | null) {
+    const family = joinedFamily !== undefined ? joinedFamily
+      : row.kind === 'family' && row.status === 'approved' && row.familyCarId ? await this.repo.manager.getRepository(FamilyCar).findOne({
+        select: { status: true, managerNote: true, managerReviewedAt: true },
+        where: { id: row.familyCarId, tenantId: row.tenantId, houseId: row.houseId },
+      }) : null;
     const txn = row.transactionId ? await this.txnRepo.findOne({ where: { id: row.transactionId, tenantId: row.tenantId } }) : null;
     const now = Date.now();
     return {
@@ -889,6 +911,7 @@ export class VehicleIntakeService {
       files: row.files.map((f, index) => ({ index, fileName: f.fileName, contentType: f.contentType, uploadedAt: f.uploadedAt, fileUrl: `/api/v1/upload/file?key=${encodeURIComponent(f.objectKey)}` })),
       transaction: txn ? { id: txn.id, txnNo: txn.txnNo, amountCents: txn.amountCents, startDate: txn.startDate, endDate: txn.endDate, externalSyncStatus: txn.externalSyncStatus, execution: txn.snapshot?.execution ?? null } : null,
       familyCarId: row.familyCarId,
+      familyReview: family ? { status: family.status, managerNote: family.status === 'returned' ? family.managerNote : '', managerReviewedAt: family.managerReviewedAt } : null,
       inputSource: row.inputSource ?? 'owner', dataVersion: row.dataVersion ?? 0,
       officeConfirmedVersion: row.officeConfirmedVersion ?? null,
       registrationTerm: row.registrationTerm ?? null, materialHistory: row.materialHistory ?? [],
@@ -913,7 +936,7 @@ export class VehicleIntakeService {
     if (!row) throw new NotFoundException('链接无效，请联系物业办公室重新生成二维码');
     if (row.status === 'void') throw new GoneException('登记已撤销作废，二维码已失效');
     const editable = ['waiting', 'reupload'].includes(row.status);
-    if (editable && row.expiresAt.getTime() <= Date.now()) throw new GoneException('二维码已过期（1 小时内有效），请联系物业办公室重新生成');
+    if (editable && row.expiresAt.getTime() <= Date.now()) throw new GoneException('二维码已过期，本次扫码已超时关闭，请联系物业办公室重新启用原登记后扫码补充资料');
     return row;
   }
 

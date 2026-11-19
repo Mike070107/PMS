@@ -69,8 +69,8 @@ export class VehicleIntakeController {
 
   @Post(':id/qr')
   @RequirePermission([...VIEW], 'edit')
-  regenerate(@Param('id', ParseIntPipe) id: number, @Body() body: { formBase: string }, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
-    return this.service.regenerate(id, body?.formBase, user, access);
+  regenerate(@Param('id', ParseIntPipe) id: number, @Body() body: { formBase: string; resume?: boolean }, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.service.regenerate(id, body?.formBase, user, access, body?.resume === true);
   }
 
   @Post(':id/staff-submit')

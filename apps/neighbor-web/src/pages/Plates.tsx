@@ -7,10 +7,10 @@ import { ErrorNote, Loading } from '@/components/ui';
 import { dayjs } from '@/lib/format';
 import { can } from '@/lib/perm';
 import { useSession } from '@/lib/auth';
-import NewPlateCard, { INTAKE_STATUS, TXN_STATUS, type Intake } from '@/components/cashier/NewPlateCard';
+import NewPlateCard, { intakeStatus, TXN_STATUS, type Intake } from '@/components/cashier/NewPlateCard';
 import ToneIcon from '@/components/ToneIcon';
 
-const INTAKE_FILTERS: Array<[string, string]> = [['submitted', '待审核资料'], ['waiting,reupload', '等业主填写'], ['approved', '已通过'], ['void', '已作废'], ['', '全部']];
+const INTAKE_FILTERS: Array<[string, string]> = [['submitted', '待审核资料'], ['waiting,reupload', '等业主填写'], ['manager', '待经理审核'], ['approved', '已通过'], ['timeout_closed', '超时关闭'], ['void', '已作废'], ['', '全部']];
 
 /**
  * 车牌登记审核：新办车牌 / 亲情车的扫码登记、资料、审核进度、有效期、授权车库，失败可重试。
@@ -27,7 +27,7 @@ export default function Plates() {
   return (
     <>
       <div className="ph" style={{ marginBottom: 14, flexWrap: 'wrap', gap: 12 }}>
-        <div style={{ flex: '1 1 300px', minWidth: 0 }}><div className="h1row"><ToneIcon kind="plates" /><h1 style={{ fontSize: 22 }}>车牌登记审核</h1></div><p>新办车牌、亲情车：业主扫码登记 → 资料审核 → 自动办理；有效期 · 授权车库 · 失败重试</p></div>
+        <div style={{ flex: '1 1 300px', minWidth: 0 }}><div className="h1row"><ToneIcon kind="plates" /><h1 style={{ fontSize: 22 }}>车牌登记审核</h1></div><p>查看资料收集进度，处理待审登记；二维码超时后可在原单重新启用。</p></div>
         <form style={{ display: 'flex', flexWrap: 'nowrap', flex: '0 1 360px', gap: 8, maxWidth: '100%' }} onSubmit={(e) => { e.preventDefault(); setKw(q.trim()); }}>
           <input className="in" style={{ width: 260, minWidth: 0 }} value={q} onChange={(e) => setQ(e.target.value)} placeholder="车牌 / 房号 / 姓名 / 电话" />
           <button className="btn p"><Icon name="search" size={16} />查询</button>
@@ -63,7 +63,7 @@ function IntakeList({ kw, intakeId }: { kw: string; intakeId: string | null }) {
     const load = async () => {
       const current = ++revision;
       try {
-        const list = await request<Intake[]>({ url: '/vehicle-intakes', query: { ...(status ? { status } : {}), ...(kw ? { q: kw } : {}) } });
+        const list = await request<Intake[]>({ url: '/vehicle-intakes', query: { reviewList: '1', ...(status ? { status } : {}), ...(kw ? { q: kw } : {}) } });
         if (alive && current === revision) { setRows(list); setListError(''); }
       } catch (e) {
         if (alive && current === revision) setListError(e instanceof Error ? e.message : '登记列表读取失败');
@@ -113,7 +113,7 @@ function IntakeList({ kw, intakeId }: { kw: string; intakeId: string | null }) {
       {rows === null ? (listError ? null : <Loading />) : (
         <div className="card" role="region" aria-label="登记列表，可左右滚动查看" tabIndex={0} style={{ overflowX: 'auto' }}>
           <table className="tbl" style={{ minWidth: 940 }}>
-            <thead><tr><th>登记时间</th><th>房号</th><th>类型</th><th>车牌</th><th>车主 · 电话</th><th>资料</th><th>状态</th><th>收款 / 办理</th></tr></thead>
+            <thead><tr><th>登记时间</th><th>房号</th><th>类型</th><th>车牌</th><th>车主 · 电话</th><th>资料收集</th><th>状态</th><th>收款 / 办理</th></tr></thead>
             <tbody>
               {rows.map((r) => (
                 <Fragment key={r.id}>
@@ -123,8 +123,8 @@ function IntakeList({ kw, intakeId }: { kw: string; intakeId: string | null }) {
                     <td>{r.kind === 'family' ? '亲情车' : <>付费{r.vehicleClass ? <span className="tag acc" style={{ marginLeft: 4 }}>{r.vehicleClass}</span> : null}</>}</td>
                     <td>{r.plate ? <b className="plate">{r.plate}</b> : <span className="muted">未填</span>}</td>
                     <td>{r.contactName ? `${r.contactName} · ${r.contactPhone}` : <span className="muted">—</span>}</td>
-                    <td>{r.files.length ? `${r.files.length} 份` : <span className="muted">—</span>}</td>
-                    <td><span className={`tag ${INTAKE_STATUS[r.status][1]}`}>{INTAKE_STATUS[r.status][0]}</span></td>
+                    <td>{r.status === 'reupload' ? '待补交' : r.submittedAt ? '已提交' : r.openedAt ? '已扫码' : r.inputSource === 'office' ? '办公室录入' : '未扫码'} · 附件 {r.files.length} 份</td>
+                    <td><span className={`tag ${intakeStatus(r)[1]}`}>{intakeStatus(r)[0]}</span></td>
                     <td>{r.kind === 'family' ? (r.familyCarId ? '已转亲情车登记' : '免费') : r.transaction ? TXN_STATUS[r.transaction.externalSyncStatus] || r.transaction.externalSyncStatus : <span className="muted">未收款</span>}</td>
                   </tr>
                   {open?.id === r.id ? (

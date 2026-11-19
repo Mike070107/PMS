@@ -357,3 +357,39 @@ for (const width of [1440, 390]) {
     } finally { await f.close(); }
   });
 }
+
+test('登记审核读取经理退回，列表和详情随办公室重新提交更新', async () => {
+  const f = await fixture();
+  try {
+    await f.page.goto(f.origin + '/vehicles');
+    await f.page.evaluate(() => {
+      window.__listIds = [68];
+      window.__intakes[68].familyReview = { status: 'returned', managerNote: '请补行驶证', managerReviewedAt: null };
+    });
+    await navigate(f.page, '/plates?intakeId=68');
+    const detail = f.page.getByRole('region', { name: '本次登记 #68' });
+    await detail.getByText('经理已退回办公室', { exact: true }).first().waitFor();
+    await detail.getByText(/请补行驶证/).waitFor();
+    const list = f.page.getByRole('region', { name: '登记列表，可左右滚动查看' });
+    await list.getByText('经理已退回办公室', { exact: true }).first().waitFor();
+    assert.doesNotMatch(await detail.innerText(), /资料已通过|待经理审核/);
+    await f.page.evaluate(() => { window.__intakes[68].familyReview.status = 'manager'; });
+    await detail.getByText('待物业经理审核', { exact: true }).first().waitFor({ timeout: 9000 });
+    assert.doesNotMatch(await detail.innerText(), /请补行驶证/);
+  } finally { await f.close(); }
+});
+
+test('审核页重新启用超时原单，可再次显示同一单的二维码', async () => {
+  const f = await fixture(390);
+  try {
+    await f.page.goto(f.origin + '/plates?intakeId=67');
+    const detail = f.page.getByRole('region', { name: '本次登记 #67' });
+    await detail.getByText('超时关闭', { exact: true }).waitFor();
+    await detail.getByRole('button', { name: '重新启用本单二维码' }).click();
+    await detail.getByRole('button', { name: '放大扫码登记二维码' }).waitFor();
+    assert.equal(await detail.getByText('超时关闭', { exact: true }).count(), 0);
+    const writes = (await calls(f.page)).filter(c => c.method === 'POST');
+    assert.ok(writes.some(c => c.url === '/vehicle-intakes/67/qr' && c.data.resume));
+    assert.ok(!writes.some(c => c.url === '/vehicle-intakes'));
+  } finally { await f.close(); }
+});

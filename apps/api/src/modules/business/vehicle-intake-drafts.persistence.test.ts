@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import { DataSource } from 'typeorm';
+import { FamilyCar } from '../../entities/family-car.entity';
 import { VehicleIntake } from '../../entities/vehicle-intake.entity';
 import { VehicleIntakeOperations1796300000000 } from '../../migrations/1796300000000-VehicleIntakeOperations';
 import { VehicleMaterialVersions1796600000000 } from '../../migrations/1796600000000-VehicleMaterialVersions';
@@ -12,7 +13,7 @@ import { VehicleIntakeService } from './vehicle-intake.service';
 // This fixture never opens a network socket or production configuration.
 test('QR draft operations: transactional reuse, replay, expiry, history, isolation and rollback', async () => {
   const db = new PGlite();
-  const source = new DataSource({ type: 'postgres', entities: [VehicleIntake] });
+  const source = new DataSource({ type: 'postgres', entities: [VehicleIntake, FamilyCar] });
   await (source as any).buildMetadatas();
   const orm = source.getRepository(VehicleIntake);
   const metadata = orm.metadata;
@@ -27,7 +28,7 @@ test('QR draft operations: transactional reuse, replay, expiry, history, isolati
     }).join(',');
     await db.exec(`CREATE TABLE houses (id int PRIMARY KEY, tenant_id int NOT NULL);
       INSERT INTO houses VALUES (5,1),(6,1),(7,2);
-      CREATE TABLE family_cars (id int PRIMARY KEY);
+      CREATE TABLE family_cars (id int PRIMARY KEY, tenant_id int, house_id int, status varchar, manager_note varchar, manager_reviewed_at timestamptz);
       CREATE TABLE vehicle_intakes (${ddl});`);
     const migration = new VehicleIntakeOperations1796300000000();
     await migration.up({ query: (sql: string) => db.query(sql) } as any);
@@ -107,6 +108,12 @@ test('QR draft operations: transactional reuse, replay, expiry, history, isolati
     const exact = await service.get(initial.id, user);
     assert.equal(exact.id, initial.id, 'exact-ID access never substitutes the latest');
     assert.equal((await service.create({ ...base, operationKey: key(1) }, user)).id, initial.id, 'original key remains bound despite newer drafts');
+    await db.query("UPDATE vehicle_intakes SET expires_at=now()+interval '30 minutes' WHERE id=$1", [initial.id]);
+    await db.query("UPDATE vehicle_intakes SET expires_at=now()-interval '30 minutes' WHERE id=$1", [another.id]);
+    const continued = await service.create({ ...base, operationKey: key(10) }, user);
+    assert.equal(continued.id, initial.id, 'prefer the existing usable QR even if a newer order timed out');
+    assert.equal(continued.qr?.url, initial.qr?.url);
+    assert.equal(await count(), 2);
     await db.query("UPDATE vehicle_intakes SET status='void' WHERE id=$1", [initial.id]);
     assert.equal((await service.create({ ...base, operationKey: key(1) }, user)).status, 'void', 'replay of cancelled operation does not resurrect it');
     const otherTenant = await service.create({ ...base, houseId: 7, operationKey: key(1) }, { id: 20, tenantId: 2 } as any);
@@ -118,5 +125,34 @@ test('QR draft operations: transactional reuse, replay, expiry, history, isolati
     assert.equal(await count(), before, 'failed operation persistence rolls back the draft and audit together');
     assert.equal(Number((await db.query<any>('SELECT count(*) AS n FROM vehicle_intake_operations WHERE operation_key=$1', [key(9)])).rows[0].n), 0);
     await assert.rejects(migration.down(), /Retain/);
+
+    // Use TypeORM's real join, pagination and hydration for the staff review list.
+    const runner = source.createQueryRunner();
+    runner.query = async (sql: string, params?: any[], structured?: boolean): Promise<any> => {
+      const result = await db.query(sql, params);
+      return structured ? { records: result.rows, raw: result.rows } : result.rows;
+    };
+    const intakeRepo = manager.getRepository(VehicleIntake);
+    intakeRepo.createQueryBuilder = (alias: string) => orm.createQueryBuilder(alias, runner);
+    const getRepository = manager.getRepository;
+    manager.getRepository = (entity: any) => entity === FamilyCar ? runner.manager.getRepository(FamilyCar) : getRepository(entity);
+    await db.query("UPDATE vehicle_intakes SET status='reupload',expires_at=now()-interval '1 minute' WHERE id=$1", [initial.id]);
+    const queue = (status: string) => service.list({ status, reviewList: '1' }, user);
+    assert.deepEqual((await queue('timeout_closed')).map(row => row.id), [another.id, initial.id]);
+    assert.ok(!(await queue('waiting,reupload')).some(row => row.id === initial.id));
+    await db.exec("INSERT INTO family_cars VALUES (42,1,5,'returned','请补资料',now())");
+    await db.query("UPDATE vehicle_intakes SET kind='family', status='approved', family_car_id=42 WHERE id=$1", [another.id]);
+    const reviewList = (status: string) => service.list({ status, reviewList: '1' }, user);
+    assert.equal((await reviewList('approved')).length, 0);
+    const [returned] = await reviewList('submitted');
+    assert.equal(returned.id, another.id);
+    assert.equal(returned.familyReview?.status, 'returned');
+    assert.equal((await service.get(another.id, user)).familyReview?.managerNote, '请补资料');
+    await db.exec("UPDATE family_cars SET status='manager' WHERE id=42");
+    assert.equal((await reviewList('submitted')).length, 0);
+    assert.equal((await reviewList('manager'))[0].familyReview?.managerNote, '');
+    await db.exec("UPDATE family_cars SET tenant_id=2 WHERE id=42");
+    assert.equal((await service.get(another.id, user)).familyReview, null);
+    assert.equal((await reviewList('manager')).length, 0);
   } finally { await db.close(); }
 });

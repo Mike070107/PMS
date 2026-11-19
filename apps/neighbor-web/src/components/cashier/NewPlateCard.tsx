@@ -17,6 +17,7 @@ import { RegistrationTermEditor, RegistrationTermSummary } from '@/components/Ve
 import OfficeIntakeEditor from './OfficeIntakeEditor';
 import { formBase, type Car, type Lot, type ParkHouse, type ParkingCart, type ParkRule, type ParkTarget } from './ParkingTab';
 
+type FamilyStage = 'upload' | 'office' | 'manager' | 'returned' | 'opening' | 'active' | 'expired' | 'void';
 export interface IntakeFile { index: number; fileName: string; contentType: string; fileUrl: string; uploadedAt: string }
 export interface Intake {
   id: number; kind: 'paid' | 'family'; status: 'waiting' | 'submitted' | 'reupload' | 'approved' | 'void';
@@ -27,6 +28,7 @@ export interface Intake {
   files: IntakeFile[];
   transaction: { id: number; txnNo: string; amountCents: number; startDate: string | null; endDate: string | null; externalSyncStatus: string; execution: { lastError?: string | null } | null } | null;
   familyCarId: number | null;
+  familyReview?: { status: FamilyStage; managerNote: string; managerReviewedAt: string | null } | null;
   inputSource?: 'owner' | 'office';
   dataVersion?: number;
   officeConfirmedVersion?: number | null;
@@ -43,6 +45,20 @@ export const INTAKE_STATUS: Record<Intake['status'], [string, string]> = {
   waiting: ['等业主扫码填写', 'warn'], submitted: ['待审核资料', 'warn'], reupload: ['已退回，等业主重传', 'warn'],
   approved: ['资料已通过', 'ok'], void: ['已作废', 'mute'],
 };
+const FAMILY_STAGE: Record<FamilyStage, [string, string]> = {
+  upload: ['待补充亲情车资料', 'warn'], office: ['待办公室审核', 'warn'], manager: ['待物业经理审核', 'warn'],
+  returned: ['经理已退回办公室', 'dang'], opening: ['开通中', 'warn'], active: ['已生效', 'ok'],
+  expired: ['已到期', 'mute'], void: ['已作废', 'mute'],
+};
+export function intakeStatus(it: Intake): [string, string] {
+  if (['waiting', 'reupload'].includes(it.status) && (it.status === 'reupload' || it.inputSource !== 'office') && Date.parse(it.expiresAt) <= Date.now()) return ['超时关闭', 'mute'];
+  if (it.status === 'waiting' && it.inputSource === 'office') return ['办公室录入中', 'warn'];
+  if (it.status === 'waiting' && it.openedAt) return ['已扫码，待提交', 'warn'];
+  if (it.kind === 'family' && it.status === 'approved') {
+    return it.familyReview ? FAMILY_STAGE[it.familyReview.status] : ['亲情车进度待核对', 'warn'];
+  }
+  return INTAKE_STATUS[it.status];
+}
 export const TXN_STATUS: Record<string, string> = {
   awaiting_docs: '款已收，等资料审核通过', review: '金额待物业经理审核', queued: '排队办理中', running: '办理中', retry: '等待自动重试',
   synced: '已生效', dry_run: '演练完成（未真正写入）', manual: '需人工办理', failed: '办理失败', rejected: '经理驳回', mocked: '已登记',
@@ -169,7 +185,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
   const key = `新办#${it.id}`;
 
   // 业主填写是实时的：等扫码 / 等审核 / 等办理时每 3 秒刷新
-  const live = it.status !== 'void' && (['waiting', 'submitted', 'reupload'].includes(it.status) || (it.kind === 'paid' && !it.transaction) || ['awaiting_docs', 'queued', 'running'].includes(it.transaction?.externalSyncStatus || ''));
+  const live = it.status !== 'void' && (['waiting', 'submitted', 'reupload'].includes(it.status) || (it.familyCarId && !['void', 'active', 'expired'].includes(it.familyReview?.status || '')) || (it.kind === 'paid' && !it.transaction) || ['awaiting_docs', 'queued', 'running'].includes(it.transaction?.externalSyncStatus || ''));
   useEffect(() => {
     if (!live) return;
     const t = window.setInterval(() => {
@@ -275,7 +291,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
   useEffect(() => {
     if (!qr && ['waiting', 'reupload'].includes(it.status) && !dayjs(it.expiresAt).isBefore(dayjs())) showQr();
   }, [it.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  const regenerate = () => call('生成二维码', () => request<Intake>({ method: 'POST', url: `/vehicle-intakes/${it.id}/qr`, data: { formBase: formBase() } }));
+  const regenerate = () => call('生成二维码', () => request<Intake>({ method: 'POST', url: `/vehicle-intakes/${it.id}/qr`, data: { formBase: formBase(), resume: expired } }));
   const review = (decision: 'approve' | 'reupload' | 'void', extra: Record<string, unknown> = {}) => {
     if (it.status === 'void' || operation.current || savingGarage.current) return;
     if (decision === 'void' && (!canVoid || !note.trim() || !window.confirm(it.transaction ? '确认只作废本条登记？不会退款，原收款与财务流水保留并转待处理，请联系财务核对。' : '确认撤销 / 作废本条登记？业主二维码将立即失效，资料和审计日志保留。'))) return;
@@ -311,14 +327,16 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
     } catch (e) { operation.current = ''; setErr(e instanceof Error ? e.message : '旧库查重失败'); setBusy(''); }
   };
 
-  const [stLabel, stTone] = INTAKE_STATUS[it.status];
+  const [stLabel, stTone] = intakeStatus(it);
+  const family = it.familyReview;
+  const backAtOffice = family && ['upload', 'office', 'returned'].includes(family.status);
   const reviewed = it.status === 'approved';
   const sync = it.transaction?.externalSyncStatus;
   const steps = [
-    { label: '扫码', state: it.openedAt ? 'done' : 'pending', detail: it.openedAt ? '已打开' : it.submittedAt ? '未记录扫码时间' : '等待扫码', at: it.openedAt },
+    { label: '扫码', state: stLabel === '超时关闭' ? 'attention' : it.openedAt ? 'done' : 'pending', detail: stLabel === '超时关闭' ? '二维码超时关闭' : it.openedAt ? '已打开' : it.submittedAt ? '未记录扫码时间' : '等待扫码', at: stLabel === '超时关闭' ? it.expiresAt : it.openedAt },
     { label: '填写上传', state: it.status === 'reupload' ? 'attention' : it.submittedAt ? 'done' : 'pending', detail: it.status === 'reupload' ? '待重新上传' : it.submittedAt ? '已提交' : '待填写上传', at: it.submittedAt },
-    { label: '办公室审核', state: reviewed ? 'done' : ['reupload', 'void'].includes(it.status) ? 'attention' : 'pending', detail: reviewed ? '已通过' : it.status === 'reupload' ? '已退回' : it.status === 'void' ? '已作废' : '待办公室审核', at: it.reviewedAt },
-    { label: it.kind === 'family' ? '经理审核 · 开通' : '收款 · 开通', state: it.status === 'void' ? 'attention' : sync === 'synced' ? 'done' : ['failed', 'rejected', 'manual'].includes(sync || '') ? 'attention' : 'pending', detail: it.status === 'void' ? '登记已作废' : it.kind === 'family' ? (it.familyCarId ? '已转登记 · 待经理审核' : '待经理审核') : it.transaction ? `已收款 · ${TXN_STATUS[sync || ''] || sync}` : '未收款', at: null },
+    { label: '办公室审核', state: backAtOffice ? 'attention' : reviewed ? 'done' : ['reupload', 'void'].includes(it.status) ? 'attention' : 'pending', detail: backAtOffice ? '待办公室重新核对' : reviewed ? '已通过' : it.status === 'reupload' ? '已退回' : it.status === 'void' ? '已作废' : '待办公室审核', at: backAtOffice ? null : it.reviewedAt },
+    { label: it.kind === 'family' ? '经理审核 · 开通' : '收款 · 开通', state: family ? (family.status === 'returned' ? 'attention' : ['active', 'expired'].includes(family.status) ? 'done' : 'pending') : it.status === 'void' ? 'attention' : sync === 'synced' ? 'done' : ['failed', 'rejected', 'manual'].includes(sync || '') ? 'attention' : 'pending', detail: it.status === 'void' ? '登记已作废' : it.kind === 'family' ? (reviewed ? stLabel : '待办公室提交') : it.transaction ? `已收款 · ${TXN_STATUS[sync || ''] || sync}` : '未收款', at: family?.status === 'returned' ? family.managerReviewedAt : null },
   ];
   const [attempted, setAttempted] = useState(false);
   const plateInvalid = !/^[\u4e00-\u9fa5][A-HJ-NP-Z][A-HJ-NP-Z0-9]{5,6}$/.test(edit.plate);
@@ -369,7 +387,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
       <div className="side-h" style={{ marginBottom: 10 }}>
         <Icon name="car" size={18} />{it.kind === 'family' ? '亲情车登记' : '新办车牌'}
         {it.plate ? <b className="plate" style={{ marginLeft: 6 }}>{it.plate}</b> : null}
-        <span className={`tag ${stTone}`} style={{ marginLeft: 8 }}>{defaultStaffMode && it.transaction ? `已收款 · ${TXN_STATUS[it.transaction.externalSyncStatus] || it.transaction.externalSyncStatus}` : defaultStaffMode && canStaff && staffMode && it.status === 'waiting' ? '待录入资料' : stLabel}</span>
+        <span className={`tag ${stTone}`} style={{ marginLeft: 8 }}>{defaultStaffMode && it.transaction ? `已收款 · ${TXN_STATUS[it.transaction.externalSyncStatus] || it.transaction.externalSyncStatus}` : defaultStaffMode && canStaff && staffMode && it.status === 'waiting' && stLabel !== '超时关闭' ? '待录入资料' : stLabel}</span>
         {it.kind === 'family' ? <span className="tag mute" style={{ marginLeft: 6 }}>{defaultStaffMode ? '免费' : '免费 · 按申请期限'}</span> : it.vehicleClass ? <span className="tag acc" style={{ marginLeft: 6 }}>{vehicleClassLabel(it.vehicleClass)}</span> : null}
         <span style={{ marginLeft: 'auto' }} />
         {canVoid ? <button className="btn g sm" disabled={!!busy || savingGarages} onClick={() => { setConverting(false); setAsk(ask === 'void' ? '' : 'void'); }}>撤销 / 作废登记</button> : null}
@@ -430,9 +448,9 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
           ) : canQr ? (
             <div className="np-qr-empty">
               <Icon name="qr" size={34} />
-              <div className="muted" style={{ fontSize: 13.5, padding: '0 8px' }}>{expired ? '二维码已过期' : qrGone ? '原二维码无法再显示，请重新生成（业主手上的旧码会作废）' : busy === '显示二维码' ? '正在读取二维码…' : '二维码没有读取到'}</div>
+              <div className="muted" style={{ fontSize: 13.5, padding: '0 8px' }}>{expired ? '二维码已过期，已收资料保留在本单' : qrGone ? '原二维码无法再显示，请重新生成（业主手上的旧码会作废）' : busy === '显示二维码' ? '正在读取二维码…' : '二维码没有读取到'}</div>
               {expired || qrGone
-                ? <button className="btn sm" disabled={!!busy} onClick={regenerate}>{busy === '生成二维码' ? '生成中…' : '重新生成二维码'}</button>
+                ? <button className="btn sm" disabled={!!busy} onClick={regenerate}>{busy === '生成二维码' ? '生成中…' : expired ? '重新启用本单二维码' : '重新生成二维码'}</button>
                 : <button className="btn sm" disabled={!!busy} onClick={showQr}>再显示二维码</button>}
             </div>
           ) : (
@@ -520,7 +538,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
           {okMsg ? <div className="note2" style={{ marginTop: 8 }}><Icon name="check" />{okMsg}</div> : null}
 
           {/* 结果 */}
-          {it.kind === 'family' && it.status === 'approved' ? <div className="note2" style={{ marginTop: 10 }}><Icon name="check" />已转亲情车登记，等物业经理审核后按申请期限开通车库并续期；进度在「车牌登记审核」。</div> : null}
+          {it.kind === 'family' && it.status === 'approved' ? <div className="note2" style={{ marginTop: 10 }}>{stLabel}。{family?.status === 'returned' ? `请到「亲情车管理」核对资料后重新提交。${family.managerNote ? '退回原因：' + family.managerNote : ''}` : '办理记录可在「亲情车管理」查看。'}</div> : null}
           {it.transaction ? (
             <div className="note2" style={{ marginTop: 10, display: 'block' }}>
               <Icon name="cash" />已收款 <b className="money">{money(it.transaction.amountCents / 100)}</b>（{it.transaction.startDate} 至 {it.transaction.endDate}）· {TXN_STATUS[it.transaction.externalSyncStatus] || it.transaction.externalSyncStatus}

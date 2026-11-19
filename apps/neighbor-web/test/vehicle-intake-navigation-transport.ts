@@ -35,6 +35,7 @@ export async function request(o: any): Promise<any> {
   if (match) {
     const item = w.__intakes[Number(match[1])];
     if (!item) throw Error('登记不存在或不在当前租户授权范围');
+    if (match[2] === 'qr' && d.resume) { Object.assign(item, { expiresAt: qr.expiresAt, qrValid: true, qr }); return { ...item }; }
     if (match[2] === 'staff-submit') { Object.assign(item, d, { status: 'submitted', submittedAt: '2026-11-17T09:00:00+08:00' }); return { ...item }; }
     if (match[2] === 'review') { if (d.decision === 'approve') { Object.assign(item, d, { status: 'approved', reviewedAt: '2026-11-17T09:01:00+08:00' }); return { ...item }; } if (d.decision !== 'void' || !d.note?.trim()) throw Error('必须确认撤销原因'); item.status = 'void'; item.qrValid = false; return { ...item }; }
     if (match[2] === 'class') item.vehicleClass = d.vehicleClass;

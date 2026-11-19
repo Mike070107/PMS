@@ -159,6 +159,16 @@ test('expired QR is refused; foreign form hosts are refused', async () => {
   const token = tokenOf(created.qr.url);
   intakes.rows[0].expiresAt = new Date(Date.now() - 1000);
   await assert.rejects(() => service.publicSession(token), /已过期/);
+  const base = 'https://prsznh.cn/beta/m/plate';
+  const resumed = await service.regenerate(created.id, base, user, undefined, true);
+  assert.equal(resumed.id, created.id);
+  assert.notEqual(tokenOf(resumed.qr.url), token);
+  assert.equal((await service.regenerate(created.id, base, user, undefined, true)).qr.url, resumed.qr.url);
+  await assert.rejects(() => service.publicSession(token), /链接无效/);
+  await service.publicSubmit(tokenOf(resumed.qr.url), [file()], { plate: '沪A12345', relation: '父母', contactPhone: '13900000000' });
+  await assert.rejects(() => service.regenerate(created.id, base, user, undefined, true), /资料已提交/);
+  assert.equal((await service.get(created.id, user)).status, 'submitted');
+  assert.equal(intakes.rows.length, 1);
 });
 
 test('family intake: relation required, needs duplicate check, converts to a family-car registration', async () => {

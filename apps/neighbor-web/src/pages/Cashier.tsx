@@ -13,7 +13,7 @@ import MisCollectionPanel from '@/components/cashier/MisCollectionPanel';
 import Icon from '@/components/Icon';
 import type { IconName } from '@/components/Icon';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { INTAKE_STATUS, TXN_STATUS, type Intake } from '@/components/cashier/NewPlateCard';
+import { intakeStatus, TXN_STATUS, type Intake } from '@/components/cashier/NewPlateCard';
 import { ErrorNote, Loading, toast } from '@/components/ui';
 import { useSession } from '@/lib/auth';
 import { dayjs, money, maskPhone } from '@/lib/format';
@@ -497,7 +497,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
           : deep?.query === intakeParam && deep.error ? <ErrorNote>{deep.error}</ErrorNote>
             : !linkedIntake ? <Loading text={treeError ? '地址读取失败，无法定位本次登记' : '正在安全定位本次登记所属住户…'} />
               : <>
-                <b>{linkedIntake.plate || '业主尚未填写车牌'}</b> · {linkedIntake.kind === 'family' ? '亲情车（免费）' : '付费新车'} · <span className={`tag ${INTAKE_STATUS[linkedIntake.status][1]}`}>{INTAKE_STATUS[linkedIntake.status][0]}</span>
+                <b>{linkedIntake.plate || '业主尚未填写车牌'}</b> · {linkedIntake.kind === 'family' ? '亲情车（免费）' : '付费新车'} · <span className={`tag ${intakeStatus(linkedIntake)[1]}`}>{intakeStatus(linkedIntake)[0]}</span>
                 <p style={{ marginTop: 8 }}>{linkedIntake.transaction ? `已收款 · ${TXN_STATUS[linkedIntake.transaction.externalSyncStatus] || linkedIntake.transaction.externalSyncStatus}，请勿重复收款。` : linkedIntake.familyCarId ? '已转亲情车办理，不再按付费新车收款。' : linkedIntake.status === 'void' ? '本次登记已撤销，不能收费。' : linkedIntake.kind === 'family' ? '本次为免费亲情车，无需收费；按类型在登记详情转类 / 撤销。' : '已按房屋稳定 ID 定位授权住户。请在下方已有新办登记选择收费标准，不要重复新建；不会自动收款。'}</p>
                 {!linkedIntake.qrValid && linkedIntake.status !== 'void' ? <p className="muted">原二维码已失效；资料与收费状态以本次登记为准，需要填写时在登记详情处理二维码。</p> : null}
               </>}
