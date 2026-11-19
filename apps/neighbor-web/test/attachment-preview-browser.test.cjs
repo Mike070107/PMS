@@ -23,6 +23,11 @@ test('附件图片灯箱及 PDF 独立弹窗、异常与资源释放', {timeout:
       const page=await browser.newPage({viewport:{width,height:900}});
       page.on('pageerror',e=>console.error(e.message));
       await page.addInitScript(()=>{const urls=new Set();window.urls=urls;const c=URL.createObjectURL.bind(URL),r=URL.revokeObjectURL.bind(URL);URL.createObjectURL=b=>{const u=c(b);urls.add(u);return u};URL.revokeObjectURL=u=>{urls.delete(u);r(u)};});
+      // The PMS static server serves .mjs as a binary download.
+      await page.route('**/assets/*.mjs', async route => {
+        const response = await route.fetch();
+        await route.fulfill({response, contentType: 'application/octet-stream'});
+      });
       await page.route('**/synthetic.pdf',r=>r.fulfill({body:pdf(),contentType:'application/pdf'}));
       const url='http://127.0.0.1:'+server.httpServer.address().port+'/test/attachment-preview.fixture.html';
       await page.goto(url);

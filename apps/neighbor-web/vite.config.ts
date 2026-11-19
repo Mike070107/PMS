@@ -14,6 +14,16 @@ const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate()
 export default defineConfig(({ command }) => ({
   base: env.VITE_BASE || (command === 'serve' ? '/' : '/beta/'),
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        // Production serves .js with the module worker MIME type required by Chrome.
+        assetFileNames: asset => asset.name === 'pdf.worker.min.mjs'
+          ? 'assets/pdf.worker.min-[hash].js'
+          : 'assets/[name]-[hash][extname]',
+      },
+    },
+  },
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(env.VITE_APP_VERSION || `beta.${stamp}`),
     'import.meta.env.VITE_BUILD_COMMIT': JSON.stringify(env.VITE_BUILD_COMMIT || ''),
