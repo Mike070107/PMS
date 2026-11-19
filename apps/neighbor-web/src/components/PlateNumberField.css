@@ -6,7 +6,7 @@
 .registration-plate { min-width:0; padding:16px; background:var(--acc-w); border:1px solid var(--line); border-radius:10px; color:var(--acc-t); }
 .registration-plate label { display:block; font-weight:650; }
 .plate-input-wrap {
-  position:relative; display:block; width:100%; max-width:370px; margin:8px 0;
+  position:relative; display:block; width:100%; max-width:460px; margin:10px 0; container-type:inline-size;
   color:white;
 }
 .plate-input-wrap::before,.plate-input-wrap::after {
@@ -15,11 +15,11 @@
 }
 .plate-input-wrap::before { left:12px; }
 .plate-input-wrap::after { right:12px; }
-.registration-plate .plate-input-wrap .in {
-  display:block; width:100%; min-width:0; height:60px; padding:0 12px; box-sizing:border-box;
+.registration-plate .plate-input-wrap input.in {
+  display:block; width:100%; min-width:0; height:clamp(64px,20cqi,92px); padding:0 10px; box-sizing:border-box;
   border:2px solid #174787; border-radius:8px; background:#1754a0; color:white;
-  box-shadow:inset 0 0 0 2px white; text-align:center; letter-spacing:.09em;
-  font:700 clamp(22px,4vw,32px)/1.2 Consolas,"Microsoft YaHei",monospace; caret-color:white;
+  box-shadow:inset 0 0 0 2px white; text-align:center; letter-spacing:.07em;
+  font:700 clamp(22px,12cqi,52px)/1.05 Consolas,"Microsoft YaHei",monospace; caret-color:white;
 }
 .registration-plate .plate-input-wrap .in:focus-visible { outline:2px solid var(--acc-b); outline-offset:2px; }
 .registration-plate .plate-input-wrap .in[aria-invalid=true] { border-color:var(--dang); }

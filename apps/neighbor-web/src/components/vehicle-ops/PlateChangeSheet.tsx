@@ -1,5 +1,5 @@
 import PlateNumberField from '@/components/PlateNumberField';
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { accessCardIssuance } from '@pms/api-client';
 import type { ParkingOperation, ParkingQueryRow, DeliyunVehicle } from '@pms/api-client/src/endpoints/access-card-issuance';
 import { Sheet, toast } from '@/components/ui';
@@ -27,6 +27,8 @@ export function ChangePlateSheet({ plate, rows, cloud, onClose, onDone }: {
     } catch { return { plan: null as Plan | null, error: '原请求无法读取，已禁止新提交；请先核对办理记录。' }; }
   });
   const [plan, setPlan] = useState<Plan | null>(initial.plan);
+  const inputId = useId();
+  const [plateError, setPlateError] = useState('');
   const [newPlate, setNewPlate] = useState(initial.plan?.newPlate || '');
   const [busy, setBusy] = useState(false), [err, setErr] = useState(initial.error), [progress, setProgress] = useState('');
   const lock = useRef(false);
@@ -36,12 +38,16 @@ export function ChangePlateSheet({ plate, rows, cloud, onClose, onDone }: {
   const store = (p: Plan) => { localStorage.setItem(key, JSON.stringify(p)); setPlan({ ...p }); };
   const run = async () => {
     if (lock.current || !writable || initial.error) return;
+    if (!plan) {
+      const next = normPlate(newPlate);
+      const message = next.length < 7 || next.length > 8 ? '请输入完整的 7 位或 8 位车牌' : next === normPlate(plate) ? '新车牌与原车牌相同' : '';
+      if (message) { setPlateError(message); document.getElementById(inputId)?.focus(); return; }
+    }
     lock.current = true; setBusy(true); setErr('');
     try {
       let active = plan;
       if (!active) {
         const np = normPlate(newPlate);
-        if (np.length < 6 || np === normPlate(plate)) throw new Error('请输入与原车牌不同的有效新车牌');
         if (!cloudKnown) throw new Error('人防状态未知或查询失败，请重新查询，不能当成无记录');
         if (!targets.length || targets.some(t => !pidOf(t.fields)) || new Set(targets.map(t => t.database)).size !== targets.length)
           throw new Error('旧库车辆记录缺失或不唯一，请重新查询');
@@ -98,7 +104,8 @@ export function ChangePlateSheet({ plate, rows, cloud, onClose, onDone }: {
   return <Sheet open onClose={() => { if (!lock.current) onClose(); }} title={`变更车牌 · ${plate}`} width={520}>
     <div style={{ display: 'grid', gap: 14, overflowWrap: 'anywhere' }}>
       <div className="note">只改车牌号，逐库保留原车型、授权编码、期限、车位及 PMS 实际计费类别。两库原值不同也不会互相覆盖。</div>
-      <PlateNumberField label="新车牌" value={newPlate} disabled={busy || !!plan || !writable} onChange={setNewPlate} />
+      <PlateNumberField label="新车牌" inputId={inputId} value={newPlate} invalid={!!plateError} errorMessage={plateError}
+        disabled={busy || !!plan || !writable} onChange={value => { setNewPlate(value); setPlateError(''); }} />
       <div className="muted">办理来源：{(plan?.targets || targets).map(t => dbShort(t.database)).join(' + ') || '无旧库记录'}</div>
       {!cloudKnown && !plan ? <div role="alert" className="note">人防状态未知，请先重新查询；当前禁止换牌。</div> : null}
       {progress ? <div role="status" className="note">{progress}</div> : null}

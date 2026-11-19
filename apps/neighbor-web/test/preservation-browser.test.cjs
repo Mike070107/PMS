@@ -12,7 +12,7 @@ test('real new and legacy entries: preservation, isolated type, unknown recovery
     b.onLoad({ filter: /.*/, namespace: 'auth-fixture' }, () => ({ loader: 'js', contents: `const writable=new URLSearchParams(location.search).get('scenario')!=='readonly'; const session={user:{id:1,tenantId:12,name:'验收收费员'},access:{isTenantAdmin:true,scopeAll:true},actingTenant:null}; export const can=()=>writable; export const useSession=()=>session; export const useAuth=()=>session; export const usePagePerm=()=>({canView:true,canEdit:writable,canDelete:false}); export const auth={getUser:()=>session.user,getAccess:()=>session.access};` }));
   } }] });
   const js = built.outputFiles.find(f => f.path.endsWith('.js')).contents, css = built.outputFiles.find(f => f.path.endsWith('.css'))?.contents || '';
-  const server = http.createServer((req, res) => { if (req.url === '/entry.js') { res.setHeader('content-type', 'text/javascript'); res.end(js); } else if (req.url === '/entry.css') { res.setHeader('content-type', 'text/css'); res.end(css); } else { res.setHeader('content-type', 'text/html'); res.end('<html lang="zh-CN"><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/entry.css"></head><body style="margin:0;padding:12px"><div id="root"></div><script src="/entry.js"></script></body></html>'); } });
+  const server = http.createServer((req, res) => { if (req.url === '/entry.js') { res.setHeader('content-type', 'text/javascript; charset=utf-8'); res.end(js); } else if (req.url === '/entry.css') { res.setHeader('content-type', 'text/css'); res.end(css); } else { res.setHeader('content-type', 'text/html; charset=utf-8'); res.end('<html lang="zh-CN"><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/entry.css"></head><body style="margin:0;padding:12px"><div id="root"></div><script src="/entry.js"></script></body></html>'); } });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); let browser; const errors = [], results = [];
   try {
     browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true });
@@ -27,7 +27,7 @@ test('real new and legacy entries: preservation, isolated type, unknown recovery
       await page.setViewportSize({ width, height: 1000 }); await page.goto(`${origin}/?entry=${entry}&scenario=${scenario}`); await page.evaluate(() => localStorage.clear());
       if (entry === 'modern') {
         await page.locator('.hsearch input').first().fill('沪ATEST01'); await page.getByRole('button', { name: '查询', exact: true }).click();
-        await page.locator('.veh-card').first().getByRole('button', { name: kind === 'plate' ? '变更车牌' : '修改车辆类型', exact: true }).click();
+        await page.locator('.veh-card').first().getByRole('button', { name: kind === 'plate' ? '变更车牌' : kind === 'history' ? '变更历史' : '修改车辆类型', exact: true }).click();
       } else {
         await page.getByPlaceholder('输入房号、住户、电话或车牌').fill('沪ATEST01'); await page.getByPlaceholder('输入房号、住户、电话或车牌').press('Enter');
         if (kind === 'plate') await page.getByRole('button', { name: /变更车牌/ }).first().click();
@@ -36,15 +36,33 @@ test('real new and legacy entries: preservation, isolated type, unknown recovery
       const dialog = page.getByRole('dialog').last(); await dialog.waitFor(); return dialog;
     }
     async function fill(dialog, entry, kind, identity = '亲情车') {
-      if (kind === 'plate') await dialog.getByLabel('新车牌', { exact: true }).fill('沪BTEST02');
-      else if (entry === 'modern') { await dialog.getByLabel('修改停车库（仅所选库）').selectOption('parking2'); await dialog.getByLabel('新的车辆类型').selectOption(identity); }
+      if (kind === 'plate') {
+        const input = dialog.getByLabel('新车牌', { exact: true });
+        await dialog.getByRole('button', { name: '点选车牌' }).click();
+        for (const key of ['沪','B']) await dialog.getByRole('button', {name:key, exact:true}).click();
+        assert.equal(await input.inputValue(), '沪B');
+        await input.press('End'); await input.pressSequentially('TEST02');
+        assert.equal(await input.inputValue(), '沪BTEST02');
+        await dialog.getByRole('button', { name: '点选车牌' }).click();
+      }
+      else if (entry === 'modern') { await dialog.getByLabel('修改停车库（仅所选库）').selectOption('parking2'); await dialog.getByRole('radio', { name: identity, exact: true }).check(); }
       else { await dialog.locator('.ant-select-selector').click(); await page.getByTitle(identity, { exact: true }).click(); }
     }
     const submit = (dialog, entry, kind) => dialog.getByRole('button', { name: entry === 'legacy' ? '提交操作' : kind === 'plate' ? '确认换牌' : '确认修改车辆类型', exact: true }).click();
+    {
+      const history = await open('modern','history','history',390);
+      const events = history.locator('details');
+      await events.first().waitFor();
+      assert.equal(await events.count(),2);
+      assert.equal(await events.first().getAttribute('open'),null);
+      await events.first().locator('summary').click();
+      assert.ok((await events.first().innerText()).includes('值班员'));
+      await shot('history-both-garages-390');
+    }
     for (const entry of ['modern', 'legacy']) for (const kind of ['plate', 'type']) {
       const dialog = await open(entry, kind, 'success', 1440); await fill(dialog, entry, kind); await shot(`${entry}-${kind}-desktop`); await submit(dialog, entry, kind); await dialog.waitFor({ state: 'hidden' });
       const data = await state(), writes = await posts(); assert.equal(writes.length, kind === 'plate' ? 2 : 1);
-      assert.equal(data.rows[0].fields.Car_Lei, null); assert.equal(data.rows[1].fields.Car_Lei, '历史授权'); assert.equal(data.billed, '住户车-1');
+      assert.equal(data.rows[0].fields.Car_Lei, null); assert.equal(data.rows[1].fields.Car_Lei, '历史授权'); assert.equal(data.billed, entry === 'modern' && kind === 'type' ? '亲情车' : '住户车-1');
       if (kind === 'plate') { assert.equal(data.rows[0].fields.Car_Brand, null); assert.equal(data.rows[1].fields.Car_Brand, '租户车'); assert.ok(writes.every(c => Object.keys(c.data.payload).sort().join(',') === 'batchId,newPlate,plate,sourceQueryId')); }
       else { const selected = writes[0].data.database; for (const row of data.rows) assert.equal(row.fields.Car_Brand, row.database === selected ? '亲情车' : row.database === 'parking1' ? null : '租户车'); }
       assert.ok(data.calls.filter(c => c.name === 'createParkingQuery').length >= (entry === 'modern' ? 3 : kind === 'plate' ? 2 : 1)); await shot(`${entry}-${kind}-success`); results.push({ entry, kind, writes: writes.length, independentReadback: true });
@@ -59,6 +77,16 @@ test('real new and legacy entries: preservation, isolated type, unknown recovery
       assert.equal(data.billed, '产权车位');
       for (const row of data.rows) assert.equal(row.fields.Car_Brand,
         row.database === writes[0].data.database ? '住户车' : row.database === 'parking1' ? null : '租户车');
+    }
+    for (const [label, billingClass, parkingIdentity] of [['住户车2','住户车-2','住户车'],['租户车2','租户车-2','租户车']]) {
+      const dialog = await open('modern','type','success',390);
+      await fill(dialog,'modern','type',label);
+      assert.equal(await dialog.getByRole('radio', {checked:true}).count(),1);
+      await submit(dialog,'modern','type'); await dialog.waitFor({state:'hidden'});
+      const writes = await posts();
+      assert.equal(writes.length,1);
+      assert.equal(writes[0].data.payload.identity,parkingIdentity);
+      assert.equal((await state()).billed,billingClass);
     }
     for (const entry of ['modern', 'legacy']) for (const width of [390, 320]) for (const kind of ['plate', 'type']) {
       const dialog = await open(entry, kind, 'success', width); await fill(dialog, entry, kind); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false); await shot(`${entry}-${kind}-${width}`); await submit(dialog, entry, kind); await dialog.waitFor({ state: 'hidden' }); results.push({ entry, width, kind, horizontalOverflow: false });

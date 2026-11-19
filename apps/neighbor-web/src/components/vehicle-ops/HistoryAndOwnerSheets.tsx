@@ -1,5 +1,6 @@
+import './vehicle-type-sheet.css';
 import { formatBeijingDateTime } from '@pms/shared-types';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { accessCardIssuance, request } from '@pms/api-client';
 import type {
   ParkingQueryRow, DeliyunVehicle, ParkingHistoryEntry,
@@ -10,7 +11,7 @@ import HousePicker, { type PickedHouse } from '@/components/HousePicker';
 import { useAddressTree } from '@/lib/address-tree';
 import { dayjs } from '@/lib/format';
 import { field } from '@/lib/parking-fields';
-import { createIdempotencyKey, pidOf, dbShort } from '@/lib/parking-ops';
+import { createIdempotencyKey, pidOf, dbShort, freshRows } from '@/lib/parking-ops';
 
 type CloudState = 'loading' | DeliyunVehicle | null | undefined;
 
@@ -43,75 +44,86 @@ const EVENT_LABEL: Record<string, string> = {
 
 /** 车牌 / 住户的变更历史（旧停车系统 Up_Issue + PMS 写操作记录） */
 export function HistorySheet({ plate, rows, onClose }: OpProps) {
-  const [data, setData] = useState<{ userHistory: ParkingHistoryEntry[]; vehicleHistory: ParkingHistoryEntry[] } | null>(null);
-  const [err, setErr] = useState('');
-
+  const [entries, setEntries] = useState<{ vehicle: ParkingHistoryEntry[]; owner: ParkingHistoryEntry[] }>({vehicle:[], owner:[]});
+  const [tab, setTab] = useState<'vehicle' | 'owner'>('vehicle');
+  const [busy, setBusy] = useState(true);
+  const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    let alive = true;
-    const first = rows[0];
-    accessCardIssuance.parkingHistory({
-      plate,
-      pmsUserId: rows.find((r) => r.pmsMatch?.userId)?.pmsMatch?.userId ?? null,
-      database: first?.database ?? null,
-      sourceRecordId: first ? pidOf(first.fields) : null,
-      externalOwnerId: first ? externalOwnerOf(first) || null : null,
-    })
-      .then((r) => { if (alive) setData(r); })
-      .catch((e) => { if (alive) { setData({ userHistory: [], vehicleHistory: [] }); setErr(e instanceof Error ? e.message : '历史记录加载失败'); } });
-    return () => { alive = false; };
-  }, [plate, rows]);
-
-  const line = (h: ParkingHistoryEntry) => (
-    <div key={`${h.id}-${h.occurredAt}`} className="card" style={{ padding: '10px 12px', marginBottom: 8, background: 'var(--bg)' }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-        <b style={{ fontSize: 14 }}>{EVENT_LABEL[h.eventType] || h.eventType}</b>
-        {h.plateBefore && h.plateAfter && h.plateBefore !== h.plateAfter
-          ? <span className="tag acc">{h.plateBefore} → {h.plateAfter}</span> : null}
-        <span className="muted" style={{ fontSize: 13, marginLeft: 'auto' }}>{formatBeijingDateTime(h.occurredAt, 'YYYY-MM-DD HH:mm')}</span>
-      </div>
-      <div style={{ fontSize: 13.5, lineHeight: 1.8 }}>
-        {h.summary}
-        <span className="muted">{h.database ? ` · ${dbShort(h.database)}` : ''}{h.operator ? ` · ${h.operator}` : ''}</span>
-      </div>
-      {h.changes?.length ? (
-        <div style={{ fontSize: 13, marginTop: 4 }}>
-          {h.changes.map((c) => (
-            <div key={`${c.field}-${c.label}`} className="muted">
-              {c.label}：{c.before || '—'} → <b style={{ color: 'var(--foreground)' }}>{c.after || '—'}</b>
-            </div>
-          ))}
-        </div>
-      ) : null}
+    let active = true;
+    async function load() {
+      setBusy(true); setError('');
+      const warnings = new Set<string>();
+      let sources = targetsOf(rows);
+      if (sources.length && (attempt || sources.some(r => r.fields.PmsMeta__PlateHistory == null))) {
+        try { sources = await freshRows(plate); }
+        catch { warnings.add('旧库流水未能刷新'); }
+      }
+      const vehicle = new Map<string, ParkingHistoryEntry>();
+      const owner = new Map<number, ParkingHistoryEntry>();
+      const local = new Map<string, ParkingHistoryEntry>();
+      const eventKey = (e: ParkingHistoryEntry) => JSON.stringify([e.database,e.sourceRecordId,e.plateAfter,Date.parse(e.occurredAt)]);
+      const refs = sources.length ? sources : [null];
+      for (const row of refs) {
+        if (!active) return;
+        const ref = row?.historyRef;
+        const database = row?.database ?? null;
+        const sourceRecordId = ref?.sourceRecordId || (row && pidOf(row.fields)) || null;
+        try {
+          const result = await accessCardIssuance.parkingHistory({plate,database,sourceRecordId,
+            externalOwnerId:ref?.externalOwnerId || (row && externalOwnerOf(row)) || null,
+            pmsUserId:ref?.pmsUserId || row?.pmsMatch?.userId || null});
+          for (const item of result.vehicleHistory) vehicle.set(String(item.id), item);
+          for (const item of result.userHistory) owner.set(item.id, item);
+        } catch { warnings.add('PMS 历史未能加载'); }
+        if (!row) continue;
+        const raw = row.fields.PmsMeta__PlateHistory;
+        try {
+          if (typeof raw !== 'string') warnings.add('现场助手尚未返回旧库明细');
+          const events = typeof raw === 'string' ? JSON.parse(raw) : row.fields.PmsMeta__PlateChangedAt
+            ? [{at:row.fields.PmsMeta__PlateChangedAt,after:plate}] : [];
+          if (events.length === 100) warnings.add('每个停车库最多显示最近 100 条流水');
+          for (const e of events) {
+            if (!e.after || !Number.isFinite(Date.parse(e.at))) continue;
+            const item: ParkingHistoryEntry = { id:0,eventType:'plate_change',source:'parking_gateway',database,sourceRecordId,
+              pmsUserId:null,externalOwnerId:null,plateBefore:e.before || null,plateAfter:e.after,summary:'旧停车系统换牌',
+              changes:[],operator:typeof e.operatorName === 'string' ? e.operatorName : '',occurredAt:e.at,timeBasis:'operation' };
+            local.set(eventKey(item),item);
+          }
+        } catch { warnings.add('旧库流水格式异常'); }
+      }
+      for (const item of vehicle.values()) {
+        if (item.eventType === 'plate_change' && item.timeBasis === 'operation') local.delete(eventKey(item));
+      }
+      const newest = (a: ParkingHistoryEntry,b: ParkingHistoryEntry) => Date.parse(b.occurredAt)-Date.parse(a.occurredAt) || b.id-a.id;
+      if (active) {
+        setEntries({vehicle:[...vehicle.values(),...local.values()].sort(newest),owner:[...owner.values()].sort(newest)});
+        setError([...warnings].join('；')); setBusy(false);
+      }
+    }
+    void load();
+    return () => { active = false; };
+  },[plate,rows,attempt]);
+  return <Sheet open onClose={onClose} title="变更历史" subtitle={plate} width={540}>
+    <div className="veh-history-tabs">
+      <button className="btn" aria-pressed={tab==='vehicle'} onClick={() => setTab('vehicle')}>车辆记录</button>
+      <button className="btn" aria-pressed={tab==='owner'} onClick={() => setTab('owner')}>住户记录</button>
+      <button className="btn sm" disabled={busy} onClick={() => setAttempt(n=>n+1)}>刷新</button>
     </div>
-  );
-
-  const empty = !data || (!data.vehicleHistory.length && !data.userHistory.length);
-
-  return (
-    <Sheet open onClose={onClose} width={600} title={`变更历史 · ${plate}`} subtitle="车牌与住户的历次变更">
-      <div style={{ padding: '4px 2px' }}>
-        {err ? <div className="note" style={{ background: 'var(--dang-w)', color: 'var(--dang)', marginBottom: 12 }}>{err}</div> : null}
-        {!data ? <div className="muted">加载中…</div> : empty ? (
-          <div className="muted" style={{ padding: 24, textAlign: 'center' }}>这辆车还没有变更记录</div>
-        ) : (
-          <>
-            {data.vehicleHistory.length ? (
-              <>
-                <div className="sec-t">车牌 / 车辆变更<span className="r muted">{data.vehicleHistory.length} 条</span></div>
-                {data.vehicleHistory.map(line)}
-              </>
-            ) : null}
-            {data.userHistory.length ? (
-              <>
-                <div className="sec-t" style={{ marginTop: 16 }}>住户资料 / 绑定变更<span className="r muted">{data.userHistory.length} 条</span></div>
-                {data.userHistory.map(line)}
-              </>
-            ) : null}
-          </>
-        )}
-      </div>
-    </Sheet>
-  );
+    {busy ? <p role="status">正在读取变更记录…</p> : <>
+      {error && <p role="status" className="muted">{error}</p>}
+      {!entries[tab].length && <p className="muted">{error ? '暂无可展示的记录' : '暂无变更记录'}</p>}
+      {entries[tab].map((h,i) => <details className="veh-history-event" key={h.id || i+'-legacy'}>
+        <summary><b>{EVENT_LABEL[h.eventType] || h.eventType}</b>
+          <span>{[h.plateBefore,h.plateAfter].filter((v,j,a)=>v && a.indexOf(v)===j).join(' → ') || h.summary}</span>
+          <small>{h.source==='parking_gateway' ? '旧停车系统' : 'PMS'} · {h.database ? dbShort(h.database)+' · ' : ''}
+            {h.timeBasis==='detected' ? '发现于 ' : ''}{formatBeijingDateTime(h.occurredAt,'YYYY-MM-DD HH:mm')}</small></summary>
+        {h.summary && <p>{h.summary}</p>}
+        {h.operator && <p>{h.operator}</p>}
+        {h.changes.map((c,j)=><p key={j}>{c.label}　{c.before || '—'} → {c.after || '—'}</p>)}
+      </details>)}
+    </>}
+  </Sheet>;
 }
 
 /** 更新旧停车系统住户资料：从 PMS 房号带出姓名/电话/房号，写回旧库并读回验证 */

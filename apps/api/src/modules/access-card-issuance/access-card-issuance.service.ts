@@ -2016,11 +2016,14 @@ export class AccessCardIssuanceService {
       return this.parkingOperationResponse(existing);
     }
     const payload = normalizeParkingOperationPayload(dto.payload);
-    if (dto.kind === 'update_vehicle_type' && payload.propertyBillingClass) {
+    const billingClass = payload.billingClass ?? payload.propertyBillingClass;
+    if (dto.kind === 'update_vehicle_type' && billingClass) {
       const rules = await this.parkingOperationRepo.manager.getRepository(BusinessRule).findBy({
         tenantId, enabled:true, serviceType:BusinessServiceType.PARKING_MONTHLY,
       });
-      if (!rules.some(rule => rule.config?.vehicleClass === payload.propertyBillingClass)) throw new BadRequestException('未配置启用的产权车收费分组');
+      const scope = access ? scopeCommunityIds(access) : null;
+      if (!rules.some(rule => rule.config?.vehicleClass === billingClass && (rule.communityId == null || !scope || scope.includes(rule.communityId))))
+        throw new BadRequestException('未找到当前范围内启用的车辆收费档位');
     }
     if (dto.kind === 'update_garages' && payload.spaceSelection === 1) {
       const selected = payload.selectedGarages;
@@ -2286,7 +2289,7 @@ export class AccessCardIssuanceService {
         .where('history.tenant_id = :tenantId', { tenantId })
         .andWhere("(history.source <> 'parking_gateway' OR history.source_record_id IS NULL OR history.source_record_id <> :invalidSourceRecordId)", { invalidSourceRecordId: '0000000000' })
         .andWhere(new Brackets((qb) => {
-          if (sourceRecordId) qb.where('history.source_record_id = :sourceRecordId', { sourceRecordId });
+          if (sourceRecordId) qb.where(database ? '(history.source_record_id = :sourceRecordId AND history.database = :database)' : 'history.source_record_id = :sourceRecordId', { sourceRecordId, database });
           if (plate) {
             const method = sourceRecordId ? 'orWhere' : 'where';
             qb[method]('(history.plate_before = :plate OR history.plate_after = :plate)', { plate });
@@ -2410,7 +2413,7 @@ export class AccessCardIssuanceService {
       }
       item.status = 'running'; item.attempt += 1; item.leaseAgentKey = agent.agentKey;
       item.leaseExpiresAt = new Date(now.getTime() + 90_000); item.updatedBy = null; await repo.save(item);
-      const { propertyBillingClass: _pmsClass, ...parkingPayload } = item.payload;
+      const { propertyBillingClass: _legacyClass, billingClass: _billingClass, ...parkingPayload } = item.payload;
       return { taskId: item.id, kind: item.kind, database: item.database, sourceRecordId: item.sourceRecordId, payload: parkingPayload, expected: item.expected };
     });
     return { task };
@@ -2446,11 +2449,14 @@ export class AccessCardIssuanceService {
             throw new BadRequestException('当前助手没有车辆原值保护能力');
           assertPreservedReceipt(task, dto.values ?? {});
         }
-        if (task.kind === 'update_vehicle_type' && task.payload.propertyBillingClass) {
+        let previousBillingClass: string | null = null;
+        const billingClass = task.payload.billingClass ?? task.payload.propertyBillingClass;
+        if (task.kind === 'update_vehicle_type' && billingClass) {
           const tags = manager.getRepository(ParkingPlateTag);
           const plate = plateKey(task.payload.plate);
-          const vehicleClass = String(task.payload.propertyBillingClass);
+          const vehicleClass = String(billingClass);
           const existing = await tags.findOne({where:{tenantId:task.tenantId, plate}, lock:{mode:'pessimistic_write'}});
+          previousBillingClass = existing?.vehicleClass ?? null;
           if (existing) await tags.update(existing.id, {vehicleClass, updatedBy:task.createdBy});
           else await tags.insert({tenantId:task.tenantId, plate, vehicleClass, createdBy:task.createdBy, updatedBy:task.createdBy});
         }
@@ -2506,6 +2512,8 @@ export class AccessCardIssuanceService {
         const plateBefore = textValue(task.payload.plate || task.payload.oldPlate);
         const plateAfter = textValue(task.payload.newPlate || task.payload.plate);
         const changes = operationChanges(task);
+        if (task.kind === 'update_vehicle_type' && billingClass && previousBillingClass !== billingClass)
+          changes.push({ field: 'vehicleClass', label: '收费档位', before: previousBillingClass, after: String(billingClass) });
         await manager.getRepository(ParkingHistory).save(manager.getRepository(ParkingHistory).create({
           tenantId: task.tenantId, eventType: operationHistoryType(task.kind), source: 'pms', database: task.database,
           sourceRecordId: task.sourceRecordId, pmsUserId: task.pmsUserId,
@@ -4764,7 +4772,7 @@ export function sanitizeParkingRows(rows: ParkingQueryReportDto['rows'], limit =
       if (!key || Object.prototype.hasOwnProperty.call(fields, key)) continue;
       if (rawValue === null || typeof rawValue === 'boolean') fields[key] = rawValue;
       else if (typeof rawValue === 'number' && Number.isFinite(rawValue)) fields[key] = rawValue;
-      else if (typeof rawValue === 'string') fields[key] = rawValue.slice(0, 500);
+      else if (typeof rawValue === 'string') fields[key] = rawValue.slice(0, key === 'PmsMeta__PlateHistory' ? 32000 : 500);
     }
     return { database: row.database.trim().slice(0, 80), fields };
   });

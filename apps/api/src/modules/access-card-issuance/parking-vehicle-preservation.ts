@@ -1,5 +1,12 @@
 import { BadRequestException } from '@nestjs/common';
 
+function parkingIdentityForBillingClass(value: string): string | undefined {
+  const label = value.replace(/[-－\s]/g, '');
+  if (/^住户车\d*$/.test(label) || ['产权车', '产权车位'].includes(label)) return '住户车';
+  if (/^租户车\d*$/.test(label)) return '租户车';
+  if (label === '亲情车') return label;
+}
+
 export const VEHICLE_IDENTITIES = ['住户车', '租户车', '亲情车'];
 export function requiresVehiclePreservation(kind: string): boolean {
   return kind === 'change_plate' || kind === 'update_vehicle_type';
@@ -7,7 +14,7 @@ export function requiresVehiclePreservation(kind: string): boolean {
 export function validatePreservedOperation(kind: string, payload: Record<string, unknown>, sourceRecordId?: string) {
   if (!requiresVehiclePreservation(kind)) return;
   if (!sourceRecordId?.trim()) throw new BadRequestException('缺少车辆记录编号，请重新查询');
-  const allowed = kind === 'change_plate' ? ['plate', 'newPlate', 'batchId', 'sourceQueryId'] : ['plate', 'ownerRoom', 'identity', 'propertyBillingClass'];
+  const allowed = kind === 'change_plate' ? ['plate', 'newPlate', 'batchId', 'sourceQueryId'] : ['plate', 'ownerRoom', 'identity', 'propertyBillingClass', 'billingClass'];
   if (Object.keys(payload).some(key => !allowed.includes(key)))
     throw new BadRequestException('此操作不允许携带其他车辆字段；换牌不能修改车型或计费类别');
   if (!String(payload.plate || '').trim()) throw new BadRequestException('原车牌不能为空');
@@ -17,6 +24,11 @@ export function validatePreservedOperation(kind: string, payload: Record<string,
     payload.plate = plateKey(payload.plate); payload.newPlate = plateKey(payload.newPlate);
     if (!/^[a-zA-Z0-9_-]{8,100}$/.test(String(payload.batchId || '')) || !Number.isSafeInteger(Number(payload.sourceQueryId)) || Number(payload.sourceQueryId) <= 0)
       throw new BadRequestException('换牌必须提供原批次编号和真实双库查询凭据');
+  } else if (payload.billingClass !== undefined && (
+    typeof payload.billingClass !== 'string' || payload.propertyBillingClass !== undefined ||
+    !payload.identity || parkingIdentityForBillingClass(payload.billingClass) !== payload.identity
+  )) {
+    throw new BadRequestException('收费档位与停车库身份不匹配');
   } else if (payload.propertyBillingClass !== undefined && (payload.identity !== '住户车' || !['产权车位','产权车'].includes(String(payload.propertyBillingClass)))) {
     throw new BadRequestException('产权车须使用产权收费分类和住户车现场身份');
   } else if (!VEHICLE_IDENTITIES.includes(String(payload.identity))) {

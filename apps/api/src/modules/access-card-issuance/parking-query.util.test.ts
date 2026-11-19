@@ -224,3 +224,10 @@ test('新增车牌提交只接受当前车牌五分钟内完成的真实查重',
   assert.throws(() => assertFreshParkingPlateCheck(clearQuery, '沪B12345', new Date('2026-10-01T10:01:00.000Z')), /当前车牌不一致/);
   assert.throws(() => assertFreshParkingPlateCheck(clearQuery, '沪A12345', new Date('2026-10-01T10:05:01.000Z')), /超过 5 分钟/);
 });
+test('旧库换牌流水可完整回读，普通字段仍受长度限制', () => {
+  const events = Array.from({length:100}, (_,i) => ({before:'沪A'+i,after:'沪B'+i,at:'2026-11-19T12:00:00+08:00'}));
+  const json = JSON.stringify(events);
+  const [row] = sanitizeParkingRows([{database:'parking2',fields:{ PmsMeta__PlateHistory:json, P_note:'x'.repeat(800) }}]);
+  assert.deepEqual(JSON.parse(String(row.fields.PmsMeta__PlateHistory)),events);
+  assert.equal(String(row.fields.P_note).length,500);
+});

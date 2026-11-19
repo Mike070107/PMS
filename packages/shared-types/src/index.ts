@@ -1293,3 +1293,11 @@ export * from './property-address';
 
 export * from './geo';
 export * from './meter-capture';
+
+/** PMS 收费档位到旧停车库身份；仅识别已支持的车辆类别。 */
+export function parkingIdentityForBillingClass(value: string): string | undefined {
+  const label = value.replace(/[-－\s]/g, '');
+  if (/^住户车\d*$/.test(label) || ['产权车', '产权车位'].includes(label)) return '住户车';
+  if (/^租户车\d*$/.test(label)) return '租户车';
+  if (label === '亲情车') return label;
+}

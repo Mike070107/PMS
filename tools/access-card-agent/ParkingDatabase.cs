@@ -534,7 +534,7 @@ ORDER BY COALESCE([out_Time], [Int_Time]) DESC;";
                     // 住户表偶尔存在同一 UserID 的历史重复行，LEFT JOIN 会把同一辆车展开成多张完全相同的卡片。
                     // 以旧库车辆主键去重，并合并重复行里各自不为空的住户字段，既不丢真实多卡记录，也不重复展示同一条车牌。
                     rows = DeduplicateRows(rows);
-                    AttachPlateChangeTimes(connection, rows);
+                    AttachPlateChangeTimes(connection, rows, plan.Kind == ParkingSearchKind.Plate && rows.Count <= 4);
                     return rows;
                 }
             }
@@ -2629,6 +2629,8 @@ ORDER BY c.column_id;";
         {
             public string IssueId { get; set; }
             public string NewPlate { get; set; }
+            public string OldPlate { get; set; }
+            public string Operator { get; set; }
             public string RowId { get; set; }
             public string OccurredAt { get; set; }
         }
@@ -2788,7 +2790,7 @@ ORDER BY c.column_id;";
             return "车牌";
         }
 
-        private static void AttachPlateChangeTimes(SqlConnection connection, List<ParkingSearchRow> rows)
+        private static void AttachPlateChangeTimes(SqlConnection connection, List<ParkingSearchRow> rows, bool includeHistory)
         {
             if (!ObjectExists(connection, "Up_Issue", "U") || rows.Count == 0) return;
             var columns = LoadHistoryColumns(connection);
@@ -2799,6 +2801,35 @@ ORDER BY c.column_id;";
                 object plateValue;
                 if (!TryField(row.fields, new[] { "p_id", "pid", "issueid" }, out issueValue) ||
                     !TryField(row.fields, new[] { "p_plate", "pplate", "plate" }, out plateValue)) continue;
+                if (includeHistory)
+                {
+                    using (var history = connection.CreateCommand())
+                    {
+                        var oldPlate = columns.OldPlate == null ? "NULL" : QuoteColumn(columns.OldPlate);
+                        var time = QuoteColumn(columns.OccurredAt);
+                        var actor = columns.Operator == null ? "NULL" : QuoteColumn(columns.Operator);
+                        history.CommandText = "SELECT TOP 100 " + oldPlate + ", " + QuoteColumn(columns.NewPlate) + ", " + time + ", " + actor +
+                            " FROM [dbo].[Up_Issue] WHERE CONVERT(NVARCHAR(100), " + QuoteColumn(columns.IssueId) +
+                            ") = @issueId AND " + time + " IS NOT NULL ORDER BY " + time + " DESC" +
+                            (columns.RowId == null ? "" : ", " + QuoteColumn(columns.RowId) + " DESC");
+                        history.Parameters.Add("@issueId", SqlDbType.NVarChar, 100).Value = Convert.ToString(issueValue, CultureInfo.InvariantCulture);
+                        history.CommandTimeout = 5;
+                        var events = new List<object>();
+                        using (var reader = history.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                var after = Convert.ToString(reader[1], CultureInfo.InvariantCulture).Trim();
+                                var before = Convert.ToString(reader[0], CultureInfo.InvariantCulture).Trim();
+                                if (after.Length == 0 || after == before || after.Length > 32 || before.Length > 32) continue;
+                                var stamp = DateTime.SpecifyKind(reader.GetDateTime(2), DateTimeKind.Unspecified);
+                                var operatorName = Convert.ToString(reader[3], CultureInfo.InvariantCulture).Trim();
+                                events.Add(new { before, after, operatorName = operatorName.Substring(0, Math.Min(64, operatorName.Length)), at = new DateTimeOffset(stamp, TimeSpan.FromHours(8)).ToString("o") });
+                            }
+                        }
+                        row.fields["PmsMeta__PlateHistory"] = new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(events);
+                    }
+                }
                 using (var command = connection.CreateCommand())
                 {
                     command.CommandText = "SELECT TOP 1 " + QuoteColumn(columns.OccurredAt) + " FROM [dbo].[Up_Issue] WITH (NOLOCK) " +
@@ -2846,7 +2877,7 @@ ORDER BY c.column_id;";
                 .Select(delegate(KeyValuePair<string, string> item) { return item.Key; })
                 .FirstOrDefault();
             return String.IsNullOrWhiteSpace(issue) || String.IsNullOrWhiteSpace(newPlate) || String.IsNullOrWhiteSpace(occurred)
-                ? null : new ParkingHistoryColumns { IssueId = issue, NewPlate = newPlate, RowId = rowId, OccurredAt = occurred };
+                ? null : new ParkingHistoryColumns { IssueId = issue, NewPlate = newPlate, OldPlate = FindNamedColumn(columns, new[] { "y_P_plate", "o_p_plate", "oldplate", "old_plate" }), Operator = FindNamedColumn(columns, new[] { "Up_admin" }), RowId = rowId, OccurredAt = occurred };
         }
 
         private static string FindNamedColumn(IEnumerable<KeyValuePair<string, string>> columns, IEnumerable<string> aliases)

@@ -1705,7 +1705,7 @@ function ParkingOperationModal({ open, kind, row, roomOptions, communitiesOverri
       {kind === 'renew_vehicle' && targetRows?.length === 2 && <Alert type="info" showIcon message={deliyunVehicle?.civilDefenseAuthorized ? '一期、二期、德立云三个系统将共同续期' : '一期、二期将同时续期'} description={deliyunVehicle?.civilDefenseAuthorized
         ? '两个旧库和德立云人防会同步到同一到期日；金额只记入一期，二期和人防不重复收费。三方读回验证后才显示整体成功。'
         : '两个旧库都会更新到期日；本次填写的金额只记入一期，二期同步金额为 0，避免报表重复计费。两边读回验证后才显示整体成功。'} />}
-      <PlateNumberField label="车牌" value={plate} disabled={!row || kind === 'rebind_owner'} onChange={setPlate} />
+      <PlateNumberField label="车牌" value={plate} disabled={!row || kind === 'rebind_owner' || kind === 'change_plate'} onChange={setPlate} />
       {kind === 'change_plate' && <ParkingPlateEntry id="parking-change-plate-input" label="新车牌" value={newPlate} onChange={setNewPlate} />}
       {kind === 'change_plate' && <Alert type="info" showIcon message="只改车牌号，保留本库原车型、授权类型、期限与 PMS 计费类别" />}
       {kind === 'rebind_owner' && <ParkingOwnerPicker open={open} value={binding} onChange={setBinding} />}

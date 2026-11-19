@@ -7,8 +7,8 @@ const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'.split('');
 const ALNUM = '0123456789ABCDEFGHJKLMNPQRSTUVWXYZ'.split('');
 const normalize = (text: string) => text.toUpperCase().replace(/[\s·.．・]/g, '').slice(0, 8);
 
-export default function PlateNumberField({ label = '车牌号码（必填）', required = true, ariaLabel, value = '', onChange, disabled = false, inputId, invalid = false }: {
-  label?: string; ariaLabel?: string; required?: boolean; value?: string; onChange?: (v: string) => void; disabled?: boolean; inputId?: string; invalid?: boolean;
+export default function PlateNumberField({ label = '车牌号码（必填）', required = true, ariaLabel, value = '', onChange, disabled = false, inputId, invalid = false, errorMessage }: {
+  label?: string; ariaLabel?: string; required?: boolean; value?: string; onChange?: (v: string) => void; disabled?: boolean; inputId?: string; invalid?: boolean; errorMessage?: string;
 }) {
   const generatedId = useId();
   const id = inputId ?? generatedId;
@@ -63,7 +63,7 @@ export default function PlateNumberField({ label = '车牌号码（必填）', r
         onBlur={event => rememberSelection(event.currentTarget)}
         onChange={event => { if (composing.current) setDraft(event.target.value); else type(event.target); }} />
     </span>
-    {invalid && <small id={id + '-error'}>请输入完整的 7 位或 8 位车牌</small>}
+    {invalid && <small role="alert" id={id + '-error'}>{errorMessage || '请输入完整的 7 位或 8 位车牌'}</small>}
     {!disabled && <button type="button" className="btn sm plate-keypad-toggle" aria-expanded={expanded} aria-controls={id + '-keys'} onClick={() => setExpanded(!expanded)}>点选车牌</button>}
     <div id={id + '-keys'} hidden={!expanded || disabled}>
       <div className="intake-plate-keys" role="group" aria-label={start === 0 ? '省份简称' : start === 1 ? '发牌机关' : '车牌序号'}>

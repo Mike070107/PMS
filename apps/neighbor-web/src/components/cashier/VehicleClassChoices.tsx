@@ -6,8 +6,8 @@ export function vehicleClassLabel(value: string) {
 }
 
 /** Display grouping never changes the configured billing rule value. */
-export default function VehicleClassChoices({ options, value, disabled, readOnly, defaultValue, onChange }: {
-  options: string[]; value: string; disabled?: boolean; readOnly?: boolean; defaultValue?: string; onChange: (value: string) => void;
+export default function VehicleClassChoices({ options, value, disabled, readOnly, defaultValue, disabledOptions = [], onChange }: {
+  options: string[]; value: string; disabled?: boolean; disabledOptions?: string[]; readOnly?: boolean; defaultValue?: string; onChange: (value: string) => void;
 }) {
   const name = useId();
   const choices = [...new Set([...options, ...(value ? [value] : [])])];
@@ -30,7 +30,7 @@ export default function VehicleClassChoices({ options, value, disabled, readOnly
         rows.sort((a,b) => vehicleClassLabel(a).localeCompare(vehicleClassLabel(b), 'zh-CN', { numeric: true }));
         return rows.length > 0 && <div className="vehicle-class-group" key={group} role="group" aria-label={group}>
           {rows.map(option => <label key={option}>
-            <input type="radio" name={name} value={option} checked={value === option} onChange={() => onChange(option)} />
+            <input type="radio" name={name} value={option} disabled={disabledOptions.includes(option)} checked={value === option} onChange={() => onChange(option)} />
             {vehicleClassLabel(option)}{option === defaultValue && !value && <small>默认</small>}
           </label>)}
         </div>;

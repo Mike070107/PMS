@@ -10,7 +10,7 @@
 import { accessCardIssuance } from '@pms/api-client';
 import type { ParkingOperation, ParkingOperationKind, ParkingQueryRow } from '@pms/api-client/src/endpoints/access-card-issuance';
 import { dayjs } from '@/lib/format';
-import { field, rawBits } from '@/lib/parking-fields';
+import { field, rawBits, normPlate } from '@/lib/parking-fields';
 import { parkingRenewalWindow } from './parking-renewal-window';
 
 /** 旧库记录主键 P_id（= sourceRecordId） */
@@ -133,4 +133,13 @@ export async function runOnTargets(
     opts?.onLog?.(`✓ ${dbShort(db)} 完成`);
   }
   return { ok: true };
+}
+
+export async function freshRows(plate: string) {
+  let query = await accessCardIssuance.createParkingQuery(plate);
+  for (let i = 0; !['completed', 'failed'].includes(query.status) && i < 30; i++) {
+    await new Promise(resolve => setTimeout(resolve, 500)); query = await accessCardIssuance.parkingQuery(query.id);
+  }
+  if (query.status !== 'completed') throw new Error(query.error || '现场查询仍在等待，暂不能确认结果');
+  return query.rows.filter(row => normPlate(field(row.fields, 'plate')) === normPlate(plate));
 }

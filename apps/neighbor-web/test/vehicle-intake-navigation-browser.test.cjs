@@ -393,3 +393,21 @@ test('审核页重新启用超时原单，可再次显示同一单的二维码',
     assert.ok(!writes.some(c => c.url === '/vehicle-intakes'));
   } finally { await f.close(); }
 });
+for (const width of [1440,390]) test('office plate legibility '+width, async () => {
+  const f=await fixture(width);
+  try {
+    await f.page.goto(f.origin+'/vehicles');
+    const dialog=await create(f.page);
+    const plate=dialog.getByLabel('车牌号码（必填）');
+    await plate.fill('沪AD12345');
+    const metrics=await plate.evaluate(el=>({
+      font:parseFloat(getComputedStyle(el).fontSize),width:el.clientWidth,content:el.scrollWidth,
+      box:el.getBoundingClientRect().height,
+    }));
+    console.log('office plate',width,metrics);
+    assert.ok(metrics.font >= (width===1440 ? 36 : 24), JSON.stringify(metrics));
+    assert.ok(metrics.content <= metrics.width+1 && metrics.box>=64,JSON.stringify(metrics));
+    await dialog.locator('.registration-plate').screenshot({path:path.join(evidence,'office-plate-'+width+'.png')});
+    await noOverflow(f.page);
+  } finally { await f.close(); }
+});

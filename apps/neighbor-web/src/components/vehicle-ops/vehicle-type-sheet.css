@@ -1,0 +1,37 @@
+.vehicle-type-sheet { display:grid; gap:18px; min-width:0; overflow-wrap:anywhere; }
+.vt-current { border-left:4px solid var(--acc); padding:12px 16px; background:var(--acc-w); display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; }
+.vt-current strong { font-size:22px; letter-spacing:.06em; color:var(--acc-t); }
+.vt-current div { display:grid; gap:2px; font-size:13px; }
+.vt-current b { font-size:16px; }
+.vt-fields { border:0; margin:0; padding:0; display:grid; min-width:0; gap:10px; }
+.vt-fields select { min-height:44px; }
+.vt-fields .vehicle-class-radios { margin-top:8px; }
+.vt-fields label:has(input:disabled) { opacity:.65; }
+.vt-result { border-block:1px solid var(--line); padding:14px 0; }
+.vt-result h3 { margin:0 0 10px; font-size:16px; }
+.vt-result dl { display:grid; grid-template-columns:auto 1fr; gap:6px 16px; margin:0; }
+.vt-result dt { color:var(--muted); }
+.vt-result dd { margin:0; font-weight:600; }
+.vt-actions { position:sticky; bottom:0; padding:10px 0; background:var(--paper,#fff); }
+.vt-actions button { width:100%; }
+.vt-fields .vehicle-class-groups { gap:6px; }
+.vt-fields .vehicle-class-group { gap:6px; }
+.vt-fields .vehicle-class-group label {
+  padding:0 10px; border:1px solid var(--line); border-radius:6px;
+  background:var(--paper,#fff); gap:6px;
+}
+.vt-fields .vehicle-class-group label:has(input:checked) {
+  border-color:var(--acc); color:var(--acc-t); background:var(--acc-w);
+}
+@media(max-width:420px) {
+  .vt-fields .vehicle-class-group { gap:4px; }
+  .vt-fields .vehicle-class-group label { padding:0 5px; gap:3px; }
+}
+.veh-history-tabs { display:flex; gap:6px; margin-bottom:14px; }
+.veh-history-tabs button[aria-pressed=true] { color:var(--acc-t); background:var(--acc-w); border-color:var(--acc); }
+.veh-history-tabs button:last-child { margin-left:auto; }
+.veh-history-event { border-top:1px solid var(--line); padding:12px 0; overflow-wrap:anywhere; }
+.veh-history-event summary { cursor:pointer; min-height:44px; }
+.veh-history-event summary span { margin-left:8px; }
+.veh-history-event small { display:block; margin-top:4px; color:var(--ink2); }
+.veh-history-event p { margin:6px 0; }

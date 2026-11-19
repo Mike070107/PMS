@@ -6,6 +6,8 @@ const fields = (id: number, identity: string | null) => ({ P_id: id, P_plate: pl
   P_Effective: '010000', P_Download: '001000', P_Spaces: 'A-021', P_note: '原备注', End_Time: '2027-01-31',
   Sart_Time: null, Car_Money: 20, Car_Deposit: 3, Car_Zt: 0, Car_ID: 'original-card', P_Color: null });
 const rows: any[] = [{ database: 'parking1', fields: fields(101, null) }, { database: 'parking2', fields: fields(202, '租户车') }];
+if (scenario === 'history') for (const [i,row] of rows.entries()) row.fields.PmsMeta__PlateHistory =
+  JSON.stringify([{before:'沪B12345',after:plate,at:'2026-11-01T10:00:00+08:00',operatorName:'值班员'+i}]);
 const fixture = { rows, calls: [] as any[], released: false, queryCount: 0, posts: 0, billed: '住户车-1' };
 (window as any).__preserveFixture = fixture;
 const operations = new Map<number, any>();
@@ -14,13 +16,14 @@ const finish = (op: any) => {
   const row = rows.find(row => row.database === op.database && String(row.fields.P_id) === op.sourceRecordId);
   const before = structuredClone(row.fields);
   if (op.kind === 'change_plate') row.fields.P_plate = op.payload.newPlate; else row.fields.Car_Brand = op.payload.identity;
-  if (op.payload.propertyBillingClass) fixture.billed = op.payload.propertyBillingClass;
+  if (op.payload.billingClass || op.payload.propertyBillingClass) fixture.billed = op.payload.billingClass || op.payload.propertyBillingClass;
   op.status = 'completed'; op.result = { verified: true, preserved: true, preservationContract: 1, database: op.database,
     plate: row.fields.P_plate, previousPlate: before.P_plate, identity: row.fields.Car_Brand, issueId: op.sourceRecordId, before, after: structuredClone(row.fields) };
   if (scenario === 'badReceipt') op.result.preserved = false;
 };
 const query = (term: string) => ({ id: ++fixture.queryCount, term, status: 'completed', rows: structuredClone(rows.filter(r => r.fields.P_plate === term)), completedAt: new Date().toISOString(), error: null });
 const methods = {
+  async parkingHistory() { return {userHistory:[],vehicleHistory:[]}; },
   async createParkingQuery(term: string) { record('createParkingQuery', { term }); return query(term); },
   async parkingQuery(id: number) { record('parkingQuery', { id }); return query(plate); },
   async deliyunVehiclesByPlate(term: string) { record('deliyunVehiclesByPlate', { term }); if (scenario === 'cloudUnknown') throw new Error('人防查询网络失败'); return { rows: [] }; },
@@ -51,7 +54,7 @@ export const repairs = new Proxy({}, { get: () => unrelatedWrite });
 export class ApiError extends Error {}
 export function configure() { /* Controlled transport only. */ }
 export async function request(input: any) { record('request', input);
-  if (input.url === '/business/rules') return [{ enabled: true, serviceType: 'parking_monthly', config: { vehicleClass: '产权车位' } }];
+  if (input.url === '/business/rules') return ['住户车-1','住户车-2','住户车-3','租户车-1','租户车-2','亲情车','产权车位'].map(vehicleClass => ({ enabled:true, name:vehicleClass+'收费标准', serviceType:'parking_monthly', config:{vehicleClass} }));
   if (input.url === '/business/plate-tags') return [{ plate, vehicleClass: fixture.billed }];
   return { rows: [], total: 0 }; }
 export const fixtureRows = rows;
