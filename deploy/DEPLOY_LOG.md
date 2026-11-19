@@ -7629,3 +7629,11 @@
 - 自上次（3ad2c376）以来上线的相关提交：
   - 78988f8f feat(vehicle): office save/confirm, versioned approvals, registration claims and terms
 
+## 2026-11-19 10:05 · web · 2ee1a9a6
+
+- 包：`pms-web-20261119-100145.tar.gz`
+- 提交：2ee1a9a6 deploy: api → 78988f8f
+- 自上次（6d2506a5）以来上线的相关提交：
+  - 78988f8f feat(vehicle): office save/confirm, versioned approvals, registration claims and terms
+  - 3ad2c376 feat(approvals): unified staff approval center and audit history
+
