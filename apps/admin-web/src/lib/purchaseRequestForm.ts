@@ -51,9 +51,9 @@ const MIN_ROWS = 10;
 const HEADERS = ['序号', '材料名称', '规格', '申购量', '备注', '参考图片'];
 /** 「参考图片」列加宽、放图的行加高一点，照片按原比例缩进格子里，不拉变形 */
 const PHOTO_COL_WIDTH = 26;
-const PHOTO_ROW_HEIGHT = 96;
+const PHOTO_ROW_HEIGHT = 96; // points
 const PHOTO_MAX_WIDTH = 150;
-const PHOTO_MAX_HEIGHT = 88;
+const PHOTO_MAX_HEIGHT = 76;
 
 /** 图片按原比例装进 maxWidth × maxHeight；返回真正嵌入的像素尺寸 */
 export function fitImageSize(
@@ -70,26 +70,34 @@ export function fitImageSize(
   };
 }
 
-async function loadImageSize(dataUrl: string): Promise<{ width: number; height: number } | null> {
-  return new Promise((resolve) => {
-    const image = new Image();
-    image.onload = () => resolve({ width: image.naturalWidth || image.width, height: image.naturalHeight || image.height });
-    image.onerror = () => resolve(null);
-    image.src = dataUrl;
-  });
-}
-
-async function imageDataUrl(url: string): Promise<string | null> {
+/** 先解码再缩小并转为 PNG，确保 XLSX 内图片的扩展名与实际字节一致。 */
+async function purchaseThumbnail(url: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  let objectUrl: string | undefined;
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) return null;
-    const blob = await response.blob();
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    let binary = '';
-    for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
-    return `data:${blob.type || 'image/jpeg'};base64,${btoa(binary)}`;
+    objectUrl = URL.createObjectURL(await response.blob());
+    const image = new Image();
+    image.src = objectUrl;
+    await image.decode();
+    const ext = fitImageSize(image.naturalWidth, image.naturalHeight, PHOTO_MAX_WIDTH, PHOTO_MAX_HEIGHT);
+    // 保留最多两倍显示分辨率，打印清楚，同时避免整张手机照片进入工作簿。
+    const pixels = fitImageSize(image.naturalWidth, image.naturalHeight,
+      Math.min(image.naturalWidth, ext.width * 2), Math.min(image.naturalHeight, ext.height * 2));
+    const canvas = document.createElement('canvas');
+    canvas.width = pixels.width;
+    canvas.height = pixels.height;
+    const context = canvas.getContext('2d');
+    if (!context) return null;
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return { base64: canvas.toDataURL('image/png'), ext };
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeout);
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
   }
 }
 
@@ -174,19 +182,24 @@ async function fillSheet(
       cell.border = border;
     });
     if (item?.photoUrl) {
-      const dataUrl = await imageDataUrl(item.photoUrl);
-      if (!dataUrl) {
+      const thumbnail = await purchaseThumbnail(item.photoUrl);
+      if (!thumbnail) {
         row.height = 26;
+        row.getCell(6).value = '图片加载失败';
         continue;
       }
-      const size = await loadImageSize(dataUrl);
-      // 拿不到原始尺寸时不硬拉成方图：按最大框嵌入，宁可留白也不变形
-      const ext = size
-        ? fitImageSize(size.width, size.height, PHOTO_MAX_WIDTH, PHOTO_MAX_HEIGHT)
-        : { width: PHOTO_MAX_WIDTH, height: PHOTO_MAX_HEIGHT };
-      if (!size) row.height = 26;
-      const imageId = wb.addImage({ base64: dataUrl, extension: dataUrl.includes('png') ? 'png' : 'jpeg' });
-      ws.addImage(imageId, { tl: { col: 5.08, row: 4 + i + 0.08 }, ext });
+      const { ext, base64 } = thumbnail;
+      const imageId = wb.addImage({ base64, extension: 'png' });
+      // OOXML 原生偏移使用 EMU。按行高（磅）和标准列宽居中，保留四边留白。
+      const col = 5;
+      const rowIndex = row.number - 1;
+      const emuPerPixel = 9525;
+      const tl = {
+        col, row: rowIndex, nativeCol: col, nativeRow: rowIndex,
+        nativeColOff: Math.round((PHOTO_COL_WIDTH * 7 - ext.width) / 2 * emuPerPixel),
+        nativeRowOff: Math.round((PHOTO_MAX_HEIGHT + 8 - ext.height) / 2 * emuPerPixel),
+      };
+      ws.addImage(imageId, { tl, ext });
     }
   }
 
