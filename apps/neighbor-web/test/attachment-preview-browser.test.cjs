@@ -30,7 +30,17 @@ test('附件图片灯箱及 PDF 独立弹窗、异常与资源释放', {timeout:
       await img.focus();await page.waitForFunction(()=>!document.querySelector('button')?.disabled);await img.press('Enter');
       const large=page.locator('.ant-image-preview-img');await large.waitFor();
       await large.hover();await page.mouse.wheel(0,-200);
-      await page.waitForFunction(()=>getComputedStyle(document.querySelector('.ant-image-preview-img')).transform!=='matrix(1, 0, 0, 1, 0, 0)');
+      await page.waitForFunction(() => new DOMMatrixReadOnly(getComputedStyle(document.querySelector('.ant-image-preview-img')).transform).a > 1);
+      const bounds = await large.boundingBox();
+      const cx = bounds.x + bounds.width / 2, cy = bounds.y + bounds.height / 2;
+      await page.mouse.move(cx, cy);
+      await page.mouse.down();
+      await page.mouse.move(cx + 42, cy + 36, { steps: 5 });
+      await page.waitForFunction(() => {
+        const transform = new DOMMatrixReadOnly(getComputedStyle(document.querySelector('.ant-image-preview-img')).transform);
+        return Math.abs(transform.e) + Math.abs(transform.f) > 5;
+      });
+      await page.mouse.up();
       await page.screenshot({path:path.join(out,'image-'+width+'.png')});await page.keyboard.press('Escape');await large.waitFor({state:'hidden'});
       const trigger=page.getByRole('button',{name:'预览 PDF：合成.pdf'});await trigger.locator('img').waitFor();await trigger.click();
       const dialog=page.getByRole('dialog');await dialog.getByAltText('第 2 页').waitFor();
