@@ -53,6 +53,8 @@ export interface OfficeIntakeInput {
   keepFileIndexes?: number[];
 }
 export interface ReviewIntakeInput {
+  materialsOnly?: boolean;
+  registrationTerm?: VehicleRegistrationTerm;
   expectedVersion?: number;
   decision: 'approve' | 'reupload' | 'void';
   note?: string;
@@ -305,7 +307,7 @@ export class VehicleIntakeService {
     if (row.kind !== 'paid' || row.transactionId || row.status === 'void') throw new BadRequestException('已收款或已作废，不能再改缴费规则分组');
     const cls = this.cls(vehicleClass);
     if (cls === row.vehicleClass) return this.view(row);
-    this.revise(row, user.id, '修改计费分组');
+    this.revisePlan(row, user, '修改计费分组');
     row.log = [...row.log, await this.entry(user, `缴费规则分组改为「${cls || '默认分组'}」`, row.vehicleClass ? `原为「${row.vehicleClass}」` : undefined)];
     row.vehicleClass = cls;
     row.updatedBy = user.id;
@@ -317,19 +319,69 @@ export class VehicleIntakeService {
   async setGarages(id: number, garages: unknown, garageNumbers: unknown, user: AuthUser, access?: ResolvedAccess) {
     if (!this.inTransaction) return this.locked(id, user, access, (service) => service.setGarages(id, garages, garageNumbers, user, access));
     const row = await this.load(id, user, access);
-    if (row.status === 'void' || (row.kind === 'paid' && row.transactionId) || row.status === 'approved') {
+    if (row.status === 'void' || (row.kind === 'paid' && row.transactionId) || (row.status === 'approved' && !this.canConfigureApproved(row))) {
       throw new BadRequestException('已收款或已办理，不能再改车库');
     }
     const next = this.cleanList(garages);
     await this.validateGarages(row, row.kind, next);
     const nums = this.numbersForGarages(next, this.cleanNumbers(garageNumbers), row.kind);
     if (next.join(',') === row.garages.join(',') && JSON.stringify(nums) === JSON.stringify(row.garageNumbers)) return this.view(row);
-    this.revise(row, user.id, '修改车库及车位号');
+    this.revisePlan(row, user, '修改车库及车位号');
     row.garages = next;
     row.garageNumbers = nums;
     row.updatedBy = user.id;
     await this.repo.save(row);
     return this.view(row);
+  }
+
+  private canConfigureApproved(row: VehicleIntake) {
+    return row.kind === 'paid' && !row.transactionId && row.status === 'approved' &&
+      [...row.log].reverse().find(e => e.action?.startsWith('资料审核通过'))?.action === '资料审核通过，待选授权';
+  }
+
+  private revisePlan(row: VehicleIntake, user: AuthUser, reason: string) {
+    if (this.canConfigureApproved(row)) {
+      reviseVehicleMaterial(row, this.materialSnapshot(row), user.id, reason);
+      row.officeConfirmedVersion = row.dataVersion;
+    } else this.revise(row, user.id, reason);
+  }
+
+  private ownerFilesRequired(row: VehicleIntake) {
+    return row.kind === 'family' || this.isHomeUpload(row) || row.log.some(entry => (entry as { registrationVersion?: number }).registrationVersion === 2);
+  }
+
+  private isHomeUpload(row: VehicleIntake) {
+    const event = [...(row.log ?? [])].reverse().find(e => e.action === '回家补资料' || e.action?.startsWith('登记类型由'));
+    return row.kind === 'paid' && event?.action === '回家补资料';
+  }
+
+  async prepareHomeUpload(id: number, input: Record<string, unknown>, user: AuthUser, access?: ResolvedAccess) {
+    if (!this.inTransaction) return this.locked(id, user, access, service => service.prepareHomeUpload(id, input, user, access));
+    const row = await this.load(id, user, access);
+    await this.assertUnlinked(row);
+    if (row.kind !== 'paid' || !['waiting','reupload'].includes(row.status)) throw new BadRequestException('仅待补资料的付费登记可先收款');
+    const plate = normalizeFamilyPlate(String(input?.plate ?? ''));
+    if (!isValidFamilyPlate(plate)) throw new BadRequestException('请先填写完整车牌');
+    const phone = String(input.contactPhone ?? row.contactPhone ?? '').trim();
+    const name = String(input.contactName ?? row.contactName ?? '').trim();
+    if (phone && !PHONE.test(phone)) throw new BadRequestException('联系手机须为11位，暂时未知可留空');
+    if (name.length > 50) throw new BadRequestException('联系人姓名最多50字');
+    const base = this.checkFormBase(String(input.formBase ?? ''));
+    const prepared = this.isHomeUpload(row);
+    if (prepared && row.plate !== plate) throw new BadRequestException('扫码凭证已关联原车牌，请核对原登记');
+    await this.assertNewPlate(row, plate);
+    const expired = row.expiresAt.getTime() <= Date.now();
+    if (!row.tokenNonce || expired || this.hash(this.tokenOf(row.tokenNonce)) !== row.tokenHash) {
+      row.tokenNonce = randomBytes(18).toString('base64url');
+      row.tokenHash = this.hash(this.tokenOf(row.tokenNonce));
+      row.openedAt = null;
+    }
+    if (!prepared || expired) row.expiresAt = new Date(Date.now() + INTAKE_TTL_MS);
+    if (row.plate !== plate || name !== row.contactName || phone !== row.contactPhone) this.revise(row, user.id, '保存待补登记资料');
+    Object.assign(row, {plate, contactName:name, contactPhone:phone, updatedBy:user.id});
+    if (!prepared) row.log = [...row.log, await this.entry(user, '回家补资料', plate)];
+    await this.repo.save(row);
+    return { ...(await this.view(row, true)), qr: await this.qr(base, this.tokenOf(row.tokenNonce!), row.expiresAt) };
   }
 
   /** 再次显示当前二维码（刷新页面后 / 业主想再拍一次）：同一个码，没过期就一直有效 */
@@ -398,6 +450,7 @@ export class VehicleIntakeService {
     }
     // 通过
     if (row.status !== 'submitted' && row.status !== 'reupload') throw new BadRequestException(row.status === 'approved' ? '已经审核通过了' : '业主还没有提交资料');
+    if (this.isHomeUpload(row) && row.status !== 'submitted') throw new BadRequestException('请等待住户重新提交资料');
     if (row.kind === 'family' && !row.files.length && !this.localAttachmentsOptional(row)) throw new BadRequestException('亲情车仍需关系证明资料，不能通过');
     if (!row.files.length && !this.localAttachmentsOptional(row)) throw new BadRequestException('还没有资料，不能通过');
     const before = this.materialSnapshot(row);
@@ -410,17 +463,24 @@ export class VehicleIntakeService {
     if (input.contactName !== undefined) row.contactName = input.contactName.trim().slice(0, 50);
     if (input.contactPhone !== undefined) row.contactPhone = input.contactPhone.trim().slice(0, 30);
     if (input.relation !== undefined) row.relation = input.relation.trim();
+    if (row.transactionId && this.isHomeUpload(row)) {
+      if (input.garages && [...this.cleanList(input.garages)].sort().join('|') !== [...row.garages].sort().join('|')) throw new BadRequestException('已收款，不能变更车库');
+      if (input.garageNumbers && Object.entries(this.cleanNumbers(input.garageNumbers)).some(([k,v]) => row.garageNumbers[k] !== v)) throw new BadRequestException('已收款，不能变更车位号');
+      input = { ...input, garages: undefined, garageNumbers: undefined };
+    }
+    const materialsOnly = input.materialsOnly === true && row.kind === 'paid' && !row.transactionId;
+    if (row.kind === 'family' && input.registrationTerm !== undefined) row.registrationTerm = normalizeRegistrationTerm(input.registrationTerm);
     if (input.garages) row.garages = this.cleanList(input.garages);
     if (input.garageNumbers) row.garageNumbers = this.cleanNumbers(input.garageNumbers);
     if (!isValidFamilyPlate(row.plate)) throw new BadRequestException('车牌格式不正确，例如 豫GQ3N07');
     if (!PHONE.test(row.contactPhone)) throw new BadRequestException('请补全 11 位手机号');
     await this.validateGarages(row, row.kind, row.garages);
-    if (row.kind === 'paid' && !row.garages.length) throw new BadRequestException('请选择付费车车库后重新审核');
+    if (!materialsOnly && row.kind === 'paid' && !row.garages.length) throw new BadRequestException('请选择付费车车库后重新审核');
     if (row.kind === 'paid') {
       await this.assertNewPlate(row, row.plate);
       if (row.garages.includes('deliyun:枫桦景苑') && !row.garages.some(g => g === 'local:phase2_parking' || g === 'local:phase2_main_garage')) throw new BadRequestException('人防车库须同时选择二期地面入口');
       // 历史已收款待资料单的通道已锁定，不强迫补选车位或追溯占位。
-      if (!row.transactionId) await this.bindSpaces(row, user);
+      if (!materialsOnly && !row.transactionId) await this.bindSpaces(row, user);
     }
 
     if (JSON.stringify(before) !== JSON.stringify(this.materialSnapshot(row))) reviseVehicleMaterial(row, before, user.id, '办公室审核时更正资料');
@@ -452,7 +512,7 @@ export class VehicleIntakeService {
     row.reviewedAt = new Date();
     row.reviewNote = note;
     row.expiresAt = new Date(Math.min(row.expiresAt.getTime(), Date.now()));
-    row.log = [...row.log, await this.entry(user, row.kind === 'family' ? '资料审核通过，转亲情车登记（待物业经理审核）' : '资料审核通过', note || undefined)];
+    row.log = [...row.log, await this.entry(user, row.kind === 'family' ? '资料审核通过，转亲情车登记（待物业经理审核）' : materialsOnly ? '资料审核通过，待选授权' : '资料审核通过', note || undefined)];
     row.updatedBy = user.id;
     await this.repo.save(row);
     if (row.kind === 'paid') {
@@ -550,11 +610,12 @@ export class VehicleIntakeService {
     await this.assertNoCreatedFamily(row, repo.manager);
     if (!houseId || row.houseId !== houseId) throw new BadRequestException('新办车牌登记不属于这一户');
     if (!['waiting', 'submitted', 'reupload', 'approved'].includes(row.status)) throw new BadRequestException('这条新办车牌登记已作废');
-    if (row.log.some(entry => (entry as any).registrationVersion === 2) && row.status !== 'approved') throw new BadRequestException('新车登记须先提交资料、选择车库编号并审核通过，才能收款');
+    if (row.log.some(entry => (entry as any).registrationVersion === 2) && row.status !== 'approved' && !this.isHomeUpload(row)) throw new BadRequestException('新车登记须先提交资料、选择车库编号并审核通过，才能收款');
     const txns = manager ? manager.getRepository(BusinessTransaction) : this.txnRepo;
     if (row.transactionId || row.familyCarId || await txns.findOne({ where: { tenantId, targetType: 'vehicle_intake', targetId: row.id } })) throw new BadRequestException('这辆新车已关联办理或收款流水，请到「待处理」按原流水核对，不可重复收款');
     if (manager && normalizeFamilyPlate(row.plate)) await claimVehicleRegistration(manager, { tenantId, plate: row.plate, intakeId: row.id });
-    return { row, approved: row.status === 'approved', plate: row.plate };
+    if (this.isHomeUpload(row) && ['waiting','reupload'].includes(row.status) && row.expiresAt.getTime() <= Date.now()) throw new BadRequestException('请先更新回家补资料二维码');
+    return { row, verifyGarages: this.canConfigureApproved(row) || this.isHomeUpload(row), approved: row.status === 'approved', plate: row.plate, homeUpload: this.isHomeUpload(row) };
   }
 
   async attachPayment(row: VehicleIntake, txn: BusinessTransaction, user: AuthUser, manager?: EntityManager) {
@@ -563,10 +624,15 @@ export class VehicleIntakeService {
     // Never persist the pre-payment stale entity: conversion/void may have won the lock.
     row = (await repo.findOne({ where: { id: row.id, tenantId: this.tenant(user) }, lock: { mode: 'pessimistic_write' } }))!;
     if (!row || row.kind !== 'paid' || row.familyCarId || row.status === 'void' || row.transactionId) throw new BadRequestException('登记状态已改变或已收款，请刷新后核对原流水');
-    if (row.log.some(entry => (entry as any).registrationVersion === 2) && row.status !== 'approved') throw new BadRequestException('新车登记尚未审核通过，不能关联收款流水');
+    if (row.log.some(entry => (entry as any).registrationVersion === 2) && row.status !== 'approved' && !this.isHomeUpload(row)) throw new BadRequestException('新车登记尚未审核通过，不能关联收款流水');
     if (txn.tenantId !== row.tenantId) throw new BadRequestException('收款流水不属于当前物业公司');
     await this.assertNoCreatedFamily(row, repo.manager);
     if (normalizeFamilyPlate(row.plate)) await claimVehicleRegistration(repo.manager, { tenantId: row.tenantId, plate: row.plate, intakeId: row.id });
+    if (this.canConfigureApproved(row) || (this.isHomeUpload(row) && row.status !== 'approved')) {
+      if (!row.garages.length || !row.vehicleClass) throw new BadRequestException('请先选择车辆类别和车库');
+      if (row.garages.includes('deliyun:枫桦景苑') && !row.garages.some(g => g === 'local:phase2_parking' || g === 'local:phase2_main_garage')) throw new BadRequestException('人防车库须同时选择二期地面入口');
+      await this.bindSpaces(row, user, repo.manager);
+    }
     row.transactionId = txn.id;
     const systems = ((txn.snapshot?.parking as { systems?: Array<{ label?: string }> } | undefined)?.systems ?? []).map((s) => s.label).filter(Boolean);
     if (systems.length) row.log = [...row.log, await this.entry(user, '收款开通车库', systems.join('、'))];
@@ -592,7 +658,15 @@ export class VehicleIntakeService {
   private async releasePayment(row: VehicleIntake, user: AuthUser) {
     if (!row.transactionId) return;
     const txn = await this.txnRepo.findOne({ where: { id: row.transactionId, tenantId: row.tenantId } });
-    if (!txn || txn.externalSyncStatus !== 'awaiting_docs') return;
+    if (!txn) return;
+    if (this.isHomeUpload(row) && txn.externalSyncStatus === 'review') {
+      // A deferred manual quote cannot be approved until the office has verified this plate and the frozen garage selection.
+      const intake = txn.snapshot?.intake as {id?: number; plate?: string} | undefined;
+      if (intake?.id !== row.id || intake.plate !== row.plate) throw new BadRequestException('原流水与登记车牌不符，请核对');
+      await this.txnRepo.update({id:txn.id, tenantId:row.tenantId, externalSyncStatus:'review'}, {snapshot:{...txn.snapshot,intake:{...intake,dataVersion:row.dataVersion ?? 0}} as never});
+      return;
+    }
+    if (txn.externalSyncStatus !== 'awaiting_docs') return;
     // 经理按某一版资料审批了非标准金额：资料变更后原审批失效，转人工重新核对，不静默执行。
     const review = txn.snapshot?.review as { decision?: string; manualAmountCents?: unknown; approvedIntakeVersion?: number } | undefined;
     if (review?.decision === 'approved' && review.manualAmountCents !== undefined
@@ -657,6 +731,7 @@ export class VehicleIntakeService {
     if (!this.inTransaction) return this.locked(id, user, access, s => s.staffSubmit(id, body, user, access));
     const row = await this.load(id, user, access);
     await this.assertUnlinked(row);
+    if (this.isHomeUpload(row)) throw new BadRequestException('已选择住户回家补交，请使用本次二维码填写上传');
     await this.submitDetails(row, [], body, user);
     return this.get(id, user, access);
   }
@@ -665,6 +740,7 @@ export class VehicleIntakeService {
     if (!this.inTransaction) return this.locked(id, user, access, s => s.staffUpload(id, files, user, access));
     const row = await this.load(id, user, access);
     await this.assertUnlinked(row);
+    if (this.isHomeUpload(row)) throw new BadRequestException('已选择住户回家补交，请使用本次二维码填写上传');
     if (!['waiting', 'reupload'].includes(row.status)) throw new BadRequestException('登记已提交，请刷新核对，不能重复上传');
     if (!files?.length || row.files.length + files.length > 10) throw new BadRequestException('请选择附件，资料最多 10 份');
     for (const file of files) {
@@ -683,7 +759,7 @@ export class VehicleIntakeService {
     if (!['waiting', 'reupload'].includes(row.status)) throw new BadRequestException(row.status === 'submitted' ? '资料已经提交，请等待物业办公室审核' : '这条登记已经办理，无需再提交');
     const read = (key: string, max: number) => String(body?.[key] ?? '').trim().slice(0, max);
     const plate = normalizeFamilyPlate(read('plate', 12));
-    const contactName = read('contactName', 50);
+    const contactName = !actor && body?.contactName === undefined ? row.contactName : read('contactName', 50);
     const contactPhone = read('contactPhone', 30).replace(/\D/g, '');
     const relation = read('relation', 20);
     if (!isValidFamilyPlate(plate)) throw new BadRequestException('车牌格式不正确，例如 豫GQ3N07');
@@ -692,12 +768,13 @@ export class VehicleIntakeService {
     if (row.kind === 'family' && (!relation || relation === '其他亲属' || relation.length > 12)) throw new BadRequestException('请选择车主与业主的关系；选「其他」请写明是什么关系');
     const files = input ?? [];
     const keep = actor || row.status === 'waiting' || (row.status === 'reupload' && body?.keepFiles === '1') ? row.files : [];
+    if (!actor && row.kind === 'paid' && this.ownerFilesRequired(row) && !files.length && !keep.length) throw new BadRequestException('请上传车辆资料后再提交');
     if (row.kind === 'family' && !actor && !files.length && !keep.length) throw new BadRequestException('亲情车请上传资料照片（关系证明等）');
     if (row.kind === 'paid') await this.assertNewPlate(row, plate);
     if (files.length + keep.length > 10) throw new BadRequestException('资料最多 10 份');
     const types = files.map((file) => detectUploadContentType(file.buffer));
     if (types.some((t) => !t || (!t.startsWith('image/') && t !== 'application/pdf'))) throw new BadRequestException('只支持照片（JPG、PNG、HEIC 等）或 PDF');
-    if (row.transactionId && row.plate && plate !== row.plate) throw new BadRequestException('已有收款关联，不能更换车牌，请联系办公室核对');
+    if ((row.transactionId || this.isHomeUpload(row)) && row.plate && plate !== row.plate) throw new BadRequestException('已有收款关联，不能更换车牌，请联系办公室核对');
     await claimVehicleRegistration(this.repo.manager, { tenantId: row.tenantId, plate, intakeId: row.id });
     const stored: VehicleIntakeFile[] = [];
     for (let i = 0; i < files.length; i++) {
@@ -725,7 +802,7 @@ export class VehicleIntakeService {
 
   private localAttachmentsOptional(row: VehicleIntake) {
     // Latest submission wins: a subsequent public re-submission cannot inherit a staff-only exception.
-    const submission = [...row.log].reverse().find(entry => ['工作人员代填新车登记', '业主重新提交资料', '业主提交车牌和资料'].includes(entry.action));
+    const submission = [...(row.log ?? [])].reverse().find(entry => ['工作人员代填新车登记', '业主重新提交资料', '业主提交车牌和资料'].includes(entry.action));
     return submission?.action === '工作人员代填新车登记' && submission.userId != null && submission.attachmentsOptional === true;
   }
 
@@ -739,9 +816,9 @@ export class VehicleIntakeService {
   }
 
   /** 一位多车：车位号保存在各办理单/执行快照，不覆盖车位主档；在库互斥由停车系统控制。 */
-  private async bindSpaces(row: VehicleIntake, user: AuthUser) {
+  private async bindSpaces(row: VehicleIntake, user: AuthUser, manager = this.repo.manager) {
     const selected = this.numbersForGarages(row.garages, { main: 'main', civil: 'civil' }, row.kind);
-    const repo = this.repo.manager.getRepository(ParkingSpace);
+    const repo = manager.getRepository(ParkingSpace);
     const references: Array<{ id: number; garage: string; spaceNo: string }> = [];
     for (const garage of Object.keys(selected).sort() as Array<'main' | 'civil'>) {
       const spaceNo = row.garageNumbers[garage]?.trim();
@@ -757,7 +834,7 @@ export class VehicleIntakeService {
 
   /** 仅撤回本次未收款的绑定；精确核对快照，绝不覆盖人工后改动。 */
   private async restoreBoundSpaces(row: VehicleIntake, user: AuthUser) {
-    const last = [...row.log].reverse().find(entry => entry.action === '关联共用车位' || entry.action === '关联车位档案' || entry.action === '恢复登记前车位档案');
+    const last = [...(row.log ?? [])].reverse().find(entry => entry.action === '关联共用车位' || entry.action === '关联车位档案' || entry.action === '恢复登记前车位档案');
     const bindings = (last as any)?.spaceBindings as Array<{ before: ParkingSpace; after: ParkingSpace }> | undefined;
     if (last?.action !== '关联车位档案' || !bindings?.length) return;
     await this.assertUnlinked(row);
@@ -794,15 +871,15 @@ export class VehicleIntakeService {
     if (!ids.length) return;
     await this.repo.manager.save(Notification, ids.map((receiverId) => this.repo.manager.create(Notification, {
       tenantId: row.tenantId, receiverId, channel: NotifyChannel.IN_APP, eventKey: 'vehicle_intake.submitted', title,
-      payload: { intakeId: row.id, page: '/plates' }, status: NotifyStatus.SENT, readAt: null, createdBy: receiverId, updatedBy: receiverId,
-    }))).catch((e) => this.logger.warn(`通知失败：${e?.message || e}`));
+      payload: { intakeId: row.id, page: '/plates?intakeId=' + row.id }, status: NotifyStatus.SENT, readAt: null, createdBy: receiverId, updatedBy: receiverId,
+    }))).catch((e) => { if (this.isHomeUpload(row)) throw e; this.logger.warn(`通知失败：${e?.message || e}`); });
   }
 
   private async view(row: VehicleIntake, withLog = false) {
     const txn = row.transactionId ? await this.txnRepo.findOne({ where: { id: row.transactionId, tenantId: row.tenantId } }) : null;
     const now = Date.now();
     return {
-      id: row.id, kind: row.kind, status: row.status, houseId: row.houseId, communityId: row.communityId, houseLabel: row.houseLabel,
+      canConfigureApproved: this.canConfigureApproved(row), homeUpload: this.isHomeUpload(row), id: row.id, kind: row.kind, status: row.status, houseId: row.houseId, communityId: row.communityId, houseLabel: row.houseLabel,
       ownerName: row.ownerName, ownerPhone: row.ownerPhone,
       plate: row.plate, contactName: row.contactName, contactPhone: row.contactPhone, relation: row.relation, vehicleClass: row.vehicleClass,
       garages: row.garages, garageNumbers: row.garageNumbers,
@@ -822,7 +899,7 @@ export class VehicleIntakeService {
 
   private publicView(row: VehicleIntake) {
     return {
-      kind: row.kind, status: row.status, houseLabel: row.houseLabel,
+      requiresFiles: this.ownerFilesRequired(row), homeUpload: this.isHomeUpload(row), kind: row.kind, status: row.status, houseLabel: row.houseLabel,
       ownerName: row.ownerName ? `${row.ownerName.slice(0, 1)}**` : '',
       expiresAt: row.expiresAt.toISOString(), reviewNote: row.status === 'reupload' ? row.reviewNote : '',
       plate: row.plate, contactName: row.contactName, contactPhone: row.contactPhone ? row.contactPhone.replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2') : '', relation: row.relation,

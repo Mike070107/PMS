@@ -371,7 +371,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
             {!staffRegistration && <RegistrationPermit house={house} intakeId={i.id} />}
             <NewPlateCard intake={i} house={house} rules={rules} targets={hh?.targets ?? []} defaultStaffMode entryMode={selectedEntry?.id === i.id ? selectedEntry : undefined}
               onChange={updateIntake} onDrop={dropIntake} onCart={setCart}
-              renewal={(car, label, cls, onCls, ready) => <CarRenewal car={car} rules={rules} house={house} onCart={setCart} intakeId={i.id} allowCart={ready} title="新办" label={label} vehicleClass={cls} onClass={onCls} />} />
+              renewal={(car, label, cls, onCls, ready, garages) => <CarRenewal car={car} rules={rules} house={house} onCart={setCart} intakeId={i.id} allowCart={ready} garages={garages} title="新办" label={label} vehicleClass={cls} onClass={onCls} />} />
             </section>
           ))}
         </div>
@@ -385,7 +385,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
 }
 
 /** 一辆车的续期设置：续哪几套系统、按哪条收费标准、续几个月；服务端试算后报给上层 */
-export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId, allowCart = true, title = '续期', label, vehicleClass = '', onClass }: { car: Car; rules: ParkRule[]; house: ParkHouse; onCart: (plate: string, c: ParkingCart | null) => void; onRemove?: () => void; intakeId?: number; allowCart?: boolean; title?: string; label?: string; vehicleClass?: string; onClass?: (v: string) => Promise<void> | void }) {
+export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId, allowCart = true, garages, title = '续期', label, vehicleClass = '', onClass }: { car: Car; rules: ParkRule[]; house: ParkHouse; onCart: (plate: string, c: ParkingCart | null) => void; onRemove?: () => void; intakeId?: number; allowCart?: boolean; garages?: React.ReactNode; title?: string; label?: string; vehicleClass?: string; onClass?: (v: string) => Promise<void> | void }) {
   const [months, setMonths] = useState(6);
   const [ruleId, setRuleId] = useState<number | null>(null);
   const [off, setOff] = useState<string[]>([]);
@@ -414,7 +414,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
   }, [sel, lots, rules, house.communityId]); // eslint-disable-line react-hooks/exhaustive-deps
   const classOptions = useMemo(() => [...new Set(own.map((r) => r.config?.vehicleClass || '').filter(Boolean))], [own]);
   const defaultGroup = own.find((r) => r.config?.isDefault)?.config?.vehicleClass || '';
-  const group = classOptions.includes(vehicleClass) ? vehicleClass : defaultGroup;
+  const group = classOptions.includes(vehicleClass) ? vehicleClass : intakeId ? '' : defaultGroup;
   const [clsBusy, setClsBusy] = useState(false);
   const [clsErr, setClsErr] = useState('');
   const needClass = classOptions.length > 0 && !group;
@@ -503,6 +503,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
               {clsErr ? <span style={{ color: 'var(--dang)', fontSize: 14 }}>{clsErr}</span> : null}
             </div>
           ) : null}
+          {garages}
           {usable.length > 1 ? (
             <div className="quickMonths" style={{ marginTop: 0, marginBottom: 10 }}>
               <span style={{ fontSize: 14, color: 'var(--ink2)', marginRight: 4 }}>收费标准：</span>

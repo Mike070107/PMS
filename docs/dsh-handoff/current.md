@@ -77,3 +77,9 @@
 ## 2026-11-19 单一车牌号码输入（本地完成）
 - 车辆管理与收银台使用同一个蓝色牌照样式输入框。支持中文输入法、键盘输入/粘贴、展开字符键选填和替换选区，展开区去掉重复号码。
 - Web 构建和三个浏览器回归套件通过。1440px、390px、375px 覆盖输入、退位、7/8 位和业务入口；展开时检查面板边界。证据 outputs/single-plate/build.log、browser-final.log 及单一车牌桌面/手机截图。未部署。
+## 2026-11-19 新车登记资料、收费与审批
+
+- 本次授权为开发及隔离验收，范围为车辆管理、收银台、扫码填写页和登记/收款 API。
+- 办公室录入与扫码录入互斥。付费车资料审核后设置车类、车库与期限；亲情车核对资料后选择车库与期限并提交经理。回家补交保留同一车牌、登记和流水，二维码有效一小时。办公室收到补交待办，标准金额通过资料审核后进入停车队列；手填金额还须经理审核。
+- 在 PMS-vehicle-release-20261119 完成 pnpm --filter neighbor-web build、API pnpm typecheck、pnpm test:vehicle-intake（61/61）和 node --test test/vehicle-intake-browser.test.cjs。390px、1440px Chrome 隔离回归通过；390px 验证回家登记、三个月试算和手机提交附件。证据为该工作区 outputs/vehicle-intake-workflow/。
+- 当前交付为本地源码与隔离验收。生产 Web/API 未部署，未进行真实收费、真实停车库写入或道闸设备核验。

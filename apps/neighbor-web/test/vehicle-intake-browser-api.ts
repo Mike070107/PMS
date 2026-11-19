@@ -1,13 +1,15 @@
 // Isolated browser fixture: no HTTP client, tokens, production endpoints or real vehicle writes.
 const w = window as any;
 w.__intakeCalls = [];
-const target = { key: 'local:phase2_main_garage', label: '合成测试车库', short: '测试车库', system: 'local', billing: 'vehicle' };
+const target = { key: 'local:phase2_parking', label: '合成测试车库', short: '测试车库', system: 'local', billing: 'vehicle' };
 const read = () => JSON.parse(localStorage.getItem('synthetic-intakes') || '[]');
 const save = (rows: any[]) => localStorage.setItem('synthetic-intakes', JSON.stringify(rows));
 const family = { id: 901, houseId: 5, lane: '228', buildingNo: '3', roomNo: '502', roomKey: '228/3/502', ownerName: '合成业主', carOwnerName: '合成车主', carOwnerPhone: '13900000000', relation: '父母', plate: '沪A合成01', status: 'office', statusLabel: '待办公室审核', mode: 'new', startDate: null, endDate: null, daysLeft: null, expiringSoon: false, garages: ['phase2'], garageNumbers: {}, fileCount: 0, files: [], log: [], officeNote: '', managerNote: '', lastError: null, registrationTerm: { mode: 'months', months: 12 }, createdAt: '2026-11-18T12:00:00Z' };
 const familyCopy = () => JSON.parse(JSON.stringify(family));
 export const address = { tree: async () => [{ id: 3, name: '合成验收小区', buildings: [{ id: 2, lane: '228', buildingNo: '3', houses: [{ id: 5, roomNo: '502', ownerName: '合成联系人', ownerPhone: '13900000000' }] }] }] };
 export async function request(o: any): Promise<any> {
+  if(o.url === '/business/estimate') return {quantity:o.data.months, amountCents:o.data.months * 10000, startDate:'2026-12-01', endDate:'2027-02-28'};
+  if(o.url === '/vehicle-intake-form/synthetic-token') return {...read().find((row:any)=>row.homeUpload), requiresFiles:true,relations:[],fileCount:0};
   w.__intakeCalls.push(o);
   if (o.url === '/family-cars') return { rows: [familyCopy()], total: 1, page: 1, pageSize: o.query?.pageSize ?? 20, today: '2026-11-19' };
   if (o.url === '/family-cars/901' && o.method === 'PATCH') {
@@ -42,8 +44,8 @@ export async function request(o: any): Promise<any> {
     if (w.__failNext) { w.__failNext = false; throw Error('合成超时：已提交，重试继续原操作'); }
     return { ...row, reused, otherDraftIds: rows.filter((r: any) => r.id !== row.id && r.kind === row.kind).map((r: any) => r.id) };
   }
-  const match = o.url.match(/^\/vehicle-intakes\/(\d+)(?:\/(show-qr|garages))?$/);
-  if (match) { const rows = read(); const row = rows.find((r: any) => r.id === +match[1]); if (!row) throw Error('不存在'); if (match[2] === 'garages') { Object.assign(row, o.data); save(rows); } return row; }
+  const match = o.url.match(/^\/vehicle-intakes\/(\d+)(?:\/(show-qr|garages|class|home-upload))?$/);
+  if (match) { const rows = read(); const row = rows.find((r: any) => r.id === +match[1]); if (!row) throw Error('不存在'); if(match[2] === 'home-upload') {row.plate=o.data.plate;row.homeUpload=true;save(rows);} if (match[2] === 'class' || match[2] === 'garages') { Object.assign(row, o.data); save(rows); } return row; }
   throw Error(`Isolated fixture refused unknown API: ${o.url}`);
 }
 export const accessCardIssuance = { createParkingQuery: async () => ({ id: 1, status: 'completed', rows: [] }), parkingQuery: async () => ({ id: 1, status: 'completed', rows: [] }) };
@@ -54,6 +56,12 @@ export const repairs = { locationSuggestions: async () => [], create: async () =
 const realFetch = window.fetch.bind(window);
 window.fetch = async (input: any, init: any = {}) => {
   const url = typeof input === 'string' ? input : input.url;
+  if(url.endsWith('/vehicle-intake-form/synthetic-token') && init.method === 'POST') {
+    const rows = read(); const row = rows.find((item:any) => item.homeUpload);
+    if(init.body.get('plate') !== row.plate || !init.body.get('file')) throw Error('资料不完整');
+    Object.assign(row,{status:'submitted', submittedAt:new Date().toISOString(),contactPhone:init.body.get('contactPhone')});
+    save(rows); return Response.json(row);
+  }
   const match = url.match(/\/vehicle-intakes\/(\d+)\/office$/);
   if (match && init.method === 'POST') {
     await new Promise(resolve => setTimeout(resolve, 120));

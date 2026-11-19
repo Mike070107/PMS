@@ -6,7 +6,7 @@ import ImagePreviewButton from '@/components/ImagePreviewButton';
 const API = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 interface Session {
-  kind: 'paid' | 'family'; status: 'waiting' | 'submitted' | 'reupload' | 'approved' | 'void';
+  requiresFiles?: boolean; homeUpload?: boolean; kind: 'paid' | 'family'; status: 'waiting' | 'submitted' | 'reupload' | 'approved' | 'void';
   houseLabel: string; ownerName: string; expiresAt: string; reviewNote: string;
   plate: string; contactName: string; contactPhone: string; relation: string; fileCount: number; relations: string[];
 }
@@ -44,6 +44,7 @@ export default function PlateForm() {
     request<Session>({ url: `/vehicle-intake-form/${token}` })
       .then((r) => {
         setS(r);
+        setPlate(r.plate || '');
         if (r.relation) { if (r.relations.includes(r.relation) && r.relation !== '其他亲属') setRelation(r.relation); else { setRelation(OTHER); setOtherText(r.relation); } }
       })
       .catch((e) => setErr(e instanceof Error ? e.message : '链接无效'));
@@ -77,7 +78,7 @@ export default function PlateForm() {
   const phoneOk = /^1\d{10}$/.test(phone);
   const rel = relation === OTHER ? otherText.trim() : relation;
   const keptCount = s?.status === 'reupload' && keep ? s.fileCount : 0;
-  const ready = plateOk && phoneOk && (s?.kind !== 'family' || (!!rel && picks.length + keptCount > 0));
+  const ready = plateOk && phoneOk && (!s?.requiresFiles || picks.length + keptCount > 0) && (s?.kind !== 'family' || (!!rel && picks.length + keptCount > 0));
 
   const submit = async () => {
     if (!ready || busy) return;
@@ -130,7 +131,7 @@ export default function PlateForm() {
 
         <label className="pf-label">车牌号</label>
         {plateBox(plate, true)}
-        <div className="pf-kb">
+        {!s.homeUpload && <div className="pf-kb">
           <div className="pf-kb-hd">
             <b>{mode === 'province' ? '第 1 步 · 选省份简称' : mode === 'letter' ? '第 2 步 · 选字母' : '继续输入车牌号'}</b>
             <span>普通 7 位，新能源 8 位</span>
@@ -140,7 +141,7 @@ export default function PlateForm() {
             <button type="button" disabled={!plate} onClick={() => setPlate((p) => p.slice(0, -1))}>退格</button>
             <button type="button" disabled={!plate} onClick={() => setPlate('')}>清空</button>
           </div>
-        </div>
+        </div>}
         {plate.length >= 7 && !plateOk ? <div className="pf-err">车牌格式不对，请检查</div> : null}
 
         <label className="pf-label">手机号</label>
@@ -158,7 +159,7 @@ export default function PlateForm() {
           </>
         ) : null}
 
-        <label className="pf-label">上传资料（{s.kind === 'paid' ? '选填，也可不上传' : '亲情车须提供关系证明'}）</label>
+        <label className="pf-label">上传资料（{s.kind === 'family' ? '亲情车须提供关系证明' : s.requiresFiles ? '必填' : '选填'}）</label>
         <p className="pf-muted">{s.kind === 'family' ? '行驶证、车主身份证、与业主关系证明（户口本 / 结婚证等）' : '行驶证（正副页）、车主身份证或驾驶证'}，可多张，最多 10 张</p>
         {s.status === 'reupload' && s.fileCount ? <label className="pf-keep"><input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />保留上次上传的 {s.fileCount} 张</label> : null}
         <div className="pf-files">

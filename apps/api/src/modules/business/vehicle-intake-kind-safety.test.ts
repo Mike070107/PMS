@@ -4,7 +4,7 @@ import test from 'node:test';
 import { createHash } from 'node:crypto';
 import { VehicleIntakeService } from './vehicle-intake.service';
 import { BusinessService } from './business.service';
-import { BusinessLog, BusinessTransaction, FamilyCar, ParkingSpace, ParkingVehicle, VehicleIntake } from '../../entities';
+import { BusinessLog, BusinessTransaction, FamilyCar, Notification, ParkingSpace, ParkingVehicle, VehicleIntake } from '../../entities';
 import { BusinessServiceType } from '../../common/enums';
 import { Reflector } from '@nestjs/core';
 import { GUARDS_METADATA, METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
@@ -40,7 +40,7 @@ function fixture() {
       }}; return qb;
     },
   });
-  const manager: any = { queryRunner: { isTransactionActive: true }, query: async (sql: string) => { assert.match(sql, /pg_advisory_xact_lock|FROM vehicle_intakes i|FROM family_cars f|vehicle_registration_claims/); return []; }, getRepository: (e: any) => { if (!tables.has(e)) tables.set(e, []); return repository(e, manager); }, save: async () => {}, create: (_e: any, v: any) => v };
+  const manager: any = { queryRunner: { isTransactionActive: true }, query: async (sql: string) => { assert.match(sql, /pg_advisory_xact_lock|FROM vehicle_intakes i|FROM family_cars f|vehicle_registration_claims/); return []; }, getRepository: (e: any) => { if (!tables.has(e)) tables.set(e, []); return repository(e, manager); }, save: async (entity:any, value:any) => manager.getRepository(entity).save(value), create: (_e: any, v: any) => v };
   manager.transaction = async (work: any) => {
     const previous = tail; let done!: () => void; tail = new Promise<void>(r => { done = r; }); await previous;
     const backup = new Map([...tables].map(([e, rows]) => [e, clone(rows)]));
@@ -56,13 +56,13 @@ function fixture() {
   const buildingRepo = { findOne: async () => ({ communityId: 3 }) } as any;
   const service = new VehicleIntakeService(intakes, txns, logs, houseRepo, buildingRepo, communityRepo,
     { findOne: async () => ({ id: 8, name: '合成前台' }) } as any,
-    { putBuffer: async () => ({ objectKey: 'isolated/new.jpg' }) } as any, family as any, execution as any, { get: () => 'local-secret' } as any);
+    { putBuffer: async () => ({ objectKey: 'isolated/new.jpg' }) } as any, family as any, execution as any, { get: (key:string) => key === 'APP_PUBLIC_BASE_URL' ? 'https://prsznh.cn' : 'local-secret' } as any);
   const token = 'synthetic-token-1234567890123456';
   const initial: any = { id: 1, tenantId: 1, houseId: 5, communityId: 3, houseLabel: '合成房号', ownerName: '合成业主', ownerPhone: '13800000000', kind: 'paid', status: 'approved', plate: '沪TEST01', contactName: '合成车主', contactPhone: '13900000000', relation: '', vehicleClass: '住户车-1', garages: ['local:phase2_parking'], garageNumbers: { main: 'OLD' }, files: [{ objectKey: 'isolated/old.jpg', fileName: 'old.jpg', contentType: 'image/jpeg', uploadedAt: new Date().toISOString() }], tokenHash: createHash('sha256').update(token).digest('hex'), tokenNonce: 'synthetic', expiresAt: new Date(Date.now() + 3600000), openedAt: null, submittedAt: new Date(), reviewedAt: new Date(), reviewedBy: 8, reviewNote: '旧审核', transactionId: null, familyCarId: null, log: [{ action: '旧审核', at: new Date().toISOString(), userId: 8, userName: '合成前台' }], createdBy: 8, updatedBy: 8 };
   tables.get(VehicleIntake)!.push(initial);
   const business: any = Object.create(BusinessService.prototype);
   Object.assign(business, { txnRepo: txns, logRepo: logs, intakes: service, houseRepo, buildingRepo, communityRepo, execution, tagRepo: { findOne: async () => null }, estimate: async () => ({ quantity: 1, startDate: '2026-11-11', endDate: '2026-12-31', amountCents: 10000 }), findRule: async () => ({ id: 2, name: '合成规则', config: {} }), notifyReviewers: async () => {} });
-  const pay = () => business.complete({ serviceType: BusinessServiceType.PARKING_MONTHLY, intakeId: 1, houseId: 5, ruleId: 2, paymentMethod: 'cash' }, user);
+  const pay = (extra = {}) => business.complete({ ...extra, serviceType: BusinessServiceType.PARKING_MONTHLY, intakeId: 1, houseId: 5, ruleId: 2, paymentMethod: 'cash' }, user);
   return { service: service as any, business, pay, user, token, txns, tables, row: () => tables.get(VehicleIntake)![0], transactions: () => tables.get(BusinessTransaction)!, audit: () => tables.get(BusinessLog)!, familyCreates: () => familyCreates, locks: () => locks, kicked, failAttach: () => { failAttach = true; } };
 }
 
@@ -409,4 +409,58 @@ test('未选编号、错误小区与错误通道均拒绝；移除通道清理�
   await assert.rejects(h.service.review(1, { decision: 'approve' }, h.user), /所选车库/);
   await h.service.setGarages(1, ['local:phase2_parking'], { main: 'B12' }, h.user);
   assert.deepEqual(h.row().garageNumbers, {});
+});
+
+test('回家补资料保留原登记，重复收款被阻止，未交资料不能批准', async () => {
+  const h = staffFixture();
+  const started = Date.now();
+  const saved = await h.service.prepareHomeUpload(1, { ...staffBody, formBase:'https://prsznh.cn/m/plate' }, h.user);
+  assert.equal(saved.homeUpload,true); assert.equal(saved.status,'waiting');
+  assert.equal(saved.plate,staffBody.plate);
+  assert.ok(Date.parse(saved.qr.expiresAt) >= started + 3600000 && Date.parse(saved.qr.expiresAt) <= Date.now() + 3600000);
+  const again = await h.service.prepareHomeUpload(1, { ...staffBody, formBase:'https://prsznh.cn/m/plate' }, h.user);
+  assert.equal(again.qr.url,saved.qr.url);
+  const paid = await h.pay({ parkingSystems: [{kind:'local',database:'parking2',label:'二期'}] });
+  assert.equal(paid.externalSyncStatus,'awaiting_docs');
+  await assert.rejects(h.pay(), /收款|关联/);
+  await assert.rejects(h.service.review(1, {decision:'approve'},h.user),  /提交资料/);
+  const token = new URL(saved.qr.url).pathname.split('/').pop()!;
+  await assert.rejects(h.service.publicSubmit(token, [], staffBody), /资料|附件/);
+  await h.service.publicSubmit(token, [{buffer:Buffer.from('%PDF-1.4'),originalname:'sample.pdf'}], staffBody);
+  assert.deepEqual(h.kicked, []);
+  assert.equal(h.tables.get(Notification)?.filter(n => n.eventKey === 'vehicle_intake.submitted' && n.receiverId === h.user.id && n.payload.page === '/plates?intakeId=1').length,1);
+  await h.service.review(1, {decision:'approve'}, h.user);
+  assert.equal(h.transactions()[0].externalSyncStatus,'queued');
+});
+
+test('先审资料，再选车库和期限；报价变动不会入账', async () => {
+  const h = staffFixture();
+  h.row().garages = [];
+  await h.service.staffSubmit(1, staffBody, h.user);
+  const approved = await h.service.review(1, {decision:'approve', materialsOnly:true},h.user);
+  assert.equal(approved.canConfigureApproved,true);
+  await h.service.setGarages(1,['local:phase2_parking'],{},h.user);
+  assert.equal(h.row().status,'approved');
+  const plan = {months:2,parkingSystems:[{kind:'local', database:'parking2', label:'二期地面'}]};
+  await assert.rejects(h.pay({...plan, expectedAmountCents:999}), /金额已变化/);
+  assert.equal(h.transactions().length,0);
+  assert.equal((await h.pay({...plan, expectedAmountCents:10000})).externalSyncStatus,'queued');
+});
+
+test('回家补交且手填金额须办公室和经理都通过才启动停车任务', async () => {
+  const h = staffFixture();
+  const saved = await h.service.prepareHomeUpload(1,{plate:staffBody.plate,formBase:'https://prsznh.cn/plate-form'},h.user);
+  const plan = {startDate:'2026-11-19', endDate:'2027-01-13', customReason:'自定义授权日期', parkingSystems:[{kind:'local',database:'parking2',label:'二期地面'}]};
+  await assert.rejects(h.pay(plan),/实收金额/);
+  const txn = await h.pay({...plan,manualAmountCents:12300});
+  assert.equal(txn.externalSyncStatus,'review');
+  const approve = () => h.business.decideReview(txn.id,true,undefined,{...h.user,id:9});
+  await assert.rejects(approve(),/办公室/);
+  const token = new URL(saved.qr.url).pathname.split('/').pop()!;
+  await h.service.publicSubmit(token,[{buffer:Buffer.from('%PDF-1.4'),originalname:'doc.pdf'}],staffBody);
+  await h.service.review(1,{decision:'approve'},h.user);
+  assert.deepEqual(h.kicked,[]);
+  assert.equal(h.transactions()[0].externalSyncStatus,'review');
+  assert.equal((await approve()).externalSyncStatus,'queued');
+  assert.deepEqual(h.kicked,[txn.id]);
 });

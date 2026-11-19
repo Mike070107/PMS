@@ -373,7 +373,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
               ...(c.custom
                 ? { startDate: c.custom.startDate, endDate: c.custom.endDate, manualAmountCents: c.custom.manualAmountCents, customReason: c.custom.reason }
                 : { months: c.months, currentEndDate: c.currentEndDate || undefined }),
-              parkingSystems: c.systems, ...(c.intakeId ? { intakeId: c.intakeId } : {}), paymentMethod: payCode(pay), remark: payCode(pay) === 'other' ? `收款方式：${pay}` : undefined,
+              parkingSystems: c.systems, ...(c.intakeId ? { intakeId: c.intakeId, expectedAmountCents:c.estimate.amountCents } : {}), paymentMethod: payCode(pay), remark: payCode(pay) === 'other' ? `收款方式：${pay}` : undefined,
             } });
             if (revision !== navigationRevision.current) return;
             okList.push({ c, txn });
@@ -665,7 +665,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
                 <button className={`confirmLine ${confirmed ? 'on' : ''}`} onClick={() => setConfirmed((v) => !v)}><div className="ck2"><Icon name="check" /></div>已收到 <b style={{ margin: '0 4px' }}>{pay} {money(cartTotal / 100)}</b>，确认到账</button>
               ) : null}
               <button className="btn p lg" style={{ width: '100%', justifyContent: 'center' }} disabled={busy || !canCharge || (cartTotal > 0 && !confirmed)} onClick={() => void charge()}>
-                <Icon name="check" size={20} />{busy ? '处理中…' : isBillTab ? `应收 ${money(cartTotal / 100)} · 请在物业系统收款` : `确认收款 · ${money(cartTotal / 100)}`}
+                <Icon name="check" size={20} />{busy ? '处理中…' : isBillTab ? `应收 ${money(cartTotal / 100)} · 请在物业系统收款` : `${tab === 'pk' && parkCarts.some(c => c.intakeId) ? '收费并办理' : '确认收款'} · ${money(cartTotal / 100)}`}
               </button>
               <div className="muted" style={{ fontSize: 12.5, textAlign: 'center', marginTop: 10 }}>系统只登记收款，后续 MIS / 停车 / 写卡自动执行并核验</div>
             </div>

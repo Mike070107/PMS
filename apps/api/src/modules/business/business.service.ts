@@ -151,6 +151,7 @@ export class BusinessService {
     if (intakeId) {
       const current = await this.intakes.dataVersionOf(intakeId, tenantId);
       const quoted = (txn.snapshot?.intake as { dataVersion?: number } | undefined)?.dataVersion;
+      if (approve && (txn.snapshot?.intake as {homeUpload?:boolean}).homeUpload && !(await this.intakes.isApproved(intakeId, tenantId))) throw new BadRequestException('请先等待办公室审核补交资料，再审核金额');
       if (approve && quoted !== undefined && current !== null && current !== quoted && (txn.snapshot?.review as { manualAmountCents?: unknown } | undefined)?.manualAmountCents !== undefined) {
         throw new BadRequestException('登记资料已更新（含非标准金额依据），请让前台按最新资料重新登记；原报价审批不能直接执行');
       }
@@ -620,7 +621,7 @@ export class BusinessService {
     // 新办车牌：车牌由业主扫码或办公室填写，登记期限以登记单为准，服务端重新报价。
     const intake = dto.intakeId && dto.serviceType === BusinessServiceType.PARKING_MONTHLY
       ? await this.intakes.claimForPayment(dto.intakeId, dto.houseId, user, manager, access) : null;
-    const term = intake?.row.registrationTerm ?? null;
+    const term = intake?.verifyGarages && dto.expectedAmountCents !== undefined ? null : intake?.row.registrationTerm ?? null;
     if (intake) {
       dto.plateNo = intake.plate || undefined;
       dto.currentEndDate = undefined;
@@ -631,13 +632,14 @@ export class BusinessService {
     const rule = await this.findRule(tenantId, dto.ruleId, dto.serviceType);
     // 非标准续期：前台自定开始/结束日期并手填实收金额 → 先登记收款，等物业经理审核通过再执行
     const custom = dto.serviceType === BusinessServiceType.PARKING_MONTHLY
-      && (dto.manualAmountCents != null || (!term && (!!dto.startDate || !!dto.endDate)));
+      && (dto.manualAmountCents != null || (!!dto.startDate || !!dto.endDate));
     if (custom) {
       if (!dto.startDate || !dto.endDate) throw new BadRequestException('非标准续期要填开始日期和结束日期');
       if (dto.manualAmountCents == null) throw new BadRequestException('非标准续期要填实收金额');
       if (!dto.customReason?.trim()) throw new BadRequestException('请写明非标准续期的原因，供物业经理审核');
     }
     const amountCents = custom ? dto.manualAmountCents! : estimate.amountCents;
+    if (dto.expectedAmountCents !== undefined && dto.expectedAmountCents !== amountCents) throw new BadRequestException('应收金额已变化，请刷新报价后重新确认');
     // 车牌所在的缴费规则分组要和所用价格表对上：业主车不能按租客车价收，反之亦然
     if (dto.serviceType === BusinessServiceType.PARKING_MONTHLY) {
       const ruleClass = ((rule.config ?? {}) as ParkingRuleConfig).vehicleClass || '';
@@ -703,7 +705,12 @@ export class BusinessService {
         snapshot.parking = { plate: (dto.plateNo || '').trim().toUpperCase(), target: target?.key ?? null, systems: dto.parkingSystems, ...(intake ? { newVehicle: true } : {}) };
       }
       if (intake) {
-        snapshot.intake = { id: intake.row.id, plate: intake.row.plate, dataVersion: intake.row.dataVersion ?? 0 };
+        if (intake.verifyGarages) {
+          const allowed = targetsForCommunity((await this.communityRepo.findOne({where:{id:communityId ?? -1,tenantId}}))?.name ?? null);
+          const keys = (dto.parkingSystems ?? []).map(s => allowed.find(t => s.kind === 'local' ? t.system === 'local' && t.database === s.database : t.system === 'deliyun' && t.deliyunPark === s.park)?.key);
+          if (!keys.length || keys.some(k => !k) || keys.sort().join('|') !== [...intake.row.garages].sort().join('|')) throw new BadRequestException('车库已变化，请刷新后按原登记收款');
+        }
+        snapshot.intake = { ...(intake.homeUpload ? {homeUpload:true} : {}), id: intake.row.id, plate: intake.row.plate, dataVersion: intake.row.dataVersion ?? 0 };
         snapshot.vehicle = { plateNo: intake.plate || '', validUntil: estimate.endDate };
         targetType = 'vehicle_intake';
         targetId = intake.row.id;

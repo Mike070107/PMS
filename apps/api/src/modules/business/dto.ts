@@ -175,6 +175,11 @@ export class HouseholdParkingQueryDto {
 
 export class CompleteBusinessDto extends EstimateBusinessDto {
   @IsOptional()
+  @IsInt()
+  @Min(0)
+  expectedAmountCents?: number;
+
+  @IsOptional()
   @IsString()
   @IsIn(['cash', 'wechat', 'alipay', 'bank', 'other'])
   paymentMethod?: string;

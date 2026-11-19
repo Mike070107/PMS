@@ -23,7 +23,7 @@ export interface Intake {
   houseId: number; communityId?: number | null; houseLabel: string; ownerName: string; ownerPhone: string;
   plate: string; contactName: string; contactPhone: string; relation: string; vehicleClass: string;
   garages: string[]; garageNumbers: Record<string, string>;
-  expiresAt: string; qrValid: boolean; openedAt: string | null; submittedAt: string | null; reviewedAt: string | null; reviewNote: string;
+  canConfigureApproved?: boolean; homeUpload?: boolean; expiresAt: string; qrValid: boolean; openedAt: string | null; submittedAt: string | null; reviewedAt: string | null; reviewNote: string;
   files: IntakeFile[];
   transaction: { id: number; txnNo: string; amountCents: number; startDate: string | null; endDate: string | null; externalSyncStatus: string; execution: { lastError?: string | null } | null } | null;
   familyCarId: number | null;
@@ -70,7 +70,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
   intake: Intake; house: ParkHouse; rules: ParkRule[]; targets: ParkTarget[];
   onChange: (x: Intake) => void; onDrop: (id: number) => void;
   onCart: (key: string, c: ParkingCart | null) => void;
-  renewal: (car: Car, label: string, vehicleClass: string, onClass: (v: string) => Promise<void>, ready: boolean) => ReactNode;
+  renewal: (car: Car, label: string, vehicleClass: string, onClass: (v: string) => Promise<void>, ready: boolean, garages?: ReactNode) => ReactNode;
   /** 车牌登记审核页：审核、选授权车库、看日志；收款仍在收银台。 */
   manage?: boolean;
   defaultStaffMode?: boolean;
@@ -101,7 +101,11 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
   const term = draftTerm ?? it.registrationTerm ?? { mode: 'months', months: 12 };
   const [edit, setEdit] = useState({ plate: it.plate, contactName: it.contactName, contactPhone: it.contactPhone || '', relation: it.relation });
   const uploadInput = useRef<HTMLInputElement>(null);
-  const [staffMode, setStaffMode] = useState(defaultStaffMode);
+  const [officeMode, setStaffMode] = useState(defaultStaffMode);
+  const staffMode = officeMode && !it.homeUpload;
+  const [checkedSubmission, setCheckedSubmission] = useState<string | null>(null);
+  const familyNeedsPreview = !manage && it.kind === 'family' && it.status === 'submitted' && checkedSubmission !== it.submittedAt;
+  const [homeDraft, setHomeDraft] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!entryMode) return;
@@ -126,7 +130,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
   }, [catalog, community, targetsProp]);
   const [picked, setPicked] = useState<string[]>(() => (it.garages.length ? it.garages : it.kind === 'family' ? [String(house.lane || '').includes('198') ? 'phase1' : 'phase2'] : []));
   const [nums, setNums] = useState<Record<string, string>>(it.garageNumbers || {});
-  const canEditGarages = canEnterVehicleDetails() && it.status !== 'void' && it.status !== 'approved' && !(it.kind === 'paid' && it.transaction);
+  const canEditGarages = canEnterVehicleDetails() && it.status !== 'void' && (it.status !== 'approved' || !!it.canConfigureApproved) && !(it.kind === 'paid' && it.transaction);
   const [savingGarages, setSavingGarages] = useState(false);
   const [garageError, setGarageError] = useState('');
   // 选的车库存到登记单上：收银台和车牌登记审核看到的是同一份。
@@ -217,7 +221,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
   const staffSubmit = () => call('保存登记', () => request<Intake>({ method: 'POST', url: `/vehicle-intakes/${it.id}/staff-submit`, data: { ...edit, ...(it.kind === 'family' ? { registrationTerm: term } : {}) } }));
   const basementKeys = ['main', 'civil'].filter(k => picked.includes(it.kind === 'family' ? k : k === 'main' ? 'local:phase2_main_garage' : 'deliyun:枫桦景苑'));
   // 历史已审核单可能没有车位绑定记录；不追溯改写、也不阻断原收款。
-  const missingSpace = !it.transaction && it.status !== 'approved' && basementKeys.some(k => !spaceSource.rows.some(s => s.garage === k && s.spaceNo === nums[k] && !s.unavailableReason));
+  const missingSpace = !it.transaction && (it.status !== 'approved' || it.canConfigureApproved) && basementKeys.some(k => !spaceSource.rows.some(s => s.garage === k && s.spaceNo === nums[k] && !s.unavailableReason));
   const setClass = async (v: string) => {
     if (it.kind !== 'paid' || it.status === 'void' || it.transaction) return;
     await call('保存价格分类', () => request<Intake>({ method: 'POST', url: `/vehicle-intakes/${it.id}/class`, data: { vehicleClass: v } }), true);
@@ -276,12 +280,21 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
     if (it.status === 'void' || operation.current || savingGarage.current) return;
     if (decision === 'void' && (!canVoid || !note.trim() || !window.confirm(it.transaction ? '确认只作废本条登记？不会退款，原收款与财务流水保留并转待处理，请联系财务核对。' : '确认撤销 / 作废本条登记？业主二维码将立即失效，资料和审计日志保留。'))) return;
     return call(decision === 'approve' ? '审核' : decision === 'void' ? '作废' : '退回', () => request<Intake>({ method: 'POST', url: `/vehicle-intakes/${it.id}/review`, data: decision === 'void' ? { decision, note: note.trim() } : {
-      decision, note: note.trim() || undefined, ...edit, garages: picked, garageNumbers: nums, ...extra,
+      decision, expectedVersion:it.dataVersion, note: note.trim() || undefined, ...edit, garages: picked, garageNumbers: nums, ...extra,
     } }));
   };
   const approve = async () => {
-    if (operation.current || savingGarage.current || garageError || !picked.length || missingSpace || it.status === 'void') return;
+    if (operation.current || savingGarage.current || it.status === 'void') return;
+    if (it.kind === 'paid' && !it.transaction) return review('approve', { materialsOnly:true });
+    if (garageError || !picked.length || missingSpace) return;
     if (it.kind === 'paid') return review('approve');
+    setAttempted(true);
+    if (it.kind === 'family') {
+      const invalid = cardRef.current?.querySelector<HTMLInputElement>('.registration-term-field :invalid:is(input,textarea)');
+      if (invalid) { invalid.focus(); invalid.reportValidity(); return; }
+      if (term.mode === 'dates' && !term.reason.trim()) { cardRef.current?.querySelector('textarea')?.focus(); return; }
+    }
+
     if (!edit.relation.trim() || edit.relation === '其他亲属') { setErr('请填写与业主的具体关系后再审核'); return; }
     // 亲情车：先在旧停车库按车牌查重（现场助手，约 5–20 秒）
     operation.current = '旧库查重'; ++epoch.current;
@@ -294,7 +307,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
       }
       if (q.status !== 'completed') throw new Error(q.status === 'failed' ? (q.error || '旧库查重失败') : '现场停车库 35 秒内没有回应，现场电脑可能不在线，请稍后再点');
       operation.current = ''; setBusy('');
-      await review('approve', { duplicateCheckQueryId: q.id });
+      await review('approve', { registrationTerm:term, duplicateCheckQueryId: q.id });
     } catch (e) { operation.current = ''; setErr(e instanceof Error ? e.message : '旧库查重失败'); setBusy(''); }
   };
 
@@ -316,11 +329,6 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
     setAttempted(true);
     const first = plateInvalid ? 'plate' : phoneInvalid ? 'phone' : relationInvalid ? 'relation' : '';
     if (first) { document.getElementById(fieldId(first))?.focus(); return; }
-    if (it.kind === 'family') {
-      const invalid = cardRef.current?.querySelector<HTMLInputElement>('.registration-term-field :invalid:is(input,textarea)');
-      if (invalid) { invalid.focus(); invalid.reportValidity(); return; }
-      if (term.mode === 'dates' && !term.reason.trim()) { cardRef.current?.querySelector('textarea')?.focus(); return; }
-    }
     void staffSubmit();
   };
   const garageFields = (<fieldset className="np-garages" aria-busy={savingGarages}>
@@ -351,7 +359,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
         </li>)}
       </ol>);
   const categoryPanel = !manage && it.kind === 'paid' && !it.transaction && it.status !== 'void' ? <div style={{ marginBottom: 12 }}>
-        {renewal(car, it.plate ? `${it.plate}（新办）` : `新办车牌 #${it.id}`, it.vehicleClass, selectVehicleClass, it.status === 'approved' && !garageError && !missingSpace && !converting && !busy && !savingGarages)}
+        {renewal(car, it.plate ? `${it.plate}（新办）` : `新办车牌 #${it.id}`, it.vehicleClass, selectVehicleClass, (it.status === 'approved' || !!it.homeUpload && (!!it.submittedAt || !expired)) && picked.length > 0 && !garageError && !missingSpace && !converting && !busy && !savingGarages, canEditGarages ? garageFields : null)}
       </div> : <div className="note2" style={{ marginBottom: 10 }}>
         <VehicleClassChoices options={['亲情车', ...classOptions]} value={it.kind === 'family' ? '亲情车' : it.vehicleClass} readOnly={!canConvert} disabled={!!busy || savingGarages} onChange={value => { void selectVehicleClass(value).catch(e => setErr(e instanceof Error ? e.message : '类别保存失败')); }} />
       </div>;
@@ -368,32 +376,27 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
         {it.status === 'void' || (it.status === 'approved' && (it.kind === 'family' || it.transaction)) ? <button className="btn g sm" onClick={() => onDrop(it.id)} title="从这里收起（车牌登记审核里仍可查）">✕</button> : null}
       </div>
 
-          {canStaff ? <section className="intake-registration-form" aria-label="工作人员代填">
-            <header className="intake-registration-heading"><div><h3>{defaultStaffMode ? '车辆资料' : '工作人员代填'}</h3></div><button type="button" className="btn" aria-expanded={staffMode} disabled={!!busy} onClick={() => setStaffMode(!staffMode)}>{staffMode ? defaultStaffMode ? '改由住户扫码' : '收起工作人员代填' : '工作人员直接代填'}</button></header>
-            {!defaultStaffMode && <p className="muted">填写本车车牌及联系人，保存后继续选择车库。附件选填，不上传也可提交。{it.kind === 'family' ? '亲情车仍须核实具体关系、旧库查重及经理审核。' : ''}</p>}
+          {canStaff && !it.homeUpload ? <section className="intake-registration-form" aria-label="工作人员代填">
+            <header className="intake-registration-heading"><div><h3>{staffMode ? '办公室填写资料' : '住户扫码填写资料'}</h3></div><button type="button" className="btn" aria-expanded={staffMode} disabled={!!busy} onClick={() => setStaffMode(!staffMode)}>{staffMode ? defaultStaffMode ? '改由住户扫码' : '收起工作人员代填' : '工作人员直接代填'}</button></header>
             {staffMode ? <fieldset disabled={!!busy || savingGarages} style={{ border: 0, padding: 0, minWidth: 0 }}>
               <IntakePlatePicker inputId={fieldId('plate')} invalid={attempted && plateInvalid} value={edit.plate} onChange={plate => setEdit({ ...edit, plate })} disabled={!!busy} />
               <div className="np-fields registration-contacts"><label>本车联系手机（必填）<input id={fieldId('phone')} aria-invalid={attempted && phoneInvalid} aria-describedby={attempted && phoneInvalid ? fieldId('phone-error') : undefined} className="in" inputMode="tel"  autoComplete="off" maxLength={11} placeholder="填写此车牌的联系手机" value={edit.contactPhone} onChange={e => setEdit({ ...edit, contactPhone: e.target.value })} />{attempted && phoneInvalid && <small id={fieldId('phone-error')}>请输入本车联系人 11 位手机号</small>}</label>{it.kind === 'family' ? <label>与业主关系（必填）<input id={fieldId('relation')} aria-invalid={attempted && relationInvalid} aria-describedby={attempted && relationInvalid ? fieldId('relation-error') : undefined} className="in" maxLength={12} value={edit.relation} onChange={e => setEdit({ ...edit, relation: e.target.value })} />{attempted && relationInvalid && <small id={fieldId('relation-error')}>请填写具体亲属关系</small>}</label> : null}<label>车主（选填）<input className="in" value={edit.contactName} onChange={e => setEdit({ ...edit, contactName: e.target.value })} /></label></div>
               <p className="intake-contact-help">此手机仅用于当前车牌，不会修改房屋业主电话。</p>
-              {it.kind === 'family' && <div className="registration-term-field"><RegistrationTermEditor title="车牌授权期限" attempted={attempted} value={term} onChange={setDraftTerm} /></div>}
-              <details open={!defaultStaffMode || undefined} className="registration-attachments"><summary>附件（选填） · {it.files.length} 份</summary><div className="intake-upload" tabIndex={0} aria-label="本条登记附件上传区" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); void uploadFiles(e.dataTransfer.files); }} onPaste={e => { if (e.clipboardData.files.length) { e.preventDefault(); e.stopPropagation(); void uploadFiles(e.clipboardData.files); } }}>
+
+              <details open className="registration-attachments"><summary>附件（选填） · {it.files.length} 份</summary><div className="intake-upload" tabIndex={0} aria-label="本条登记附件上传区" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); void uploadFiles(e.dataTransfer.files); }} onPaste={e => { if (e.clipboardData.files.length) { e.preventDefault(); e.stopPropagation(); void uploadFiles(e.clipboardData.files); } }}>
                 <input ref={uploadInput} type="file" accept="image/*,application/pdf" multiple hidden onChange={e => { if (e.target.files) void uploadFiles(e.target.files); e.target.value = ''; }} />
                 <button type="button" className="btn" onClick={() => uploadInput.current?.click()}>本地上传附件（选填）</button>
-                <p>点击选择、拖入，或先点击本区域再 Ctrl+V 粘贴。最多 10 份，每份 20MB；二维码上传仍可用。</p>
+                <p>点击选择、拖入，或先点击本区域再 Ctrl+V 粘贴。最多 10 份，每份 20MB。</p>
                 <span role="status">已上传 {it.files.length} 份{busy === '上传附件' ? ' · 上传中…' : ''}</span>
                 {it.files.map(f => <div key={f.index}>{f.fileName}</div>)}
               </div>
-              </details><button type="button" className="btn p" disabled={!!busy || savingGarages || (!defaultStaffMode && (plateInvalid || phoneInvalid || relationInvalid))} onClick={submitStaffFields}>{busy === '保存登记' ? '保存中…' : '保存登记，继续授权'}</button>
+              </details><button type="button" className="btn p" disabled={!!busy || savingGarages || (!defaultStaffMode && (plateInvalid || phoneInvalid || relationInvalid))} onClick={submitStaffFields}>{busy === '保存登记' ? '保存中…' : '保存资料，进入预览'}</button>
             </fieldset> : null}
           </section> : null}
-      {defaultStaffMode ? <details className="registration-options" key={it.kind + it.status} open={it.kind === 'paid' && !it.transaction && it.status !== 'void'}>
-        <summary>{it.kind === 'family' ? '车辆类别' : '车辆类别与授权期限'}<span>{it.kind === 'family' ? '亲情车 · 免费' : vehicleClassLabel(it.vehicleClass || '') || '选择标准'}</span></summary>
-        {categoryPanel}
-      </details> : categoryPanel}
       {it.reused ? <div className="note2">已继续原登记 #{it.id}，未新增单据；原资料及收款关联保留。</div> : null}
       {it.otherDraftIds?.length ? <details className="note2"><summary>发现其他历史待填登记（{it.otherDraftIds.length}）</summary><div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>{it.otherDraftIds.map(id => <a key={id} className="btn" href={`${import.meta.env.BASE_URL}plates?intakeId=${id}`}>核对登记 #{id}</a>)}</div></details> : null}
       {it.familyCarId && it.plate && <Link className="btn" to={`/family-cars?plate=${encodeURIComponent(it.plate)}&detail=${it.familyCarId}`}>查看授权期限与办理详情</Link>}
-      {it.registrationTerm && !it.familyCarId ? <div className="note2" style={{ marginBottom: 10 }}><RegistrationTermSummary term={it.registrationTerm} /></div> : null}
+      {it.registrationTerm && it.status === 'approved' && !it.familyCarId ? <div className="note2" style={{ marginBottom: 10 }}><RegistrationTermSummary term={it.registrationTerm} /></div> : null}
       {converting && canConvert ? <fieldset className="np-garages" disabled={!!busy || savingGarages}>
         <legend>转换登记类型</legend>
         <p className="np-garage-help">保留上传资料、联系人及审计日志；清空原车库、车位号和价格分类，已审核资料须重审。亲情车仍须填写具体关系、旧库查重并走经理审核，不会自动开通。</p>
@@ -407,17 +410,17 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
         </div>
       </fieldset> : null}
       {it.status !== 'void' && handedOff ? <div className="note2" style={{ marginBottom: 10 }}>{it.familyCarId || (it.kind === 'family' && it.status === 'approved') ? '已转亲情车办理，请到「亲情车管理」核对；' : '原收款已进入执行或待核对阶段，请到「待处理」核对原流水；'}已入库车辆请到「车辆管理」注销，不在登记审核硬删，也不在这里退款。</div> : null}
-      {['waiting', 'reupload', 'submitted'].includes(it.status) && !it.familyCarId && (it.kind === 'family' || !it.transaction)
+      {manage && !canQr && ['submitted'].includes(it.status) && !it.familyCarId && (it.kind === 'family' || !it.transaction)
         ? defaultStaffMode ? <details className="registration-options" open={!canStaff || undefined}><summary>办公室资料确认与申请期限</summary><OfficeIntakeEditor intake={it} onSaved={acceptResponse} /></details> : <OfficeIntakeEditor intake={it} onSaved={acceptResponse} /> : null}
 
       {!defaultStaffMode ? progress : null}
-      <div className={defaultStaffMode && staffMode ? "registration-review" : "np-grid"}>
+      <div className={canQr && (!staffMode || !canStaff) && it.homeUpload ? "np-grid" : "registration-review"}>
         {/* 左：二维码 / 业主进度 */}
-        {(!defaultStaffMode || !staffMode || !canStaff && canQr) && <div className="np-qr">
+        {canQr && (!staffMode || !canStaff) && <div className="np-qr">
           {canQr && qr && !expired ? (
             <>
               <button type="button" className="np-qr-trigger" onClick={previewQr} aria-label="放大扫码登记二维码"><img src={qr.dataUrl} alt="扫码填写" title="点击放大，方便业主扫码或拍照" /></button>
-              <div className="muted" style={{ fontSize: 13 }}>有效至 {hm(it.expiresAt)} · 业主可拍下二维码回家再扫，同一个码到时前一直能用</div>
+              <div className="muted" style={{ fontSize: 13 }}>有效至 {hm(it.expiresAt)} · 可拍照带走</div>
               <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginTop: 4 }}>
                 <button className="btn g sm" onClick={previewQr}>放大</button>
                 <button className="btn g sm" onClick={() => { void navigator.clipboard?.writeText(qr.url); toastOk('链接已复制'); }}>复制链接</button>
@@ -435,14 +438,32 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
           ) : (
             <div className="np-qr-empty"><Icon name={it.status === 'void' ? 'x' : 'check'} size={30} /><div className="muted" style={{ fontSize: 13.5 }}>{it.status === 'void' ? '已作废' : '资料已收齐'}</div></div>
           )}
+          {it.kind === 'paid' && !it.transaction && (it.homeUpload
+            ? <p role="status">已登记回家补交，可继续选择授权并收款。</p>
+            : homeDraft ? <fieldset disabled={!!busy}>
+                <legend>回家补资料</legend>
+                <IntakePlatePicker inputId={fieldId('home-plate')} invalid={attempted && plateInvalid} value={edit.plate} onChange={plate => setEdit({ ...edit, plate })} />
+                <div className="np-fields">
+                  <label>本车联系手机（选填）<input className="in" id={fieldId('home-phone')} inputMode="tel" maxLength={11} value={edit.contactPhone} aria-invalid={attempted && !!edit.contactPhone && phoneInvalid} aria-describedby={attempted && edit.contactPhone && phoneInvalid ? fieldId('home-phone-error') : undefined} onChange={e => setEdit({ ...edit, contactPhone:e.target.value })} />
+                    {attempted && edit.contactPhone && phoneInvalid && <small id={fieldId('home-phone-error')}>请输入 11 位手机号，暂不清楚可留空</small>}
+                  </label>
+                  <label>车主（选填）<input className="in" maxLength={50} value={edit.contactName} onChange={e => setEdit({ ...edit, contactName:e.target.value })} /></label>
+                </div>
+                <button type="button" className="btn p" onClick={() => {
+                  if (plateInvalid) { setAttempted(true); document.getElementById(fieldId('home-plate'))?.focus(); return; }
+                  if (edit.contactPhone && phoneInvalid) { setAttempted(true); document.getElementById(fieldId('home-phone'))?.focus(); return; }
+                  void call('保存待补登记', () => request<Intake>({ method:'POST', url:`/vehicle-intakes/${it.id}/home-upload`, data:{ plate:edit.plate, contactName:edit.contactName, contactPhone:edit.contactPhone, formBase:formBase() } }));
+                }}>保留车牌，继续办理</button>
+              </fieldset> : <button className="btn" type="button" onClick={() => setHomeDraft(true)}>回家补资料，先收费</button>)}
         </div>}
 
         {/* 右：业主填写内容 + 审核 */}
         <div>
           {it.status === 'reupload' && it.reviewNote ? <div className="note2" style={{ marginBottom: 8 }}><Icon name="alert" />已退回：{it.reviewNote}</div> : null}
 
-          {it.submittedAt ? (
+          {it.submittedAt && !canQr ? (
             <>
+              <h3>资料预览与审核</h3>
               {!(staffMode && canStaff) ? <IntakePlatePicker value={edit.plate} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={plate => setEdit({ ...edit, plate })} /> : null}
               <div className="np-fields">
                 <label>车主（选填）<input className="in" value={edit.contactName} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={(e) => setEdit({ ...edit, contactName: e.target.value })} /></label>
@@ -462,18 +483,26 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
             </>
           ) : defaultStaffMode ? null : <div className="muted" style={{ padding: '6px 0 10px' }}>扫码填写是另一种登记方式；住户提交后，这里会显示本车资料。</div>}
 
+          {familyNeedsPreview && canReview && <button type="button" className="btn p" onClick={() => setCheckedSubmission(it.submittedAt)}>资料已核对，选择授权</button>}
+          {!familyNeedsPreview && (it.status === 'approved' || it.homeUpload || manage || it.kind === 'family' && it.submittedAt) && <>
+      {defaultStaffMode ? <details className="registration-options" key={it.kind + it.status} open={it.kind === 'paid' && !it.transaction && it.status !== 'void'}>
+        <summary>{it.kind === 'family' ? '车辆类别' : '车辆类别与授权期限'}<span>{it.kind === 'family' ? '亲情车 · 免费' : vehicleClassLabel(it.vehicleClass || '') || '选择标准'}</span></summary>
+        {categoryPanel}
+      </details> : categoryPanel}
+          </>}
           {/* 开通哪些车库 */}
           {!canEditGarages && picked.length ? (
             <div style={{ marginTop: 6, fontSize: 14 }}><span style={{ color: 'var(--ink2)' }}>开通车库：</span>{picked.map((k) => <span key={k} className="tag mute" style={{ marginRight: 4 }}>{(it.kind === 'family' ? FAMILY_GARAGES.find(([x]) => x === k)?.[1] : (targets.find((t) => t.key === k)?.short || targets.find((t) => t.key === k)?.label)) || k}{nums[k] ? ` ${nums[k]}` : ''}</span>)}</div>
           ) : null}
-          {canEditGarages ? (
+          {!familyNeedsPreview && canEditGarages && (manage || it.kind === 'family') && (it.status === 'approved' || it.homeUpload || manage || it.kind === 'family' && it.submittedAt) ? (
             defaultStaffMode && canStaff ? <details className="registration-options"><summary>车库授权<span>已选 {picked.length} 项</span></summary>{garageFields}</details> : garageFields
           ) : null}
 
+              {!familyNeedsPreview && it.kind === 'family' && it.status === 'submitted' && <div className="registration-term-field"><RegistrationTermEditor title="车牌授权期限" attempted={attempted} value={term} onChange={setDraftTerm} /></div>}
           {/* 审核 */}
           {canReview && ['submitted', 'reupload'].includes(it.status) && it.submittedAt ? (
             <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-              <button className="btn p" disabled={!!busy || savingGarages || !!garageError || !picked.length || missingSpace || (it.kind === 'family' && (!edit.relation.trim() || edit.relation === '其他亲属'))} onClick={approve}><Icon name="check" size={16} />{busy === '旧库查重' ? '旧库查重中…' : busy === '审核' ? '提交中…' : '资料无误，通过'}</button>
+              {!familyNeedsPreview && <button className="btn p" disabled={!!busy || savingGarages || ((it.kind === 'family' || !!it.transaction) && (!!garageError || !picked.length || !!missingSpace)) || (it.kind === 'family' && (!edit.relation.trim() || edit.relation === '其他亲属'))} onClick={approve}><Icon name="check" size={16} />{busy === '旧库查重' ? '旧库查重中…' : busy === '审核' ? '提交中…' : it.kind === 'family' ? '提交经理审核' : '资料无误，通过'}</button>}
               <button className="btn" disabled={!!busy} onClick={() => setAsk(ask === 'reupload' ? '' : 'reupload')}>退回重传</button>
             </div>
           ) : null}
@@ -507,11 +536,6 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
         <ol className="np-log">{sortTimelineNewestFirst(it.log, l => l.at).map((l, i) => <li key={i}><time>{formatBeijingDateTime(l.at, 'MM-DD HH:mm')}</time><b>{l.userName}</b>{l.action}{l.note ? <small> · {l.note}</small> : null}</li>)}</ol>
       ) : null}
       {manage && it.kind === 'paid' && !it.transaction && it.status !== 'void' ? <div className="muted" style={{ marginTop: 8 }}>还没收款：<Link className="btn sm" to={`/cashier?intakeId=${it.id}`}>去收银台处理此登记</Link>（定位原登记，不新建计费业务）</div> : null}
-      {!manage && it.kind === 'paid' && !it.transaction && it.status !== 'void' ? (
-        <div style={{ marginTop: 12 }}>
-          {it.status === 'approved' ? <div className="note2">{it.log?.some(l => l.action === '关联车位档案') ? '登记与车位关联已保存。' : '登记已审核；历史登记不自动补写车位关联。'}继续使用本页原车辆收费流程；收款后仍需等待真实授权办理结果。</div> : null}
-        </div>
-      ) : null}
       {defaultStaffMode ? <details className="registration-options"><summary>办理记录</summary>{progress}</details> : null}
     </div>
   );

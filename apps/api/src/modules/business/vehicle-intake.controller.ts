@@ -55,6 +55,12 @@ export class VehicleIntakeController {
     return this.service.saveOffice(id, input, files, user, access);
   }
 
+  @Post(':id/home-upload')
+  @RequirePermission([...VIEW], 'edit')
+  prepareHomeUpload(@Param('id', ParseIntPipe) id: number, @Body() body: Record<string, unknown>, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.service.prepareHomeUpload(id, body, user, access);
+  }
+
   @Post(':id/show-qr')
   @RequirePermission([...VIEW], 'view')
   showQr(@Param('id', ParseIntPipe) id: number, @Body() body: { formBase: string }, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
