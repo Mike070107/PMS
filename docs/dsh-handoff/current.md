@@ -63,3 +63,8 @@
 
 ## 2026-11-19 新车登记与收银台新增车牌统一主题（本地完成）
 - 两个入口共用 PMS 主题变量、住户票头及登记表单；收银台支持直接录入或扫码续办。浏览器使用隔离数据核对手机、桌面、扫码和重复办理。pnpm --filter @pms/neighbor-web build 及三个登记浏览器套件通过，日志与截图在 D:/00项目开发/PMS-vehicle-release-20261119/outputs/vehicle-registration-theme。无生产发布。
+
+## 2026-11-19 车辆登记蓝灰主题已发布生产
+- 本次仅部署 Web。域名 prsznh.cn 解析 124.223.179.214，VM-4-8-ubuntu / 10.0.4.8，nginx 静态目录 /opt/pms-repair/web。公网版本 2.0.20261119-145128，源码 d0c2c7ca，远端 deployed/web 已核对。
+- 发布回归修正旧提示文字断言，继续验证业主只读和无业务写入。线上两入口验收使用公网制品、隔离业务数据；车辆管理 1440px，收银台 390px，主题、车牌输入及切换扫码均通过。与构建逐字节核对 30 个文件。证据 outputs/vehicle-registration-theme/production-final.log、online-verification.log、online-vehicles.png、online-cashier.png。
+- 回退时仅恢复 Web 静态资源，备份 /opt/pms-repair/web.bak.1795071364 已核实为 2.0.20261119-135242 / c3bbeb20。API api-78988f8，助手更新清单 2.6.0。本次未发布 API、助手或小程序，未提交真实登记或收费。
