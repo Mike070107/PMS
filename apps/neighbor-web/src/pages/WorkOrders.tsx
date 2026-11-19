@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { WorkOrderListItem } from '@pms/shared-types';
 import { WorkOrderStatus } from '@pms/shared-types';
@@ -47,7 +47,15 @@ export default function WorkOrders() {
   const [orders, setOrders] = useState<WorkOrderListItem[] | null>(null);
   const [err, setErr] = useState('');
 
-  const load = useCallback(async () => {
+  const [refreshing, setRefreshing] = useState(false);
+  const requestId = useRef(0);
+  const load = useCallback(async (manual = false) => {
+    const id = ++requestId.current;
+    setRefreshing(true);
+    const optionalList = (error: unknown): WorkOrderListItem[] => {
+      if (manual) throw error;
+      return [];
+    };
     try {
       // all = 进行中 + 已完结要分开拿：done 单独一个 scope
       // 搜索交给服务端：地址模糊输入精准命中（198/20 = 一期20 = 枫桦景苑一期20号楼），还能搜到列表 100 条以外的老单
@@ -55,19 +63,25 @@ export default function WorkOrders() {
       // 作废单服务端默认不返回，单独拉一次给「已作废」用（不算进「全部」）
       const [active, done, voided] = await Promise.all([
         repairs.list({ scope: 'all', q: kw, sort: 'repair_time_desc' }),
-        repairs.list({ scope: 'done', q: kw, sort: 'repair_time_desc' }).catch(() => [] as WorkOrderListItem[]),
-        repairs.list({ scope: 'all', status: WorkOrderStatus.VOIDED, q: kw, sort: 'repair_time_desc' }).catch(() => [] as WorkOrderListItem[]),
+        repairs.list({ scope: 'done', q: kw, sort: 'repair_time_desc' }).catch(optionalList),
+        repairs.list({ scope: 'all', status: WorkOrderStatus.VOIDED, q: kw, sort: 'repair_time_desc' }).catch(optionalList),
       ]);
+      if (id !== requestId.current) return;
       const map = new Map<number, WorkOrderListItem>();
       [...active, ...done, ...voided].forEach((o) => map.set(o.id, o));
       setOrders([...map.values()]);
       setErr('');
     } catch (e) {
-      setErr(e instanceof Error ? e.message : '工单加载失败');
+      if (id === requestId.current) setErr(e instanceof Error ? e.message : '工单加载失败');
+    } finally {
+      if (id === requestId.current) setRefreshing(false);
     }
   }, [q]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    return () => { ++requestId.current; };
+  }, [load]);
 
   const setParam = (patch: Record<string, string | null>) => {
     const next = new URLSearchParams(params);
@@ -117,6 +131,9 @@ export default function WorkOrders() {
         <div className="act">
           <AddressSearch communities={communities} value={q} width={300} onChange={(text) => setParam({ q: text, sel: null })}
             placeholder="198/20、电话、单号、维修工" />
+          <button type="button" className="btn" disabled={refreshing} onClick={() => void load(true)}>
+            {refreshing ? '刷新中…' : '刷新工单'}
+          </button>
           <button className="btn" onClick={() => setParam({ view: view === 'board' ? 'list' : 'board' })}>
             {view === 'board' ? '列表视图' : '看板视图'}
           </button>

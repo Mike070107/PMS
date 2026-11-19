@@ -24,6 +24,7 @@ const orders = [
   {...base,id:5,orderNo:'SYN-5',status:'completed',completedAt:'2026-11-09T00:00Z'},
 ];
 if(mode==='waiting-material') orders.find(o=>o.id===4).status='waiting_material';
+window.__markWaiting = () => { orders.find(o=>o.id===4).status='waiting_material'; };
 export const address = {tree:async()=>[]};
 export const repairs = {
  list:async(q)=>{window.__calls.push(q); if(mode==='loading') return new Promise(()=>{}); if(mode==='error') throw Error('合成接口错误：请稍后重试'); return q.status ? [] : q.scope==='done' ? orders.filter(o=>o.status==='completed') : orders;},
@@ -340,5 +341,22 @@ test('真实浏览器：等待、列表错误、详情错误与空结果都明�
   await page.getByText('合成详情错误',{exact:true}).waitFor();await shot(page,'detail-error');
   await page.goto(url+'/?view=list&filter=voided');
   await page.getByText('没有符合条件的工单',{exact:true}).waitFor();await shot(page,'list-empty');
+ });
+});
+
+test('局部刷新读取小程序更新后的工单，保留搜索筛选与视图', {timeout:30000}, async()=>{
+ await fixture(async(page,url)=>{
+  await page.goto(url+'/?view=list&filter=waiting_material&q=SYN');
+  await page.getByText('没有符合条件的工单',{exact:true}).waitFor();
+  const original = page.url();
+  await page.evaluate(()=>{ window.__markWaiting(); window.__refreshMarker=1; });
+  const before = await page.evaluate(()=>window.__calls.length);
+  await page.getByRole('button',{name:'刷新工单',exact:true}).click();
+  await page.locator('.wo-list-problem').first().waitFor();
+  assert.equal(page.url(), original);
+  assert.equal(await page.evaluate(()=>window.__refreshMarker),1);
+  const calls = await page.evaluate(n=>window.__calls.slice(n),before);
+  assert.equal(calls.length,3);
+  assert.ok(calls.every(call=>call.q==='SYN'));
  });
 });
