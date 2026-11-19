@@ -1,37 +1,78 @@
-import { useState } from 'react';
+import { useId, useLayoutEffect, useRef, useState } from 'react';
 import './intake-registration.css';
 
 // 与扫码填写页同一车牌字符集，不接受 I/O 或任意文字作为新车身份。
 const PROVINCES = '京津冀晋蒙辽吉黑沪苏浙皖闽赣鲁豫鄂湘粤桂琼渝川贵云藏陕甘青宁新'.split('');
 const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'.split('');
 const ALNUM = '0123456789ABCDEFGHJKLMNPQRSTUVWXYZ'.split('');
-export default function IntakePlatePicker({ value, onChange, disabled = false, compact = false, inputId, invalid = false }: { value: string; onChange: (v: string) => void; disabled?: boolean; compact?: boolean; inputId?: string; invalid?: boolean }) {
-  const [position, setPosition] = useState(Math.min(value.length, 7));
-  const keys = position === 0 ? PROVINCES : position === 1 ? LETTERS : ALNUM;
-  const choose = (key: string) => {
-    const index = Math.min(position, value.length);
-    onChange(`${value.slice(0, index)}${key}${value.slice(index + 1)}`.slice(0, 8));
-    setPosition(Math.min(index + 1, 7));
+const normalize = (text: string) => text.toUpperCase().replace(/[\s·.．・]/g, '').slice(0, 8);
+
+export default function IntakePlatePicker({ value, onChange, disabled = false, inputId, invalid = false }: {
+  value: string; onChange: (v: string) => void; disabled?: boolean; inputId?: string; invalid?: boolean;
+}) {
+  const generatedId = useId();
+  const id = inputId ?? generatedId;
+  const input = useRef<HTMLInputElement>(null);
+  const caret = useRef<number | null>(null);
+  const composing = useRef(false);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [selection, setSelection] = useState<{ start: number; end: number } | null>(null);
+  const start = Math.min(selection?.start ?? value.length, value.length);
+  const end = Math.min(selection?.end ?? start, value.length);
+  const keys = start === 0 ? PROVINCES : start === 1 ? LETTERS : ALNUM;
+
+  useLayoutEffect(() => {
+    if (caret.current !== null) {
+      input.current?.setSelectionRange(caret.current, caret.current);
+      caret.current = null;
+    }
+  });
+
+  const commit = (plate: string, position: number) => {
+    caret.current = position;
+    setSelection({ start: position, end: position });
+    onChange(plate);
   };
-  const keypad = <fieldset className="intake-plate-picker" disabled={disabled}>
-    <legend>车牌（鼠标点选，普通车 7 位 / 新能源 8 位）</legend>
-    <div className="intake-plate-display">
-      <div className={`intake-plate-slots${value.length === 8 ? ' intake-plate-energy' : ''}`} aria-label={`${value.length === 8 ? '新能源绿牌' : '普通蓝牌'}：${value || '待填写'}`}>
-        {Array.from({ length: value.length === 8 ? 8 : 7 }, (_, i) => <button type="button" key={i} aria-label={`车牌第${i + 1}位${value[i] ? ` ${value[i]}` : ''}`} aria-pressed={position === i} onClick={() => setPosition(Math.min(i, value.length))}>{value[i] || '—'}</button>)}
+  const type = (el: HTMLInputElement) => {
+    const position = normalize(el.value.slice(0, el.selectionStart ?? el.value.length)).length;
+    commit(normalize(el.value), position);
+  };
+  const rememberSelection = (el: HTMLInputElement) => {
+    if (!composing.current) setSelection({ start: el.selectionStart ?? 0, end: el.selectionEnd ?? 0 });
+  };
+  const choose = (key: string) => {
+    if (start >= 8) return;
+    const tail = start === end && value.length === 8 ? start + 1 : end;
+    commit(value.slice(0, start) + key + value.slice(tail), start + 1);
+  };
+  const erase = () => {
+    const from = start === end ? Math.max(0, start - 1) : start;
+    commit(value.slice(0, from) + value.slice(end), from);
+  };
+
+  return <div className="registration-plate">
+    <label htmlFor={id}>车牌号码（必填）</label>
+    <span className="plate-input-wrap">
+      <input ref={input} id={id} className="in" value={draft ?? value} required disabled={disabled}
+        aria-invalid={invalid} aria-describedby={invalid ? id + '-error' : undefined}
+        autoComplete="off" autoCapitalize="characters" spellCheck={false}
+        onCompositionStart={event => { composing.current = true; setDraft(event.currentTarget.value); }}
+        onCompositionEnd={event => { composing.current = false; setDraft(null); type(event.currentTarget); }}
+        onSelect={event => rememberSelection(event.currentTarget)}
+        onBlur={event => rememberSelection(event.currentTarget)}
+        onChange={event => { if (composing.current) setDraft(event.target.value); else type(event.target); }} />
+    </span>
+    {invalid && <small id={id + '-error'}>请输入完整的 7 位或 8 位车牌</small>}
+    {!disabled && <button type="button" className="btn sm plate-keypad-toggle" aria-expanded={expanded} aria-controls={id + '-keys'} onClick={() => setExpanded(!expanded)}>点选车牌</button>}
+    <div id={id + '-keys'} hidden={!expanded || disabled}>
+      <div className="intake-plate-keys" role="group" aria-label={start === 0 ? '省份简称' : start === 1 ? '发牌机关' : '车牌序号'}>
+        {keys.map(key => <button type="button" key={key} disabled={start >= 8} onClick={() => choose(key)}>{key}</button>)}
       </div>
-      {value.length < 8 ? <button type="button" className="btn sm intake-plate-add" aria-label="输入新能源车牌第8位" aria-pressed={position === 7} onClick={() => setPosition(Math.min(7, value.length))}>＋ 新能源第8位</button> : <span className="muted">新能源车牌</span>}
+      <div className="intake-plate-actions">
+        <button type="button" className="btn sm" disabled={end === 0} onClick={erase}>退一位</button>
+        <button type="button" className="btn sm" disabled={!value} onClick={() => commit('', 0)}>清空车牌</button>
+      </div>
     </div>
-    <div className="intake-plate-keys" aria-label={position === 0 ? '省份简称' : position === 1 ? '发牌机关' : '车牌序号'}>
-      {keys.map(key => <button type="button" key={key} onClick={() => choose(key)}>{key}</button>)}
-    </div>
-    <div className="intake-plate-actions"><button type="button" className="btn sm" onClick={() => { onChange(value.slice(0, -1)); setPosition(Math.max(0, value.length - 1)); }}>退一位</button><button type="button" className="btn sm" onClick={() => { onChange(''); setPosition(0); }}>清空车牌</button><output aria-live="polite">{value || '请选择省份'}</output></div>
-  </fieldset>;
-  if (!compact) return keypad;
-  return <div className={`registration-plate${value.length === 8 ? ' plate-electric' : ''}`}>
-    <label>车牌号码（必填）<span className="plate-input-wrap"><input id={inputId} aria-invalid={invalid} aria-describedby={invalid ? inputId + '-error' : undefined} className="in" value={value} maxLength={10} disabled={disabled} autoComplete="off" onChange={event => {
-      const plate = event.target.value.toUpperCase().replace(/[\s·.．・]/g, '').slice(0,8);
-      onChange(plate); setPosition(Math.min(plate.length,7));
-    }}/>{!value && <span className="plate-blanks" aria-hidden="true">{Array.from({length:7},(_,i)=><i key={i}/>)}</span>}</span>{invalid && <small id={inputId + '-error'}>请输入完整的 7 位或 8 位车牌</small>}</label>
-    <details><summary>点选车牌</summary>{keypad}</details>
   </div>;
 }

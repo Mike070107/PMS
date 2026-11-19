@@ -41,7 +41,7 @@ for (const width of [1440, 390]) test(`cashier original intake excludes other ho
     assert.equal(await page.getByRole('region', { name: '这一户的车辆列表，可左右滚动查看', exact: true }).count(), 0, 'existing household renewals are outside this focused checkout');
     const pay = page.getByRole('button', { name: /确认收款 ·/ });
     assert.equal(await pay.isDisabled(), true);
-    await page.getByRole('button', { name: '工作人员直接代填', exact: true }).click();
+    await page.getByRole('button', { name: '点选车牌', exact: true }).click();
     for (const key of '沪A12345') await page.locator('.intake-plate-keys').getByRole('button', { name: key, exact: true }).click();
     await page.getByLabel('联系手机（必填）').fill('13900000000');
     await page.getByRole('button', { name: '保存登记，继续授权', exact: true }).click();

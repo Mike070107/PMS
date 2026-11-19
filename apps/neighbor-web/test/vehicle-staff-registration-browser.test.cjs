@@ -32,6 +32,7 @@ for (const width of [1440, 375]) test(`staff no-attachment registration + garage
   try {
     await button(p, '工作人员直接代填').click();
     assert.equal(await button(p, '保存登记，继续授权').isDisabled(), true);
+    await p.getByRole('button', { name: '点选车牌', exact: true }).click();
     for (const key of '沪A12345') await p.locator('.intake-plate-keys').getByRole('button', { name: key, exact: true }).click();
     assert.equal(await p.getByLabel('本车联系手机（必填）').inputValue(), '', 'owner phone must not be silently reused');
     await p.getByLabel('本车联系手机（必填）').fill('13711112222');
@@ -116,6 +117,7 @@ test('family choice keeps conversion safeguards and local submission needs no at
     await term.screenshot({path:path.join(out,'family-term-375.png')});
     await term.getByRole('button',{name:'6 个月',exact:true}).click();
     await term.getByLabel('自定义续期月数').fill('5');
+    await p.getByRole('button', { name: '点选车牌', exact: true }).click();
     for (const key of '沪A12345') await p.locator('.intake-plate-keys').getByRole('button', { name: key, exact: true }).click();
     await p.getByLabel('本车联系手机（必填）').fill('13711112222');
     assert.equal(await button(p, '保存登记，继续授权').isEnabled(), true);

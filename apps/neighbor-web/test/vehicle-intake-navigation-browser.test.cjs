@@ -240,6 +240,36 @@ for (const width of [1440, 390]) {
         probe.remove();
         return matches;
       }), true, 'registration header follows the active PMS theme');
+      const toggle = dialog.getByRole('button', { name:'点选车牌', exact:true });
+      await toggle.click();
+      assert.equal(await dialog.locator('.intake-plate-slots, .intake-plate-actions output').count(), 0);
+      await dialog.locator('.intake-plate-keys').getByRole('button',{name:'沪',exact:true}).click();
+      assert.equal(await plate.inputValue(),'沪');
+      await plate.press('End');
+      await plate.pressSequentially('ad1234');
+      await dialog.locator('.intake-plate-keys').getByRole('button',{name:'5',exact:true}).click();
+      assert.equal(await plate.inputValue(),'沪AD12345');
+      await dialog.getByRole('button',{name:'退一位',exact:true}).click();
+      assert.equal(await plate.inputValue(),'沪AD1234');
+      await plate.fill('沪A·12345');
+      assert.equal(await plate.inputValue(),'沪A12345');
+      await plate.focus();
+      for (const key of ['Home','ArrowRight','ArrowRight','Shift+ArrowRight','Shift+ArrowRight']) await plate.press(key);
+      await dialog.locator('.intake-plate-keys').getByRole('button',{name:'9',exact:true}).click();
+      assert.equal(await plate.inputValue(),'沪A9345');
+      await plate.fill('沪A12345');
+      const bounds = await dialog.locator('.registration-plate').evaluate(el => {
+        const layout = [];
+        for (let node = el; node; node = node.parentElement) {
+          const rect = node.getBoundingClientRect();
+          layout.push([node.className, Math.round(rect.x), Math.round(rect.width)]);
+        }
+        return layout;
+      });
+      assert.ok(bounds[0][1] >= 0 && bounds[0][1]+bounds[0][2] <= width+1, JSON.stringify(bounds));
+      await dialog.locator('.registration-plate').screenshot({path:path.join(evidence,'single-plate-'+width+'.png')});
+
+      await toggle.click();
       const plateBox = await plate.boundingBox();
       assert.ok(plateBox && plateBox.x >= 0 && plateBox.x + plateBox.width <= width + 1);
       await dialog.screenshot({path:path.join(evidence,`parking-permit-${width}.png`),animations:'disabled'});

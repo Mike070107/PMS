@@ -1,25 +1,7 @@
-.intake-plate-picker{border:1px solid var(--line);border-radius:10px;padding:12px;margin:0 0 12px;min-width:0}
-.intake-plate-picker legend{font-size:14px;font-weight:600}
-.intake-plate-display{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:6px 0 14px}
-.intake-plate-slots{--plate-bg:#0755b8;--plate-ink:#fff;display:flex;align-items:center;gap:3px;width:100%;max-width:480px;box-sizing:border-box;padding:12px 14px;border:3px solid var(--plate-ink);border-radius:9px;background:var(--plate-bg);color:var(--plate-ink);box-shadow:0 0 0 2px var(--plate-bg),0 3px 7px #122a4326;position:relative}
-.intake-plate-slots::before,.intake-plate-slots::after{content:'';position:absolute;top:4px;width:5px;height:5px;border-radius:50%;background:var(--plate-ink);opacity:.75;pointer-events:none}
-.intake-plate-slots::before{left:18px}.intake-plate-slots::after{right:18px}
-.intake-plate-slots.intake-plate-energy{--plate-bg:var(--acc-w);--plate-ink:var(--acc-t);background:var(--acc-w)}
-.intake-plate-slots button{flex:1;min-width:0;min-height:60px;padding:0;border:0;border-radius:3px;background:transparent;color:var(--plate-ink);font:700 clamp(24px,5vw,38px)/1.2 'Arial Narrow','Microsoft YaHei',sans-serif;cursor:pointer;position:relative;transition:background .15s}
-.intake-plate-slots button:nth-child(2){margin-right:12px}
-.intake-plate-slots button:nth-child(2)::after{content:'·';position:absolute;right:-13px;top:50%;transform:translateY(-50%);font-size:26px;pointer-events:none}
-.intake-plate-slots button[aria-pressed=true]{background:#ffffff24;box-shadow:inset 0 -3px 0 var(--plate-ink)}
-.intake-plate-energy button[aria-pressed=true]{background:#ffffff80}
-.intake-plate-slots button:hover:not(:disabled){background:#ffffff38}
-.intake-plate-slots button:focus-visible{outline:2px dashed var(--plate-ink);outline-offset:1px}
-.intake-plate-slots button:disabled{cursor:not-allowed}
-.intake-plate-add{min-height:44px}
-.intake-plate-add[aria-pressed=true]{border-color:var(--acc);background:var(--acc-w)}
 .intake-plate-keys button{min-height:44px;border:1px solid var(--line);border-radius:6px;background:var(--paper,#fff);color:var(--ink);cursor:pointer;font-size:16px;transition:background .15s}
 .intake-plate-keys{display:grid;grid-template-columns:repeat(auto-fit,minmax(44px,1fr));gap:8px;max-width:560px}
 .intake-plate-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:10px}
-@media(max-width:600px){.intake-plate-picker{padding:8px}.intake-plate-slots{gap:2px}.intake-plate-keys{gap:6px;grid-template-columns:repeat(5,minmax(0,1fr))}.intake-plate-picker legend{font-size:13px}}
-@media(prefers-reduced-motion:reduce){.intake-plate-picker button{transition:none}}
+@media(max-width:600px){.intake-plate-keys{gap:6px;grid-template-columns:repeat(5,minmax(0,1fr))}}
 .intake-upload{padding:12px;border:1px dashed var(--line);border-radius:8px;margin:10px 0;outline-offset:3px}
 .intake-upload:focus{outline:2px solid var(--acc)}
 .intake-upload p{margin:6px 0;color:var(--ink2);font-size:13px}
@@ -72,17 +54,30 @@
 .registration-workspace .intake-registration-form > fieldset {
   display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px 24px; align-items:start;
 }
-.registration-plate { padding:16px; background:var(--acc-w); border:1px solid var(--line); border-radius:10px; color:var(--acc-t); }
-.registration-plate label { display:grid; gap:9px; font-weight:650; }
-.plate-input-wrap { display:block; position:relative; }
-.registration-plate .in { width:100%; height:52px; border:1px solid var(--acc-b); color:var(--ink); background:white; font:650 22px/1.2 Consolas,"Microsoft YaHei",monospace; letter-spacing:.06em; }
-.plate-electric .in { background:var(--surface); }
-.plate-blanks { pointer-events:none; position:absolute; inset:0 14px; display:flex; align-items:center; gap:6px; }
-.plate-blanks i { width:15px; height:3px; background:var(--ink3); }
-.plate-blanks i:nth-child(2){margin-right:5px}
-.registration-plate summary,.registration-attachments summary,.registration-options summary { cursor:pointer; padding:10px 0; font-weight:600; }
-.registration-plate summary { color:var(--acc-t); padding-bottom:0; }
-.registration-plate:has(details[open]) { grid-column:1/-1; }
+.registration-plate { min-width:0; padding:16px; background:var(--acc-w); border:1px solid var(--line); border-radius:10px; color:var(--acc-t); }
+.registration-plate label { display:block; font-weight:650; }
+.plate-input-wrap {
+  position:relative; display:block; width:100%; max-width:370px; margin:8px 0;
+  color:white;
+}
+.plate-input-wrap::before,.plate-input-wrap::after {
+  content:""; position:absolute; top:7px; height:4px; width:4px; border-radius:50%;
+  background:#c9d8eb; pointer-events:none;
+}
+.plate-input-wrap::before { left:12px; }
+.plate-input-wrap::after { right:12px; }
+.registration-plate .plate-input-wrap .in {
+  display:block; width:100%; min-width:0; height:60px; padding:0 12px; box-sizing:border-box;
+  border:2px solid #174787; border-radius:8px; background:#1754a0; color:white;
+  box-shadow:inset 0 0 0 2px white; text-align:center; letter-spacing:.09em;
+  font:700 clamp(22px,4vw,32px)/1.2 Consolas,"Microsoft YaHei",monospace; caret-color:white;
+}
+.registration-plate .plate-input-wrap .in:focus-visible { outline:2px solid var(--acc-b); outline-offset:2px; }
+.registration-plate .plate-input-wrap .in[aria-invalid=true] { border-color:var(--dang); }
+.registration-plate > small {display:block;color:var(--dang);}
+.plate-keypad-toggle { margin:4px 0; }
+.registration-plate:has(.plate-keypad-toggle[aria-expanded=true]) { grid-column:1/-1; }
+.registration-attachments summary,.registration-options summary { cursor:pointer; padding:10px 0; font-weight:600; }
 .registration-workspace .registration-contacts { margin:0; display:grid; grid-template-columns:1fr; gap:10px; }
 .registration-workspace .registration-contacts label { max-width:none; }
 .registration-workspace .intake-contact-help { grid-column:2; font-size:13px; margin:-8px 0 0; }
@@ -106,7 +101,7 @@
   .permit-stub { padding-left:10px; }
   .permit-stub b { font-size:18px; }
   .permit-resident strong { font-size:18px; }
-  .registration-workspace .intake-registration-form > fieldset { grid-template-columns:1fr; gap:12px; }
+  .registration-workspace .intake-registration-form > fieldset { grid-template-columns:minmax(0,1fr); gap:12px; }
   .registration-workspace .intake-contact-help { grid-column:1; }
   .registration-workspace .intake-registration-form > fieldset > .btn.p { width:100%; justify-content:center; }
   .registration-workspace .intake-registration-heading{flex-direction:row;justify-content:space-between;flex-wrap:wrap}
