@@ -122,11 +122,19 @@ test('真实共用池Page：工单池/派单台独立偏好；等待材料不拆
   assert.deepEqual(Array.from(f.page.data.list, r => r.id), [4, 3, 2, 1]);
   assert.equal(f.page.data.list.find(r => r.id === 3).claimable, true);
   assert.equal(f.page.data.showPriorityGroups, false);
-  assert.equal(f.page.data.list.every(r => !r.inWaitingGroup), true);
+  assert.equal(f.page.data.list.find(r => r.id === 3).foldable, true);
+  assert.equal(f.page.data.list.find(r => r.id === 2).foldable, false);
+  assert.equal(f.page.data.expandedWaiting[3], undefined);
+  const tap = {currentTarget:{dataset:{id:3}}};
+  f.page.onToggleWaitingCard(tap);
+  await f.page.load();
+  assert.equal(f.page.data.expandedWaiting[3], true);
+  f.page.onToggleWaitingCard(tap);
+  assert.equal(!!f.page.data.expandedWaiting[3], false);
   await f.page.onPickSort({ detail: { value: '2' } });
   assert.equal(f.calls.at(-1).sort, 'address');
   f.setMode('dispatch'); await f.page.load();
-  assert.equal(f.page.data.dispatcher, true); assert.equal(f.calls.at(-1).sort, 'reported_desc');
+  assert.equal(f.page.data.list.some(r => r.foldable), false); assert.equal(f.page.data.dispatcher, true); assert.equal(f.calls.at(-1).sort, 'reported_desc');
   await f.page.onPickSort({ detail: { value: '0' } });
   f.setMode('pool'); await f.page.load(); assert.equal(f.calls.at(-1).sort, 'address');
   f.page.data.mainTab = 'reported'; await f.page.load();
@@ -183,11 +191,15 @@ test('存储不可用仍可本次切换；显式临时偏好不跨身份或逻�
   }
 });
 
-test('两页原生三选项、加载禁用、报修/完结不露排序，无紧急/待料折叠模板', () => {
+test('两页原生三选项、加载禁用、报修/完结不露排序，等待材料按卡片折叠且保留排序', () => {
   for (const name of ['my-orders', 'pool']) {
     const source = fs.readFileSync(path.join(root, `apps/miniapp-staff/miniprogram/pages/${name}/${name}.wxml`), 'utf8');
     assert.match(source, /picker mode="selector" range="\{\{sortLabels\}\}" value="\{\{sortIndex\}\}" bindchange="onPickSort" disabled="\{\{loading\}\}"/);
     assert.doesNotMatch(source, /item\.groupStart|item\.waitingGroupStart|!item\.inWaitingGroup/);
+    if (name === 'pool') {
+      assert.ok(source.includes('wx:if="{{item.foldable && !expandedWaiting[item.id]}}"'));
+      assert.ok(source.includes('catchtap="onToggleWaitingCard"'));
+    }
     if (name === 'pool') assert.match(source, /wx:if="\{\{mainTab === 'pool'\}\}" class="work-hero__right"/);
   }
 });

@@ -135,7 +135,13 @@
     class="order-slot {{collectingId === item.id ? 'order-slot--collecting' : ''}} {{closingId === item.id ? 'order-slot--closing' : ''}} {{settling && index > collectingIndex ? 'order-slot--following' : ''}}"
     style="{{collectingId === item.id || closingId === item.id ? 'height:' + collectingHeight + 'px' : ''}}"
   >
-    <view
+    <view wx:if="{{item.foldable && !expandedWaiting[item.id]}}" class="card waiting-fold"
+      hover-class="waiting-fold--hover" bindtap="onToggleWaitingCard" data-id="{{item.id}}" aria-role="button">
+      <view class="waiting-fold__head"><view class="waiting-fold__title"><text wx:if="{{item.urgent}}" class="badge--urgent">紧急</text><text>等待材料</text></view><text class="waiting-fold__expand">展开 ▾</text></view>
+      <view class="waiting-fold__addr">{{item.summaryAddress || item.orderNo || '未填地址'}}</view>
+      <view wx:if="{{item.missingText}}" class="waiting-fold__material">{{item.missingText}}</view>
+    </view>
+    <view wx:else
       class="card wo-card wo-card--data order-card"
       hover-class="wo-card--hover"
       hover-stay-time="80"
@@ -147,6 +153,7 @@
       <template is="wo-card-body" data="{{item: item, thirdLabel: item.thirdLabel, thirdValue: item.thirdValue, thirdHint: item.thirdHint}}"/>
 
       <view class="wo-card__foot">
+        <button wx:if="{{item.foldable}}" class="btn btn--ghost btn--sm" catchtap="onToggleWaitingCard" data-id="{{item.id}}">收起 ▴</button>
         <!-- 派单台 -->
         <block wx:if="{{dispatcher}}">
           <button

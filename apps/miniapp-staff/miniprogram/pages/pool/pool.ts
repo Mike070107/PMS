@@ -76,9 +76,7 @@ type OrderRow = WorkOrderListItem & {
   actionText: string;
   /** 「王师傅」/「未派单」，派单台专用 */
   assigneeText: string;
-  /** 工单池里等待材料的单收成一组（一行「等待材料 N 张」），点开才展开；这两个标记驱动 wxml */
-  inWaitingGroup: boolean;
-  waitingGroupStart: boolean;
+  foldable: boolean;
 
   /* ---- 卡片数据网格用的四个短值（data-first-ui）：由 withOrderLabels 一并算好 ----
      在手工单页用的是同一份，改口径去 packages/miniapp-ui/src/format.ts，别在页面里再算一遍。
@@ -257,7 +255,7 @@ Page({
     listLimit: PAGE_CAP,
     /** 等待材料那一组：几张、展开没。展开状态跨刷新保留，别刷一下又收起来 */
     waitingCount: 0,
-    waitingExpanded: false,
+    expandedWaiting: {} as Record<number, boolean>,
     /** 我报的 / 已完结：不搜索时只展示最近 recentLimit 条，这里记被藏起来的条数，>0 就在列表底部说明 */
     recentHiddenCount: 0,
     recentLimit: RECENT_LIST_LIMIT,
@@ -307,6 +305,7 @@ Page({
   listIdentity: null as string | null,
 
   onShow() {
+    this.setData({ expandedWaiting: {} });
     // 语音插件的回调是全局单例，其他页面使用后会覆盖；每次回到派单台都重新绑定到本页。
     this.bindAssignSpeech();
     /**
@@ -352,7 +351,7 @@ Page({
       const identity = session.me ? `${session.me.tenantId}.${session.me.id}` : '';
       if (this.listIdentity !== null && identity !== this.listIdentity) {
         this.allRows = [];
-        this.setData({ list: [], loaded: false, metricFilter: '', filterIndex: 0, keyword: '' });
+        this.setData({ list: [], loaded: false, expandedWaiting: {}, metricFilter: '', filterIndex: 0, keyword: '' });
       }
       this.listIdentity = identity;
       if (!session.hasPmsAppAccess) {
@@ -442,9 +441,7 @@ Page({
           ...item,
           claimable,
           dispatchable,
-          // 等待材料保留状态/接回动作，但不折叠挪到末尾打乱显式排序。
-          inWaitingGroup: false,
-          waitingGroupStart: false,
+          foldable: !dispatcher && mainTab === 'pool' && item.status === WorkOrderStatus.WAITING_MATERIAL,
           actionText:
             mainTab === 'reported'
               ? '看进度'
@@ -886,9 +883,13 @@ Page({
     wx.navigateTo({ url: `/pages/order-detail/order-detail?id=${e.currentTarget.dataset.id}` });
   },
 
-  /** 「等待材料 N 张」那一行：点一下展开这一组的卡片，再点收回 */
-  onToggleWaitingGroup() {
-    this.setData({ waitingExpanded: !this.data.waitingExpanded });
+  onToggleWaitingCard(e: WechatMiniprogram.BaseEvent) {
+    const id = Number(e.currentTarget.dataset.id);
+    if (!this.data.list.some(row => row.id === id && row.foldable)) return;
+    const expandedWaiting = { ...this.data.expandedWaiting };
+    if (expandedWaiting[id]) delete expandedWaiting[id];
+    else expandedWaiting[id] = true;
+    this.setData({ expandedWaiting });
   },
 
   /** 按页头选中的那个数字筛当前这一屏；没选就原样返回 */
