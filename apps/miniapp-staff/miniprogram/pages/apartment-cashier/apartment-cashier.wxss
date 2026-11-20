@@ -117,6 +117,17 @@
 .payment-icon--alipay { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20448%20448%22%3E%3Cpath%20d%3D%22M378%20416H70Q40%20415%2021%20395Q1%20376%200%20346V38Q1%208%2021%20-11Q40%20-31%2070%20-32H378Q407%20-31%20427%20-12Q447%208%20448%2038Q413%2057%20368%2081Q323%20104%20276%20126Q252%2092%20214%2069Q176%2046%20128%2045Q76%2047%2054%2072Q32%2096%2031%20121Q26%20152%2047%20177Q68%20201%20130%20203Q185%20201%20257%20178Q270%20201%20277%20219Q284%20237%20284%20238H106V255H198V286H88V305H198V356H249V305H358V286H249V255H337Q337%20253%20327%20226Q317%20199%20299%20164Q337%20151%20376%20137Q412%20124%20448%20111V346Q447%20376%20427%20395Q408%20415%20378%20416ZM47%20125Q47%20108%2060%2091Q74%2073%20117%2071Q156%2073%20186%2095Q216%20118%20235%20144Q166%20174%20126%20176Q76%20174%2061%20157Q45%20140%2047%20125Z%22%20transform%3D%22translate(0%20416)%20scale(1%20-1)%22%20fill%3D%22%231677ff%22%20%2F%3E%3C%2Fsvg%3E"); }
 .payment-icon--cash { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20576%20448%22%3E%3Cpath%20d%3D%22M0%20335V26Q1%20-4%2027%20-16Q92%20-38%20158%20-30Q223%20-22%20288%20-4Q348%2013%20408%2022Q468%2030%20527%2015Q545%2011%20560%2021Q575%2030%20576%2049V358Q575%20388%20549%20400Q484%20422%20419%20414Q353%20406%20288%20388Q228%20371%20168%20363Q108%20354%2049%20369Q30%20373%2016%20364Q1%20354%200%20335ZM288%2096Q254%2097%20231%20124Q209%20151%20208%20192Q209%20233%20231%20260Q254%20287%20288%20288Q322%20287%20345%20260Q367%20233%20368%20192Q367%20151%20345%20124Q322%2097%20288%2096ZM64%2096Q91%2095%20109%2077Q127%2059%20128%2032H64V96ZM128%20304Q127%20277%20109%20259Q91%20241%2064%20240V304H128ZM512%20144V80H448Q449%20107%20467%20125Q485%20143%20512%20144ZM448%20352H512V288Q485%20289%20467%20307Q449%20325%20448%20352Z%22%20transform%3D%22translate(0%20416)%20scale(1%20-1)%22%20fill%3D%22%23f56c6c%22%20%2F%3E%3C%2Fsvg%3E"); }
 
-.record-actions { display:flex; align-items:center; justify-content:space-between; gap:16rpx; margin-top:10rpx; }
-.record-link { color:var(--text-secondary,#586a80); font-size:24rpx; }
+.record-actions { display:flex; align-items:center; justify-content:flex-end; gap:12rpx; }
+.record-chevron { color:#586a80; font-size:40rpx; }
 .record-print { margin:0; min-height:72rpx; padding:0 22rpx; font-size:26rpx; line-height:72rpx; background:#eff4fa; color:#294d73; }
+
+.print-icon { width:38rpx; height:38rpx; display:block; }
+.record-print { display:flex; gap:6rpx; align-items:center; justify-content:center; min-width:80rpx; min-height:80rpx; }
+.record-close { min-width:80rpx; line-height:80rpx; text-align:center; font-size:44rpx; }
+.refund-color { color:#a62e36; }
+.refund-confirm { background:#a62e36; color:#fff; }
+
+.record-row { display:grid; grid-template-columns:minmax(0,1fr) auto; column-gap:12rpx; align-items:center; }
+.record-row > .daily-place,.record-row > .his-row__main,.record-row > .meta { grid-column:1; }
+.record-row > .record-actions { grid-column:2; grid-row:1 / span 3; }
+.record-row .his-row__items { min-width:0; overflow-wrap:anywhere; }

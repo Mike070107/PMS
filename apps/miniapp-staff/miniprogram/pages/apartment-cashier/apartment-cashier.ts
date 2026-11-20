@@ -8,7 +8,7 @@ import { dedupeAddressText, formatBeijingDateTime } from '@pms/shared-types';
  *
  * 手机上做了两处收敛：
  *   · 选址用原生 picker（小区 → 楼栋 → 房号），不做联想搜索；公寓楼栋房号本来就少；
- *   · 打印和补打使用员工获授权的现场打印机。红冲仍在电脑上办理；
+ *   · 打印和补打使用员工获授权的现场打印机；
  *     这一页只管「收一笔、出一张」和「查这间房交过什么」。
  */
 import { apartmentCashier } from '@pms/api-client';
@@ -119,6 +119,7 @@ Page({
     /** 收完款弹出的小票 */
     recordNo: '',
     recordError: '',
+    refundOpen: false, refundBusy: false, refundReason: '', refundError: '',
     recordDetail: null as ReturnType<typeof detailView> | null,
     receiptOpen: false,
     receiptNo: '',
@@ -690,14 +691,57 @@ Page({
   },
   onRetryPrinters() { void this.refreshPrinters(); },
   onRetryReceiptPrint() { if (this.data.receiptNo) void this.offerPrint(this.data.receiptNo, false); },
+  beginRefund() {
+    if (this.data.canCharge && this.data.recordDetail?.refundable && !this.data.refundBusy)
+      this.setData({ refundOpen: true, refundReason: '', refundError: '' });
+  },
+  cancelRefund() {
+    if (!this.data.refundBusy) this.setData({ refundOpen: false, refundError: '' });
+  },
+  onRefundReason(e: WechatMiniprogram.Input) {
+    this.setData({ refundReason: e.detail.value });
+  },
+  async confirmRefund() {
+    const detail = this.data.recordDetail;
+    if (!this.data.canCharge || !this.data.refundOpen || this.data.refundBusy || !detail?.refundable) return;
+    const no = detail.receiptNo;
+    this.setData({ refundBusy: true, refundError: '' });
+    try {
+      const original = await apartmentCashier.receipt(no);
+      if (original.receiptNo !== no) throw new Error('凭证不匹配，请重新打开');
+      let reversal = original.reversalReceiptNo;
+      if (!reversal) {
+        if (!detailView(original).refundable || original.amountCents !== detail.amountCents)
+          throw new Error('凭证已变更，请重新打开');
+        try {
+          const result = await apartmentCashier.refund(no, this.data.refundReason.trim());
+          if (result.originalReceiptNo !== no || result.amountCents !== -original.amountCents || !result.receiptNo)
+            throw new Error('请核对红冲结果');
+          reversal = result.receiptNo;
+        } catch (error) {
+          const latest = await apartmentCashier.receipt(no);
+          if (latest.receiptNo !== no || !latest.reversalReceiptNo) throw error;
+          reversal = latest.reversalReceiptNo;
+        }
+      }
+      await this.loadRecord(reversal);
+      const house = this.data.houses[this.data.houseIndex];
+      await Promise.all([this.loadTodaySummary(), this.loadToday(),
+        this.data.activeTab === 'history' && house ? this.loadHistory(house.id) : undefined]);
+    } catch (error: any) {
+      this.setData({ refundError: error?.message || '未确认红冲结果，请核对收据' });
+    } finally {
+      this.setData({ refundBusy: false });
+    }
+  },
   recordRequest: 0,
   onOpenRecord(e: WechatMiniprogram.TouchEvent) {
     const receiptNo = e.currentTarget.dataset.receipt;
-    if (receiptNo) return this.loadRecord(receiptNo);
+    if (receiptNo && !this.data.refundBusy) return this.loadRecord(receiptNo);
   },
   async loadRecord(receiptNo: string) {
     const request = ++this.recordRequest;
-    this.setData({recordNo: receiptNo, recordError: '', recordDetail: null});
+    this.setData({refundOpen: false, refundReason: '', refundError: '', recordNo: receiptNo, recordError: '', recordDetail: null});
     try {
       const receipt = await apartmentCashier.receipt(receiptNo);
       if (request !== this.recordRequest) return;
@@ -708,6 +752,7 @@ Page({
     }
   },
   onCloseRecord() {
+    if (this.data.refundBusy) return;
     ++this.recordRequest;
     this.setData({recordNo:'', recordDetail:null, recordError:''});
   },
@@ -728,7 +773,7 @@ Page({
         if (reprint) await wx.showModal({title:'未获打印授权',content:'请管理员在「员工与权限」中选择你的账号，打开「打印服务」勾选打印机。',showCancel:false});
         return;
       }
-      const answer = await wx.showModal({ title: reprint?'补打这张小票？':'收款成功，打印小票？', content:'小票号 '+receiptNo,confirmText:'选打印机',cancelText:'取消' });
+      const answer = await wx.showModal({ title: reprint?'补打小票？':'收款成功，打印小票？', content:'小票号 '+receiptNo,confirmText:reprint?'补打':'打印',cancelText:'取消' });
       if (!answer.confirm) return;
       const printers = allowed.filter(p=>p.online);
       if (!printers.length) { await wx.showModal({title:'打印机离线',content:'请检查打印电脑和助手，可稍后从收费记录补打。',showCancel:false}); return; }
@@ -800,6 +845,8 @@ function formatPaidAt(iso: string): string {
 
 function detailView(r: apartmentCashier.CashierReceiptDetail) {
   return {
+    refundable: r.status === 'paid' && r.amountCents > 0 && !r.reversalReceiptNo && r.items.every(i => i.amountCents > 0),
+    amountCents: r.amountCents, reversalReceiptNo: r.reversalReceiptNo, originalReceiptNo: r.originalReceiptNo,
     receiptNo:r.receiptNo, amount:money(r.amountCents), status:r.amountCents<0?'红冲退款':r.status==='refunded'?'已红冲':'',
     address:r.fullAddress || [r.communityName,r.lane,r.buildingNo,r.roomNo].filter(Boolean).join(' '),
     time:r.paidAt?formatBeijingDateTime(r.paidAt,'YYYY-MM-DD HH:mm'):'',

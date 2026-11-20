@@ -115,6 +115,7 @@ export const queueReceipt = (printer:number,receiptNo:string,reprint:boolean,req
 export const receiptPrintStatus = (id:number) => request<{state:string}>({url:'/receipt-printers/jobs/'+id});
 
 export interface CashierReceiptDetail {
+  originalReceiptNo?: string | null; reversalReceiptNo?: string | null;
   receiptNo: string; amountCents: number; paidAt: string | null; paymentMethod: string | null;
   cashier: string | null; fullAddress: string | null; communityName: string | null; lane: string | null;
   buildingNo: string | null; roomNo: string | null; status: string; remark: string | null;
@@ -124,3 +125,9 @@ export interface CashierReceiptDetail {
 export const receipt = (receiptNo: string) => request<CashierReceiptDetail>({
   url: '/fees/cashier/receipts/' + encodeURIComponent(receiptNo),
 });
+
+export const refund = (receiptNo: string, reason: string) =>
+  request<{receiptNo: string; originalReceiptNo: string; amountCents: number}>({
+    method: 'POST', url: '/fees/cashier/receipts/' + encodeURIComponent(receiptNo) + '/refund',
+    data: reason ? { reason } : {},
+  });

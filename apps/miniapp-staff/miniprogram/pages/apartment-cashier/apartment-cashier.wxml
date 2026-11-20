@@ -1,6 +1,6 @@
 <!--
   公寓收费工作台（员工端）。绑定名一律对应 apartment-cashier.ts 的 data / 方法。
-  手机上只做「收一笔、出一张、看这间房交过什么」；补打和红冲在网站后台办。
+  手机上只做「收一笔、出一张、看这间房交过什么」。
 -->
 <view class="container {{activeTab === 'charge' && placeText ? 'container--with-bar' : ''}}">
   <view wx:if="{{loading}}" class="muted center">加载中…</view>
@@ -205,7 +205,7 @@
         <button wx:if="{{historyError}}" class="btn btn--ghost" disabled="{{historyLoading}}" bindtap="onRetryHistory">重新读取历史记录</button>
         <pms-empty wx:if="{{!historyLoading && !historyError && !history.length}}" text="这间房还没有缴费记录" />
         <block wx:else>
-          <view wx:for="{{history}}" wx:key="receiptNo" class="his-row" data-receipt="{{item.receiptNo}}" bindtap="onOpenRecord" role="button">
+          <view wx:for="{{history}}" wx:key="receiptNo" class="his-row record-row" data-receipt="{{item.receiptNo}}" bindtap="onOpenRecord" role="button">
             <view class="his-row__main">
               <text class="his-row__items">{{item.itemsText || '—'}}</text>
               <text class="his-row__amount {{item.refunded ? 'his-row__amount--off' : ''}}">{{item.amountText}}</text>
@@ -213,7 +213,7 @@
             <view class="meta">
               {{item.timeText}} · {{item.methodText}}{{item.statusText ? ' · ' + item.statusText : ''}}
             </view>
-            <view class="record-actions"><text class="record-link">查看明细 ›</text><button wx:if="{{printAvailable}}" class="record-print" disabled="{{printBusy}}" data-receipt="{{item.receiptNo}}" catchtap="onPrintRow">打印本笔</button></view>
+            <view class="record-actions"><button wx:if="{{printAvailable}}" class="record-print" disabled="{{printBusy}}" data-receipt="{{item.receiptNo}}" catchtap="onPrintRow" aria-label="补打"><image class="print-icon" src="/assets/receipt-printer.svg" /><text>补打</text></button><text aria-hidden="true" class="record-chevron">›</text></view>
           </view>
         </block>
         <view wx:if="{{history.length}}" class="muted mt-sm">已显示 {{history.length}} / {{historyTotal}} 笔</view>
@@ -246,14 +246,14 @@
         <view wx:if="{{todayError}}" class="field-error mt-sm">{{todayError}}，请点刷新重试。</view>
         <pms-empty wx:if="{{!todayRows.length && !todayLoading && !todayError}}" text="今日暂无收费记录" />
         <button wx:if="{{printListError}}" class="btn btn--ghost" bindtap="onRetryPrinters">{{printListError}} · 重试</button>
-        <view wx:for="{{todayRows}}" wx:key="key" class="his-row" data-receipt="{{item.receiptNo}}" bindtap="onOpenRecord" role="button">
+        <view wx:for="{{todayRows}}" wx:key="key" class="his-row record-row" data-receipt="{{item.receiptNo}}" bindtap="onOpenRecord" role="button">
           <view class="daily-place">{{item.placeText}}</view>
           <view class="his-row__main">
             <text class="his-row__items">{{item.itemsText || '—'}}</text>
             <text class="his-row__amount {{item.refunded ? 'his-row__amount--off' : ''}}">{{item.amountText}}</text>
           </view>
           <view class="meta">{{item.timeText}} · {{item.methodText}}{{item.statusText ? ' · ' + item.statusText : ''}}</view>
-            <view class="record-actions"><text class="record-link">查看明细 ›</text><button wx:if="{{printAvailable}}" class="record-print" disabled="{{printBusy}}" data-receipt="{{item.receiptNo}}" catchtap="onPrintRow">打印本笔</button></view>
+            <view class="record-actions"><button wx:if="{{printAvailable}}" class="record-print" disabled="{{printBusy}}" data-receipt="{{item.receiptNo}}" catchtap="onPrintRow" aria-label="补打"><image class="print-icon" src="/assets/receipt-printer.svg" /><text>补打</text></button><text aria-hidden="true" class="record-chevron">›</text></view>
         </view>
         <view wx:if="{{todayRows.length}}" class="muted mt-sm">已显示 {{todayRows.length}} / {{todayTotal}} 笔，汇总为全部流水净额</view>
         <button wx:if="{{todayRows.length < todayTotal}}" class="btn btn--ghost mt-sm" loading="{{todayLoading}}" disabled="{{todayLoading}}" bindtap="onMoreToday">查看更多今日明细</button>
@@ -302,7 +302,7 @@
     </view>
   </scroll-view>
 
-  <view wx:if="{{printListError}}" class="field-error">收款已完成，打印机列表读取失败。<button class="btn btn--ghost" data-receipt="{{receiptNo}}" bindtap="onRetryReceiptPrint">重试打印</button></view>
+  <view wx:if="{{printListError}}" class="field-error">收款已完成，打印机列表读取失败。<button class="btn btn--ghost" data-receipt="{{receiptNo}}" bindtap="onRetryReceiptPrint">打印</button></view>
   <view class="sheet__foot">
     <button class="btn btn--primary" bindtap="onCloseReceipt">
       <view class="btn__icon icon-action--check-white"></view><text>知道了</text>
@@ -312,13 +312,20 @@
 
 <view wx:if="{{recordNo}}" class="sheet-mask" bindtap="onCloseRecord" catchtouchmove="noop" />
 <view wx:if="{{recordNo}}" class="sheet" catchtouchmove="noop">
-  <view class="sheet__head"><text class="sheet__title">收费明细</text><text class="sheet__close" bindtap="onCloseRecord">关闭</text></view>
+  <view class="sheet__head"><text class="sheet__title">{{refundOpen ? '确认红冲' : '收费明细'}}</text><text class="sheet__close record-close" role="button" aria-label="关闭" bindtap="onCloseRecord">×</text></view>
   <scroll-view class="sheet__body" scroll-y>
     <view class="kv"><text>小票号</text><text>{{recordNo}}</text></view>
     <view wx:if="{{recordError}}" class="field-error">{{recordError}}<button class="btn btn--ghost" data-receipt="{{recordNo}}" bindtap="onOpenRecord">重新读取</button></view>
     <view wx:elif="{{!recordDetail}}" class="muted">正在读取明细…</view>
+    <block wx:elif="{{refundOpen}}">
+      <view class="receipt__amount refund-color">-{{recordDetail.amount}}</view>
+      <label for="refund-reason">原因（选填）</label>
+      <input id="refund-reason" class="input" maxlength="200" disabled="{{refundBusy}}" value="{{refundReason}}" bindinput="onRefundReason"/>
+      <view wx:if="{{refundError}}" class="field-error">{{refundError}}</view>
+    </block>
     <block wx:else>
       <view class="receipt__amount">{{recordDetail.amount}}</view>
+      <button wx:if="{{recordDetail.originalReceiptNo || recordDetail.reversalReceiptNo}}" class="btn btn--ghost" data-receipt="{{recordDetail.originalReceiptNo || recordDetail.reversalReceiptNo}}" bindtap="onOpenRecord">{{recordDetail.originalReceiptNo ? '原收据' : '红冲单'}} ›</button>
       <view wx:if="{{recordDetail.status}}">{{recordDetail.status}}</view>
       <view class="kv" wx:if="{{recordDetail.address}}"><text>地址</text><text>{{recordDetail.address}}</text></view>
       <view class="kv"><text>收费时间</text><text>{{recordDetail.time}}</text></view>
@@ -332,5 +339,11 @@
       <view wx:if="{{recordDetail.remark}}" class="kv"><text>备注</text><text>{{recordDetail.remark}}</text></view>
     </block>
   </scroll-view>
-  <view wx:if="{{recordDetail && printAvailable}}" class="sheet__foot"><button class="btn btn--primary" disabled="{{printBusy}}" data-receipt="{{recordDetail.receiptNo}}" bindtap="onPrintRow">打印本笔明细</button></view>
+  <view wx:if="{{refundOpen && recordDetail}}" class="sheet__foot">
+    <button class="btn btn--ghost" disabled="{{refundBusy}}" bindtap="cancelRefund">取消</button>
+    <button class="btn refund-confirm" loading="{{refundBusy}}" disabled="{{refundBusy}}" bindtap="confirmRefund">确认红冲</button>
+  </view>
+  <view wx:elif="{{recordDetail && (printAvailable || (canCharge && recordDetail.refundable))}}" class="sheet__foot">
+    <button wx:if="{{canCharge && recordDetail.refundable}}" class="btn btn--ghost refund-color" disabled="{{refundBusy}}" bindtap="beginRefund">红冲</button>
+    <button wx:if="{{printAvailable}}" class="btn btn--primary" disabled="{{printBusy}}" data-receipt="{{recordDetail.receiptNo}}" bindtap="onPrintRow">补打</button></view>
 </view>

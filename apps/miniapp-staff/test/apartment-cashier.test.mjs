@@ -108,3 +108,33 @@ test('history and today bind their trailing print button to the individual recor
     assert.equal(button?.length,1); assert.ok(row.indexOf(button[0])>row.indexOf('{{item.amountText}}'));
   }
 });
+
+test('逐笔红冲防连点，收费打印与历史补打按入口区分', async () => {
+  const wxml=readFileSync(new URL('../miniprogram/pages/apartment-cashier/apartment-cashier.wxml',import.meta.url),'utf8');
+  assert.doesNotMatch(wxml,/打印本笔/);
+  assert.equal((wxml.match(/catchtap="onPrintRow" aria-label="补打"/g)||[]).length,2);
+  assert.match(wxml,/bindtap="onPrintRow">补打</);
+  assert.match(source,/confirmText:reprint\?'补打':'打印'/);
+  let posts=0;
+  const p=fixture({printApi:{
+    receipt:async no=>({receiptNo:no, amountCents:no==='A'?300:-300, status:'paid',items:[]}),
+    refund:async(no,reason)=>{assert.equal(no,'A');assert.equal(reason,'错收');posts++;return {receiptNo:'B',originalReceiptNo:'A',amountCents:-300};}
+  }}).page;
+  await p.loadRecord('A');p.beginRefund();p.onRefundReason({detail:{value:'错收'}});
+  await Promise.all([p.confirmRefund(),p.confirmRefund()]);
+  assert.equal(posts,1);assert.equal(p.data.recordNo,'B');
+  p.beginRefund();await p.confirmRefund();assert.equal(posts,1);
+  await p.loadRecord('A');p.data.canCharge=false;p.beginRefund();await p.confirmRefund();assert.equal(posts,1);
+});
+
+test('红冲响应中断后按原收据核对，已生成的红冲单可以打开', async () => {
+  let written=false, posts=0;
+  const p=fixture({printApi:{
+    receipt:async no=>({receiptNo:no,amountCents:no==='A'?900:-900,status:written?'refunded':'paid',items:[],
+      reversalReceiptNo:written && no==='A'?'R':null}),
+    refund:async()=>{posts++;written=true;throw new Error('请求超时');},
+  }}).page;
+  await p.loadRecord('A');p.beginRefund();p.cancelRefund();await p.confirmRefund();assert.equal(posts,0);
+  p.beginRefund();await p.confirmRefund();assert.equal(p.data.recordNo,'R');assert.equal(posts,1);
+  await p.loadRecord('A');p.beginRefund();await p.confirmRefund();assert.equal(posts,1);
+});
