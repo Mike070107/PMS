@@ -233,10 +233,12 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
   const resultVehicles = res?.vehicles.filter(v => v.plateNo.toUpperCase().includes(kw.toUpperCase())) ?? [];
   const resultCards = res?.accessCards.filter(c => c.cardNo.includes(kw)) ?? [];
   const hasPhoneMatches = !!Object.keys(res?.matchedPhones ?? {}).length;
-  const resultHouses = res?.houses.filter(h => res.matchedPhones?.[h.id] || ((res.plateMatches || hasPhoneMatches) && res.addressMatches?.includes(h.id)) || (!res.plateMatches && noCols)) ?? [];
+  const phoneHouses = res?.houses.filter(h => res.matchedPhones?.[h.id]) ?? [];
+  const addressHouses = res?.houses.filter(h => res.addressMatches?.includes(h.id) ||
+    (!res.plateMatches && noCols && !res.matchedPhones?.[h.id])) ?? [];
   // 三列能选房时，底部只放车牌/门禁卡；没有这些就不占高度（旧页级联就是这么干净）
   const empty = typed && !busy && !err && res && !res.houses.length && !res.vehicles.length && !res.accessCards.length && noCols;
-  const showBottom = hasPhoneMatches || empty || !!err || busy || (noCols && !!res?.houses.length) || !!resultVehicles.length || !!resultCards.length;
+  const showBottom = addressHouses.length > 0 || hasPhoneMatches || empty || !!err || busy || (noCols && !!res?.houses.length) || !!resultVehicles.length || !!resultCards.length;
 
   const pickAddress = (p: PickedAddress | null) => {
     setBrowsing(true);
@@ -259,7 +261,7 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
             {res?.searchWarning ? <div className="muted">{res.searchWarning}</div> : null}
             {res && resultVehicles.length > 0 ? (
               <>
-                {!res.plateMatches && <div className="as-group">车牌 · 停车费</div>}
+                <div className="as-group">车牌</div>
                 {resultVehicles.map((v) => {
                   const h = res.houses.find((x) => x.id === v.houseId);
                   return (
@@ -270,13 +272,16 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
                 })}
               </>
             ) : null}
-            {res && resultHouses.length > 0 ? <>
-              {!res.plateMatches && <div className="as-group">房号</div>}
-              {resultHouses.map(h =>
-                <button type="button" key={`h${h.id}`} onClick={() => choose({ kind: 'house', hit: h, all: res })}>
-                  <AddressSearchMatch address={houseLabel(h)} query={kw} phone={res.matchedPhones?.[h.id] || h.owner?.phone} owner={h.owner?.name} />
-                </button>)}
-            </> : null}
+            {res && ([['电话', phoneHouses], ['地址', addressHouses]] as const).map(([group, rows]) =>
+              rows.length > 0 && <div key={group} className="as-result-group">
+                <div className="as-group">{group}</div>
+                {rows.map(h =>
+                  <button type="button" key={h.id} onClick={() => choose({ kind: 'house', hit: h, all: res })}>
+                    <AddressSearchMatch address={houseLabel(h)} query={kw}
+                      addressParts={[h.communityName, h.lane ? h.lane + '弄' : '', h.buildingNo + '号', h.roomNo]}
+                      phone={group === '电话' ? res.matchedPhones?.[h.id] : null} owner={group === '地址' ? h.owner?.name : null} />
+                  </button>)}
+              </div>)}
             {res && resultCards.length > 0 ? (
               <>
                 <div className="as-group">门禁卡 · 新办/补办</div>
@@ -299,7 +304,7 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
         placeholder={placeholder ?? '房号 / 姓名 / 手机尾号 / 车牌尾号，回车查询'}
         searchText={browsing ? '' : selectionText ?? text} displayText={selectionText ?? text}
         selectionRevision={selectionRevision} inputRef={input} showCopy={false}
-        open={open} onOpenChange={setOpen} extraResults={extraResults} showMatchDetails onlyExtraResults={(busy || !!res?.plateMatches || hasPhoneMatches) && typed && !browsing} remoteSearchFeedback={!!extraResults}
+        open={open} onOpenChange={setOpen} extraResults={extraResults} showMatchDetails onlyExtraResults={(busy || !!res?.plateMatches || hasPhoneMatches || addressHouses.length > 0) && typed && !browsing} remoteSearchFeedback={!!extraResults}
         onPicked={pickAddress} onSubmitText={() => { void submit(); }}
         onSearchText={next => { setBrowsing(false); if (next.trim() !== kw || selectionText !== null) { invalidate(); setBusy(!!next.trim()); } setSelectionText(null); setSelectedPath([]); setText(next); setCid(null); setBid(null); setOpen(true); }} />
     </div>

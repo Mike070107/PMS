@@ -2,6 +2,7 @@ import { tokenizeAddress } from '@pms/shared-types';
 
 interface Props {
   address: string;
+  addressParts?: string[];
   query: string;
   phone?: string | null;
   plate?: string;
@@ -28,13 +29,16 @@ function highlight(value: string, terms: string[]) {
   return parts;
 }
 
-export default function AddressSearchMatch({ address, query, phone, plate, owner }: Props) {
+export default function AddressSearchMatch({ address, addressParts, query, phone, plate, owner }: Props) {
   const term = query.trim();
   const digits = /^\d+$/.test(term) ? term : '';
   const number = (phone || '').split(/[\s,，、;/]+/).find(p => digits && p.includes(digits));
-  const detail = plate || number || (owner?.includes(term) ? owner : '');
+  const terms = [term, ...tokenizeAddress(term)].filter(Boolean);
+  const fields = addressParts ?? address.split(/\/|(?<=弄)|(?<=号)/);
+  const addressHit = fields.filter(field => terms.some(t => field.toUpperCase().includes(t.toUpperCase()))).join('/');
+  const detail = plate || number || (owner?.includes(term) ? owner : '') || addressHit || address;
   return <span className="address-search-match">
-    <span>{highlight(address, [term, ...tokenizeAddress(term)])}</span>
-    {detail && <span className="address-search-detail">{highlight(detail, [term])}</span>}
+    <span className="address-search-detail">{highlight(detail, plate || number ? [term] : terms)}</span>
+    <span className="address-search-location">{address}</span>
   </span>;
 }

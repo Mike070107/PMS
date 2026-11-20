@@ -13,12 +13,18 @@ test('tail search vehicle is visible and clickable without scrolling page below 
  try{browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});for(const width of [1440,375]){const page=await browser.newPage({viewport:{width,height:812}});await page.goto(`http://127.0.0.1:${server.address().port}`);await page.locator('input').fill('03212');const vehicle=page.getByRole('button',{name:/沪A03212/});await vehicle.waitFor();await page.screenshot({path:path.join(out,`vehicle-${width}-${process.env.PMS_UI_EVIDENCE_PHASE||'after'}.png`)});const r=await vehicle.boundingBox();assert.ok(r.y>=0&&r.y+r.height<=812,`vehicle must be in viewport: ${JSON.stringify(r)}`);await page.mouse.click(r.x+r.width/2,r.y+r.height/2);assert.equal(await page.locator('#pick').textContent(),'沪A03212');await page.locator('input').fill('2199');
 const hit=page.getByRole('button',{name:/沪A02199/});await hit.waitFor();
 assert.equal(await hit.locator('mark').innerText(),'2199');
-assert.match(await hit.innerText(),/301[\s\S]+沪A02199/);
+assert.match(await hit.innerText(),/沪A02199[\s\S]+301/);
 const phone=page.getByRole('button',{name:/13821991380/}); await phone.waitFor();
 assert.equal(await phone.locator('mark').innerText(),'2199');
 const addressOnly=page.getByRole('button',{name:/2199弄10号301/});
 assert.equal(await addressOnly.locator('mark').innerText(),'2199');
-assert.equal(await addressOnly.locator('.address-search-detail').count(),0);
+assert.equal(await addressOnly.locator('.address-search-detail').innerText(),'2199弄');
+assert.deepEqual(await page.locator('.as-sugg .as-group').allTextContents(),['车牌','电话','地址']);
+for(const row of [hit,phone,addressOnly]){
+ const left=await row.locator('.address-search-detail').boundingBox();
+ const right=await row.locator('.address-search-location').boundingBox();
+ assert.ok(left.x+left.width<=right.x+1);
+}
 await page.locator('input').press('Enter');
 await addressOnly.waitFor();
 

@@ -465,10 +465,10 @@
 .as-sugg{max-height:260px;overflow-y:auto;padding:4px}
 /* 三列与下方结果并存时：加一条分隔线，不要让房号列表把弹层撑爆 */
 .as-cols + .as-sugg{border-top:1px solid var(--line);max-height:200px}
-.as-sugg>button{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;text-align:left;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:14px;color:var(--ink)}
-.as-sugg>button:hover,.as-sugg>button.on{background:var(--acc-w)}
-.as-sugg>button .l{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.as-sugg>button .muted{flex:none;font-size:12.5px}
+.as-sugg button{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;text-align:left;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:14px;color:var(--ink)}
+.as-sugg button:hover,.as-sugg button.on{background:var(--acc-w)}
+.as-sugg button .l{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.as-sugg button .muted{flex:none;font-size:12.5px}
 
 /* 工单用料：仓库等宽网格；数量加减在两侧；手填行顶对齐（下方小字不把输入框挤偏） */
 .mp-wh{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:10px}
@@ -551,7 +551,7 @@
 
 /* 收银台统一查询：结果分组标题（房号 / 车牌 / 门禁卡） */
 .as-group{padding:10px 10px 4px;font-size:12.5px;font-weight:600;color:var(--ink4)}
-.as-sugg>button .muted{margin-left:auto;padding-left:10px;font-size:12.5px;white-space:nowrap}
+.as-sugg button .muted{margin-left:auto;padding-left:10px;font-size:12.5px;white-space:nowrap}
 
 /* 收银台统一查询框：占满整行，提示语不被压窄 */
 .findBar .uni-box{flex:1;min-width:0}
@@ -593,5 +593,6 @@ input[data-money-input]::-webkit-outer-spin-button { -webkit-appearance: none; m
 
 .address-search-match{display:flex;width:100%;min-width:0;align-items:baseline;justify-content:space-between;gap:12px;text-align:left;white-space:normal}
 .address-search-match>span{min-width:0;overflow-wrap:anywhere}
-.address-search-detail{flex-shrink:0;text-align:right;font-variant-numeric:tabular-nums}
+.address-search-detail{flex:0 1 auto;text-align:left;font-weight:600;font-variant-numeric:tabular-nums}
+.address-search-location{flex:0 1 auto;text-align:right;color:var(--muted)}
 .address-search-match mark{background:#146c43;color:#fff;font-weight:800;border-radius:2px;padding-inline:1px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
