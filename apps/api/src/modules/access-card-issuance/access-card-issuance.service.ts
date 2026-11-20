@@ -1720,7 +1720,7 @@ export class AccessCardIssuanceService {
     try {
       task.result = await this.deliyun.renewVehicle({
         vehicleId: dto.vehicleId, plate: dto.plate,
-        previousEndDate: dto.previousEndDate, endDate: dto.endDate,
+        previousEndDate: dto.previousEndDate, endDate: dto.endDate, customEndDate: dto.customEndDate,
       });
       task.status = 'completed';
       task.completedAt = new Date();

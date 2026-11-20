@@ -185,13 +185,13 @@ export class DeliyunParkingService {
     return this.enrichPoolPeriods({ ...row, ...authorization, remark, cardNo: parkingSpace, parkingSpace }, session);
   }
 
-  async renewVehicle(input: { vehicleId: string; plate: string; previousEndDate: string; endDate: string; parkName?: string }): Promise<DeliyunRenewalResult> {
+  async renewVehicle(input: { vehicleId: string; plate: string; previousEndDate: string; endDate: string; customEndDate?: boolean; parkName?: string }): Promise<DeliyunRenewalResult> {
     if (!this.writeEnabled()) throw new ServiceUnavailableException('德立云有效期写入尚未启用');
     const vehicleId = input.vehicleId.trim();
     const plate = normalizePlate(input.plate);
     if (!vehicleId || !isFullPlate(plate) || !isDateOnly(input.previousEndDate) || !isDateOnly(input.endDate))
       throw new BadRequestException('德立云续期参数不完整');
-    if (input.endDate <= input.previousEndDate)      throw new BadRequestException('续期后的有效期必须晚于当前到期日');
+    if (!input.customEndDate && input.endDate <= input.previousEndDate)      throw new BadRequestException('续期后的有效期必须晚于当前到期日');
     const session = await this.ensureMiniappSession(input.parkName);
     const detailResponse = await this.h5Post<Record<string, unknown>>('/pma/card/findCard', {
       unitKey: session.park.unitKey, id: vehicleId,

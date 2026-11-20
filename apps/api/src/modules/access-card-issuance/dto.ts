@@ -518,6 +518,10 @@ export class RenewDeliyunVehicleDto {
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   previousEndDate: string;
 
+  @IsOptional()
+  @IsBoolean()
+  customEndDate?: boolean;
+
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   endDate: string;

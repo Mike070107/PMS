@@ -17,6 +17,7 @@ interface FeeRule { id: number; communityId: number | null; serviceType: string;
 interface FeeQuote { quantity: number; amountCents: number; startDate: string; endDate: string }
 
 interface RenewalPlan {
+  customEndDate?: boolean;
   batch: string; plate: string; endDate: string; months: number;
   locals: Array<{ database: 'parking1' | 'parking2'; pid: string; amount: number; id?: number; status?: string }>;
   civil: { vehicleId: string; previousEndDate: string; id?: number; status?: string } | null;
@@ -167,7 +168,12 @@ export default function RenewSheet({
   const selectRule = (value: string) => { quoteGeneration.current++; setRuleId(value ? Number(value) : null); setQuote(null); setQuoteError(''); setAmountStr(''); setEndOverride(''); };
 
   const entryAuthorized = !garage || (garage === 'main' ? garageState(rows, GARAGES.find(g => g.key === 'main')!).authorized : !!civil?.civilDefenseAuthorized);
-  const canSubmit = !!selectedRule && entryAuthorized && cloudKnown && (garage !== 'civil' || syncCivil) && new Set(targets.map(t => t.database)).size === targets.length && formContext === context && targets.length > 0 && !running && !submitted.current && monthsValid && Number.isInteger(months) && months >= 1 && months <= 60 && amount !== null && Number.isFinite(amount) && amount >= 0 && amount <= 1000000 && /^\d{4}-\d{2}-\d{2}$/.test(newEnd) && dayjs(newEnd).isValid() && dayjs(newEnd).format('YYYY-MM-DD') === newEnd && (!baseEnd || newEnd > baseEnd);
+  const [reviewed, setReviewed] = useState(false);
+  const dateIssue = !newEnd || !dayjs(newEnd).isValid() ? '请选择有效日期' : '';
+  const amountIssue = amount === null || !Number.isFinite(amount) || amount < 0 || amount > 1000000
+    ? '请输入有效实收金额，免费请填 0' : '';
+  const formRef = useRef<HTMLDivElement>(null);
+  const canSubmit = !!selectedRule && entryAuthorized && cloudKnown && (garage !== 'civil' || syncCivil) && new Set(targets.map(t => t.database)).size === targets.length && formContext === context && targets.length > 0 && !running && !submitted.current && monthsValid && Number.isInteger(months) && months >= 1 && months <= 60 && amount !== null && Number.isFinite(amount) && amount >= 0 && amount <= 1000000 && /^\d{4}-\d{2}-\d{2}$/.test(newEnd) && dayjs(newEnd).isValid() && dayjs(newEnd).format('YYYY-MM-DD') === newEnd && (!!endOverride || !baseEnd || newEnd > baseEnd);
 
   const verify = async (plan: RenewalPlan) => {
     const readback = await freshRows(plan.plate);
@@ -224,7 +230,7 @@ export default function RenewSheet({
     plan.civil.status = 'submitting'; storePlan(plan);
     const op: ParkingOperation = await accessCardIssuance.renewDeliyunVehicle({
       vehicleId: hit.id, plate: plan.plate, previousEndDate: plan.civil.previousEndDate,
-      endDate: plan.endDate, idempotencyKey: retry ? `${plan.batch}-deliyun-retry-${createIdempotencyKey()}` : `${plan.batch}-deliyun`,
+      endDate: plan.endDate, customEndDate: plan.customEndDate, idempotencyKey: retry ? `${plan.batch}-deliyun-retry-${createIdempotencyKey()}` : `${plan.batch}-deliyun`,
     });
     plan.civil.id = op.id; plan.civil.status = op.status; storePlan(plan);
     if (op.status !== 'completed') {
@@ -248,7 +254,7 @@ export default function RenewSheet({
       setErr('');
     if (!canSubmit) { setErr('请核对月份、到期日和金额；未配置档位可手工填写金额，免费办理请明确填写 0'); return; }
     if (!targets.length) { setErr('这张车牌不在一期/二期旧库里，无法续期'); return; }
-    if (syncCivil && civil?.civilDefenseAuthorized && civil.endDate && dayjs(newEnd).isBefore(dayjs(ymd(civil.endDate)))) {
+    if (!endOverride && syncCivil && civil?.civilDefenseAuthorized && civil.endDate && dayjs(newEnd).isBefore(dayjs(ymd(civil.endDate)))) {
       setErr(`新到期日 ${newEnd} 早于人防到期日 ${ymd(civil.endDate)}，请核对`); return;
     }
     if (amount === null || !Number.isFinite(amount) || amount < 0) { setErr('金额不对'); return; }
@@ -256,7 +262,7 @@ export default function RenewSheet({
     // Same plate/window uses the same server idempotency key even across tabs.
     const batch = `pms-renew-v1-${normPlate(plate)}-${baseEnd || 'none'}-${newEnd}`;
     const amounts = allocateRenewalAmounts(amount, targets.length);
-    const plan: RenewalPlan = { batch, plate, endDate: newEnd, months,
+    const plan: RenewalPlan = { customEndDate: !!endOverride, batch, plate, endDate: newEnd, months,
       locals: targets.map((t, i) => ({ database: t.database as 'parking1' | 'parking2', pid: pidOf(t.fields), amount: amounts[i] })),
       civil: syncCivil && civil?.civilDefenseAuthorized ? { vehicleId: civil.id, previousEndDate: ymd(civil.endDate || '') } : null };
     try { storePlan(plan); } catch { setErr('无法保存防重复办理记录，未提交，请检查浏览器存储设置'); return; }
@@ -305,47 +311,47 @@ export default function RenewSheet({
   return (
     <Sheet open onClose={() => (running ? null : onClose())} title={`续期收费 · ${plate}`}
       subtitle={`${identity} · ${targets.map((t) => dbName(t.database)).join(' + ') || '不在旧库'}`} width={560}>
-      <div style={{ padding: '4px 2px', minWidth: 0, overflowWrap: 'anywhere' }}>
-        {pmsContact?.houseId ? <OwnerBusinessContact key={pmsContact.houseId} houseId={pmsContact.houseId} preferredOwnerId={pmsContact.userId} source="parking" disabled={running || submitted.current} /> : null}
+      <div ref={formRef} className="renew-payment-form">
+
         {ratesErr ? <div className="note" style={{ background: 'var(--dang-w)', color: 'var(--dang)' }}>{ratesErr}</div> : null}
 
-        <label style={{ display: 'block', marginBottom: 12 }}>适用小区
+        <div className="renew-choice-grid"><label>适用小区
           <select className="in" aria-label="续期适用小区" style={{ width: '100%', marginTop: 6 }} value={communityId ?? ''} disabled={running || submitted.current} onChange={e => { communityEdited.current = true; ruleEdited.current = false; setCommunityId(e.target.value ? Number(e.target.value) : null); selectRule(''); }}>
             <option value="">请选择小区</option>{communities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </label>
-        <label style={{ display: 'block', marginBottom: 12 }}>车辆类别（决定收费标准）
+        <label>收费车型
           <select className="in" aria-label="续期车辆类别" style={{ width: '100%', marginTop: 6 }} value={selectedRule?.id ?? ''} disabled={running || submitted.current || communityId == null} onChange={e => { ruleEdited.current = true; selectRule(e.target.value); }}>
             <option value="">请先选择车辆类别</option>{applicableRules.map(r => <option key={r.id} value={r.id}>{r.config?.vehicleClass || r.name}</option>)}
           </select>
         </label>
-        <div className="muted" style={{ fontSize: 13, marginBottom: 6 }}>续期月数</div>
+        </div><h3>续期时长</h3>
         <RenewalMonths value={months} disabled={running || submitted.current || !selectedRule} onValidityChange={setMonthsValid}
           onChange={m => { quoteGeneration.current++; setQuote(null); setMonths(m); setMonthsValid(true); setAmountStr(''); setEndOverride(''); }} />
 
-        <div className="veh-dl" style={{ gridTemplateColumns: 'auto 1fr', gap: '10px 12px', marginBottom: 14 }}>
-          <dt className="muted">当前到期</dt><dd>{baseEnd || '—（按10号及自然月末规则）'}</dd>
-          <dt className="muted">续到</dt>
-          <dd style={{ minWidth: 0 }}><DateInput className="in" aria-label="续期结束日期" type="date" disabled={running || submitted.current} value={newEnd} onChange={(e) => { setEndOverride(e.target.value); setAmountStr(''); }} style={{ width: '100%', maxWidth: 180 }} /></dd>
-          <dt className="muted">实收金额</dt>
-          <dd style={{ display: 'flex', flexWrap: 'wrap', minWidth: 0, alignItems: 'center', gap: 6 }}>
-            ¥<input className="in" aria-label="续期实收金额" disabled={running || submitted.current} value={amountStr} onChange={(e) => setAmountStr(e.target.value)}
-              placeholder={rateAmount === null ? '请明确填写' : String(rateAmount)} style={{ width: 120 }} inputMode="decimal" />
-            <span className="muted" style={{ fontSize: 12 }}>{endOverride ? '自定义日期：请明确填写本次实收金额，0元请填0；月份快捷可恢复规则日期。' : !selectedRule ? '先选择车辆类别' : quoteError || (rateAmount === null ? '正在按所选类别试算…' : `标准 ¥${rateAmount}（${selectedRule.config?.vehicleClass || selectedRule.name}）`)}</span>
-          </dd>
+        <div className="renew-date-grid">
+          <div><small>当前到期</small><b>{baseEnd || '尚无到期日'}</b></div>
+          <label><small>本次续到</small><DateInput aria-label="续期结束日期" type="date" disabled={running || submitted.current}
+            aria-invalid={!!dateIssue && (!!endOverride || reviewed)} aria-describedby="renew-date-message" value={newEnd}
+            onChange={e => { setEndOverride(e.target.value); setAmountStr(''); }} />
+            <span id="renew-date-message" className="renew-error">{(endOverride || reviewed) && dateIssue}</span></label>
         </div>
-
+        <div className="renew-payment-total"><label>实收金额（元）
+          <input className="in" aria-label="续期实收金额" inputMode="decimal" disabled={running || submitted.current}
+            aria-invalid={!!amountIssue && reviewed} aria-describedby="renew-amount-message"
+            value={amountStr} onChange={e => setAmountStr(e.target.value)}
+            placeholder={endOverride ? '请输入金额' : rateAmount == null ? '待试算' : String(rateAmount)} /></label>
+          <small id="renew-amount-message" className={reviewed && amountIssue ? 'renew-error' : 'muted'}>
+            {reviewed && amountIssue ? amountIssue : endOverride ? '自定义日期，请填写本次实收金额' : quoteError || (rateAmount == null ? '等待试算' : `标准 ¥${rateAmount}`)}
+          </small>
+        </div>
         {/* 人防只在开通时才有意义：没开通就不查、不等、不写德立云 */}
         {civil?.civilDefenseAuthorized ? (
           <label className="note" style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'flex-start', background: 'var(--bg)', color: 'var(--ink2)', fontSize: 13, cursor: 'pointer' }}>
             <input type="checkbox" disabled={running || submitted.current || garage === 'civil'} checked={syncCivil} onChange={(e) => setSyncCivil(e.target.checked)} style={{ marginTop: 2 }} />
             <span>这辆车开通了二期人防车库（当前到期 {ymd(civil.endDate || '') || '未知'}）。勾选会把德立云一并续到 {newEnd}；不勾选只续旧库。</span>
           </label>
-        ) : (
-          <div className="note" style={{ marginBottom: 12, background: 'var(--bg)', color: 'var(--ink2)', fontSize: 13 }}>
-            {!cloudKnown ? '人防状态未查明，本次只续旧库（一期/二期停车库）；不需要等它。' : '该车未开通二期人防车库，只续旧库，不写德立云。'}
-          </div>
-        )}
+        ) : !cloudKnown ? <p role="status">正在核对人防授权状态</p> : null}
 
         {targets.length > 1 ? (
           <div className="muted" style={{ fontSize: 12.5, marginBottom: 12 }}>一期二期都有这张牌，会一起续到同一到期日，收款只记一笔（在第一库）。</div>
@@ -365,11 +371,16 @@ export default function RenewSheet({
           {canRetryCivil ? <button className="btn" disabled={running} onClick={() => void retryCivil()}>只补办人防（不重复收费）</button> : null}
         </div> : null}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-          <button className="btn p" style={{ flex: 1 }} disabled={!canSubmit} onClick={() => void run()}>
-            <Icon name="cash" size={16} />{running ? '现场执行中…' : submitted.current ? '已提交，请到办理记录核对' : amount === null || !Number.isFinite(amount) ? '请填写实收金额' : amount === 0 ? '确认0元续期' : `确认续期收费 ¥${amount}`}
+          <button className="btn p" style={{ flex: 1 }} disabled={!canSubmit && (running || submitted.current || !selectedRule || (!dateIssue && !(amountIssue && (endOverride || manualAmount))))} onClick={() => {
+            if (canSubmit) { void run(); return; }
+            setReviewed(true);
+            formRef.current?.querySelector<HTMLInputElement>(dateIssue ? '.renew-date-grid input' : 'input[aria-label="续期实收金额"]')?.focus();
+          }}>
+            <Icon name="cash" size={16} />{running ? '现场执行中…' : submitted.current ? '已提交，请到办理记录核对' : amount === null || !Number.isFinite(amount) ? '确认续期收费' : amount === 0 ? '确认0元续期' : `确认续期收费 ¥${amount}`}
           </button>
           <button className="btn" disabled={running} onClick={onClose}>取消</button>
         </div>
+        {pmsContact?.houseId ? <OwnerBusinessContact key={pmsContact.houseId} houseId={pmsContact.houseId} preferredOwnerId={pmsContact.userId} source="parking" disabled={running || submitted.current} /> : null}
       </div>
     </Sheet>
   );

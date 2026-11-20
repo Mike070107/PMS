@@ -270,6 +270,27 @@ test('德立云续期重试发现目标日期已生效时直接按幂等成功�
   assert.equal(result.endDate, '2026-12-31');
 });
 
+test('自定义到期日允许提前，回读一致后相同日期不重复下发', async () => {
+  const service = new DeliyunParkingService({ get: () => 'true' } as any);
+  const internal = service as any;
+  const detail = { id: 'v1', plateNum: '沪A12345', beginDate: '2025-01-01', endDate: '2027-02-28' };
+  const writes: string[] = [];
+  internal.ensureMiniappSession = async () => ({ park: { unitKey: 'park' }, token: 'test' });
+  internal.vehicleDetail = async () => detail;
+  internal.h5Post = async (path: string, payload: { endDate: string }) => {
+    if (path === '/pma/card/findCard') return { ecode: 0, data: { ...detail } };
+    assert.equal(path, '/pma/card/saveCycpayBatch');
+    writes.push(payload.endDate);
+    detail.endDate = payload.endDate;
+    return { ecode: 0 };
+  };
+  const request = { vehicleId: detail.id, plate: detail.plateNum, previousEndDate: detail.endDate, endDate: '2026-01-15' };
+  await assert.rejects(service.renewVehicle(request), /必须晚于/);
+  assert.equal((await service.renewVehicle({ ...request, customEndDate: true })).verified, true);
+  assert.equal((await service.renewVehicle({ ...request, previousEndDate: request.endDate, customEndDate: true })).verified, true);
+  assert.deepEqual(writes, [request.endDate]);
+});
+
 test('德立云续期走正式延期接口且金额固定为零', () => {
   const detail = {
     plateNum: '沪A12345', cardNo: 'C001', pgIds: [11, 12], cardTypeId: 2, carTypeId: 1,

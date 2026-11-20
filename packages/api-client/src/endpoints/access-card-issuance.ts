@@ -397,6 +397,7 @@ export const renewDeliyunVehicle = (data: {
   vehicleId: string;
   plate: string;
   previousEndDate: string;
+  customEndDate?: boolean;
   endDate: string;
   idempotencyKey: string;
 }) => request<ParkingOperation>({
