@@ -205,8 +205,7 @@
         <button wx:if="{{historyError}}" class="btn btn--ghost" disabled="{{historyLoading}}" bindtap="onRetryHistory">重新读取历史记录</button>
         <pms-empty wx:if="{{!historyLoading && !historyError && !history.length}}" text="这间房还没有缴费记录" />
         <block wx:else>
-          <view wx:for="{{history}}" wx:key="receiptNo" class="his-row">
-            <button wx:if="{{printAvailable}}" class="btn btn--ghost" disabled="{{printBusy}}" data-receipt="{{item.receiptNo}}" bindtap="onPrintRow">补打小票</button>
+          <view wx:for="{{history}}" wx:key="receiptNo" class="his-row" data-receipt="{{item.receiptNo}}" bindtap="onOpenRecord" role="button">
             <view class="his-row__main">
               <text class="his-row__items">{{item.itemsText || '—'}}</text>
               <text class="his-row__amount {{item.refunded ? 'his-row__amount--off' : ''}}">{{item.amountText}}</text>
@@ -214,6 +213,7 @@
             <view class="meta">
               {{item.timeText}} · {{item.methodText}}{{item.statusText ? ' · ' + item.statusText : ''}}
             </view>
+            <view class="record-actions"><text class="record-link">查看明细 ›</text><button wx:if="{{printAvailable}}" class="record-print" disabled="{{printBusy}}" data-receipt="{{item.receiptNo}}" catchtap="onPrintRow">打印本笔</button></view>
           </view>
         </block>
         <view wx:if="{{history.length}}" class="muted mt-sm">已显示 {{history.length}} / {{historyTotal}} 笔</view>
@@ -246,14 +246,14 @@
         <view wx:if="{{todayError}}" class="field-error mt-sm">{{todayError}}，请点刷新重试。</view>
         <pms-empty wx:if="{{!todayRows.length && !todayLoading && !todayError}}" text="今日暂无收费记录" />
         <button wx:if="{{printListError}}" class="btn btn--ghost" bindtap="onRetryPrinters">{{printListError}} · 重试</button>
-        <view wx:for="{{todayRows}}" wx:key="key" class="his-row">
-            <button wx:if="{{printAvailable}}" class="btn btn--ghost" disabled="{{printBusy}}" data-receipt="{{item.receiptNo}}" bindtap="onPrintRow">补打小票</button>
+        <view wx:for="{{todayRows}}" wx:key="key" class="his-row" data-receipt="{{item.receiptNo}}" bindtap="onOpenRecord" role="button">
           <view class="daily-place">{{item.placeText}}</view>
           <view class="his-row__main">
             <text class="his-row__items">{{item.itemsText || '—'}}</text>
             <text class="his-row__amount {{item.refunded ? 'his-row__amount--off' : ''}}">{{item.amountText}}</text>
           </view>
           <view class="meta">{{item.timeText}} · {{item.methodText}}{{item.statusText ? ' · ' + item.statusText : ''}}</view>
+            <view class="record-actions"><text class="record-link">查看明细 ›</text><button wx:if="{{printAvailable}}" class="record-print" disabled="{{printBusy}}" data-receipt="{{item.receiptNo}}" catchtap="onPrintRow">打印本笔</button></view>
         </view>
         <view wx:if="{{todayRows.length}}" class="muted mt-sm">已显示 {{todayRows.length}} / {{todayTotal}} 笔，汇总为全部流水净额</view>
         <button wx:if="{{todayRows.length < todayTotal}}" class="btn btn--ghost mt-sm" loading="{{todayLoading}}" disabled="{{todayLoading}}" bindtap="onMoreToday">查看更多今日明细</button>
@@ -264,7 +264,7 @@
 </view>
 
 <!-- 底部操作条：固定不滚，让开安全区 -->
-<staff-tabbar id="cashier-tabbar" wx:if="{{!receiptOpen}}" />
+<staff-tabbar id="cashier-tabbar" wx:if="{{!receiptOpen && !recordNo}}" />
 <view wx:if="{{!loading && canSeeCashier && activeTab === 'charge' && placeText}}" class="action-bar">
   <view wx:if="{{submitError}}" class="field-error action-bar__error">{{submitError}}</view>
   <view class="action-bar__row">
@@ -308,4 +308,29 @@
       <view class="btn__icon icon-action--check-white"></view><text>知道了</text>
     </button>
   </view>
+</view>
+
+<view wx:if="{{recordNo}}" class="sheet-mask" bindtap="onCloseRecord" catchtouchmove="noop" />
+<view wx:if="{{recordNo}}" class="sheet" catchtouchmove="noop">
+  <view class="sheet__head"><text class="sheet__title">收费明细</text><text class="sheet__close" bindtap="onCloseRecord">关闭</text></view>
+  <scroll-view class="sheet__body" scroll-y>
+    <view class="kv"><text>小票号</text><text>{{recordNo}}</text></view>
+    <view wx:if="{{recordError}}" class="field-error">{{recordError}}<button class="btn btn--ghost" data-receipt="{{recordNo}}" bindtap="onOpenRecord">重新读取</button></view>
+    <view wx:elif="{{!recordDetail}}" class="muted">正在读取明细…</view>
+    <block wx:else>
+      <view class="receipt__amount">{{recordDetail.amount}}</view>
+      <view wx:if="{{recordDetail.status}}">{{recordDetail.status}}</view>
+      <view class="kv" wx:if="{{recordDetail.address}}"><text>地址</text><text>{{recordDetail.address}}</text></view>
+      <view class="kv"><text>收费时间</text><text>{{recordDetail.time}}</text></view>
+      <view wx:if="{{recordDetail.method}}" class="kv"><text>收款方式</text><text>{{recordDetail.method}}</text></view>
+      <view wx:if="{{recordDetail.cashier}}" class="kv"><text>收款人</text><text>{{recordDetail.cashier}}</text></view>
+      <view wx:for="{{recordDetail.items}}" wx:key="id" class="his-row">
+        <view class="kv"><text>{{item.feeName}}</text><text>{{item.amount}}</text></view>
+        <view wx:if="{{item.pricing}}" class="meta">{{item.pricing}}</view>
+        <view wx:if="{{item.vehicle || item.period}}" class="meta">{{item.vehicle}} {{item.period}}</view>
+      </view>
+      <view wx:if="{{recordDetail.remark}}" class="kv"><text>备注</text><text>{{recordDetail.remark}}</text></view>
+    </block>
+  </scroll-view>
+  <view wx:if="{{recordDetail && printAvailable}}" class="sheet__foot"><button class="btn btn--primary" disabled="{{printBusy}}" data-receipt="{{recordDetail.receiptNo}}" bindtap="onPrintRow">打印本笔明细</button></view>
 </view>

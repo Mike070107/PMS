@@ -113,3 +113,14 @@ export const receiptPrinters = () => request<ReceiptPrinter[]>({url:'/receipt-pr
 export const queueReceipt = (printer:number,receiptNo:string,reprint:boolean,requestId:string) =>
   request<{id:number;state:string}>({method:'POST',url:'/receipt-printers/'+printer+'/jobs',data:{receiptNo,reprint,requestId}});
 export const receiptPrintStatus = (id:number) => request<{state:string}>({url:'/receipt-printers/jobs/'+id});
+
+export interface CashierReceiptDetail {
+  receiptNo: string; amountCents: number; paidAt: string | null; paymentMethod: string | null;
+  cashier: string | null; fullAddress: string | null; communityName: string | null; lane: string | null;
+  buildingNo: string | null; roomNo: string | null; status: string; remark: string | null;
+  items: Array<{id: number; feeName: string; amountCents: number; quantity: number | null;
+    unit: string | null; unitPriceCents: number | null; serviceFrom: string | null; serviceTo: string | null; vehiclePlate: string | null}>;
+}
+export const receipt = (receiptNo: string) => request<CashierReceiptDetail>({
+  url: '/fees/cashier/receipts/' + encodeURIComponent(receiptNo),
+});

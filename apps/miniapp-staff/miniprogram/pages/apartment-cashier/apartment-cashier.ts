@@ -117,6 +117,9 @@ Page({
     submitError: '',
 
     /** 收完款弹出的小票 */
+    recordNo: '',
+    recordError: '',
+    recordDetail: null as ReturnType<typeof detailView> | null,
     receiptOpen: false,
     receiptNo: '',
     printAvailable: false,
@@ -687,9 +690,30 @@ Page({
   },
   onRetryPrinters() { void this.refreshPrinters(); },
   onRetryReceiptPrint() { if (this.data.receiptNo) void this.offerPrint(this.data.receiptNo, false); },
+  recordRequest: 0,
+  onOpenRecord(e: WechatMiniprogram.TouchEvent) {
+    const receiptNo = e.currentTarget.dataset.receipt;
+    if (receiptNo) return this.loadRecord(receiptNo);
+  },
+  async loadRecord(receiptNo: string) {
+    const request = ++this.recordRequest;
+    this.setData({recordNo: receiptNo, recordError: '', recordDetail: null});
+    try {
+      const receipt = await apartmentCashier.receipt(receiptNo);
+      if (request !== this.recordRequest) return;
+      if (receipt.receiptNo !== receiptNo) throw new Error('小票号不一致，请重新读取');
+      this.setData({recordDetail: detailView(receipt)});
+    } catch (error: any) {
+      if (request === this.recordRequest) this.setData({recordError: error?.message || '收费明细读取失败'});
+    }
+  },
+  onCloseRecord() {
+    ++this.recordRequest;
+    this.setData({recordNo:'', recordDetail:null, recordError:''});
+  },
   onPrintRow(e: WechatMiniprogram.TouchEvent) {
     const receipt = e.currentTarget.dataset.receipt;
-    if (receipt) void this.offerPrint(receipt, true);
+    if (receipt) return this.offerPrint(receipt, true);
   },
   async offerPrint(receiptNo: string, reprint: boolean) {
     if (this.data.printBusy) return;
@@ -772,4 +796,17 @@ function formatPaidAt(iso: string): string {
   const year = formatBeijingDateTime(iso, 'YYYY');
   const sameYear = year === formatBeijingDateTime(new Date(), 'YYYY');
   return formatBeijingDateTime(iso, sameYear ? 'M/D HH:mm' : 'YYYY/M/D HH:mm');
+}
+
+function detailView(r: apartmentCashier.CashierReceiptDetail) {
+  return {
+    receiptNo:r.receiptNo, amount:money(r.amountCents), status:r.amountCents<0?'红冲退款':r.status==='refunded'?'已红冲':'',
+    address:r.fullAddress || [r.communityName,r.lane,r.buildingNo,r.roomNo].filter(Boolean).join(' '),
+    time:r.paidAt?formatBeijingDateTime(r.paidAt,'YYYY-MM-DD HH:mm'):'',
+    method:r.paymentMethod?(FEE_PAYMENT_METHOD_LABELS[r.paymentMethod] || r.paymentMethod):'',
+    cashier:r.cashier, remark:r.remark,
+    items:r.items.map(i=>({id:i.id,feeName:i.feeName,amount:money(i.amountCents),
+      pricing:[i.unitPriceCents!=null?money(i.unitPriceCents):'',i.quantity!=null?'× '+i.quantity+(i.unit||''):''].filter(Boolean).join(' '),
+      vehicle:i.vehiclePlate,period:[i.serviceFrom,i.serviceTo].filter(Boolean).join(' 至 ')})),
+  };
 }

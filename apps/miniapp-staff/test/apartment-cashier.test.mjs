@@ -84,3 +84,27 @@ test('收款后无打印授权或用户取消均不创建打印任务',async()=>
     assert.ok(titles.includes(title));assert.equal(f.charges.length,0);
   }
 });
+test('点击单笔查看其真实明细，迟到的其他票据不能覆盖，补打仅发送当前小票号',async()=>{
+  let resolveFirst;const sent=[];
+  const f=fixture({printApi:{
+    receipt:async no=>no==='A'?new Promise(resolve=>{resolveFirst=resolve;}):{receiptNo:'B',amountCents:3200,items:[{id:2,feeName:'电费',amountCents:3200}]},
+    receiptPrinters:async()=>[{id:7,name:'前台',online:true}],queueReceipt:async(id,no,reprint)=>{sent.push([no,reprint]);return {id:2,state:'spooled'};}
+  },wxOverrides:{showActionSheet:async()=>({tapIndex:0})}});
+  const event=no=>({currentTarget:{dataset:{receipt:no}}});
+  const first=f.page.onOpenRecord(event('A'));await f.page.onOpenRecord(event('B'));
+  resolveFirst({receiptNo:'A',amountCents:100,items:[]});await first;
+  assert.equal(f.page.data.recordDetail.items[0].feeName,'电费');
+  await f.page.onPrintRow(event(f.page.data.recordDetail.receiptNo));
+  assert.deepEqual(sent,[['B',true]]);assert.equal(f.charges.length,0);
+});
+
+test('history and today bind their trailing print button to the individual record', () => {
+  const wxml=readFileSync(new URL('../miniprogram/pages/apartment-cashier/apartment-cashier.wxml',import.meta.url),'utf8');
+  for(const list of ['history','todayRows']){
+    const start=wxml.indexOf('wx:for="{{'+list+'}}"');
+    const row=wxml.slice(start,wxml.indexOf('wx:if="{{'+list+'.length}}"',start));
+    assert.match(row,/data-receipt="{{item.receiptNo}}" bindtap="onOpenRecord"/);
+    const button=row.match(/<button[^>]+data-receipt="{{item.receiptNo}}" catchtap="onPrintRow"/g);
+    assert.equal(button?.length,1); assert.ok(row.indexOf(button[0])>row.indexOf('{{item.amountText}}'));
+  }
+});
