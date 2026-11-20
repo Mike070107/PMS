@@ -1,3 +1,4 @@
+import { moneyInputProps } from '@/lib/money-input';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { repairs, request } from '@pms/api-client';
 import { classifyRepairType } from '@pms/shared-types';
@@ -80,9 +81,9 @@ export function AiConfigSection({ settings, save, canEdit }: { settings: TenantS
       </Row>
       <Row label="单价" hint="元 / 百万 token，照服务商官网价格填，不填就只看 token 数不估钱">
         <div className="set-inline">
-          <span>输入·未命中缓存</span><input className="in" type="number" min={0} step="0.1" style={{ width: 90 }} value={ai.priceInputMissPerM} disabled={!canEdit} onChange={(e) => num('priceInputMissPerM', e.target.value)} />
-          <span>输入·命中缓存</span><input className="in" type="number" min={0} step="0.1" style={{ width: 90 }} value={ai.priceInputHitPerM} disabled={!canEdit} onChange={(e) => num('priceInputHitPerM', e.target.value)} />
-          <span>输出</span><input className="in" type="number" min={0} step="0.1" style={{ width: 90 }} value={ai.priceOutputPerM} disabled={!canEdit} onChange={(e) => num('priceOutputPerM', e.target.value)} />
+          <span>输入·未命中缓存</span><input className="in" type="number" {...moneyInputProps} min={0} step="0.1" style={{ width: 90 }} value={ai.priceInputMissPerM} disabled={!canEdit} onChange={(e) => num('priceInputMissPerM', e.target.value)} />
+          <span>输入·命中缓存</span><input className="in" type="number" {...moneyInputProps} min={0} step="0.1" style={{ width: 90 }} value={ai.priceInputHitPerM} disabled={!canEdit} onChange={(e) => num('priceInputHitPerM', e.target.value)} />
+          <span>输出</span><input className="in" type="number" {...moneyInputProps} min={0} step="0.1" style={{ width: 90 }} value={ai.priceOutputPerM} disabled={!canEdit} onChange={(e) => num('priceOutputPerM', e.target.value)} />
         </div>
       </Row>
       {canEdit ? (
@@ -287,7 +288,7 @@ export function AiRulesSection({ canEdit }: { canEdit: boolean }) {
           <label>适用报修类型<select className="in" value={edit.repairType} onChange={(e) => setEdit({ ...edit, repairType: e.target.value })}><option value="">全部类型</option>{types.map((t) => <option key={t.repairType} value={t.repairType}>{t.label}</option>)}</select></label>
           <label>适用管理处<select className="in" value={edit.officeId} onChange={(e) => setEdit({ ...edit, officeId: e.target.value })}><option value="">公司通用</option>{offices.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label>
           <label>适用词<input className="in" value={edit.keywords} placeholder="如 更换角阀、换角阀（顿号分隔）" onChange={(e) => setEdit({ ...edit, keywords: e.target.value })} /></label>
-          <div className="set-inline"><span style={{ fontWeight: 600 }}>建议金额（元）</span><input className="in" type="number" min={0} step="0.01" style={{ width: 130 }} value={edit.feeYuan} onChange={(e) => setEdit({ ...edit, feeYuan: e.target.value })} />
+          <div className="set-inline"><span style={{ fontWeight: 600 }}>建议金额（元）</span><input className="in" type="number" {...moneyInputProps} min={0} step="0.01" style={{ width: 130 }} value={edit.feeYuan} onChange={(e) => setEdit({ ...edit, feeYuan: e.target.value })} />
             <Toggle on={edit.enabled} onChange={(enabled) => setEdit({ ...edit, enabled })} label={['启用', '停用']} /></div>
         </> : null}
       </FormModal>

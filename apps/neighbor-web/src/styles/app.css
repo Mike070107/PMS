@@ -566,3 +566,7 @@
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
+
+input[data-money-input] { appearance: textfield; -moz-appearance: textfield; }
+input[data-money-input]::-webkit-inner-spin-button,
+input[data-money-input]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }

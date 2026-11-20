@@ -1,3 +1,4 @@
+import { moneyInputProps } from '@/lib/money-input';
 import DateInput from '@/components/DateInput';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { request } from '@pms/api-client';
@@ -253,7 +254,7 @@ export function FeeTemplatesSection({ canEdit, initialKind='residential', onlyKi
           {editor.items.map((it, i) => (
             <div className="ft-item" key={i}>
               <select className="in" value={it.feeCode} onChange={(e) => setItem(i, { feeCode: e.target.value })}>{FEE_ITEMS.map((f) => <option key={f.code} value={f.code}>{f.name}</option>)}</select>
-              <input className="in" type="number" min={0} step="0.01" value={it.priceYuan} onChange={(e) => setItem(i, { priceYuan: e.target.value })} />
+              <input className="in" type="number" {...moneyInputProps} min={0} step="0.01" value={it.priceYuan} onChange={(e) => setItem(i, { priceYuan: e.target.value })} />
               <input className="in" maxLength={12} value={it.unit} onChange={(e) => setItem(i, { unit: e.target.value })} />
               <select className="in" value={it.calculation} onChange={(e) => setItem(i, { calculation: e.target.value as Item['calculation'] })}>{Object.entries(CALC).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
               <select className="in" value={it.cycle} onChange={(e) => setItem(i, { cycle: e.target.value as Item['cycle'] })}><option value="month">每月</option><option value="once">按次 / 用量</option></select>
@@ -285,7 +286,7 @@ export function FeeTemplatesSection({ canEdit, initialKind='residential', onlyKi
                 <input type="checkbox" checked={owns(overrides, it.feeCode)} onChange={(e) => setOverrides((o) => { const n = { ...o }; if (e.target.checked) n[it.feeCode] = it.unitPriceCents; else delete n[it.feeCode]; return n; })} />
                 {LABELS[it.feeCode]}（模板 {formatFeeMoney(it.unitPriceCents)}/{it.unit}）
               </label>
-              <input className="in" type="number" min={0} step="0.01" style={{ width: 130 }} disabled={!owns(overrides, it.feeCode)} value={owns(overrides, it.feeCode) ? overrides[it.feeCode] / 100 : ''}
+              <input className="in" type="number" {...moneyInputProps} min={0} step="0.01" style={{ width: 130 }} disabled={!owns(overrides, it.feeCode)} value={owns(overrides, it.feeCode) ? overrides[it.feeCode] / 100 : ''}
                 onChange={(e) => e.target.value !== '' && setOverrides((o) => ({ ...o, [it.feeCode]: Math.round(Number(e.target.value) * 100) }))} />
             </div>
           ))}

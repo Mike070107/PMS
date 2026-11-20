@@ -1,3 +1,4 @@
+import { moneyInputProps } from '@/lib/money-input';
 import { formatBeijingDateTime } from '@pms/shared-types';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -374,7 +375,7 @@ function OrderForm({ req, onClose, onDone }: { req: PurchaseRequestView; onClose
                       ) : null}
                     </td>
                     <td><input className="in" type="number" min={0} step="any" style={{ height: 36 }} value={l.qty} onChange={(e) => setLines((p) => p.map((x, i) => (i === k ? { ...x, qty: Number(e.target.value) || 0 } : x)))} /></td>
-                    <td><input className="in" type="number" min={0} step="0.01" style={{ height: 36 }} value={l.cost} onChange={(e) => setLines((p) => p.map((x, i) => (i === k ? { ...x, cost: e.target.value } : x)))} /></td>
+                    <td><input className="in" type="number" {...moneyInputProps} min={0} step="0.01" style={{ height: 36 }} value={l.cost} onChange={(e) => setLines((p) => p.map((x, i) => (i === k ? { ...x, cost: e.target.value } : x)))} /></td>
                     <td style={{ textAlign: 'right', fontWeight: 600 }}>{money((Number(l.cost) || 0) * l.qty)}</td>
                   </tr>
                 ))}
@@ -433,7 +434,7 @@ function ReceiveForm({ order, onClose, onDone }: { order: PurchaseOrderView; onC
                     <td><b>{l.name || `#${l.materialId}`}</b><span className="sub">{l.spec || '—'}</span></td>
                     <td style={{ textAlign: 'right' }}>{l.qty}{l.unit || ''}</td>
                     <td><input className="in" type="number" min={0} step="any" style={{ height: 36 }} value={l.recv} onChange={(e) => setLines((p) => p.map((x, i) => (i === k ? { ...x, recv: e.target.value } : x)))} /></td>
-                    <td><input className="in" type="number" min={0} step="0.01" style={{ height: 36 }} value={l.cost} onChange={(e) => setLines((p) => p.map((x, i) => (i === k ? { ...x, cost: e.target.value } : x)))} /></td>
+                    <td><input className="in" type="number" {...moneyInputProps} min={0} step="0.01" style={{ height: 36 }} value={l.cost} onChange={(e) => setLines((p) => p.map((x, i) => (i === k ? { ...x, cost: e.target.value } : x)))} /></td>
                   </tr>
                 ))}
               </tbody>

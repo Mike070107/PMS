@@ -1,3 +1,4 @@
+import { moneyInputProps } from '@/lib/money-input';
 import { formatBeijingDateTime } from '@pms/shared-types';
 import { useEffect, useMemo, useState } from 'react';
 import { inventory, request } from '@pms/api-client';
@@ -119,7 +120,7 @@ export function InboundForm({ warehouses, onClose, onDone }: { warehouses: Wareh
                   <tr key={l.m.id} style={{ cursor: 'default' }}>
                     <td><b>{l.m.name}</b><span className="sub">{l.m.spec || '—'} · {l.m.code}</span></td>
                     <td><div style={{ display: 'flex', gap: 4, alignItems: 'center' }}><input className="in" type="number" min={0} step="any" style={{ height: 36 }} value={l.qty} onChange={(e) => setLines((p) => p.map((x) => (x.m.id === l.m.id ? { ...x, qty: e.target.value } : x)))} /><span className="muted">{l.m.unit}</span></div></td>
-                    <td><input className="in" type="number" min={0} step="0.01" style={{ height: 36 }} value={l.cost} onChange={(e) => setLines((p) => p.map((x) => (x.m.id === l.m.id ? { ...x, cost: e.target.value } : x)))} /></td>
+                    <td><input className="in" type="number" {...moneyInputProps} min={0} step="0.01" style={{ height: 36 }} value={l.cost} onChange={(e) => setLines((p) => p.map((x) => (x.m.id === l.m.id ? { ...x, cost: e.target.value } : x)))} /></td>
                     <td style={{ textAlign: 'right', fontWeight: 600 }}>{money(num(l.qty) * num(l.cost))}</td>
                     <td><button className="btn sm" onClick={() => setLines((p) => p.filter((x) => x.m.id !== l.m.id))}>✕</button></td>
                   </tr>

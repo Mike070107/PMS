@@ -1,3 +1,4 @@
+import { moneyInputProps } from '@/lib/money-input';
 import { useEffect, useMemo, useState } from 'react';
 import { inventory, purchases, request } from '@pms/api-client';
 import { PurchaseRequestStatus } from '@pms/shared-types';
@@ -160,7 +161,7 @@ export default function RequestComposer({ onClose, onCreated }: { onClose: () =>
                     {cats.filter((c) => c.enabled).map((c) => <option key={c.id} value={c.label}>{c.label}</option>)}
                   </select>
                 </Field>
-                <Field label="参考单价(元)"><input className="in" type="number" step="0.01" value={newSku.cost} onChange={(e) => setNewSku({ ...newSku, cost: e.target.value })} /></Field>
+                <Field label="参考单价(元)"><input className="in" type="number" {...moneyInputProps} step="0.01" value={newSku.cost} onChange={(e) => setNewSku({ ...newSku, cost: e.target.value })} /></Field>
               </div>
               <div style={{ display: 'flex', gap: 8 }}><Btn kind="p" disabled={busy} onClick={() => void createSku()}>建档并加入</Btn><Btn onClick={() => setNewSku(null)}>取消</Btn></div>
             </div>
@@ -177,7 +178,7 @@ export default function RequestComposer({ onClose, onCreated }: { onClose: () =>
                       <td><div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>{l.photo ? <ImagePreviewButton fileUrl={l.photo} fileName={l.name}><img src={l.photo} alt={l.name} className="pr-thumb" /></ImagePreviewButton> : <div className="pr-thumb ph0"><Icon name="box" size={16} /></div>}<div><b>{l.name}</b><span className="sub">{l.spec || '—'}</span></div></div></td>
                       <td style={{ textAlign: 'right' }} className={s && s.safety > 0 && s.qty < s.safety ? 'over' : 'muted'}>{s ? s.qty : 0}{l.unit}{s && s.safety > 0 ? <span className="sub">安全 {s.safety}</span> : null}</td>
                       <td><div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><input className="in" type="number" min={0} step="any" style={{ height: 36 }} value={l.qty} onChange={(e) => setLine(l.key, { qty: num(e.target.value) })} /><span className="muted">{l.unit}</span></div></td>
-                      <td><input className="in" type="number" min={0} step="0.01" style={{ height: 36 }} value={l.costYuan} placeholder="选填" onChange={(e) => setLine(l.key, { costYuan: e.target.value })} /></td>
+                      <td><input className="in" type="number" {...moneyInputProps} min={0} step="0.01" style={{ height: 36 }} value={l.costYuan} placeholder="选填" onChange={(e) => setLine(l.key, { costYuan: e.target.value })} /></td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>{l.costYuan ? money(num(l.costYuan) * l.qty) : <span className="muted">—</span>}</td>
                       <td><input className="in" style={{ height: 36 }} value={l.note} placeholder="用在哪 / 品牌要求" onChange={(e) => setLine(l.key, { note: e.target.value })} /></td>
                       <td><button className="btn sm" onClick={() => setLines((p) => p.filter((x) => x.key !== l.key))}>✕</button></td>

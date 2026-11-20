@@ -1,3 +1,4 @@
+import { moneyInputProps } from '@/lib/money-input';
 import RegistrationPermit from './RegistrationPermit';
 import DateInput from '@/components/DateInput';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -491,7 +492,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
   useEffect(() => {
     const generation = ++quoteGeneration.current;
     if (!rule || !lots.length || clsBusy || (!custom && !monthsValid) || (custom && !customOk)) { setEst(null); onCart(sel.plate, null); if (custom && cs && ce && !customOk) setEstErr('结束日期不能早于开始日期'); return; }
-    if (custom && (manualCents == null || !reason.trim())) { setEst(null); onCart(sel.plate, null); setEstErr('请明确填写实收金额（0元请填0）和原因'); return; }
+    if (custom && (manualCents == null || !reason.trim())) { setEst(null); onCart(sel.plate, null); setEstErr(manualCents == null ? '请输入实收金额（0元请填0）' : '请选择或填写自定日期的原因'); return; }
     let alive = true;
     setEstErr('');
     setEst(null);
@@ -572,7 +573,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
                   <div className="cr-grid">
                     <label>开始日期<DateInput className="in" type="date" value={cs} onChange={(e) => { invalidateQuote(); setCs(e.target.value); }} /></label>
                     <label>结束日期<DateInput className="in" type="date" value={ce} min={cs || undefined} onChange={(e) => { invalidateQuote(); setCe(e.target.value); }} /></label>
-                    <label>实收金额（元）<input className="in" type="number" min={0} step="0.01" value={amt} aria-label="自定日期实收金额" placeholder="请输入金额，0元请填0" onChange={(e) => { invalidateQuote(); setAmt(e.target.value); }} /></label>
+                    <label>实收金额（元）<input className="in" type="number" {...moneyInputProps} min={0} step="0.01" value={amt} aria-label="自定日期实收金额" placeholder="请输入金额，0元请填0" onChange={(e) => { invalidateQuote(); setAmt(e.target.value); }} /></label>
                   </div>
                   <div className="muted" style={{ fontSize: 13.5, margin: '6px 0' }}>
                     {days ? `共 ${days} 天` : ''}{est?.standardAmountCents != null ? ` · 标准参考 ${money(est.standardAmountCents / 100)}（${est.quantity} 个月）` : est ? ' · 该区间未配置标准价，按明确实收提交审核' : ''}

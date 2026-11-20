@@ -1,3 +1,4 @@
+import { moneyInputProps } from '@/lib/money-input';
 import { formatBeijingDateTime } from '@pms/shared-types';
 import { useEffect, useMemo, useState } from 'react';
 import { inventory, request } from '@pms/api-client';
@@ -60,7 +61,7 @@ function SkuLines({ materials, lines, onChange, avail, withCost, unitOf }: {
                   <td><div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>{m?.photoUrl ? <ImagePreviewButton fileUrl={m.photoUrl} fileName={m.name}><img src={m.photoUrl} alt={m.name} className="pr-thumb" /></ImagePreviewButton> : <div className="pr-thumb ph0"><Icon name="box" size={16} /></div>}<div><b>{m?.name || `#${l.materialId}`}</b><span className="sub">{m?.spec || '—'}</span></div></div></td>
                   {avail ? <td style={{ textAlign: 'right' }} className={over ? 'over' : 'muted'}>{a ?? 0}{unitOf(l.materialId)}</td> : null}
                   <td><div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><input className="in" type="number" min={0} step="any" style={{ height: 36, borderColor: over ? 'var(--dang)' : undefined }} value={l.qty} onChange={(e) => set(l.key, { qty: e.target.value })} /><span className="muted">{unitOf(l.materialId)}</span></div></td>
-                  {withCost ? <td><input className="in" type="number" min={0} step="0.01" style={{ height: 36 }} value={l.cost} onChange={(e) => set(l.key, { cost: e.target.value })} /></td> : null}
+                  {withCost ? <td><input className="in" type="number" {...moneyInputProps} min={0} step="0.01" style={{ height: 36 }} value={l.cost} onChange={(e) => set(l.key, { cost: e.target.value })} /></td> : null}
                   {withCost ? <td style={{ textAlign: 'right', fontWeight: 600 }}>{money(num(l.cost) * num(l.qty))}</td> : null}
                   <td><button className="btn sm" onClick={() => onChange(lines.filter((x) => x.key !== l.key))}>✕</button></td>
                 </tr>

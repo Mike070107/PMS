@@ -1966,7 +1966,7 @@ function BillFormModal({
           </Col>
           <Col span={12}>
             <Form.Item name="amountYuan" label="金额（元）" rules={[{ required: true, message: '请填写金额' }]}>
-              <InputNumber min={0} precision={2} style={{ width: '100%' }} />
+              <InputNumber min={0} controls={false} changeOnWheel={false} precision={2} style={{ width: '100%' }} />
             </Form.Item>
           </Col>
           <Col span={24}>
@@ -2094,12 +2094,12 @@ function StandardFormModal({
           </Col>
           <Col span={12}>
             <Form.Item name="amountYuan" label="每月实收（元）" rules={[{ required: true, message: '请填写金额' }]}>
-              <InputNumber min={0} precision={2} style={{ width: '100%' }} />
+              <InputNumber min={0} controls={false} changeOnWheel={false} precision={2} style={{ width: '100%' }} />
             </Form.Item>
           </Col>
           <Col span={12}>
             <Form.Item name="standardYuan" label="原标准（元，选填）" extra="有减免时填调整前的金额">
-              <InputNumber min={0} precision={2} style={{ width: '100%' }} />
+              <InputNumber min={0} controls={false} changeOnWheel={false} precision={2} style={{ width: '100%' }} />
             </Form.Item>
           </Col>
           <Col span={24}>

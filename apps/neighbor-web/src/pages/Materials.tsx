@@ -1,3 +1,4 @@
+import { moneyInputProps } from '@/lib/money-input';
 import { useEffect, useMemo, useState } from 'react';
 import { inventory, request } from '@pms/api-client';
 import type { MaterialView, MaterialCategoryView } from '@pms/shared-types';
@@ -190,7 +191,7 @@ function MaterialEditor({
       </Field>
 
       <Field label="参考价格（元 / 单位）" hint="仅用于估价；工单扣料按库存批次成本计算">
-        <input className="in" type="number" min={0} step="0.01" value={d.cost} onChange={(e) => set({ cost: e.target.value })} placeholder="0.00" />
+        <input className="in" type="number" {...moneyInputProps} min={0} step="0.01" value={d.cost} onChange={(e) => set({ cost: e.target.value })} placeholder="0.00" />
       </Field>
       <Field label="别名" hint="现场常用叫法，用顿号或逗号分隔，搜索时都能搜到">
         <input className="in" value={d.aliases} onChange={(e) => set({ aliases: e.target.value })} placeholder="例如：三角阀、角阀门" />

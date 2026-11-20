@@ -603,7 +603,10 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
             ) : null}
           </div>
 
-          {embedded && (linkedBlocked || !parkCarts.length) ? null : isBillTab?<MisCollectionPanel key={`${house.id}-${tab}`} houseId={house.id} label={billLabel} bills={selBillRows} loading={bills===null||!!billErr} onSaved={()=>{setSelBills([]);void loadBills(house);}}/>:<div className="card cart2">
+          {embedded && linkedBlocked ? null : embedded && !parkCarts.length ? <div className="card cart2" style={{padding:16}}>
+            <button type="button" className="btn p" disabled>收费并办理</button>
+            <small className="muted">完成登记并生成应收后可收款</small>
+          </div> : isBillTab?<MisCollectionPanel key={`${house.id}-${tab}`} houseId={house.id} label={billLabel} bills={selBillRows} loading={bills===null||!!billErr} onSaved={()=>{setSelBills([]);void loadBills(house);}}/>:<div className="card cart2">
             <div className="cartHd"><Icon name="receipt" /><b>本次办理</b><span className="cnt">{isBillTab ? billLabel : tab === 'pk' ? '停车缴费' : '门禁卡'}</span></div>
             <div className="cartBody">
               {isBillTab ? (

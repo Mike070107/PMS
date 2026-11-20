@@ -1,3 +1,4 @@
+import { moneyInputProps } from '@/lib/money-input';
 import { useEffect, useRef, useState } from 'react';
 import { request } from '@pms/api-client';
 import { ErrorNote, Loading, toast } from '@/components/ui';
@@ -91,7 +92,7 @@ export default function CollectionFollowupSection({ canEdit }: { canEdit: boolea
             <input
               name="amountCents"
               className="in"
-              type="number"
+              type="number" {...moneyInputProps}
               min={0}
               step="0.01"
               value={amount}

@@ -1,3 +1,4 @@
+import { moneyInputProps } from '@/lib/money-input';
 import './workorder-form.css';
 import PhotoField, { type PhotoUploadStatus } from '@/components/PhotoField';
 import { formatBeijingDateTime, sortTimelineNewestFirst } from '@pms/shared-types';
@@ -739,7 +740,7 @@ function FinishFlow({ detail, busy, run, shell }: { detail: WorkOrderDetail; bus
         <MaterialPicker workOrderId={wo.id} mode="use" lines={lines} onChange={setLines}/>
       </details>
       <details className="wo-form-section"><summary>向业主收费<span>{feeCents ? money(feeCents / 100) : '未收费'}</span></summary>
-        <Field label="实收金额（元）"><input className="in" type="number" min="0" step="0.01" value={fee} onChange={e => setFee(e.target.value)} /></Field>
+        <Field label="实收金额（元）"><input className="in" type="number" {...moneyInputProps} min="0" step="0.01" value={fee} onChange={e => setFee(e.target.value)} /></Field>
       </details>
     </>,
     <Btn kind="p" size="lg" disabled={busy || photoStatus.uploading || photoStatus.failedCount > 0 || !Number.isFinite(feeCents) || feeCents < 0}

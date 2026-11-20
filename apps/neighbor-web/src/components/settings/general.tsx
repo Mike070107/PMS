@@ -1,3 +1,4 @@
+import { moneyInputProps } from '@/lib/money-input';
 import { useEffect, useState } from 'react';
 import { request } from '@pms/api-client';
 import { toast } from '@/components/ui';
@@ -93,7 +94,7 @@ export function PurchaseChainSection({ settings, save, canEdit }: SectionProps) 
   const none = !f.manager && !f.purchaser && f.office !== 'approve';
   const money = (k: 'skipManagerBelowYuan' | 'skipPurchaserBelowYuan', on: boolean) => (
     <span className="set-inline"><span>预估金额低于 ¥</span>
-      <input className="in" type="number" min={0} step="0.01" style={{ width: 120 }} value={f[k]} disabled={!canEdit || !on} onChange={(e) => setF({ ...f, [k]: Math.max(0, Number(e.target.value) || 0) })} />
+      <input className="in" type="number" {...moneyInputProps} min={0} step="0.01" style={{ width: 120 }} value={f[k]} disabled={!canEdit || !on} onChange={(e) => setF({ ...f, [k]: Math.max(0, Number(e.target.value) || 0) })} />
       <span>元时跳过（0 = 不跳）</span></span>
   );
   return (

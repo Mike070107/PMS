@@ -1,3 +1,4 @@
+import { moneyInputProps } from '@/lib/money-input';
 import { formatBeijingDateTime } from '@pms/shared-types';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -247,7 +248,7 @@ function QuotaConfig({ items, params, canEdit, onClose, onChanged }: {
   return (
     <Sheet open onClose={onClose} width={900} title="预算定额库" subtitle="在养护单「编号」格选定额，工时和人工费自动算">
       <div className="card" style={{ padding: 14, display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 14 }}>
-        <Field label="人工单价（元/工时）"><input className="in" type="number" step="0.01" style={{ width: 160 }} value={rate} disabled={!canEdit} onChange={(e) => setRate(e.target.value)} /></Field>
+        <Field label="人工单价（元/工时）"><input className="in" type="number" {...moneyInputProps} step="0.01" style={{ width: 160 }} value={rate} disabled={!canEdit} onChange={(e) => setRate(e.target.value)} /></Field>
         <Field label="取费系数"><input className="in" type="number" step="0.0001" style={{ width: 140 }} value={coef} disabled={!canEdit} onChange={(e) => setCoef(e.target.value)} /></Field>
         {canEdit ? <div style={{ marginBottom: 14 }}><Btn kind="p" disabled={busy} onClick={() => void saveParams()}>保存取费参数</Btn></div> : null}
         <div className="muted" style={{ fontSize: 13, marginBottom: 14 }}>合计 =（人工费 + 材料费）× 系数</div>
@@ -268,7 +269,7 @@ function QuotaConfig({ items, params, canEdit, onClose, onChanged }: {
             <Field label="规格"><input className="in" value={d.spec} onChange={(e) => setD({ ...d, spec: e.target.value })} placeholder="如 管径50" /></Field>
             <Field label="单位"><input className="in" value={d.unit} onChange={(e) => setD({ ...d, unit: e.target.value })} /></Field>
             <Field label="工时定额"><input className="in" type="number" step="0.01" value={d.hours} onChange={(e) => setD({ ...d, hours: e.target.value })} /></Field>
-            <Field label="参考材料费(元)"><input className="in" type="number" step="0.01" value={d.materialFeeYuan} onChange={(e) => setD({ ...d, materialFeeYuan: e.target.value })} /></Field>
+            <Field label="参考材料费(元)"><input className="in" type="number" {...moneyInputProps} step="0.01" value={d.materialFeeYuan} onChange={(e) => setD({ ...d, materialFeeYuan: e.target.value })} /></Field>
           </div>
           <Field label="备注"><input className="in" value={d.remark} onChange={(e) => setD({ ...d, remark: e.target.value })} /></Field>
           <div style={{ display: 'flex', gap: 8 }}><Btn kind="p" disabled={busy} onClick={() => void saveItem()}>{d.id ? '保存' : '新增'}</Btn><Btn onClick={() => setD(null)}>取消</Btn></div>

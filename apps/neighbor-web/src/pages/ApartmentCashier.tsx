@@ -552,8 +552,8 @@ export default function ApartmentCashierPage({ preview = false, permissionKey = 
                   <strong>{item.feeName}{item.refund && <Tag color="red">退费</Tag>}</strong>
                   <InputNumber min={0} precision={3} value={item.quantity} onChange={(value) => updateItem(item.feeCode, { quantity: Number(value) || 0 })} />
                   <span>{item.unit}</span>
-                  <InputNumber min={0} precision={2} value={item.unitPriceCents / 100} onChange={(value) => updateItem(item.feeCode, { unitPriceCents: Math.round((Number(value) || 0) * 100) })} />
-                  <InputNumber aria-label={`${item.feeName}${item.refund ? '退费' : '实收'}金额`} min={item.refund ? undefined : 0} precision={2} value={item.amountCents / 100} onChange={(value) => updateItem(item.feeCode, { amountCents: Math.round((Number(value) || 0) * 100) })} />
+                  <InputNumber min={0} controls={false} changeOnWheel={false} precision={2} value={item.unitPriceCents / 100} onChange={(value) => updateItem(item.feeCode, { unitPriceCents: Math.round((Number(value) || 0) * 100) })} />
+                  <InputNumber aria-label={`${item.feeName}${item.refund ? '退费' : '实收'}金额`} min={item.refund ? undefined : 0} controls={false} changeOnWheel={false} precision={2} value={item.amountCents / 100} onChange={(value) => updateItem(item.feeCode, { amountCents: Math.round((Number(value) || 0) * 100) })} />
                   <Button type="text" danger icon={<DeleteOutlined />} aria-label={`删除${item.feeName}`} onClick={() => setItems((current) => current.filter((row) => row.feeCode !== item.feeCode))} />
                 </div>
                 {(item.feeCode === 'network' || item.feeCode === 'parking') && <div className="cashier-fee-extra">
