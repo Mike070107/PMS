@@ -590,3 +590,8 @@ input[data-money-input]::-webkit-outer-spin-button { -webkit-appearance: none; m
 
 .renew-reason{display:grid;gap:6px;margin:12px 0;color:var(--ink)}
 .renew-reason input[aria-invalid="true"]{border-color:var(--dang)}
+
+.address-search-match{display:flex;width:100%;min-width:0;align-items:baseline;justify-content:space-between;gap:12px;text-align:left;white-space:normal}
+.address-search-match>span{min-width:0;overflow-wrap:anywhere}
+.address-search-detail{flex-shrink:0;text-align:right;font-variant-numeric:tabular-nums}
+.address-search-match mark{background:transparent;color:#167346;font-weight:700}

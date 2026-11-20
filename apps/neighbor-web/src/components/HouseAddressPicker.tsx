@@ -1,3 +1,4 @@
+import AddressSearchMatch from './AddressSearchMatch';
 import { Cascader, Typography } from 'antd';
 import type { DefaultOptionType } from 'antd/es/cascader';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -173,6 +174,7 @@ export default function HouseAddressPicker(props: {
   extraResults?: React.ReactNode;
   remoteSearchFeedback?: boolean;
   onlyExtraResults?: boolean;
+  showMatchDetails?: boolean;
   /** all permits community/building suggestions; default retains house-only search. */
   selectionLevel?: 'house' | 'all';
   showCopy?: boolean;
@@ -341,7 +343,14 @@ export default function HouseAddressPicker(props: {
           },
           sort: (a, b, input) =>
             scoreOf(input, b as AddrOption[]) - scoreOf(input, a as AddrOption[]),
-          render: (_input, path) => pathText(path as AddrOption[]) || '—',
+          render: (input, path) => {
+            const options = path as AddrOption[];
+            const address = pathText(options) || '—';
+            const house = options[options.length - 1]?.house;
+            return props.showMatchDetails
+              ? <AddressSearchMatch address={address} query={input} phone={house?.ownerPhone} owner={house?.ownerName} />
+              : address;
+          },
         }}
         onChange={(next) => {
           if (props.disabled) return;

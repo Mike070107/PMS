@@ -46,7 +46,7 @@ interface HouseHit {
 }
 interface Vehicle { id: number; plateNo: string; houseId: number | null; ownerId: number | null; validUntil: string | null }
 interface AccessCard { id: number; cardNo: string; houseId: number; ownerId: number | null; status: string }
-interface SearchResult { plateMatches?: boolean; searchWarning?: string; houses: HouseHit[]; vehicles: Vehicle[]; accessCards: AccessCard[] }
+interface SearchResult { matchedPhones?: Record<number, string>; plateMatches?: boolean; searchWarning?: string; houses: HouseHit[]; vehicles: Vehicle[]; accessCards: AccessCard[] }
 interface Estimate { unitPriceCents: number; quantity: number; startDate: string | null; endDate: string | null; amountCents: number; summary: string }
 /** 物业费/泊位费应收：实时读 MIS（/fees/mis/bills），id 是 MIS 侧单据号 */
 interface Bill { id: string; feeCode: string; feeName: string; period: string; amountCents: number; status: string; remark?: string | null }
@@ -217,6 +217,12 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
     const fullPlate = /^[\u4e00-\u9fff][A-Z][A-Z0-9]{5,6}$/.test(term);
     const plateFragment = /^[A-Z0-9]{4,7}$/.test(term);
     const matches = (plate: string) => fullPlate ? plate.toUpperCase() === term : plate.toUpperCase().endsWith(term);
+    const matchedPhones: Record<number, string> = {};
+    if (/^\d{4,}$/.test(term)) {
+      for (const h of merged.houses) {
+        if (h.owner?.phone?.includes(term)) matchedPhones[h.id] = h.owner.phone;
+      }
+    }
     if (fullPlate || plateFragment) {
       merged.vehicles = merged.vehicles.filter(v => matches(v.plateNo));
     }
@@ -237,14 +243,14 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
           const fields = new Map(Object.entries(f).map(([key, value]) => [key.toLowerCase(), value]));
           const textField = (...keys: string[]) => keys.map(key => String(fields.get(key) ?? '').trim()).find(Boolean) || '';
           const plate = textField('p_plate', 'car_no').toUpperCase();
-          const rawRoom = textField('owner__room', 'owner__owner_name', 'p_note');
+          const rawRoom = textField('owner__room', 'owner__owner_name', 'p_note').replace(/^(\d+)-(\d+)-(\d+)$/, '$1/$2/$3');
           // Legacy parking uses zero-padded building numbers (198/03/301),
           // while the address book stores 3. Normalize only numeric address paths,
           // never the plate/suffix (03212 must retain its leading zero).
           const room = /^\d+\/\d+\/\d+$/.test(rawRoom)
             ? rawRoom.split('/').map(part => part.replace(/^0+(?=\d)/, '')).join('/') : rawRoom;
           const plateHit = !!plate && matches(plate);
-          const phoneHit = /^\d+$/.test(term) && [...fields].some(([key, value]) =>
+          const phoneHit = /^\d+$/.test(term) && [...fields].find(([key, value]) =>
             /(?:tel|phone|mobile)/.test(key) && String(value ?? '').replace(/[^\d]/g, '').endsWith(term));
           if (!plateHit && !phoneHit) continue;
           const keepPlateOnly = () => {
@@ -257,6 +263,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
             .every((part, index) => String(part ?? '').replace(/^0+(?=\d)/, '') === parts[index])) : rr.houses;
           if (!parts || candidates.length !== 1) { if (plateHit) keepPlateOnly(); continue; }
           const hit = candidates[0];
+          if (phoneHit && !matchedPhones[hit.id]) matchedPhones[hit.id] = String(phoneHit[1]).replace(/[^\d]/g, '');
           if (!merged.houses.some((h) => h.id === hit.id)) merged.houses.push(hit);
           if (plateHit && !merged.vehicles.some((v) => v.plateNo === plate)) merged.vehicles.push({ id: hit.id * 1000 + merged.vehicles.length, plateNo: plate, houseId: hit.id, ownerId: hit.owner?.id ?? null, validUntil: null });
         }
@@ -265,9 +272,13 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
         else throw new Error(`车牌查询未完成：${error instanceof Error ? error.message : '现场停车库暂不可用'}。不能据此判断车辆不存在。`);
       }
     }
-    if ((fullPlate || plateFragment) && merged.vehicles.length) {
+    const tailPhones = Object.entries(matchedPhones).filter(([, phone]) => phone.split(/[\s,，、;/]+/).some(p => p.endsWith(term)));
+    const priorityMatches = (fullPlate || plateFragment) && merged.vehicles.length > 0 || tailPhones.length > 0;
+    if (tailPhones.length && !plateFragment && !fullPlate) merged.vehicles = [];
+    merged.matchedPhones = priorityMatches ? Object.fromEntries(tailPhones) : matchedPhones;
+    if (priorityMatches) {
       const ids = new Set(merged.vehicles.map(v => v.houseId));
-      return { ...merged, plateMatches: true, houses: merged.houses.filter(h => ids.has(h.id)), accessCards: [] };
+      return { ...merged, plateMatches: merged.vehicles.length > 0, houses: merged.houses.filter(h => ids.has(h.id) || !!merged.matchedPhones?.[h.id]), accessCards: [] };
     }
     return merged;
   }, []);

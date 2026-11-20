@@ -13,7 +13,7 @@ test('still running query is not reported as empty result',async()=>{const{searc
 test('2199 优先返回真实车牌和所属房屋；其他户附带车辆及电话命中不混入',async()=>{
  const right={...house,id:20,buildingNo:'20',roomNo:'802'};
  const search=productionSearch({
-  request:async({query})=>query.q==='2199'?{houses:[house,right],vehicles:[{id:10,plateNo:'沪B12345',houseId:6}],accessCards:[]}:{houses:[right],vehicles:[],accessCards:[]},
+  request:async({query})=>query.q==='2199'?{houses:[{...house,owner:{phone:'13821990000'}},right],vehicles:[{id:10,plateNo:'沪B12345',houseId:6}],accessCards:[]}:{houses:[right],vehicles:[],accessCards:[]},
   accessCardIssuance:{createParkingQuery:async()=>({status:'completed',rows:[
    {fields:{P_plate:'沪A02199',Owner__owner_Name:'198/20/802'}},
    {fields:{P_plate:'沪B12345',Owner__owner_Name:'198/6/601'}}]})}
