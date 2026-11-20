@@ -112,6 +112,7 @@ test('history and today bind their trailing print button to the individual recor
 test('逐笔红冲防连点，收费打印与历史补打按入口区分', async () => {
   const wxml=readFileSync(new URL('../miniprogram/pages/apartment-cashier/apartment-cashier.wxml',import.meta.url),'utf8');
   assert.doesNotMatch(wxml,/打印本笔/);
+  assert.match(wxml,/activeTab === 'charge' && placeText \? 'container--with-bar' : 'container--tabbar'/);
   assert.equal((wxml.match(/catchtap="onPrintRow" aria-label="补打"/g)||[]).length,2);
   assert.match(wxml,/bindtap="onPrintRow">补打</);
   assert.match(source,/confirmText:reprint\?'补打':'打印'/);

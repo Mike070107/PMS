@@ -2,7 +2,7 @@
   公寓收费工作台（员工端）。绑定名一律对应 apartment-cashier.ts 的 data / 方法。
   手机上只做「收一笔、出一张、看这间房交过什么」。
 -->
-<view class="container {{activeTab === 'charge' && placeText ? 'container--with-bar' : ''}}">
+<view class="container {{activeTab === 'charge' && placeText ? 'container--with-bar' : 'container--tabbar'}}">
   <view wx:if="{{loading}}" class="muted center">加载中…</view>
 
   <!-- 没有这一格权限就把原因说清楚，不要静默空白 -->
