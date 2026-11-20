@@ -594,4 +594,4 @@ input[data-money-input]::-webkit-outer-spin-button { -webkit-appearance: none; m
 .address-search-match{display:flex;width:100%;min-width:0;align-items:baseline;justify-content:space-between;gap:12px;text-align:left;white-space:normal}
 .address-search-match>span{min-width:0;overflow-wrap:anywhere}
 .address-search-detail{flex-shrink:0;text-align:right;font-variant-numeric:tabular-nums}
-.address-search-match mark{background:transparent;color:#167346;font-weight:700}
+.address-search-match mark{background:#146c43;color:#fff;font-weight:800;border-radius:2px;padding-inline:1px;box-decoration-break:clone;-webkit-box-decoration-break:clone}

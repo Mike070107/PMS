@@ -31,7 +31,11 @@ await page.locator('input').fill('198/3/301');
 const address=page.getByRole('button').filter({has:page.locator('mark')});
 await address.waitFor();
 assert.deepEqual(await address.locator('mark').allTextContents(),['198','3','301']);
-assert.equal(await address.locator('mark').first().evaluate(el=>getComputedStyle(el).color),'rgb(22, 115, 70)');
+const selection=await address.locator('mark').first().evaluate(el=>{
+  const style=getComputedStyle(el);return [style.backgroundColor,style.color,style.fontWeight];
+});
+assert.deepEqual(selection,['rgb(20, 108, 67)','rgb(255, 255, 255)','800']);
+
 await page.close();}}
  finally{await browser?.close();server.closeAllConnections();await new Promise(r=>server.close(r));}
 });
