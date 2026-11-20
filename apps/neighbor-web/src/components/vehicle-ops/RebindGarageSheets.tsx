@@ -8,7 +8,9 @@ import Icon from '@/components/Icon';
 import HousePicker, { type PickedHouse } from '@/components/HousePicker';
 import { useAddressTree } from '@/lib/address-tree';
 import { field, GARAGES, garageState } from '@/lib/parking-fields';
-import { runOnTargets, pidOf, ymd, createIdempotencyKey, dbShort } from '@/lib/parking-ops';
+import { propertyCarBillingClass, readPlateBillingClass } from './propertyCarBilling';
+import { can } from '@/lib/perm';
+import { freshRows, runOnTargets, pidOf, ymd, createIdempotencyKey, dbShort } from '@/lib/parking-ops';
 
 type CloudState = 'loading' | DeliyunVehicle | null | undefined;
 
@@ -158,8 +160,11 @@ export function GaragesSheet({ plate, rows, cloud, onClose, onDone }: OpProps) {
     if (mixing && end1 && end2 && end1 !== end2) { setErr(`一期(${end1})和二期(${end2})到期日不一致，请先续期同步再一起授权`); return; }
     if (spaceGarage || missingSpace || (needsChoices && (spaceSource.loading || spaceSource.error))) { setErr('请先从对应车库档案选定有效车位号'); return; }
     if (!targets.length) { setErr('读不到原车辆记录，无法安全调整授权'); return; }
-    setRunning(true); setSubmitted(true); setLog([]);
+    if (needsChoices && !can('business','edit')) { setErr('当前账号没有修改车辆收费档位的权限'); return; }
+    setRunning(true); setLog([]);
     try {
+    const billingClass = needsChoices ? await propertyCarBillingClass(plate, targets[0]?.pmsMatch?.house?.communityId) : null;
+    setSubmitted(true);
     // 旧库：一个操作里现场助手会跨 parking1/parking2 处理（提交到任一现存库即可）
     if (oldDbSel.length) {
       const srcDb = (targets[0].database as 'parking1' | 'parking2');
@@ -187,6 +192,31 @@ export function GaragesSheet({ plate, rows, cloud, onClose, onDone }: OpProps) {
         setRunning(false); return;
       }
     }
+    if (billingClass) {
+      setLog(lines => [...lines,'车库授权已确认，正在同步产权车收费档位…']);
+      const latest = await freshRows(plate);
+      const databases = new Set(oldDbSel.map(key => key === 'phase1' ? 'parking1' : 'parking2'));
+      // 仅选人防时保留原有地面权限，在当前档案所在旧库同步身份。
+      if (!databases.size) targets.forEach(row => databases.add(row.database as 'parking1' | 'parking2'));
+      const selectedRows = [...databases].sort().map(database => {
+        const matches = latest.filter(row => row.database === database);
+        if (matches.length !== 1 || !pidOf(matches[0].fields) || field(matches[0].fields,'room',true) !== ownerRoom)
+          throw new Error('车库授权已办理，车辆记录或房号有变化，产权车收费档位待核对');
+        return matches[0];
+      });
+      const result = await runOnTargets(selectedRows, 'update_vehicle_type', (row,index) => ({
+        plate, ownerRoom: field(row.fields,'room',true), identity:'住户车',
+        ...(index === selectedRows.length-1 ? {billingClass} : {}),
+      }), {batchKey: batch.current + '-type', onLog:line => setLog(lines => [...lines,line])});
+      if (!result.ok) { setErr('车库授权已办理，产权车收费档位待核对：' + result.error); return; }
+      const [confirmed, savedClass] = await Promise.all([freshRows(plate), readPlateBillingClass(plate)]);
+      if (savedClass !== billingClass || selectedRows.some(row => !confirmed.some(current =>
+        current.database === row.database && pidOf(current.fields) === pidOf(row.fields) &&
+        field(current.fields,'identity') === '住户车' && field(current.fields,'room',true) === ownerRoom))) {
+        setErr('车库授权已办理，车辆身份或产权车收费档位读回不一致，请核对原任务');
+        return;
+      }
+    }
     toast('车库授权已更新');
     onDone();
     } catch (e) { setErr(`${e instanceof Error ? e.message : '授权结果未知'}；请核对原任务，不要重复办理`); }
@@ -197,7 +227,7 @@ export function GaragesSheet({ plate, rows, cloud, onClose, onDone }: OpProps) {
     <Sheet open onClose={() => (running || spaceGarage ? null : onClose())} title={`调整车库授权 · ${plate}`}
       subtitle={targets.map((t) => dbShort(t.database)).join(' + ')} width={560}>
       <div style={{ padding: '4px 2px' }}>
-        <div className="note" style={{ marginBottom: 12, fontSize: 13 }}>勾选这张车牌能进的车库。保存后现场会重新下发；去掉的车库会被收回。</div>
+        <div className="note" style={{ marginBottom: 12, fontSize: 13 }}>{needsChoices ? '本次收费档位：产权车' : '请选择允许通行的车库。'}</div>
         <div className="veh-garages" style={{ marginBottom: 14 }}>
           {GARAGES.map((g) => {
             const on = sel.has(g.key);

@@ -20,12 +20,18 @@ export async function request(input: any) {
     if (scenario === 'loading') while (!fixture.choicesReleased) await new Promise(r => setTimeout(r, 40));
     return { rows: scenario === 'empty' ? [] : choices };
   }
+  if (input.url === '/business/plate-tags') return [{vehicleClass:fixture.tasks.find(op=>op.payload.billingClass && op.status === 'completed')?.payload.billingClass}];
+  if (input.url === '/business/rules') return [{enabled:true,serviceType:'parking_monthly',config:{vehicleClass:'产权车位'}}];
   if (input.url === '/business/parking-targets') return parkingTargets;
   if (input.url.endsWith('/garages')) { if (scenario === 'saveError') throw new Error('受控登记保存失败'); Object.assign(intake, { garages: input.data.garages, garageNumbers: input.data.garageNumbers }); return structuredClone(intake); }
   if (input.url === '/vehicle-intakes/1') return structuredClone(intake);
   return { rows: [], total: 0 };
 }
 const finish = (op: any) => {
+  if (op.kind === 'update_vehicle_type') {
+    fixtureRows.find(row => row.database === op.database)!.fields.Car_Brand = op.payload.identity;
+    op.status = 'completed'; return op;
+  }
   for (const row of fixtureRows) {
     row.fields.P_Effective = row.database === 'parking1' ? bits(op.payload.garages.includes('phase1') ? [5, 7] : []) : bits([...(op.payload.garages.includes('phase2') ? [9, 11, 13] : []), ...(op.payload.garages.includes('main') ? [15, 17, 19, 21] : [])]);
     if (row.database === 'parking2' && op.payload.garages.includes('main')) row.fields.P_Spaces = op.payload.garageNumbers.main;
@@ -37,11 +43,11 @@ export const accessCardIssuance = new Proxy(base, { get(target, name) {
   if (name === 'setDeliyunCivilDefenseAuthorization') return async (data: any) => { fixture.calls.push({ name, data }); return { status: 'completed' }; };
   if (name === 'createParkingOperation') return async (data: any) => {
     fixture.calls.push({ name, data }); const prior = fixture.tasks.find(t => t.idempotencyKey === data.idempotencyKey); if (prior) return structuredClone(prior);
-    const op = { ...structuredClone(data), id: 900, status: 'pending', error: null }; fixture.tasks.push(op);
-    if (scenario === 'failed') { op.status = 'failed'; op.error = '受控写入失败'; }
+    const op = { ...structuredClone(data), id: 900 + fixture.tasks.length, status: 'pending', error: null }; fixture.tasks.push(op);
+    if (scenario === 'failed' || (scenario === 'typeFailed' && data.payload.billingClass)) { op.status = 'failed'; op.error = '受控写入失败'; }
     else if (scenario !== 'waiting') finish(op);
     return structuredClone(op);
   };
-  if (name === 'parkingOperation') return async () => { const op = fixture.tasks[0]; if (fixture.released) finish(op); return structuredClone(op); };
+  if (name === 'parkingOperation') return async (id:number) => { const op = fixture.tasks.find(task=>task.id===id)!; if (fixture.released) finish(op); return structuredClone(op); };
   return target[name];
 } });
