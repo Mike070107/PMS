@@ -6,6 +6,7 @@ import { MisMirror1794500000000 } from '../../migrations/1794500000000-MisMirror
 import { MisMirrorFailureCount1794600000000 } from '../../migrations/1794600000000-MisMirrorFailureCount';
 import { MisMirrorOwnerReportFields1795600000000 } from '../../migrations/1795600000000-MisMirrorOwnerReportFields';
 import { MisMirrorChargeStandard1795700000000 } from '../../migrations/1795700000000-MisMirrorChargeStandard';
+import { IncomeReceiptFields1796800000000 } from '../../migrations/1796800000000-IncomeReceiptFields';
 import { MisMirrorService } from './mis-mirror.service';
 
 async function fixture() {
@@ -16,6 +17,7 @@ async function fixture() {
   await health.up({ query: (sql: string) => pg.query(sql) } as any);
   await new MisMirrorOwnerReportFields1795600000000().up({ query: (sql: string) => pg.query(sql) } as any);
   await new MisMirrorChargeStandard1795700000000().up({ query: (sql: string) => pg.query(sql) } as any);
+  await new IncomeReceiptFields1796800000000().up({ query: (sql: string) => pg.query(sql) } as any);
   const dataSource: any = { query: async (sql: string, params?: any[]) => (await pg.query(sql, params)).rows };
   const misFees: any = {
     residentialScope: async () => [{ id: 1, name: '枫桦苑一期', offices: ['01'] }],

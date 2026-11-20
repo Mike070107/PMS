@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DataSource } from 'typeorm';
@@ -12,6 +12,10 @@ import { buildScreenSummary } from './screen-summary.util';
 import { chargeStandardMirrorParams } from './charge-standard-mirror.util';
 import { dimensionMirrorRows } from './dimension-mirror.util';
 import { billCursorId, billMirrorRows } from './bill-mirror.util';
+
+import { emptyIncome, IncomeCategory, IncomePage } from './today-income';
+import { scopeCommunityIds } from '../access/scope.util';
+
 
 type MirrorMode = 'mis' | 'mirror';
 type MirrorCommunity = { id: number; name: string; offices: string[] };
@@ -202,6 +206,7 @@ export class MisMirrorService {
         w.ZJ_LX AS feeCode, f.XM AS feeName, w.FWXZ_DH AS natureCode, w.ZJ_CNY AS period,
         CAST(ROUND(w.ZJ_JE * 100, 0) AS bigint) AS amountCents,
         CONVERT(varchar(10),w.ZJ_SKRQ,23) AS paidDate,
+        CONVERT(varchar(19),w.ZJ_SKRQ,120) AS receiptPaidAt, w.备注 AS receiptRemark,
         CONVERT(varchar(10),w.ZJ_TKRQ,23) AS refundDate,
         CONVERT(varchar(10),w.ZJ_Jzrq,23) AS bookDate,
         CONVERT(varchar(10),w.ZJ_TZRQ,23) AS adjustDate,
@@ -242,7 +247,7 @@ export class MisMirrorService {
   private async upsertBills(rows: any[]) {
     rows = billMirrorRows({ recordsets: [rows] });
     if (!rows.length) return;
-    const fields = ['zjId', 'officeCode', 'lId', 'sId', 'zhId', 'ownerName', 'roomNo', 'address', 'feeCode', 'feeName', 'natureCode', 'period', 'amountCents', 'paidDate', 'refundDate', 'bookDate', 'adjustDate', 'changeDate', 'tradeOrderNo', 'merchantOrderNo', 'paymentMethod', 'cashier', 'incomeCents', 'receiptWarehouseNo', 'invoiceNo', 'receiptVoucherNo', 'sourceUpdatedAt'];
+    const fields = ['zjId', 'officeCode', 'lId', 'sId', 'zhId', 'ownerName', 'roomNo', 'address', 'feeCode', 'feeName', 'natureCode', 'period', 'amountCents', 'paidDate', 'refundDate', 'bookDate', 'adjustDate', 'changeDate', 'tradeOrderNo', 'merchantOrderNo', 'paymentMethod', 'cashier', 'incomeCents', 'receiptWarehouseNo', 'invoiceNo', 'receiptVoucherNo', 'sourceUpdatedAt', 'receiptPaidAt', 'receiptRemark'];
     const values: unknown[] = [];
     const tuples: string[] = [];
     for (const row of rows) {
@@ -253,7 +258,7 @@ export class MisMirrorService {
       tuples.push(`(${placeholders.join(',')})`);
     }
     await this.dataSource.query(
-      `INSERT INTO mis_mirror_bill(zj_id,office_code,l_id,s_id,zh_id,owner_name,room_no,address,fee_code,fee_name,nature_code,period,amount_cents,paid_date,refund_date,book_date,adjust_date,change_date,trade_order_no,merchant_order_no,payment_method,cashier,income_cents,receipt_warehouse_no,invoice_no,receipt_voucher_no,source_updated_at)
+      `INSERT INTO mis_mirror_bill(zj_id,office_code,l_id,s_id,zh_id,owner_name,room_no,address,fee_code,fee_name,nature_code,period,amount_cents,paid_date,refund_date,book_date,adjust_date,change_date,trade_order_no,merchant_order_no,payment_method,cashier,income_cents,receipt_warehouse_no,invoice_no,receipt_voucher_no,source_updated_at,receipt_paid_at,receipt_remark)
        VALUES ${tuples.join(',')}
        ON CONFLICT (zj_id) DO UPDATE SET
          office_code=EXCLUDED.office_code,l_id=EXCLUDED.l_id,s_id=EXCLUDED.s_id,zh_id=EXCLUDED.zh_id,
@@ -265,6 +270,7 @@ export class MisMirrorService {
          payment_method=EXCLUDED.payment_method,cashier=EXCLUDED.cashier,
          income_cents=EXCLUDED.income_cents,receipt_warehouse_no=EXCLUDED.receipt_warehouse_no,
          invoice_no=EXCLUDED.invoice_no,receipt_voucher_no=EXCLUDED.receipt_voucher_no,
+         receipt_paid_at=EXCLUDED.receipt_paid_at,receipt_remark=EXCLUDED.receipt_remark,
          source_updated_at=EXCLUDED.source_updated_at,synced_at=now()`,
       values,
     );
@@ -956,6 +962,47 @@ export class MisMirrorService {
       params,
     );
     return { source: 'mirror', dataAsOf: asOf, paidCents: Number(summary.paidCents || 0), paidCount: Number(summary.paidCount || 0), refundedCents: Number(refund.refundedCents || 0), paidHouses: Number(summary.paidHouses || 0), byFee: byFee.map((row) => ({ feeCode: String(row.feeCode || 'other'), feeName: misFeeCategoryLabel(row.feeCode), paidCents: Number(row.paidCents || 0), billCount: Number(row.billCount || 0), houseCount: Number(row.houseCount || 0) })), byChannel: byChannel.map((row) => ({ channel: row.channel, paidCents: Number(row.paidCents || 0), billCount: Number(row.billCount || 0), houseCount: Number(row.houseCount || 0) })) };
+  }
+
+  async incomeFromMis(code: string, day: string, offices: string[], offset: number, limit: number, tenantId: number) {
+    if (!offices.length) return emptyIncome();
+    await this.assertReady(tenantId);
+    return this.incomeFromRows(`SELECT zj_id AS id, COALESCE(NULLIF(replace(receipt_paid_at,' 00:00:00',''),''),paid_date::text) AS "paidAt", NULL::text AS plate,
+        period, amount_cents AS "amountCents", receipt_remark AS remark
+      FROM mis_mirror_bill WHERE office_code = ANY($1::text[]) AND paid_date=$2::date
+        AND fee_code=$3 AND refund_date IS NULL AND amount_cents>0`, [offices, day, code], offset, limit);
+  }
+
+  async incomeFromPms(category: IncomeCategory, day: string, user: AuthUser, access: ResolvedAccess, communityIds: number[] | undefined, offset: number, limit: number) {
+    if (!user.tenantId || !access) throw new ForbiddenException('请选择公司并确认数据范围');
+    if (category === 'property' || category === 'temporary') return emptyIncome();
+    const allowed = scopeCommunityIds(access);
+    if (allowed && communityIds?.some(id => !allowed.includes(id))) throw new ForbiddenException('该小区不在授权范围');
+    const scope = communityIds?.length ? communityIds : allowed;
+    const repair = category === 'repair';
+    const timestamp = repair ? 'completed_at' : 'created_at';
+    const garage = "COALESCE(snapshot#>>'{estimate,vehicleClass}',snapshot->>'ruleName','') IN ('产权车','产权车位')";
+    const filter = category === 'card' ? "service_type='access_card'" :
+      `service_type='parking_monthly' AND ${category === 'garage' ? garage : 'NOT (' + garage + ')'}`;
+    const source = repair
+      ? "work_orders WHERE deleted_at IS NULL AND status<>'voided' AND fee_cents>0"
+      : `business_transactions WHERE status='paid' AND amount_cents>0 AND ${filter}`;
+    const fields = repair ? 'NULL::text AS plate, NULL::text AS period, fee_cents AS "amountCents", action_note AS remark'
+      : `COALESCE(NULLIF(snapshot#>>'{parking,plate}',''),NULLIF(snapshot#>>'{vehicle,plateNo}','')) AS plate,
+         NULLIF(concat_ws(' 至 ',start_date::text,end_date::text),'') AS period, amount_cents AS "amountCents", remark`;
+    return this.incomeFromRows(`SELECT id, to_char(${timestamp} AT TIME ZONE 'Asia/Shanghai','YYYY-MM-DD HH24:MI:SS') AS "paidAt", ${fields}
+      FROM ${source} AND tenant_id=$1 AND ($2::int[] IS NULL OR community_id=ANY($2::int[]))
+      AND ${timestamp} >= ($3::date::timestamp AT TIME ZONE 'Asia/Shanghai')
+      AND ${timestamp} < (($3::date+1)::timestamp AT TIME ZONE 'Asia/Shanghai')`, [user.tenantId, scope, day], offset, limit);
+  }
+
+  private async incomeFromRows(sql: string, args: unknown[], offset: number, limit: number): Promise<IncomePage> {
+    const [result] = await this.dataSource.query(`WITH receipts AS (${sql})
+      SELECT COUNT(*)::int AS total, COALESCE(SUM("amountCents"),0)::bigint AS amount,
+        (SELECT json_agg(to_jsonb(r)-'id' ORDER BY r."paidAt" DESC,r.id DESC)
+         FROM (SELECT * FROM receipts ORDER BY "paidAt" DESC,id DESC LIMIT $4 OFFSET $5) r) AS rows
+      FROM receipts`, [...args, limit, offset]);
+    return { total: Number(result.total), amountCents: Number(result.amount), rows: result.rows ?? [] };
   }
 
   async todayDetails(q: { date?: string; category?: string; page?: number; pageSize?: number; communityIds?: number[] }, user: AuthUser, access?: ResolvedAccess) {

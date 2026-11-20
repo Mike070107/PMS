@@ -9,6 +9,7 @@ import { MisMirrorBillNature1795300000000 } from '../../migrations/1795300000000
 import { MisMirrorP4Extras1795500000000 } from '../../migrations/1795500000000-MisMirrorP4Extras';
 import { MisMirrorOwnerReportFields1795600000000 } from '../../migrations/1795600000000-MisMirrorOwnerReportFields';
 import { MisMirrorChargeStandard1795700000000 } from '../../migrations/1795700000000-MisMirrorChargeStandard';
+import { IncomeReceiptFields1796800000000 } from '../../migrations/1796800000000-IncomeReceiptFields';
 import { MisMirrorBillAuditDates1795800000000 } from '../../migrations/1795800000000-MisMirrorBillAuditDates';
 import { MisMirrorService } from './mis-mirror.service';
 
@@ -125,6 +126,7 @@ async function makeFixture(options: FixtureOptions = {}) {
   await new MisMirrorOwnerReportFields1795600000000().up(runner);
   await new MisMirrorChargeStandard1795700000000().up(runner);
   await new MisMirrorBillAuditDates1795800000000().up(runner);
+  await new IncomeReceiptFields1796800000000().up(runner);
   const reads: Array<{ sql: string; params: Record<string, any> }> = [];
   const queries: string[] = [];
   const main = [...(options.mainResults ?? [])];

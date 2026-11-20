@@ -50,6 +50,19 @@
 .erp-fee-value{text-align:right;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
 .erp-fee-value small{display:block;margin-top:2px;font-size:11.5px;font-weight:400;color:var(--ink3)}
 .erp-fee-detail-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 2px 0;border-top:1px solid var(--line2);margin-top:12px}
+.today-income-card{container-type:inline-size;min-width:0;margin-top:20px;padding:18px 20px}
+.today-income-card .erp-fee-breakdown{margin-top:12px}
+.today-income-card .erp-fee-item{flex-wrap:wrap;min-height:44px}
+.today-income-card .erp-fee-name{flex:1 0 auto;white-space:normal}
+.today-income-card .erp-fee-value{max-width:100%;margin-left:auto;white-space:normal;overflow-wrap:anywhere}
+.today-income-card .erp-fee-item:disabled{cursor:default;color:var(--ink2)}
+.today-income-card .erp-fee-donut-center b{max-width:73%;overflow-wrap:anywhere}
+.income-details td:last-child{overflow-wrap:anywhere;white-space:normal}
+@container (max-width:510px){
+  .today-income-card .erp-fee-breakdown{flex-direction:column;align-items:stretch}
+  .today-income-card .erp-fee-donut-wrap{align-self:center;max-width:100%}
+  .today-income-card .erp-fee-donut{max-width:100%}
+}
 @media (max-width:768px){
   .erp-fee-breakdown{flex-direction:column;align-items:stretch;gap:12px}
   .erp-fee-donut-wrap{align-self:center;width:190px;height:190px}

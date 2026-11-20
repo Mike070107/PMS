@@ -256,6 +256,23 @@ export class MisFeesService implements OnModuleDestroy {
   * 另给 recordedAt（updatedate，真实到分钟，仅作 MIS 记录更新时间，非收款时间）。
   */
  /** 今日分项收入明细：按房号+收款日聚合，和 recent-payments 同口径；category 过滤分类。 */
+ async exactIncome(code: string, day: string, offices: string[], offset: number, limit: number) {
+  if (!offices.length) return { total: 0, amountCents: 0, rows: [] };
+  const filter = buildMisFeeFilter({status: 'paid', feeCode: code}, offices);
+  const from = filter.from + ' AND w.ZJ_SKRQ>=CONVERT(datetime,@day,120) AND w.ZJ_SKRQ<DATEADD(day,1,CONVERT(datetime,@day,120)) AND w.ZJ_JE>0';
+  const details = limit ? `;WITH receipts AS (
+    SELECT ROW_NUMBER() OVER(ORDER BY w.ZJ_SKRQ DESC,w.ZJ_ID DESC) AS rn,
+      CONVERT(varchar(19),w.ZJ_SKRQ,120) AS paidAt, w.ZJ_CNY AS period,
+      CAST(ROUND(w.ZJ_JE*100,0) AS bigint) AS amountCents,w.备注 AS remark ${from}
+    ) SELECT paidAt,period,amountCents,remark FROM receipts WHERE rn>@offset AND rn<=@last ORDER BY rn` : '';
+  const result = await this.read(`SELECT COUNT(*) AS total,SUM(CAST(ROUND(w.ZJ_JE*100,0) AS bigint)) AS cents ${from}${details}`,
+    {...filter.params, day, offset, last:offset+limit});
+  const [summary, rows = []] = result.recordsets as any[][];
+  return { total:Number(summary[0].total), amountCents:Number(summary[0].cents || 0),
+    rows:rows.map(row => ({paidAt:String(row.paidAt).replace(/ 00:00:00$/,''), plate:null,
+      period:row.period ? String(row.period) : null, amountCents:Number(row.amountCents), remark:row.remark || null})) };
+ }
+
  async todayDetails(q: { date?: string; category?: string; page?: number; pageSize?: number; communityIds?: number[] }, user: AuthUser, access?: ResolvedAccess) {
   const date = q.date ?? new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(`${date}T00:00:00+08:00`)) || new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(`${date}T00:00:00+08:00`)) !== date) throw new BadRequestException('日期不合法');

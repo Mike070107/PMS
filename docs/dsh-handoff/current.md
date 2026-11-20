@@ -83,3 +83,11 @@
 - 办公室录入与扫码录入互斥。付费车资料审核后设置车类、车库与期限；亲情车核对资料后选择车库与期限并提交经理。回家补交保留同一车牌、登记和流水，二维码有效一小时。办公室收到补交待办，标准金额通过资料审核后进入停车队列；手填金额还须经理审核。
 - 在 PMS-vehicle-release-20261119 完成 pnpm --filter neighbor-web build、API pnpm typecheck、pnpm test:vehicle-intake（61/61）和 node --test test/vehicle-intake-browser.test.cjs。390px、1440px Chrome 隔离回归通过；390px 验证回家登记、三个月试算和手机提交附件。证据为该工作区 outputs/vehicle-intake-workflow/。
 - 当前交付为本地源码与隔离验收。生产 Web/API 未部署，未进行真实收费、真实停车库写入或道闸设备核验。
+
+## 今日工作 · 分项收入（2026-11-20，开发验证，待临停数据源）
+
+- 授权范围为 Web/API 开发、只读对账。本项未部署，生产现行 Web/API/助手与小程序版本不因本项变更。
+- 六项固定展示。MIS 当日未退正金额按 01 物业、04 泊位、14 车辆管理；PMS 单独办理的停车月租凭交易快照区分产权车，逐笔计费；不叠加另行写回 MIS 的 mis_property/mis_berth 流水。门禁卡取已收费办理记录；维修取完工登记收费（作废和软删除排除）。MIS 历史镜像未保存时间和备注的行保留空缺，新增字段需先执行迁移 1796800000000。
+- 11 月 20 日 PMS 的 MIS 镜像只读核对：01 为 34,746 元/168 条，04 为 11,100 元/72 条，14 为 1,620 元/24 条；02 租金 8,190 元排除。同日查询时 PMS business_transactions 为 0 条。这是当时镜像快照，非全天封账。
+- 临停未接通。现场报表显示二期临时现金 230 元、非现金 0 元、全部现金 590 元。现有助手只查出场应收，当前机器已安装助手的登记连接为 0，旧库的只读报表定义/实收字段待核验。另见 docs/parking-management-implementation.md。待打通后分别核对一期二期、同窗逐笔合计及权限范围。
+- Web 构建、API 类型检查通过。API 的 today-income、mis-mirror、bill-mirror 21 项回归通过；node --test test/today-income-browser.test.cjs 在 Chrome 1440/923/390 宽度验证逐项金额边界、五栏明细和翻页，数据为合成。未做生产部署或现场操作。

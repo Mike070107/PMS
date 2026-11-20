@@ -46,6 +46,7 @@ import { MisCollectionSmsService } from './mis-collection-sms.service';
 import { CollectionTargetsService } from './collection-targets.service';
 import { ListCollectionTargetsQueryDto, ScreenSummaryQueryDto, UpsertCollectionTargetDto } from './collection-targets.dto';
 import {MisLedgerQueryDto} from './mis-ledger.dto';
+import { IncomeQueryDto, incomeDay, incomeMisCodes, incomePage } from './today-income';
 import { MisFeesQueryDto, MisHouseSearchDto, MisResidentialQueryDto, MisCollectionPreviewDto, MisCollectionSmsStatsQueryDto, MisRecentPaymentsQueryDto, MisTodayQueryDto, MisTodayDetailsQueryDto } from './mis-fees.dto';
 
 /**
@@ -94,6 +95,22 @@ export class FeesController {
   @Get('mis/houses')
   @RequirePermission('fees','view')
   misHouses(@Query() query:MisHouseSearchDto,@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess){return this.misFeesService.searchHouses(query.communityId,query.q,user,access);}
+
+  @Get('today/income')
+  @RequirePermission('fees','view')
+  async todayIncome(@Query() q: IncomeQueryDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    if (q.category === 'temporary') return { available: false, reason: '停车实收待核对' };
+    const day = incomeDay(q.date);
+    const local = (offset: number, limit: number) =>
+      this.misMirrorService.incomeFromPms(q.category, day, user, access, q.communityIds, offset, limit);
+    if (q.category === 'card' || q.category === 'repair') return incomePage(q.page, local);
+    const code = incomeMisCodes[q.category];
+    const communities = await this.misFeesService.collectionCommunities(undefined, user, access, q.communityIds);
+    const offices = [...new Set(communities.flatMap(c => c.offices))];
+    return incomePage(q.page, local, (offset, limit) => this.misRead(user,
+      () => this.misFeesService.exactIncome(code, day, offices, offset, limit),
+      () => this.misMirrorService.incomeFromMis(code, day, offices, offset, limit, Number(user.tenantId))));
+  }
 
   @Get('mis/today')
  @RequirePermission('fees','view')
