@@ -1,3 +1,5 @@
+import { flushSync } from 'react-dom';
+import { ChargeAttempted, focusChargeIssue } from '@/components/cashier/charge-validation';
 import RegistrationPermit from '@/components/cashier/RegistrationPermit';
 import { HouseholdCardHistory } from './AccessCards';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -105,6 +107,13 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
   const [cardQty, setCardQty] = useState(1);
   const [cardFree, setCardFree] = useState(false);
   const [parkCarts, setParkCarts] = useState<ParkingCart[]>([]);
+  const parkingForm = useRef<HTMLDivElement>(null);
+  const [chargeAttempted, setChargeAttempted] = useState(false);
+  useEffect(() => setChargeAttempted(false), [house?.id, intakeParam]);
+  const showChargeErrors = () => {
+    flushSync(() => setChargeAttempted(true));
+    focusChargeIssue(parkingForm.current);
+  };
   const [parkReady, setParkReady] = useState(false);
   const onParkCart = useCallback((items: ParkingCart[], ready: boolean) => { setParkCarts(items); setParkReady(ready); }, []);
   const [cardEst, setCardEst] = useState<Estimate | null>(null);
@@ -578,8 +587,8 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
               </div>
             ) : null}
 
-            {linkedBlocked && !embedded ? (tab === 'pk' ? <div className="note2" role="status">本次登记不可收费，真实状态见上方。需要转类 / 撤销请进入本次登记详情。</div> : null) : <div style={{ display: tab === 'pk' ? undefined : 'none' }}>
-              <ParkingTab key={`${house.id}-${intakeParam ?? ''}`} house={house} rules={rules as never} onCart={onParkCart} initialPlate={parkPlate} focusedIntake={linkedIntake} staffRegistration={embedded} onIntakeChange={embedded ? updateLinkedIntake : undefined} />
+            {linkedBlocked && !embedded ? (tab === 'pk' ? <div className="note2" role="status">本次登记不可收费，真实状态见上方。需要转类 / 撤销请进入本次登记详情。</div> : null) : <div ref={parkingForm} style={{ display: tab === 'pk' ? undefined : 'none' }}>
+              <ChargeAttempted.Provider value={embedded && chargeAttempted}><ParkingTab key={`${house.id}-${intakeParam ?? ''}`} house={house} rules={rules as never} onCart={onParkCart} initialPlate={parkPlate} focusedIntake={linkedIntake} staffRegistration={embedded} onIntakeChange={embedded ? updateLinkedIntake : undefined} /></ChargeAttempted.Provider>
             </div>}
 
             {tab === 'ac' ? (
@@ -604,8 +613,8 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
           </div>
 
           {embedded && linkedBlocked ? null : embedded && !parkCarts.length ? <div className="card cart2" style={{padding:16}}>
-            <button type="button" className="btn p" disabled>收费并办理</button>
-            <small className="muted">完成登记并生成应收后可收款</small>
+            <button type="button" className="btn p" onClick={showChargeErrors}>收费并办理</button>
+            <small className="muted">{chargeAttempted ? '请补齐标红项；资料确认并试算完成后可收款' : '请核对本次登记'}</small>
           </div> : isBillTab?<MisCollectionPanel key={`${house.id}-${tab}`} houseId={house.id} label={billLabel} bills={selBillRows} loading={bills===null||!!billErr} onSaved={()=>{setSelBills([]);void loadBills(house);}}/>:<div className="card cart2">
             <div className="cartHd"><Icon name="receipt" /><b>本次办理</b><span className="cnt">{isBillTab ? billLabel : tab === 'pk' ? '停车缴费' : '门禁卡'}</span></div>
             <div className="cartBody">

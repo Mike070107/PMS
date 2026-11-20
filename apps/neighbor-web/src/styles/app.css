@@ -570,3 +570,6 @@
 input[data-money-input] { appearance: textfield; -moz-appearance: textfield; }
 input[data-money-input]::-webkit-inner-spin-button,
 input[data-money-input]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+.custom-renew input[aria-invalid="true"], .np-garages[aria-invalid="true"] { border-color: var(--dang); }
+.custom-renew small[role="alert"], .np-garages small[role="alert"] { color: var(--dang); }

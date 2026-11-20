@@ -1,3 +1,5 @@
+import { useContext } from 'react';
+import { ChargeAttempted } from './charge-validation';
 import { IntakeAttachment } from '../attachments/IntakeAttachment';
 import { formatBeijingDateTime, sortTimelineNewestFirst } from '@pms/shared-types';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -331,7 +333,9 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
     { label: '办公室审核', state: backAtOffice ? 'attention' : reviewed ? 'done' : ['reupload', 'void'].includes(it.status) ? 'attention' : 'pending', detail: backAtOffice ? '待办公室重新核对' : reviewed ? '已通过' : it.status === 'reupload' ? '已退回' : it.status === 'void' ? '已作废' : '待办公室审核', at: backAtOffice ? null : it.reviewedAt },
     { label: it.kind === 'family' ? '经理审核 · 开通' : '收款 · 开通', state: family ? (family.status === 'returned' ? 'attention' : ['active', 'expired'].includes(family.status) ? 'done' : 'pending') : it.status === 'void' ? 'attention' : sync === 'synced' ? 'done' : ['failed', 'rejected', 'manual'].includes(sync || '') ? 'attention' : 'pending', detail: it.status === 'void' ? '登记已作废' : it.kind === 'family' ? (reviewed ? stLabel : '待办公室提交') : it.transaction ? `已收款 · ${TXN_STATUS[sync || ''] || sync}` : '未收款', at: family?.status === 'returned' ? family.managerReviewedAt : null },
   ];
-  const [attempted, setAttempted] = useState(false);
+  const submitAttempted = useContext(ChargeAttempted);
+  const [locallyAttempted, setAttempted] = useState(false);
+  const attempted = locallyAttempted || submitAttempted;
   const plateInvalid = !/^[\u4e00-\u9fa5][A-HJ-NP-Z][A-HJ-NP-Z0-9]{5,6}$/.test(edit.plate);
   const phoneInvalid = !/^1\d{10}$/.test(edit.contactPhone);
   const relationInvalid = it.kind === 'family' && (!edit.relation.trim() || edit.relation.trim() === '其他亲属' || edit.relation.trim().length > 12);
@@ -342,7 +346,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
     if (first) { document.getElementById(fieldId(first))?.focus(); return; }
     void staffSubmit();
   };
-  const garageFields = (<fieldset className="np-garages" aria-busy={savingGarages}>
+  const garageFields = (<fieldset className="np-garages" aria-invalid={submitAttempted && (!picked.length || missingSpace)} aria-describedby={submitAttempted && (!picked.length || missingSpace) ? fieldId("garage-error") : undefined} aria-busy={savingGarages}>
               <legend>开通车库授权 <span>可多选</span></legend>
               <p className="np-garage-help">大车库、人防车库需同时授权二期地面；取消二期地面会一并取消这两项。</p>
               <div className="np-garage-options">
@@ -360,7 +364,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
               <GarageSpacePicker garage={spaceGarage} value={spaceGarage ? nums[spaceGarage] || '' : ''} source={spaceSource} onCancel={() => setSpaceGarage(null)} onConfirm={confirmSpace} />
               {basementKeys.length > 0 ? <p className="np-garage-help">同一车位号可关联多个车牌，同时在库限制由停车系统控制。</p> : null}
               <div className="np-garage-status" role="status">{savingGarages ? '正在保存授权…' : garageError ? <><span>{garageError}</span><button type="button" className="btn" disabled={!!busy || savingGarages} onClick={() => saveGarages(picked, nums)}>重试保存授权</button></> : `已选择 ${picked.length} 个车库`}</div>
-            </fieldset>);
+            {submitAttempted && (!picked.length || missingSpace) && <small role="alert" id={fieldId('garage-error')}>{missingSpace ? '请选择地库车位号' : '请选择要开通的车库'}</small>}</fieldset>);
   const progress = (<ol className="np-steps np-review-steps" aria-label="车牌登记办理流程">
         {steps.map((step, i) => <li key={step.label} data-state={step.state}>
           <span className="np-step-heading"><span className="np-step-number" aria-hidden="true">{i + 1}</span><b>{step.label}</b></span>
@@ -401,7 +405,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
                 <span role="status">已上传 {it.files.length} 份{busy === '上传附件' ? ' · 上传中…' : ''}</span>
                 <div className="np-files">{it.files.map(f => <IntakeAttachment key={f.fileUrl} file={f}/>)}</div>
               </div>
-              </details><button type="button" className="btn p" disabled={!!busy || savingGarages || (!defaultStaffMode && (plateInvalid || phoneInvalid || relationInvalid))} onClick={submitStaffFields}>{busy === '保存登记' ? '保存中…' : '保存资料，进入预览'}</button>
+              </details><button type="button" className="btn p" disabled={!!busy || savingGarages || (!defaultStaffMode && (plateInvalid || phoneInvalid || relationInvalid))} data-charge-next onClick={submitStaffFields}>{busy === '保存登记' ? '保存中…' : '保存资料，进入预览'}</button>
             </fieldset> : null}
           </section> : null}
       {it.reused ? <div className="note2">已继续原登记 #{it.id}，未新增单据；原资料及收款关联保留。</div> : null}
@@ -510,7 +514,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
           {/* 审核 */}
           {canReview && ['submitted', 'reupload'].includes(it.status) && it.submittedAt ? (
             <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-              {!familyNeedsPreview && <button className="btn p" disabled={!!busy || savingGarages || ((it.kind === 'family' || !!it.transaction) && (!!garageError || !picked.length || !!missingSpace)) || (it.kind === 'family' && (!edit.relation.trim() || edit.relation === '其他亲属'))} onClick={approve}><Icon name="check" size={16} />{busy === '旧库查重' ? '旧库查重中…' : busy === '审核' ? '提交中…' : it.kind === 'family' ? '提交经理审核' : '资料无误，通过'}</button>}
+              {!familyNeedsPreview && <button className="btn p" disabled={!!busy || savingGarages || ((it.kind === 'family' || !!it.transaction) && (!!garageError || !picked.length || !!missingSpace)) || (it.kind === 'family' && (!edit.relation.trim() || edit.relation === '其他亲属'))} data-charge-next onClick={approve}><Icon name="check" size={16} />{busy === '旧库查重' ? '旧库查重中…' : busy === '审核' ? '提交中…' : it.kind === 'family' ? '提交经理审核' : '资料无误，通过'}</button>}
               <button className="btn" disabled={!!busy} onClick={() => setAsk(ask === 'reupload' ? '' : 'reupload')}>退回重传</button>
             </div>
           ) : null}

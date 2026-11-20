@@ -27,7 +27,7 @@ export default function DateInput({ type = 'date', value, defaultValue, onChange
     placeholder={placeholder || (month ? '选择月份' : timestamp ? '选择日期和时间' : '选择日期')}
     className={['pms-date-input', className].filter(Boolean).join(' ')} style={style}
     disabled={disabled} inputReadOnly={readOnly} allowClear={!required && !readOnly}
-    autoFocus={autoFocus} tabIndex={tabIndex} aria-label={rest['aria-label']} aria-invalid={rest['aria-invalid']} aria-required={required}
+    autoFocus={autoFocus} tabIndex={tabIndex} aria-label={rest['aria-label']} aria-invalid={rest['aria-invalid']} aria-describedby={rest['aria-describedby']} aria-required={required}
     disabledDate={date => !!((lower && date.isBefore(lower, unit)) || (upper && date.isAfter(upper, unit)))}
     onChange={date => {
       if (readOnly || disabled) return;

@@ -1,3 +1,5 @@
+import { useContext, useId } from 'react';
+import { ChargeAttempted } from './charge-validation';
 import { moneyInputProps } from '@/lib/money-input';
 import RegistrationPermit from './RegistrationPermit';
 import DateInput from '@/components/DateInput';
@@ -479,10 +481,14 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
   const mismatch = new Set(ends).size > 1;
   const defaultStart = currentEnd && !expired(currentEnd) ? dayjs(currentEnd).add(1, 'day').format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD');
   useEffect(() => { if (custom && !cs) { setCs(defaultStart); setCe(dayjs(defaultStart).add(1, 'month').subtract(1, 'day').format('YYYY-MM-DD')); } }, [custom]); // eslint-disable-line react-hooks/exhaustive-deps
+  const attempted = useContext(ChargeAttempted);
+  const errorId = useId();
+  const reasonMissing = attempted && !reason.trim();
   const customOk = custom && /^\d{4}-\d{2}-\d{2}$/.test(cs) && /^\d{4}-\d{2}-\d{2}$/.test(ce) && ce >= cs;
   const days = customOk ? dayjs(ce).diff(dayjs(cs), 'day') + 1 : 0;
   const enteredCents = /^\d+(?:\.\d{1,2})?$/.test(amt.trim()) ? Math.round(Number(amt) * 100) : null;
   const manualCents = enteredCents != null && Number.isSafeInteger(enteredCents) && enteredCents >= 0 ? enteredCents : null;
+  const amountMissing = attempted && manualCents == null;
   // 绑定完整报价上下文（同 id 规则改价、系统引用或身份变化也必须重新试算）。
   const quoteKey = JSON.stringify([allowCart, quoteRevision, sel.plate, house.id, house.communityId, house.owner?.id, rule, lots, vehicleClass, months, monthsValid, custom, cs, ce, amt, reason, label, clsBusy]);
   const currentQuoteKey = useRef(quoteKey);
@@ -571,9 +577,9 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
               {custom ? (
                 <div className="custom-renew">
                   <div className="cr-grid">
-                    <label>开始日期<DateInput className="in" type="date" value={cs} onChange={(e) => { invalidateQuote(); setCs(e.target.value); }} /></label>
-                    <label>结束日期<DateInput className="in" type="date" value={ce} min={cs || undefined} onChange={(e) => { invalidateQuote(); setCe(e.target.value); }} /></label>
-                    <label>实收金额（元）<input className="in" type="number" {...moneyInputProps} min={0} step="0.01" value={amt} aria-label="自定日期实收金额" placeholder="请输入金额，0元请填0" onChange={(e) => { invalidateQuote(); setAmt(e.target.value); }} /></label>
+                    <label>开始日期<DateInput className="in" required aria-invalid={attempted && (!cs)} aria-describedby={attempted && (!cs) ? errorId+"-cs" : undefined} type="date" value={cs} onChange={(e) => { invalidateQuote(); setCs(e.target.value); }} />{attempted && (!cs) && <small id={errorId+"-cs"} role="alert">请选择开始日期</small>}</label>
+                    <label>结束日期<DateInput className="in" required aria-invalid={attempted && (!ce || (!!cs && ce < cs))} aria-describedby={attempted && (!ce || (!!cs && ce < cs)) ? errorId+"-ce" : undefined} type="date" value={ce} min={cs || undefined} onChange={(e) => { invalidateQuote(); setCe(e.target.value); }} />{attempted && (!ce || (!!cs && ce < cs)) && <small id={errorId+"-ce"} role="alert">请选择有效的结束日期</small>}</label>
+                    <label>实收金额（元）<input className="in" type="number" {...moneyInputProps} min={0} step="0.01" value={amt} aria-required="true" aria-invalid={amountMissing} aria-describedby={amountMissing ? errorId+"-amount" : undefined} aria-label="自定日期实收金额" placeholder="请输入金额，0元请填0" onChange={(e) => { invalidateQuote(); setAmt(e.target.value); }} />{amountMissing && <small id={errorId+"-amount"} role="alert">请输入实收金额，零元请填 0</small>}</label>
                   </div>
                   <div className="muted" style={{ fontSize: 13.5, margin: '6px 0' }}>
                     {days ? `共 ${days} 天` : ''}{est?.standardAmountCents != null ? ` · 标准参考 ${money(est.standardAmountCents / 100)}（${est.quantity} 个月）` : est ? ' · 该区间未配置标准价，按明确实收提交审核' : ''}
@@ -582,7 +588,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                     <span style={{ fontSize: 14, color: 'var(--ink2)' }}>原因：</span>
                     {['对齐到月底', '补缴差额', '按天计费', '优惠减免'].map((t) => <button key={t} className={`chip ${reason === t ? 'on' : ''}`} onClick={() => { invalidateQuote(); setReason(t); }}>{t}</button>)}
-                    <input className="in" style={{ height: 36, flex: 1, minWidth: 180 }} value={reason} onChange={(e) => { invalidateQuote(); setReason(e.target.value); }} placeholder="写明为什么不按整月续（必填，经理审核看这句）" />
+                    <input className="in" style={{ height: 36, flex: 1, minWidth: 180 }} aria-label="自定日期原因" aria-required="true" aria-invalid={reasonMissing} aria-describedby={reasonMissing ? errorId+"-reason" : undefined} value={reason} onChange={(e) => { invalidateQuote(); setReason(e.target.value); }} placeholder="写明为什么不按整月续（必填，经理审核看这句）" />{reasonMissing && <small id={errorId+"-reason"} role="alert">请选择或填写原因</small>}
                   </div>
                   <div className="note2" style={{ marginTop: 8 }}><Icon name="alert" />非标准续期先登记收款，提交物业经理审核；审核通过后系统才续期，驳回则不续期、由前台按原因退款或重办。</div>
                 </div>
