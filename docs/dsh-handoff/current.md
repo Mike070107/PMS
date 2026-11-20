@@ -151,3 +151,7 @@ Web 金额控件隐藏步进并关闭滚轮改值；Chrome 合成原生与 Ant �
 ## 车辆管理续期收费抽屉 · 自定义截止日
 - 已实现日期提前、当日和延后；人工确认实收，旧库将目标日期传给 Palte_extend，人防按选定目标同步并回读。
 - 已验证 Web build、API tsc、德立云隔离测试 28 项及 Chrome 320/390/1440 宽回归；未部署生产，现场收费与设备未验证。
+
+## 新办车牌下载超时后的重试核对
+- 已修正 API 重试复用失败回执及助手误用 P_Download。确认依据见本机 D:/PMS-Parking-Analyze.json 中 Add_DownloadCard；通道成功写 Car_Download.Car_Zt=0，全部确认后发行表 Car_Zt=0。人工重试按原任务车辆主键、车牌、有效期、授权和旧库汇总状态只读核对。
+- API tsc 与 paid-registration.test.ts 17 项通过；助手 Release 编译和 --self-test 退出 0。当前 Windows 身份不能登录现场 SQL，未读取该笔通道实时值，未发布或修改生产流水。

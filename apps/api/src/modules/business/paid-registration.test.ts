@@ -63,3 +63,26 @@ test('枫桦人防新办复用专用接口，仅本地设备完成后开通并�
 test('civil registration preserves uncertain operations and never blindly resubmits',async()=>{const h=fixture();h.txn.startDate=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());let writes=0;h.s.opRepo.create=(v:any)=>v;h.s.opRepo.save=async(v:any)=>{if(!v.id){v.id=h.ops.length+1;h.ops.push(v)}return v};h.s.deliyun={findVehiclesByPlate:async()=>({rows:[]}),setCivilDefenseAuthorization:async()=>{writes++;throw Error('fixture unknown outcome')}};const a=await h.s.runCivilRegistration(h.txn,'\u6caaTEST01','228/3/502','MF12','2026-12-31');assert.equal(a.status,'manual');const b=await h.s.runCivilRegistration(h.txn,'\u6caaTEST01','228/3/502','MF12','2026-12-31');assert.equal(b.status,'manual');assert.equal(writes,1);assert.equal(h.ops.length,1);});
 test('civil registration refuses an existing plate without any mutation',async()=>{const h=fixture();let writes=0;h.s.deliyun={findVehiclesByPlate:async()=>({rows:[{id:'other'}]}),setCivilDefenseAuthorization:async()=>{writes++}};const a=await h.s.runCivilRegistration(h.txn,'\u6caaTEST01','228/3/502','MF12','2026-12-31');assert.equal(a.status,'manual');assert.equal(writes,0);assert.equal(h.ops.length,0);});
 test('civil completed record cannot be reused for changed owner, space or period',async()=>{const h=fixture();h.ops.push({id:1,idempotencyKey:'biz:PK-TEST-REG:register:deliyun:\u67ab\u6866\u666f\u82d1',status:'completed',result:{verified:true,plate:'\u6caaTEST01',ownerRoom:'228/3/502',parkingSpace:'MF12',endDate:'2026-12-31'}});const a=await h.s.runCivilRegistration(h.txn,'\u6caaTEST01','228/3/502','MF13','2026-12-31');assert.equal(a.status,'manual');});
+
+test('设备超时后人工重试实时核对原车，不重复新增或收费',async()=>{
+ const h=fixture();
+ await h.s.runOne(90);
+ const bits=h.ops[0].payload.effective;
+ h.ops[0].status='completed';
+ h.ops[0].result={verified:true,plate:'沪TEST01',issueId:'301',endDate:'2026-12-31',effective:bits,state:1};
+ await h.s.runOne(90);
+ h.ops[1].status='failed';
+ await h.s.runOne(90);
+ h.txn.serviceType='parking_monthly'; h.s.txnRepo.findOne=async()=>h.txn; h.s.kick=()=>{};
+ h.s.txnRepo.update=async(_:unknown,patch:object)=>{Object.assign(h.txn,patch);return {affected:1}};
+ const fields={P_plate:'沪TEST01',P_id:301,End_Time:'2026-12-31 00:00:00',Car_Zt:1,P_Effective:bits,P_Download:'0'.repeat(256)};
+ await h.s.retry(90,{tenantId:1,id:8});
+ h.setQuery({id:8,status:'pending',term:'沪TEST01',rows:[]});await h.s.runOne(90);
+ assert.equal(h.txn.externalSyncStatus,'queued');
+ h.setQuery({id:8,status:'completed',term:'沪TEST01',rows:[{database:'parking2',fields}]});await h.s.runOne(90);
+ assert.equal(h.txn.externalSyncStatus,'manual');assert.match(h.txn.snapshot.execution.lastError,/尚未确认下载正常/);
+ await h.s.retry(90,{tenantId:1,id:8});
+ fields.Car_Zt=0; // 旧软件正常时不会回填 P_Download
+ await h.s.runOne(90);
+ assert.equal(h.txn.externalSyncStatus,'synced');assert.equal(h.ops.length,2);
+});

@@ -1045,9 +1045,8 @@ namespace Pms.DataSyncAssistant
                 throw new InvalidOperationException("下载机号必须逐位解析，不允许将位串传到整数参数");
             var effectiveChannels = new String('0', 256).ToCharArray();
             effectiveChannels[8] = effectiveChannels[10] = effectiveChannels[12] = effectiveChannels[22] = effectiveChannels[24] = '1';
-            var downloadedChannels = new String('0', 256).ToCharArray();
-            downloadedChannels[8] = downloadedChannels[22] = downloadedChannels[24] = '1';
-            if (!ParkingDatabase.MissingDownloadMachineIds(new String(effectiveChannels), new String(downloadedChannels), "parking2").SequenceEqual(new[] { 11, 13 }))
+            var confirmed = new HashSet<int> { 9, 23, 25 };
+            if (!ParkingDatabase.MissingDownloadMachineIds(new String(effectiveChannels), confirmed, "parking2").SequenceEqual(new[] { 11, 13 }))
                 throw new InvalidOperationException("控制器确认必须逐一覆盖二期现行授权通道，并忽略已退役人防通道23/25");
             using (var downloadCommand = new System.Data.SqlClient.SqlCommand("dbo.Add_DownloadCard"))
             {

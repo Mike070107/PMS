@@ -678,7 +678,7 @@ ORDER BY COALESCE([out_Time], [Int_Time]) DESC;";
             if (normalized == "ownerid" || normalized == "userid") return 190;
             if (normalized == "pplate" || normalized == "plate" || normalized.Contains("plateno") ||
                 normalized.Contains("carno") || normalized.Contains("carnumber") || normalized.Contains("license")) return 180;
-            if (normalized == "peffective" || normalized == "pdownload") return 170;
+            if (normalized == "peffective" || normalized == "pdownload" || normalized == "carzt" || normalized == "endtime") return 170;
             if (normalized == "pnote" || normalized.Contains("remark") || normalized.Contains("note") || normalized.Contains("备注")) return 160;
             if (normalized.Contains("carbeand") || normalized.Contains("carbrand") || normalized.Contains("identity") ||
                 normalized.Contains("usertype") || normalized.Contains("carlei") || normalized.Contains("车辆") || normalized.Contains("性质")) return 150;
@@ -2102,7 +2102,15 @@ ORDER BY ID DESC";
             do
             {
                 var vehicle = VerifyVehicle(connection, plate, "设备下载确认");
-                missing = MissingDownloadMachineIds(Value(vehicle, "effective"), Value(vehicle, "download"), database);
+                var confirmed = new HashSet<int>();
+                using (var command = connection.CreateCommand())
+                {
+                    command.CommandText = "SELECT Download_ID FROM dbo.Car_Download WHERE Plate=@plate GROUP BY Download_ID HAVING COUNT(*)=COUNT(Car_Zt) AND MIN(Car_Zt)=0 AND MAX(Car_Zt)=0";
+                    Add(command, "@plate", SqlDbType.VarChar, 50, plate);
+                    using (var reader = command.ExecuteReader())
+                        while (reader.Read()) if (!reader.IsDBNull(0)) confirmed.Add(Convert.ToInt32(reader[0]));
+                }
+                missing = MissingDownloadMachineIds(Value(vehicle, "effective"), confirmed, database);
                 if (missing.Length == 0)
                     return new Dictionary<string, object>
                     {
@@ -2117,16 +2125,15 @@ ORDER BY ID DESC";
             throw new InvalidOperationException("控制器在60秒内未确认下载完成，未确认通道：" + String.Join("、", missing) + "；任务已保留，可排查现场下载服务后重新下发");
         }
 
-        internal static int[] MissingDownloadMachineIds(string effective, string download, string database)
+        internal static int[] MissingDownloadMachineIds(string effective, HashSet<int> confirmed, string database)
         {
             var authorized = DownloadMachineIds(effective);
-            var downloadedBits = NormalizeBits(download);
             var managed = String.Equals(database, "parking1", StringComparison.OrdinalIgnoreCase)
                 ? new HashSet<int>(GarageChannels("phase1"))
                 : new HashSet<int>(GarageChannels("phase2").Concat(GarageChannels("main")));
             return authorized.Where(delegate(int channel)
             {
-                return managed.Contains(channel) && downloadedBits[channel - 1] != '1';
+                return managed.Contains(channel) && !confirmed.Contains(channel);
             }).ToArray();
         }
 

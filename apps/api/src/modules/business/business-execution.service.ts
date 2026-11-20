@@ -43,6 +43,8 @@ export interface ExecutionState {
   finishedAt?: string | null;
   /** 一辆车要在多套停车系统一起续期时，每套一步 */
   steps?: ExecutionStep[];
+  recheckRegistrationDownload?: boolean;
+  downloadQueryIds?: Record<string, number>;
   registrationQueryId?: number | null;
 }
 
@@ -177,9 +179,10 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
     const prev = (txn.snapshot?.execution as ExecutionState | undefined) ?? null;
     // 保留各系统步骤：已完成的不重做，只重跑失败/转人工的那几套
     const steps = prev?.steps?.map((s) => (s.status === 'done' || s.status === 'waiting' ? s : { ...s, status: 'pending' as const }));
-    const execution: ExecutionState = { connector: 'deliyun', mode: this.mode(), attempts: 0, nextAt: null, lastError: null, operationId: prev?.operationId ?? null, ...(steps ? { steps } : {}) };
-    await this.txnRepo.update({ id }, { externalSyncStatus: 'queued', // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const execution: ExecutionState = { connector: 'deliyun', mode: this.mode(), attempts: 0, nextAt: null, lastError: null, operationId: prev?.operationId ?? null, recheckRegistrationDownload: true, ...(steps ? { steps } : {}) };
+    const claimed = await this.txnRepo.update({ id, tenantId: txn.tenantId, externalSyncStatus: txn.externalSyncStatus }, { externalSyncStatus: 'queued', // eslint-disable-next-line @typescript-eslint/no-explicit-any
       snapshot: { ...(txn.snapshot || {}), execution } as any, updatedBy: user.id });
+    if (!claimed.affected) throw new BadRequestException('状态已变化，请刷新');
     await this.log(txn, 'external_sync_retry_requested', { from: txn.externalSyncStatus, by: user.id }, user.id);
     this.kick(id);
     return { id, externalSyncStatus: 'queued' };
@@ -417,6 +420,35 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
           idempotencyKey: `biz:${txn.txnNo}:register-download:${database}`, payload: { plate, effective: bits, businessTxnNo: txn.txnNo } }, user);
         step.operationId = download.id; step.note = '旧库已新增并回读，等待停车设备下发确认';
         if (download.status === 'failed') { step.status = 'manual'; step.note = download.lastError || '设备下发失败，旧库登记保留，禁止重复新增'; }
+        if (download.status === 'failed' && prev.recheckRegistrationDownload) {
+          const queryId = prev.downloadQueryIds?.[database];
+          const query = queryId ? await this.issuance.getParkingQuery(queryId, user)
+            : await this.issuance.createParkingQuery({ term: plate, database }, user);
+          prev = { ...prev, downloadQueryIds: { ...prev.downloadQueryIds, [database]: query.id } };
+          if (query.status === 'pending' || query.status === 'running') {
+            step.status = 'waiting'; step.note = '正在核对旧库登记和通道下载状态';
+            continue;
+          }
+          if (query.status !== 'completed' || query.term !== plate) {
+            step.note = query.error || '现场查询失败，请重试核对';
+            continue;
+          }
+          const matches = query.rows.filter(row => row.database === database)
+            .map(row => Object.fromEntries(Object.entries(row.fields).map(([key, value]) => [key.toLowerCase(), value])))
+            .filter(fields => String(fields.p_plate ?? '').trim().toUpperCase() === plate);
+          const fields = matches.length === 1 ? matches[0] : null;
+          if (!fields || String(fields.p_id) !== String(result.issueId) || String(fields.end_time).slice(0, 10) !== endDate ||
+              fields.p_effective !== bits) {
+            step.note = '现场登记与原任务的车辆、期限或授权不一致，请核对';
+            continue;
+          }
+          // Add_DownloadCard sets Car_Issue.Car_Zt to zero after the final successful channel receipt.
+          if (String(fields.car_zt) !== '0') {
+            step.note = '已核对旧库登记，旧系统尚未确认下载正常';
+          } else {
+            step.status = 'done'; step.note = '已重新核对，旧库登记与所选通道下载状态一致';
+          }
+        }
         if (download.status === 'completed') {
           if (download.result?.verified === true && download.result?.deviceVerification === 'confirmed') { step.status = 'done'; step.note = `已新增至 ${endDate}，旧库回读及停车设备下发确认完成`; }
           else { step.status = 'manual'; step.note = '设备任务结束但没有有效设备确认，不能标为已生效'; }
