@@ -1889,9 +1889,19 @@ export class AccessCardIssuanceService {
     return query;
   }
 
+  private async assertFeeDetailScope(tenantId: number, access: ResolvedAccess, category: string, database?: string | null) {
+    if (access?.scopeAll) return;
+    if (category !== 'exit_due' || (database !== 'parking1' && database !== 'parking2'))
+      throw new ForbiddenException('当前数据范围不能查看全公司停车金额明细');
+    const phase = database === 'parking1' ? '枫桦景苑一期' : '枫桦景苑二期';
+    const communities = await this.communityRepo.find({ where: { tenantId, name: phase, enabled: true }, select: { id: true } });
+    if (communities.length !== 1 || !access?.communityIds?.includes(communities[0].id))
+      throw new ForbiddenException(`当前数据范围不能查看${phase}临时停车费`);
+  }
+
   async createParkingFeeDetail(dto: CreateParkingFeeDetailDto, user: AuthUser, access: ResolvedAccess) {
-    if (!access.scopeAll) throw new ForbiddenException('当前数据范围不能查看全公司停车金额明细');
     const tenantId = this.requireTenant(user);
+    await this.assertFeeDetailScope(tenantId, access, dto.category, dto.database);
     try { parseParkingFeeReportRange(dto.startDate, dto.endDate); }
     catch (error) { throw new BadRequestException(error instanceof Error ? error.message : '金额明细日期不正确'); }
     if (dto.database && dto.category !== 'exit_due') throw new BadRequestException('仅出场应收支持分期查询');
@@ -1910,10 +1920,12 @@ export class AccessCardIssuanceService {
   }
 
   async getParkingFeeDetail(id: number, user: AuthUser, access: ResolvedAccess) {
-    if (!access.scopeAll) throw new ForbiddenException('当前数据范围不能查看全公司停车金额明细');
     const tenantId = this.requireTenant(user);
     const query = await this.parkingQueryRepo.findOne({ where: { id, tenantId, queryKind: 'fee_detail' } });
     if (!query) throw new NotFoundException('金额明细查询不存在或已失效');
+    await this.assertFeeDetailScope(tenantId, access, query.term.split(':')[0], query.database);
+    if (!access.scopeAll && query.rows.some(row => row.database !== query.database))
+      throw new BadRequestException('停车助手回执的分期与查询不一致，请重试');
     return this.parkingFeeReportResponse(query);
   }
 

@@ -42,7 +42,7 @@ async function fetchIncome(date:string, category:Category, active:()=>boolean, p
   return data;
 }
 
-function Details({ date, category, firstPage, close, phase }: { phase?:Phase; firstPage?: Result; date: string; category: typeof categories[number]; close: () => void }) {
+function Details({ date, category, firstPage, phase }: { phase?:Phase; firstPage?: Result; date: string; category: typeof categories[number] }) {
   const [page, setPage] = useState(1);
   const [retry, setRetry] = useState(0);
   const [result, setResult] = useState<{page: number; data: Response} | null>(null);
@@ -55,8 +55,8 @@ function Details({ date, category, firstPage, close, phase }: { phase?:Phase; fi
     return () => { active = false; };
   }, [category, date, page, retry, firstPage, phase]);
   const data = result?.page === page ? result.data : null;
-  return <Sheet open onClose={close} width={800} title={(phase ? phases[phase] + ' · ' : '') + category[1] + '明细'} subtitle={date}>
-    {phase && <button className="btn sm" onClick={close}>返回分期汇总</button>}
+  return <>
+    {phase && firstPage && <h3>当期应收 {money(firstPage.amountCents/100)} · {firstPage.total} 笔</h3>}
     {!data ? <p role="status">读取中…</p> : 'reason' in data ? <p>{data.reason} <button className="btn sm" onClick={() => setRetry(n => n+1)}>重试</button></p>
       : !data.total ? <p>当日暂无收费</p> : <>
         <div className="intro-table-wrap"><table className="t usage-table income-details">
@@ -68,7 +68,7 @@ function Details({ date, category, firstPage, close, phase }: { phase?:Phase; fi
           <span>{page} / {Math.ceil(data.total/20)}</span>
           <button className="btn sm" disabled={page*20>=data.total} onClick={() => setPage(n=>n+1)}>下一页</button>
         </div>}</div></>}
-  </Sheet>;
+  </>;
 }
 
 export function TodayIncome({ date }: { date: string }) {
@@ -94,6 +94,16 @@ export function TodayIncome({ date }: { date: string }) {
     }
     return () => { active = false; };
   }, [date, retry]);
+  const visiblePhases = phaseKeys.filter(key => {
+    const value = phaseResults[key];
+    return !(value && 'reason' in value && value.reason === '当前数据范围不能查看枫桦景苑'+phases[key]+'临时停车费');
+  });
+  const currentPhase = phase && visiblePhases.includes(phase) ? phase : visiblePhases[0];
+  const current = phaseResults[currentPhase];
+  const phaseValues = visiblePhases.map(key => phaseResults[key]);
+  const phaseLabel = !visiblePhases.length ? '无查看权限' : phaseValues.some(item => !item) ? '读取中…' :
+    phaseValues.some(item => item && 'reason' in item) ? '未获取' :
+    money(phaseValues.reduce((sum,item) => sum + (item && 'amountCents' in item ? item.amountCents : 0), 0)/100);
   const received = categories.filter(([id]) => id !== 'temporary').map(([id]) => values[id]);
   const total = received.reduce((sum,v) => sum+(v && 'amountCents' in v ? v.amountCents : 0),0);
   let offset = 0;
@@ -113,13 +123,9 @@ export function TodayIncome({ date }: { date: string }) {
       </svg><div className="erp-fee-donut-center"><b>{received.some(v=>v && 'amountCents' in v) ? money(total/100) : '—'}</b><small>已读取实收小计</small></div></div>
       <div className="erp-fee-list">{categories.map(cat => {
         const temp = cat[0] === 'temporary';
-        const phaseValues = phaseKeys.map(key => phaseResults[key]);
-        const v = temp ? undefined : values[cat[0]];
-        const phaseLabel = phaseValues.some(item => item && 'reason' in item) ? '查看分期' :
-          phaseValues.every(item => item && 'amountCents' in item) ? money(phaseValues.reduce((sum,item) =>
-            sum + (item && 'amountCents' in item ? item.amountCents : 0), 0)/100) : '读取中…';
+        const v = values[cat[0]];
         const failed=v && 'reason' in v && v.retryable;
-        return <button type="button" className="erp-fee-item" title={v && 'reason' in v ? v.reason : undefined} key={cat[0]} disabled={!temp && (!v || ('reason' in v && !failed))}
+        return <button type="button" className="erp-fee-item" title={v && 'reason' in v ? v.reason : undefined} key={cat[0]} disabled={temp ? !visiblePhases.length : (!v || ('reason' in v && !failed))}
           onClick={()=>failed ? setRetry(n=>n+1) : select(cat)}>
           <i className="erp-fee-dot" style={{background:cat[2]}}/><span className="erp-fee-name">{cat[1]}</span>
           <span className="erp-fee-value">{temp ? phaseLabel : !v ? '读取中…' : 'reason' in v ? failed ? '未获取 · 重试' : v.reason : money(v.amountCents/100)}</span>
@@ -127,19 +133,17 @@ export function TodayIncome({ date }: { date: string }) {
       })}</div>
     </div>
   </section>
-    {selected?.[0] === 'temporary' && !phase && <Sheet open onClose={() => select(null)} width={480} title="临时停车费 · 分期应收" subtitle={date}>
-      {phaseKeys.map(key => {
-        const value = phaseResults[key];
-        return <div key={key} style={{padding:'10px 0',borderBottom:'1px solid var(--line)'}}>
-          <button className="btn" style={{width:'100%',justifyContent:'space-between'}} disabled={!value || 'reason' in value} onClick={() => setPhase(key)}>
-            <b>{phases[key]}</b><span>{!value ? '读取中…' : 'reason' in value ? '未获取' : money(value.amountCents/100) + ' · ' + value.total + ' 笔 ›'}</span>
-          </button>
-          {value && 'reason' in value && <p role="status">{value.reason} <button className="btn sm" onClick={() => setRetry(n => n+1)}>重试</button></p>}
-        </div>;
-      })}
+    {selected && <Sheet open onClose={() => { select(null); setPhase(null); }} width={800} title={selected[1]+'明细'} subtitle={date}>
+      {selected[0] !== 'temporary' ? <Details category={selected} date={date}/> : <>
+        <div role="tablist" aria-label="小区">{visiblePhases.map(key =>
+          <button type="button" role="tab" id={'income-tab-'+key} aria-controls="income-phase-panel" aria-selected={currentPhase===key}
+            key={key} className={'btn sm'+(currentPhase===key?' primary':'')} onClick={() => setPhase(key)}>{phases[key]}</button>)}</div>
+        <div role="tabpanel" id="income-phase-panel" aria-labelledby={'income-tab-'+currentPhase}>
+          {!current ? <p role="status">{visiblePhases.length ? '读取中…' : '无查看权限'}</p> :
+            'reason' in current ? <p role="status">{current.reason} <button className="btn sm" onClick={() => setRetry(n=>n+1)}>重试</button></p> :
+            <Details key={currentPhase} phase={currentPhase} category={selected} firstPage={current} date={date}/>}
+        </div>
+      </>}
     </Sheet>}
-    {selected && (selected[0] !== 'temporary' || phase) && <Details category={selected} phase={phase ?? undefined}
-      firstPage={phase && phaseResults[phase] && 'rows' in phaseResults[phase] ? phaseResults[phase] : undefined}
-      date={date} close={() => phase ? setPhase(null) : select(null)} />}
   </>;
 }

@@ -50,22 +50,22 @@ test('income amounts fit narrow cards and open five-column paged receipts', asyn
       await page.keyboard.press('Escape');
       const due=page.getByRole('button',{name:/临时停车费/});
       await due.filter({hasText:'15.00'}).click();
-      await page.getByRole('button',{name:/一期.*10.00/}).click();
+      await page.getByText('当期应收 ¥ 10.00 · 1 笔',{exact:true}).waitFor();
       await page.getByRole('columnheader',{name:'车类'}).waitFor();
       assert.deepEqual(await page.locator('.income-details th').allTextContents(),['出场时间','车牌','车类','停车时段','应收金额','备注']);
       await page.getByRole('cell',{name:'临时车',exact:true}).waitFor();
       assert.equal(await page.getByRole('cell',{name:'亲情车',exact:true}).count(),0);
-      await page.getByRole('button',{name:'返回分期汇总'}).click();
-      await page.getByRole('button',{name:/二期.*5.00/}).click();
+      assert.equal(await page.getByRole('tab',{selected:true}).innerText(),'一期');
+      await page.getByRole('tab',{name:'二期'}).click();
       await page.getByRole('cell',{name:'亲情车',exact:true}).waitFor();
       await page.close();
       if(viewport===390){
         const failed=await browser.newPage({viewport:{width:390,height:680}});
         await failed.setContent('<div id="root"></div>');await failed.evaluate(()=>window.phaseError=true);
         await failed.addScriptTag({content:bundle.outputFiles.find(f=>f.path.endsWith('.js')).text});
-        await failed.getByRole('button',{name:/临时停车费.*查看分期/}).click();
+        await failed.getByRole('button',{name:/临时停车费.*未获取/}).click();
         await failed.getByText('一期车类未识别',{exact:false}).first().waitFor();
-        await failed.getByRole('button',{name:/二期.*5.00/}).click();
+        await failed.getByRole('tab',{name:'二期'}).click();
         await failed.getByRole('cell',{name:'亲情车',exact:true}).waitFor();
         await failed.close();
       }

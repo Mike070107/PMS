@@ -176,3 +176,22 @@ test('fee query authorization is still checked before discovery or enqueueing', 
   assert.equal(h.agentFinds.length, 0);
   assert.equal(h.tasks.length, 0);
 });
+
+test('管理处的单期临停任务按分期授权，创建与按编号回读执行同一权限检查',async()=>{
+  const h=harness([agent({version:'2.6.5'})]);
+  const phases=new Map([['枫桦景苑一期',101],['枫桦景苑二期',102]]);
+  Object.assign(h.service,{communityRepo:{find:async({where}:any)=>{
+    assert.equal(where.tenantId,user.tenantId);
+    return phases.has(where.name)?[{id:phases.get(where.name)}]:[];
+  }}});
+  const scope=(...communityIds:number[])=>({...fullAccess,scopeAll:false,communityIds});
+  const dto={...dates,endDate:dates.startDate,category:'exit_due' as const,page:1,database:'parking2' as const};
+  const task=await h.service.createParkingFeeDetail(dto,user,scope(101,102));
+  await h.service.getParkingFeeDetail(task.id,user,scope(102));
+  await assert.rejects(h.service.getParkingFeeDetail(task.id,user,scope(101)),/数据范围/);
+  await assert.rejects(h.service.createParkingFeeDetail(dto,user,scope(999)),/数据范围/);
+  await assert.rejects(h.service.createParkingFeeDetail({...dto,database:undefined},user,scope(101,102)),/全公司/);
+  await h.service.createParkingFeeDetail({...dto,database:'parking1'},user,scope(101));
+  h.tasks[0].rows=[{database:'parking1',fields:{}}];
+  await assert.rejects(h.service.getParkingFeeDetail(task.id,user,scope(102)),/分期与查询不一致/);
+});
