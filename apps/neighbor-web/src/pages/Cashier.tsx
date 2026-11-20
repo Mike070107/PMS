@@ -46,7 +46,7 @@ interface HouseHit {
 }
 interface Vehicle { id: number; plateNo: string; houseId: number | null; ownerId: number | null; validUntil: string | null }
 interface AccessCard { id: number; cardNo: string; houseId: number; ownerId: number | null; status: string }
-interface SearchResult { matchedPhones?: Record<number, string>; plateMatches?: boolean; searchWarning?: string; houses: HouseHit[]; vehicles: Vehicle[]; accessCards: AccessCard[] }
+interface SearchResult { addressMatches?: number[]; matchedPhones?: Record<number, string>; plateMatches?: boolean; searchWarning?: string; houses: HouseHit[]; vehicles: Vehicle[]; accessCards: AccessCard[] }
 interface Estimate { unitPriceCents: number; quantity: number; startDate: string | null; endDate: string | null; amountCents: number; summary: string }
 /** 物业费/泊位费应收：实时读 MIS（/fees/mis/bills），id 是 MIS 侧单据号 */
 interface Bill { id: string; feeCode: string; feeName: string; period: string; amountCents: number; status: string; remark?: string | null }
@@ -251,7 +251,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
             ? rawRoom.split('/').map(part => part.replace(/^0+(?=\d)/, '')).join('/') : rawRoom;
           const plateHit = !!plate && matches(plate);
           const phoneHit = /^\d+$/.test(term) && [...fields].find(([key, value]) =>
-            /(?:tel|phone|mobile)/.test(key) && String(value ?? '').replace(/[^\d]/g, '').endsWith(term));
+            /(?:tel|phone|mobile)/.test(key) && String(value ?? '').includes(term));
           if (!plateHit && !phoneHit) continue;
           const keepPlateOnly = () => {
             if (!merged.vehicles.some(v => v.plateNo === plate)) merged.vehicles.push({ id: -(merged.vehicles.length + 1), plateNo: plate, houseId: null, ownerId: null, validUntil: null });
@@ -263,7 +263,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
             .every((part, index) => String(part ?? '').replace(/^0+(?=\d)/, '') === parts[index])) : rr.houses;
           if (!parts || candidates.length !== 1) { if (plateHit) keepPlateOnly(); continue; }
           const hit = candidates[0];
-          if (phoneHit && !matchedPhones[hit.id]) matchedPhones[hit.id] = String(phoneHit[1]).replace(/[^\d]/g, '');
+          if (phoneHit && !matchedPhones[hit.id]) matchedPhones[hit.id] = String(phoneHit[1]);
           if (!merged.houses.some((h) => h.id === hit.id)) merged.houses.push(hit);
           if (plateHit && !merged.vehicles.some((v) => v.plateNo === plate)) merged.vehicles.push({ id: hit.id * 1000 + merged.vehicles.length, plateNo: plate, houseId: hit.id, ownerId: hit.owner?.id ?? null, validUntil: null });
         }
@@ -272,13 +272,17 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
         else throw new Error(`车牌查询未完成：${error instanceof Error ? error.message : '现场停车库暂不可用'}。不能据此判断车辆不存在。`);
       }
     }
-    const tailPhones = Object.entries(matchedPhones).filter(([, phone]) => phone.split(/[\s,，、;/]+/).some(p => p.endsWith(term)));
-    const priorityMatches = (fullPlate || plateFragment) && merged.vehicles.length > 0 || tailPhones.length > 0;
-    if (tailPhones.length && !plateFragment && !fullPlate) merged.vehicles = [];
-    merged.matchedPhones = priorityMatches ? Object.fromEntries(tailPhones) : matchedPhones;
-    if (priorityMatches) {
-      const ids = new Set(merged.vehicles.map(v => v.houseId));
-      return { ...merged, plateMatches: merged.vehicles.length > 0, houses: merged.houses.filter(h => ids.has(h.id) || !!merged.matchedPhones?.[h.id]), accessCards: [] };
+    const addressMatches = merged.houses.filter(h =>
+      [h.communityName, h.lane, h.buildingNo, h.roomNo].some(value => value?.toUpperCase().includes(term)),
+    ).map(h => h.id);
+    merged.matchedPhones = matchedPhones;
+    merged.addressMatches = addressMatches;
+    if (fullPlate || plateFragment || Object.keys(matchedPhones).length) {
+      merged.vehicles = merged.vehicles.filter(v => matches(v.plateNo));
+      merged.accessCards = merged.accessCards.filter(c => c.cardNo.includes(term));
+      const ids = new Set([...addressMatches, ...merged.vehicles.map(v => v.houseId), ...merged.accessCards.map(c => c.houseId)]);
+      merged.houses = merged.houses.filter(h => ids.has(h.id) || !!matchedPhones[h.id] || h.owner?.name?.includes(kw));
+      merged.plateMatches = merged.vehicles.length > 0;
     }
     return merged;
   }, []);

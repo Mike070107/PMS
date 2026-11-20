@@ -32,11 +32,7 @@ export default function AddressSearchMatch({ address, query, phone, plate, owner
   const term = query.trim();
   const digits = /^\d+$/.test(term) ? term : '';
   const number = (phone || '').split(/[\s,，、;/]+/).find(p => digits && p.includes(digits));
-  // 保留首三尾四及用户本次已输入的数字，其余号码位继续遮盖。
-  const offset = number && digits ? number.indexOf(digits) : -1;
-  const masked = number && Array.from(number, (c, i) =>
-    i < 3 || i >= number.length - 4 || (i >= offset && i < offset + digits.length) ? c : '*').join('');
-  const detail = plate || masked || (owner?.includes(term) ? owner : '');
+  const detail = plate || number || (owner?.includes(term) ? owner : '');
   return <span className="address-search-match">
     <span>{highlight(address, [term, ...tokenizeAddress(term)])}</span>
     {detail && <span className="address-search-detail">{highlight(detail, [term])}</span>}
