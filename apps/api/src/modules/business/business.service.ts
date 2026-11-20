@@ -23,6 +23,7 @@ import {
   BusinessRule,
   BusinessTransaction,
   Building,
+  Unit,
   Community,
   House,
   ParkingVehicle,
@@ -206,14 +207,14 @@ export class BusinessService {
    */
   async householdParking(houseId: number, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
-    const house = await this.houseRepo.findOne({ where: { id: houseId, tenantId } });
+    const house = await this.houseRepo.findOne({ where: { id: houseId, tenantId }, relations: { unit: true } });
     if (!house) throw new NotFoundException('房号不存在');
     const building = await this.buildingRepo.findOne({ where: { id: house.buildingId, tenantId } });
     const community = building ? await this.communityRepo.findOne({ where: { id: building.communityId, tenantId } }) : null;
     const scope = scopeCommunityIds(access);
     if (scope && (!community || !scope.includes(community.id))) throw new ForbiddenException('该房号不在你的管理范围内');
     const strip = (v: string | null | undefined) => (v || '').trim().replace(/^0+(?=\d)/, '');
-    const parts = [strip(building?.lane), strip(building?.buildingNo), strip(house.roomNo)].filter(Boolean);
+    const parts = [strip(building?.lane), strip(building?.buildingNo), strip(house.unit?.unitNo), strip(house.roomNo)].filter(Boolean);
     const room = parts.join('/');
     const targets = targetsForCommunity(community?.name ?? null);
     const vehicles = await this.vehicleRepo.find({
@@ -490,6 +491,7 @@ export class BusinessService {
     const houseQb = this.houseRepo
       .createQueryBuilder('h')
       .leftJoin(Building, 'b', 'b.id = h.building_id AND b.tenant_id = h.tenant_id')
+      .leftJoin(Unit, 'un', 'un.id = h.unit_id AND un.tenant_id = h.tenant_id AND un.building_id = b.id')
       .leftJoin(Community, 'c', 'c.id = b.community_id AND c.tenant_id = b.tenant_id')
       .leftJoin(User, 'u', 'u.house_id = h.id AND u.tenant_id = h.tenant_id AND u.role = :role', {
         role: UserRole.OWNER,
@@ -498,23 +500,18 @@ export class BusinessService {
       .andWhere(
         q
           ? new Brackets((sub) => {
-              const shop = q.match(/^(\d+)\s*[/／-]?\s*商铺$/);
-              if (shop) {
-                sub.where('b.building_no = :shopNo AND h.room_no = :shopRoom', { shopNo: shop[1], shopRoom: '商铺' });
-                return;
-              }
               if (addr) {
                 sub.where(addr.allHouseIds.length ? 'h.id IN (:...addrHouseIds)' : '1=0', { addrHouseIds: addr.allHouseIds })
                   .orWhere('u.name ILIKE :kw', { kw: `%${q}%` });
-                return;
-              }
-              sub
+              } else sub
                 .where('h.room_no ILIKE :kw', { kw: `%${q}%` })
                 .orWhere('b.building_no ILIKE :kw', { kw: `%${q}%` })
                 .orWhere('b.lane ILIKE :kw', { kw: `%${q}%` })
                 .orWhere('u.name ILIKE :kw', { kw: `%${q}%` })
                 .orWhere('u.phone ILIKE :kw', { kw: `%${q}%` })
                 .orWhere('EXISTS (SELECT 1 FROM parking_vehicles pv WHERE pv.tenant_id = h.tenant_id AND pv.house_id = h.id AND pv.plate_no ILIKE :kw)', { kw: `%${q}%` });
+              // 同一份房产字段支持商铺、公寓、普通房屋的连续或分隔地址。
+              sub.orWhere("concat(b.building_no,un.unit_no,h.room_no) = :addressKey OR concat_ws('/',nullif(b.lane,''),b.building_no,un.unit_no,h.room_no) = :addressKey OR concat_ws('/',b.building_no,un.unit_no,h.room_no) = :addressKey", { addressKey: q.replace(/\s+/g, '').replace(/／/g, '/') });
             })
           : '1=1',
       )

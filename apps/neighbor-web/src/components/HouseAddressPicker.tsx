@@ -172,6 +172,7 @@ export default function HouseAddressPicker(props: {
   onOpenChange?: (open: boolean) => void;
   extraResults?: React.ReactNode;
   remoteSearchFeedback?: boolean;
+  onlyExtraResults?: boolean;
   /** all permits community/building suggestions; default retains house-only search. */
   selectionLevel?: 'house' | 'all';
   showCopy?: boolean;
@@ -251,7 +252,7 @@ export default function HouseAddressPicker(props: {
    * 所以「228/4/201 + 回车」= 直接填上 枫桦景苑二期/228弄4号/201。
    */
   const onKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
-    if (props.disabled || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+    if (props.disabled || event.nativeEvent?.isComposing || event.nativeEvent?.keyCode === 229) return;
     if (event.key === 'Enter' && props.onSubmitText && !arrowUsedRef.current) {
       setCommitRevision(revision => revision + 1);
       event.preventDefault(); event.stopPropagation(); props.onSubmitText(searchValue); return;
@@ -311,7 +312,7 @@ export default function HouseAddressPicker(props: {
         dropdownStyle={{ width: 720, maxWidth: 'calc(100vw - 32px)' }}
         displayRender={() => currentText}
         notFoundContent={props.remoteSearchFeedback ? <span aria-hidden="true" /> : undefined}
-        dropdownRender={props.extraResults ? (menus) => <>{menus}{props.extraResults}</> : undefined}
+        dropdownRender={props.extraResults ? (menus) => <>{!props.onlyExtraResults && menus}{props.extraResults}</> : undefined}
         open={open}
         onDropdownVisibleChange={(v) => {
           setOpen(v);

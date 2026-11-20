@@ -46,7 +46,7 @@ interface HouseHit {
 }
 interface Vehicle { id: number; plateNo: string; houseId: number | null; ownerId: number | null; validUntil: string | null }
 interface AccessCard { id: number; cardNo: string; houseId: number; ownerId: number | null; status: string }
-interface SearchResult { houses: HouseHit[]; vehicles: Vehicle[]; accessCards: AccessCard[] }
+interface SearchResult { plateMatches?: boolean; searchWarning?: string; houses: HouseHit[]; vehicles: Vehicle[]; accessCards: AccessCard[] }
 interface Estimate { unitPriceCents: number; quantity: number; startDate: string | null; endDate: string | null; amountCents: number; summary: string }
 /** 物业费/泊位费应收：实时读 MIS（/fees/mis/bills），id 是 MIS 侧单据号 */
 interface Bill { id: string; feeCode: string; feeName: string; period: string; amountCents: number; status: string; remark?: string | null }
@@ -213,10 +213,14 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
     const card = normSearch(cardRaw);
     const uniq = <T extends { id: number }>(a: T[], b: T[]) => [...a, ...b].filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i);
     const merged: SearchResult = { houses: uniq(park.houses, card.houses), vehicles: uniq(park.vehicles, card.vehicles), accessCards: uniq(park.accessCards, card.accessCards) };
-    // 车牌不在 PMS 本地表里（生产 parking_vehicles 基本是空的）：真车在现场旧停车库，
-    // 本地没查到时按车牌去现场库查一次，拿到房号再落成一条可续期的“车”。
-    const looksPlate = /[\u4e00-\u9fff][A-Za-z]/.test(kw) || /^[A-Za-z0-9]{4,8}$/.test(kw.trim());
-    if (!merged.vehicles.length && looksPlate && kw.trim().length >= 3) {
+    const term = kw.trim().toUpperCase();
+    const fullPlate = /^[\u4e00-\u9fff][A-Z][A-Z0-9]{5,6}$/.test(term);
+    const plateFragment = /^[A-Z0-9]{4,7}$/.test(term);
+    const matches = (plate: string) => fullPlate ? plate.toUpperCase() === term : plate.toUpperCase().endsWith(term);
+    if (fullPlate || plateFragment) {
+      merged.vehicles = merged.vehicles.filter(v => matches(v.plateNo));
+    }
+    if (plateFragment || (fullPlate && !merged.vehicles.length)) {
       try {
         let q = await accessCardIssuance.createParkingQuery(kw.trim());
         for (let i = 0; i < 10 && (q.status === 'pending' || q.status === 'running'); i += 1) {
@@ -239,23 +243,31 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
           // never the plate/suffix (03212 must retain its leading zero).
           const room = /^\d+\/\d+\/\d+$/.test(rawRoom)
             ? rawRoom.split('/').map(part => part.replace(/^0+(?=\d)/, '')).join('/') : rawRoom;
-          if (!plate) continue;
+          const plateHit = !!plate && matches(plate);
+          const phoneHit = /^\d+$/.test(term) && [...fields].some(([key, value]) =>
+            /(?:tel|phone|mobile)/.test(key) && String(value ?? '').replace(/[^\d]/g, '').endsWith(term));
+          if (!plateHit && !phoneHit) continue;
           const keepPlateOnly = () => {
             if (!merged.vehicles.some(v => v.plateNo === plate)) merged.vehicles.push({ id: -(merged.vehicles.length + 1), plateNo: plate, houseId: null, ownerId: null, validUntil: null });
           };
-          if (!room) { keepPlateOnly(); continue; }
+          if (!room) { if (plateHit) keepPlateOnly(); continue; }
           const rr = normSearch(await request<unknown>({ url: '/business/search', query: { q: room } }));
           const parts = /^\d+\/\d+\/\d+$/.test(room) ? room.split('/') : null;
           const candidates = parts ? rr.houses.filter(h => [h.lane, h.buildingNo, h.roomNo]
             .every((part, index) => String(part ?? '').replace(/^0+(?=\d)/, '') === parts[index])) : rr.houses;
-          if (!parts || candidates.length !== 1) { keepPlateOnly(); continue; }
+          if (!parts || candidates.length !== 1) { if (plateHit) keepPlateOnly(); continue; }
           const hit = candidates[0];
           if (!merged.houses.some((h) => h.id === hit.id)) merged.houses.push(hit);
-          if (!merged.vehicles.some((v) => v.plateNo === plate)) merged.vehicles.push({ id: hit.id * 1000 + merged.vehicles.length, plateNo: plate, houseId: hit.id, ownerId: hit.owner?.id ?? null, validUntil: null });
+          if (plateHit && !merged.vehicles.some((v) => v.plateNo === plate)) merged.vehicles.push({ id: hit.id * 1000 + merged.vehicles.length, plateNo: plate, houseId: hit.id, ownerId: hit.owner?.id ?? null, validUntil: null });
         }
       } catch (error) {
-        throw new Error(`车牌查询未完成：${error instanceof Error ? error.message : '现场停车库暂不可用'}。不能据此判断车辆不存在。`);
+        if (merged.vehicles.length || merged.houses.some(h => h.owner?.phone?.includes(term))) merged.searchWarning = '现场车牌查询未完成，当前仅显示 PMS 记录';
+        else throw new Error(`车牌查询未完成：${error instanceof Error ? error.message : '现场停车库暂不可用'}。不能据此判断车辆不存在。`);
       }
+    }
+    if ((fullPlate || plateFragment) && merged.vehicles.length) {
+      const ids = new Set(merged.vehicles.map(v => v.houseId));
+      return { ...merged, plateMatches: true, houses: merged.houses.filter(h => ids.has(h.id)), accessCards: [] };
     }
     return merged;
   }, []);

@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, LessThan, Repository } from 'typeorm';
-import { BusinessLog, BusinessRule, BusinessTransaction, ParkingOperation, VehicleIntake } from '../../entities';
+import { BusinessLog, BusinessRule, BusinessTransaction, House, ParkingOperation, VehicleIntake } from '../../entities';
 import { findParkingTarget } from './parking-targets';
 import { legacyRegistrationProfile } from './parking-registration-profile';
 import { assertFreshParkingPlateCheck } from '../access-card-issuance/parking-query.util';
@@ -357,11 +357,24 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
       if (!intake || intake.kind !== 'paid' || intake.status !== 'approved' || intake.houseId !== txn.houseId ||
           intake.transactionId !== txn.id || intake.plate !== plate) throw new BadRequestException('新车资料未通过审核或与原收款记录不一致，禁止自动开通');
       if (!plate || !endDate || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || !txn.startDate || !txn.createdBy) throw new BadRequestException('新车登记缺少车牌、有效期或原办理人');
-      const address = intake.houseLabel.split('/').slice(1).join('/');
-      const shop = /^(?:(198|228)弄)?(\d{1,5})(?:号|\/)商铺$/.exec(address);
-      const room = intake.houseLabel.match(/(198|228)弄\s*(\d+)号\s*(\d+)/);
-      const ownerRoom = shop ? [shop[1], shop[2], '商铺'].filter(Boolean).join('/') : room?.slice(1).map(Number).join('/');
-      if (!ownerRoom) throw new BadRequestException('停车授权未开通：房产地址无法对应旧车库，请核对后重试原流水');
+      const property = await this.txnRepo.manager.getRepository(House).findOne({
+        where: { tenantId: txn.tenantId, id: intake.houseId }, relations: { building: true, unit: true },
+      });
+      const building = property?.building;
+      if (!property || !building || building.tenantId !== txn.tenantId ||
+          building.communityId !== intake.communityId || building.communityId !== txn.communityId ||
+          !building.buildingNo?.trim() || !property.roomNo?.trim()) {
+        throw new BadRequestException('原登记的房产或所属小区已变更，请核对后重试原流水');
+      }
+      const parts = [building.lane, building.buildingNo, property.unit?.unitNo, property.roomNo]
+        .map(value => value?.trim()).filter((value): value is string => !!value);
+      const numericHome = parts.every(value => /^\d+$/.test(value));
+      const ownerAddress = (numericHome ? parts.map(value => value.replace(/^0+(?=\d)/, '')) : parts).join('/');
+      // 旧库的 owner_Name 是 varchar(20)，不同房产共用同名门牌时仍须独立。
+      // 常规住宅沿用既有编码；商铺、公寓保留完整地址，并以房产 ID 区分同名档案。
+      const ownerRoom = numericHome && !property.unitId && building.lane && Buffer.byteLength(ownerAddress) <= 20
+        ? ownerAddress : `PMS-${property.id}`;
+      if (Buffer.byteLength(ownerAddress, 'utf8') > 80) throw new BadRequestException('房产地址超过旧停车库地址栏长度，请核对原登记');
       const selected = [...new Set(intake.garages)];
       const defs = selected.map(key => findParkingTarget(key));
       if (!defs.length || defs.some(d => !d)) throw new BadRequestException('新车登记未选择有效车库');
@@ -402,7 +415,7 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
         let add = adds[index];
         if (!add) add = await this.issuance.createParkingOperation({ database, kind: 'add_vehicle',
           idempotencyKey: `biz:${txn.txnNo}:register:${database}`,
-          payload: { plate, ownerRoom, ownerName: intake.ownerName || ownerRoom, ownerAddress: ownerRoom,
+          payload: { plate, ownerRoom, ownerName: intake.ownerName || ownerRoom, ownerAddress,
             ownerPhone: intake.contactPhone || intake.ownerPhone, identity, carType, amount: index === 0 ? txn.amountCents / 100 : 0,
             startDate: txn.startDate, endDate, effective: bits, download: '0'.repeat(256), state: 1,
             garages: [...new Set(garages.filter(g => database === 'parking1' ? g === 'phase1' : g !== 'phase1'))],
@@ -458,7 +471,7 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
       }
       if (steps.some(s => s.status === 'manual')) return this.finish(txn, 'manual', { ...prev, mode, attempts, steps, nextAt: null, lastError: steps.filter(s => s.status === 'manual').map(s => `[${s.label}] ${s.note}`).join('；') });
       if (civil && steps.every(s => s.status === 'done')) {
-        steps.push(await this.runCivilRegistration(txn, plate, ownerRoom, intake.garageNumbers.civil, endDate));
+        steps.push(await this.runCivilRegistration(txn, plate, ownerAddress, intake.garageNumbers.civil, endDate));
         if (steps.some(s => s.status === 'manual')) return this.finish(txn, 'manual', { ...prev, mode, attempts, steps, nextAt: null, lastError: steps.at(-1)!.note });
       }
       if (steps.every(s => s.status === 'done')) return this.finish(txn, 'synced', { ...prev, mode, attempts, steps, nextAt: null, lastError: null });

@@ -21,7 +21,7 @@ export interface UniHouse {
 }
 export interface UniVehicle { id: number; plateNo: string; houseId: number | null }
 export interface UniCard { id: number; cardNo: string; houseId: number; status?: string }
-export interface UniResult { houses: UniHouse[]; vehicles: UniVehicle[]; accessCards: UniCard[] }
+export interface UniResult { plateMatches?: boolean; searchWarning?: string; houses: UniHouse[]; vehicles: UniVehicle[]; accessCards: UniCard[] }
 
 export type UniPick =
   | { kind: 'house'; hit: UniHouse; all: UniResult }
@@ -212,6 +212,11 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
       if (my === pickSeq.current) setBusy(false);
     }
     if (my !== pickSeq.current) return;
+    if (r.plateMatches) {
+      if (r.vehicles.length === 1) return choose({ kind: 'vehicle', vehicle: r.vehicles[0], all: r });
+      setOpen(true);
+      return;
+    }
     const total = r.houses.length + r.vehicles.length + r.accessCards.length;
     if (total === 1) {
       if (r.houses.length === 1) return choose({ kind: 'house', hit: r.houses[0], all: r });
@@ -246,7 +251,8 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
             {err ? <div className="muted as-empty" style={{ color: 'var(--dang)' }}>{err}</div> : null}
             {busy ? <SearchLoading /> : null}
             {empty ? <div className="muted as-empty">没查到「{kw}」。房号可写 228/5/201 或 5/201；电话尾号、车牌尾号至少 4 位</div> : null}
-            {noCols && res?.houses.length ? (
+            {res?.searchWarning ? <div className="muted">{res.searchWarning}</div> : null}
+            {!res?.plateMatches && noCols && res?.houses.length ? (
               <>
                 <div className="as-group">房号 · 物业费 / 泊位费（进户后四类同办）</div>
                 {res.houses.slice(0, 8).map((h) => {
@@ -301,7 +307,7 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
         placeholder={placeholder ?? '房号 / 姓名 / 手机尾号 / 车牌尾号，回车查询'}
         searchText={browsing ? '' : selectionText ?? text} displayText={selectionText ?? text}
         selectionRevision={selectionRevision} inputRef={input} showCopy={false}
-        open={open} onOpenChange={setOpen} extraResults={extraResults} remoteSearchFeedback={!!extraResults}
+        open={open} onOpenChange={setOpen} extraResults={extraResults} onlyExtraResults={!!res?.plateMatches && typed && !browsing} remoteSearchFeedback={!!extraResults}
         onPicked={pickAddress} onSubmitText={() => { void submit(); }}
         onSearchText={next => { setBrowsing(false); if (next.trim() !== kw || selectionText !== null) { invalidate(); setBusy(!!next.trim()); } setSelectionText(null); setSelectedPath([]); setText(next); setCid(null); setBid(null); setOpen(true); }} />
     </div>

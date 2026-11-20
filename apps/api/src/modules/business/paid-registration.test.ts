@@ -2,18 +2,19 @@ import 'reflect-metadata';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { BusinessExecutionService } from './business-execution.service';
-import { VehicleIntake } from '../../entities';
+import { House, VehicleIntake } from '../../entities';
 import { legacyRegistrationProfile } from './parking-registration-profile';
 import { prepareFamilyRegistration } from '../access-card-issuance/parking-family';
 function fixture(){
  const txn:any={id:90,tenantId:1,createdBy:8,houseId:7,communityId:2,txnNo:'PK-TEST-REG',amountCents:30000,startDate:'2026-11-06',endDate:'2026-12-31',snapshot:{intake:{id:4},vehicle:{plateNo:'沪TEST01'},parking:{newVehicle:true,systems:[{kind:'local',database:'parking2',sourceRecordId:'',label:'二期地面'}]}}};
- const intake:any={id:4,tenantId:1,houseId:7,transactionId:90,status:'approved',kind:'paid',plate:'沪TEST01',houseLabel:'枫桦景苑二期/228弄3号502',ownerName:'合成业主',ownerPhone:'',contactPhone:'',vehicleClass:'住户车-1',garages:['local:phase2_parking'],garageNumbers:{}};
+ const intake:any={id:4,tenantId:1,houseId:7,communityId:2,transactionId:90,status:'approved',kind:'paid',plate:'沪TEST01',houseLabel:'枫桦景苑二期/228弄3号502',ownerName:'合成业主',ownerPhone:'',contactPhone:'',vehicleClass:'住户车-1',garages:['local:phase2_parking'],garageNumbers:{}};
+ const house:any={id:7,tenantId:1,roomNo:'502',building:{communityId:2,tenantId:1,lane:'228',buildingNo:'3'},unit:null};
  const ops:any[]=[];let query:any={id:2,status:'completed',term:'沪TEST01',completedAt:new Date(),rows:[]};const s:any=Object.create(BusinessExecutionService.prototype);
- s.config={get:()=> 'on'};s.txnRepo={createQueryBuilder:()=>({update(){return this},set(){return this},where(){return this},execute:async()=>({affected:1})}),findOneOrFail:async()=>txn,manager:{getRepository:(entity:any)=>({findOne:async()=>entity===VehicleIntake?intake:null})},update:async(_:any,v:any)=>Object.assign(txn,v)};
+ s.config={get:()=> 'on'};s.txnRepo={createQueryBuilder:()=>({update(){return this},set(){return this},where(){return this},execute:async()=>({affected:1})}),findOneOrFail:async()=>txn,manager:{getRepository:(entity:any)=>({findOne:async()=>entity===VehicleIntake?intake:entity===House?house:null})},update:async(_:any,v:any)=>Object.assign(txn,v)};
  s.opRepo={findOne:async({where}:any)=>ops.find(o=>where.id?o.id===where.id:o.idempotencyKey===where.idempotencyKey)||null};
  s.issuance={createParkingQuery:async()=>query,getParkingQuery:async()=>query,createParkingOperation:async(d:any)=>{let o=ops.find(o=>o.idempotencyKey===d.idempotencyKey);if(!o){o={...d,id:ops.length+1,status:'pending'};ops.push(o)}return o}};
  s.log=async()=>{};s.deliyun={findVehiclesByPlate:async()=>{throw Error('不应查德立云')}};
- return {s,txn,intake,ops,setQuery:(q:any)=>query=q};
+ return {s,txn,intake,house,ops,setQuery:(q:any)=>query=q};
 }
 test('停车新增任务使用本车联系手机，保留业主电话快照',async()=>{
  const h=fixture();h.intake.ownerPhone='13800000000';h.intake.contactPhone='13711112222';await h.s.runOne(90);
@@ -89,9 +90,23 @@ test('设备超时后人工重试实时核对原车，不重复新增或收费',
 
 test('729商铺沿用原收款流水新增停车登记，重复执行只保留一个任务', async () => {
   const h = fixture();
-  h.intake.houseLabel = '枫桦景苑二期/729号商铺';
+  Object.assign(h.house.building, {lane:null,buildingNo:'729'}); h.house.roomNo='商铺';
   await h.s.runOne(90);
-  assert.equal(h.ops[0]?.payload.ownerRoom, '729/商铺');
+  assert.equal(h.ops[0]?.payload.ownerAddress, '729/商铺');
+  assert.equal(h.ops[0]?.payload.ownerRoom, 'PMS-7');
   await h.s.runOne(90);
   assert.equal(h.ops.length, 1);
+});
+
+test('不同小区同号店铺按选中的房产读取，公寓保留楼栋、单元和房号',async()=>{
+ for(const [community,building,unit,room,expected] of [
+  [2,'729',null,'商铺','729/商铺'],[3,'729',null,'商铺','729/商铺'],[3,'B座','2','A-009','B座/2/A-009'],
+ ] as const){
+  const h=fixture(); h.txn.communityId=h.intake.communityId=h.house.building.communityId=community;
+  h.house.id=h.txn.houseId=h.intake.houseId=community*100+7;
+  Object.assign(h.house.building,{lane:null,buildingNo:building});h.house.unit=unit?{unitNo:unit}:null;h.house.roomNo=room;
+  await h.s.runOne(90);assert.equal(h.ops[0]?.payload.ownerAddress,expected,JSON.stringify(h.txn.snapshot.execution));assert.equal(h.ops[0]?.payload.ownerRoom,`PMS-${h.house.id}`);
+ }
+ const wrong=fixture();wrong.house.building.communityId=7;
+ await wrong.s.runOne(90);assert.equal(wrong.ops.length,0);
 });
