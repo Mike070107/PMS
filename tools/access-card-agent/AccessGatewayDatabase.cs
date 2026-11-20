@@ -585,7 +585,7 @@ namespace Pms.AccessCardAgent
             return RequireSingleMjDoors(buildingNo, ResolveMjDoors(connection, transaction, buildingNo));
         }
 
-        private static int[] IcCardDoors(OleDbConnection connection, OleDbTransaction transaction, string buildingNo)
+        internal static int[] IcCardDoors(OleDbConnection connection, OleDbTransaction transaction, string buildingNo)
         {
             return RequireSingleIcCardDoors(buildingNo, ResolveIcCardDoors(connection, transaction, buildingNo));
         }
@@ -639,7 +639,7 @@ namespace Pms.AccessCardAgent
             var matches = new List<int>();
             const string sql =
                 "SELECT D.f_DoorID,D.f_DoorName,C.f_ControllerName " +
-                "FROM t_b_Door AS D LEFT JOIN t_b_Controller AS C ON D.f_ControllerID=C.f_ControllerID";
+                "FROM t_b_Door AS D INNER JOIN t_b_Controller AS C ON D.f_ControllerID=C.f_ControllerID WHERE C.f_Enabled <> 0";
             using (var command = connection.CreateCommand())
             {
                 command.Transaction = transaction;

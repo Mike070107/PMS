@@ -962,28 +962,7 @@ namespace Pms.AccessCardAgent
 
         private static int IcCardDoor(OleDbConnection connection, string buildingNo)
         {
-            var normalized = NormalizeBuilding(buildingNo);
-            var matches = new List<int>();
-            const string sql =
-                "SELECT D.f_DoorID,D.f_DoorName,C.f_ControllerName " +
-                "FROM t_b_Door AS D LEFT JOIN t_b_Controller AS C ON D.f_ControllerID=C.f_ControllerID";
-            using (var command = connection.CreateCommand())
-            {
-                command.CommandText = sql;
-                using (var reader = command.ExecuteReader())
-                {
-                    while (reader.Read())
-                    {
-                        var doorName = Convert.ToString(reader["f_DoorName"], CultureInfo.InvariantCulture);
-                        var controller = Convert.ToString(reader["f_ControllerName"], CultureInfo.InvariantCulture);
-                        if (NormalizeBuilding(AccessGatewayDatabase.ExtractBuildingNo(doorName, controller)) == normalized)
-                            matches.Add(Convert.ToInt32(reader["f_DoorID"], CultureInfo.InvariantCulture));
-                    }
-                }
-            }
-            var doors = matches.Distinct().ToArray();
-            if (doors.Length != 1) throw new InvalidOperationException(buildingNo + "号楼在 iCCard 未找到可唯一识别的实体门，请先核对门名称");
-            return doors[0];
+            return AccessGatewayDatabase.IcCardDoors(connection, null, buildingNo).Single();
         }
 
         private static AccessControllerUploadResult FailedResult(AccessTargetBuilding target, string accessSystem, Exception exception)
