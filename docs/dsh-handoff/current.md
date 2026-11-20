@@ -98,3 +98,9 @@
 - 本次限 Web。待缴项横排展示项目、账期、备注和金额；窄栏换行，空备注收起。MIS 14 停车管理费独立为「车位管理费」，待缴、历史和收款篮按同一分类筛选，仍以原单 ID 办理。
 - 收银台与门禁发卡共用本户捷顺卡清单、分页及操作抽屉，按小区、弄、楼、室请求现有现场助手接口。未触发真实收款、发卡或门禁授权。
 - pnpm build 通过；node --test test/business-owner-contact-browser.test.cjs test/mis-remarks.test.cjs test/cashier-household-isolation.test.cjs 共 9 项通过。access-status-browser.test.cjs 的发卡历史翻页用例通过。Chrome 合成验收覆盖 1440 和 390 宽、分项选择和本户卡清单；截图位于 outputs/business-owner-entry-implemented/cashier-garage-desktop.png 和 cashier-card-mobile.png。未部署生产，未核对真实住户现场回传。
+
+
+## 今日工作临时停车应收（2026-11-20，开发验证，待现场核对）
+
+用户已确认改按出场应收，替代前项中的临停实收要求。Web 单列应收、明细加车类；API 复用原全公司停车报表授权和查询队列；助手 2.6.3 读取两期当日出场正金额，按历史车类纳入临时车、亲情车，汇总与明细使用同一批数据。按账号授权和助手版本检查，缺库、纯车型编码及现场字段歧义不以零回传。
+验证命令为 Web pnpm build、API pnpm exec tsc --noEmit、parking-fee-report 和 parking-query.util 两套接口回归（23 项）、today-income-browser.test.cjs（1440/923/390 宽）及 2.6.3 Release 构建和 --self-test。自检不连接真实岗亭。未部署生产或升级现场设备；旧库字段是否包含可识别的历史车型、两期同日总额与现场收费记录尚待核对。

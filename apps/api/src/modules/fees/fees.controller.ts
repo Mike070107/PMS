@@ -99,7 +99,7 @@ export class FeesController {
   @Get('today/income')
   @RequirePermission('fees','view')
   async todayIncome(@Query() q: IncomeQueryDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
-    if (q.category === 'temporary') return { available: false, reason: '停车实收待核对' };
+    if (q.category === 'temporary') return { available: false, reason: '请通过停车助手查询临停应收' };
     const day = incomeDay(q.date);
     const local = (offset: number, limit: number) =>
       this.misMirrorService.incomeFromPms(q.category, day, user, access, q.communityIds, offset, limit);

@@ -284,9 +284,78 @@ ORDER BY p.parameter_id;";
         }
 
         // 明细独立分页读取，不把“最近 30 条”当成报表口径。总笔数由同日期区间的汇总提供。
+        internal static string ExitDueClass(IEnumerable<string> labels)
+        {
+            var classes = labels.Select(value => (value ?? "").Trim()).Where(value => value.Contains("车")).Distinct().ToArray();
+            if (classes.Length != 1)
+                throw new InvalidOperationException("出场记录车类缺失、含编码或不唯一，请核对现场报表映射");
+            return classes[0] == "临时车" || classes[0] == "亲情车" ? classes[0] : null;
+        }
+
+        // Read the class recorded at exit, so a later change to the vehicle profile cannot reclassify history.
+        private static List<ParkingSearchRow> ReadExitDue(AgentConfig config, string password, string day, string endDay, int page)
+        {
+            DateTime start;
+            if (day != endDay || page < 1 || page > 1000 ||
+                !DateTime.TryParseExact(day, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out start))
+                throw new InvalidOperationException("出场应收仅支持按日查询");
+            var rows = new List<ParkingSearchRow>();
+            var totals = new List<ParkingSearchRow>();
+            foreach (var label in new[] { "parking1", "parking2" })
+            {
+                var database = label == "parking1" ? config.ParkingPhase1Database : config.ParkingPhase2Database;
+                Validate(config, password, database);
+                using (var connection = new SqlConnection(ConnectionString(config, password, database)))
+                {
+                    connection.Open();
+                    var columns = LoadColumns(connection, "dbo", "Car_Out");
+                    var names = new[] { "Car_Brand", "Car_Beand", "车类", "车辆类型", "Car_Lei" }
+                        .Where(name => columns.Any(c => c.Searchable && String.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase))).ToArray();
+                    if (names.Length == 0) throw new InvalidOperationException(label + " 出场记录缺少可识别的历史车类字段，请核对现场报表映射");
+                    using (var command = connection.CreateCommand())
+                    {
+                        command.CommandTimeout = 30;
+                        var note = columns.Any(c => String.Equals(c.Name, "P_note", StringComparison.OrdinalIgnoreCase)) ? "[P_note]" : "NULL";
+                        command.CommandText = "SELECT [out_Time],[P_plate],[Int_Time],CONVERT(decimal(18,2),[P_Shoufei])," + note + ",[" +
+                            String.Join("],[", names) + "] FROM dbo.Car_Out WHERE out_Time>=@start AND out_Time<@end AND P_Shoufei>0" +
+                            " ORDER BY out_Time DESC,P_plate DESC,Int_Time DESC,P_Shoufei DESC," +
+                            String.Join(",", names.Select(name => "CONVERT(nvarchar(128),[" + name + "])").ToArray());
+                        command.Parameters.Add("@start", SqlDbType.DateTime).Value = start;
+                        command.Parameters.Add("@end", SqlDbType.DateTime).Value = start.AddDays(1);
+                        long count = 0;
+                        decimal amount = 0;
+                        using (var reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                var vehicleClass = ExitDueClass(Enumerable.Range(5, names.Length).Select(i => Convert.ToString(reader[i])));
+                                if (vehicleClass == null) continue;
+                                var fee = reader.GetDecimal(3);
+                                if (fee <= 0) continue;
+                                count++;
+                                amount += fee;
+                                if (count > page * 20) continue;
+                                var row = FeeRow(label, "detail", "exit_due", day, reader.GetDateTime(0).ToString("yyyy-MM-dd HH:mm:ss"),
+                                    Convert.ToString(reader[1]), null, 1, fee);
+                                row.fields["vehicleClass"] = vehicleClass;
+                                row.fields["remark"] = reader.IsDBNull(4) ? null : Convert.ToString(reader[4]);
+                                row.fields["enteredAt"] = reader.IsDBNull(2) ? null : reader.GetDateTime(2).ToString("yyyy-MM-dd HH:mm:ss");
+                                rows.Add(row);
+                            }
+                        }
+                        totals.Add(FeeRow(label, "summary", "exit_due", day, null, null, null, count, amount));
+                    }
+                }
+            }
+            totals.AddRange(rows.OrderByDescending(r => (string)r.fields["occurredAt"], StringComparer.Ordinal)
+                .ThenBy(r => r.database, StringComparer.Ordinal).Skip((page - 1) * 20).Take(20));
+            return totals;
+        }
+
         public static List<ParkingSearchRow> SearchFeeDetail(AgentConfig config, string password,
             string startDate, string endDate, string category, int page)
         {
+            if (category == "exit_due") return ReadExitDue(config, password, startDate, endDate, page);
             DateTime start, end;
             if ((category != "renewal" && category != "temporary") || page < 1 || page > 1000 ||
                 !DateTime.TryParseExact(startDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out start) ||

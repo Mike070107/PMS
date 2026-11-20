@@ -595,8 +595,8 @@ export class CreateParkingFeeReportDto {
 }
 
 export class CreateParkingFeeDetailDto extends CreateParkingFeeReportDto {
-  @IsIn(['renewal', 'temporary'])
-  category: 'renewal' | 'temporary';
+  @IsIn(['renewal', 'temporary', 'exit_due'])
+  category: 'renewal' | 'temporary' | 'exit_due';
 
   @Type(() => Number)
   @IsInt()

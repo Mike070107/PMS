@@ -543,6 +543,15 @@ namespace Pms.DataSyncAssistant
 
         private static void VerifyParkingFeeSource()
         {
+            if (ParkingDatabase.ExitDueClass(new[] { "临时车", "0" }) != "临时车" ||
+                ParkingDatabase.ExitDueClass(new[] { "亲情车" }) != "亲情车" ||
+                ParkingDatabase.ExitDueClass(new[] { "住户车" }) != null ||
+                ParkingDatabase.ExitDueClass(new[] { "月租车" }) != null)
+                throw new InvalidOperationException("临停应收车型分类错误");
+            bool unknownRejected = false;
+            try { ParkingDatabase.ExitDueClass(new[] { "1", "" }); }
+            catch (InvalidOperationException) { unknownRejected = true; }
+            if (!unknownRejected) throw new InvalidOperationException("未识别车型不能计作零元");
             if (ParkingDatabase.ParkingExitFeeTable != "[dbo].[Car_Out]" ||
                 ParkingDatabase.ParkingExitFeeDate != "[out_Time]" ||
                 ParkingDatabase.ParkingExitFeeAmount != "[P_Shoufei]")

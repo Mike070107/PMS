@@ -10,7 +10,8 @@ test('income amounts fit narrow cards and open five-column paged receipts', asyn
     import {TodayIncome} from '@/pages/TodayIncome'; import '@/styles/design.css'; import '@/styles/app.css';
     import '@/styles/erp-reference.css'; import '@/pages/erp-today.css';
     createRoot(document.getElementById('root')).render(<TodayIncome date="2026-11-20"/>);`;
-  const fixture = `export async function request({query:q}) {
+  const fixture = `export async function request({url,query:q,data}) {
+    if(url.includes('/parking/fees/details/queries')){if(data.category!=='exit_due')throw Error('应收分类错误'); return {id:1,status:'completed',rows:[{fields:{kind:'summary',count:2,amountCents:1500}},...['临时车','亲情车'].map((vehicleClass,i)=>({fields:{kind:'detail',vehicleClass,occurredAt:'2026-11-20 19:23:50',enteredAt:'2026-11-20 18:42:52',plate:'测试车',amountCents:i?500:1000}}))]};}
     if(q.category==='temporary')return {available:false,reason:'停车实收待核对'};
     if(q.category==='garage')return {amountCents:123456789,total:21,rows:q.page?[{paidAt:'2026-11-20',period:'202611',plate:'沪A12345',amountCents:6750,remark:q.page===2?'第二页':'合成明细'}]:[]};
     return {amountCents:0,total:0,rows:[]};
@@ -39,6 +40,13 @@ test('income amounts fit narrow cards and open five-column paged receipts', asyn
       await page.getByText('合成明细',{exact:true}).waitFor();
       await page.getByRole('button',{name:'下一页'}).click();
       await page.getByText('第二页',{exact:true}).waitFor();
+      await page.keyboard.press('Escape');
+      const due=page.getByRole('button',{name:/临时停车费/});
+      await due.filter({hasText:'15.00'}).click();
+      await page.getByRole('columnheader',{name:'车类'}).waitFor();
+      assert.deepEqual(await page.locator('.income-details th').allTextContents(),['出场时间','车牌','车类','停车时段','应收金额','备注']);
+      await page.getByRole('cell',{name:'临时车',exact:true}).waitFor();
+      await page.getByRole('cell',{name:'亲情车',exact:true}).waitFor();
       await page.close();
     }
   } finally { await browser.close(); }
