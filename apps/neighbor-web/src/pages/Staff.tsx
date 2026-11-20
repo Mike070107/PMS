@@ -1,3 +1,4 @@
+import { EmployeePrintAccess } from '@/components/access/EmployeePrintAccess';
 import { useEffect, useMemo, useState } from 'react';
 import { request } from '@pms/api-client';
 import { ADMIN_PAGES, PAGE_GROUPS, REPAIR_TYPE_OPTIONS, STAFF_APP_PAGES } from '@pms/shared-types';
@@ -312,6 +313,8 @@ function StaffEditor({ staff, roles, offices, onClose, onSaved }: {
           </table>
         </div>
       </Field>
+
+      {staff && <EmployeePrintAccess key={staff.id} employeeId={staff.id} active={staff.status === 'active'} />}
 
       <Field label="工作范围（在哪个管理处 · 做哪些工种）" hint="勾「在此工作」再勾工种；派单按该管理处的工种匹配。智能化等跨所有管理处的勾「全部管理处」那一行">
         <div className="card" style={{ overflow: 'auto' }}>

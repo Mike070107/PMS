@@ -61,6 +61,9 @@ test('隔离 PostgreSQL：绑定、撤权、收费范围、防重复领取和结
     await assert.rejects(ui.enqueue(p.id, b, cashier, all));
     await ui.grant(p.id, cashier, all, { employeeId: 5, allow: true });
     assert.equal((await ui.list(other)).length, 0);
+    assert.equal((await ui.employeePrinters(5,cashier,all))[0].allowed,true);
+    await assert.rejects(ui.employeePrinters(6,cashier,all));
+    await assert.rejects(ui.employeePrinters(5,cashier,{...all,scopeAll:false}));
     await assert.rejects(ui.enqueue(p.id, b, cashier, all));
     assert.equal((await agent.next(token)).job, null);
     await assert.rejects(
@@ -95,6 +98,7 @@ test('隔离 PostgreSQL：绑定、撤权、收费范围、防重复领取和结
     await ui.grant(p.id, cashier, all, { employeeId: 5, allow: false });
     assert.equal((await agent.next(token)).job, null);
     assert.equal((await ui.status(copy.id, cashier)).state, 'cancelled');
+    assert.equal((await ui.employeePrinters(5,cashier,all))[0].allowed,false);
     await ui.reset(p.id, cashier, all);
     await assert.rejects(agent.next(token));
   } finally {

@@ -9,11 +9,9 @@ type Printer = {
   queue_name: string | null;
   bound: boolean;
   online: boolean;
-  grants: number[];
 };
 type Inventory = {
   printers: Printer[];
-  employees: { id: number; name: string }[];
 };
 export function ReceiptPrinters() {
   const { access } = useSession();
@@ -141,33 +139,6 @@ function PrinterSettings() {
                 {p.name} · {p.online ? '在线' : p.bound ? '离线' : '待绑定'}
               </summary>
               <p>{p.queue_name}</p>
-              <strong>允许打印的员工</strong>
-              <div
-                style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: 12,
-                  maxHeight: 200,
-                  overflow: 'auto',
-                }}
-              >
-                {inventory.employees.map((e) => (
-                  <label key={e.id}>
-                    <input
-                      type="checkbox"
-                      disabled={busy}
-                      checked={p.grants.includes(e.id)}
-                      onChange={(v) =>
-                        void save(p.id + '/grants', {
-                          employeeId: e.id,
-                          allow: v.target.checked,
-                        })
-                      }
-                    />
-                    {e.name}
-                  </label>
-                ))}
-              </div>
               <button
                 className="btn"
                 disabled={busy}

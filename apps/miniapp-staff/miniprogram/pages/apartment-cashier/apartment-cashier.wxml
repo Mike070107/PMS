@@ -302,6 +302,7 @@
     </view>
   </scroll-view>
 
+  <view wx:if="{{printListError}}" class="field-error">收款已完成，打印机列表读取失败。<button class="btn btn--ghost" data-receipt="{{receiptNo}}" bindtap="onRetryReceiptPrint">重试打印</button></view>
   <view class="sheet__foot">
     <button class="btn btn--primary" bindtap="onCloseReceipt">
       <view class="btn__icon icon-action--check-white"></view><text>知道了</text>

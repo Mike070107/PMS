@@ -54,16 +54,19 @@ export class ReceiptPrintersController {
   async manage(@CurrentUser() u: AuthUser, @CurrentAccess() a: ResolvedAccess) {
     const t = admin(u, a);
     const printers = await this.db.query(
-      `SELECT p.id,name,queue_name,token_hash IS NOT NULL AS bound, ${online} AS online,
-      ARRAY(SELECT employee_id FROM receipt_print_grants WHERE printer_id=p.id) AS grants
-      FROM receipt_printers p WHERE tenant_id=$1 ORDER BY id`,
-      [t],
-    );
-    const employees = await this.db.query(
-      "SELECT id,name FROM users WHERE tenant_id=$1 AND role='staff' AND status='active' ORDER BY name,id",
-      [t],
-    );
-    return { printers, employees };
+      `SELECT p.id,name,queue_name,token_hash IS NOT NULL AS bound, ${online} AS online
+       FROM receipt_printers p WHERE tenant_id=$1 ORDER BY id`,[t]);
+    return {printers};
+  }
+
+  @Get('employees/:employeeId')
+  @RequirePermission('users','edit')
+  async employeePrinters(@Param('employeeId',ParseIntPipe) employeeId:number,@CurrentUser() u:AuthUser,@CurrentAccess() a:ResolvedAccess) {
+    const tenant=admin(u,a);
+    const [employee]=await this.db.query("SELECT id FROM users WHERE id=$1 AND tenant_id=$2 AND role='staff'",[employeeId,tenant]);
+    if(!employee) throw new ForbiddenException();
+    return this.db.query(`SELECT p.id,p.name,EXISTS(SELECT 1 FROM receipt_print_grants g WHERE g.printer_id=p.id AND g.employee_id=$2) AS allowed
+      FROM receipt_printers p WHERE p.tenant_id=$1 ORDER BY p.name,p.id`,[tenant,employeeId]);
   }
   @Post('register')
   @RequirePermission('business', 'edit')
@@ -106,7 +109,7 @@ export class ReceiptPrintersController {
     return { code: key.token };
   }
   @Post(':id/grants')
-  @RequirePermission('business', 'edit')
+  @RequirePermission('users', 'edit')
   async grant(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() u: AuthUser,

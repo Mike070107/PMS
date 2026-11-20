@@ -70,4 +70,17 @@ test('收款后无打印授权或用户取消均不创建打印任务',async()=>
     let sent=0;const f=fixture({confirm:false,printApi:{receiptPrinters:async()=>printers,queueReceipt:async()=>{sent++;}}});
     await f.page.offerPrint('S-2',false);assert.equal(sent,0);assert.equal(f.modalCalls(),printers.length?1:0);
   }
+});test('补打重新查授权并区分撤权、离线和读取失败', async () => {
+  for (const [read,title] of [
+    [async()=>[], '未获打印授权'],
+    [async()=>[{id:9,name:'前台',online:false}], '打印机离线'],
+    [async()=>{throw Error('断网');}, '打印机列表读取失败'],
+  ]) {
+    const titles=[];
+    const f=fixture({printApi:{receiptPrinters:read,queueReceipt:async()=>assert.fail('不得发送打印任务')},
+      wxOverrides:{showModal:async m=>{titles.push(m.title);return {confirm:true};}}});
+    f.page.data.printAvailable=true;
+    await f.page.offerPrint('S-3',true);
+    assert.ok(titles.includes(title));assert.equal(f.charges.length,0);
+  }
 });

@@ -683,9 +683,10 @@ Page({
       const printers = await apartmentCashier.receiptPrinters();
       this.setData({ printAvailable: printers.length > 0, printListError: '' });
       return printers;
-    } catch { this.setData({ printAvailable: false, printListError: '暂时无法获取打印机' }); return []; }
+    } catch { this.setData({ printAvailable: false, printListError: '暂时无法获取打印机' }); return null; }
   },
   onRetryPrinters() { void this.refreshPrinters(); },
+  onRetryReceiptPrint() { if (this.data.receiptNo) void this.offerPrint(this.data.receiptNo, false); },
   onPrintRow(e: WechatMiniprogram.TouchEvent) {
     const receipt = e.currentTarget.dataset.receipt;
     if (receipt) void this.offerPrint(receipt, true);
@@ -695,8 +696,12 @@ Page({
     this.setData({ printBusy: true });
     try {
       const allowed = await this.refreshPrinters();
+      if (!allowed) {
+        if(reprint) await wx.showModal({title:'打印机列表读取失败',content:'请检查网络后重试。',showCancel:false});
+        return;
+      }
       if (!allowed.length) {
-        if (reprint) wx.showToast({title:'未获取到可用打印授权',icon:'none'});
+        if (reprint) await wx.showModal({title:'未获打印授权',content:'请管理员在「员工与权限」中选择你的账号，打开「打印服务」勾选打印机。',showCancel:false});
         return;
       }
       const answer = await wx.showModal({ title: reprint?'补打这张小票？':'收款成功，打印小票？', content:'小票号 '+receiptNo,confirmText:'选打印机',cancelText:'取消' });
