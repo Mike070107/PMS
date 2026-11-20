@@ -53,7 +53,7 @@ export default function PlateNumberField({ label = '车牌号码（必填）', r
 
   return <div className="registration-plate">
     <label htmlFor={id}>{label}</label>
-    <span className="plate-input-wrap">
+    <span className="plate-input-wrap" data-plate-style={normalize(value).length === 8 ? 'green' : 'blue'}>
       <input ref={input} id={id} className="in" value={draft ?? value} required={required} aria-label={ariaLabel} disabled={disabled}
         aria-invalid={invalid} aria-describedby={invalid ? id + '-error' : undefined}
         autoComplete="off" autoCapitalize="characters" spellCheck={false}
