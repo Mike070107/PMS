@@ -292,8 +292,16 @@ ORDER BY p.parameter_id;";
             return classes[0] == "临时车" || classes[0] == "亲情车" ? classes[0] : null;
         }
 
+        internal static string ClassifiedExitDue(string label, string database)
+        {
+            var value = (label ?? "").Trim();
+            if (value.Length == 0)
+                throw new InvalidOperationException(database + " 出场车类编码或当时的月租车登记身份无法核实");
+            return value == "临时车" || value == "亲情车" ? value : null;
+        }
+
         // Read the class recorded at exit, so a later change to the vehicle profile cannot reclassify history.
-        private static List<ParkingSearchRow> ReadExitDue(AgentConfig config, string password, string day, string endDay, int page)
+        private static List<ParkingSearchRow> ReadExitDue(AgentConfig config, string password, string day, string endDay, int page, string phase)
         {
             DateTime start;
             if (day != endDay || page < 1 || page > 1000 ||
@@ -301,7 +309,8 @@ ORDER BY p.parameter_id;";
                 throw new InvalidOperationException("出场应收仅支持按日查询");
             var rows = new List<ParkingSearchRow>();
             var totals = new List<ParkingSearchRow>();
-            foreach (var label in new[] { "parking1", "parking2" })
+            if (phase != null && phase != "parking1" && phase != "parking2") throw new InvalidOperationException("停车库无效");
+            foreach (var label in phase == null ? new[] { "parking1", "parking2" } : new[] { phase })
             {
                 var database = label == "parking1" ? config.ParkingPhase1Database : config.ParkingPhase2Database;
                 Validate(config, password, database);
@@ -311,15 +320,40 @@ ORDER BY p.parameter_id;";
                     var columns = LoadColumns(connection, "dbo", "Car_Out");
                     var names = new[] { "Car_Brand", "Car_Beand", "车类", "车辆类型", "Car_Lei" }
                         .Where(name => columns.Any(c => c.Searchable && String.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase))).ToArray();
-                    if (names.Length == 0) throw new InvalidOperationException(label + " 出场记录缺少可识别的历史车类字段，请核对现场报表映射");
+                    var numericClass = columns.Any(c => !c.Searchable && c.Name.Equals("Car_Lei", StringComparison.OrdinalIgnoreCase));
+                    if (!numericClass && names.Length == 0) throw new InvalidOperationException(label + " 出场记录缺少可识别的历史车类字段，请核对现场报表映射");
                     using (var command = connection.CreateCommand())
                     {
                         command.CommandTimeout = 30;
                         var note = columns.Any(c => String.Equals(c.Name, "P_note", StringComparison.OrdinalIgnoreCase)) ? "[P_note]" : "NULL";
-                        command.CommandText = "SELECT [out_Time],[P_plate],[Int_Time],CONVERT(decimal(18,2),[P_Shoufei])," + note + ",[" +
-                            String.Join("],[", names) + "] FROM dbo.Car_Out WHERE out_Time>=@start AND out_Time<@end AND P_Shoufei>0" +
-                            " ORDER BY out_Time DESC,P_plate DESC,Int_Time DESC,P_Shoufei DESC," +
-                            String.Join(",", names.Select(name => "CONVERT(nvarchar(128),[" + name + "])").ToArray());
+                        var classFields = numericClass ? @"CASE WHEN dict.l_name = N'月租车'
+ THEN COALESCE(NULLIF(hist.brand,''), NULLIF(nextChange.brand,''), NULLIF(reg.brand,''))
+ ELSE dict.l_name END" : String.Join(",", names.Select(name => "o.[" + name + "]").ToArray());
+                        // Car_Out stores the exit billing code. Recover a monthly vehicle's subtype at that time.
+                        var joins = numericClass ? @"
+ LEFT JOIN dbo.P_lei dict ON dict.l_id=o.Car_Lei
+ OUTER APPLY (
+   SELECT TOP (1) h.N_Car_Brand AS brand FROM dbo.Up_Issue h
+   WHERE dict.l_name=N'月租车' AND h.N_P_plate=o.P_plate AND h.Up_Date<=o.out_Time
+     AND NOT EXISTS (SELECT 1 FROM dbo.Up_Issue later WHERE later.IssueID=h.IssueID
+       AND later.Up_Date<=o.out_Time AND (later.Up_Date>h.Up_Date OR (later.Up_Date=h.Up_Date AND later.P_id>h.P_id)))
+   ORDER BY h.Up_Date DESC,h.P_id DESC
+ ) hist
+ OUTER APPLY (
+   SELECT TOP (1) h.y_Car_Brand AS brand FROM dbo.Up_Issue h
+   WHERE dict.l_name=N'月租车' AND h.y_P_plate=o.P_plate AND h.Up_Date>o.out_Time
+     AND h.y_Sart_Time<=o.out_Time
+   ORDER BY h.Up_Date,h.P_id
+ ) nextChange
+ OUTER APPLY (
+   SELECT CASE WHEN COUNT(*)=1 THEN MAX(v.Car_Brand) END AS brand FROM dbo.Car_Issue v
+   WHERE dict.l_name=N'月租车' AND v.P_plate=o.P_plate AND v.P_Time<=o.out_Time
+     AND NOT EXISTS (SELECT 1 FROM dbo.Up_Issue later WHERE later.IssueID=v.P_id AND later.Up_Date>o.out_Time)
+ ) reg" : "";
+                        command.CommandText = "SELECT o.out_Time,o.P_plate,o.Int_Time,CONVERT(decimal(18,2),o.P_Shoufei)," +
+                            note + "," + classFields + " FROM dbo.Car_Out o " + joins +
+                            " WHERE o.out_Time>=@start AND o.out_Time<@end AND o.P_Shoufei>0" +
+                            " ORDER BY o.out_Time DESC,o.P_plate DESC,o.Int_Time DESC,o.P_Shoufei DESC,o.P_out_image DESC";
                         command.Parameters.Add("@start", SqlDbType.DateTime).Value = start;
                         command.Parameters.Add("@end", SqlDbType.DateTime).Value = start.AddDays(1);
                         long count = 0;
@@ -328,7 +362,8 @@ ORDER BY p.parameter_id;";
                         {
                             while (reader.Read())
                             {
-                                var vehicleClass = ExitDueClass(Enumerable.Range(5, names.Length).Select(i => Convert.ToString(reader[i])));
+                                var vehicleClass = numericClass ? ClassifiedExitDue(Convert.ToString(reader[5]), label) :
+                                    ExitDueClass(Enumerable.Range(5, names.Length).Select(i => Convert.ToString(reader[i])));
                                 if (vehicleClass == null) continue;
                                 var fee = reader.GetDecimal(3);
                                 if (fee <= 0) continue;
@@ -353,9 +388,9 @@ ORDER BY p.parameter_id;";
         }
 
         public static List<ParkingSearchRow> SearchFeeDetail(AgentConfig config, string password,
-            string startDate, string endDate, string category, int page)
+            string startDate, string endDate, string category, int page, string phase = null)
         {
-            if (category == "exit_due") return ReadExitDue(config, password, startDate, endDate, page);
+            if (category == "exit_due") return ReadExitDue(config, password, startDate, endDate, page, phase);
             DateTime start, end;
             if ((category != "renewal" && category != "temporary") || page < 1 || page > 1000 ||
                 !DateTime.TryParseExact(startDate, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out start) ||

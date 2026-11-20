@@ -260,6 +260,7 @@ namespace Pms.AccessCardAgent
 
     internal sealed class ParkingQueryTask
     {
+        public string database { get; set; }
         public int queryId { get; set; }
         public string term { get; set; }
         public string queryKind { get; set; }

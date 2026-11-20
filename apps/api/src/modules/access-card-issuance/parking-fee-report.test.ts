@@ -40,6 +40,9 @@ test('出场应收要求两期完整汇总、同日出场、已识别车类和�
   const read=(rows:Parameters<typeof sanitizeParkingFeeDetailRows>[0])=>sanitizeParkingFeeDetailRows(rows,'exit_due',day,day);
   assert.deepEqual(read([s1,s2,detail('临时车',1000),detail('亲情车',500)]).slice(2).map(r=>r.fields.vehicleClass),['临时车','亲情车']);
   assert.throws(()=>read([s1]),/缺少/);
+  assert.equal(sanitizeParkingFeeDetailRows([s1,detail('亲情车',500)],'exit_due',day,day,'parking1').length,2);
+  assert.throws(()=>sanitizeParkingFeeDetailRows([s1,s2],'exit_due',day,day,'parking1'),/无效/);
+  assert.equal(sanitizeParkingFeeDetailRows([s2],'exit_due',day,day,'parking2')[0].fields.count,0);
   assert.throws(()=>read([s1,s2,detail('住户车',1000)]),/车类/);
   assert.throws(()=>read([s1,s2,detail('临时车',0)]),/应收/);
 });

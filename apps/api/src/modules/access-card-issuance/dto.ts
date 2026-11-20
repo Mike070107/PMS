@@ -595,6 +595,10 @@ export class CreateParkingFeeReportDto {
 }
 
 export class CreateParkingFeeDetailDto extends CreateParkingFeeReportDto {
+  @IsOptional()
+  @IsIn(['parking1', 'parking2'])
+  database?: 'parking1' | 'parking2';
+
   @IsIn(['renewal', 'temporary', 'exit_due'])
   category: 'renewal' | 'temporary' | 'exit_due';
 

@@ -11,7 +11,14 @@ test('income amounts fit narrow cards and open five-column paged receipts', asyn
     import '@/styles/erp-reference.css'; import '@/pages/erp-today.css';
     createRoot(document.getElementById('root')).render(<TodayIncome date="2026-11-20"/>);`;
   const fixture = `export async function request({url,query:q,data}) {
-    if(url.includes('/parking/fees/details/queries')){if(data.category!=='exit_due')throw Error('应收分类错误'); return {id:1,status:'completed',rows:[{fields:{kind:'summary',count:2,amountCents:1500}},...['临时车','亲情车'].map((vehicleClass,i)=>({fields:{kind:'detail',vehicleClass,occurredAt:'2026-11-20 19:23:50',enteredAt:'2026-11-20 18:42:52',plate:'测试车',amountCents:i?500:1000}}))]};}
+    if(url.includes('/parking/fees/details/queries')){
+      if(data.category!=='exit_due'||!['parking1','parking2'].includes(data.database))throw Error('分期错误');
+      const first=data.database==='parking1', amountCents=first?1000:500;
+      if(first && window.phaseError) throw Error('一期车类未识别');
+      if(data.page===2 && !first)throw Error('分页串库');
+      return {id:1,status:'completed',rows:[{database:data.database,fields:{kind:'summary',count:1,amountCents}},
+        {database:data.database,fields:{kind:'detail',vehicleClass:first?'临时车':'亲情车',occurredAt:'2026-11-20 19:23:50',enteredAt:'2026-11-20 18:42:52',plate:'测试车',amountCents}}]};
+    }
     if(q.category==='temporary')return {available:false,reason:'停车实收待核对'};
     if(q.category==='garage')return {amountCents:123456789,total:21,rows:q.page?[{paidAt:'2026-11-20',period:'202611',plate:'沪A12345',amountCents:6750,remark:q.page===2?'第二页':'合成明细'}]:[]};
     return {amountCents:0,total:0,rows:[]};
@@ -43,11 +50,25 @@ test('income amounts fit narrow cards and open five-column paged receipts', asyn
       await page.keyboard.press('Escape');
       const due=page.getByRole('button',{name:/临时停车费/});
       await due.filter({hasText:'15.00'}).click();
+      await page.getByRole('button',{name:/一期.*10.00/}).click();
       await page.getByRole('columnheader',{name:'车类'}).waitFor();
       assert.deepEqual(await page.locator('.income-details th').allTextContents(),['出场时间','车牌','车类','停车时段','应收金额','备注']);
       await page.getByRole('cell',{name:'临时车',exact:true}).waitFor();
+      assert.equal(await page.getByRole('cell',{name:'亲情车',exact:true}).count(),0);
+      await page.getByRole('button',{name:'返回分期汇总'}).click();
+      await page.getByRole('button',{name:/二期.*5.00/}).click();
       await page.getByRole('cell',{name:'亲情车',exact:true}).waitFor();
       await page.close();
+      if(viewport===390){
+        const failed=await browser.newPage({viewport:{width:390,height:680}});
+        await failed.setContent('<div id="root"></div>');await failed.evaluate(()=>window.phaseError=true);
+        await failed.addScriptTag({content:bundle.outputFiles.find(f=>f.path.endsWith('.js')).text});
+        await failed.getByRole('button',{name:/临时停车费.*查看分期/}).click();
+        await failed.getByText('一期车类未识别',{exact:false}).first().waitFor();
+        await failed.getByRole('button',{name:/二期.*5.00/}).click();
+        await failed.getByRole('cell',{name:'亲情车',exact:true}).waitFor();
+        await failed.close();
+      }
     }
   } finally { await browser.close(); }
 });

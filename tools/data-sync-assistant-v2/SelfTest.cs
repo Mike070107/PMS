@@ -543,6 +543,11 @@ namespace Pms.DataSyncAssistant
 
         private static void VerifyParkingFeeSource()
         {
+            if (ParkingDatabase.ClassifiedExitDue(" 临时车 ", "parking1") != "临时车" ||
+                ParkingDatabase.ClassifiedExitDue("亲情车", "parking2") != "亲情车" ||
+                ParkingDatabase.ClassifiedExitDue("住户车", "parking1") != null ||
+                ParkingDatabase.ClassifiedExitDue("出口人工开闸", "parking2") != null)
+                throw new InvalidOperationException("按车类字典和出场身份统计应收失败");
             if (ParkingDatabase.ExitDueClass(new[] { "临时车", "0" }) != "临时车" ||
                 ParkingDatabase.ExitDueClass(new[] { "亲情车" }) != "亲情车" ||
                 ParkingDatabase.ExitDueClass(new[] { "住户车" }) != null ||

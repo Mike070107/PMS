@@ -1894,14 +1894,15 @@ export class AccessCardIssuanceService {
     const tenantId = this.requireTenant(user);
     try { parseParkingFeeReportRange(dto.startDate, dto.endDate); }
     catch (error) { throw new BadRequestException(error instanceof Error ? error.message : '金额明细日期不正确'); }
+    if (dto.database && dto.category !== 'exit_due') throw new BadRequestException('仅出场应收支持分期查询');
     if (dto.category === 'exit_due' && dto.startDate !== dto.endDate) throw new BadRequestException('出场应收仅支持按日查询');
     if (!['renewal', 'temporary', 'exit_due'].includes(dto.category) || !Number.isInteger(dto.page) || dto.page < 1 || dto.page > 1000)
       throw new BadRequestException('金额明细类别或页码不正确');
     await this.assertParkingQueryReady(tenantId, {
-      supportsVersion: dto.category === 'exit_due' ? supportsExitDue : supportsParkingFeeDetails, minimumVersion: dto.category === 'exit_due' ? '2.6.3' : '2.5.28', label: '金额明细分页',
+      supportsVersion: dto.database ? version => supportsExitDue(version, 4) : dto.category === 'exit_due' ? supportsExitDue : supportsParkingFeeDetails, minimumVersion: dto.database ? '2.6.4' : dto.category === 'exit_due' ? '2.6.3' : '2.5.28', label: '金额明细分页',
     });
     const query = this.parkingQueryRepo.create({
-      tenantId, term: `${dto.category}:${dto.page}`, queryKind: 'fee_detail', rangeStart: dto.startDate, rangeEnd: dto.endDate,
+      tenantId, database: dto.database ?? null, term: `${dto.category}:${dto.page}`, queryKind: 'fee_detail', rangeStart: dto.startDate, rangeEnd: dto.endDate,
       status: 'pending', rows: [], attempt: 0, requestedAt: new Date(), completedAt: null,
       leaseAgentKey: null, leaseExpiresAt: null, lastError: null, createdBy: user.id, updatedBy: user.id,
     });
@@ -2352,7 +2353,7 @@ export class AccessCardIssuanceService {
       const query = await repo.createQueryBuilder('query')
         .where('query.tenant_id = :tenantId', { tenantId: agent.tenantId })
         .andWhere("(query.status = 'pending' OR (query.status = 'running' AND query.lease_expires_at < :now))", { now })
-        .andWhere("(query.query_kind = 'vehicle' OR (query.query_kind = 'movement' AND :canQueryMovements = true) OR (query.query_kind = 'fee_report' AND :canQueryFees = true) OR (query.query_kind = 'fee_detail' AND :canQueryFeeDetails = true AND (query.term NOT LIKE 'exit_due:%' OR :canExitDue = true)) OR (query.query_kind = 'identity_list' AND :canListIdentity = true))", { canQueryMovements, canQueryFees, canQueryFeeDetails, canExitDue: supportsExitDue(agent.version), canListIdentity })
+        .andWhere("(query.query_kind = 'vehicle' OR (query.query_kind = 'movement' AND :canQueryMovements = true) OR (query.query_kind = 'fee_report' AND :canQueryFees = true) OR (query.query_kind = 'fee_detail' AND :canQueryFeeDetails = true AND (query.term NOT LIKE 'exit_due:%' OR (:canExitDue = true AND (query.database IS NULL OR :canPhaseDue = true)))) OR (query.query_kind = 'identity_list' AND :canListIdentity = true))", { canQueryMovements, canQueryFees, canQueryFeeDetails, canExitDue: supportsExitDue(agent.version), canPhaseDue: supportsExitDue(agent.version, 4), canListIdentity })
         .orderBy('query.created_at', 'ASC')
         .setLock('pessimistic_write')
         .setOnLocked('skip_locked')
@@ -2553,7 +2554,7 @@ export class AccessCardIssuanceService {
           : query.queryKind === 'fee_report'
             ? sanitizeParkingFeeRows(dto.rows ?? [], query.rangeStart, query.rangeEnd)
             : query.queryKind === 'fee_detail'
-              ? sanitizeParkingFeeDetailRows(dto.rows ?? [], query.term.split(':')[0], query.rangeStart, query.rangeEnd)
+              ? sanitizeParkingFeeDetailRows(dto.rows ?? [], query.term.split(':')[0], query.rangeStart, query.rangeEnd, query.database)
             : sanitizeParkingRows(dto.rows ?? [], query.queryKind === 'identity_list' ? 3000 : 100);
         query.lastError = null;
         query.completedAt = now;
@@ -4863,14 +4864,14 @@ export function sanitizeParkingFeeRows(rows: ParkingQueryReportDto['rows'], star
 }
 
 export function sanitizeParkingFeeDetailRows(rows: ParkingQueryReportDto['rows'], category: string,
-  startDate: string | null, endDate: string | null): ParkingQuery['rows'] {
+  startDate: string | null, endDate: string | null, phase: string | null = null): ParkingQuery['rows'] {
   if (category === 'exit_due') {
     if (!startDate || startDate !== endDate || !rows || rows.length > 22) throw new BadRequestException('出场应收回传不完整');
     const seen = new Set<string>();
     const result = rows.map((row): ParkingQuery['rows'][number] => {
       const database = row.database, f = row.fields ?? {};
       const cents = f.amountCents, count = f.count;
-      if (!['parking1','parking2'].includes(database) || f.category !== category || f.day !== startDate ||
+      if ((phase && phase !== database) || !['parking1','parking2'].includes(database) || f.category !== category || f.day !== startDate ||
           typeof cents !== 'number' || !Number.isSafeInteger(cents) || cents < 0) throw new BadRequestException('出场应收金额无效');
       if (f.kind === 'summary') {
         if (seen.has(database) || typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0 || (count === 0) !== (cents === 0))
@@ -4885,7 +4886,7 @@ export function sanitizeParkingFeeDetailRows(rows: ParkingQueryReportDto['rows']
       return {database,fields:{kind:'detail',occurredAt,plate:String(f.plate || '').slice(0,32),vehicleClass:String(f.vehicleClass),
         enteredAt:f.enteredAt ? String(f.enteredAt).slice(0,19) : null,remark:f.remark ? String(f.remark).slice(0,500) : null,amountCents:cents}};
     });
-    if (seen.size !== 2) throw new BadRequestException('缺少一期或二期应收汇总');
+    if (seen.size !== (phase ? 1 : 2)) throw new BadRequestException('缺少一期或二期应收汇总');
     return result;
   }
   if ((rows ?? []).length > 50) throw new BadRequestException('金额明细单页超过 50 条');

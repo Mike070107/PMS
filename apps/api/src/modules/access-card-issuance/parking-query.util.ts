@@ -168,11 +168,11 @@ export function supportsParkingFeeReports(version: string | null | undefined): b
   return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 27)));
 }
 
-export function supportsExitDue(version: string | null | undefined): boolean {
+export function supportsExitDue(version: string | null | undefined, minimumPatch = 3): boolean {
   const match = /^(\d+)\.(\d+)\.(\d+)(?:\.\d+)?$/.exec(version || '');
   if (!match) return false;
   const [major, minor, patch] = match.slice(1).map(Number);
-  return major > 2 || (major === 2 && (minor > 6 || (minor === 6 && patch >= 3)));
+  return major > 2 || (major === 2 && (minor > 6 || (minor === 6 && patch >= minimumPatch)));
 }
 
 export function supportsParkingFeeDetails(version: string | null | undefined): boolean {

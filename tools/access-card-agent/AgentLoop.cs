@@ -336,7 +336,7 @@ namespace Pms.AccessCardAgent
                     : task.queryKind == "fee_detail"
                         ? ParkingDatabase.SearchFeeDetail(_config, LoadSecret("parking-db-password.dat"),
                             task.startDate, task.endDate, task.term.Split(':')[0],
-                            int.Parse(task.term.Split(':')[1], System.Globalization.CultureInfo.InvariantCulture))
+                            int.Parse(task.term.Split(':')[1], System.Globalization.CultureInfo.InvariantCulture), task.database)
                     : task.queryKind == "fee_report"
                         ? ParkingDatabase.SearchFeeReport(_config, LoadSecret("parking-db-password.dat"),
                             LoadOptionalSecret("parking-movement-db-password.dat"), task.startDate, task.endDate)

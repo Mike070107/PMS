@@ -10,17 +10,21 @@ const categories = [
   ['card', '门禁卡收费', '#458791'], ['repair', '维修费', '#bd624e'],
 ] as const;
 type Category = typeof categories[number][0];
+const phases = { parking1: '一期', parking2: '二期' } as const;
+type Phase = keyof typeof phases;
+const phaseKeys: Phase[] = ['parking1', 'parking2'];
 type Row = { vehicleClass?: string; paidAt: string; plate: string | null; period: string | null; amountCents: number; remark: string | null };
 type Result = { total: number; amountCents: number; rows: Row[] };
 type Unavailable = { available: false; reason: string; retryable?: boolean };
 type Response = Result | Unavailable;
-type ExitQuery = { id:number; status:string; error?:string; rows:Array<{fields:{
+type PhaseResults = Partial<Record<Phase, Response>>;
+type ExitQuery = { id:number; status:string; error?:string; rows:Array<{database:Phase;fields:{
   kind:string; count:number; amountCents:number; occurredAt:string; plate:string; enteredAt?:string; vehicleClass:string; remark?:string;
 }}> };
-async function fetchIncome(date:string, category:Category, active:()=>boolean, page?:number):Promise<Response> {
+async function fetchIncome(date:string, category:Category, active:()=>boolean, page?:number, phase?:Phase):Promise<Response> {
   if (category !== 'temporary') return request<Response>({url:'/fees/today/income',query:{date,category,page}});
   const url = '/access-card-issuance/parking/fees/details/queries';
-  let result = await request<ExitQuery>({url,method:'POST',data:{category:'exit_due',startDate:date,endDate:date,page:page ?? 1}});
+  let result = await request<ExitQuery>({url,method:'POST',data:{category:'exit_due',startDate:date,endDate:date,page:page ?? 1,database:phase}});
   for (let attempt=0; attempt<45 && (result.status==='pending' || result.status==='running'); attempt++) {
     await new Promise(resolve=>setTimeout(resolve,2000));
     if (!active()) throw Error('查询已取消');
@@ -28,6 +32,8 @@ async function fetchIncome(date:string, category:Category, active:()=>boolean, p
   }
   if (result.status !== 'completed') throw Error(result.error || '停车助手尚未回传');
   const data:Result = {total:0,amountCents:0,rows:[]};
+  if (!phase || result.rows.some(row => row.database !== phase) ||
+      result.rows.filter(row => row.fields.kind === 'summary').length !== 1) throw Error('停车库分期回执不完整');
   for (const {fields:f} of result.rows) {
     if (f.kind==='summary') { data.total+=f.count; data.amountCents+=f.amountCents; }
     else data.rows.push({paidAt:f.occurredAt,plate:f.plate,vehicleClass:f.vehicleClass,
@@ -36,7 +42,7 @@ async function fetchIncome(date:string, category:Category, active:()=>boolean, p
   return data;
 }
 
-function Details({ date, category, firstPage, close }: { firstPage?: Result; date: string; category: typeof categories[number]; close: () => void }) {
+function Details({ date, category, firstPage, close, phase }: { phase?:Phase; firstPage?: Result; date: string; category: typeof categories[number]; close: () => void }) {
   const [page, setPage] = useState(1);
   const [retry, setRetry] = useState(0);
   const [result, setResult] = useState<{page: number; data: Response} | null>(null);
@@ -44,12 +50,13 @@ function Details({ date, category, firstPage, close }: { firstPage?: Result; dat
     let active = true;
     setResult(null);
     if (page === 1 && firstPage) { setResult({page,data:firstPage}); return; }
-    fetchIncome(date, category[0], () => active, page).then(data => { if (active) setResult({page, data}); })
+    fetchIncome(date, category[0], () => active, page, phase).then(data => { if (active) setResult({page, data}); })
       .catch(() => { if (active) setResult({page, data:{available:false, reason:'明细读取失败'}}); });
     return () => { active = false; };
-  }, [category, date, page, retry, firstPage]);
+  }, [category, date, page, retry, firstPage, phase]);
   const data = result?.page === page ? result.data : null;
-  return <Sheet open onClose={close} width={800} title={category[1] + ' · 收费明细'} subtitle={date}>
+  return <Sheet open onClose={close} width={800} title={(phase ? phases[phase] + ' · ' : '') + category[1] + '明细'} subtitle={date}>
+    {phase && <button className="btn sm" onClick={close}>返回分期汇总</button>}
     {!data ? <p role="status">读取中…</p> : 'reason' in data ? <p>{data.reason} <button className="btn sm" onClick={() => setRetry(n => n+1)}>重试</button></p>
       : !data.total ? <p>当日暂无收费</p> : <>
         <div className="intro-table-wrap"><table className="t usage-table income-details">
@@ -65,14 +72,24 @@ function Details({ date, category, firstPage, close }: { firstPage?: Result; dat
 }
 
 export function TodayIncome({ date }: { date: string }) {
+  const [phaseResults, setPhaseResults] = useState<PhaseResults>({});
+  const [phase, setPhase] = useState<Phase | null>(null);
   const [values, setValues] = useState<Partial<Record<Category, Response>>>({});
   const [retry, setRetry] = useState(0);
   const [selected, select] = useState<typeof categories[number] | null>(null);
   useEffect(() => {
     let active = true;
-    setValues({});
+    setValues({}); setPhaseResults({}); setPhase(null);
     for (const [id] of categories) {
       const put = (result: Response) => { if (active) setValues(prev => ({ ...prev, [id]:result })); };
+      if (id === 'temporary') {
+        for (const key of phaseKeys) {
+          const save = (value: Response) => { if (active) setPhaseResults(prev => ({...prev,[key]:value})); };
+          fetchIncome(date, id, () => active, 1, key).then(save).catch(error =>
+            save({available:false, reason:error instanceof Error ? error.message : '读取失败'}));
+        }
+        continue;
+      }
       fetchIncome(date, id, () => active).then(put).catch(error => put({available:false,reason:error instanceof Error ? error.message : '读取失败',retryable:true}));
     }
     return () => { active = false; };
@@ -95,16 +112,34 @@ export function TodayIncome({ date }: { date: string }) {
         })}
       </svg><div className="erp-fee-donut-center"><b>{received.some(v=>v && 'amountCents' in v) ? money(total/100) : '—'}</b><small>已读取实收小计</small></div></div>
       <div className="erp-fee-list">{categories.map(cat => {
-        const v=values[cat[0]];
+        const temp = cat[0] === 'temporary';
+        const phaseValues = phaseKeys.map(key => phaseResults[key]);
+        const v = temp ? undefined : values[cat[0]];
+        const phaseLabel = phaseValues.some(item => item && 'reason' in item) ? '查看分期' :
+          phaseValues.every(item => item && 'amountCents' in item) ? money(phaseValues.reduce((sum,item) =>
+            sum + (item && 'amountCents' in item ? item.amountCents : 0), 0)/100) : '读取中…';
         const failed=v && 'reason' in v && v.retryable;
-        return <button type="button" className="erp-fee-item" title={v && 'reason' in v ? v.reason : undefined} key={cat[0]} disabled={!v || ('reason' in v && !failed)}
+        return <button type="button" className="erp-fee-item" title={v && 'reason' in v ? v.reason : undefined} key={cat[0]} disabled={!temp && (!v || ('reason' in v && !failed))}
           onClick={()=>failed ? setRetry(n=>n+1) : select(cat)}>
           <i className="erp-fee-dot" style={{background:cat[2]}}/><span className="erp-fee-name">{cat[1]}</span>
-          <span className="erp-fee-value">{!v ? '读取中…' : 'reason' in v ? failed ? '未获取 · 重试' : v.reason : money(v.amountCents/100)}</span>
+          <span className="erp-fee-value">{temp ? phaseLabel : !v ? '读取中…' : 'reason' in v ? failed ? '未获取 · 重试' : v.reason : money(v.amountCents/100)}</span>
         </button>;
       })}</div>
     </div>
   </section>
-    {selected && <Details category={selected} firstPage={selected[0] === 'temporary' && values.temporary && 'rows' in values.temporary ? values.temporary : undefined} date={date} close={()=>select(null)}/>}
+    {selected?.[0] === 'temporary' && !phase && <Sheet open onClose={() => select(null)} width={480} title="临时停车费 · 分期应收" subtitle={date}>
+      {phaseKeys.map(key => {
+        const value = phaseResults[key];
+        return <div key={key} style={{padding:'10px 0',borderBottom:'1px solid var(--line)'}}>
+          <button className="btn" style={{width:'100%',justifyContent:'space-between'}} disabled={!value || 'reason' in value} onClick={() => setPhase(key)}>
+            <b>{phases[key]}</b><span>{!value ? '读取中…' : 'reason' in value ? '未获取' : money(value.amountCents/100) + ' · ' + value.total + ' 笔 ›'}</span>
+          </button>
+          {value && 'reason' in value && <p role="status">{value.reason} <button className="btn sm" onClick={() => setRetry(n => n+1)}>重试</button></p>}
+        </div>;
+      })}
+    </Sheet>}
+    {selected && (selected[0] !== 'temporary' || phase) && <Details category={selected} phase={phase ?? undefined}
+      firstPage={phase && phaseResults[phase] && 'rows' in phaseResults[phase] ? phaseResults[phase] : undefined}
+      date={date} close={() => phase ? setPhase(null) : select(null)} />}
   </>;
 }
