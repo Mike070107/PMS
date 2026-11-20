@@ -13,6 +13,7 @@ export default function AddressSearch({ communities, value, onChange, placeholde
   onTextChange?: (text: string) => void;
 }) {
   const [text, setText] = useState(value);
+  const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(true);
   const [path, setPath] = useState<Array<number | string>>([]);
   const last = useRef(value);
@@ -43,9 +44,10 @@ export default function AddressSearch({ communities, value, onChange, placeholde
   };
   return <div className="addr-search" style={{ width, maxWidth: '100%' }}>
     <HouseAddressPicker communities={communities} value={path} onChange={setPath}
+      open={open} onOpenChange={setOpen} remoteSearchFeedback={!live}
       searchText={editing ? text : ''} displayText={text} selectionLevel="all" showCopy={false}
       placeholder={placeholder ?? '198/20、一期20号601、电话、单号…'}
       onSearchText={next => { setEditing(true); cancel(); setText(next); setPath([]); onTextChange?.(next); }}
-      onSubmitText={() => emit(text, true)} onPicked={pick} />
+      onSubmitText={() => { setOpen(false); emit(text, true); }} onPicked={pick} />
   </div>;
 }

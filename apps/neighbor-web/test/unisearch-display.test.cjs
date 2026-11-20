@@ -2,6 +2,8 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 // Isolated hooks/handlers/JSX runner, NOT browser E2E or real React scheduling.
 // Model the commit phase (controlled DOM value + refs) BEFORE passive effects,
 // plus activeElement/selection replacement so typing cannot bypass the displayed value.
+const addressExports = {};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.resolve(__dirname, '../../../packages/shared-types/src/address.ts'), 'utf8'), {compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText, {exports:addressExports});
 function harness(lane=null,buildingNo='2',roomNo='201'){
  let cursor=0,dirty=false,ui;const slots=[],effects=[],requests=[],picked=[];const timers=new Map();let timerId=0;
  const same=(a,b)=>a&&b&&a.length===b.length&&a.every((v,i)=>Object.is(v,b[i]));
@@ -13,7 +15,7 @@ function harness(lane=null,buildingNo='2',roomNo='201'){
   focus(){this.focusCalls++;if(document.activeElement!==this){document.activeElement=this;input().props.onFocus({currentTarget:this})}},
   select(){this.selectCalls++;this.selectionStart=0;this.selectionEnd=this.value.length},
   blur(){document.activeElement=null}};
- const module={exports:{}};const sandbox={module,exports:module.exports,Error,console,document,window:{setTimeout(fn){const id=++timerId;timers.set(id,fn);return id},clearTimeout(id){timers.delete(id)}},require(id){if(id==='react')return react;if(id==='react/jsx-runtime')return require(id);return{__esModule:true,default:id.includes('HouseAddressPicker')?'HouseAddressPicker':'Icon'}}};
+ const module={exports:{}};const sandbox={module,exports:module.exports,Error,console,document,window:{setTimeout(fn){const id=++timerId;timers.set(id,fn);return id},clearTimeout(id){timers.delete(id)}},require(id){if(id==='@pms/shared-types')return addressExports;if(id==='react')return react;if(id==='react/jsx-runtime')return require(id);return{__esModule:true,default:id.includes('HouseAddressPicker')?'HouseAddressPicker':'Icon'}}};
  vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.resolve(__dirname,'../src/components/cashier/UniSearch.tsx'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,sandbox);
  function render(){let n=0;do{dirty=false;cursor=0;ui=module.exports.default(props);
   if(dom.value!==input().props.value){dom.value=input().props.value;dom.selectionStart=dom.selectionEnd=dom.value.length}

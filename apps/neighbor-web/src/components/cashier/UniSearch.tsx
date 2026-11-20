@@ -1,3 +1,4 @@
+import SearchLoading from '../search/SearchLoading';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { dedupeAddressText, type AddressCommunity } from '@pms/shared-types';
 import HouseAddressPicker, { type PickedAddress } from '@/components/HouseAddressPicker';
@@ -89,7 +90,7 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
   const typed = kw.length > 0;
 
   useEffect(() => {
-    if (!typed) { setRes(null); setErr(''); setBusy(false); return undefined; }
+    if (selectionText !== null || !typed) { setRes(null); setErr(''); setBusy(false); return undefined; }
     const my = ++seq.current;
     setBusy(true);
     const t = window.setTimeout(() => {
@@ -99,7 +100,7 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
         .finally(() => { if (seq.current === my) setBusy(false); });
     }, 300);
     return () => { window.clearTimeout(t); seq.current += 1; };
-  }, [kw, typed, search]);
+  }, [kw, typed, search, selectionText, communities]);
 
   const comms = useMemo(() => communities.filter((c) => c.buildings.length), [communities]);
 
@@ -224,8 +225,8 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
   const houseLabel = (h: UniHouse) => `${h.communityName} ${h.buildingNo}/${h.roomNo}`;
   const noCols = !comms.length || (typed && !filteredComms.length);
   // 三列能选房时，底部只放车牌/门禁卡；没有这些就不占高度（旧页级联就是这么干净）
-  const showBottom = !!err || (busy && !res) || (noCols && !!res?.houses.length) || !!res?.vehicles.length || !!res?.accessCards.length;
-  const empty = typed && res && !res.houses.length && !res.vehicles.length && !res.accessCards.length && noCols;
+  const empty = typed && !busy && !err && res && !res.houses.length && !res.vehicles.length && !res.accessCards.length && noCols;
+  const showBottom = empty || !!err || busy || (noCols && !!res?.houses.length) || !!res?.vehicles.length || !!res?.accessCards.length;
 
   const pickAddress = (p: PickedAddress | null) => {
     setBrowsing(true);
@@ -243,7 +244,7 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
   const extraResults = showBottom ? (
           <div className="as-sugg">
             {err ? <div className="muted as-empty" style={{ color: 'var(--dang)' }}>{err}</div> : null}
-            {busy && !res ? <div className="muted as-empty">查询中…</div> : null}
+            {busy ? <SearchLoading /> : null}
             {empty ? <div className="muted as-empty">没查到「{kw}」。房号可写 228/5/201 或 5/201；电话尾号、车牌尾号至少 4 位</div> : null}
             {noCols && res?.houses.length ? (
               <>
@@ -300,9 +301,9 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
         placeholder={placeholder ?? '房号 / 姓名 / 手机尾号 / 车牌尾号，回车查询'}
         searchText={browsing ? '' : selectionText ?? text} displayText={selectionText ?? text}
         selectionRevision={selectionRevision} inputRef={input} showCopy={false}
-        open={open} onOpenChange={setOpen} extraResults={extraResults}
+        open={open} onOpenChange={setOpen} extraResults={extraResults} remoteSearchFeedback={!!extraResults}
         onPicked={pickAddress} onSubmitText={() => { void submit(); }}
-        onSearchText={next => { setBrowsing(false); invalidate(); setSelectionText(null); setSelectedPath([]); setText(next); setCid(null); setBid(null); setOpen(true); }} />
+        onSearchText={next => { setBrowsing(false); if (next.trim() !== kw || selectionText !== null) { invalidate(); setBusy(!!next.trim()); } setSelectionText(null); setSelectedPath([]); setText(next); setCid(null); setBid(null); setOpen(true); }} />
     </div>
   );
 }

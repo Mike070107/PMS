@@ -31,6 +31,10 @@ test('共享地址控件真实鼠标三级、跨期公区回填、收银回车DO
   fs.writeFileSync(path.join(dir, 'fixture.html'), '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="fixture.css"><div id="root"></div><script src="fixture.js"></script>');
   const server = http.createServer((req, res) => {
     const name = req.url.split('?')[0].slice(1);
+    if (['search/flipping-book.gif', 'search/open-book.png'].includes(name)) {
+      res.setHeader('Content-Type', name.endsWith('.gif') ? 'image/gif' : 'image/png');
+      res.end(fs.readFileSync(path.join(app, 'public', name))); return;
+    }
     if (!['fixture.html', 'fixture.js', 'fixture.css'].includes(name)) { res.writeHead(404); res.end(); return; }
     res.setHeader('Content-Type', name.endsWith('.js') ? 'text/javascript' : name.endsWith('.css') ? 'text/css' : 'text/html; charset=utf-8');
     res.end(fs.readFileSync(path.join(dir, name)));
@@ -120,6 +124,20 @@ test('共享地址控件真实鼠标三级、跨期公区回填、收银回车DO
     await call('Input.insertText', { text: '198/2/201' }); assert.equal(await js("document.querySelector('#uni input').value"), '198/2/201');
     await enter(); assert.equal(await js('window.picked.hit.id'), 111);
     assert.ok((await js('window.terms')).every(term => !term.includes('测试')), 'display text must never become an API query');
+    await click('#list .ant-select-selector');
+    await js("document.querySelector('#list input').select()");
+    await call('Input.insertText', { text: '2578' }); await enter();
+    assert.equal(await js("document.querySelector('#list input').getAttribute('aria-expanded')"), 'false', '提交后收起候选层');
+    assert.equal(await js("document.querySelector('#list output').textContent"), '2578');
+    await click('#uni .ant-select-selector');
+    await js("document.querySelector('#uni input').select()");
+    await call('Input.insertText', {text:'NO_MATCH'}); await pause(450);
+    const feedback = '.ant-cascader-dropdown:not(.ant-select-dropdown-hidden)';
+    assert.equal(await js(`document.querySelector('${feedback} [role=status] img')?.naturalWidth > 0`), true);
+    assert.doesNotMatch(await js(`document.querySelector('${feedback}').innerText`), /没查到|暂无数据|No data/);
+    await js('window.finishEmpty()'); await pause(100);
+    assert.match(await js(`document.querySelector('${feedback}').innerText`), /没查到/);
+    await click('#outside');
     // Arbitrary list text survives blur/close and still reaches the 400ms callback.
     await js("document.querySelector('#list input').focus();document.querySelector('#list input').select()");
     await call('Input.insertText', { text: '维修单ABC' }); await click('#outside'); await pause(450);

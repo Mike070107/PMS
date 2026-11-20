@@ -1,3 +1,4 @@
+import SearchLoading from '@/components/search/SearchLoading';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Cashier from './Cashier';
 import { resolveAddressQuery } from '@pms/shared-types';
@@ -6,18 +7,16 @@ import type { ParkingQuery, ParkingQueryRow, DeliyunVehicle } from '@pms/api-cli
 import { legacyUrl } from '@/lib/legacy';
 import AddressSearch from '@/components/AddressSearch';
 import { useAddressTree } from '@/lib/address-tree';
-import { Btn, Card, ErrorNote, Loading, Sheet, toast } from '@/components/ui';
+import { Btn, Card, ErrorNote, Sheet, toast } from '@/components/ui';
 import HousePicker, { type PickedHouse } from '@/components/HousePicker';
 import Icon from '@/components/Icon';
 
 import { field, vehicleIdentity, identityTone, deliyunVehicleIdentity, GARAGES, garageState, groupByPlate, normPlate } from '@/lib/parking-fields';
 import RenewSheet from '@/components/vehicle-ops/RenewSheet';
 import OwnerBusinessContact from '@/components/OwnerBusinessContact';
-import VehicleTypeSheet from '@/components/vehicle-ops/VehicleTypeSheet';
-import { can } from '@/lib/perm';
-import { ChangePlateSheet, DownloadSheet, DeleteSheet } from '@/components/vehicle-ops/OtherOpSheets';
-import { RebindSheet, GaragesSheet } from '@/components/vehicle-ops/RebindGarageSheets';
-import { HistorySheet, OwnerInfoSheet, CreatePmsOwnerSheet } from '@/components/vehicle-ops/HistoryAndOwnerSheets';
+import VehicleActions from '@/components/vehicle-ops/VehicleActions';
+import { DownloadSheet, DeleteSheet } from '@/components/vehicle-ops/OtherOpSheets';
+import { CreatePmsOwnerSheet } from '@/components/vehicle-ops/HistoryAndOwnerSheets';
 import ToneIcon from '@/components/ToneIcon';
 import type { Intake } from '@/components/cashier/NewPlateCard';
 import { vehicleIntakeOperation } from '@/lib/vehicle-intake-operation';
@@ -79,20 +78,24 @@ export default function Vehicles() {
   const [cloud, setCloud] = useState<Record<string, CloudState>>({});
   const timer = useRef<number | null>(null);
 
-  useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current); }, []);
+  const searchGeneration = useRef(0);
+  useEffect(() => () => { searchGeneration.current++; if (timer.current) window.clearTimeout(timer.current); }, []);
 
-  const poll = useCallback(async (id: number, left: number) => {
+  const poll = useCallback(async (id: number, left: number, generation: number) => {
+    if (generation !== searchGeneration.current) return;
     if (left <= 0) { setPolling(false); setErr('停车库查询超时，现场网关可能不在线'); return; }
     try {
       const q = await accessCardIssuance.parkingQuery(id);
+      if (generation !== searchGeneration.current) return;
       setQuery(q);
       if (q.status === 'completed' || q.status === 'failed') {
         setPolling(false);
         if (q.status === 'failed') setErr(q.error || '查询失败');
         return;
       }
-      timer.current = window.setTimeout(() => void poll(id, left - 1), 1500);
+      timer.current = window.setTimeout(() => void poll(id, left - 1, generation), 1500);
     } catch (e) {
+      if (generation !== searchGeneration.current) return;
       setPolling(false);
       setErr(e instanceof Error ? e.message : '查询失败');
     }
@@ -101,20 +104,24 @@ export default function Vehicles() {
   const search = async (kwOverride?: string) => {
     const kw = (kwOverride ?? term).trim();
     if (!kw) return;
+    const generation = ++searchGeneration.current;
+    if (timer.current) window.clearTimeout(timer.current);
     setErr('');
     setQuery(null);
     setCloud({});
     setPolling(true);
     try {
       const created = await accessCardIssuance.createParkingQuery(kw);
+      if (generation !== searchGeneration.current) return;
       setQuery(created);
       if (created.status === 'completed' || created.status === 'failed') {
         setPolling(false);
         if (created.status === 'failed') setErr(created.error || '查询失败');
         return;
       }
-      timer.current = window.setTimeout(() => void poll(created.id, 20), 1200);
+      timer.current = window.setTimeout(() => void poll(created.id, 20, generation), 1200);
     } catch (e) {
+      if (generation !== searchGeneration.current) return;
       setPolling(false);
       setErr(e instanceof Error ? e.message : '提交查询失败');
     }
@@ -199,7 +206,7 @@ export default function Vehicles() {
           ) : null}
 
           {polling && !rows.length ? (
-            <Card style={{ padding: 40 }}><Loading text="已提交查询，等待停车网关回读现场库…" /></Card>
+            <Card><SearchLoading /></Card>
           ) : null}
 
           {groups.length ? (
@@ -214,7 +221,7 @@ export default function Vehicles() {
             </div>
           ) : null}
 
-          {query && !polling && !rows.length ? (
+          {query?.status === 'completed' && query.term === term.trim() && !polling && !err && !rows.length ? (
             <Card style={{ padding: 36 }}><div className="empty">停车库里没有查到「{query.term}」的记录</div></Card>
           ) : null}
       {newOpen ? (
@@ -254,7 +261,7 @@ export default function Vehicles() {
 
 /** 单张车牌的完整档案卡：车库授权清单 + 旧库 vs PMS 信息 + 写操作入口 */
 function VehicleCard({ plate, rows, cloud, onChanged }: { plate: string; rows: ParkingQueryRow[]; cloud: CloudState; onChanged: (requeryTerm?: string) => void }) {
-  const [op, setOp] = useState<'renew' | 'changePlate' | 'vehicleType' | 'rebind' | 'garages' | 'download' | 'delete' | 'history' | 'ownerInfo' | 'pmsOwner' | null>(null);  const first = rows[0];
+  const [op, setOp] = useState<'renew' | 'download' | 'delete' | 'pmsOwner' | null>(null);  const first = rows[0];
   const identity = vehicleIdentity(field(first?.fields, 'identity'));
   const note = rows.map((r) => field(r.fields, 'note', true)).find(Boolean) || '';
   const expiry = rows.map((r) => field(r.fields, 'expiry')).find(Boolean) || '';
@@ -346,12 +353,7 @@ function VehicleCard({ plate, rows, cloud, onChanged }: { plate: string; rows: P
       {pms?.houseId ? <OwnerBusinessContact key={pms.houseId} houseId={pms.houseId} preferredOwnerId={pms.userId} source="parking" onSaved={() => onChanged()} /> : null}
       <div className="veh-ops">
         <button className="btn p sm" onClick={() => setOp('renew')}><Icon name="cash" size={15} />续期收费</button>
-        <button className="btn sm" disabled={!can('business', 'edit')} onClick={() => setOp('vehicleType')}><Icon name="edit" size={15} />修改车辆类型</button>
-        <button className="btn sm" disabled={!can('business', 'edit')} onClick={() => setOp('changePlate')}><Icon name="edit" size={15} />变更车牌</button>
-        <button className="btn sm" onClick={() => setOp('rebind')}><Icon name="users" size={15} />变更绑定用户</button>
-        <button className="btn sm" onClick={() => setOp('garages')}><Icon name="car" size={15} />调整车库授权</button>
-        <button className="btn sm" onClick={() => setOp('history')}><Icon name="clock" size={15} />变更历史</button>
-        <button className="btn sm" onClick={() => setOp('ownerInfo')}><Icon name="users" size={15} />更新住户资料</button>
+        <VehicleActions plate={plate} rows={rows} cloud={cloud} onChanged={onChanged} />
         <button className="btn sm" onClick={() => setOp('pmsOwner')}><Icon name="plus" size={15} />补建PMS业主</button>
         <button className="btn sm" onClick={() => setOp('download')}><Icon name="download" size={15} />下发设备</button>
         <button className="btn g sm" onClick={() => setOp('delete')}><Icon name="trash" size={15} />注销车辆</button>
@@ -361,25 +363,6 @@ function VehicleCard({ plate, rows, cloud, onChanged }: { plate: string; rows: P
       {op === 'renew' ? (
         <RenewSheet plate={plate} rows={rows} cloud={cloud}
           onClose={() => setOp(null)} onDone={() => { setOp(null); onChanged(); }} />
-      ) : null}
-      {op === 'vehicleType' ? <VehicleTypeSheet plate={plate} rows={rows} onClose={() => setOp(null)} onDone={() => { setOp(null); onChanged(); }} /> : null}
-      {op === 'changePlate' ? (
-        <ChangePlateSheet plate={plate} rows={rows} cloud={cloud}
-          onClose={() => setOp(null)} onDone={(t) => { setOp(null); onChanged(t); }} />
-      ) : null}
-      {op === 'rebind' ? (
-        <RebindSheet plate={plate} rows={rows} cloud={cloud}
-          onClose={() => setOp(null)} onDone={() => { setOp(null); onChanged(); }} />
-      ) : null}
-      {op === 'garages' ? (
-        <GaragesSheet plate={plate} rows={rows} cloud={cloud}
-          onClose={() => setOp(null)} onDone={() => { setOp(null); onChanged(); }} />
-      ) : null}
-      {op === 'history' ? (
-        <HistorySheet plate={plate} rows={rows} onClose={() => setOp(null)} onDone={() => { setOp(null); onChanged(); }} />
-      ) : null}
-      {op === 'ownerInfo' ? (
-        <OwnerInfoSheet plate={plate} rows={rows} onClose={() => setOp(null)} onDone={() => { setOp(null); onChanged(); }} />
       ) : null}
       {op === 'pmsOwner' ? (
         <CreatePmsOwnerSheet plate={plate} rows={rows} onClose={() => setOp(null)} onDone={() => { setOp(null); onChanged(); }} />

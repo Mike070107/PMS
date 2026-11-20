@@ -32,6 +32,12 @@
 .veh-history-tabs button:last-child { margin-left:auto; }
 .veh-history-event { border-top:1px solid var(--line); padding:12px 0; overflow-wrap:anywhere; }
 .veh-history-event summary { cursor:pointer; min-height:44px; }
-.veh-history-event summary span { margin-left:8px; }
+.veh-history-event header { display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:4px 12px; }
+.veh-history-event summary { display:flex; align-items:center; color:var(--acc-t); width:fit-content; }
+.veh-history-event summary::before { content:'▸'; margin-right:6px; }
+.veh-history-event details[open] summary::before { content:'▾'; }
+.veh-history-plates { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin:8px 0; }
+.veh-history-plates strong { font-size:1.1rem; }
+.veh-history-source { padding:8px 12px; margin:4px 0; background:var(--acc-w); border-radius:6px; }
 .veh-history-event small { display:block; margin-top:4px; color:var(--ink2); }
 .veh-history-event p { margin:6px 0; }

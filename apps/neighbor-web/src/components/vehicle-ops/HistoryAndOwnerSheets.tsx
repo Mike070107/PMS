@@ -42,6 +42,50 @@ const EVENT_LABEL: Record<string, string> = {
   vehicle_sync: '同步',
 };
 
+/** 同库同车相同换牌方向、同一分钟的来源记录放在一起；保留每条原始时间。 */
+export function groupHistoryEntries(entries: ParkingHistoryEntry[]) {
+  const groups: ParkingHistoryEntry[][] = [];
+  const byChange = new Map<string, ParkingHistoryEntry[]>();
+  for (const entry of entries) {
+    const minute = Math.floor(Date.parse(entry.occurredAt) / 60000);
+    if (entry.eventType !== 'plate_change' || !entry.database || !entry.sourceRecordId ||
+        !entry.plateBefore || !entry.plateAfter || !Number.isFinite(minute)) {
+      groups.push([entry]);
+      continue;
+    }
+    const key = JSON.stringify([entry.database, entry.sourceRecordId, entry.plateBefore, entry.plateAfter, minute]);
+    const group = byChange.get(key);
+    if (group) group.push(entry);
+    else { const records = [entry]; groups.push(records); byChange.set(key, records); }
+  }
+  return groups;
+}
+
+function HistoryEvent({ records }: { records: ParkingHistoryEntry[] }) {
+  const event = records.find(record => record.source === 'pms') ?? records[0];
+  const change = event.eventType === 'plate_change';
+  return <article className="veh-history-event">
+    <header><b>{EVENT_LABEL[event.eventType] || event.eventType}</b>
+      <small>{event.timeBasis === 'detected' && '发现于 '}{formatBeijingDateTime(event.occurredAt, 'YYYY-MM-DD HH:mm')}
+        {event.database && ' · ' + dbShort(event.database)}</small></header>
+    {change ? <div className="veh-history-plates">
+      <div><small>原车牌</small><strong>{event.plateBefore || '未记录'}</strong></div>
+      <span aria-hidden="true">→</span>
+      <div><small>新车牌</small><strong>{event.plateAfter || '未记录'}</strong></div>
+    </div> : <p>{event.summary}</p>}
+    {event.source === 'pms' && event.operator && <small>经办人　{event.operator}</small>}
+    <details><summary>查看来源记录（{records.length}）</summary>
+      {records.map((r,i) => <div className="veh-history-source" key={i}>
+        <b>{r.source === 'pms' ? 'PMS 办理记录' : r.id === 0 ? '旧停车系统流水' : '旧库同步记录'}</b>
+        <small>{r.timeBasis === 'detected' ? '发现时间' : '记录时间'}　{formatBeijingDateTime(r.occurredAt,'YYYY-MM-DD HH:mm:ss')}</small>
+        {r.operator && <small>{r.source === 'parking_gateway' && r.id !== 0 ? '记录来源' : '操作人'}　{r.operator}</small>}
+        {r.summary && <p>{r.summary}</p>}
+        {r.changes.map((c,j) => <p key={j}>{c.label}　{c.before || '—'} → {c.after || '—'}</p>)}
+      </div>)}
+    </details>
+  </article>;
+}
+
 /** 车牌 / 住户的变更历史（旧停车系统 Up_Issue + PMS 写操作记录） */
 export function HistorySheet({ plate, rows, onClose }: OpProps) {
   const [entries, setEntries] = useState<{ vehicle: ParkingHistoryEntry[]; owner: ParkingHistoryEntry[] }>({vehicle:[], owner:[]});
@@ -62,7 +106,7 @@ export function HistorySheet({ plate, rows, onClose }: OpProps) {
       const vehicle = new Map<string, ParkingHistoryEntry>();
       const owner = new Map<number, ParkingHistoryEntry>();
       const local = new Map<string, ParkingHistoryEntry>();
-      const eventKey = (e: ParkingHistoryEntry) => JSON.stringify([e.database,e.sourceRecordId,e.plateAfter,Date.parse(e.occurredAt)]);
+      const eventKey = (e: ParkingHistoryEntry) => JSON.stringify([e.database,e.sourceRecordId,e.plateBefore,e.plateAfter,e.operator,Date.parse(e.occurredAt)]);
       const refs = sources.length ? sources : [null];
       for (const row of refs) {
         if (!active) return;
@@ -92,9 +136,6 @@ export function HistorySheet({ plate, rows, onClose }: OpProps) {
           }
         } catch { warnings.add('旧库流水格式异常'); }
       }
-      for (const item of vehicle.values()) {
-        if (item.eventType === 'plate_change' && item.timeBasis === 'operation') local.delete(eventKey(item));
-      }
       const newest = (a: ParkingHistoryEntry,b: ParkingHistoryEntry) => Date.parse(b.occurredAt)-Date.parse(a.occurredAt) || b.id-a.id;
       if (active) {
         setEntries({vehicle:[...vehicle.values(),...local.values()].sort(newest),owner:[...owner.values()].sort(newest)});
@@ -113,15 +154,8 @@ export function HistorySheet({ plate, rows, onClose }: OpProps) {
     {busy ? <p role="status">正在读取变更记录…</p> : <>
       {error && <p role="status" className="muted">{error}</p>}
       {!entries[tab].length && <p className="muted">{error ? '暂无可展示的记录' : '暂无变更记录'}</p>}
-      {entries[tab].map((h,i) => <details className="veh-history-event" key={h.id || i+'-legacy'}>
-        <summary><b>{EVENT_LABEL[h.eventType] || h.eventType}</b>
-          <span>{[h.plateBefore,h.plateAfter].filter((v,j,a)=>v && a.indexOf(v)===j).join(' → ') || h.summary}</span>
-          <small>{h.source==='parking_gateway' ? '旧停车系统' : 'PMS'} · {h.database ? dbShort(h.database)+' · ' : ''}
-            {h.timeBasis==='detected' ? '发现于 ' : ''}{formatBeijingDateTime(h.occurredAt,'YYYY-MM-DD HH:mm')}</small></summary>
-        {h.summary && <p>{h.summary}</p>}
-        {h.operator && <p>{h.operator}</p>}
-        {h.changes.map((c,j)=><p key={j}>{c.label}　{c.before || '—'} → {c.after || '—'}</p>)}
-      </details>)}
+      {groupHistoryEntries(entries[tab]).map(records =>
+        <HistoryEvent key={JSON.stringify([tab, records[0].id, records[0].database, records[0].sourceRecordId, records[0].occurredAt, records[0].plateBefore, records[0].plateAfter])} records={records} />)}
     </>}
   </Sheet>;
 }

@@ -19,6 +19,7 @@ function Fixture(){
  <section id="list"><AddressSearch communities={communities} value={query} onChange={setQuery}/><output>{query}</output></section>
  <section id="uni"><UniSearch communities={communities} onPick={p=>{(window as any).picked=p}} search={async term=>{
   (window as any).terms=[...((window as any).terms||[]),term];
+  if(term==='NO_MATCH') await new Promise<void>(ok=>{(window as any).finishEmpty=ok});
   const houses=communities.flatMap(c=>c.buildings.flatMap((b:any)=>b.houses.map((h:any)=>({id:h.id,communityId:c.id,communityName:c.name,lane:b.lane,buildingNo:b.buildingNo,roomNo:h.roomNo,owner:null}))));
   return {houses:term.includes('228')?houses.filter(h=>h.communityId===2):term.includes('198')?houses.filter(h=>h.communityId===1):[],vehicles:term==='沪TEST'? [{id:5,houseId:111,plateNo:'沪TEST'}]:[],accessCards:[]};
  }}/></section>
