@@ -1,3 +1,4 @@
+import { useSearchParams } from 'react-router-dom';
 import SearchLoading from '@/components/search/SearchLoading';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Cashier from './Cashier';
@@ -42,7 +43,9 @@ function daysLeft(dateStr: string): number | null {
  * 这一版先把「查得清、看得全」做到位，写操作暂连旧停车管理页。
  */
 export default function Vehicles() {
-  const [term, setTerm] = useState('');
+  const [params] = useSearchParams();
+  const requestedPlate = params.get('plate')?.trim() || '';
+  const [term, setTerm] = useState(requestedPlate);
 
   const [newOpen, setNewOpen] = useState(false);
   const [newKind, setNewKind] = useState<'paid' | 'family'>('paid');
@@ -126,6 +129,10 @@ export default function Vehicles() {
       setErr(e instanceof Error ? e.message : '提交查询失败');
     }
   };
+
+  useEffect(() => {
+    if (requestedPlate) { setTerm(requestedPlate); void search(requestedPlate); }
+  }, [requestedPlate]);
 
   const rows = query?.rows ?? [];
   const groups = useMemo(() => groupByPlate(rows), [rows]);

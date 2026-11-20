@@ -44,7 +44,7 @@ interface HouseHit {
   communityId: number | null; communityName: string;
   owner: { id: number; name: string | null; phone: string | null } | null;
 }
-interface Vehicle { id: number; plateNo: string; houseId: number; ownerId: number | null; validUntil: string | null }
+interface Vehicle { id: number; plateNo: string; houseId: number | null; ownerId: number | null; validUntil: string | null }
 interface AccessCard { id: number; cardNo: string; houseId: number; ownerId: number | null; status: string }
 interface SearchResult { houses: HouseHit[]; vehicles: Vehicle[]; accessCards: AccessCard[] }
 interface Estimate { unitPriceCents: number; quantity: number; startDate: string | null; endDate: string | null; amountCents: number; summary: string }
@@ -52,7 +52,15 @@ interface Estimate { unitPriceCents: number; quantity: number; startDate: string
 interface Bill { id: string; feeCode: string; feeName: string; period: string; amountCents: number; status: string; remark?: string | null }
 interface MisRow { id: string; feeName: string | null; feeCode: string; period: string; amountCents: number; status: string; remark?: string | null }
 
-interface ResultTask { icon: IconName; title: string; note: string; state: 'done' | 'queued' }
+interface ResultTask { icon: IconName; title: string; note: string; state: 'done' | 'queued' | 'review' | 'awaiting_docs' | 'running' | 'attention' }
+const taskLabels: Record<ResultTask['state'], string> = {
+  done: '已完成', queued: '已排队', review: '待经理审核', awaiting_docs: '待补资料', running: '执行中', attention: '待核对',
+};
+function resultState(status: string): ResultTask['state'] {
+  if (status === 'synced') return 'done';
+  if (status === 'review' || status === 'awaiting_docs' || status === 'running') return status;
+  return ['manual', 'failed', 'mocked', 'dry_run'].includes(status) ? 'attention' : 'queued';
+}
 interface ChargeResult { title: string; amountCents: number; receiptNo: string; tasks: ResultTask[] }
 
 /** 执行层状态 → 收银结果页提示 */
@@ -232,12 +240,15 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
           const room = /^\d+\/\d+\/\d+$/.test(rawRoom)
             ? rawRoom.split('/').map(part => part.replace(/^0+(?=\d)/, '')).join('/') : rawRoom;
           if (!plate) continue;
-          if (!room) throw new Error(`已查到车牌 ${plate}，但停车档案未提供关联房号，请先核对档案`);
+          const keepPlateOnly = () => {
+            if (!merged.vehicles.some(v => v.plateNo === plate)) merged.vehicles.push({ id: -(merged.vehicles.length + 1), plateNo: plate, houseId: null, ownerId: null, validUntil: null });
+          };
+          if (!room) { keepPlateOnly(); continue; }
           const rr = normSearch(await request<unknown>({ url: '/business/search', query: { q: room } }));
           const parts = /^\d+\/\d+\/\d+$/.test(room) ? room.split('/') : null;
           const candidates = parts ? rr.houses.filter(h => [h.lane, h.buildingNo, h.roomNo]
             .every((part, index) => String(part ?? '').replace(/^0+(?=\d)/, '') === parts[index])) : rr.houses;
-          if (candidates.length !== 1) throw new Error(`已查到车牌 ${plate}，但关联房号无法唯一确认，请核对停车档案；不会自动选择其他住户`);
+          if (!parts || candidates.length !== 1) { keepPlateOnly(); continue; }
           const hit = candidates[0];
           if (!merged.houses.some((h) => h.id === hit.id)) merged.houses.push(hit);
           if (!merged.vehicles.some((v) => v.plateNo === plate)) merged.vehicles.push({ id: hit.id * 1000 + merged.vehicles.length, plateNo: plate, houseId: hit.id, ownerId: hit.owner?.id ?? null, validUntil: null });
@@ -314,6 +325,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
       return;
     }
     const h = byHouse(p.kind === 'vehicle' ? p.vehicle.houseId : p.card.houseId);
+    if (!h && p.kind === 'vehicle') { navigate('/vehicles?plate=' + encodeURIComponent(p.vehicle.plateNo)); return; }
     if (!h) { setErr('这条记录没有关联房号，无法办理'); return; }
     applyHouse(h as HouseHit, {
       houses: [h as HouseHit],
@@ -397,9 +409,9 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
         const amt = okList.reduce((t, x) => t + x.c.estimate.amountCents, 0);
         setDone({ title: `停车续期 ${okList.map((x) => x.c.plate).join('、')}`, amountCents: amt, receiptNo: okList.map((x) => x.txn.txnNo).filter(Boolean).join('、') || '—', tasks:
           okList.map((x) => ({ icon: 'car' as const, title: `续期 ${x.c.systemsLabel} · ${x.c.plate} 至 ${x.c.estimate.endDate}`,
-            note: x.txn.externalSyncStatus === 'review' ? '非标准续期，已提交物业经理审核；通过后系统自动续期，进度在「待处理」'
+            note: x.txn.externalSyncStatus === 'review' ? '审核通过后自动续期'
               : x.txn.externalSyncStatus === 'awaiting_docs' ? '新办车牌：款已收，等业主扫码填车牌、上传资料并审核通过后自动办理，进度在「车牌登记审核」'
-              : syncNote(x.txn.externalSyncStatus), state: 'queued' as const })) });
+              : syncNote(x.txn.externalSyncStatus), state: resultState(x.txn.externalSyncStatus) })) });
         okList.filter((x) => !['review', 'awaiting_docs'].includes(x.txn.externalSyncStatus)).forEach((x) => watchSync(x.txn.id, `续期 ${x.c.systemsLabel} · ${x.c.plate} 至 ${x.c.estimate.endDate}`));
         if (failMsg) toast(`${failMsg}；已登记的 ${okList.length} 辆不受影响，没登记的请重新办理`);
       } else if (tab === 'ac' && cardRule) {
@@ -429,17 +441,17 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
           const st = t.externalSyncStatus;
           const steps = t.snapshot?.execution?.steps ?? [];
           const doing = steps.find((x) => x.status === 'pending' || x.status === 'waiting');
-          const final = ['synced', 'manual', 'failed', 'dry_run', 'mocked'].includes(st);
+          const final = ['review', 'awaiting_docs', 'synced', 'manual', 'failed', 'dry_run', 'mocked'].includes(st);
           if (final) {
-            setTaskNote({ state: st === 'synced' ? 'done' : 'queued', note: syncNote(st, t.snapshot?.execution?.lastError) });
+            setTaskNote({ state: resultState(st), note: syncNote(st, t.snapshot?.execution?.lastError) });
             return;
           }
           setTaskNote({
-            state: 'queued',
+            state: resultState(st),
             note: `已等待 ${waited} 秒${doing ? ` · 正在写 ${doing.label}` : ' · 等待现场助手取任务'}（约 10–40 秒，现场电脑不在线会更久）`,
           });
           if (waited < 180) setTimeout(tick, 3000);
-          else setTaskNote({ state: 'queued', note: '现场助手 3 分钟内没有回执，任务已保留：到「待处理」可查看/重试，钱已收、不要重复收款' });
+          else setTaskNote({ state: 'attention', note: '现场助手 3 分钟内没有回执，任务已保留：到「待处理」可查看/重试，钱已收、不要重复收款' });
         })
         .catch(() => {
           setTaskNote({ state: 'queued', note: `已等待 ${waited} 秒 · 正在取回执…` });
@@ -474,9 +486,9 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
           <div style={{ paddingBottom: 10 }}>
             {done.tasks.map((t, i) => (
               <div className="taskRow" key={i}>
-                <div className={`ti ic ${t.state === 'done' ? 'green' : 'amber'}`}>{t.state === 'done' ? <Icon name="check" /> : <div className="spin" />}</div>
+                <div className={`ti ic ${t.state === 'done' ? 'green' : 'amber'}`}>{t.state === 'running' ? <div className="spin" /> : <Icon name={t.state === 'done' ? 'check' : t.state === 'queued' ? 'clock' : 'alert'} />}</div>
                 <div className="tt"><b>{t.title}</b><small>{t.note}</small></div>
-                <span className={`tag ${t.state === 'done' ? 'ok' : 'warn'}`}>{t.state === 'done' ? '已完成' : <><Icon name="clock" />已提交</>}</span>
+                <span className={`tag ${t.state === 'done' ? 'ok' : 'warn'}`}>{taskLabels[t.state]}</span>
               </div>
             ))}
           </div>
@@ -588,7 +600,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
             ) : null}
 
             {linkedBlocked && !embedded ? (tab === 'pk' ? <div className="note2" role="status">本次登记不可收费，真实状态见上方。需要转类 / 撤销请进入本次登记详情。</div> : null) : <div ref={parkingForm} style={{ display: tab === 'pk' ? undefined : 'none' }}>
-              <ChargeAttempted.Provider value={embedded && chargeAttempted}><ParkingTab key={`${house.id}-${intakeParam ?? ''}`} house={house} rules={rules as never} onCart={onParkCart} initialPlate={parkPlate} focusedIntake={linkedIntake} staffRegistration={embedded} onIntakeChange={embedded ? updateLinkedIntake : undefined} /></ChargeAttempted.Provider>
+              <ChargeAttempted.Provider value={embedded && chargeAttempted}><ParkingTab key={`${house.id}-${intakeParam ?? ''}`} house={house} rules={rules as never} onCart={onParkCart} initialPlate={parkPlate} selectedVehicle={result?.vehicles.find(v => v.plateNo === parkPlate && v.houseId === house.id)} focusedIntake={linkedIntake} staffRegistration={embedded} onIntakeChange={embedded ? updateLinkedIntake : undefined} /></ChargeAttempted.Provider>
             </div>}
 
             {tab === 'ac' ? (

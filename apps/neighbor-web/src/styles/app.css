@@ -587,3 +587,6 @@ input[data-money-input]::-webkit-outer-spin-button { -webkit-appearance: none; m
 .renew-error { color:var(--dang); font-size:13px; }
 .renew-payment-form [aria-invalid=true],.renew-payment-form .ant-picker:has([aria-invalid=true]) { border-color:var(--dang); }
 @media(max-width:400px){.renew-choice-grid { grid-template-columns:1fr; }.renew-date-grid { gap:6px; padding:10px; }}
+
+.renew-reason{display:grid;gap:6px;margin:12px 0;color:var(--ink)}
+.renew-reason input[aria-invalid="true"]{border-color:var(--dang)}

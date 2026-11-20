@@ -53,6 +53,7 @@ export interface ParkingCart {
 
 interface DeliyunRow { id: string; plate: string; parkingSpace?: string | null; cardNo: string | null; cardType: string | null; endDate: string | null; garageNames: string[]; civilDefenseAuthorized: boolean; cardPoolId: string | null }
 interface Household {
+  boundPlates?: string[];
   room: string; roomTerm: string | null; targets: ParkTarget[]; localDatabases: string[];
   deliyun: Array<{ targetKey: string; label: string; park: string; ok: boolean; error: string | null; rows: DeliyunRow[] }>;
 }
@@ -102,7 +103,7 @@ export const payCode = (label: string) => PAY_EN[label] || (/微信|wechat/i.tes
  * 前台点一辆车、选月数，按收费标准算钱；收款后执行层把同一辆车在各系统的有效期一起续上。
  */
 /** Deep-link integration: Cashier passes focusedIntake={linkedIntake}; keep ordinary household checkout unchanged. */
-export default function ParkingTab({ house, rules, onCart, initialPlate, focusedIntake, staffRegistration = false, onIntakeChange }: { house: ParkHouse; rules: ParkRule[]; onCart: (items: ParkingCart[], ready: boolean) => void; initialPlate?: string | null; focusedIntake?: Intake; staffRegistration?: boolean; onIntakeChange?: (intake: Intake) => void }) {
+export default function ParkingTab({ house, rules, onCart, initialPlate, selectedVehicle, focusedIntake, staffRegistration = false, onIntakeChange }: { house: ParkHouse; rules: ParkRule[]; onCart: (items: ParkingCart[], ready: boolean) => void; initialPlate?: string | null; selectedVehicle?: { plateNo: string; houseId: number | null }; focusedIntake?: Intake; staffRegistration?: boolean; onIntakeChange?: (intake: Intake) => void }) {
   const [hh, setHh] = useState<Household | null>(null);
   const [hhErr, setHhErr] = useState('');
   const [local, setLocal] = useState<{ state: 'idle' | 'loading' | 'done' | 'failed'; rows: ParkingQuery['rows']; error?: string }>({ state: 'idle', rows: [] });
@@ -113,7 +114,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
   const roomTermOf = (h: ParkHouse) => [h.lane, h.buildingNo, h.roomNo].filter(Boolean).join('/');
   const [missPlate, setMissPlate] = useState('');
   const [carts, setCarts] = useState<Record<string, ParkingCart | null>>({});
-  const timer = useRef<number | null>(null);
+  const [lookupDone, setLookupDone] = useState(false);
   const [reload, setReload] = useState(0);
   // 新办车牌 / 亲情车：这一户还没办完的扫码登记
   const [intakes, setIntakes] = useState<Intake[]>([]);
@@ -160,10 +161,11 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
   // 选中住户 → 查德立云（服务端）+ 发起本地旧库查询（现场助手）
   useEffect(() => {
     let alive = true;
+    setLookupDone(false); setMissPlate('');
     setHh(null); setHhErr(''); setLocal({ state: 'idle', rows: [] }); setPlateRows([]); setPicked([]); setCarts({}); onCart([], false);
     // 德立云（household-parking）可能十几秒；本地旧库查询不依赖它，先发出去，谁先回谁先显示
-    request<Household>({ url: '/business/household-parking', query: { houseId: house.id }, timeout: 40000 })
-      .then((r) => { if (alive) setHh(r); })
+    const household = request<Household>({ url: '/business/household-parking', query: { houseId: house.id }, timeout: 40000 })
+      .then((r) => { if (alive) setHh(r); return r; })
       .catch((e) => { if (alive) setHhErr(e instanceof Error ? e.message : '查询失败'); });
     void (async () => {
       {
@@ -173,31 +175,45 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
           const poll = async (term: string) => {
             let q = await accessCardIssuance.createParkingQuery(term);
             for (let i = 0; i < 80 && alive && (q.status === 'pending' || q.status === 'running'); i += 1) {
-              await new Promise((ok) => { timer.current = window.setTimeout(ok, 500); });
+              await new Promise((ok) => { window.setTimeout(ok, 500); });
+              if (!alive) return q;
               q = await accessCardIssuance.parkingQuery(q.id);
             }
             return q;
           };
           // 两路各回各显示：按车牌那条先回来就先出这辆车，房号那条回来再补本户其它车
-          const want = (initialPlate || '').replace(/\s/g, '').toUpperCase();
-          const plateJob = initialPlate
-            ? poll(initialPlate).then((pq) => {
-              if (!alive || pq.status !== 'completed') return;
-              setPlateRows((pq.rows || []).filter((row) => String((row.fields as Record<string, unknown>).P_plate || '').replace(/\s/g, '').toUpperCase() === want));
-            }).catch(() => undefined)
-            : Promise.resolve();
-          const roomJob = poll(roomTermOf(house)).then((roomQ) => {
+          const queried = new Set<string>();
+          async function queryPlate(value: string) {
+            const plate = normPlate(value);
+            if (!plate || queried.has(plate) || !alive) return;
+            queried.add(plate);
+            const result = await poll(plate);
             if (!alive) return;
-            if (roomQ.status === 'completed') setLocal({ state: 'done', rows: roomQ.rows });
-            else setLocal({ state: 'failed', rows: [], error: roomQ.status === 'failed' ? (roomQ.error || '现场库查询失败') : '现场停车库 40 秒内没有回应，现场电脑可能不在线' });
+            if (result.status !== 'completed') throw new Error(result.error || '车牌查询未完成，请重查');
+            const exact = result.rows.filter(row => normPlate(field(row.fields, /^p_plate$/i) || '') === plate);
+            setPlateRows(rows => [...rows, ...exact]);
+          }
+          const room = roomTermOf(house);
+          const roomJob = /^\d+(?:\/\d+){1,2}$/.test(room) ? poll(room).then(result => {
+            if (!alive) return;
+            if (result.status !== 'completed') throw new Error(result.error || '现场停车库查询未完成，请重查');
+            setLocal({ state: 'done', rows: result.rows });
+          }) : Promise.resolve();
+          const boundJob = household.then(async data => {
+            if (!data?.localDatabases.length) return;
+            for (const plate of data.boundPlates || []) await queryPlate(plate);
           });
-          await Promise.all([plateJob, roomJob]);
+          const outcomes = await Promise.allSettled([roomJob, boundJob, initialPlate ? queryPlate(initialPlate) : Promise.resolve()]);
+          if (!alive) return;
+          const failed = outcomes.find(o => o.status === 'rejected');
+          if (failed?.status === 'rejected') setLocal(prev => ({ ...prev, state: 'failed', error: String(failed.reason?.message || '车牌查询失败') }));
+          else { setLocal(prev => ({ ...prev, state: 'done' })); setLookupDone(true); }
         } catch (e) { if (alive) setLocal({ state: 'failed', rows: [], error: e instanceof Error ? e.message : '现场库查询失败' }); }
       }
     })();
-    return () => { alive = false; if (timer.current) window.clearTimeout(timer.current); };
+    return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [house.id, reload]);
+  }, [house.id, initialPlate, reload]);
 
   // 合并成「一辆车 → 多套系统里的登记」
   const cars = useMemo<Car[]>(() => {
@@ -210,20 +226,23 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
       if (!c.identity && identity) c.identity = identity;
       return c;
     };
+    const bound = new Set((hh?.boundPlates || []).map(normPlate));
+    for (const plate of bound) car(plate, null);
     const seenRecord = new Set<string>();
     for (const row of [...local.rows, ...plateRows]) {
       const db = String(row.database || '').toLowerCase();
       // 房号那路和车牌那路会各带回同一条旧库记录 → 按 库+主键 去重，否则「一期地面车库」显示两遍
       const recKey = `${db}:${String((row.fields as Record<string, unknown>).P_id ?? '')}`;
       if (seenRecord.has(recKey)) continue;
-      seenRecord.add(recKey);
       if (hh && !hh.localDatabases.includes(db)) continue;
       const f = row.fields as Record<string, unknown>;
       const owner = field(f, /^owner__owner_name$/i) || field(f, /owner_?name|room|addr/i) || '';
-      // 车牌只是查找线索，不是跨住户收费授权；两路结果都必须属于当前所选住户。
-      if (!sameRoom(owner, roomTermOf(house))) continue;
       const p = field(f, /^p_plate$/i) || field(f, /plate|carno/i);
       if (!p) continue;
+      const exactSelection = hh?.localDatabases.includes(db) && selectedVehicle?.houseId === house.id && !!initialPlate &&
+        normPlate(selectedVehicle.plateNo) === normPlate(initialPlate) && normPlate(p) === normPlate(initialPlate) && plateRows.includes(row);
+      if (!exactSelection && !(bound.has(normPlate(p)) && plateRows.includes(row)) && !sameRoom(owner, roomTermOf(house))) continue;
+      seenRecord.add(recKey);
       const note = field(f, /^p_note$/i);
       const spaceCol = field(f, /^p_spaces?$/i) || field(f, /parkno|spaceno|berth/i);
       const garages = localGarages(db, field(f, /^p_effective$/i));
@@ -249,7 +268,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
       }
     }
     return [...map.values()].sort((a, b) => a.plate.localeCompare(b.plate));
-  }, [hh, local.rows, plateRows]);
+  }, [hh, local.rows, plateRows, house, initialPlate, selectedVehicle]);
 
   useEffect(() => {
     if (!cars.length) return;
@@ -267,15 +286,15 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
     const want = (initialPlate ?? '').replace(/\s/g, '').toUpperCase();
     if (want) {
       const hit = cars.find((c) => c.plate.replace(/\s/g, '').toUpperCase() === want);
-      if (hit) { setMissPlate(''); setPicked([hit.plate]); return; }
+      if (hit?.lots.length) { setMissPlate(''); setPicked([hit.plate]); return; }
       // 找不到就不要替用户选别的车——否则页面显示的是另一块牌，看着像选错了
-      setMissPlate(initialPlate ?? '');
+      setMissPlate(lookupDone && !hhErr && !hit ? initialPlate ?? '' : '');
       setPicked([]);
       return;
     }
     setMissPlate('');
-    if (cars.length === 1) setPicked([cars[0].plate]);
-  }, [cars, initialPlate]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (cars.length === 1 && cars[0].lots.length) setPicked([cars[0].plate]);
+  }, [cars, initialPlate, lookupDone, hhErr]); // eslint-disable-line react-hooks/exhaustive-deps
   const toggle = (pl: string) => setPicked((p) => (p.includes(pl) ? p.filter((x) => x !== pl) : [...p, pl]));
   const setCart = useCallback((pl: string, c: ParkingCart | null) => setCarts((m) => (m[pl] === c ? m : { ...m, [pl]: c })), []);
   // 要一起收款的新办车牌（付费、还没收过款、没作废）
@@ -303,7 +322,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
         <b>这一户的车</b>
       {missPlate ? (
         <div className="note2" style={{ background: 'var(--warn-w)', color: 'var(--warn)', marginBottom: 8 }}>
-          <Icon name="alert" />{missPlate} 不在这一户的旧停车库记录里（可能只登记在德立云或别的户下），下面列出本户实际有的车牌，请核对后再选。
+          <Icon name="alert" />{missPlate} 尚未匹配到可续费的停车记录。
         </div>
       ) : null}        <span className="tag mute">{hh ? (hh.targets.length ? hh.targets.map((t) => t.label).join(' · ') : '本小区未接停车系统') : '查询中'}</span>
         <button className="btn g sm" style={{ marginLeft: 'auto' }} disabled={loadingAny} onClick={() => setReload((n) => n + 1)}><Icon name="refresh" size={14} />重查</button>
@@ -321,8 +340,8 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
               const on = picked.includes(c.plate);
               const minEnd = c.lots.map((l) => l.endDate).filter(Boolean).sort()[0] ?? null;
               return (
-                <tr key={c.plate} className={on ? 'sel' : ''} onClick={() => toggle(c.plate)}>
-                  <td><input type="checkbox" className="ck-lg" checked={on} readOnly /></td>
+                <tr key={c.plate} className={on ? 'sel' : ''} onClick={() => c.lots.length && toggle(c.plate)}>
+                  <td><input type="checkbox" className="ck-lg" checked={on} disabled={!c.lots.length} readOnly /></td>
                   <td>
                     <b className="plate">{c.plate}</b>
                     {c.mismatch ? (
@@ -333,7 +352,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, focused
                   <td>{c.lots.map((l) => <div key={l.key} className="lot-line">{l.label}<small className="muted"> · {l.system === 'deliyun' ? '德立云' : '本地库'}</small></div>)}</td>
                   <td>{c.lots.map((l) => <div key={l.key} className="lot-line">{l.space ? <b>{l.space}</b> : <span className="muted">—</span>}{l.spaceFromNote ? <small className="muted">（取自备注）</small> : null}</div>)}</td>
                   <td>{c.lots.map((l) => <div key={l.key} className="lot-line" style={{ color: expired(l.endDate) ? 'var(--dang)' : undefined }}>{l.endDate || '—'}</div>)}</td>
-                  <td>{expired(minEnd) ? <span className="tag dang"><Icon name="alert" />已过期</span> : dayjs(minEnd).diff(dayjs(), 'day') <= 30 ? <span className="tag warn"><Icon name="clock" />快到期</span> : <span className="tag ok"><Icon name="check" />有效</span>}</td>
+                  <td>{!c.lots.length ? <span className="tag">已绑定 · 待核对授权</span> : expired(minEnd) ? <span className="tag dang"><Icon name="alert" />已过期</span> : dayjs(minEnd).diff(dayjs(), 'day') <= 30 ? <span className="tag warn"><Icon name="clock" />快到期</span> : <span className="tag ok"><Icon name="check" />有效</span>}</td>
                 </tr>
               );
             })}

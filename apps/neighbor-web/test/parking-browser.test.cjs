@@ -32,6 +32,11 @@ test('parking two real components: mouse, zero/missing quote, late result, dates
    await click('.sheet .btn.p');
    assert.equal(await js("document.activeElement.getAttribute('aria-label')"), '续期实收金额');
    await type('input[aria-label="续期实收金额"]','0');
+   if (!await js("document.querySelector('input[aria-label=续期调整原因]').value")) {
+     await click('.sheet .btn.p');
+     assert.equal(await js("document.activeElement.getAttribute('aria-label')"), '续期调整原因');
+     await type('input[aria-label="续期调整原因"]','按日结算');
+   }
    assert.equal(await js("document.querySelector('.sheet .btn.p').disabled"),false);
  }
  await click('.sheet .btn','取消').catch(async()=>{await click('button','取消')});await pause(200);

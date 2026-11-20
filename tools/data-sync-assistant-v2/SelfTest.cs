@@ -919,7 +919,7 @@ namespace Pms.DataSyncAssistant
                 !ParkingDatabase.SearchAppliesToDatabaseForTest("12/101", "parking1", "parking1", "parking2") ||
                 !ParkingDatabase.SearchAppliesToDatabaseForTest("12/101", "parking2", "parking1", "parking2"))
                 throw new InvalidOperationException("停车裸房号与所属数据库映射失败");
-            if (ParkingDatabase.SearchKindForTest("DQ8839") != "PlateTail")
+            if (ParkingDatabase.SearchKindForTest("DQ8839") != "PlateTail" || ParkingDatabase.SearchKindForTest("agk8206") != "PlateTail")
                 throw new InvalidOperationException("停车车牌尾号识别失败");
             // 纯数字 4~11 位既可能是车牌尾号也可能是电话：走 PlatePhone，同时查车牌列和电话列
             if (ParkingDatabase.SearchKindForTest("8839") != "PlatePhone")

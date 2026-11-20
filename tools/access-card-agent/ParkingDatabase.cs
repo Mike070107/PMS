@@ -2794,8 +2794,8 @@ ORDER BY c.column_id;";
             // 纯数字 4~11 位：既可能是车牌尾号也可能是电话 —— 一个入口同时在车牌列和电话列里模糊匹配。
             if (Regex.IsMatch(digits, @"^\d{4,11}$"))
                 return SinglePattern(ParkingSearchKind.PlatePhone, "%" + EscapeLike(digits) + "%");
-            // 含字母的 4~6 位短串只可能是车牌尾号（电话是纯数字）。
-            if (Regex.IsMatch(compact, @"^[A-Z0-9]{4,6}$"))
+            // 含字母的 4~7 位短串只可能是车牌尾号（电话是纯数字）。
+            if (Regex.IsMatch(compact, @"^[A-Z0-9]{4,7}$"))
                 return SinglePattern(ParkingSearchKind.PlateTail, "%" + EscapeLike(compact));
             if (Regex.IsMatch(term, @"^[\u4e00-\u9fff·]{2,20}$"))
                 return SinglePattern(ParkingSearchKind.Resident, "%" + EscapeLike(term) + "%");

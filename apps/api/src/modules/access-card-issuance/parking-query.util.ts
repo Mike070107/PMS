@@ -42,7 +42,7 @@ export function parkingRoomAddress(
     .trim()
     .replace(/^已隐藏\s*/, '')
     .replace(/\s+/g, '')
-    .replace(/换车牌$/, '')
+    .replace(/(?:换车牌|新车)$/, '')
     .replace(/[弄幢栋号]/g, '/')
     .replace(/室$/g, '')
     .replace(/\\/g, '/')
@@ -256,7 +256,7 @@ export function parseParkingSearch(input: string): ParsedParkingSearch {
   if (/^\d{4,11}$/.test(compact)) {
     return { kind: 'plate_phone', term: compact };
   }
-  if (/^[A-Z0-9]{4,6}$/.test(compact)) {
+  if (/^[A-Z0-9]{4,7}$/.test(compact)) {
     return { kind: 'plate_tail', term: compact };
   }
 

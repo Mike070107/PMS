@@ -19,7 +19,7 @@ export interface UniHouse {
   id: number; communityId: number; roomNo: string; lane: string | null; buildingNo: string;
   communityName: string; owner: { id: number; name: string | null; phone: string | null } | null;
 }
-export interface UniVehicle { id: number; plateNo: string; houseId: number }
+export interface UniVehicle { id: number; plateNo: string; houseId: number | null }
 export interface UniCard { id: number; cardNo: string; houseId: number; status?: string }
 export interface UniResult { houses: UniHouse[]; vehicles: UniVehicle[]; accessCards: UniCard[] }
 

@@ -86,3 +86,12 @@ test('设备超时后人工重试实时核对原车，不重复新增或收费',
  await h.s.runOne(90);
  assert.equal(h.txn.externalSyncStatus,'synced');assert.equal(h.ops.length,2);
 });
+
+test('729商铺沿用原收款流水新增停车登记，重复执行只保留一个任务', async () => {
+  const h = fixture();
+  h.intake.houseLabel = '枫桦景苑二期/729号商铺';
+  await h.s.runOne(90);
+  assert.equal(h.ops[0]?.payload.ownerRoom, '729/商铺');
+  await h.s.runOne(90);
+  assert.equal(h.ops.length, 1);
+});

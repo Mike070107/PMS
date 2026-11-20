@@ -2142,7 +2142,7 @@ function parkingSearchError(input: string): string | null {
   if (/^(?:(?:198|228)[/-])?\d{1,2}[/-]\d{2,4}(?:[/-]\d+)?$/.test(address)) return null;
   const compact = term.replace(/\s+/g, '').toUpperCase();
   if (/^[\u4e00-\u9fff][A-Z][A-Z0-9挂学警港澳]{5,6}$/.test(compact)) return null;
-  if (/^[A-Z0-9]{4,6}$/.test(compact)) return null;
+  if (/^[A-Z0-9]{4,7}$/.test(compact)) return null;
   const digits = term.replace(/[\s-]/g, '');
   if (/^\d{7,11}$/.test(digits) || /^[\u4e00-\u9fff·]{2,20}$/.test(term)) return null;
   if (/^\d{1,6}$/.test(digits)) return '数字信息太少：查房号请输入“楼栋/室”，如 6/502；查车牌尾号至少输入 4 位；查电话至少输入 7 位';

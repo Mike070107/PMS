@@ -155,3 +155,10 @@ Web 金额控件隐藏步进并关闭滚轮改值；Chrome 合成原生与 Ant �
 ## 新办车牌下载超时后的重试核对
 - 已修正 API 重试复用失败回执及助手误用 P_Download。确认依据见本机 D:/PMS-Parking-Analyze.json 中 Add_DownloadCard；通道成功写 Car_Download.Car_Zt=0，全部确认后发行表 Car_Zt=0。人工重试按原任务车辆主键、车牌、有效期、授权和旧库汇总状态只读核对。
 - API tsc 与 paid-registration.test.ts 17 项通过；助手 Release 编译和 --self-test 退出 0。当前 Windows 身份不能登录现场 SQL，未读取该笔通道实时值，未发布或修改生产流水。
+
+
+## 2026-11-20 22:55 生产核对及商铺停车开发验证
+- 已授权整批发布。Web 2.0.20261120-224833 / 3f38e04b，API api-100f5d8 / 100f5d8e，助手共用清单 2.6.4。已读生产 release.json、API health 和更新清单，数据库 up，API 配置指纹与发布前一致。设备页枫桦停车网关仍报 2.6.3。原停车任务未人工重发。耗时约371秒，见 artifacts/release-checks/publish-20261120-225434-13624-timings.json。
+- 回退依据：/opt/pms-repair/web.bak.1795186384、/opt/pms-backups/api/before-100f5d8e-dist.tgz、downloads/pms-data-sync-assistant/latest.previous.json。仅回退对应程序文件，保留现有运行配置与数据。
+- 开发验证、未追加发布：精确车牌和 PMS 房产绑定回查、商铺地址新办及原任务幂等、上下文预填小区和明确的收费档位、七位新能源车牌片段、续期调整原因、待审核/人工状态的静态提示。助手开发版 2.6.5。API 两个相关测试文件 40 项通过；Web 六个相关测试文件 19 项通过，另两文件 8 项通过（含重复测试），实测 Chrome 1440/375 重新打开商铺，含有效期、非本户车辆隔离；API tsc、独立助手 Release 构建和自检通过。合成业务数据，无生产收费或下发。
+- 现场案例：原收据 PK202611202252232375 已收款，729 商铺的车牌浙F18U8U 待处理。新办在旧版地址转换处抛错，早于停车任务创建。未替现场重试，真实旧库写入及设备放行未验。

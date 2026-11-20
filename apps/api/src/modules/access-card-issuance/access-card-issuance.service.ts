@@ -4751,6 +4751,7 @@ function operationChanges(task: ParkingOperation): ParkingHistoryChange[] {
     ['plate', '车牌', p.plate, p.newPlate || p.plate],
     ['owner', '绑定用户', p.previousOwnerName || p.previousOwnerId, p.ownerName || p.ownerId],
     ['endDate', '到期日期', p.previousEndDate, p.endDate],
+    ...(task.kind === 'renew_vehicle' && p.customReason ? [['customReason', '调整原因', null, p.customReason] as [string, string, unknown, unknown]] : []),
     ['effective', '车库授权', p.previousGarages, p.garages || p.effective],
   ];
   return pairs.filter(([, , before, after]) => textValue(before) !== null || textValue(after) !== null)

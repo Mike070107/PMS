@@ -216,6 +216,9 @@ export class BusinessService {
     const parts = [strip(building?.lane), strip(building?.buildingNo), strip(house.roomNo)].filter(Boolean);
     const room = parts.join('/');
     const targets = targetsForCommunity(community?.name ?? null);
+    const vehicles = await this.vehicleRepo.find({
+      where: { tenantId, houseId, status: 'active' }, select: { plateNo: true },
+    });
     const parks = [...new Map(targets.filter((t) => t.system === 'deliyun').map((t) => [t.deliyunPark!, t])).values()];
     const deliyun = await Promise.all(parks.map(async (t) => {
       try {
@@ -228,7 +231,7 @@ export class BusinessService {
     const localDatabases = [...new Set(targets.filter((t) => t.system === 'local').map((t) => t.database!))];
     return {
       houseId, room, communityId: community?.id ?? null, communityName: community?.name ?? null,
-      targets, deliyun, localDatabases,
+      targets, deliyun, localDatabases, boundPlates: vehicles.map(v => v.plateNo),
       /** 本地库查询词：旧库住户名里存的是 198-4-201 / 198/06/302 这类房号 */
       roomTerm: parts.length >= 2 ? parts.join('/') : null,
     };
@@ -495,6 +498,11 @@ export class BusinessService {
       .andWhere(
         q
           ? new Brackets((sub) => {
+              const shop = q.match(/^(\d+)\s*[/／-]?\s*商铺$/);
+              if (shop) {
+                sub.where('b.building_no = :shopNo AND h.room_no = :shopRoom', { shopNo: shop[1], shopRoom: '商铺' });
+                return;
+              }
               if (addr) {
                 sub.where(addr.allHouseIds.length ? 'h.id IN (:...addrHouseIds)' : '1=0', { addrHouseIds: addr.allHouseIds })
                   .orWhere('u.name ILIKE :kw', { kw: `%${q}%` });

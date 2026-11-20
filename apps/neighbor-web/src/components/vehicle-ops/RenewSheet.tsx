@@ -74,6 +74,7 @@ export default function RenewSheet({
   const [ratesErr, setRatesErr] = useState('');
   const [months, setMonths] = useState(1);
   const [monthsValid, setMonthsValid] = useState(true);
+  const [reason, setReason] = useState('');
   const [amountStr, setAmountStr] = useState('');
   const [endOverride, setEndOverride] = useState('');
   const [running, setRunning] = useState(false);
@@ -123,7 +124,7 @@ export default function RenewSheet({
   const context = JSON.stringify([plate, targets.map(r => [r.database, r.fields]), identity]);
   const [formContext, setFormContext] = useState(context);
   useEffect(() => {
-    setFormContext(context); setMonths(1); setMonthsValid(true); setAmountStr(''); setEndOverride(''); setErr(''); setLog([]);
+    setFormContext(context); setMonths(1); setMonthsValid(true); setAmountStr(''); setEndOverride(''); setReason(''); setErr(''); setLog([]);
     planRef.current = loadPlan(plate); submitted.current = !!planRef.current; setCanRetryCivil(false);
     if (submitted.current) setErr('这张车牌有已提交的续期，先核对原任务；结果未知时禁止重新收费。');
     setRuleId(null); setQuote(null); setQuoteError(''); quoteGeneration.current++;
@@ -165,7 +166,7 @@ export default function RenewSheet({
   const rateAmount = quote?.key === quoteKey ? quote.value.amountCents / 100 : null;
   const manualAmount = amountStr.trim() !== '';
   const amount = manualAmount ? (/^\d+(?:\.\d{1,2})?$/.test(amountStr) ? Number(amountStr) : NaN) : endOverride ? null : rateAmount;
-  const selectRule = (value: string) => { quoteGeneration.current++; setRuleId(value ? Number(value) : null); setQuote(null); setQuoteError(''); setAmountStr(''); setEndOverride(''); };
+  const selectRule = (value: string) => { quoteGeneration.current++; setRuleId(value ? Number(value) : null); setQuote(null); setQuoteError(''); setAmountStr(''); setEndOverride(''); setReason(''); };
 
   const entryAuthorized = !garage || (garage === 'main' ? garageState(rows, GARAGES.find(g => g.key === 'main')!).authorized : !!civil?.civilDefenseAuthorized);
   const [reviewed, setReviewed] = useState(false);
@@ -173,7 +174,9 @@ export default function RenewSheet({
   const amountIssue = amount === null || !Number.isFinite(amount) || amount < 0 || amount > 1000000
     ? '请输入有效实收金额，免费请填 0' : '';
   const formRef = useRef<HTMLDivElement>(null);
-  const canSubmit = !!selectedRule && entryAuthorized && cloudKnown && (garage !== 'civil' || syncCivil) && new Set(targets.map(t => t.database)).size === targets.length && formContext === context && targets.length > 0 && !running && !submitted.current && monthsValid && Number.isInteger(months) && months >= 1 && months <= 60 && amount !== null && Number.isFinite(amount) && amount >= 0 && amount <= 1000000 && /^\d{4}-\d{2}-\d{2}$/.test(newEnd) && dayjs(newEnd).isValid() && dayjs(newEnd).format('YYYY-MM-DD') === newEnd && (!!endOverride || !baseEnd || newEnd > baseEnd);
+  const needsReason = !!endOverride || (manualAmount && amount !== rateAmount);
+  const reasonMissing = needsReason && !reason.trim();
+  const canSubmit = !reasonMissing && !!selectedRule && entryAuthorized && cloudKnown && (garage !== 'civil' || syncCivil) && new Set(targets.map(t => t.database)).size === targets.length && formContext === context && targets.length > 0 && !running && !submitted.current && monthsValid && Number.isInteger(months) && months >= 1 && months <= 60 && amount !== null && Number.isFinite(amount) && amount >= 0 && amount <= 1000000 && /^\d{4}-\d{2}-\d{2}$/.test(newEnd) && dayjs(newEnd).isValid() && dayjs(newEnd).format('YYYY-MM-DD') === newEnd && (!!endOverride || !baseEnd || newEnd > baseEnd);
 
   const verify = async (plan: RenewalPlan) => {
     const readback = await freshRows(plan.plate);
@@ -289,6 +292,7 @@ export default function RenewSheet({
             ruleId: selectedRule!.id,
             communityId,
             customEndDate: !!endOverride,
+            ...(needsReason ? { customReason: reason.trim() } : {}),
           },
         }, op => {
           plan.locals[i].id = op.id; plan.locals[i].status = op.status; storePlan(plan);
@@ -322,12 +326,13 @@ export default function RenewSheet({
         </label>
         <label>收费车型
           <select className="in" aria-label="续期车辆类别" style={{ width: '100%', marginTop: 6 }} value={selectedRule?.id ?? ''} disabled={running || submitted.current || communityId == null} onChange={e => { ruleEdited.current = true; selectRule(e.target.value); }}>
-            <option value="">请先选择车辆类别</option>{applicableRules.map(r => <option key={r.id} value={r.id}>{r.config?.vehicleClass || r.name}</option>)}
+            <option value="">{communityId && !savedClass.value && ['住户车', '租户车'].includes(identity)
+              ? `请选择${identity}收费档位` : '请选择收费车型'}</option>{applicableRules.map(r => <option key={r.id} value={r.id}>{r.config?.vehicleClass || r.name}</option>)}
           </select>
         </label>
         </div><h3>续期时长</h3>
         <RenewalMonths value={months} disabled={running || submitted.current || !selectedRule} onValidityChange={setMonthsValid}
-          onChange={m => { quoteGeneration.current++; setQuote(null); setMonths(m); setMonthsValid(true); setAmountStr(''); setEndOverride(''); }} />
+          onChange={m => { quoteGeneration.current++; setQuote(null); setMonths(m); setMonthsValid(true); setAmountStr(''); setEndOverride(''); setReason(''); }} />
 
         <div className="renew-date-grid">
           <div><small>当前到期</small><b>{baseEnd || '尚无到期日'}</b></div>
@@ -345,6 +350,12 @@ export default function RenewSheet({
             {reviewed && amountIssue ? amountIssue : endOverride ? '自定义日期，请填写本次实收金额' : quoteError || (rateAmount == null ? '等待试算' : `标准 ¥${rateAmount}`)}
           </small>
         </div>
+        {needsReason && <label className="renew-reason">调整原因（必填）
+          <input className="in" aria-label="续期调整原因" aria-required="true"
+            aria-invalid={reviewed && reasonMissing} aria-describedby={reviewed && reasonMissing ? 'renew-reason-error' : undefined}
+            maxLength={200} value={reason} disabled={running || submitted.current} onChange={e => setReason(e.target.value)} />
+          {reviewed && reasonMissing && <small className="renew-error" role="alert" id="renew-reason-error">请填写调整原因</small>}
+        </label>}
         {/* 人防只在开通时才有意义：没开通就不查、不等、不写德立云 */}
         {civil?.civilDefenseAuthorized ? (
           <label className="note" style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'flex-start', background: 'var(--bg)', color: 'var(--ink2)', fontSize: 13, cursor: 'pointer' }}>
@@ -371,10 +382,10 @@ export default function RenewSheet({
           {canRetryCivil ? <button className="btn" disabled={running} onClick={() => void retryCivil()}>只补办人防（不重复收费）</button> : null}
         </div> : null}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-          <button className="btn p" style={{ flex: 1 }} disabled={!canSubmit && (running || submitted.current || !selectedRule || (!dateIssue && !(amountIssue && (endOverride || manualAmount))))} onClick={() => {
+          <button className="btn p" style={{ flex: 1 }} disabled={!canSubmit && (running || submitted.current || !selectedRule || (!reasonMissing && !dateIssue && !(amountIssue && (endOverride || manualAmount))))} onClick={() => {
             if (canSubmit) { void run(); return; }
             setReviewed(true);
-            formRef.current?.querySelector<HTMLInputElement>(dateIssue ? '.renew-date-grid input' : 'input[aria-label="续期实收金额"]')?.focus();
+            formRef.current?.querySelector<HTMLInputElement>(dateIssue ? '.renew-date-grid input' : amountIssue ? 'input[aria-label="续期实收金额"]' : 'input[aria-label="续期调整原因"]')?.focus();
           }}>
             <Icon name="cash" size={16} />{running ? '现场执行中…' : submitted.current ? '已提交，请到办理记录核对' : amount === null || !Number.isFinite(amount) ? '确认续期收费' : amount === 0 ? '确认0元续期' : `确认续期收费 ¥${amount}`}
           </button>

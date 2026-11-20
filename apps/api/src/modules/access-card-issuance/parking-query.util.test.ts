@@ -115,6 +115,11 @@ test('停车旧库的多种房号格式统一匹配同一套 PMS 房产', () => 
   assert.equal(parkingPmsHouseKey('198', '06', '0402'), expected);
 });
 
+test('旧房号末尾的新车标注不影响小区与住户匹配', () => {
+  assert.equal(parkingRoomAddress('198/17/201新车')?.key, '198/17/201');
+  assert.equal(parkingRoomAddress('198/17/201新车228/17/201'), null);
+});
+
 test('换车牌是旧库名称的操作说明，不参与 PMS 房产匹配', () => {
   const expected = parkingPmsHouseKey('228', '16', '201');
   for (const value of [
@@ -230,4 +235,12 @@ test('旧库换牌流水可完整回读，普通字段仍受长度限制', () =>
   const [row] = sanitizeParkingRows([{database:'parking2',fields:{ PmsMeta__PlateHistory:json, P_note:'x'.repeat(800) }}]);
   assert.deepEqual(JSON.parse(String(row.fields.PmsMeta__PlateHistory)),events);
   assert.equal(String(row.fields.P_note).length,500);
+});
+test('新能源车牌从四位尾号到七位省份后缀均可查询', () => {
+  for (const term of ['K8206', 'GK8206', 'agk8206']) {
+    assert.deepEqual(parseParkingSearch(term), { kind: 'plate_tail', term: term.toUpperCase() });
+  }
+  assert.equal(parseParkingSearch('8206').kind, 'plate_phone');
+  assert.equal(parseParkingSearch('沪AGK8206').kind, 'plate');
+  assert.throws(() => parseParkingSearch('AAGK8206'));
 });

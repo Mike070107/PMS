@@ -357,9 +357,11 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
       if (!intake || intake.kind !== 'paid' || intake.status !== 'approved' || intake.houseId !== txn.houseId ||
           intake.transactionId !== txn.id || intake.plate !== plate) throw new BadRequestException('新车资料未通过审核或与原收款记录不一致，禁止自动开通');
       if (!plate || !endDate || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || !txn.startDate || !txn.createdBy) throw new BadRequestException('新车登记缺少车牌、有效期或原办理人');
-      const roomMatch = intake.houseLabel.match(/(198|228)弄\s*(\d+)号\s*(\d+)/);
-      if (!roomMatch) throw new BadRequestException('新车房号无法转换为停车库房号，请先核对房产档案');
-      const ownerRoom = roomMatch.slice(1).map(Number).join('/');
+      const address = intake.houseLabel.split('/').slice(1).join('/');
+      const shop = /^(?:(198|228)弄)?(\d{1,5})(?:号|\/)商铺$/.exec(address);
+      const room = intake.houseLabel.match(/(198|228)弄\s*(\d+)号\s*(\d+)/);
+      const ownerRoom = shop ? [shop[1], shop[2], '商铺'].filter(Boolean).join('/') : room?.slice(1).map(Number).join('/');
+      if (!ownerRoom) throw new BadRequestException('停车授权未开通：房产地址无法对应旧车库，请核对后重试原流水');
       const selected = [...new Set(intake.garages)];
       const defs = selected.map(key => findParkingTarget(key));
       if (!defs.length || defs.some(d => !d)) throw new BadRequestException('新车登记未选择有效车库');
