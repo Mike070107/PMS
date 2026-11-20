@@ -28,7 +28,7 @@ test('两库正式车位入口：金额月份日期、分类保存、授权、�
   sheet=await renew();for(const n of [1,2,3,6,12])assert.equal(await sheet.getByRole('button',{name:new RegExp('^'+n+'\\s*个月$')}).count(),1);
   assert.equal(await sheet.getByRole('region',{name:'业务联系人'}).count(),1);
   await sheet.getByRole('button',{name:/^6\s*个月$/}).click();await sheet.locator('input[inputmode="decimal"]').fill('405.25');
-  const end=garage==='civil'?'2027-10-21':'2027-09-19';await sheet.getByLabel('续期结束日期').fill(end);await sheet.getByLabel('续期结束日期').press('Enter');assert.equal(await sheet.getByRole('button',{name:'请填写实收金额',exact:true}).isDisabled(),true,'自定义日期不得套用旧标准金额');
+  const end=garage==='civil'?'2027-10-21':'2027-09-19';await sheet.getByLabel('续期结束日期').fill(end);await sheet.getByLabel('续期结束日期').press('Enter');await sheet.getByRole('button',{name:'确认续期收费',exact:true}).click();assert.equal(await sheet.getByLabel('续期实收金额').getAttribute('aria-invalid'),'true');assert.equal((await writes('createParkingOperation')).length,0,'自定义日期缺金额不能收费');
   await sheet.locator('input[inputmode="decimal"]').fill('412.34');await noOverflow(garage+'-desktop-draft');
   await sheet.getByRole('button',{name:'确认续期收费 ¥412.34',exact:true}).click();await page.getByText('续期已完成并读回核对。档案草稿保留，可继续编辑。',{exact:true}).waitFor();
   const ops=await writes('createParkingOperation');assert.equal(ops.length,1,'存在未授权一期记录也不能续费');assert.equal(ops[0].data.database,'parking2');assert.equal(ops[0].data.payload.endDate,end);assert.equal(ops[0].data.payload.months,6);assert.equal(ops[0].data.payload.amount,412.34);assert.equal(ops[0].data.payload.ruleId,67);
