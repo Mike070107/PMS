@@ -239,8 +239,7 @@ export async function request<T>(options: any): Promise<T> {
   }
   if (/^\/access-card-issuance\/cards\/\d+\/apply-mdb$/.test(options.url)) {
     const id = Number(options.url.split('/')[3]);
-    w.__appliedIds.add(id);
-    return { ok: true, systems: ['iccard'] } as T;
+    return { taskIds: [9000+id], results: [{status:'queued',taskId:9000+id}] } as T;
   }
   if (/^\/access-card-issuance\/cards\/\d+\/grant-boards$/.test(options.url)) {
     w.__lastGrantBuildings = Array.isArray(options.data?.buildingNos) ? options.data.buildingNos.map(String) : [];
@@ -255,12 +254,17 @@ export async function request<T>(options: any): Promise<T> {
     w.__verifyCalls += 1;
     return {
       checkedAt: '2026-11-09T12:00:00+08:00',
-      grantedBuildings: ['6', '7'],
-      message: '已读回 .88 门禁权限表：6、7 号楼',
+      grantedBuildings: w.__noGrant ? [] : [{buildingNo:'6', granted:true}, {buildingNo:'7', granted:true}],
+      message: w.__noGrant ? '门禁权限表中未查到该卡的门栋授权' : '已读回 .88 门禁权限表：6、7 号楼',
     } as T;
   }
   if (/^\/access-card-issuance\/history-authorizations\/\d+$/.test(options.url)) {
     const taskId = Number(options.url.split('/').pop());
+    if (taskId >= 9000) {
+      if (w.__applyFailed) return {id:taskId,status:'failed',error:'未找到唯一实体门'} as T;
+      w.__appliedIds.add(taskId-9000);
+      return {id:taskId,status:'completed'} as T;
+    }
     w.__grantPolls[taskId] = (w.__grantPolls[taskId] ?? 0) + 1;
     const completedIds = [71, 72].filter((id) => (w.__grantPolls[id] ?? 0) >= 2);
     if (completedIds.length === 2) w.__grantDone = true;

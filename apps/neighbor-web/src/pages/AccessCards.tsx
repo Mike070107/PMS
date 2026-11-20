@@ -358,7 +358,7 @@ export function CardRecordsTable({
   canEdit: boolean;
   cardDetails: Record<number, CardDetail>;
   applyBusyIds: Record<number, boolean>;
-  applyState: Record<number, { ok: boolean; error?: string }>;
+  applyState: Record<number, { ok: boolean; error?: string; pendingIds?: number[] }>;
   verifyState: Record<number, VerifyGrantState>;
   expandedId: number | null;
   onToggle: (row: CardRecordView) => void;
@@ -390,10 +390,10 @@ export function CardRecordsTable({
             const incomplete = row.fieldsIncomplete === true;
             const room = String(row.roomLabel || '').replace(/已隐藏/g, '').replace(/^[\s·\-]+/, '') || '—';
             const statusText = row.status || '在用';
-            const applied = applyState[row.id]?.ok === true
-              || (row.appliedSystems?.length ?? 0) > 0
-              || (detail?.appliedSystems?.length ?? 0) > 0;
-            const appliedError = applyState[row.id] && !applyState[row.id].ok ? (applyState[row.id].error || '添加失败') : '';
+            const systems = detail?.appliedSystems ?? row.appliedSystems ?? [];
+            const local = applyState[row.id];
+            const applied = local ? local.ok : (row.accessSystem ? systems.includes(row.accessSystem) : systems.length > 0);
+            const appliedError = local?.error;
             const busy = !!applyBusyIds[row.id];
             return (
               <Fragment key={row.id}>
@@ -418,7 +418,7 @@ export function CardRecordsTable({
                         </button>
                       ) : (
                         <button type="button" className="btn sm ac-apply-btn" data-testid="apply-btn" data-applied="false" disabled={busy} onClick={(event) => { event.stopPropagation(); onApply(row); }}>
-                          {busy ? '添加中…' : '添加到二期门禁系统'}
+                          {busy ? '等待写入回执…' : local?.pendingIds?.length ? '查询写入结果' : appliedError ? '重新添加' : '添加到二期门禁系统'}
                         </button>
                       )}
                       <button className="btn sm ac-grant-btn" onClick={(event) => { event.stopPropagation(); onGrant(row); }}>授权楼栋</button>
@@ -475,7 +475,7 @@ export function CardRecordsTable({
                           {verifyState[row.id]?.grantedBuildings?.length ? (
                             <div className="ac-permission-result ok">核验读回楼栋：{verifyState[row.id]!.grantedBuildings!.join('、')}</div>
                           ) : null}
-                          {verifyState[row.id]?.message ? <div className="ac-permission-result ok">{verifyState[row.id]!.message}</div> : null}
+                          {verifyState[row.id]?.message ? <div className={'ac-permission-result ' + (verifyState[row.id]?.grantedBuildings?.length ? 'ok' : 'dang')} role="status">{verifyState[row.id]!.message}</div> : null}
                           {verifyState[row.id]?.error ? <div className="ac-permission-result dang">{verifyState[row.id]!.error}</div> : null}
                         </div>
                       </div>
@@ -533,7 +533,7 @@ export default function AccessCards() {
   const [historyPage, setHistoryPage] = useState(0);
   const [recentPage, setRecentPage] = useState(0);
   const [applyBusyIds, setApplyBusyIds] = useState<Record<number, boolean>>({});
-  const [applyState, setApplyState] = useState<Record<number, { ok: boolean; error?: string }>>({});
+  const [applyState, setApplyState] = useState<Record<number, { ok: boolean; error?: string; pendingIds?: number[] }>>({});
   const [grantOptions, setGrantOptions] = useState<GrantOption[]>([]);
   const [grantOptionsLoading, setGrantOptionsLoading] = useState(false);
   const [grantOptionsError, setGrantOptionsError] = useState('');
@@ -672,12 +672,29 @@ export default function AccessCards() {
     try {
       // 后端默认按该卡所属系统写入；行上带 accessSystem 时显式传，兼容旧后端。
       const data = card.accessSystem ? { systems: [card.accessSystem] } : {};
-      await request<unknown>({ method: 'POST', url: `/access-card-issuance/cards/${card.id}/apply-mdb`, data });
+      let ids = applyState[card.id]?.pendingIds;
+      if (!ids?.length) {
+        const receipt = await request<{taskIds: number[]; results: Array<{status: string; error?: string}>}>({
+          method: 'POST', url: `/access-card-issuance/cards/${card.id}/apply-mdb`, data,
+        });
+        const failure = receipt.results?.find(item => item.status === 'failed');
+        if (failure || !receipt.taskIds?.length) throw new Error(failure?.error || '未取得写入任务编号');
+        ids = receipt.taskIds;
+      }
+      setApplyState(prev => ({ ...prev, [card.id]: { ok: false, pendingIds: ids } }));
+      const tasks = await pollGrantTasks(ids);
+      if (tasks === 'timeout') throw new Error('尚未收到写入回执');
+      const failed = tasks.find(task => task.status !== 'completed');
+      if (failed) {
+        setApplyState(prev => ({ ...prev, [card.id]: { ok: false, error: failed.error || '写入未完成' } }));
+        await refreshCardDetail(card.id);
+        return;
+      }
       setApplyState((prev) => ({ ...prev, [card.id]: { ok: true } }));
-      await refreshCardDetail(card.id);
+      await refreshCardDetail(card.id).catch(() => undefined);
       toast('已添加到二期门禁系统');
     } catch (e) {
-      setApplyState((prev) => ({ ...prev, [card.id]: { ok: false, error: e instanceof Error && e.message ? e.message : '添加失败' } }));
+      setApplyState((prev) => ({ ...prev, [card.id]: { ...prev[card.id], ok: false, error: e instanceof Error && e.message ? e.message : '添加失败' } }));
     } finally {
       setApplyBusyIds((prev) => ({ ...prev, [card.id]: false }));
     }
@@ -798,12 +815,12 @@ export default function AccessCards() {
   };
 
   const verifyGrant = async (cardId: number) => {
-    setVerifyState((prev) => ({ ...prev, [cardId]: { ...(prev[cardId] ?? {}), busy: true, error: '' } }));
+    setVerifyState((prev) => ({ ...prev, [cardId]: { busy: true } }));
     try {
-      const raw = await request<{ checkedAt?: string | null; grantedBuildings?: string[]; message?: string | null; success?: boolean; ok?: boolean }>({
+      const raw = await request<{ checkedAt?: string | null; grantedBuildings?: Array<string | { buildingNo: string; granted?: boolean }>; message?: string | null }>({
         method: 'POST', url: `/access-card-issuance/cards/${cardId}/verify-grant`,
       });
-      const granted = Array.isArray(raw?.grantedBuildings) ? raw.grantedBuildings.map(String) : [];
+      const granted = Array.isArray(raw?.grantedBuildings) ? Array.from(new Set(raw.grantedBuildings.map(item => typeof item === 'string' ? item : item.granted !== false ? item.buildingNo : '').filter(Boolean))) : [];
       setVerifyState((prev) => ({
         ...prev,
         [cardId]: {
@@ -818,7 +835,7 @@ export default function AccessCards() {
     } catch (e) {
       setVerifyState((prev) => ({
         ...prev,
-        [cardId]: { ...(prev[cardId] ?? {}), busy: false, error: e instanceof Error && e.message ? e.message : '权限核验失败，请稍后重试' },
+        [cardId]: { busy: false, error: e instanceof Error && e.message ? e.message : '权限核验失败，请稍后重试' },
       }));
     }
   };

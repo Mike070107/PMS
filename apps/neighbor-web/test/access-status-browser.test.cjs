@@ -379,6 +379,10 @@ test('门禁操作区：已添加变绿、授权轮询完成自动关弹窗、�
     assert.equal(await js("!!document.querySelector('.ac-detail-row')"), false, '默认不应展开详情');
     assert.equal(await js("!!document.querySelector('[data-testid=task-log]')"), false, '默认不显示日志');
     assert.ok((await js("document.querySelector('[data-card-id=\"2\"]').children[0].textContent")).includes('▸'));
+    await js("window.__applyFailed=true;document.querySelector('[data-card-id=\"3\"] [data-testid=apply-btn]').click()");
+    await waitFor("document.querySelector('[data-card-id=\"3\"] .ac-apply-error')?.textContent.includes('未找到唯一实体门')", '写入回执失败');
+    assert.equal(await js("document.querySelector('[data-card-id=\"3\"] [data-testid=apply-btn]').textContent.trim()"), '重新添加');
+    await js("window.__applyFailed=false");
     // 已添加：绿色实心按钮、disabled、状态列不再挂重复 tag。
     const appliedBtn = await js("document.querySelector('[data-card-id=\"1\"] [data-testid=apply-btn]')?.outerHTML");
     assert.ok(appliedBtn.includes('已添加二期门禁系统'), '已添加按钮文案');
@@ -438,7 +442,11 @@ test('门禁操作区：已添加变绿、授权轮询完成自动关弹窗、�
     await js("document.querySelector('.ac-detail-row [data-testid=verify-grant-btn]').click()");
     await waitFor("window.__calls.some((item) => item.method === 'POST' && item.url === '/access-card-issuance/cards/2/verify-grant')", 'verify-grant 请求');
     await waitFor("(document.querySelector('[data-testid=permission-block]')?.textContent || '').includes('已读回 .88 门禁权限表')", '核验结果');
+    await waitFor("document.querySelector('.ac-permission-result.ok')?.textContent.includes('6、7')", '真实读回楼号');
     await screenshot('access-grant-permission-1440.png');
+    await js("window.__noGrant = true; document.querySelector('.ac-detail-row [data-testid=verify-grant-btn]').click()");
+    await waitFor("document.querySelector('.ac-permission-result.dang')?.textContent.includes('未查到') && !document.querySelector('.ac-permission-result.ok')", '无授权提示为失败色');
+
 
     // 授权失败：保持弹窗，显示中文逐栋失败与「重新提交」。
     await js("window.__grantMode = 'fail'");
