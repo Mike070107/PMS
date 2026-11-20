@@ -137,7 +137,7 @@ namespace Pms.AccessCardAgent
                         buildingId = target.id, buildingNo = target.buildingNo, accessSystem = "iccard",
                         status = DoorOperationSuccessStatus(task.operation),
                         controller = record.ControllerName + " / SN " + record.ControllerSn,
-                        door = record.DoorName, protocol = "iCCard 0x7E / UDP",
+                        door = record.DoorName, protocol = "iCCard 0x7E / " + record.CommMode,
                         acknowledgement = "控制器已确认，响应 " + Limit(response, 80)
                     } };
                 }
@@ -474,7 +474,7 @@ namespace Pms.AccessCardAgent
                             status = "controller_uploaded",
                             controller = record.ControllerName + " / SN " + record.ControllerSn,
                             door = record.DoorName,
-                            protocol = "iCCard 0x7E / UDP",
+                            protocol = "iCCard 0x7E / " + record.CommMode,
                             acknowledgement = String.IsNullOrWhiteSpace(response) ? "控制器已确认" : "控制器已确认，响应 " + Limit(response, 80)
                         });
                     }
@@ -543,7 +543,7 @@ namespace Pms.AccessCardAgent
                         if (result != 0) throw new InvalidOperationException(
                             target.buildingNo + "号楼控制器撤销失败（" + record.IpAddress + ":" + record.Port +
                             "，返回码 " + result.ToString(CultureInfo.InvariantCulture) + "）");
-                        output.Add(RemovedResult(target, "iccard", record, response, "iCCard 0x7E / UDP"));
+                        output.Add(RemovedResult(target, "iccard", record, response, "iCCard 0x7E / " + record.CommMode));
                     }
                     catch (Exception exception) { output.Add(RemoveFailedResult(target, "iccard", exception)); }
                 }
@@ -601,9 +601,9 @@ namespace Pms.AccessCardAgent
                             Password = reader["f_Password"] == DBNull.Value ? 0L : Convert.ToInt64(reader["f_Password"], CultureInfo.InvariantCulture),
                             ControllerSn = Convert.ToInt64(reader["f_ControllerSN"], CultureInfo.InvariantCulture),
                             ControllerName = Convert.ToString(reader["f_ControllerName"], CultureInfo.InvariantCulture),
-                            CommMode = Convert.ToString(reader["f_ComPort"], CultureInfo.InvariantCulture),
+                            CommMode = Convert.ToString(reader["f_ComPort"], CultureInfo.InvariantCulture).Trim().ToUpperInvariant(),
                             IpAddress = Convert.ToString(reader["f_IP"], CultureInfo.InvariantCulture),
-                            Port = Convert.ToInt32(reader["f_PORT"], CultureInfo.InvariantCulture),
+                            Port = reader["f_PORT"] == DBNull.Value ? 0 : Convert.ToInt32(reader["f_PORT"], CultureInfo.InvariantCulture),
                             DoorName = Convert.ToString(reader["f_DoorName"], CultureInfo.InvariantCulture)
                         };
                     }
@@ -632,9 +632,9 @@ namespace Pms.AccessCardAgent
                         DoorDelay = reader["f_DoorDelay"] == DBNull.Value ? 5L : Convert.ToInt64(reader["f_DoorDelay"], CultureInfo.InvariantCulture),
                         ControllerSn = Convert.ToInt64(reader["f_ControllerSN"], CultureInfo.InvariantCulture),
                         ControllerName = Convert.ToString(reader["f_ControllerName"], CultureInfo.InvariantCulture),
-                        CommMode = Convert.ToString(reader["f_ComPort"], CultureInfo.InvariantCulture),
+                        CommMode = Convert.ToString(reader["f_ComPort"], CultureInfo.InvariantCulture).Trim().ToUpperInvariant(),
                         IpAddress = Convert.ToString(reader["f_IP"], CultureInfo.InvariantCulture),
-                        Port = Convert.ToInt32(reader["f_PORT"], CultureInfo.InvariantCulture),
+                        Port = reader["f_PORT"] == DBNull.Value ? 0 : Convert.ToInt32(reader["f_PORT"], CultureInfo.InvariantCulture),
                         DoorName = Convert.ToString(reader["f_DoorName"], CultureInfo.InvariantCulture)
                     };
                 }
@@ -1392,6 +1392,11 @@ namespace Pms.AccessCardAgent
 
             public long Send(string commMode, string ipAddress, int port, string frame, out string response)
             {
+                var ipMode = commMode == "IP";
+                if (!ipMode && !System.Text.RegularExpressions.Regex.IsMatch(commMode ?? "", @"^COM[1-9]\d*$"))
+                    throw new InvalidOperationException("iCCard 控制器通信方式无效，请核对 f_ComPort");
+                if (ipMode && (String.IsNullOrWhiteSpace(ipAddress) || port <= 0 || port > 65535))
+                    throw new InvalidOperationException("iCCard 控制器 IP 或端口未配置");
                 var operation = Activator.CreateInstance(_operateType);
                 try
                 {
@@ -1408,7 +1413,7 @@ namespace Pms.AccessCardAgent
                         return openResult;
                     }
 
-                    var validPort = Convert.ToInt32(CallTool("getValidIPPort", port.ToString(CultureInfo.InvariantCulture)), CultureInfo.InvariantCulture);
+                    var validPort = ipMode ? Convert.ToInt32(CallTool("getValidIPPort", port.ToString(CultureInfo.InvariantCulture)), CultureInfo.InvariantCulture) : 0;
                     var getArguments = new object[] { commMode, ipAddress, frame, 5400, Convert.ToInt32(openArguments[4]), "", validPort };
                     var result = Convert.ToInt64(InvokeInstance(operation, "comm_get", getArguments), CultureInfo.InvariantCulture);
                     response = Convert.ToString(getArguments[5], CultureInfo.InvariantCulture);

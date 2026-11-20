@@ -37,8 +37,16 @@ try {
     ExecSql "INSERT INTO t_b_Door VALUES (22,'45号大门',16)"
     ExecSql "INSERT INTO t_b_Controller VALUES (18,'45号大门',0)"
     ExecSql "INSERT INTO t_b_Door VALUES (25,'45号大门停用',18)"
+    ExecSql "UPDATE t_b_Door SET f_DoorName='设备一号' WHERE f_DoorID=22"
+    ExecSql "INSERT INTO t_b_Controller VALUES (19,'46号大门',1)"
+    ExecSql "INSERT INTO t_b_Door VALUES (27,'45号大门',19)"
+    ExecSql "INSERT INTO t_b_Controller VALUES (20,'45号大门600001',1)"
+    ExecSql "INSERT INTO t_b_Door VALUES (28,'历史门',20)"
     CheckDoors $false
     ExecSql "INSERT INTO t_b_Door VALUES (26,'45号大门侧门',16)"
+    CheckDoors $true
+    ExecSql "DELETE FROM t_b_Door WHERE f_DoorID=26"
+    ExecSql "INSERT INTO t_b_Controller VALUES (21,'45号大门',1)"
     CheckDoors $true
     Write-Output 'PASS: writer and uploader resolve only the active door and reject ambiguous active doors.'
 } finally {

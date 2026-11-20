@@ -251,7 +251,7 @@ namespace Pms.AccessCardAgent
                 "INNER JOIN t_d_Privilege AS P ON U.f_ConsumerID=P.f_ConsumerID) " +
                 "INNER JOIN t_b_Door AS D ON P.f_DoorID=D.f_DoorID) " +
                 "INNER JOIN t_b_Controller AS C ON D.f_ControllerID=C.f_ControllerID " +
-                "WHERE I.f_CardNO=?";
+                "WHERE I.f_CardNO=? AND C.f_Enabled <> 0";
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var variant in IcCardNumber.QueryVariants(cardNo))
             {
@@ -271,7 +271,7 @@ namespace Pms.AccessCardAgent
                             {
                                 wgCardNo = cardNo,
                                 accessSystem = "iccard",
-                                buildingNo = ExtractBuildingNo(doorName, controller),
+                                buildingNo = IcControllerBuilding(controller),
                                 controller = EmptyToNull(controller),
                                 door = doorName,
                                 sourceTable = "t_d_Privilege"
@@ -571,7 +571,7 @@ namespace Pms.AccessCardAgent
                     if (!reader.Read()) throw new InvalidOperationException("iCCard 门 " + doorId + " 写入后无法读回");
                     var doorName = Text(reader, "f_DoorName");
                     var controllerName = Text(reader, "f_ControllerName");
-                    if (NormalizeBuilding(ExtractBuildingNo(doorName, controllerName)) != NormalizeBuilding(buildingNo))
+                    if (IcControllerBuilding(controllerName) != NormalizeBuilding(buildingNo))
                         throw new InvalidOperationException(buildingNo + "号楼门权限读回到其他楼栋，事务已取消");
                     return doorId + ":" + doorName + (String.IsNullOrWhiteSpace(controllerName) ? "" : " / " + controllerName);
                 }
@@ -633,13 +633,21 @@ namespace Pms.AccessCardAgent
             return matches.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         }
 
+        private static string IcControllerBuilding(string name)
+        {
+            var match = Regex.Match((name ?? "").Trim(), @"^(\d{1,3})号大门$");
+            return match.Success ? NormalizeBuilding(match.Groups[1].Value) : null;
+        }
+
         private static int[] ResolveIcCardDoors(OleDbConnection connection, OleDbTransaction transaction, string buildingNo)
         {
             var normalized = NormalizeBuilding(buildingNo);
             var matches = new List<int>();
+            int? controllerId = null;
             const string sql =
-                "SELECT D.f_DoorID,D.f_DoorName,C.f_ControllerName " +
-                "FROM t_b_Door AS D INNER JOIN t_b_Controller AS C ON D.f_ControllerID=C.f_ControllerID WHERE C.f_Enabled <> 0";
+                "SELECT C.f_ControllerID,C.f_ControllerName,D.f_DoorID " +
+                "FROM t_b_Controller AS C LEFT JOIN t_b_Door AS D ON C.f_ControllerID=D.f_ControllerID " +
+                "WHERE C.f_Enabled <> 0";
             using (var command = connection.CreateCommand())
             {
                 command.Transaction = transaction;
@@ -648,10 +656,12 @@ namespace Pms.AccessCardAgent
                 {
                     while (reader.Read())
                     {
-                        var doorName = Text(reader, "f_DoorName");
-                        var controller = Text(reader, "f_ControllerName");
-                        if (NormalizeBuilding(ExtractBuildingNo(doorName, controller)) == normalized)
-                            matches.Add(Convert.ToInt32(reader["f_DoorID"]));
+                        if (IcControllerBuilding(Text(reader, "f_ControllerName")) != normalized) continue;
+                        var id = Convert.ToInt32(reader["f_ControllerID"]);
+                        if (controllerId.HasValue && controllerId.Value != id)
+                            throw new InvalidOperationException(buildingNo + "号楼不能唯一识别启用的控制器");
+                        controllerId = id;
+                        if (reader["f_DoorID"] != DBNull.Value) matches.Add(Convert.ToInt32(reader["f_DoorID"]));
                     }
                 }
             }
