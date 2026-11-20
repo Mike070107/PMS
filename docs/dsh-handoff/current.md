@@ -91,3 +91,10 @@
 - 11 月 20 日 PMS 的 MIS 镜像只读核对：01 为 34,746 元/168 条，04 为 11,100 元/72 条，14 为 1,620 元/24 条；02 租金 8,190 元排除。同日查询时 PMS business_transactions 为 0 条。这是当时镜像快照，非全天封账。
 - 临停未接通。现场报表显示二期临时现金 230 元、非现金 0 元、全部现金 590 元。现有助手只查出场应收，当前机器已安装助手的登记连接为 0，旧库的只读报表定义/实收字段待核验。另见 docs/parking-management-implementation.md。待打通后分别核对一期二期、同窗逐笔合计及权限范围。
 - Web 构建、API 类型检查通过。API 的 today-income、mis-mirror、bill-mirror 21 项回归通过；node --test test/today-income-browser.test.cjs 在 Chrome 1440/923/390 宽度验证逐项金额边界、五栏明细和翻页，数据为合成。未做生产部署或现场操作。
+
+
+## 收银台待收费列表、车位管理费与捷顺发卡历史（2026-11-20）
+
+- 本次限 Web。待缴项横排展示项目、账期、备注和金额；窄栏换行，空备注收起。MIS 14 停车管理费独立为「车位管理费」，待缴、历史和收款篮按同一分类筛选，仍以原单 ID 办理。
+- 收银台与门禁发卡共用本户捷顺卡清单、分页及操作抽屉，按小区、弄、楼、室请求现有现场助手接口。未触发真实收款、发卡或门禁授权。
+- pnpm build 通过；node --test test/business-owner-contact-browser.test.cjs test/mis-remarks.test.cjs test/cashier-household-isolation.test.cjs 共 9 项通过。access-status-browser.test.cjs 的发卡历史翻页用例通过。Chrome 合成验收覆盖 1440 和 390 宽、分项选择和本户卡清单；截图位于 outputs/business-owner-entry-implemented/cashier-garage-desktop.png 和 cashier-card-mobile.png。未部署生产，未核对真实住户现场回传。

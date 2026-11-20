@@ -1,5 +1,5 @@
 import RegistrationPermit from '@/components/cashier/RegistrationPermit';
-import { formatBeijingDateTime } from '@pms/shared-types';
+import { HouseholdCardHistory } from './AccessCards';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import OwnerBusinessContact from '@/components/OwnerBusinessContact';
 import ParkingTab, { payCode, type ParkingCart } from '@/components/cashier/ParkingTab';
@@ -17,16 +17,20 @@ import { intakeStatus, TXN_STATUS, type Intake } from '@/components/cashier/NewP
 import { ErrorNote, Loading, toast } from '@/components/ui';
 import { useSession } from '@/lib/auth';
 import { dayjs, money, maskPhone } from '@/lib/format';
-import { accessStatusLabel, legacyStatusLabel, rawTitle } from '@/lib/access-card-status';
+import './cashier-bills.css';
 import NewOrderSheet, { type RepairPrefill } from '@/components/NewOrderSheet';
 import FeeIcon from '@/components/FeeIcon';
 import ToneIcon from '@/components/ToneIcon';
 import '@/components/cashier/mis-remarks.css';
 
 type ServiceType = 'parking_monthly' | 'access_card';
-type Tab = 'wy' | 'bw' | 'pk' | 'ac';
-/** 泊位费和物业费同在 MIS 账单里，按费项名区分，分成两个同级收费项 */
-const isBerth = (feeName: string) => /泊位/.test(feeName);
+const billLabels = { wy: '物业费', bw: '泊位费', garage: '车位管理费' } as const;
+type BillTab = keyof typeof billLabels;
+type Tab = BillTab | 'pk' | 'ac';
+function billTab(feeName: string, feeCode?: string): BillTab {
+  if (feeCode === '14' || /^(停车|车位|车辆)管理费$/.test(feeName.trim())) return 'garage';
+  return feeCode === '04' || /泊位/.test(feeName) ? 'bw' : 'wy';
+}
 
 interface BusinessRule {
   id: number; serviceType: ServiceType; name: string; communityId: number | null;
@@ -43,7 +47,7 @@ interface AccessCard { id: number; cardNo: string; houseId: number; ownerId: num
 interface SearchResult { houses: HouseHit[]; vehicles: Vehicle[]; accessCards: AccessCard[] }
 interface Estimate { unitPriceCents: number; quantity: number; startDate: string | null; endDate: string | null; amountCents: number; summary: string }
 /** 物业费/泊位费应收：实时读 MIS（/fees/mis/bills），id 是 MIS 侧单据号 */
-interface Bill { id: string; feeName: string; period: string; amountCents: number; status: string; remark?: string | null }
+interface Bill { id: string; feeCode: string; feeName: string; period: string; amountCents: number; status: string; remark?: string | null }
 interface MisRow { id: string; feeName: string | null; feeCode: string; period: string; amountCents: number; status: string; remark?: string | null }
 
 interface ResultTask { icon: IconName; title: string; note: string; state: 'done' | 'queued' }
@@ -95,7 +99,6 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
 
   const [tab, setTab] = useState<Tab>('wy');
   const [parkPlate, setParkPlate] = useState<string | null>(null);
-  const [cardHistory, setCardHistory] = useState<Array<{ id: number; sequence: number; roomLabel: string; icCardNo: string | null; wgCardNo: string | null; issuedAt: string | null; accessStatus: string; legacySyncStatus: string }> | null>(null);
   const [repairOpen, setRepairOpen] = useState(false);
   const [selBills, setSelBills] = useState<string[]>([]);
   const [billErr, setBillErr] = useState('');
@@ -246,7 +249,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
       .then((r) => {
         if (revision !== navigationRevision.current) return;
         const own: Bill[] = r.rows
-          .map((m) => ({ id: m.id, feeName: m.feeName || m.feeCode, period: m.period, amountCents: m.amountCents, status: m.status, remark: m.remark }))
+          .map((m) => ({ id: m.id, feeCode: m.feeCode, feeName: m.feeName || m.feeCode, period: m.period, amountCents: m.amountCents, status: m.status, remark: m.remark }))
           .sort((a, b) => a.period.localeCompare(b.period));
         setBills(own); setSelBills(own.map((b) => b.id));
       })
@@ -313,26 +316,23 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
   };
 
   const cardRule = useMemo(() => rules.find((r) => r.serviceType === 'access_card' && (r.communityId == null || r.communityId === house?.communityId)), [rules, house]);
-  const cards = useMemo(() => (result?.accessCards ?? []).filter((c) => c.houseId === house?.id), [result, house]);
-  const wyBills = useMemo(() => (bills ?? []).filter((b) => !isBerth(b.feeName)), [bills]);
-  const bwBills = useMemo(() => (bills ?? []).filter((b) => isBerth(b.feeName)), [bills]);
-  const tabBills = tab === 'bw' ? bwBills : wyBills;
-  const tabArrears = tabBills.reduce((s, b) => s + b.amountCents, 0);
-  const isBillTab = tab === 'wy' || tab === 'bw';
-  const billLabel = tab === 'bw' ? '泊位费' : '物业费';
+  const historyHouse = useMemo(() => house?.communityId ? {
+    houseId: house.id, communityId: house.communityId, communityName: house.communityName,
+    lane: house.lane, buildingNo: house.buildingNo, roomNo: house.roomNo,
+  } : null, [house]);
+  const groups = useMemo(() => {
+    const result: Record<BillTab, Bill[]> = { wy: [], bw: [], garage: [] };
+    for (const bill of bills ?? []) result[billTab(bill.feeName, bill.feeCode)].push(bill);
+    return result;
+  }, [bills]);
+  const isBillTab = tab === 'wy' || tab === 'bw' || tab === 'garage';
+  const tabBills = isBillTab ? groups[tab] : [];
+  const billLabel = isBillTab ? billLabels[tab] : '';
+  const tabArrears = tabBills.reduce((sum, bill) => sum + bill.amountCents, 0);
   const selBillRows = useMemo(() => tabBills.filter((b) => selBills.includes(b.id)), [tabBills, selBills]);
   const selBillTotal = useMemo(() => selBillRows.reduce((s, b) => s + b.amountCents, 0), [selBillRows]);
 
-  // 门禁卡：读这一户的发卡历史（旧页「门禁发卡」的历史卡片区块同一份数据）
-  useEffect(() => {
-    if (tab !== 'ac' || !house) { setCardHistory(null); return undefined; }
-    let alive = true;
-    setCardHistory(null);
-    accessCardIssuance.houseContext(house.id)
-      .then((c) => { if (alive) setCardHistory((c?.history ?? []) as never); })
-      .catch(() => { if (alive) setCardHistory([]); });
-    return () => { alive = false; };
-  }, [tab, house?.id]);
+
 
   // 服务端试算（金额不在端上乘）
   useEffect(() => {
@@ -541,43 +541,40 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
             </div>}
 
             {!embedded ? <OwnerBusinessContact key={house.id} houseId={house.id} preferredOwnerId={house.owner?.id} source="cashier" onSaved={owner => { setHouse(h => h && h.id === house.id && h.owner?.id === owner.id ? { ...h, owner: {id:owner.id,name:owner.name,phone:owner.phone} } : h); }} /> : null}
-            <div className="projTabs" style={{ marginTop: 18, display: embedded ? 'none' : undefined }}>
-              <button className={`projTab ${tab === 'wy' ? 'on' : ''}`} onClick={() => { setTab('wy'); if (bills === null) loadBills(house); }}>
-                <Icon name="home" /><b>物业费</b><small>{bills === null ? '查询中' : billErr ? '查询失败' : wyBills.length ? `待缴 ${wyBills.length} 笔` : '无待缴'}</small>
-                {wyBills.length ? <span className="flag">{wyBills.length}</span> : null}
-              </button>
-              <button className={`projTab ${tab === 'bw' ? 'on' : ''}`} onClick={() => { setTab('bw'); if (bills === null) loadBills(house); }}>
-                <Icon name="car" /><b>泊位费</b><small>{bills === null ? '查询中' : billErr ? '查询失败' : bwBills.length ? `待缴 ${bwBills.length} 笔` : '无待缴'}</small>
-                {bwBills.length ? <span className="flag">{bwBills.length}</span> : null}
-              </button>
+            <div className="projTabs cashier-projects" style={{ marginTop: 18, display: embedded ? 'none' : undefined }}>
+              {(Object.keys(billLabels) as BillTab[]).map(key => <button key={key} aria-pressed={tab === key} className={`projTab ${tab === key ? 'on' : ''}`} onClick={() => { setTab(key); if (bills === null) loadBills(house); }}>
+                <Icon name={key === 'wy' ? 'home' : 'car'} /><b>{billLabels[key]}</b>
+                <small>{bills === null ? '查询中' : billErr ? '查询失败' : groups[key].length ? `待缴 ${groups[key].length} 笔` : '无待缴'}</small>
+              </button>)}
               <button className={`projTab ${tab === 'pk' ? 'on' : ''}`} onClick={() => setTab('pk')}>
                 <Icon name="car" /><b>停车缴费</b><small>{parkCarts.length ? `已选 ${parkCarts.length} 辆` : '车牌 · 车位 · 有效期'}</small>
               </button>
               <button className={`projTab ${tab === 'ac' ? 'on' : ''}`} onClick={() => setTab('ac')}>
-                <Icon name="key" /><b>门禁卡</b><small>{cards.length} 张</small>
+                <Icon name="key" /><b>门禁卡</b><small>办卡 · 查卡</small>
               </button>
             </div>
 
             {isBillTab ? (
-              <div style={{ marginTop: 16 }}>
-                <div className="panelHd"><b>未缴{billLabel}</b>{tabArrears ? <span className="tag dang">待缴 {tabBills.length} 笔 · {money(tabArrears / 100)}</span> : <span className="tag ok"><Icon name="check" />无待缴</span>}
+              <div className="cashier-bill-list" style={{ marginTop: 16 }}>
+                <div className="panelHd"><b>未缴{billLabel}</b>{bills === null || billErr ? null : tabBills.length ? <span className="tag dang">待缴 {tabBills.length} 笔 · {money(tabArrears / 100)}</span> : <span className="tag ok"><Icon name="check" />无待缴</span>}
                   <button className="btn g sm" style={{ marginLeft: 'auto' }} onClick={() => navigate(`/fees?q=${encodeURIComponent(`${house.buildingNo}/${house.roomNo}`)}`)}><Icon name="plus" size={16} />预缴未来月份</button>
                 </div>
                 {bills === null ? <div className="empty">正在实时查询 MIS 应收…</div>
-                  : billErr ? <div className="card" style={{ padding: 28, textAlign: 'center' }}><span style={{ color: 'var(--dang)' }}>MIS 查询未完成：{billErr}</span><div className="muted" style={{ marginTop: 6, fontSize: 13 }}>不代表无待缴，请稍后重新选择该住户再查</div></div>
+                  : billErr ? <div className="card" style={{ padding: 28, textAlign: 'center' }}><span style={{ color: 'var(--dang)' }}>MIS 查询未完成：{billErr}</span><div className="muted" style={{ marginTop: 6, fontSize: 13 }}><button type="button" className="btn sm" onClick={() => loadBills(house)}>重新查询</button></div></div>
                   : tabBills.length === 0 ? <div className="card" style={{ padding: 36, textAlign: 'center' }}><span className="muted">MIS 里这一户没有未缴{billLabel}，缴费明细见下方「历史缴费记录」</span></div>
                     : tabBills.map((b) => {
                       const on = selBills.includes(b.id);
                       return (
-                        <button key={b.id} className={`billRow ${on ? 'sel' : ''}`} onClick={() => setSelBills((s) => on ? s.filter((x) => x !== b.id) : [...s, b.id])}>
+                        <button key={b.id} aria-pressed={on} className={`billRow cashier-bill ${on ? 'sel' : ''}`} onClick={() => setSelBills((s) => on ? s.filter((x) => x !== b.id) : [...s, b.id])}>
                           <div className="ck"><Icon name="check" /></div>
-                          <div className="bt"><span className="feeCell"><FeeIcon name={b.feeName} size={26} /><b>{b.feeName}{b.period ? ` · ${b.period}` : ''}</b></span><small>收据状态：{b.status === 'unpaid' ? '未缴' : b.status}</small><div className="mis-remark"><span className="mis-remark-label">备注</span><span className="mis-remark-value">{b.remark?.trim() ? b.remark : '—'}</span></div></div>
+                          <b className="cashier-fee-name">{tab === 'garage' ? billLabel : b.feeName}</b>
+                          <span className="cashier-period">{b.period?.replace(/^(\d{4})(\d{2})$/, '$1年$2月') || '账期未记录'}</span>
+                          <span className="cashier-bill-note" aria-label="备注">{b.remark?.trim() ? b.remark : null}</span>
                           <div className="ba money">{money(b.amountCents / 100)}</div>
                         </button>
                       );
                     })}
-                <PaidHistory key={`${house.id}-${tab}`} houseId={house.id} label={billLabel} match={(n) => (tab === 'bw' ? isBerth(n) : !isBerth(n))} />
-                <div className="note2" style={{ marginTop: 14 }}><Icon name="alert" />{billLabel}应收为 MIS 实时数据；本次收款条件、本人映射和原单状态见右侧。整月缴纳、不拆月、不减免。未来月份生成协议尚未核实，请在原MIS生成正式应收后刷新，不在PMS猜写账。</div>
+                <PaidHistory key={`${house.id}-${tab}`} houseId={house.id} label={billLabel} match={(name, code) => billTab(name, code) === tab} />
               </div>
             ) : null}
 
@@ -588,10 +585,6 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
             {tab === 'ac' ? (
               <div style={{ marginTop: 16 }}>
                 <div className="panelHd"><b>该住户的门禁卡</b><span className="tag mute">{cardRule ? `新办/补办 ${money(cardRule.unitPriceCents / 100)}/张` : '未配门禁收费规则'}</span></div>
-                {cards.length === 0 ? <div className="muted" style={{ padding: '8px 2px' }}>暂无在用门禁卡</div>
-                  : cards.map((c) => (
-                    <div key={c.id} className="cardItem"><div className="ci"><Icon name="key" /></div><div className="bt" style={{ flex: 1 }}><b>卡号 {c.cardNo}</b><small className="muted">{c.status || '正常'}</small></div><span className="tag ok"><Icon name="check" />有效</span></div>
-                  ))}
                 <div className="card" style={{ padding: '14px 16px', marginTop: 12 }}>
                   <div className="side-h" style={{ marginBottom: 10 }}><Icon name="plus" size={18} style={{ color: 'var(--acc-t)' }} />新办 / 补办</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -604,33 +597,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
                     </button>
                   </div>
                 </div>
-                <div className="card" style={{ padding: '14px 16px', marginTop: 12 }}>
-                  <div className="side-h" style={{ marginBottom: 10 }}>
-                    <Icon name="clock" size={18} style={{ color: 'var(--acc-t)' }} />发卡历史
-                    {cardHistory?.length ? <span className="tag mute" style={{ marginLeft: 8 }}>{cardHistory.length} 张</span> : null}
-                  </div>
-                  {cardHistory === null ? <div className="muted">正在读发卡记录…</div>
-                    : cardHistory.length === 0 ? <div className="muted">这一户还没有发卡记录</div>
-                      : (
-                        <table className="tbl" style={{ marginBottom: 0 }}>
-                          <thead><tr><th>序号</th><th>卡号</th><th>发卡时间</th><th>门禁授权</th><th>旧库同步</th></tr></thead>
-                          <tbody>
-                            {cardHistory.map((h) => (
-                              <tr key={h.id} style={{ cursor: 'default' }}>
-                                <td>{h.sequence}</td>
-                                <td>
-                                  <b>{h.icCardNo || h.wgCardNo || '—'}</b>
-                                  {h.icCardNo && h.wgCardNo ? <small className="muted"> · WG {h.wgCardNo}</small> : null}
-                                </td>
-                                <td>{h.issuedAt ? formatBeijingDateTime(h.issuedAt, 'YYYY-MM-DD HH:mm') : '—'}</td>
-                                <td><span className={`tag ${accessStatusLabel(h.accessStatus).tone}`} title={rawTitle(h.accessStatus)}>{accessStatusLabel(h.accessStatus).text}</span></td>
-                                <td><span className={`tag ${legacyStatusLabel(h.legacySyncStatus).tone}`} title={rawTitle(h.legacySyncStatus)}>{legacyStatusLabel(h.legacySyncStatus).text}</span></td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
-                </div>
+                {historyHouse ? <HouseholdCardHistory house={historyHouse} /> : <p role="status">缺少小区信息，无法查询捷顺卡清单</p>}
                 <div className="note2" style={{ marginTop: 14 }}><Icon name="alert" />卡费不写 MIS，收款后排队写卡 + 写旧系统；赠卡计数量不计收入，单独留审计。</div>
               </div>
             ) : null}

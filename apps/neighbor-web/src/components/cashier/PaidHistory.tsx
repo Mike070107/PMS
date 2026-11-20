@@ -27,7 +27,7 @@ export function loadPaid(houseId: number, force = false): Promise<PaidRow[]> {
  * 历史缴费记录（默认折叠，展开才查 MIS）。
  * 作用：「没有待缴」时，前台能当场看到是哪天、哪张收据缴的，而不是猜是没查到还是真缴过了。
  */
-export default function PaidHistory({ houseId, label, match }: { houseId: number; label: string; match: (feeName: string) => boolean }) {
+export default function PaidHistory({ houseId, label, match }: { houseId: number; label: string; match: (feeName: string, feeCode: string) => boolean }) {
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState<PaidRow[] | null>(null);
   const [err, setErr] = useState('');
@@ -36,7 +36,7 @@ export default function PaidHistory({ houseId, label, match }: { houseId: number
   const load = (force = false) => {
     setRows(null); setErr('');
     loadPaid(houseId, force)
-      .then((r) => setRows(r.filter((x) => match(x.feeName || x.feeCode)).sort((a, b) => (b.period || '').localeCompare(a.period || '') || (b.paidAt || '').localeCompare(a.paidAt || ''))))
+      .then((r) => setRows(r.filter((x) => match(x.feeName || x.feeCode, x.feeCode)).sort((a, b) => (b.period || '').localeCompare(a.period || '') || (b.paidAt || '').localeCompare(a.paidAt || ''))))
       .catch((e) => setErr(e instanceof Error ? e.message : 'MIS 查询失败'));
   };
   const toggle = () => { const n = !open; setOpen(n); if (n && rows === null && !err) load(); };

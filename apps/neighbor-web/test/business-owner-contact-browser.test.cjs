@@ -31,6 +31,9 @@ test('新车登记业主信息只读；正式收银/公寓/已存车牌/续费�
  if(url==='/buildings')return [{id:1,communityId:1,buildingNo:'3',lane:'198弄'}];
  if(url==='/houses')return [house];
  if(url==='/vehicle-intakes/1')return {id:1,houseId:1,houseLabel:'测试小区/198弄3号/101',ownerName:owner.name,ownerPhone:owner.phone,kind:'paid',status:'submitted',plate:'沪A00001',contactName:owner.name,contactPhone:owner.phone,relation:'本人',vehicleClass:'small',garages:[],garageNumbers:{},expiresAt:'2026-12-01T00:00:00Z',qrValid:true,openedAt:null,submittedAt:'2026-11-12T00:00:00Z',reviewedAt:null,reviewNote:'',files:[],transaction:null,familyCarId:null,createdAt:'2026-11-12T00:00:00Z'};
+ if(url==='/fees/mis/postings/readiness')return {enabled:false,methods:[],reason:'演练'};
+ if(url==='/fees/mis/bills')return {rows:[{id:'101',feeCode:'01',feeName:'物业费',amountCents:9900},{id:'102',feeCode:'14',feeName:'停车管理费',amountCents:6750},{id:'103',feeCode:'04',feeName:'泊位费',amountCents:8000}].map(r=>({...r,period:'202611',remark:'',status:query.status})),total:3};
+ if(url==='/access-card-issuance/cards/history')return {status:'completed',rows:[{id:17,sequence:1,icCardNo:'00007777',roomLabel:'3/101',source:'legacy',communityId:1}],refreshedAt:'2026-11-20T02:00:00Z'};
  if(url==='/business/search')return {houses:[house],vehicles:[],accessCards:[]};
  if(url==='/business/parking-spaces'||/^\\/vehicle-intakes\\/\\d+\\/parking-spaces$/.test(url))return {rows:[]};
  if(url==='/business/rules')return [];if(url==='/business/household-parking')return {room:'3/101',roomTerm:'3/101',targets:[],localDatabases:[],deliyun:[]};
@@ -71,6 +74,27 @@ test('新车登记业主信息只读；正式收银/公寓/已存车牌/续费�
  assert.equal(calls.filter(c=>c.method&&c.method!=='GET'&&c.method!=='PATCH').length,0);assert.equal(calls.filter(c=>/execute|complete|issue|renew|addVehicle/i.test(c.methodName||'')).length,0);
  await contact.screenshot({path:path.join(evidence,entry+'-contacts.png')});results.push({entry,contactWrites:1,confirmationSource:writes[0].data.source,businessWrites:0});
  }
+ await page.goto(origin+'/cashier?intakeId=1');
+ const tabs=page.locator('.cashier-projects');
+ for (const [label,amount] of [['物业费','99.00'],['泊位费','80.00'],['车位管理费','67.50']]) {
+   await tabs.getByRole('button',{name:new RegExp(label)}).click();
+   const row=page.locator('button.cashier-bill');
+   await row.filter({hasText:amount}).waitFor();
+   assert.equal(await row.count(),1);
+   assert.ok((await row.boundingBox()).height<60,'普通待缴项应在一行内');
+   await row.click(); assert.equal(await row.getAttribute('aria-pressed'),'false');
+   await row.click(); assert.equal(await row.getAttribute('aria-pressed'),'true');
+ }
+ await page.screenshot({path:path.join(evidence,'cashier-garage-desktop.png')});
+ await page.setViewportSize({width:390,height:680});
+ assert.ok(await page.locator('button.cashier-bill').evaluate(el=>el.scrollWidth<=el.clientWidth+1));
+ await tabs.getByRole('button',{name:/门禁卡/}).click();
+ await page.getByTestId('history-block').getByText('00007777',{exact:true}).first().waitFor();
+ assert.equal(await page.getByTestId('recent-block').count(),0);
+ await page.getByTestId('history-block').scrollIntoViewIfNeeded();
+ await page.screenshot({path:path.join(evidence,'cashier-card-mobile.png')});
+ const query=await page.evaluate(()=>window.__entryCalls.find(x=>x.url==='/access-card-issuance/cards/history')?.query);
+ assert.deepEqual(query,{communityId:1,address:'198弄/3/101'});
  assert.deepEqual(errors,[]);fs.writeFileSync(path.join(evidence,'verification.json'),JSON.stringify({fixtureOnly:true,realEntryComponents:true,realApiOrAuthOrDatabase:false,results,errors},null,2));
  }catch(e){fs.writeFileSync(path.join(evidence,'failure.json'),JSON.stringify({errors,message:e.message},null,2));if(browser){for(const context of browser.contexts())for(const page of context.pages())await page.screenshot({path:path.join(evidence,'failure.png'),fullPage:true}).catch(()=>{});}throw e;}
  finally{await browser?.close();await new Promise(r=>server.close(r));}

@@ -20,8 +20,8 @@ export default function MisCollectionPanel(props:Props){
   finally{running.current=false;if(generation.current.context===context&&generation.current.n===n)setBusy(false)}
  };
  const recover=async(resume=false)=>{if(running.current||!currentPending?.command||resume&&(!canEdit||!readiness?.enabled||resumeContext!==context))return;running.current=true;setBusy(true);const n=generation.current.n;try{const r=await request<{found:boolean;posting?:Posting}>({url:'/fees/mis/postings/lookup',query:{key:currentPending.command.idempotencyKey}});if(generation.current.context!==context||generation.current.n!==n)return;if(r.found&&r.posting)accept(r.posting);else if(r.found===false&&resume){const data=await request<Posting>({method:'POST',url:'/fees/mis/postings',data:currentPending.command,timeout:25000});if(generation.current.context===context&&generation.current.n===n)accept(data)}else if(r.found===false){setResumeContext(context);setError('原办理单暂未查到；不要再收钱，可用原标识继续保存本次收款')}else throw Error('unconfirmed lookup')}catch{if(generation.current.context===context&&generation.current.n===n)setError('原办理单核对/保存未完成，请重试，不要重新收款')}finally{running.current=false;if(generation.current.context===context&&generation.current.n===n)setBusy(false)}};
- return <div className="card cart2 mis-collection-panel"><div className="cartHd"><b>{props.label}本次办理</b></div><div className="cartBody">
-  <p>当前员工：{session.user?.name||'本人'} · 收款人和MIS方式由服务端映射，不能在浏览器指定。</p><p>{readiness?.reason||'正在核对当前员工的MIS收款映射…'}</p>
+ return <div className="card cart2 mis-collection-panel"><div className="cartHd"><b>本次收款 · {props.label}</b></div><div className="cartBody">
+  <p>收款员　{session.user?.name||'本人'}</p><p>{readiness?.reason||'正在核对当前员工的MIS收款映射…'}</p>
   {!canEdit?<p>当前账号只有查看权限，不可登记收款。</p>:null}{error?<div role="alert" className="note">{error}</div>:null}
   {record?<><MisPostingStatus id={record.id}/><button className="btn" onClick={()=>{try{sessionStorage.removeItem(storageKey);setPending(null);setPosting(null);setConfirmedStamp('');props.onSaved()}catch{setError('原单本地标识未能清理，请保留原单核对')}}}>办理其他账单（本笔已登记）</button></>:currentPending?<div><p>原收款请求已保留，结果未确认；切换或刷新后也应先核对原办理单。</p><button className="btn" disabled={busy||!currentPending.command} onClick={()=>void recover()}>核对原办理单</button>{!currentPending.command?<p>本机原单标识损坏，请到办理记录核查，不能新建收款。</p>:null}</div>:<>
    {props.bills.length?<div className="mis-collection-bills" role="region" aria-label="本次选中账单" tabIndex={0}>{props.bills.map(b=><div className="cartItem" key={b.id}><FeeIcon name={b.feeName} size={26}/><div className="cx"><b>{b.feeName}</b><small>{b.period}</small></div><span className="money">{money(b.amountCents/100)}</span></div>)}</div>:null}
@@ -33,6 +33,6 @@ export default function MisCollectionPanel(props:Props){
    {props.bills.length&&!validBills?<p>账单含负数、重复或无法确认的金额/标识，请先在MIS核对，不会猜金额或登记收款。</p>:null}
   </>}
   {currentPending&&!record&&resumeContext===context&&canEdit&&readiness?.enabled?<button className="btn" disabled={busy} onClick={()=>void recover(true)}>继续保存原收款（不再收钱）</button>:null}
-  <p className="muted">预缴应收生成协议尚未核实，不在PMS生成未来月份；原MIS账单整月缴纳、不拆月、不减免。</p>
+  <details><summary>缴费规则</summary><p>按原账单整月缴纳。预缴请先在 MIS 生成应收。</p></details>
  </div></div>;
 }

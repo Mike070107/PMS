@@ -497,11 +497,22 @@ export function CardRecordsTable({
  * 发卡走 /access-card-issuance/batches：建批次 → 装读卡器的工作站逐张写卡 →
  * 下发楼栋控制器 / 写旧物业库；页面轮询批次进度，允许单张重试下发。
  */
+type HistoryHouse = Pick<PickedHouse, 'communityId' | 'communityName' | 'lane' | 'buildingNo' | 'roomNo' | 'houseId'>;
+
 export default function AccessCards() {
+  return <CardWorkspace />;
+}
+
+export function HouseholdCardHistory({ house }: { house: HistoryHouse }) {
+  return <CardWorkspace key={house.houseId} historyHouse={house} />;
+}
+
+function CardWorkspace({ historyHouse }: { historyHouse?: HistoryHouse }) {
   const session = useSession();
   const canEdit = can('business', 'edit');
   const [tree, setTree] = useState<AddressCommunity[]>([]);
-  const [picked, setPicked] = useState<PickedHouse | null>(null);
+  const [selection, setPicked] = useState<PickedHouse | null>(null);
+  const picked = historyHouse ?? selection;
   const [history, setHistory] = useState<CardHistoryResp | null>(null);
   const [err, setErr] = useState('');
   const [issuer, setIssuer] = useState<{ id: string; name: string; resourceId?: string } | null>(null);
@@ -552,7 +563,7 @@ export default function AccessCards() {
     return next;
   });
 
-  useEffect(() => { address.tree().then(setTree).catch(() => setTree([])); }, []);
+  useEffect(() => { if (!historyHouse) address.tree().then(setTree).catch(() => setTree([])); }, [historyHouse]);
   useEffect(() => {
     let cancelled = false;
     setReadinessError('');
@@ -617,7 +628,7 @@ export default function AccessCards() {
   }, [historyKey, historyRetry, picked]);
 
   useEffect(() => {
-    if (!recentOpen) return undefined;
+    if (historyHouse || !recentOpen) return undefined;
     let cancelled = false;
     let retryTimer = 0;
     let attempts = 0;
@@ -650,7 +661,7 @@ export default function AccessCards() {
     };
     void run();
     return () => { cancelled = true; if (retryTimer) window.clearTimeout(retryTimer); };
-  }, [recentRetry, recentOpen]);
+  }, [recentRetry, recentOpen, historyHouse]);
 
   const refreshCardDetail = useCallback(async (cardId: number) => {
     const detail = await request<CardDetail>({ url: '/access-card-issuance/cards/' + cardId });
@@ -943,7 +954,7 @@ export default function AccessCards() {
 
   return (
     <>
-      <div className="ph" style={{ marginBottom: 14 }}>
+      {!historyHouse && <><div className="ph" style={{ marginBottom: 14 }}>
         <div>
           <div className="h1row"><ToneIcon kind="cards" /><h1 style={{ fontSize: 22 }}>门禁发卡</h1></div>
           <p>按户发卡、查卡与发卡历史；设备在线与远程开门已移到「设备管理」</p>
@@ -966,12 +977,13 @@ export default function AccessCards() {
       </div>
 
       <div className="findBar" style={{ marginBottom: 14 }}>
-        <HousePicker communities={communities} value={picked}
+        <HousePicker communities={communities} value={selection}
           onPick={(p) => { setPicked(p); setBatch(null); }}
           onClear={() => { setPicked(null); setBatch(null); }}
           onIncomplete={() => toast('请再点一下具体室号：发卡要落到具体一户')} />
       </div>
 
+      </>}
       {err ? <div className="note2" style={{ background: 'var(--dang-w)', color: 'var(--dang)', marginBottom: 12 }}><Icon name="alert" />{err}</div> : null}
 
       {!picked ? (
@@ -981,7 +993,7 @@ export default function AccessCards() {
         </div>
       ) : (
         <>
-          <div className="card" style={{ padding: '14px 16px', marginBottom: 14 }}>
+          {!historyHouse && <div className="card" style={{ padding: '14px 16px', marginBottom: 14 }}>
             <div className="panelHd" style={{ marginBottom: 12 }}>
               <b>发门禁卡</b>
               <span className="muted" style={{ marginLeft: 8 }}>{picked.communityName} {picked.buildingNo}/{picked.roomNo}</span>
@@ -1048,7 +1060,7 @@ export default function AccessCards() {
                   ? `写卡要读卡器，由${issuer ? `在线工作站「${issuer.name}」` : '工作站'}自动完成；本页负责建任务、看进度、下发失败单张重试。`
                   : '写卡工作站未接入，新卡暂不能写到读卡器；查发卡历史、写入 .88 门禁库和远程开门不受影响，等写卡工作站上线后再写卡。'}
             </div>
-          </div>
+          </div>}
 
           <div className="card" style={{ padding: '14px 16px', marginBottom: 14 }}>
             <div className="panelHd" style={{ marginBottom: 10 }}>
@@ -1094,7 +1106,7 @@ export default function AccessCards() {
 
         </>
       )}
-      <div className="card" data-testid="recent-block" style={{ padding: '14px 16px', marginBottom: 14 }}>
+      {!historyHouse && <div className="card" data-testid="recent-block" style={{ padding: '14px 16px', marginBottom: 14 }}>
         <div className="panelHd ac-recent-head" style={{ marginBottom: recentOpen ? 10 : 0, cursor: 'pointer' }} onClick={toggleRecent}>
           <b>最近 30 笔做卡记录</b>
           <span className="tag mute" style={{ marginLeft: 8 }}>{recentRows.length || 30} 笔</span>
@@ -1142,7 +1154,7 @@ export default function AccessCards() {
             ) : null}
           </>
         ) : <div className="muted" style={{ fontSize: 12 }}>最近做卡记录默认折叠，点「展开」后加载。</div>}
-      </div>
+      </div>}
 
       <Sheet open={!!grantCard} onClose={() => { if (!grantBusy) setGrantCard(null); }} width={640} title="授权楼栋" subtitle={grantCard ? '卡 ' + (grantCard.icCardNo || grantCard.wgCardNo || '—') + ' · ' + (grantCard.roomLabel || '') : ''}>
         {grantCard ? (

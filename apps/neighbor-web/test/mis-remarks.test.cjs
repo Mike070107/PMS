@@ -13,19 +13,21 @@ function harness(file, props = {}) {
   const slots = [], effects = [], requests = [];
   const react = {
     useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = typeof initial === 'function' ? initial() : initial; return [slots[i], value => { const next = typeof value === 'function' ? value(slots[i]) : value; if (!Object.is(next, slots[i])) { slots[i] = next; dirty = true; } }]; },
+    useRef(value) { const i=cursor++; return slots[i] ??= {current:value}; },
     useEffect(fn, deps) { const i = cursor++; if (!slots[i] || deps.some((x, k) => !Object.is(x, slots[i][k]))) { slots[i] = deps; effects.push(fn); } },
-    useMemo(fn) { return fn(); }, useCallback(fn) { return fn; },
+    useMemo(fn,deps) { const i=cursor++; if (!slots[i] || deps.some((v,k)=>!Object.is(v,slots[i].deps[k]))) slots[i]={deps,value:fn()}; return slots[i].value; }, useCallback(fn,deps) { return react.useMemo(()=>fn,deps); },
   };
+  const session={access:{scopeAll:true}};
   const module = { exports: {} };
   const stub = name => ({ __esModule: true, default: name });
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.resolve(__dirname, '../src', file), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText, {
     module, exports: module.exports, console, Error,
     require(id) {
-      if (id === 'react-router-dom') return { useNavigate: () => () => {} };
+      if (id === 'react-router-dom') return { useNavigate: () => () => {}, useSearchParams: () => [{get:()=>null}] };
       if (id === 'react') return react;
       if (id === 'react/jsx-runtime') return require(id);
       if (id === '@pms/api-client') return { address: { tree: () => Promise.resolve([]) }, request: o => { assert.ok(!o.method || o.method === 'GET', 'remarks must not write'); return new Promise((resolve, reject) => requests.push({ o, resolve, reject })); } };
-      if (id === '@/lib/auth') return { useSession: () => ({ access: { scopeAll: true } }) };
+      if (id === '@/lib/auth') return { useSession: () => session };
       if (id === '@/lib/format') return { money: n => n.toFixed(2), payLabel: n => n || '—' };
       if (id === '@/components/ui') return { ErrorNote: 'ErrorNote', toast() {} };
       if (id.endsWith('.css')) return {};
@@ -41,9 +43,9 @@ const house = { id: 712, roomNo: '502', buildingNo: '3', communityName: '合成�
 const fixtures = ['  原始文本  ', undefined, null, '', ' \t\n ', '长备注' + '1234567890'.repeat(60) + '\n第二行\n<img src=x onerror="globalThis.__remarkExecuted=true"><script>globalThis.__remarkExecuted=true</script>'];
 const rows = feeName => fixtures.map((remark, i) => ({ id: feeName + i, feeName, feeCode: 'P', period: '202601', amountCents: 12345, status: 'unpaid', paidAt: '2026-01-02', receiptNo: 'SYNTHETIC', remark }));
 function assertRemarks(h, unpaid) {
-  const remarks = h.nodes().filter(n => n.props?.className?.split(' ').includes('mis-remark-value'));
+  const remarks = h.nodes().filter(n => n.props?.className?.split(' ').includes(unpaid ? 'cashier-bill-note' : 'mis-remark-value'));
   assert.equal(remarks.length, fixtures.length, 'every real mapped/rendered row needs a remark');
-  assert.deepEqual(remarks.map(text), fixtures.map(v => v?.trim() ? v : '—'));
+  assert.deepEqual(remarks.map(text), fixtures.map(v => v?.trim() ? v : unpaid ? '' : '—'));
   for (const n of remarks) {
     assert.equal(n.props.dangerouslySetInnerHTML, undefined);
     const html = renderToStaticMarkup(n);
@@ -52,9 +54,9 @@ function assertRemarks(h, unpaid) {
   if (unpaid) {
     const bills = h.nodes().filter(n => n.type === 'button' && n.props.className?.startsWith('billRow'));
     assert.equal(bills.length, fixtures.length);
-    assert.ok(bills.every(n => nodes(n).some(x => text(x) === '备注')));
+    assert.ok(bills.every(n => nodes(n).some(x => x.props?.['aria-label'] === '备注')));
     assert.ok(bills.every(n => nodes(n).filter(x => x.props?.className === 'ba money').map(text).join() === '123.45'));
-    assert.equal(nodes(bills[0].props.children).filter(n => ['ck', 'bt', 'ba money'].includes(n.props?.className)).length, 3);
+    assert.equal(nodes(bills[0].props.children).filter(n => ['ck', 'cashier-fee-name', 'ba money'].includes(n.props?.className)).length, 3);
     assert.match(bills[0].props.className, /sel/); bills[0].props.onClick(); h.render();
     assert.doesNotMatch(h.nodes().find(n => n.type === 'button' && n.props.className?.startsWith('billRow')).props.className, /sel/);
     const panel=h.find('MisCollectionPanel');assert.equal(panel.props.houseId,712);assert.equal(panel.props.bills.length,fixtures.length-1);assert.ok(['物业费','泊位费'].includes(panel.props.label));
@@ -63,8 +65,8 @@ function assertRemarks(h, unpaid) {
     assert.equal(h.nodes().filter(n => n.type === 'th').length, 7);
   }
 }
-test('真实 Cashier MIS mapping → 物业费/泊位费待缴行备注，保留原文、空值占位和只读/选择/金额', async () => {
-  const h = harness('pages/Cashier.tsx');
+test('真实 Cashier MIS mapping → 物业费/泊位费待缴行备注，保留原文、收起空备注并核对只读/选择/金额', async () => {
+  const h = harness('pages/Cashier.tsx'); await h.settle();
   h.find('UniSearch').props.onPick({ kind: 'house', hit: house, all: { houses: [house], vehicles: [], accessCards: [] } });
   h.render();
   const req = h.requests.find(r => r.o.url === '/fees/mis/bills');
