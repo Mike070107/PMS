@@ -47,7 +47,7 @@ function loadTimelineTab() {
   }).outputText, {
     exports, React: { createElement: (tag, props, ...children) => ({ tag, props, children }) },
     sortTimelineNewestFirst: shared.sortTimelineNewestFirst,
-    ACTION_LABEL: {}, formatBeijingDateTime: s => s, statusOf: s => ({ name: s }),
+    WorkOrderMedia: Symbol.for('WorkOrderMedia'), ACTION_LABEL: {}, formatBeijingDateTime: s => s, statusOf: s => ({ name: s }),
   });
   return exports.fn;
 }
@@ -57,6 +57,10 @@ test('新Web真实TimelineTab：最新事件和当前高亮在第一项，照片
   assert.deepEqual(Array.from(rows, r => r.props.key), [3, 2, 1]);
   assert.match(rows[0].props.className, /\bcur\b/);
   assert.doesNotMatch(rows[2].props.className, /\bcur\b/);
+  const note = rows[1].children.find(child => child?.children?.includes('中间'));
+  assert.ok(note, '事件备注随原记录显示');
+  const media = rows[1].children.flatMap(child => child?.children || []).find(child => child?.tag === Symbol.for('WorkOrderMedia'));
+  assert.deepEqual(media?.props.urls, ['photo']);
   assert.deepEqual(logs.map(r => r.id), [2, 1, 3]);
 });
 function sortedExpression(relative, input, context) {

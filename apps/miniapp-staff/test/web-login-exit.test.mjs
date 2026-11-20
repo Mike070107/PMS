@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import vm from 'node:vm';
+import ts from 'typescript';
 
 const source = readFileSync(
   new URL('../miniprogram/pages/web-login/web-login.ts', import.meta.url),
@@ -11,12 +13,30 @@ const template = readFileSync(
   'utf8',
 );
 
-test('确认登录成功后安排自动关闭，拒绝登录不自动关闭', () => {
-  const confirmBody = section('async onConfirm()', 'async onCancel()');
-  const cancelBody = section('async onCancel()', 'scheduleAutoClose()');
-
-  assert.match(confirmBody, /scheduleAutoClose/);
-  assert.doesNotMatch(cancelBody, /scheduleAutoClose/);
+test('确认成功后定时退出，取消和确认失败时保持结果页', async () => {
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+  }).outputText;
+  for (const outcome of ['confirmed', 'cancelled', 'failed']) {
+    let page, timer;
+    let exits = 0;
+    const auth = {
+      qrLoginConfirm: async () => { if (outcome === 'failed') throw new Error('确认失败'); },
+      qrLoginCancel: async () => {},
+    };
+    vm.runInNewContext(compiled, {
+      exports: {}, require: () => ({ auth }), Page: definition => { page = definition; },
+      setTimeout: callback => { timer = callback; return 1; }, clearTimeout() {},
+      wx: { exitMiniProgram: () => { exits++; } },
+    });
+    page.setData = patch => Object.assign(page.data, patch);
+    if (outcome === 'cancelled') await page.onCancel();
+    else await page.onConfirm();
+    assert.equal(page.data.done, outcome === 'failed' ? '' : outcome);
+    assert.equal(exits, 0);
+    if (outcome === 'confirmed') { timer(); assert.equal(exits, 1); }
+    else assert.equal(timer, undefined);
+  }
 });
 
 test('结果页提供关闭小程序按钮，但不会把内网应用用户送入 PMS 首页', () => {
@@ -36,11 +56,3 @@ test('确认页保留应用与域名校验信息，但不再要求人工核对�
   assert.match(template, /applicationHostname/);
   assert.doesNotMatch(template, /confirmationCode|核对码/);
 });
-
-function section(start, end) {
-  const startAt = source.indexOf(start);
-  const endAt = source.indexOf(end, startAt + start.length);
-  assert.notEqual(startAt, -1, `missing section start: ${start}`);
-  assert.notEqual(endAt, -1, `missing section end: ${end}`);
-  return source.slice(startAt, endAt);
-}
