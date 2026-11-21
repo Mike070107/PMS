@@ -4,6 +4,7 @@ import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import { DataSource } from 'typeorm';
 import { ParkingSpace } from '../../entities/parking-space.entity';
+import { PropertySpaceVehicles1796900000000 } from '../../migrations/1796900000000-PropertySpaceVehicles';
 import { BusinessService } from './business.service';
 import { ParkingSpaceCategory1796100000000 } from '../../migrations/1796100000000-ParkingSpaceCategory';
 
@@ -41,6 +42,7 @@ test('A01/A02 SQL复核：租户/小区隔离、空归属、自然排序与档�
     const migratedRows: any[] = (await db.query('SELECT * FROM parking_spaces ORDER BY id')).rows;
     assert.ok(migratedRows.every(row => row.category === null), '旧备注/车牌不批量推断类别');
     assert.deepEqual(migratedRows.map(({ category, ...row }) => row), legacyRows, '迁移不改变任一旧字段');
+    await new PropertySpaceVehicles1796900000000().up(runner);
     const execute = async (qb: any) => {
       const [sql, params] = qb.getQueryAndParameters();
       const result = await db.query(sql, params);
