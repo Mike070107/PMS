@@ -4,9 +4,11 @@ const app=path.resolve(__dirname,'..'),out=path.resolve(app,'../../outputs/cashi
 test('tail search vehicle is visible and clickable without scrolling page below address menu',{timeout:60000},async()=>{
  fs.mkdirSync(out,{recursive:true});
  const source=fs.readFileSync(path.join(app,'src/pages/Cashier.tsx'),'utf8');const searchCode=source.slice(source.indexOf('  const normSearch ='),source.indexOf('\n  const loadBills'));
+ const pickCode=source.slice(source.indexOf('  const onUniPick ='),source.indexOf('  const selectedVehicle ='));
  const entry=`import React,{useState,useCallback}from'react';import{createRoot}from'react-dom/client';import UniSearch from '@/components/cashier/UniSearch';import '@/styles/design.css';import '@/styles/app.css';import '@/styles/erp-reference.css';
- const house={id:15,communityId:1,communityName:'合成小区一期',buildingNo:'3',lane:'198',roomNo:'301',owner:null};const request=async({query})=>({houses:query.q==='198/3/301'?[house]:query.q==='2199'?[{...house,id:7,roomNo:'999',owner:{phone:'13821991380'}},{...house,id:21,lane:'2199',buildingNo:'10',roomNo:'301'}]:[],vehicles:query.q==='2199'?[{id:8,houseId:7,plateNo:'沪B12345'}]:[],accessCards:[]});const accessCardIssuance={createParkingQuery:async term=>{if(term==='C678')return {status:'completed',rows:[{fields:{P_plate:'沪A1C678'},pmsMatch:{houseId:902}}]};if(!['03212','2199'].includes(term))throw Error('wrong suffix');return {id:1,status:'completed',rows:[{database:'parking1',fields:{P_plate:term==='2199'?'沪A02199':'沪A03212',Owner__owner_Name:'198/03/301'}}]}}};
- const communities=[{id:1,name:'枫桦景苑二期',buildings:[{lane:null,buildingNo:'53',houses:[{id:902,roomNo:'902'}]}]}];function Fixture(){const[pick,P]=useState('');${searchCode}return <main style={{paddingTop:280,paddingInline:16}}><UniSearch communities={[]} search={searchByQ} onPick={p=>P(p.kind==='vehicle'?p.vehicle.plateNo:p.kind)}/><output id="pick">{pick}</output></main>}createRoot(document.getElementById('root')).render(<Fixture/>);`;
+ const house={id:15,communityId:1,communityName:'合成小区一期',buildingNo:'3',lane:'198',roomNo:'301',owner:null};const request=async({query})=>({registrationMatches:['1234','13900001234'].includes(query.q)&&query.serviceType==='parking_monthly'?[{id:66,houseId:902,plateNo:'沪A1C678',contactPhone:'13900001234',openIntakeId:66}]:[],houses:query.q==='1234'?[{...house,id:7,owner:{phone:'13800001234'}}]:query.q==='198/3/301'?[house]:query.q==='2199'?[{...house,id:7,roomNo:'999',owner:{phone:'13821991380'}},{...house,id:21,lane:'2199',buildingNo:'10',roomNo:'301'}]:[],vehicles:query.q==='2199'?[{id:8,houseId:7,plateNo:'沪B12345'}]:[],accessCards:[]});const accessCardIssuance={createParkingQuery:async term=>{if(term==='1234')throw Error('现场离线');if(term==='C678')return {status:'completed',rows:[{fields:{P_plate:'沪A1C678'},pmsMatch:{houseId:902}}]};if(!['03212','2199'].includes(term))throw Error('wrong suffix');return {id:1,status:'completed',rows:[{database:'parking1',fields:{P_plate:term==='2199'?'沪A02199':'沪A03212',Owner__owner_Name:'198/03/301'}}]}}};
+ const communities=[{id:1,name:'枫桦景苑二期',buildings:[{lane:null,buildingNo:'53',houses:[{id:902,roomNo:'902'}]}]}];function Fixture(){const[pick,P]=useState('');const setErr=()=>{},setPicked=()=>{},setTab=()=>{},applyHouse=()=>{},setParkPlate=P;
+ const navigate=path=>{history.pushState({},'',path);P('登记单')};${searchCode}${pickCode}return <main style={{paddingTop:280,paddingInline:16}}><UniSearch communities={[]} search={searchByQ} onPick={onUniPick}/><output id="pick">{pick}</output></main>}createRoot(document.getElementById('root')).render(<Fixture/>);`;
  const built=await esbuild.build({stdin:{contents:entry,loader:'tsx',resolveDir:app},bundle:true,write:false,format:'iife',jsx:'automatic',outfile:'fixture.js',alias:{'@':path.join(app,'src')},define:{'process.env.NODE_ENV':'"test"'}});
  const resources=new Map(built.outputFiles.map(f=>['/'+path.basename(f.path),f.contents]));resources.set('/',Buffer.from('<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/fixture.css"><div id="root"></div><script src="/fixture.js"></script>'));
  const server=http.createServer((req,res)=>{res.setHeader('Content-Type',req.url.endsWith('.js')?'text/javascript':req.url.endsWith('.css')?'text/css':'text/html');res.end(resources.get(req.url)||'');});await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser;
@@ -19,7 +21,7 @@ assert.equal(await phone.locator('mark').innerText(),'2199');
 const addressOnly=page.getByRole('button',{name:/2199弄10号301/});
 assert.equal(await addressOnly.locator('mark').innerText(),'2199');
 assert.equal(await addressOnly.locator('.address-search-detail').innerText(),'2199弄');
-assert.deepEqual(await page.locator('.as-sugg .as-group').allTextContents(),['车牌','电话','地址']);
+assert.deepEqual(await page.locator('.as-sugg .as-group').allTextContents(),['车牌','PMS 业主电话','地址']);
 for(const row of [hit,phone,addressOnly]){
  const left=await row.locator('.address-search-detail').boundingBox();
  const right=await row.locator('.address-search-location').boundingBox();
@@ -47,6 +49,19 @@ const vehicle902=page.getByRole('button',{name:/沪A1C678/});
 assert.match(await vehicle902.innerText(),/枫桦景苑二期.*53.*902/s);
 await vehicle902.click();
 await page.waitForFunction(()=>document.querySelector('#pick').textContent==='沪A1C678');
+for(const term of ['13900001234','1234']){
+ await page.locator('input').fill(term);
+ const row=page.getByRole('button',{name:/沪A1C678.*本车联系手机/s});
+ await row.waitFor();
+ assert.match(await row.innerText(),/53.*902.*本车联系手机.*13900001234/s);
+ if(term==='1234'){
+  await page.getByText('PMS 业主电话',{exact:true}).waitFor();
+  await page.getByRole('button',{name:/13800001234/}).waitFor();
+ }
+ await row.click();
+ assert.equal(await page.locator('#pick').textContent(),'登记单');
+ assert.equal(new URL(page.url()).pathname+new URL(page.url()).search,'/cashier?intakeId=66');
+}
 await page.close();}}
  finally{await browser?.close();server.closeAllConnections();await new Promise(r=>server.close(r));}
 });

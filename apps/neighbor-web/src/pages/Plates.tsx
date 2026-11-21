@@ -113,7 +113,7 @@ function IntakeList({ kw, intakeId }: { kw: string; intakeId: string | null }) {
       {rows === null ? (listError ? null : <Loading />) : (
         <div className="card" role="region" aria-label="登记列表，可左右滚动查看" tabIndex={0} style={{ overflowX: 'auto' }}>
           <table className="tbl" style={{ minWidth: 940 }}>
-            <thead><tr><th>登记时间</th><th>房号</th><th>类型</th><th>车牌</th><th>车主 · 电话</th><th>资料收集</th><th>状态</th><th>收款 / 办理</th></tr></thead>
+            <thead><tr><th>登记时间</th><th>房号</th><th>类型</th><th>车牌</th><th>车主 · 本车联系手机</th><th>资料收集</th><th>状态</th><th>收款 / 办理</th></tr></thead>
             <tbody>
               {rows.map((r) => (
                 <Fragment key={r.id}>
@@ -122,7 +122,7 @@ function IntakeList({ kw, intakeId }: { kw: string; intakeId: string | null }) {
                     <td>{r.houseLabel}</td>
                     <td>{r.kind === 'family' ? '亲情车' : <>付费{r.vehicleClass ? <span className="tag acc" style={{ marginLeft: 4 }}>{r.vehicleClass}</span> : null}</>}</td>
                     <td>{r.plate ? <b className="plate">{r.plate}</b> : <span className="muted">未填</span>}</td>
-                    <td>{r.contactName ? `${r.contactName} · ${r.contactPhone}` : <span className="muted">—</span>}</td>
+                    <td>{[r.contactName, r.contactPhone].filter(Boolean).join(' · ') || <span className="muted">—</span>}</td>
                     <td>{r.status === 'reupload' ? '待补交' : r.submittedAt ? '已提交' : r.openedAt ? '已扫码' : r.inputSource === 'office' ? '办公室录入' : '未扫码'} · 附件 {r.files.length} 份</td>
                     <td><span className={`tag ${intakeStatus(r)[1]}`}>{intakeStatus(r)[0]}</span></td>
                     <td>{r.kind === 'family' ? (r.familyCarId ? '已转亲情车登记' : '免费') : r.transaction ? TXN_STATUS[r.transaction.externalSyncStatus] || r.transaction.externalSyncStatus : <span className="muted">未收款</span>}</td>

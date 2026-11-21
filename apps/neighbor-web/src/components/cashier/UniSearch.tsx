@@ -20,9 +20,10 @@ export interface UniHouse {
   id: number; communityId: number; roomNo: string; lane: string | null; buildingNo: string;
   communityName: string; owner: { id: number; name: string | null; phone: string | null } | null;
 }
-export interface UniVehicle { id: number; plateNo: string; houseId: number | null }
+export interface RegistrationMatch { id: number; plateNo: string; houseId: number; contactPhone: string; openIntakeId: number | null }
+export interface UniVehicle { contactPhone?: string; openIntakeId?: number | null; id: number; plateNo: string; houseId: number | null }
 export interface UniCard { id: number; cardNo: string; houseId: number; status?: string }
-export interface UniResult { addressMatches?: number[]; matchedPhones?: Record<number,string>; plateMatches?: boolean; searchWarning?: string; houses: UniHouse[]; vehicles: UniVehicle[]; accessCards: UniCard[] }
+export interface UniResult { onsitePhones?: Record<number,string>; addressMatches?: number[]; matchedPhones?: Record<number,string>; plateMatches?: boolean; searchWarning?: string; houses: UniHouse[]; vehicles: UniVehicle[]; accessCards: UniCard[] }
 
 export type UniPick =
   | { kind: 'house'; hit: UniHouse; all: UniResult }
@@ -214,7 +215,7 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
     }
     if (my !== pickSeq.current) return;
     if (r.plateMatches) {
-      if (r.vehicles.length === 1 && !Object.keys(r.matchedPhones ?? {}).length && !r.addressMatches?.length && !r.accessCards.length) return choose({ kind: 'vehicle', vehicle: r.vehicles[0], all: r });
+      if (r.vehicles.length === 1 && !Object.keys(r.matchedPhones ?? {}).length && !Object.keys(r.onsitePhones ?? {}).length && !r.addressMatches?.length && !r.accessCards.length) return choose({ kind: 'vehicle', vehicle: r.vehicles[0], all: r });
       setOpen(true);
       return;
     }
@@ -230,12 +231,13 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
 
   const houseLabel = (h: UniHouse) => formatFullAddress(h.communityName, {lane:h.lane, buildingNo:h.buildingNo, roadName:null}, h.roomNo);
   const noCols = !comms.length || (typed && !filteredComms.length);
-  const resultVehicles = res?.vehicles.filter(v => v.plateNo.toUpperCase().includes(kw.toUpperCase())) ?? [];
+  const resultVehicles = res?.vehicles.filter(v => v.contactPhone?.endsWith(kw) || v.plateNo.toUpperCase().includes(kw.toUpperCase())) ?? [];
   const resultCards = res?.accessCards.filter(c => c.cardNo.includes(kw)) ?? [];
-  const hasPhoneMatches = !!Object.keys(res?.matchedPhones ?? {}).length;
+  const onsiteHouses = res?.houses.filter(h => res.onsitePhones?.[h.id]) ?? [];
+  const hasPhoneMatches = !!Object.keys(res?.matchedPhones ?? {}).length || onsiteHouses.length > 0;
   const phoneHouses = res?.houses.filter(h => res.matchedPhones?.[h.id]) ?? [];
   const addressHouses = res?.houses.filter(h => res.addressMatches?.includes(h.id) ||
-    (!res.plateMatches && noCols && !res.matchedPhones?.[h.id])) ?? [];
+    (!res.plateMatches && noCols && !res.matchedPhones?.[h.id] && !res.onsitePhones?.[h.id])) ?? [];
   // 三列能选房时，底部只放车牌/门禁卡；没有这些就不占高度（旧页级联就是这么干净）
   const empty = typed && !busy && !err && res && !res.houses.length && !res.vehicles.length && !res.accessCards.length && noCols;
   const showBottom = addressHouses.length > 0 || hasPhoneMatches || empty || !!err || busy || (noCols && !!res?.houses.length) || !!resultVehicles.length || !!resultCards.length;
@@ -265,21 +267,21 @@ export default function UniSearch({ communities, onPick, search, placeholder, wi
                 {resultVehicles.map((v) => {
                   const h = res.houses.find((x) => x.id === v.houseId);
                   return (
-                    <button type="button" key={`v${v.id}`} onClick={() => choose({ kind: 'vehicle', vehicle: v, all: res })}>
-                      <AddressSearchMatch address={h ? houseLabel(h) : '未关联房号'} query={kw} plate={v.plateNo} />
+                    <button type="button" key={`v:${v.plateNo}:${v.houseId}:${v.id}`} onClick={() => choose({ kind: 'vehicle', vehicle: v, all: res })}>
+                      <AddressSearchMatch address={h ? houseLabel(h) : '未关联房号'} query={kw} plate={v.plateNo} phone={v.contactPhone} />
                     </button>
                   );
                 })}
               </>
             ) : null}
-            {res && ([['电话', phoneHouses], ['地址', addressHouses]] as const).map(([group, rows]) =>
+            {res && ([['PMS 业主电话', phoneHouses], ['现场停车库电话', onsiteHouses], ['地址', addressHouses]] as const).map(([group, rows]) =>
               rows.length > 0 && <div key={group} className="as-result-group">
                 <div className="as-group">{group}</div>
                 {rows.map(h =>
                   <button type="button" key={h.id} onClick={() => choose({ kind: 'house', hit: h, all: res })}>
                     <AddressSearchMatch address={houseLabel(h)} query={kw}
                       addressParts={[h.communityName, h.lane ? h.lane + '弄' : '', h.buildingNo + '号', h.roomNo]}
-                      phone={group === '电话' ? res.matchedPhones?.[h.id] : null} owner={group === '地址' ? h.owner?.name : null} />
+                      phone={group === 'PMS 业主电话' ? res.matchedPhones?.[h.id] : group === '现场停车库电话' ? res.onsitePhones?.[h.id] : null} owner={group === '地址' ? h.owner?.name : null} />
                   </button>)}
               </div>)}
             {res && resultCards.length > 0 ? (

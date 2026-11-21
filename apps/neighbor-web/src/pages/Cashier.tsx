@@ -9,7 +9,7 @@ import PaidHistory from '@/components/cashier/PaidHistory';
 import { accessCardIssuance, address, request } from '@pms/api-client';
 import type { AddressCommunity } from '@pms/shared-types';
 import HousePicker, { type PickedHouse } from '@/components/HousePicker';
-import UniSearch, { type UniPick } from '@/components/cashier/UniSearch';
+import UniSearch, { type UniPick, type RegistrationMatch } from '@/components/cashier/UniSearch';
 import PayMethods from '@/components/PayMethods';
 import MisCollectionPanel from '@/components/cashier/MisCollectionPanel';
 import Icon from '@/components/Icon';
@@ -44,9 +44,9 @@ interface HouseHit {
   communityId: number | null; communityName: string;
   owner: { id: number; name: string | null; phone: string | null } | null;
 }
-interface Vehicle { id: number; plateNo: string; houseId: number | null; ownerId: number | null; validUntil: string | null }
+interface Vehicle { contactPhone?: string; openIntakeId?: number | null; id: number; plateNo: string; houseId: number | null; ownerId: number | null; validUntil: string | null }
 interface AccessCard { id: number; cardNo: string; houseId: number; ownerId: number | null; status: string }
-interface SearchResult { addressMatches?: number[]; matchedPhones?: Record<number, string>; plateMatches?: boolean; searchWarning?: string; houses: HouseHit[]; vehicles: Vehicle[]; accessCards: AccessCard[] }
+interface SearchResult { registrationMatches?: RegistrationMatch[]; onsitePhones?: Record<number, string>; addressMatches?: number[]; matchedPhones?: Record<number, string>; plateMatches?: boolean; searchWarning?: string; houses: HouseHit[]; vehicles: Vehicle[]; accessCards: AccessCard[] }
 interface Estimate { unitPriceCents: number; quantity: number; startDate: string | null; endDate: string | null; amountCents: number; summary: string }
 /** 物业费/泊位费应收：实时读 MIS（/fees/mis/bills），id 是 MIS 侧单据号 */
 interface Bill { id: string; feeCode: string; feeName: string; period: string; amountCents: number; status: string; remark?: string | null }
@@ -201,7 +201,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
       return { houses: pick('house'), vehicles: pick('vehicle'), accessCards: pick('card') };
     }
     const o = (r ?? {}) as Partial<SearchResult>;
-    return { houses: o.houses ?? [], vehicles: o.vehicles ?? [], accessCards: o.accessCards ?? [] };
+    return { registrationMatches: o.registrationMatches ?? [], houses: o.houses ?? [], vehicles: o.vehicles ?? [], accessCards: o.accessCards ?? [] };
   };
 
   const searchByQ = useCallback(async (kw: string): Promise<SearchResult> => {
@@ -217,6 +217,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
     const fullPlate = /^[\u4e00-\u9fff][A-Z][A-Z0-9]{5,6}$/.test(term);
     const plateFragment = /^[A-Z0-9]{4,7}$/.test(term);
     const matches = (plate: string) => fullPlate ? plate.toUpperCase() === term : plate.toUpperCase().endsWith(term);
+    const onsitePhones: Record<number, string> = {};
     const matchedPhones: Record<number, string> = {};
     if (/^\d{4,}$/.test(term)) {
       for (const h of merged.houses) {
@@ -226,7 +227,17 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
     if (fullPlate || plateFragment) {
       merged.vehicles = merged.vehicles.filter(v => matches(v.plateNo));
     }
-    if (plateFragment || (fullPlate && !merged.vehicles.some(v => merged.houses.some(h => h.id === v.houseId)))) {
+    const registrations = park.registrationMatches ?? [];
+    const queryOnsite = plateFragment || (fullPlate && !merged.vehicles.some(v => merged.houses.some(h => h.id === v.houseId)));
+    const directory: HouseHit[] = [];
+    if (queryOnsite || registrations.length) {
+      for (const c of communities) for (const b of c.buildings) for (const h of b.houses) {
+        directory.push({ id: h.id, roomNo: h.roomNo, lane: b.lane, buildingNo: b.buildingNo,
+          communityId: c.id, communityName: c.name,
+          owner: h.ownerId ? { id: h.ownerId, name: h.ownerName ?? null, phone: h.ownerPhone ?? null } : null });
+      }
+    }
+    if (queryOnsite) {
       try {
         let q = await accessCardIssuance.createParkingQuery(kw.trim());
         for (let i = 0; i < 10 && (q.status === 'pending' || q.status === 'running'); i += 1) {
@@ -242,12 +253,6 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
           const ids = plateHouses.get(key) ?? new Set<number>();
           if (vehicle.houseId) ids.add(vehicle.houseId);
           plateHouses.set(key, ids);
-        }
-        const directory: HouseHit[] = [];
-        for (const c of communities) for (const b of c.buildings) for (const h of b.houses) {
-          directory.push({ id: h.id, roomNo: h.roomNo, lane: b.lane, buildingNo: b.buildingNo,
-            communityId: c.id, communityName: c.name,
-            owner: h.ownerId ? { id: h.ownerId, name: h.ownerName ?? null, phone: h.ownerPhone ?? null } : null });
         }
         for (const row of rows) {
           const f = row.fields || {};
@@ -285,7 +290,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
             if (candidates.length === 1) hit = candidates[0];
           }
           if (hit) {
-            if (phoneHit && !matchedPhones[hit.id]) matchedPhones[hit.id] = String(phoneHit[1]);
+            if (phoneHit && !onsitePhones[hit.id]) onsitePhones[hit.id] = String(phoneHit[1]);
             if (!merged.houses.some(h => h.id === hit.id)) merged.houses.push(hit);
           }
           if (plateHit) {
@@ -301,21 +306,33 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
             ownerId: merged.houses.find(h => h.id === houseId)?.owner?.id ?? null, validUntil: existing?.validUntil ?? null };
         });
       } catch (error) {
-        if (merged.vehicles.length || merged.houses.some(h => h.owner?.phone?.includes(term))) merged.searchWarning = '现场车牌查询未完成，当前仅显示 PMS 记录';
+        if (park.registrationMatches?.length || merged.vehicles.length || merged.houses.some(h => h.owner?.phone?.includes(term))) merged.searchWarning = '现场车牌查询未完成，当前仅显示 PMS 记录';
         else throw new Error(`车牌查询未完成：${error instanceof Error ? error.message : '现场停车库暂不可用'}。不能据此判断车辆不存在。`);
       }
     }
     const addressMatches = merged.houses.filter(h =>
       [h.communityName, h.lane, h.buildingNo, h.roomNo].some(value => value?.toUpperCase().includes(term)),
     ).map(h => h.id);
+    merged.onsitePhones = onsitePhones;
     merged.matchedPhones = matchedPhones;
     merged.addressMatches = addressMatches;
-    if (fullPlate || plateFragment || Object.keys(matchedPhones).length) {
+    if (fullPlate || plateFragment || registrations.length || Object.keys(matchedPhones).length) {
       merged.vehicles = merged.vehicles.filter(v => matches(v.plateNo));
       merged.accessCards = merged.accessCards.filter(c => c.cardNo.includes(term));
-      const ids = new Set([...addressMatches, ...merged.vehicles.map(v => v.houseId), ...merged.accessCards.map(c => c.houseId)]);
-      merged.houses = merged.houses.filter(h => ids.has(h.id) || !!matchedPhones[h.id] || h.owner?.name?.includes(kw));
+      const ids = new Set([...addressMatches, ...registrations.map(r => r.houseId), ...merged.vehicles.map(v => v.houseId), ...merged.accessCards.map(c => c.houseId)]);
+      merged.houses = merged.houses.filter(h => ids.has(h.id) || !!matchedPhones[h.id] || !!onsitePhones[h.id] || h.owner?.name?.includes(kw));
       merged.plateMatches = merged.vehicles.length > 0;
+    }
+    for (const match of registrations) {
+      if (!merged.houses.some(h => h.id === match.houseId)) {
+        const room = directory.find(h => h.id === match.houseId);
+        if (room) merged.houses.push(room);
+      }
+      const existing = merged.vehicles.find(v => v.plateNo === match.plateNo && v.houseId === match.houseId);
+      if (existing) Object.assign(existing, { contactPhone: match.contactPhone, openIntakeId: match.openIntakeId });
+      else merged.vehicles.push({ id: -match.id, plateNo: match.plateNo, houseId: match.houseId,
+        contactPhone: match.contactPhone, openIntakeId: match.openIntakeId, ownerId: null, validUntil: null });
+      merged.plateMatches = true;
     }
     return merged;
   }, [communities]);
@@ -386,6 +403,10 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
       return;
     }
     const h = byHouse(p.kind === 'vehicle' ? p.vehicle.houseId : p.card.houseId);
+    if (p.kind === 'vehicle' && p.vehicle.openIntakeId) {
+      navigate('/cashier?intakeId=' + p.vehicle.openIntakeId);
+      return;
+    }
     if (!h && p.kind === 'vehicle') {
       applyHouse(null, null);
       setPicked(null);
@@ -402,6 +423,8 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
     else setTab('ac');
   };
 
+  const selectedVehicle = result?.vehicles.find(v => v.plateNo === parkPlate && v.houseId === house?.id);
+  const vehiclePhone = linkedIntake?.contactPhone || selectedVehicle?.contactPhone;
   const cardRule = useMemo(() => rules.find((r) => r.serviceType === 'access_card' && (r.communityId == null || r.communityId === house?.communityId)), [rules, house]);
   const historyHouse = useMemo(() => house?.communityId ? {
     houseId: house.id, communityId: house.communityId, communityName: house.communityName,
@@ -618,8 +641,9 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
                   <div className="nm">{house.owner?.name || '未登记业主'}</div>
                   <div className="addr">
                     <Icon name="home" />{house.communityName} {house.buildingNo}/{house.roomNo}
-                    <Icon name="phone" />{house.owner?.phone ? maskPhone(house.owner.phone) : '无电话'}
+                    <Icon name="phone" />PMS 业主电话 {house.owner?.phone ? maskPhone(house.owner.phone) : '无电话'}
                   </div>
+                  {vehiclePhone && <div className="addr"><Icon name="phone" />本车联系手机 {maskPhone(vehiclePhone)}</div>}
                 </div>
                 <button className="btn" style={{ marginLeft: 'auto' }} onClick={() => setRepairOpen(true)}>
                   <Icon name="wrench" size={16} />报修
@@ -666,7 +690,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
             ) : null}
 
             {linkedBlocked && !embedded ? (tab === 'pk' ? <div className="note2" role="status">本次登记不可收费，真实状态见上方。需要转类 / 撤销请进入本次登记详情。</div> : null) : <div ref={parkingForm} style={{ display: tab === 'pk' ? undefined : 'none' }}>
-              <ChargeAttempted.Provider value={embedded && chargeAttempted}><ParkingTab key={`${house.id}-${intakeParam ?? ''}`} house={house} rules={rules as never} onCart={onParkCart} initialPlate={parkPlate} selectedVehicle={result?.vehicles.find(v => v.plateNo === parkPlate && v.houseId === house.id)} focusedIntake={linkedIntake} staffRegistration={embedded} onIntakeChange={embedded ? updateLinkedIntake : undefined} /></ChargeAttempted.Provider>
+              <ChargeAttempted.Provider value={embedded && chargeAttempted}><ParkingTab key={`${house.id}-${intakeParam ?? ''}`} house={house} rules={rules as never} onCart={onParkCart} initialPlate={parkPlate} selectedVehicle={selectedVehicle} focusedIntake={linkedIntake} staffRegistration={embedded} onIntakeChange={embedded ? updateLinkedIntake : undefined} /></ChargeAttempted.Provider>
             </div>}
 
             {tab === 'ac' ? (

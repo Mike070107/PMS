@@ -486,6 +486,24 @@ export class BusinessService {
       return { houses: [], vehicles: [], accessCards: [] };
     }
     const q = (query.q || '').trim();
+    // 车牌登记保留每辆车自己的联系人。同户业主电话仍取自 users。
+    const registrationMatches: Array<{ id: number; plateNo: string; houseId: number; contactPhone: string; openIntakeId: number | null }> =
+      query.serviceType === BusinessServiceType.PARKING_MONTHLY && /^\d{4,11}$/.test(q)
+        ? await this.houseRepo.manager.connection.query(
+          `SELECT id, plate AS "plateNo", house_id AS "houseId", contact_phone AS "contactPhone",
+                  CASE WHEN kind = 'family' OR transaction_id IS NULL THEN id END AS "openIntakeId"
+           FROM (
+             SELECT DISTINCT ON (i.house_id, upper(trim(i.plate))) i.id, upper(trim(i.plate)) AS plate,
+                    i.house_id, i.contact_phone, i.kind, i.transaction_id
+             FROM vehicle_intakes i
+             JOIN houses h ON h.id = i.house_id AND h.tenant_id = i.tenant_id
+             JOIN buildings b ON b.id = h.building_id AND b.tenant_id = h.tenant_id
+             WHERE i.tenant_id = $1 AND i.status <> 'void' AND trim(i.plate) <> ''
+               AND (i.community_id IS NULL OR i.community_id = b.community_id)
+               ${scope ? 'AND b.community_id = ANY($3::int[])' : ''}
+             ORDER BY i.house_id, upper(trim(i.plate)), i.id DESC
+           ) latest WHERE contact_phone LIKE $2 ORDER BY id DESC`,
+          scope ? [tenantId, '%' + q, scope] : [tenantId, '%' + q]) : [];
     // 认得出是地址就按房精准查（198/20/601、一期20号601、枫桦景苑一期20号楼…），姓名电话照常模糊
     const addr = await resolveAddressForTenant(this.houseRepo.manager.connection, tenantId, q);
     const houseQb = this.houseRepo
@@ -510,6 +528,10 @@ export class BusinessService {
                 .orWhere('u.name ILIKE :kw', { kw: `%${q}%` })
                 .orWhere('u.phone ILIKE :kw', { kw: `%${q}%` })
                 .orWhere('EXISTS (SELECT 1 FROM parking_vehicles pv WHERE pv.tenant_id = h.tenant_id AND pv.house_id = h.id AND pv.plate_no ILIKE :kw)', { kw: `%${q}%` });
+              if (registrationMatches.length) sub.orWhere('h.id IN (:...registeredHouses)', {
+                registeredHouses: [...new Set(registrationMatches.map(row => row.houseId))],
+              });
+              if (addr && /^\d{4,11}$/.test(q)) sub.orWhere('u.phone ILIKE :ownerPhone', { ownerPhone: '%' + q + '%' });
               // 同一份房产字段支持商铺、公寓、普通房屋的连续或分隔地址。
               sub.orWhere("concat(b.building_no,un.unit_no,h.room_no) = :addressKey OR concat_ws('/',nullif(b.lane,''),b.building_no,un.unit_no,h.room_no) = :addressKey OR concat_ws('/',b.building_no,un.unit_no,h.room_no) = :addressKey", { addressKey: q.replace(/\s+/g, '').replace(/／/g, '/') });
             })
@@ -585,6 +607,7 @@ export class BusinessService {
           ? { id: Number(r.ownerId), name: r.ownerName, phone: r.ownerPhone }
           : null,
       })),
+      registrationMatches,
       vehicles: filteredVehicles,
       accessCards: filteredCards,
     };

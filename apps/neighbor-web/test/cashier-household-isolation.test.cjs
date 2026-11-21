@@ -31,3 +31,11 @@ test('unresolved vehicle clears the prior charge and stays in cashier',()=>{
  assert.equal(state.parkPlate,null);
  assert.match(state.error,/沪A1C678.*收银台/);
 });
+
+test('registered phone selection stays in cashier and opens the specific unpaid intake',()=>{
+ const {ctx}=cashier();
+ let destination;
+ ctx.navigate=url=>{destination=url};
+ ctx.onUniPick({kind:'vehicle',vehicle:{plateNo:'沪A1C678',houseId:902,openIntakeId:66},all:{houses:[],vehicles:[],accessCards:[]}});
+ assert.equal(destination,'/cashier?intakeId=66');
+});

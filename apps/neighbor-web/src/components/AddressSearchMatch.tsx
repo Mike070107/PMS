@@ -39,6 +39,6 @@ export default function AddressSearchMatch({ address, addressParts, query, phone
   const detail = plate || number || (owner?.includes(term) ? owner : '') || addressHit || address;
   return <span className="address-search-match">
     <span className="address-search-detail">{highlight(detail, plate || number ? [term] : terms)}</span>
-    <span className="address-search-location">{address}</span>
+    <span className="address-search-location">{address}{plate && phone ? <small style={{ display: 'block' }}>本车联系手机 {highlight(phone, [term])}</small> : null}</span>
   </span>;
 }

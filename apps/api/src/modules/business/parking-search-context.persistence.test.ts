@@ -39,5 +39,23 @@ INSERT INTO houses VALUES(749,991,1,'401',80,null),(750,991,2,'1102',90,null),(8
   const got=await svc.search({q:'沪TEST01'},user,scope);assert.deepEqual(got.houses.map((h:any)=>h.id),[749]);assert.deepEqual(got.vehicles.map((v:any)=>v.id),[8]);
   assert.equal(got.vehicles[0].houseId,got.houses[0].id);
   for(const access of [{scopeAll:false,communityIds:[2]},{scopeAll:false,communityIds:[]}]){const hidden=await svc.search({q:'沪TEST01'},user,access);assert.deepEqual(hidden.houses,[]);assert.deepEqual(hidden.vehicles,[]);}
+  await createTable(entities.VehicleIntake);
+  for(const [id,tenant,community,house,status,plate] of [
+    [1,991,1,749,'submitted','沪A1C678'],[2,991,1,749,'void','沪VOID01'],
+    [3,991,2,750,'approved','沪OTHER1'],[4,992,3,850,'approved','沪OTHER2']
+  ]) await db.query('INSERT INTO vehicle_intakes(id,tenant_id,community_id,house_id,status,plate,contact_phone,kind) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[id,tenant,community,house,status,plate,'13900001234','paid']);
+  for(const q of ['1234','13900001234']){
+    const result=await svc.search({q,serviceType:'parking_monthly'},user,scope);
+    assert.deepEqual(result.registrationMatches.map((r:any)=>[r.plateNo,r.contactPhone,r.houseId,r.openIntakeId]),[['沪A1C678','13900001234',749,1]]);
+    assert.equal(result.houses[0].id,749);
+    assert.equal(result.houses[0].owner,null);
+  }
+  await db.exec(`INSERT INTO vehicle_intakes(id,tenant_id,community_id,house_id,status,plate,contact_phone,kind,transaction_id)
+    VALUES(5,991,1,749,'approved','沪A1C678','13900005678','paid',200),
+          (6,991,1,749,'submitted','沪B2C678','13800005678','paid',null)`);
+  assert.deepEqual((await svc.search({q:'1234',serviceType:'parking_monthly'},user,scope)).registrationMatches,[]);
+  const shared=await svc.search({q:'5678',serviceType:'parking_monthly'},user,scope);
+  assert.deepEqual(shared.registrationMatches.map((r:any)=>[r.plateNo,r.openIntakeId]),[['沪B2C678',6],['沪A1C678',null]]);
+  assert.deepEqual((await svc.search({q:'5678',serviceType:'access_card'},user,scope)).registrationMatches,[]);
  }finally{await db.close();}
 });
