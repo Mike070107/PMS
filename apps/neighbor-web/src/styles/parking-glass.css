@@ -80,3 +80,5 @@
 .sp-glass-wrap .sp-note .sp-note-value { color: var(--ink2); overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; max-height: 48px; overflow-wrap: anywhere; }
 .sp-glass-wrap .sp-plate-tag { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 700px) { .sp-glass-wrap .sp-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.sp-bound-vehicle{margin-block:6px;white-space:normal;overflow-wrap:anywhere;font-size:14px;line-height:1.55}

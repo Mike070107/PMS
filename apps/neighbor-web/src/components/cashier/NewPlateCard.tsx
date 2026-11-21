@@ -10,9 +10,9 @@ import './plate-review.css';
 import { accessCardIssuance, request, uploadBlobTo } from '@pms/api-client';
 import IntakePlatePicker from './IntakePlatePicker';
 import GarageSpacePicker, { useGarageSpaces, type SpaceChoice } from '@/components/parking/GarageSpacePicker';
-import { toggleGarage, garageNumbersFor, GARAGE_KEYS, PAID_GARAGE_KEYS, type BasementGarage } from '@/lib/garage-selection';
+import { toggleGarage, garageNumbersFor, propertySpaceLabels, GARAGE_KEYS, PAID_GARAGE_KEYS, type BasementGarage } from '@/lib/garage-selection';
 import './intake-registration.css';
-import VehicleClassChoices, { vehicleClassLabel } from './VehicleClassChoices';
+import VehicleClassChoices, { vehicleClassCaption } from './VehicleClassChoices';
 import Icon from '@/components/Icon';
 import { dayjs, money } from '@/lib/format';
 import type { RegistrationTerm } from '@/components/VehicleRegistrationTerm';
@@ -102,7 +102,6 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
   const operation = useRef('');
   const epoch = useRef(0);
   const savingGarage = useRef(false);
-  const allowInitialPaidDefault = useRef(it.kind === 'paid');
   const finalized = it.status === 'approved' && (it.kind === 'family' || !!it.transaction);
   const canReview = ['business', 'family-cars', 'app:approve-business-manager', 'app:approve-manager'].some(key => can(key, 'edit'));
   const canConvert = can('business', 'edit') && it.status !== 'void' && !finalized && !it.transaction && !it.familyCarId;
@@ -139,7 +138,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
     const own = (catalog ?? []).filter((t) => (t as ParkTarget & { communities?: string[] }).communities?.includes(community));
     return own.length ? own : targetsProp;
   }, [catalog, community, targetsProp]);
-  const [picked, setPicked] = useState<string[]>(() => (it.garages.length ? it.garages : it.kind === 'family' ? [String(house.lane || '').includes('198') ? 'phase1' : 'phase2'] : []));
+  const [picked, setPicked] = useState<string[]>(() => it.garages ?? []);
   const [nums, setNums] = useState<Record<string, string>>(it.garageNumbers || {});
   const canEditGarages = canEnterVehicleDetails() && it.status !== 'void' && (it.status !== 'approved' || !!it.canConfigureApproved) && !(it.kind === 'paid' && it.transaction);
   const [savingGarages, setSavingGarages] = useState(false);
@@ -174,8 +173,6 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
     const nextNums = { ...nums, [space.garage]: space.spaceNo };
     setNums(nextNums); setSpaceGarage(null); saveGarages(next, nextNums);
   };
-  // 付费车还没选过车库：目录到了默认选第一个（一般是地面车库），前台可再改
-  useEffect(() => { if (allowInitialPaidDefault.current && it.kind === 'paid' && !picked.length && !it.garages.length && targets.length && canEditGarages) saveGarages([targets[0].key]); }, [targets.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const [, tick] = useState(0);
   const key = `新办#${it.id}`;
 
@@ -200,12 +197,14 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
 
   const expired = dayjs(it.expiresAt).isBefore(dayjs());
   const canQr = ['waiting', 'reupload'].includes(it.status);
+  const spaceOf = (key: string) => key === PAID_GARAGE_KEYS.main ? nums.main : key === PAID_GARAGE_KEYS.civil ? nums.civil : null;
+  const propertySpaces = propertySpaceLabels(picked.map(targetKey => ({ targetKey, propertySpace: spaceOf(targetKey) })));
   const lots = useMemo<Lot[]>(() => targets.filter((t) => picked.includes(t.key)).map((t) => ({
-    key: t.key, system: t.system, label: t.label, targetKey: t.key, space: null, spaceFromNote: false, endDate: null, garages: [],
+    key: t.key, system: t.system, label: t.label, targetKey: t.key, propertySpace: spaceOf(t.key), space: spaceOf(t.key) ?? null, spaceFromNote: false, endDate: null, garages: [],
     ref: t.system === 'local'
-      ? { kind: 'local' as const, database: (t.database || 'parking2') as 'parking1' | 'parking2', sourceRecordId: '', previousEndDate: null, label: t.label }
+      ? { kind: 'local' as const, database: (t.database || 'parking2') as 'parking1' | 'parking2', targetKey:t.key, sourceRecordId: '', previousEndDate: null, label: t.label }
       : { kind: 'deliyun' as const, park: t.deliyunPark || '', label: t.label },
-  })), [targets, picked]);
+  })), [targets, picked, nums]);
   const car: Car = { plate: key, identity: null, lots };
 
   const call = async (label: string, fn: () => Promise<Intake>, rethrow = false) => {
@@ -258,7 +257,6 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
       } });
       // Do not mirror every poll into these drafts: failed selections must survive.
       // Only a successful conversion deliberately replaces old-kind local state.
-      allowInitialPaidDefault.current = false;
       setDraftTerm(null);
       setPicked(x.garages ?? []); setNums(x.garageNumbers ?? {}); setGarageError('');
       setEdit({ plate: x.plate, contactName: x.contactName, contactPhone: x.contactPhone, relation: x.relation });
@@ -376,7 +374,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
   const categoryPanel = !manage && it.kind === 'paid' && !it.transaction && it.status !== 'void' ? <div style={{ marginBottom: 12 }}>
         {renewal(car, it.plate ? `${it.plate}（新办）` : `新办车牌 #${it.id}`, it.vehicleClass, selectVehicleClass, (it.status === 'approved' || !!it.homeUpload && (!!it.submittedAt || !expired)) && picked.length > 0 && !garageError && !missingSpace && !converting && !busy && !savingGarages, canEditGarages ? garageFields : null)}
       </div> : <div className="note2" style={{ marginBottom: 10 }}>
-        <VehicleClassChoices options={['亲情车', ...classOptions]} value={it.kind === 'family' ? '亲情车' : it.vehicleClass} readOnly={!canConvert} disabled={!!busy || savingGarages} onChange={value => { void selectVehicleClass(value).catch(e => setErr(e instanceof Error ? e.message : '类别保存失败')); }} />
+        <VehicleClassChoices spaces={propertySpaces} options={['亲情车', ...classOptions]} value={it.kind === 'family' ? '亲情车' : it.vehicleClass || classOptions.find(c => c.replace(/[-－\s]/g, '') === '住户车1') || ''} readOnly={!canConvert} disabled={!!busy || savingGarages} onChange={value => { void selectVehicleClass(value).catch(e => setErr(e instanceof Error ? e.message : '类别保存失败')); }} />
       </div>;
   return (
     <div ref={cardRef} className="card np-card np-review">
@@ -385,7 +383,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
         <Icon name="car" size={18} />{it.kind === 'family' ? '亲情车登记' : '新办车牌'}
         {it.plate ? <b className="plate" style={{ marginLeft: 6 }}>{it.plate}</b> : null}
         <span className={`tag ${stTone}`} style={{ marginLeft: 8 }}>{defaultStaffMode && it.transaction ? `已收款 · ${TXN_STATUS[it.transaction.externalSyncStatus] || it.transaction.externalSyncStatus}` : defaultStaffMode && canStaff && staffMode && it.status === 'waiting' && stLabel !== '超时关闭' ? '待录入资料' : stLabel}</span>
-        {it.kind === 'family' ? <span className="tag mute" style={{ marginLeft: 6 }}>{defaultStaffMode ? '免费' : '免费 · 按申请期限'}</span> : it.vehicleClass ? <span className="tag acc" style={{ marginLeft: 6 }}>{vehicleClassLabel(it.vehicleClass)}</span> : null}
+        {it.kind === 'family' ? <span className="tag mute" style={{ marginLeft: 6 }}>{defaultStaffMode ? '免费' : '免费 · 按申请期限'}</span> : it.vehicleClass ? <span className="tag acc" style={{ marginLeft: 6 }}>{vehicleClassCaption(it.vehicleClass, propertySpaces)}</span> : null}
         <span style={{ marginLeft: 'auto' }} />
         {canVoid ? <button className="btn g sm" disabled={!!busy || savingGarages} onClick={() => { setConverting(false); setAsk(ask === 'void' ? '' : 'void'); }}>撤销 / 作废登记</button> : null}
         {it.status === 'void' || (it.status === 'approved' && (it.kind === 'family' || it.transaction)) ? <button className="btn g sm" onClick={() => onDrop(it.id)} title="从这里收起（车牌登记审核里仍可查）">✕</button> : null}
@@ -498,7 +496,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
           {familyNeedsPreview && canReview && <button type="button" className="btn p" onClick={() => setCheckedSubmission(it.submittedAt)}>资料已核对，选择授权</button>}
           {!familyNeedsPreview && (it.status === 'approved' || it.homeUpload || manage || it.kind === 'family' && it.submittedAt) && <>
       {defaultStaffMode ? <details className="registration-options" key={it.kind + it.status} open={it.kind === 'paid' && !it.transaction && it.status !== 'void'}>
-        <summary>{it.kind === 'family' ? '车辆类别' : '车辆类别与授权期限'}<span>{it.kind === 'family' ? '亲情车 · 免费' : vehicleClassLabel(it.vehicleClass || '') || '选择标准'}</span></summary>
+        <summary>{it.kind === 'family' ? '车辆类别' : '车辆类别与授权期限'}<span>{it.kind === 'family' ? '亲情车 · 免费' : vehicleClassCaption(it.vehicleClass || '', propertySpaces) || '选择标准'}</span></summary>
         {categoryPanel}
       </details> : categoryPanel}
           </>}

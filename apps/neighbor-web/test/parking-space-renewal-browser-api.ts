@@ -12,7 +12,7 @@ const rows = [
     pmsMatch: { userId: 1, houseId: 1, name: '续费测试业主', house: { communityId: 2 } } },
 ];
 let cloud = { id: 'cloud-1', plate, beginDate: '2026-01-01', endDate: '2027-02-28', civilDefenseAuthorized: garage === 'civil' && scenario !== 'unauthorized', garageNames: ['人防'], poolPeriods: [] };
-const space = { id: 21, garage, spaceNo: garage === 'main' ? 'A-021' : 'RF-021', plate, houseNo: '228/3/501', ownerName: '续费测试业主', ownerTel: '13800000001/021-12345678', areaSqm: '12.50', category: null, note: '原备注不能被类别覆盖', source: '原导入来源', endDate: '2027-01-31', communityId: 2 };
+const space = { id: 21, garage, spaceNo: garage === 'main' ? 'A-021' : 'RF-021', plate, vehicleBindings:{[plate]:{houseId:1,houseNo:'228/3/501',ownerName:'续费测试业主',ownerPhone:'13800000001',contactPhone:'13900001234',endDate:'2027-01-31'}}, houseNo: '228/3/501', ownerName: '续费测试业主', ownerTel: '13800000001/021-12345678', areaSqm: '12.50', category: null, note: '原备注不能被类别覆盖', source: '原导入来源', endDate: '2027-01-31', communityId: 2 };
 const calls: any[] = [];
 const ops = new Map<number, any>();
 let seq = 700, cloudAttempts = 0, querySeq = 0;

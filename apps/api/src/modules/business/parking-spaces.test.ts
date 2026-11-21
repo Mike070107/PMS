@@ -30,6 +30,7 @@ function harness() {
     createQueryBuilder: () => {
       const predicates: Array<(r: any) => boolean> = [];
       const qb: any = {
+        addSelect: () => qb,
         where: (sql: string, p: any) => { predicates.length = 0; return qb.andWhere(sql, p); },
         andWhere: (sql: string, p: any = {}) => {
           if (/tenant_?id/i.test(sql)) predicates.push(r => r.tenantId === p.tenantId);

@@ -72,7 +72,7 @@ export default function RenewSheet({
   const [quoteError, setQuoteError] = useState('');
   const quoteGeneration = useRef(0);
   const [ratesErr, setRatesErr] = useState('');
-  const [months, setMonths] = useState(1);
+  const [months, setMonths] = useState(12);
   const [monthsValid, setMonthsValid] = useState(true);
   const [reason, setReason] = useState('');
   const [amountStr, setAmountStr] = useState('');
@@ -124,7 +124,7 @@ export default function RenewSheet({
   const context = JSON.stringify([plate, targets.map(r => [r.database, r.fields]), identity]);
   const [formContext, setFormContext] = useState(context);
   useEffect(() => {
-    setFormContext(context); setMonths(1); setMonthsValid(true); setAmountStr(''); setEndOverride(''); setReason(''); setErr(''); setLog([]);
+    setFormContext(context); setMonths(12); setMonthsValid(true); setAmountStr(''); setEndOverride(''); setReason(''); setErr(''); setLog([]);
     planRef.current = loadPlan(plate); submitted.current = !!planRef.current; setCanRetryCivil(false);
     if (submitted.current) setErr('这张车牌有已提交的续期，先核对原任务；结果未知时禁止重新收费。');
     setRuleId(null); setQuote(null); setQuoteError(''); quoteGeneration.current++;

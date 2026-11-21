@@ -13,6 +13,9 @@ export function vehicleIntakeOperation(houseId: number, kind: IntakeOperationKin
     anotherVehicle,
     // Only a confirmed response resolves this operation. Subsequent explicit actions
     // get a new key, while server-side household reuse still finds the original draft.
+    onFailure(error: unknown) {
+      if ((error as {httpStatus?:number})?.httpStatus === 410 && sessionStorage.getItem(slot) === operationKey) sessionStorage.removeItem(slot);
+    },
     resolve() {
       if (sessionStorage.getItem(slot) === operationKey) sessionStorage.removeItem(slot);
     },

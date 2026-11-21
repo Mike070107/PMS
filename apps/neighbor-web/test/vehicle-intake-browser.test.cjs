@@ -90,19 +90,35 @@ test('real vehicle/cashier entries: opening is read-only, lock/reuse, explicit a
     await click('.newplate-bar button', '亲情车（免费）'); await click('.sheet button', '生成/继续登记二维码');
     await until("!document.querySelector('.sheet')");
     assert.equal(await count(), 1); assert.equal(await js("document.querySelectorAll('.np-card').length"), 1);
-    await click('.newplate-bar button', '亲情车（免费）'); await click('.sheet button', '再登记一辆（另建办理单）');
-    await until("!document.querySelector('.sheet')&&document.querySelectorAll('.np-card').length===2");
-    assert.equal(await count(), 2);
+    await click('.newplate-bar button', '亲情车（免费）'); assert.equal(await js("Array.from(document.querySelectorAll('.sheet button')).some(b=>b.textContent.includes('另建办理单'))"),false);
+    await click('.sheet button', '工作人员直接登记');
+    await until("!document.querySelector('.sheet')&&document.querySelectorAll('.np-card').length===1");
+    assert.equal(await count(),1);
     await click('.newplate-bar button', '新办车牌（付费）'); await js('window.__failNext=true'); await click('.sheet button', '生成/继续登记二维码');
     await until("document.querySelector('.sheet [role=alert]')?.textContent.includes('合成超时')");
     const originalKey = await js("window.__intakeCalls.filter(o=>o.url==='/vehicle-intakes'&&o.method==='POST').at(-1).data.operationKey");
-    assert.equal(await count(), 3); await shot('mobile-timeout-keeps-operation');
+    assert.equal(await count(), 2); await shot('mobile-timeout-keeps-operation');
     await call('Page.reload'); await pause(400);
+    // Legacy households may already have dozens of abandoned drafts. Refresh must not mount them.
+    await js("(()=>{const old=localStorage.getItem('synthetic-intakes');sessionStorage.setItem('draft-fixture-backup',old);const rows=JSON.parse(old);for(let id=20;id<45;id++)rows.push({...rows[0],id});localStorage.setItem('synthetic-intakes',JSON.stringify(rows));})()");
+    await call('Page.reload');
+    await until("document.querySelector('.registration-draft-picker select')?.options.length===28");
+    assert.equal(await js("document.querySelectorAll('.np-card').length"),0);
+    for (const id of [23,24]) {
+      await js(`(()=>{const s=document.querySelector('.registration-draft-picker select');s.value='${id}';s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+      await until("document.querySelectorAll('.np-card').length===1");
+      assert.equal(await js("document.querySelectorAll('.registration-workspace').length"),1);
+    }
+    assert.equal(await js("document.querySelector('.permit-application-title').textContent"),'亲情车办理申请单');
+    assert.ok(await js("document.querySelector('.permit-application-title').getBoundingClientRect().right<=document.querySelector('.permit-stub').getBoundingClientRect().left+1"));
+    await shot('legacy-drafts-one-active-390');
+    await js("localStorage.setItem('synthetic-intakes',sessionStorage.getItem('draft-fixture-backup'))");
+    await call('Page.reload');
     await until("document.querySelector('.newplate-bar button')&&!document.querySelector('.newplate-bar button').disabled");
     await click('.newplate-bar button', '新办车牌（付费）'); await click('.sheet button', '生成/继续登记二维码');
     await until("!document.querySelector('.sheet')");
     assert.equal(await js("window.__intakeCalls.filter(o=>o.url==='/vehicle-intakes'&&o.method==='POST').at(-1).data.operationKey"), originalKey);
-    assert.equal(await count(), 3);
+    assert.equal(await count(), 2);
     await shot('mobile-success-reused');
     // 办公室代填：真实组件 + 合成 multipart 接口；失败保留输入，确认后版本绑定
     const setInput = async (selector, value) => js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));})()`);
@@ -113,8 +129,13 @@ test('real vehicle/cashier entries: opening is read-only, lock/reuse, explicit a
     await click('.np-qr button','保留车牌，继续办理');
     await until("document.querySelector('.np-qr')?.textContent.includes('已登记回家补交')");
     const paidCard = await js("Array.from(document.querySelectorAll('.np-card')).findIndex(e=>e.textContent.includes('已登记回家补交'))");
-    await js(`document.querySelectorAll('.np-card')[${paidCard}].querySelector('input[type=radio][value="住户车-1"]').click()`);
-    await until("JSON.parse(localStorage.getItem('synthetic-intakes')).some(r=>r.homeUpload&&r.vehicleClass==='住户车-1')");
+    await until("!!document.querySelector('.np-garages input[type=checkbox]')");
+    assert.equal(await js("document.querySelectorAll('.np-garages input:checked').length"),0);
+    assert.equal(await js("window.__intakeCalls.filter(o=>o.url.endsWith('/garages')&&o.method==='POST').length"),0);
+    await click('.np-garages input[type=checkbox]');
+    await until("JSON.parse(localStorage.getItem('synthetic-intakes')).some(r=>r.homeUpload&&r.garages.length===1)");
+    assert.equal(await js(`document.querySelectorAll('.np-card')[${paidCard}].querySelector('input[type=radio][value="住户车-1"]').checked`),true);
+    assert.equal(await js(`document.querySelectorAll('.np-card')[${paidCard}].querySelector('input[aria-label=自定义续期月数]').value`),'12');
     await js(`document.querySelectorAll('.np-card')[${paidCard}].querySelector('button[data-month="3"]').click()`);
     await until(`document.querySelectorAll('.np-card')[${paidCard}].querySelector('.money')?.textContent.includes('300')`);
     await shot('mobile-home-upload');
@@ -157,13 +178,13 @@ test('real vehicle/cashier entries: opening is read-only, lock/reuse, explicit a
     await shot('desktop-office-confirmed');
     await call('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true }); await pause(150);
     await click('#vehicles'); await click('.act button', '新车登记');
-    const before = await posts(); assert.equal(await count(), 3);
+    const before = await posts(); assert.equal(await count(), 2);
     await click('.sheet .house-address-picker input'); await call('Input.insertText', { text: '228/3/502' }); await pause(400);
     await call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter' }); await call('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter' });
     await until("[...document.querySelectorAll('.sheet button')].some(b=>b.textContent.includes('工作人员直接登记')&&!b.disabled)");
     assert.equal(await posts(), before, 'address/type selection is still read-only');
     await click('.sheet button', '工作人员直接登记'); await until("!!document.querySelector('.sheet [aria-label^=本次登记]')");
-    assert.equal(await count(), 3);
+    assert.equal(await count(), 2);
     const geometry = [];
     for (const width of [390, 1440]) {
       await call('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: width < 600 }); await pause(150);

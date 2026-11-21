@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, EntityManager, In, IsNull, Repository } from 'typeorm';
+import { Brackets, EntityManager, In, IsNull, Not, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
@@ -27,6 +27,8 @@ import {
   Community,
   House,
   ParkingVehicle,
+  ParkingQuery,
+  VehicleIntake,
   User,
   ParkingPlateTag,
 } from '../../entities';
@@ -47,6 +49,8 @@ import { Notification } from '../../entities';
 import { NotifyChannel, NotifyStatus } from '../../common/enums';
 import { DeliyunParkingService } from '../access-card-issuance/deliyun-parking.service';
 import { ParkingSpace, PARKING_SPACE_CATEGORIES } from '../../entities/parking-space.entity';
+import { expiredDraftSql } from './vehicle-draft-expiry';
+import { mainSpaceFromQuery, type PropertySpaceRef } from './property-space-ledger';
 import { UpdateParkingSpaceDto } from './parking-space.dto';
 
 @Injectable()
@@ -205,6 +209,20 @@ export class BusinessService {
    * - 本地旧库（枫桦一期/二期地面、二期大车库）要经现场助手读，前端用 roomTerm 发起 /access-card-issuance/parking/queries。
    * 每个场单独成败，一个场查不到不影响其他场。
    */
+  private async boundPropertySpaces(tenantId:number, houseId:number, communityIds:number[], plates:string[]) {
+    if (!communityIds.length) return [];
+    const rows: Array<{plate:string; garage:'main'|'civil'; spaceNo:string}> = await this.houseRepo.manager.connection.query(
+      `SELECT DISTINCT linked.plate, s.garage, s.space_no AS "spaceNo" FROM parking_spaces s
+       CROSS JOIN LATERAL (
+         SELECT key AS plate FROM jsonb_each(s.vehicle_bindings) WHERE value->>'houseId' = $3::text
+         UNION SELECT upper(s.plate) WHERE upper(s.plate) = ANY($4::text[]) AND EXISTS (
+           SELECT 1 FROM parking_vehicles pv WHERE pv.tenant_id = s.tenant_id AND pv.house_id = $3::int
+             AND pv.status = 'active' AND upper(pv.plate_no) = upper(s.plate))
+       ) linked WHERE s.tenant_id = $1 AND s.community_id = ANY($2::int[])`,
+      [tenantId,communityIds,String(houseId),plates]);
+    return rows;
+  }
+
   async householdParking(houseId: number, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
     const house = await this.houseRepo.findOne({ where: { id: houseId, tenantId }, relations: { unit: true } });
@@ -229,10 +247,13 @@ export class BusinessService {
         return { targetKey: t.key, label: t.label, park: t.deliyunPark!, ok: false, error: e instanceof Error ? e.message : '查询失败', rows: [] };
       }
     }));
+    const basement = targets.find(t=>t.key === 'local:phase2_main_garage');
+    const sharedCommunities = basement ? await this.communityRepo.findBy({tenantId,name:In(basement.communities)}) : [];
+    const propertySpaces = await this.boundPropertySpaces(tenantId,houseId,sharedCommunities.map(c=>c.id).filter(id=>!scope || scope.includes(id)),vehicles.map(v=>normPlate(v.plateNo)));
     const localDatabases = [...new Set(targets.filter((t) => t.system === 'local').map((t) => t.database!))];
     return {
       houseId, room, communityId: community?.id ?? null, communityName: community?.name ?? null,
-      targets, deliyun, localDatabases, boundPlates: vehicles.map(v => v.plateNo),
+      targets, deliyun, localDatabases, propertySpaces, boundPlates: vehicles.map(v => v.plateNo),
       /** 本地库查询词：旧库住户名里存的是 198-4-201 / 198/06/302 这类房号 */
       roomTerm: parts.length >= 2 ? parts.join('/') : null,
     };
@@ -277,11 +298,11 @@ export class BusinessService {
     const scope = scopeCommunityIds(access);
     if (scope && !scope.length) return { rows: [], total: 0, bound: 0 };
     const g = garage === 'civil' || garage === 'main' ? garage : undefined;
-    const qb = this.spaceRepo.createQueryBuilder('s').where('s.tenant_id = :tenantId', { tenantId });
+    const qb = this.spaceRepo.createQueryBuilder('s').addSelect('s.vehicleBindings').where('s.tenant_id = :tenantId', { tenantId });
     if (scope) qb.andWhere('s.community_id IN (:...scope)', { scope });
     if (g) qb.andWhere('s.garage = :g', { g });
     const kw = (q ?? '').trim();
-    if (kw) qb.andWhere('(s.spaceNo ILIKE :kw OR s.plate ILIKE :kw OR s.houseNo ILIKE :kw)', { kw: `%${kw}%` });
+    if (kw) qb.andWhere('(s.spaceNo ILIKE :kw OR s.plate ILIKE :kw OR s.houseNo ILIKE :kw OR CAST(s.vehicleBindings AS text) ILIKE :kw)', { kw: `%${kw}%` });
     // 车位号按数字自然序（1,2,3…10,100），字符串序会排成 1,10,100,101
     qb.orderBy('s.garage', 'ASC');
     addNaturalOrderBy(qb, 's.spaceNo');
@@ -289,7 +310,7 @@ export class BusinessService {
     return {
       rows: rows.map((r) => ({
         id: r.id, communityId: r.communityId ?? null, category: r.category ?? null, garage: r.garage, spaceNo: r.spaceNo, houseNo: r.houseNo,
-        areaSqm: r.areaSqm, plate: r.plate, ownerName: r.ownerName, ownerTel: r.ownerTel,
+        vehicleBindings: r.vehicleBindings ?? {}, areaSqm: r.areaSqm, plate: r.plate, ownerName: r.ownerName, ownerTel: r.ownerTel,
         note: r.note, source: r.source, endDate: r.endDate,
       })),
       total: rows.length,
@@ -498,7 +519,7 @@ export class BusinessService {
              FROM vehicle_intakes i
              JOIN houses h ON h.id = i.house_id AND h.tenant_id = i.tenant_id
              JOIN buildings b ON b.id = h.building_id AND b.tenant_id = h.tenant_id
-             WHERE i.tenant_id = $1 AND i.status <> 'void' AND trim(i.plate) <> ''
+             WHERE i.tenant_id = $1 AND i.status <> 'void' AND NOT ${expiredDraftSql('i')} AND trim(i.plate) <> ''
                AND (i.community_id IS NULL OR i.community_id = b.community_id)
                ${scope ? 'AND b.community_id = ANY($3::int[])' : ''}
              ORDER BY i.house_id, upper(trim(i.plate)), i.id DESC
@@ -644,6 +665,54 @@ export class BusinessService {
     return txn;
   }
 
+  private async propertySpaceRefs(dto: CompleteBusinessDto, tenantId: number, communityId: number,
+    scope: number[] | null, intake?: { garages: string[]; garageNumbers: Record<string,string> }) {
+    const houseCommunity = await this.communityRepo.findOneBy({id:communityId,tenantId});
+    const targets = targetsForCommunity(houseCommunity?.name ?? '');
+    const plate = normPlate(dto.plateNo || '');
+    const numbers = new Map<'main' | 'civil', string>();
+    if (intake) {
+      if (intake.garages.includes('local:phase2_main_garage')) numbers.set('main', intake.garageNumbers.main);
+      if (intake.garages.includes('deliyun:枫桦景苑')) numbers.set('civil', intake.garageNumbers.civil);
+    } else {
+      for (const sys of dto.parkingSystems ?? []) {
+        if (sys.kind === 'local' && sys.database === 'parking2') {
+          const repo = this.houseRepo.manager.getRepository(ParkingQuery);
+          const query = await repo.findOne({where:{tenantId,status:'completed',queryKind:'vehicle',
+            ...(sys.queryId ? {id:sys.queryId} : {term:plate})},order:{id:'DESC'}});
+          if (!query) throw new BadRequestException('请重新查询车牌，核对大车库车位后再办理');
+          const no = mainSpaceFromQuery(query.rows,plate,sys.sourceRecordId || '');
+          if (no !== null && numbers.has('main') && numbers.get('main') !== no) throw new BadRequestException('同一车牌对应多个大车库车位，请核对');
+          if (no !== null) numbers.set('main',no);
+        } else if (sys.kind === 'deliyun' && sys.park === '枫桦景苑') {
+          const results = await this.deliyun.findVehiclesByPlate(plate,sys.park);
+          const exact = results.rows.filter(r => normPlate(r.plate) === plate && r.civilDefenseAuthorized);
+          if (exact.length !== 1) throw new BadRequestException('人防车位号未能唯一确认，请核对后再办理');
+          numbers.set('civil',exact[0].cardNo?.trim() || '');
+        }
+      }
+    }
+    if (!numbers.size) throw new BadRequestException('产权车须选定大车库或人防车位后再收费');
+    const refs: PropertySpaceRef[] = [];
+    for (const [garage,spaceNo] of numbers) {
+      const key = garage === 'main' ? 'local:phase2_main_garage' : 'deliyun:枫桦景苑';
+      const target = targets.find(t => t.key === key);
+      if (!target || (intake && !spaceNo?.trim())) throw new BadRequestException('本次产权车位不在适用车库或缺少车位号');
+      const communities = await this.communityRepo.findBy({tenantId,name:In(target.communities)});
+      const ids = communities.map(c=>c.id).filter(id=>!scope || scope.includes(id));
+      let exactNo = spaceNo?.trim();
+      if (!exactNo && dto.houseId) {
+        const bindings = (await this.boundPropertySpaces(tenantId,dto.houseId,ids,[plate])).filter(r=>r.garage===garage && normPlate(r.plate)===plate);
+        if (bindings.length === 1) exactNo = bindings[0].spaceNo;
+      }
+      if (!exactNo) throw new BadRequestException('车位号未能唯一确认，请先核对车位卡片');
+      const rows = await this.spaceRepo.findBy({tenantId,communityId:In(ids),garage,spaceNo:exactNo});
+      if (rows.length !== 1 || !rows[0].communityId) throw new BadRequestException('产权车位档案未能唯一匹配，请核对车库、车位号和管理范围');
+      refs.push({id:rows[0].id,communityId:rows[0].communityId,garage,spaceNo:rows[0].spaceNo});
+    }
+    return refs;
+  }
+
   private async completePayment(dto: CompleteBusinessDto, user: AuthUser, access?: ResolvedAccess, manager?: EntityManager) {
     const tenantId = this.requireTenant(user);
     // 新办车牌：车牌由业主扫码或办公室填写，登记期限以登记单为准，服务端重新报价。
@@ -669,10 +738,12 @@ export class BusinessService {
     const amountCents = custom ? dto.manualAmountCents! : estimate.amountCents;
     if (dto.expectedAmountCents !== undefined && dto.expectedAmountCents !== amountCents) throw new BadRequestException('应收金额已变化，请刷新报价后重新确认');
     // 车牌所在的缴费规则分组要和所用价格表对上：业主车不能按租客车价收，反之亦然
+    let selectedParkingClass = '';
     if (dto.serviceType === BusinessServiceType.PARKING_MONTHLY) {
       const ruleClass = ((rule.config ?? {}) as ParkingRuleConfig).vehicleClass || '';
       const carClass = intake ? intake.row.vehicleClass
         : dto.plateNo ? (await this.tagRepo.findOne({ where: { tenantId, plate: normPlate(dto.plateNo) } }))?.vehicleClass || '' : '';
+      selectedParkingClass = carClass || ruleClass;
       if (ruleClass && carClass && ruleClass !== carClass) {
         throw new BadRequestException(`这辆车属于「${carClass}」分组，不能按「${ruleClass}」分组的价格收款；分组不对请先改分组`);
       }
@@ -701,6 +772,20 @@ export class BusinessService {
     let targetType: string | null = null;
     let targetId: number | null = null;
     const snapshot: Record<string, unknown> = { estimate, ruleName: rule.name };
+    if (['产权车','产权车位'].includes(selectedParkingClass)) {
+      if (!communityId) throw new BadRequestException('产权车流水需要明确房屋所属小区');
+      snapshot.propertySpaces = await this.propertySpaceRefs(dto, tenantId, communityId, scope, intake?.row);
+      const currentHouse = await this.houseRepo.findOneOrFail({where:{tenantId,id:house!.id},relations:{unit:true}});
+      const building = await this.buildingRepo.findOneByOrFail({tenantId,id:currentHouse.buildingId});
+      const owner = dto.ownerId ? await this.userRepo.findOneBy({tenantId,id:dto.ownerId,houseId:currentHouse.id,role:UserRole.OWNER})
+        : (await this.userRepo.find({where:{tenantId,houseId:currentHouse.id,role:UserRole.OWNER},order:{id:'ASC'},take:1}))[0];
+      const registration = intake?.row ?? await this.houseRepo.manager.getRepository(VehicleIntake).findOne({
+        where:{tenantId,houseId:currentHouse.id,plate:normPlate(dto.plateNo || ''),status:Not('void')},order:{id:'DESC'},
+        select:{id:true,contactPhone:true},
+      });
+      snapshot.propertyContact = { houseId:currentHouse.id, houseNo:[building.lane,building.buildingNo,currentHouse.unit?.unitNo,currentHouse.roomNo].filter(Boolean).join('/'),
+        ownerName:owner?.name ?? null, ownerPhone:owner?.phone ?? null, contactPhone:registration?.contactPhone || null };
+    }
     if (intake) {
       snapshot.registrationTerm = term;
       snapshot.quote = {
@@ -735,7 +820,11 @@ export class BusinessService {
       if (intake) {
         if (intake.verifyGarages) {
           const allowed = targetsForCommunity((await this.communityRepo.findOne({where:{id:communityId ?? -1,tenantId}}))?.name ?? null);
-          const keys = (dto.parkingSystems ?? []).map(s => allowed.find(t => s.kind === 'local' ? t.system === 'local' && t.database === s.database : t.system === 'deliyun' && t.deliyunPark === s.park)?.key);
+          const keys = (dto.parkingSystems ?? []).map(s => {
+            const targets = allowed.filter(t => s.kind === 'local' ? t.system === 'local' && t.database === s.database : t.system === 'deliyun' && t.deliyunPark === s.park);
+            if (s.targetKey) return targets.find(t => t.key === s.targetKey)?.key;
+            return (targets.find(t => t.label === s.label || t.short === s.label) ?? targets[0])?.key;
+          });
           if (!keys.length || keys.some(k => !k) || keys.sort().join('|') !== [...intake.row.garages].sort().join('|')) throw new BadRequestException('车库已变化，请刷新后按原登记收款');
         }
         snapshot.intake = { ...(intake.homeUpload ? {homeUpload:true} : {}), id: intake.row.id, plate: intake.row.plate, dataVersion: intake.row.dataVersion ?? 0 };

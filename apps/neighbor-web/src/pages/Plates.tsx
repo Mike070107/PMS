@@ -1,3 +1,4 @@
+import { registrationTitle } from '@/components/cashier/RegistrationPermit';
 import { formatBeijingDateTime } from '@pms/shared-types';
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -99,7 +100,7 @@ function IntakeList({ kw, intakeId }: { kw: string; intakeId: string | null }) {
   return (
     <>
       {intakeId !== null ? <section role="region" aria-label={`本次登记 #${intakeId}`} style={{ marginBottom: 16 }}>
-        <h2 style={{ fontSize: 18, marginBottom: 10 }}>本次登记 #{intakeId}</h2>
+        <h2 style={{ fontSize: 18, marginBottom: 10 }}>{focused?.row ? registrationTitle(focused.row.kind) : '本次登记'} #{intakeId}</h2>
         {!validId ? <ErrorNote>登记编号必须是正整数</ErrorNote>
           : focused?.query !== intakeId ? <Loading text="正在读取本次登记…" />
             : focused.error ? <ErrorNote>{focused.error}</ErrorNote>

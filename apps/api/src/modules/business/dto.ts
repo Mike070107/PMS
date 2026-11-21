@@ -132,6 +132,16 @@ export class EstimateBusinessDto {
 
 /** 收银时这辆车要一起续期的停车系统（旧库记录 / 德立云停车场） */
 export class ParkingSystemRefDto {
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  queryId?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  targetKey?: string;
+
   @IsIn(['local', 'deliyun'])
   kind: 'local' | 'deliyun';
 

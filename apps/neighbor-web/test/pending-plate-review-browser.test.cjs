@@ -9,7 +9,7 @@ const app=path.resolve(__dirname,'..');
 const esbuild=createRequire(require.resolve('vite'))('esbuild');
 const evidence=path.resolve(app,'../../outputs/pending-plate-review-20261115');
 async function fixture(query=''){
- const built=await esbuild.build({stdin:{contents:`import React from 'react';import{createRoot}from'react-dom/client';import{BrowserRouter,Routes,Route,Link}from'react-router-dom';import Pending from '@/pages/Pending';import Plates from '@/pages/Plates';import{IconSprite}from'@/components/Icon';import '@/styles/design.css';import '@/styles/app.css';import '@/styles/large.css';import '@/styles/guards.css';import '@/styles/erp-reference.css';createRoot(document.getElementById('root')).render(<BrowserRouter><main style={{padding:16,maxWidth:1200,margin:'auto'}}><IconSprite/><p>显式示例，非生产住户资料</p><Link to="/pending">返回待处理</Link><Routes><Route path="/plates" element={<Plates/>}/><Route path="*" element={<Pending/>}/></Routes></main></BrowserRouter>);`,loader:'tsx',resolveDir:app},bundle:true,write:false,format:'iife',jsx:'automatic',outfile:'fixture.js',alias:{'@':path.join(app,'src')},plugins:[{name:'transport-only',setup(b){b.onResolve({filter:/^(@pms\/api-client|@\/lib\/auth|@\/lib\/perm)$/},a=>({path:a.path,namespace:'fixture'}));b.onLoad({filter:/.*/,namespace:'fixture'},a=>{
+ const built=await esbuild.build({stdin:{contents:`import React from 'react';import{createRoot}from'react-dom/client';import{BrowserRouter,Routes,Route,Link}from'react-router-dom';import Pending from '@/pages/Pending';import Plates from '@/pages/Plates';import{CarRenewal}from '@/components/cashier/ParkingTab';import{IconSprite}from'@/components/Icon';import '@/styles/design.css';import '@/styles/app.css';import '@/styles/large.css';import '@/styles/guards.css';import '@/styles/erp-reference.css';createRoot(document.getElementById('root')).render(<BrowserRouter><main style={{padding:16,maxWidth:1200,margin:'auto'}}><IconSprite/><p>显式示例，非生产住户资料</p><Link to="/pending">返回待处理</Link><Routes><Route path="/plates" element={<Plates/>}/><Route path="/test-renewal" element={<CarRenewal car={{plate:'沪ATEST01',lots:[{key:'main',label:'大车库',targetKey:'local:phase2_main_garage',system:'local',propertySpace:'A021',ref:{kind:'local'},garages:[]}]}} house={{id:1,communityId:1}} rules={[{id:1,enabled:true,serviceType:'parking_monthly',communityId:1,config:{vehicleClass:'产权车位'}}]} vehicleClass="产权车位" onCart={()=>{}}/>}/><Route path="*" element={<Pending/>}/></Routes></main></BrowserRouter>);`,loader:'tsx',resolveDir:app},bundle:true,write:false,format:'iife',jsx:'automatic',outfile:'fixture.js',alias:{'@':path.join(app,'src')},plugins:[{name:'transport-only',setup(b){b.onResolve({filter:/^(@pms\/api-client|@\/lib\/auth|@\/lib\/perm)$/},a=>({path:a.path,namespace:'fixture'}));b.onLoad({filter:/.*/,namespace:'fixture'},a=>{
  if(a.path.endsWith('/auth'))return{contents:'export const useSession=()=>({user:{id:1}});',loader:'js'};
  if(a.path.endsWith('/perm'))return{contents:`const p=new URLSearchParams(location.search);window.__readonly=p.has('readonly');window.__denied=p.has('denied');export const can=(key,action='view')=>!window.__denied&&!(window.__readonly&&action!=='view')&&(!p.has('manager')||key==='app:approve-business-manager');`,loader:'js'};
  return{loader:'js',contents:`const p=new URLSearchParams(location.search);window.__calls=[];window.__fail=p.has('error');window.__delay=p.has('slow')?500:0;window.__status='submitted';
@@ -21,9 +21,10 @@ async function fixture(query=''){
  if(url==='/business/execution/pending')return p.has('noTxn')?[]:[{id:9,txnNo:'EXAMPLE',serviceType:'parking',amountCents:100,createdAt:seed.createdAt,endDate:null,externalSyncStatus:'awaiting_docs',snapshot:{intake:{id:61}}}];
  if(url==='/business/reviews')return[];if(url==='/business/execution/mode')return{mode:'on'};
  if(url==='/business/parking-targets')return[];
- if(url==='/vehicle-intakes'){if(window.__delay)await new Promise(r=>setTimeout(r,window.__delay));if(window.__fail)throw Error('示例：资料列表读取失败');const rows=[{...seed,status:window.__status},{...seed,id:62,kind:'family',plate:'示例亲情车62',contactName:'',contactPhone:'13900001234'},{...seed,id:63,status:'approved',plate:'不应显示已通过'},{...seed,id:64,status:'void',plate:'不应显示已作废'}];return query?.status?rows.filter(r=>query.status.split(',').includes(r.status)):rows;}
+ if(url==='/vehicle-intakes'){if(window.__delay)await new Promise(r=>setTimeout(r,window.__delay));if(window.__fail)throw Error('示例：资料列表读取失败');const rows=[...(p.has('draft')?[{...seed,id:65,kind:'family',status:window.__draftStatus||'waiting',plate:'',qrValid:false}]:[]),{...seed,status:window.__status},{...seed,id:62,kind:'family',plate:'示例亲情车62',contactName:'',contactPhone:'13900001234'},{...seed,id:63,status:'approved',plate:'不应显示已通过'},{...seed,id:64,status:'void',plate:'不应显示已作废'}];return query?.status?rows.filter(r=>query.status.split(',').includes(r.status)):rows;}
+ if(url==='/vehicle-intakes/65')return {...seed,id:65,kind:'family',status:'waiting',qrValid:false};
  if(url==='/vehicle-intakes/61/review'){window.__status=data.decision==='approve'?'approved':'reupload';return{...seed,status:window.__status};}
- if(url==='/vehicle-intakes/61')return{...seed,status:window.__status};
+ if(url==='/vehicle-intakes/61')return{...seed,status:window.__status,...(p.has('property')?{vehicleClass:'产权车位',garages:['deliyun:枫桦景苑'],garageNumbers:{civil:'R012'}}:{})};
  if(url==='/vehicle-intakes/62')return{...seed,id:62,kind:'family',plate:'示例亲情车62',contactName:'',contactPhone:'13900001234'};
  throw Error('Unexpected fixture request: '+url);}`};});}}],define:{'process.env.NODE_ENV':'"development"','import.meta.env.BASE_URL':'"/"'}});
  const server=http.createServer((req,res)=>{const ext=req.url==='/fixture.js'?'js':req.url==='/fixture.css'?'css':'html';res.setHeader('Content-Type',{js:'text/javascript',css:'text/css',html:'text/html; charset=utf-8'}[ext]);res.end(ext==='html'?'<meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/fixture.css"><div id="root"></div><script src="/fixture.js"></script>':built.outputFiles.find(f=>f.path.endsWith('.'+ext)).contents);});await new Promise(r=>server.listen(0,'127.0.0.1',r));const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});const page=await browser.newPage({viewport:{width:1440,height:1000},timezoneId:'Asia/Shanghai'});page.setDefaultTimeout(4000);const origin='http://127.0.0.1:'+server.address().port;await page.route('**/*',r=>r.request().url().startsWith(origin+'/')?r.continue():r.abort());const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(origin+'/pending'+query);return{page,errors,close:async()=>{await browser.close();await new Promise(r=>server.close(r));}};
@@ -41,5 +42,34 @@ test('审核列表在车主姓名为空时仍显示本车联系手机',async()=>
   await f.page.goto(new URL('/plates',f.page.url()).href);
   await f.page.getByRole('columnheader',{name:'车主 · 本车联系手机'}).waitFor();
   await f.page.getByRole('row').filter({hasText:'示例亲情车62'}).getByRole('cell',{name:'13900001234',exact:true}).waitFor();
+ } finally {await f.close();}
+});
+
+test('续费及新登记的产权车类别后显示对应车库与车位号',async()=>{
+ const f=await fixture();
+ try {
+  await f.page.setViewportSize({width:375,height:812});
+  await f.page.goto(new URL('/test-renewal',f.page.url()).href);
+  const choice=f.page.getByRole('radio',{name:'产权车（大车库 A021）'});
+  await choice.waitFor();
+  assert.equal(await choice.inputValue(),'产权车位');
+  await f.page.goto(new URL('/plates?intakeId=61&property=1',f.page.url()).href);
+  await f.page.getByText('产权车（人防车库 R012）',{exact:true}).first().waitFor();
+ } finally {await f.close();}
+});
+
+test('待处理中先见待提交，点原单继续，提交后移入审核',async()=>{
+ const f=await fixture('?draft=1');
+ try {
+  const pending=f.page.getByRole('region',{name:'待提交资料',exact:true});
+  await pending.getByText('亲情车办理申请单 #65').waitFor();
+  await pending.getByRole('button',{name:'继续办理'}).click();
+  await f.page.waitForURL('**/plates?intakeId=65');
+  await f.page.getByRole('heading',{name:'亲情车办理申请单 #65'}).waitFor();
+  await f.page.goto(new URL('/pending?draft=1',f.page.url()).href);
+  await pending.getByText('亲情车办理申请单 #65').waitFor();
+  await f.page.evaluate(()=>{window.__draftStatus='submitted';window.dispatchEvent(new Event('focus'))});
+  await pending.getByText('暂无待提交资料').waitFor();
+  await f.page.getByRole('region',{name:'新办车牌待审核资料'}).getByRole('button',{name:'查看并审核登记 #65'}).waitFor();
  } finally {await f.close();}
 });

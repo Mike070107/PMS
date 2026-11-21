@@ -1,9 +1,11 @@
 import { BadRequestException, ForbiddenException, GoneException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
+import { discardDeadline, expiredDraftSql } from './vehicle-draft-expiry';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import * as QRCode from 'qrcode';
-import { Brackets, EntityManager, In, IsNull, Like, MoreThan, Repository } from 'typeorm';
+import { Brackets, EntityManager, In, IsNull, Like, MoreThan, Raw, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import { claimVehicleRegistration, releaseVehicleRegistration } from '../../common/vehicle-registration-claim';
 import { reviseVehicleMaterial } from '../../common/vehicle-registration-material';
@@ -84,6 +86,7 @@ export class VehicleIntakeService {
       const row = await repo.findOne({ where: { id, tenantId: this.tenant(user) }, lock: { mode: 'pessimistic_write' } });
       if (!row) throw new NotFoundException('登记不存在');
       this.checkScope(row, access);
+      this.assertDraftAvailable(row);
       const service: VehicleIntakeService = Object.assign(Object.create(this), {
         repo, txnRepo: manager.getRepository(BusinessTransaction), logRepo: manager.getRepository(BusinessLog), inTransaction: true, afterCommit,
       });
@@ -116,6 +119,29 @@ export class VehicleIntakeService {
     private readonly execution: BusinessExecutionService,
     private readonly config: ConfigService,
   ) {}
+
+  @Cron('*/1 * * * *')
+  async deleteExpiredDrafts() {
+    await this.repo.manager.transaction(async manager => {
+      const ids: Array<{id:number}> = await manager.query(
+        `SELECT i.id FROM vehicle_intakes i WHERE ${expiredDraftSql('i')}
+         AND NOT EXISTS (SELECT 1 FROM vehicle_registration_claims c WHERE c.intake_id=i.id AND c.family_car_id IS NOT NULL)
+         ORDER BY i.created_at LIMIT 500 FOR UPDATE OF i SKIP LOCKED`);
+      if (!ids.length) return;
+      const keys = ids.map(row=>row.id);
+      await manager.query('DELETE FROM vehicle_registration_claims WHERE intake_id = ANY($1::int[]) AND family_car_id IS NULL',[keys]);
+      await manager.query(`WITH removed AS (
+        DELETE FROM vehicle_intake_operations WHERE intake_id = ANY($1::int[])
+        RETURNING tenant_id,operation_key,house_id,request_hash
+      ) INSERT INTO expired_vehicle_intake_operations(tenant_id,operation_key,house_id,request_hash)
+        SELECT tenant_id,operation_key,house_id,request_hash FROM removed ON CONFLICT DO NOTHING`,[keys]);
+      await manager.query('DELETE FROM vehicle_intakes WHERE id = ANY($1::int[])',[keys]);
+    });
+  }
+
+  private assertDraftAvailable(row:VehicleIntake) {
+    if (discardDeadline(row) <= Date.now()) throw new GoneException('此申请已满24小时未提交资料，请新建申请');
+  }
 
   // ---------------- 办公室 ----------------
 
@@ -154,19 +180,23 @@ export class VehicleIntakeService {
       garageNumbers: Object.entries(this.cleanNumbers(input.garageNumbers)).sort(([a], [b]) => a.localeCompare(b)),
     }));
     if (operationKey) {
-      const operations = await this.repo.manager.query('SELECT house_id, request_hash, intake_id FROM vehicle_intake_operations WHERE tenant_id = $1 AND operation_key = $2', [tenantId, operationKey]);
+      const operations = await this.repo.manager.query(`SELECT house_id, request_hash, intake_id FROM vehicle_intake_operations WHERE tenant_id = $1 AND operation_key = $2
+        UNION ALL SELECT house_id, request_hash, NULL AS intake_id FROM expired_vehicle_intake_operations WHERE tenant_id = $1 AND operation_key = $2`, [tenantId, operationKey]);
       if (operations.length) {
         const operation = operations[0];
         if (operation.house_id !== house.id || operation.request_hash !== requestHash) throw new BadRequestException('该操作编号已用于其他登记内容，请恢复原请求，不要直接重试新单');
+        if (operation.intake_id == null) throw new GoneException('此申请已满24小时未提交资料，请新建申请');
         const original = await this.load(operation.intake_id, user, access);
         return this.draftResponse(original, formBase, true);
       }
     }
-    if (!input.anotherVehicle) {
-      const draft = { tenantId, houseId: house.id, kind: input.kind, status: In(['waiting', 'reupload']), familyCarId: IsNull() };
+    {
+      const draft = { tenantId, houseId: house.id, kind: input.kind, createdAt:Raw(column => 'NOT ' + expiredDraftSql(column.split('.').slice(0,-1).join('.'))), status: In(['waiting', 'reupload']), familyCarId: IsNull() };
       const latest = { order: { id: 'DESC' as const }, lock: { mode: 'pessimistic_write' as const } };
-      const previous = await this.repo.findOne({ ...latest, where: { ...draft, expiresAt: MoreThan(new Date()) } })
-        ?? await this.repo.findOne({ ...latest, where: draft });
+      const previous = input.anotherVehicle
+        ? await this.repo.findOne({ ...latest, where: { ...draft, status:'waiting', submittedAt:IsNull(), transactionId:IsNull() } })
+        : await this.repo.findOne({ ...latest, where: { ...draft, expiresAt: MoreThan(new Date()) } })
+          ?? await this.repo.findOne({ ...latest, where: draft });
       if (previous) {
         this.checkScope(previous, access);
         // Paid-but-waiting-for-documents stays on the same registration and payment.
@@ -218,7 +248,7 @@ export class VehicleIntakeService {
     const tenantId = this.tenant(user);
     const scope = scopeCommunityIds(access);
     if (scope && !scope.length) return [];
-    const qb = this.repo.createQueryBuilder('i').where('i.tenant_id = :tenantId', { tenantId });
+    const qb = this.repo.createQueryBuilder('i').where('i.tenant_id = :tenantId', { tenantId }).andWhere('NOT ' + expiredDraftSql('i'));
     if (scope) qb.andWhere('i.community_id IN (:...scope)', { scope });
     if (query.houseId) qb.andWhere('i.house_id = :houseId', { houseId: Number(query.houseId) });
     if (query.kind) qb.andWhere('i.kind = :kind', { kind: query.kind });
@@ -389,7 +419,7 @@ export class VehicleIntakeService {
       row.tokenHash = this.hash(this.tokenOf(row.tokenNonce));
       row.openedAt = null;
     }
-    if (!prepared || expired) row.expiresAt = new Date(Date.now() + INTAKE_TTL_MS);
+    if (!prepared || expired) row.expiresAt = new Date(Math.min(Date.now() + INTAKE_TTL_MS, discardDeadline(row)));
     if (row.plate !== plate || name !== row.contactName || phone !== row.contactPhone) this.revise(row, user.id, '保存待补登记资料');
     Object.assign(row, {plate, contactName:name, contactPhone:phone, updatedBy:user.id});
     if (!prepared) row.log = [...row.log, await this.entry(user, '回家补资料', plate)];
@@ -420,7 +450,7 @@ export class VehicleIntakeService {
     row.tokenNonce = randomBytes(18).toString('base64url');
     const token = this.tokenOf(row.tokenNonce);
     row.tokenHash = this.hash(token);
-    row.expiresAt = new Date(Date.now() + INTAKE_TTL_MS);
+    row.expiresAt = new Date(Math.min(Date.now() + INTAKE_TTL_MS, discardDeadline(row)));
     row.openedAt = null;
     if (row.status === 'submitted') row.status = 'reupload';
     row.updatedBy = user.id;
@@ -563,7 +593,8 @@ export class VehicleIntakeService {
     const types = list.map(file => detectUploadContentType(file.buffer));
     if (types.some(type => !type || (!type.startsWith('image/') && type !== 'application/pdf'))) throw new BadRequestException('只支持照片或 PDF');
     const requestHash = this.hash(JSON.stringify({ officeId: id, input, files: list.map(file => ({ name: file.originalname, sha256: createHash('sha256').update(file.buffer).digest('hex') })) }));
-    const operations = await this.repo.manager.query('SELECT house_id, request_hash, intake_id FROM vehicle_intake_operations WHERE tenant_id = $1 AND operation_key = $2', [row.tenantId, input.operationKey]);
+    const operations = await this.repo.manager.query(`SELECT house_id, request_hash, intake_id FROM vehicle_intake_operations WHERE tenant_id = $1 AND operation_key = $2
+        UNION ALL SELECT house_id, request_hash, NULL AS intake_id FROM expired_vehicle_intake_operations WHERE tenant_id = $1 AND operation_key = $2`, [row.tenantId, input.operationKey]);
     if (operations.length) {
       if (operations[0].intake_id !== id || operations[0].request_hash !== requestHash) throw new BadRequestException('该操作编号已用于其他登记内容，请核对原操作');
       return this.view(row, true);
@@ -934,6 +965,7 @@ export class VehicleIntakeService {
     if (!/^[A-Za-z0-9_-]{20,80}$/.test(token || '')) throw new BadRequestException('链接无效');
     const row = await this.repo.findOne({ where: { tokenHash: this.hash(token) } });
     if (!row) throw new NotFoundException('链接无效，请联系物业办公室重新生成二维码');
+    this.assertDraftAvailable(row);
     if (row.status === 'void') throw new GoneException('登记已撤销作废，二维码已失效');
     const editable = ['waiting', 'reupload'].includes(row.status);
     if (editable && row.expiresAt.getTime() <= Date.now()) throw new GoneException('二维码已过期，本次扫码已超时关闭，请联系物业办公室重新启用原登记后扫码补充资料');
@@ -995,6 +1027,7 @@ export class VehicleIntakeService {
     if (!row) throw new NotFoundException('登记不存在');
     const scope = scopeCommunityIds(access);
     if (scope && (row.communityId == null || !scope.includes(row.communityId))) throw new ForbiddenException('不在你的管理范围内');
+    this.assertDraftAvailable(row);
     return row;
   }
 

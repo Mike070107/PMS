@@ -54,6 +54,15 @@ function formatRoomNo(row: SpaceRow) {
   }
   return candidates.find((value) => value?.trim())?.trim() || '—';
 }
+function BoundVehicles({row}: {row:SpaceRow}) {
+  return <>{Object.entries(row.vehicleBindings ?? {}).map(([plate,b]) => (
+    <div key={plate} className="sp-bound-vehicle">
+      <b>{plate}</b> · {b.houseNo} · 有效期 {b.endDate}
+      <div>本车联系手机 {b.contactPhone || '未登记'}</div>
+      <div>PMS 业主 {b.ownerName || '未登记'} · 业主电话 {b.ownerPhone || '未登记'}</div>
+    </div>
+  ))}</>;
+}
 const dateLabel = (value: string | null) => value && dayjs(value).isValid() ? dayjs(value).format('YYYY-MM-DD') : '—';
 const META = {
   main: { title: '二期大车库', sub: '地库车位清单 · 按车位收费 67.50 元/位·月' },
@@ -71,20 +80,30 @@ export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) 
   const [view, setView] = useState<'card' | 'table' | 'iso'>('card');
   const [edit, setEdit] = useState<SpaceRow | null>(null);
   const sequence = useRef(0);
-  const load = useCallback(async () => {
+  const load = useCallback(async (background = false) => {
     const current = ++sequence.current;
-    setRows(null); setErr('');
+    if (!background) setRows(null);
+    setErr('');
     try {
       const r = await request<{ rows: SpaceRow[] }>({ url: '/business/parking-spaces', query: { garage } });
       if (current === sequence.current) setRows((r?.rows ?? []).filter((row) => row.garage === garage));
     } catch (e) {
-      if (current === sequence.current) { setRows([]); setErr(e instanceof Error ? e.message : '加载失败'); }
+      if (current === sequence.current) { if (!background) setRows([]); setErr(e instanceof Error ? e.message : '加载失败'); }
     }
   }, [garage]);
   useEffect(() => {
     setView('card'); setEdit(null); setQ(''); setOnly('all'); setCategory('all');
     void load();
-    return () => { sequence.current += 1; };
+    const refresh = () => { if (document.visibilityState === 'visible') void load(true); };
+    window.addEventListener('focus',refresh);
+    document.addEventListener('visibilitychange',refresh);
+    const timer = window.setInterval(refresh,30000);
+    return () => {
+      sequence.current += 1;
+      window.clearInterval(timer);
+      window.removeEventListener('focus',refresh);
+      document.removeEventListener('visibilitychange',refresh);
+    };
   }, [load]);
 
   const currentRows = useMemo(() => (rows ?? []).filter((row) => row.garage === garage), [rows, garage]);
@@ -95,7 +114,7 @@ export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) 
       if (only === 'bound' && !bound) return false;
       if (only === 'free' && bound) return false;
       if (category !== 'all' && categoryOf(r) !== category) return false;
-      return !kw || [r.spaceNo, r.plate, r.houseNo, r.roomLabel, r.address, r.ownerName, r.ownerTel].some((v) => (v || '').toUpperCase().includes(kw));
+      return !kw || [r.spaceNo, r.plate, r.houseNo, r.roomLabel, r.address, r.ownerName, r.ownerTel, ...Object.entries(r.vehicleBindings ?? {}).flatMap(([plate,b])=>[plate,b.houseNo,b.ownerName,b.ownerPhone,b.contactPhone])].some((v) => (v || '').toUpperCase().includes(kw));
     });
   }, [currentRows, q, only, category]);
   const matchIds = useMemo(() => only === 'all' && category === 'all' && !q.trim() ? null : new Set(shown.map((r) => r.id)), [only, category, q, shown]);
@@ -135,7 +154,7 @@ export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) 
           <thead><tr><th className="nw">车位号</th><th>类别</th><th className="nw">车牌</th><th>房号</th><th>业主</th><th>电话</th><th className="nw">有效期</th><th>备注</th><th>操作</th></tr></thead>
           <tbody>{shown.map((r) => <tr key={r.id}>
             <td className="nw"><b>{r.spaceNo}</b></td><td><CategoryTag row={r} /></td>
-            <td className="nw">{r.plate || <span className="muted">未绑车牌</span>}</td><td>{formatRoomNo(r)}</td><td>{r.ownerName || '—'}</td><td>{r.ownerTel || '—'}</td><td className="nw">{dateLabel(r.endDate)}</td><td>{r.note || '—'}</td>
+            <td className="nw">{r.plate || <span className="muted">未绑车牌</span>}<BoundVehicles row={r}/></td><td>{formatRoomNo(r)}</td><td>{r.ownerName || '—'}</td><td>{r.ownerTel || '—'}</td><td className="nw">{dateLabel(r.endDate)}</td><td>{r.note || '—'}</td>
             <td><button className="btn sm" aria-label={`编辑车位 ${r.spaceNo}`} onClick={() => setEdit(r)}>编辑</button></td>
           </tr>)}</tbody>
         </table></div>
@@ -150,6 +169,7 @@ export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) 
               <dt>有效期</dt><dd title={dateLabel(r.endDate)}>{dateLabel(r.endDate)}</dd><dt>房号</dt><dd title={formatRoomNo(r)}>{formatRoomNo(r)}</dd>
                             <dt>业主</dt><dd title={r.ownerName || '—'}>{r.ownerName || '—'}</dd><dt>电话</dt><dd title={r.ownerTel || '—'}>{r.ownerTel || '—'}</dd>
             </dl>
+            <BoundVehicles row={r}/>
             <p className="sp-note"><span>备注</span><span className="sp-note-value" title={r.note || '—'}>{r.note || '—'}</span></p>
           </article>;
         })}</div></div>

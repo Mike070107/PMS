@@ -464,3 +464,21 @@ test('回家补交且手填金额须办公室和经理都通过才启动停车�
   assert.equal((await approve()).externalSyncStatus,'queued');
   assert.deepEqual(h.kicked,[txn.id]);
 });
+
+test('新办产权车收银快照保存选中的大车库车位和两种电话',async()=>{
+  const h=fixture();
+  Object.assign(h.row(),{vehicleClass:'产权车位',garages:['local:phase2_parking','local:phase2_main_garage'],garageNumbers:{main:'A021'}});
+  Object.assign(h.business,{
+    houseRepo:{...h.business.houseRepo,findOneOrFail:async()=>({id:5,buildingId:2,roomNo:'902'})},
+    buildingRepo:{...h.business.buildingRepo,findOneByOrFail:async()=>({id:2,communityId:3,buildingNo:'53'})},
+    communityRepo:{findOne:async()=>({name:'枫桦景苑二期'}),findOneBy:async()=>({name:'枫桦景苑二期'}),findBy:async()=>[{id:3}]},
+    spaceRepo:{findBy:async()=>[{id:21,communityId:3,garage:'main',spaceNo:'A021'}]},
+    userRepo:{find:async()=>[{name:'合成业主',phone:'13800000000'}]},
+  });
+  const paid=await h.pay({parkingSystems:[
+    {kind:'local',database:'parking2',label:'二期地面',targetKey:'local:phase2_parking'},
+    {kind:'local',database:'parking2',label:'二期大车库',targetKey:'local:phase2_main_garage'}
+  ]});
+  assert.deepEqual(paid.snapshot.propertySpaces,[{id:21,communityId:3,garage:'main',spaceNo:'A021'}]);
+  assert.deepEqual(paid.snapshot.propertyContact,{houseId:5,houseNo:'53/902',ownerName:'合成业主',ownerPhone:'13800000000',contactPhone:'13900000000'});
+});

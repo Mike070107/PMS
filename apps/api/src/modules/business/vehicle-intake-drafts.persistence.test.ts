@@ -1,3 +1,5 @@
+import { UnsubmittedVehicleDraftExpiry1797000000000 } from '../../migrations/1797000000000-UnsubmittedVehicleDraftExpiry';
+import { VehicleRegistrationClaims1796500000000 } from '../../migrations/1796500000000-VehicleRegistrationClaims';
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -33,6 +35,7 @@ test('QR draft operations: transactional reuse, replay, expiry, history, isolati
     const migration = new VehicleIntakeOperations1796300000000();
     await migration.up({ query: (sql: string) => db.query(sql) } as any);
     await migration.up({ query: (sql: string) => db.query(sql) } as any);
+    await new UnsubmittedVehicleDraftExpiry1797000000000().up({query:(sql:string)=>db.query(sql)} as any);
     const versions = new VehicleMaterialVersions1796600000000();
     await versions.up({ query: (sql: string) => db.query(sql) } as any);
     await versions.up({ query: (sql: string) => db.query(sql) } as any);
@@ -105,6 +108,9 @@ test('QR draft operations: transactional reuse, replay, expiry, history, isolati
     assert.deepEqual(another.otherDraftIds, [initial.id]);
     assert.equal((await service.create({ ...base, anotherVehicle: true, operationKey: key(7) }, user)).id, another.id, 'explicit new-vehicle action is itself idempotent');
     assert.equal((await service.create({ ...base, operationKey: key(8) }, user)).id, another.id, 'default continues latest, with other drafts disclosed');
+    const repeated = await Promise.all([71,72,73].map(n=>service.create({...base,anotherVehicle:true,operationKey:key(n)},user)));
+    assert.ok(repeated.every(r=>r.id===another.id),'独立操作号连续点击另建也复用同一空白单');
+    assert.equal(await count(),2);
     const exact = await service.get(initial.id, user);
     assert.equal(exact.id, initial.id, 'exact-ID access never substitutes the latest');
     assert.equal((await service.create({ ...base, operationKey: key(1) }, user)).id, initial.id, 'original key remains bound despite newer drafts');
@@ -126,6 +132,35 @@ test('QR draft operations: transactional reuse, replay, expiry, history, isolati
     assert.equal(Number((await db.query<any>('SELECT count(*) AS n FROM vehicle_intake_operations WHERE operation_key=$1', [key(9)])).rows[0].n), 0);
     await assert.rejects(migration.down(), /Retain/);
 
+    const runMigration={query:(sql:string)=>db.query(sql)} as any;
+    await new VehicleRegistrationClaims1796500000000().up(runMigration);
+    await new UnsubmittedVehicleDraftExpiry1797000000000().up(runMigration);
+    const expiring=await service.create({...base,houseId:6,operationKey:key(81)},user);
+    await db.query("UPDATE vehicle_intakes SET plate='沪A1C678',contact_phone='13900001234',created_at=now()-interval '23 hours',expires_at=now()-interval '5 minutes' WHERE id=$1",[expiring.id]);
+    const resumed=await service.regenerate(expiring.id,base.formBase,user,undefined,true);
+    assert.equal(resumed.id,expiring.id);
+    assert.ok(resumed.qr?.url && resumed.qr.url!==expiring.qr?.url);
+    assert.equal((await service.create({...base,houseId:6,anotherVehicle:true,operationKey:key(82)},user)).id,expiring.id,'已有车牌和电话但未提交，仍然继续原单');
+    await service.deleteExpiredDrafts();
+    assert.equal((await service.get(expiring.id,user)).contactPhone,'13900001234');
+    await db.query("UPDATE vehicle_intakes SET created_at=now()-interval '25 hours' WHERE id=ANY($1::int[])",[[expiring.id,initial.id]]);
+    const protectedIds:number[]=[];
+    for(const [house, state, hasMaterials, paid] of [[91,'submitted',false,false],[92,'waiting',true,false],[93,'waiting',false,true],[94,'reupload',false,false]] as const){
+      await db.query('INSERT INTO houses VALUES($1,1)',[house]);
+      const row=await service.create({...base,houseId:house,operationKey:key(house)},user);
+      await db.query("UPDATE vehicle_intakes SET created_at=now()-interval '25 hours',status=$2,files=$3::jsonb,transaction_id=$4 WHERE id=$1",
+        [row.id,state,JSON.stringify(hasMaterials?[{objectKey:'isolated/protected'}]:[]),paid?100:null]);
+      protectedIds.push(row.id);
+    }
+    await assert.rejects(service.regenerate(expiring.id,base.formBase,user),/24小时/);
+    await service.deleteExpiredDrafts();
+    assert.equal((await db.query('SELECT id FROM vehicle_intakes WHERE id=$1',[expiring.id])).rows.length,0);
+    assert.equal((await db.query('SELECT id FROM vehicle_intakes WHERE id=ANY($1::int[])',[protectedIds])).rows.length,4);
+    // Isolate the existing review-queue assertions below from these retention fixtures.
+    await db.query("UPDATE vehicle_intakes SET status='void' WHERE id=ANY($1::int[])",[protectedIds]);
+    assert.equal((await db.query('SELECT id FROM vehicle_intakes WHERE id=$1',[initial.id])).rows.length,1);
+    await assert.rejects(service.create({...base,houseId:6,operationKey:key(81)},user),/24小时/);
+    assert.equal((await db.query('SELECT 1 FROM expired_vehicle_intake_operations WHERE operation_key=$1',[key(82)])).rows.length,1);
     // Use TypeORM's real join, pagination and hydration for the staff review list.
     const runner = source.createQueryRunner();
     runner.query = async (sql: string, params?: any[], structured?: boolean): Promise<any> => {

@@ -1,5 +1,6 @@
 // Explicit local synthetic transport: no production, MIS, SQL, or device access.
 const params = new URLSearchParams(location.search);
+export const address = { tree: async () => [] };
 export const targets = [{ key: 'local:sample-surface', label: '示例小区 地面车库', short: '地面车库', system: 'local', billing: 'vehicle', communities: ['示例小区'] }, { key: 'local:sample-main', label: '示例小区 大车库', short: '付费大车库', system: 'local', billing: 'space', communities: ['示例小区'] }];
 const kind = params.get('kind') || 'paid';
 const status = params.get('status') || 'submitted';
@@ -17,7 +18,7 @@ export const accessCardIssuance = {
 export async function request({ url, method = 'GET', data = {} }: any) {
   record(url, method, data);
   if (url === '/business/parking-targets') return targets;
-  if (url === '/business/parking-spaces') return { rows: [] };
+  if (url.endsWith('/parking-spaces')) return { rows: [{ id: 1, garage: 'main', spaceNo: 'A01' }] };
   if (url.startsWith('/vehicle-intake-form/')) { if (current.status === 'void') throw Error('登记已撤销作废，二维码已失效'); return structuredClone(current); }
   if (method === 'GET' && w.__holdPoll) { const stale = structuredClone(current); await new Promise(resolve => { w.__releasePoll = resolve; }); return stale; }
   if (url.endsWith('/kind')) {
@@ -31,7 +32,7 @@ export async function request({ url, method = 'GET', data = {} }: any) {
   if (url.endsWith('/review')) {
     if (data.decision === 'void' && w.__rejectVoid) throw Error(w.__rejectVoid);
     if (data.decision === 'approve' && current.kind === 'family' && (!data.relation || !data.duplicateCheckQueryId)) throw Error('关系及旧库查重必填');
-    current = { ...current, ...(data.decision === 'approve' ? data : {}), status: data.decision === 'approve' ? 'approved' : data.decision, ...(data.decision === 'void' ? { qr: undefined, qrValid: false, expiresAt: '2026-11-11T00:00:00+08:00', transaction: current.transaction ? { ...current.transaction, externalSyncStatus: 'manual' } : null } : {}), familyCarId: data.decision === 'approve' && current.kind === 'family' ? 888 : current.familyCarId, log: [...current.log, { at: '2026-11-11T10:01:00+08:00', userName: '合成办公室', action: data.decision === 'void' ? '作废' : '资料审核通过，待经理审核', note: data.note }] };
+    current = { ...current, ...(data.decision === 'approve' ? data : {}), status: data.decision === 'approve' ? 'approved' : data.decision, ...(data.decision === 'void' ? { qr: undefined, qrValid: false, expiresAt: '2026-11-11T00:00:00+08:00', transaction: current.transaction ? { ...current.transaction, externalSyncStatus: 'manual' } : null } : {}), familyReview: data.decision === 'approve' && current.kind === 'family' ? {status:'manager', managerNote:'', managerReviewedAt:null} : null, familyCarId: data.decision === 'approve' && current.kind === 'family' ? 888 : current.familyCarId, log: [...current.log, { at: '2026-11-11T10:01:00+08:00', userName: '合成办公室', action: data.decision === 'void' ? '作废' : '资料审核通过，待经理审核', note: data.note }] };
   }
   if (url.endsWith('/class')) current = { ...current, vehicleClass: data.vehicleClass };
   return structuredClone(current);

@@ -70,7 +70,8 @@ export default function Vehicles() {
       operation.resolve();
       setNewQr(r);
     } catch (e) {
-      setNewErr(e instanceof Error ? `${e.message}；已保留本次操作编号，直接重试会继续原登记，不会重复建单` : '生成二维码失败');
+      operation.onFailure(e);
+      setNewErr(e instanceof Error ? e.message : '生成二维码失败');
     } finally { creating.current = false; setNewBusy(false); }
   };
 

@@ -22,17 +22,20 @@ export function renewalCommunity(plate: string, rows: ParkingQueryRow[], communi
   return communities.length === 1 ? communities[0].id : null;
 }
 
-/** 收费分组优先于旧库宽泛身份；住户车不能直接猜成住户车-1/2/3。 */
+/** 收费分组优先于旧库宽泛身份；未分档的住户车默认使用住户车1。 */
 export function renewalRule(plate: string, rows: ParkingQueryRow[], rules: Rule[], savedClass: string | null): number | null {
   if (savedClass === null) return null; // 分组尚未读到（或读取失败），不抢先试算。
   const one = (matches: Rule[]) => matches.length === 1 ? matches[0].id : null;
   if (savedClass.trim()) return one(rules.filter(r => classKey(r.config?.vehicleClass || r.name) === classKey(savedClass)));
   const raw = unique(rows.filter(r => normPlate(field(r.fields, 'plate')) === normPlate(plate))
     .map(r => field(r.fields, 'identity').trim()).filter(Boolean));
+  const resident = rules.filter(r => classKey(r.config?.vehicleClass || r.name) === '住户车1');
+  if (!raw.length) return one(resident);
   if (raw.length !== 1) return null;
   const exact = rules.filter(r => classKey(r.config?.vehicleClass || r.name) === classKey(raw[0]));
   if (exact.length) return one(exact);
   const identity = vehicleIdentity(raw[0]);
+  if (identity === '住户车' && resident.length) return one(resident);
   if (!['住户车', '租户车', '亲情车'].includes(identity)) return null;
   return one(rules.filter(r => vehicleIdentity(r.config?.vehicleClass || r.name) === identity));
 }

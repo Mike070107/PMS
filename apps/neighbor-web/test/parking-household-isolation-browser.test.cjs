@@ -4,7 +4,20 @@ const api=`export const address={tree:async()=>[]};export const uploadBlobTo=asy
 const entry=`import React,{useState,useCallback}from'react';import{createRoot}from'react-dom/client';import ParkingTab from '@/components/cashier/ParkingTab';import '@/styles/design.css';import '@/styles/app.css';const houses=[{id:15,communityId:1,lane:'198',buildingNo:'3',roomNo:'301'},{id:1074,communityId:1,lane:'228',buildingNo:'31',roomNo:'302'},{id:729,communityId:1,buildingNo:'729',roomNo:'商铺'}];function Fixture(){const[n,N]=useState(0),[cart,C]=useState([]);const onCart=useCallback((items)=>C(items),[]);return <main><button onClick={()=>N(1)}>切换到228弄31号302室</button><button onClick={()=>N(2)}>查询729商铺</button><output id="cart">{JSON.stringify(cart)}</output><ParkingTab key={houses[n].id} house={houses[n]} rules={[]} initialPlate={n===2?null:"沪M03212"} onCart={onCart}/></main>}createRoot(document.getElementById('root')).render(<Fixture/>);`;
 const built=await esbuild.build({stdin:{contents:entry,loader:'tsx',resolveDir:app},bundle:true,write:false,format:'iife',jsx:'automatic',outfile:'fixture.js',alias:{'@/lib/perm':path.join(app,'test/parking-browser-permission.ts'),'@':path.join(app,'src')},define:{'process.env.NODE_ENV':'"test"','import.meta.env.BASE_URL':'"/"'},plugins:[{name:'readonly-api',setup(b){b.onResolve({filter:/^@pms\/api-client$/},()=>({path:'api',namespace:'stub'}));b.onLoad({filter:/.*/,namespace:'stub'},()=>({contents:api,loader:'js'}));}}]});
 const resources=new Map(built.outputFiles.map(f=>['/'+path.basename(f.path),f.contents]));resources.set('/',Buffer.from('<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/fixture.css"><div id="root"></div><script src="/fixture.js"></script>'));const server=http.createServer((req,res)=>{res.setHeader('Content-Type',req.url.endsWith('.js')?'text/javascript':req.url.endsWith('.css')?'text/css':'text/html');res.end(resources.get(req.url)||'')});await new Promise(r=>server.listen(0,'127.0.0.1',r));let browser;
-try{fs.mkdirSync(out,{recursive:true});browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});for(const width of[1440,375]){const page=await browser.newPage({viewport:{width,height:900}}),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('http://127.0.0.1:'+server.address().port);await page.locator('tbody tr').filter({hasText:'沪M03212'}).waitFor();await page.getByText('车辆管理 · 沪M03212',{exact:true}).click();
+try{fs.mkdirSync(out,{recursive:true});browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});for(const width of[1440,375]){const page=await browser.newPage({viewport:{width,height:900}}),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('http://127.0.0.1:'+server.address().port);await page.locator('tbody tr').filter({hasText:'沪M03212'}).waitFor();const box=page.locator('tbody tr').filter({hasText:'沪M03212'}).getByRole('checkbox');
+assert.equal(await box.isChecked(),false);
+await box.check();
+await box.uncheck();
+assert.equal(await box.isChecked(),false);
+await box.check();
+const heading=page.locator('.cashier-vehicle-actions summary');
+assert.equal(await heading.innerText(),'车辆管理 · 沪M03212');
+assert.equal(await page.getByRole('button',{name:'变更车牌',exact:true}).count(),0);
+await heading.focus(); await heading.press('Enter');
+await page.getByRole('button',{name:'变更车牌',exact:true}).waitFor();
+await heading.press('Space');
+await page.getByRole('button',{name:'变更车牌',exact:true}).waitFor({state:'hidden'});
+await heading.click();
 for (const name of ['修改车辆类型','变更车牌','变更绑定用户','调整车库授权','变更历史','更新住户资料']) {
  await page.getByRole('button',{name,exact:true}).click();
  if(name==='变更历史'){
@@ -21,6 +34,7 @@ await page.getByRole('button',{name:'切换到228弄31号302室'}).click();await
 const shopRow=page.locator('tbody tr').filter({hasText:'沪M03212'});
 await shopRow.getByText('2027-12-31').waitFor();
 assert.equal(await shopRow.getByRole('checkbox').isEnabled(),true);
+assert.equal(await shopRow.getByRole('checkbox').isChecked(),false);
 assert.equal((await page.evaluate(()=>window.calls)).includes('729/商铺'),false);
 await page.close();}}
 finally{await browser?.close();server.closeAllConnections();await new Promise(r=>server.close(r));}

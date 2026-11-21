@@ -32,7 +32,7 @@ async function fixture() {
 const calls = (page, suffix) => page.evaluate(s => window.__calls.filter(c => c.url.endsWith(s)), suffix);
 const rendered = page => page.evaluate(() => window.__rendered);
 const button = (page, name) => page.getByRole('button', { name, exact: true });
-async function openConversion(page, kind = 'family') { await button(page, kind === 'family' ? '转为亲情车登记' : '转为付费车登记').click(); }
+async function openConversion(page, kind = 'family') { const preview=button(page,'资料已核对，选择授权'); if(await preview.isVisible()) await preview.click(); const details=page.locator('details.registration-options:not([open]) > summary'); if(await details.isVisible()) await details.click(); await page.getByRole('radio',{name:kind === 'family' ? '亲情车' : '住户车1',exact:true}).click(); }
 async function confirmConversion(page, relation = '子女') {
   if (await page.getByLabel('转换后与业主关系').count()) await page.getByLabel('转换后与业主关系').fill(relation);
   await page.getByLabel('转换原因').fill('合成回归：纠正登记类型');
@@ -87,14 +87,16 @@ test('approved paid to family resets authorization/class, preserves files/contac
     assert.equal((await rendered(page)).log.length, 2); assert.deepEqual((await rendered(page)).garages, []);
     assert.deepEqual((await calls(page, '/kind')).at(-1).data, { kind: 'family', relation: '子女', note: '合成回归：纠正登记类型' });
     assert.equal(await page.getByRole('checkbox', { checked: true }).count(), 0); assert.equal(await page.getByLabel('与业主关系', { exact: true }).inputValue(), '子女'); assert.equal((await calls(page, '/garages')).length, 0, 'old type authorization must never auto-POST');
-    assert.equal(await button(page, '资料无误，通过').isDisabled(), true);
+    assert.equal(await button(page, '提交经理审核').isDisabled(), true);
     for (const width of [1440, 390]) { await page.setViewportSize({ width, height: 1000 }); await shot(page, `converted-family-${width}`); }
-    await page.getByRole('checkbox', { name: '二期大车库', exact: true }).check();
+    await page.getByRole('checkbox', { name: '二期大车库', exact: true }).click();
+    await page.getByRole('radio', { name: 'A01', exact: true }).check();
+    await button(page, '确认车位').click();
     assert.deepEqual(new Set((await calls(page, '/garages')).at(-1).data.garages), new Set(['main', 'phase2']));
-    assert.deepEqual((await calls(page, '/garages')).at(-1).data.garageNumbers, {});
-    await button(page, '资料无误，通过').click(); await page.waitForFunction(() => window.__rendered.familyCarId === 888);
+    assert.deepEqual((await calls(page, '/garages')).at(-1).data.garageNumbers, {main:'A01'});
+    await button(page, '提交经理审核').click(); await page.waitForFunction(() => window.__rendered.familyCarId === 888);
     assert.equal((await calls(page, '/parking-queries')).length, 1); assert.equal((await calls(page, '/review')).at(-1).data.duplicateCheckQueryId, 901); assert.equal((await calls(page, '/review')).at(-1).data.relation, '子女');
-    assert.match(await page.locator('.np-review').innerText(), /等物业经理审核/); assert.notEqual(await page.locator('.np-review-steps li').last().getAttribute('data-state'), 'done');
+    assert.match(await page.locator('.np-review').innerText(), /待物业经理审核/); assert.notEqual(await page.locator('.np-review-steps li').last().getAttribute('data-state'), 'done');
     fs.writeFileSync(path.join(evidence, 'convert-and-review.json'), JSON.stringify({ calls: await page.evaluate(() => window.__calls), response: await rendered(page) }, null, 2));
   } finally { await f.close(); }
 });
@@ -123,7 +125,7 @@ test('two-way conversion available before backend finalization; reverse conversi
     for (const kind of ['paid', 'family']) for (const status of ['waiting', 'submitted', 'reupload', 'approved']) {
       if (kind === 'family' && status === 'approved') continue; // Backend forbids even a missing familyCarId after approval.
       await page.goto(origin + `/?kind=${kind}&status=${status}`);
-      await button(page, kind === 'paid' ? '转为亲情车登记' : '转为付费车登记').waitFor(); await button(page, '撤销 / 作废登记').waitFor();
+      await page.locator('.vehicle-class-radios').waitFor({state:'attached'}); await button(page, '撤销 / 作废登记').waitFor();
     }
     await page.goto(origin + '/?kind=family&status=submitted');
     await openConversion(page, 'paid'); await confirmConversion(page); await page.waitForFunction(() => window.__rendered.kind === 'paid');
@@ -144,7 +146,7 @@ test('paid financial linkage forbids conversion; void explicitly does not refund
     for (const width of [1440, 390]) { await page.setViewportSize({ width, height: 1000 }); assert.ok((await page.locator('.money').boundingBox()).width > 40, 'finance amount must not collapse into a vertical column'); await shot(page, `paid-void-finance-retained-${width}`); }
     fs.writeFileSync(path.join(evidence, 'paid-void-finance.json'), JSON.stringify({ calls: await page.evaluate(() => window.__calls), response: await rendered(page) }, null, 2));
     for (const txn of ['queued', 'running', 'synced', 'retry', 'failed', 'manual']) { await page.goto(origin + '/?status=approved&txn=' + txn); assert.equal(await button(page, '撤销 / 作废登记').count(), 0); await page.getByText(/车辆管理.*注销/).waitFor(); }
-    await page.goto(origin + '/?kind=family&status=approved&linked=1'); assert.equal(await button(page, '撤销 / 作废登记').count(), 0); assert.equal(await button(page, '转为付费车登记').count(), 0); await page.getByText(/亲情车管理/).waitFor();
+    await page.goto(origin + '/?kind=family&status=approved&linked=1'); assert.equal(await button(page, '撤销 / 作废登记').count(), 0); assert.equal(await button(page, '转为付费车登记').count(), 0); await page.getByText(/已转亲情车办理/).waitFor();
   } finally { await f.close(); }
 });
 
@@ -152,8 +154,9 @@ test('converted family cannot bypass relation or failed duplicate lookup; busine
   const f = await fixture(); const { page, origin } = f;
   try {
     await page.goto(origin + '/'); await openConversion(page); assert.equal(await button(page, '确认转换登记类型').isDisabled(), true); await confirmConversion(page); await page.waitForFunction(() => window.__rendered.kind === 'family');
-    await page.getByRole('checkbox', { name: '一期地面', exact: true }).check(); await page.getByLabel('与业主关系', { exact: true }).selectOption(''); assert.equal(await button(page, '资料无误，通过').isDisabled(), true);
-    await page.getByLabel('与业主关系', { exact: true }).selectOption('子女'); await page.evaluate(() => { window.__failQuery = true; }); await button(page, '资料无误，通过').click(); await page.getByText('合成：旧库查重失败，不能通过', { exact: true }).waitFor(); assert.equal((await calls(page, '/review')).length, 0);
+    assert.equal(await page.getByRole('checkbox', { name: '一期地面', exact: true }).isChecked(), false);
+    await page.getByRole('checkbox', { name: '一期地面', exact: true }).check(); await page.getByLabel('与业主关系', { exact: true }).selectOption(''); assert.equal(await button(page, '提交经理审核').isDisabled(), true);
+    await page.getByLabel('与业主关系', { exact: true }).selectOption('子女'); await page.evaluate(() => { window.__failQuery = true; }); await button(page, '提交经理审核').click(); await page.getByText('合成：旧库查重失败，不能通过', { exact: true }).waitFor(); assert.equal((await calls(page, '/review')).length, 0);
     await page.goto(origin + '/?readonly=1'); assert.equal(await button(page, '转为亲情车登记').count(), 0); assert.equal((await calls(page, '/kind')).length, 0);
   } finally { await f.close(); }
 });

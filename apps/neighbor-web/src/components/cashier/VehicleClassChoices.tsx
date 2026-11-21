@@ -5,9 +5,14 @@ export function vehicleClassLabel(value: string) {
   return value === '产权车位' ? '产权车' : value.replace(/[-－\s]/g, '');
 }
 
+export function vehicleClassCaption(value: string, spaces: string[] = []) {
+  const label = vehicleClassLabel(value);
+  return label === '产权车' && spaces.length ? `${label}（${spaces.join('、')}）` : label;
+}
+
 /** Display grouping never changes the configured billing rule value. */
-export default function VehicleClassChoices({ options, value, disabled, readOnly, defaultValue, disabledOptions = [], onChange }: {
-  options: string[]; value: string; disabled?: boolean; disabledOptions?: string[]; readOnly?: boolean; defaultValue?: string; onChange: (value: string) => void;
+export default function VehicleClassChoices({ options, value, disabled, readOnly, defaultValue, disabledOptions = [], spaces = [], onChange }: {
+  options: string[]; spaces?: string[]; value: string; disabled?: boolean; disabledOptions?: string[]; readOnly?: boolean; defaultValue?: string; onChange: (value: string) => void;
 }) {
   const name = useId();
   const choices = [...new Set([...options, ...(value ? [value] : [])])];
@@ -22,7 +27,7 @@ export default function VehicleClassChoices({ options, value, disabled, readOnly
     if (!groups.has(group)) groups.set(group, []);
     groups.get(group)!.push(option);
   }
-  if (readOnly) return <div className="vehicle-class-field"><b>车辆类别</b><span>{value ? vehicleClassLabel(value) : '未设置'}</span></div>;
+  if (readOnly) return <div className="vehicle-class-field"><b>车辆类别</b><span>{value ? vehicleClassCaption(value, spaces) : '未设置'}</span></div>;
   return <fieldset className="vehicle-class-radios" disabled={disabled}>
     <legend>车辆类别</legend>
     <div className="vehicle-class-groups">
@@ -31,7 +36,7 @@ export default function VehicleClassChoices({ options, value, disabled, readOnly
         return rows.length > 0 && <div className="vehicle-class-group" key={group} role="group" aria-label={group}>
           {rows.map(option => <label key={option}>
             <input type="radio" name={name} value={option} disabled={disabledOptions.includes(option)} checked={value === option} onChange={() => onChange(option)} />
-            {vehicleClassLabel(option)}{option === defaultValue && !value && <small>默认</small>}
+            {vehicleClassCaption(option, spaces)}{option === defaultValue && !value && <small>默认</small>}
           </label>)}
         </div>;
       })}

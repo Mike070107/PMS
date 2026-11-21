@@ -1,3 +1,4 @@
+import { registrationTitle } from '@/components/cashier/RegistrationPermit';
 import { formatBeijingDateTime } from '@pms/shared-types';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -55,19 +56,24 @@ export default function Pending() {
   const canViewIntakes = INTAKE_PERMISSIONS.some(key => can(key, 'view'));
   const canReviewIntakes = INTAKE_PERMISSIONS.some(key => can(key, 'edit'));
   const [intakes, setIntakes] = useState<Intake[] | null>(null);
+  const [awaitingSubmission, setAwaitingSubmission] = useState<Intake[]>([]);
   const [intakeError, setIntakeError] = useState('');
   const [intakeLoading, setIntakeLoading] = useState(canViewIntakes);
   const [intakeRefresh, setIntakeRefresh] = useState(0);
   useEffect(() => {
-    if (!canViewIntakes) { setIntakes(null); setIntakeError(''); setIntakeLoading(false); return; }
+    if (!canViewIntakes) { setIntakes(null); setAwaitingSubmission([]); setIntakeError(''); setIntakeLoading(false); return; }
     let alive = true;
     let revision = 0;
     const loadIntakes = async () => {
       const current = ++revision;
       setIntakeLoading(true);
       try {
-        const rows = await request<Intake[]>({ url: '/vehicle-intakes', query: { status: 'submitted' } });
+        const [rows, drafts] = await Promise.all([
+          request<Intake[]>({ url: '/vehicle-intakes', query: { status: 'submitted' } }),
+          request<Intake[]>({ url: '/vehicle-intakes', query: { status: 'waiting,reupload' } }),
+        ]);
         if (alive && current === revision) {
+          setAwaitingSubmission(drafts.filter(i => i.status === 'waiting' || i.status === 'reupload'));
           setIntakes(rows.filter(row => row.status === 'submitted'));
           setIntakeError('');
         }
@@ -112,9 +118,9 @@ export default function Pending() {
       dry: l.filter((t) => t.externalSyncStatus === 'dry_run'),
       // Same paid intake may still have an awaiting_docs transaction after upload.
       // Only deduplicate against a successfully refreshed submitted-intake list.
-      docs: l.filter((t) => t.externalSyncStatus === 'awaiting_docs' && (intakeError || !canViewIntakes || !intakes?.some(i => i.id === t.snapshot?.intake?.id))),
+      docs: l.filter((t) => t.externalSyncStatus === 'awaiting_docs' && (intakeError || !canViewIntakes || ![...(intakes ?? []), ...awaitingSubmission].some(i => i.id === t.snapshot?.intake?.id))),
     };
-  }, [txns, reviews, intakes, intakeError, canViewIntakes]);
+  }, [txns, reviews, intakes, awaitingSubmission, intakeError, canViewIntakes]);
   const badAgents = useMemo(() => (ready?.agents ?? []).filter((a) => a.status !== 'online'), [ready]);
   const deliyunDown = ready?.deliyun && ready.deliyun.configured && !ready.deliyun.connected;
 
@@ -154,7 +160,7 @@ export default function Pending() {
     { icon: 'check' as IconName, tone: 'amber', v: groups.dry.length, k: '演练待正式写入' },
     { icon: 'cpu' as IconName, tone: 'red', v: badAgents.length + (deliyunDown ? 1 : 0), k: '设备 / 助手异常' },
   ];
-  const hasAny = (canViewIntakes && (intakeLoading || intakeError || intakes?.length)) || groups.review.length || groups.docs.length || groups.needHand.length || groups.inFlight.length || groups.dry.length || badAgents.length || deliyunDown;
+  const hasAny = (canViewIntakes && (intakeLoading || intakeError || intakes?.length || awaitingSubmission.length)) || groups.review.length || groups.docs.length || groups.needHand.length || groups.inFlight.length || groups.dry.length || badAgents.length || deliyunDown;
 
   const row = (t: Txn) => {
     const s = ST[t.externalSyncStatus] || ST.queued;
@@ -222,6 +228,16 @@ export default function Pending() {
         ))}
       </div>
 
+      {canViewIntakes && <section aria-label="待提交资料" style={{ marginBottom: 18 }}>
+        <h2 className="secTitle"><Icon name="file" size={18}/>待提交资料</h2>
+        {awaitingSubmission.map(i => <div className="card" key={i.id} style={{padding:12,marginBottom:8}}>
+          <b>{registrationTitle(i.kind)} #{i.id}</b> · {i.houseLabel} {i.plate}
+          <div>{i.status === 'reupload' ? '待补交资料' : '待提交资料'}{!i.qrValid ? ' · 二维码已过期，可在原单重新生成' : ''}
+            <button className="btn sm" style={{marginLeft:12}} onClick={()=>nav('/plates?intakeId=' + i.id)}>{canReviewIntakes ? '继续办理' : '查看申请'}</button>
+          </div>
+        </div>)}
+        {!awaitingSubmission.length && <div className="muted">{intakeError ? '待提交资料读取失败，请刷新重试' : intakeLoading ? '正在读取待提交资料…' : '暂无待提交资料'}</div>}
+      </section>}
       {canViewIntakes ? (
         <section aria-label="新办车牌待审核资料" style={{ marginBottom: 18 }}>
           <div className="secTitle" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>

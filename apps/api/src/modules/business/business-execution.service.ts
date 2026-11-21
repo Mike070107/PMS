@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, LessThan, Repository } from 'typeorm';
 import { BusinessLog, BusinessRule, BusinessTransaction, House, ParkingOperation, VehicleIntake } from '../../entities';
 import { findParkingTarget } from './parking-targets';
+import { updatePropertySpaces, type PropertySpaceRef } from './property-space-ledger';
 import { legacyRegistrationProfile } from './parking-registration-profile';
 import { assertFreshParkingPlateCheck } from '../access-card-issuance/parking-query.util';
 import { BusinessServiceType } from '../../common/enums';
@@ -474,7 +475,14 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
         steps.push(await this.runCivilRegistration(txn, plate, ownerAddress, intake.garageNumbers.civil, endDate));
         if (steps.some(s => s.status === 'manual')) return this.finish(txn, 'manual', { ...prev, mode, attempts, steps, nextAt: null, lastError: steps.at(-1)!.note });
       }
-      if (steps.every(s => s.status === 'done')) return this.finish(txn, 'synced', { ...prev, mode, attempts, steps, nextAt: null, lastError: null });
+      if (steps.every(s => s.status === 'done')) {
+        if (txn.snapshot.propertySpaces && txn.snapshot.propertyContact) {
+          // 回家补资料的登记可能先收款，按最终获准开通的车牌、联系手机写入卡片。
+          txn.snapshot = {...txn.snapshot, vehicle:{...txn.snapshot.vehicle as object,plateNo:plate},
+            propertyContact:{...txn.snapshot.propertyContact as object,contactPhone:intake.contactPhone || null}};
+        }
+        return this.finish(txn, 'synced', { ...prev, mode, attempts, steps, nextAt: null, lastError: null });
+      }
       return wait();
     } catch (error) {
       const failure = classifyFailure(error, attempts);
@@ -522,11 +530,22 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
     return step;
   }
 
-  private async finish(txn: BusinessTransaction, status: ExternalSyncStatus, execution: ExecutionState) {
+  private async finish(txn: BusinessTransaction, status: ExternalSyncStatus, execution: ExecutionState): Promise<{ id:number; externalSyncStatus:ExternalSyncStatus }> {
     const final = status === 'synced' || status === 'manual' || status === 'failed' || status === 'dry_run';
     const exec = { ...execution, finishedAt: final ? new Date().toISOString() : null };
-    await this.txnRepo.update({ id: txn.id }, { externalSyncStatus: status, // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      snapshot: { ...(txn.snapshot || {}), execution: exec } as any });
+    const refs = txn.snapshot?.propertySpaces as PropertySpaceRef[] | undefined;
+    const changes = { externalSyncStatus: status, snapshot: { ...(txn.snapshot || {}), execution: exec } as any };
+    if (status === 'synced' && refs?.length) {
+      try {
+        await this.txnRepo.manager.transaction(async manager => {
+          await updatePropertySpaces(manager, txn, refs);
+          await manager.update(BusinessTransaction, {id:txn.id,tenantId:txn.tenantId}, changes);
+        });
+      } catch (error) {
+        return this.finish(txn, 'manual', { ...exec, nextAt:null, lastError:
+          '停车系统办理已完成，PMS 车位台账待核对：' + (error instanceof Error ? error.message : '保存失败') });
+      }
+    } else await this.txnRepo.update({ id: txn.id, tenantId:txn.tenantId }, changes);
     // 等现场助手回执的轮询（queued→queued）不重复记日志
     const prevStatus = (txn.snapshot?.execution as ExecutionState | undefined)?.steps?.length ? txn.externalSyncStatus : null;
     if (!(status === 'queued' && (prevStatus === 'queued' || prevStatus === 'running'))) {

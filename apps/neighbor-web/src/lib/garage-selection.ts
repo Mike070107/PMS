@@ -11,3 +11,12 @@ export function toggleGarage(selected: string[], key: string, keys = GARAGE_KEYS
 export function garageNumbersFor(selected: string[], numbers: Record<string, string>, keys = GARAGE_KEYS) {
   return Object.fromEntries(Object.entries(numbers).filter(([key]) => selected.includes(key === 'main' ? keys.main : key === 'civil' ? keys.civil : key)));
 }
+
+export function propertySpaceLabels(lots: ReadonlyArray<{ targetKey: string | null; propertySpace?: string | null }>) {
+  const labels = new Set<string>();
+  for (const lot of lots) {
+    const garage = lot.targetKey === PAID_GARAGE_KEYS.main ? '大车库' : lot.targetKey === PAID_GARAGE_KEYS.civil ? '人防车库' : '';
+    if (garage && lot.propertySpace?.trim()) labels.add(garage + ' ' + lot.propertySpace.trim());
+  }
+  return [...labels];
+}

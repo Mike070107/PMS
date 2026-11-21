@@ -9,6 +9,7 @@ import { dayjs } from '@/lib/format';
 import { field, GARAGES, garageState, normPlate } from '@/lib/parking-fields';
 
 export interface ParkingSpaceRow {
+  vehicleBindings?: Record<string, { houseId:number; houseNo:string; ownerName:string|null; ownerPhone:string|null; contactPhone:string|null; endDate:string }>;
   id: number; garage: 'main' | 'civil'; spaceNo: string; houseNo: string | null; areaSqm: string | null;
   address?: string | null; roomLabel?: string | null; buildingNo?: string | null;
   plate: string | null; ownerName: string | null; ownerTel: string | null;
