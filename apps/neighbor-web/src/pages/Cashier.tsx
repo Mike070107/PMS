@@ -226,7 +226,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
     if (fullPlate || plateFragment) {
       merged.vehicles = merged.vehicles.filter(v => matches(v.plateNo));
     }
-    if (plateFragment || (fullPlate && !merged.vehicles.length)) {
+    if (plateFragment || (fullPlate && !merged.vehicles.some(v => merged.houses.some(h => h.id === v.houseId)))) {
       try {
         let q = await accessCardIssuance.createParkingQuery(kw.trim());
         for (let i = 0; i < 10 && (q.status === 'pending' || q.status === 'running'); i += 1) {
@@ -235,7 +235,20 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
         }
         if (q.status === 'failed') throw new Error(q.error || '现场停车查询失败，请重试或检查现场助手');
         if (q.status !== 'completed') throw new Error(`现场停车查询仍未完成（查询 ${q.id}），请稍后重试；当前不能判定没有车辆`);
-        const rows = (q.rows ?? []) as Array<{ database: string; fields: Record<string, unknown> }>;
+        const rows = q.rows ?? [];
+        const plateHouses = new Map<string, Set<number>>();
+        for (const vehicle of merged.vehicles) {
+          const key = vehicle.plateNo.toUpperCase();
+          const ids = plateHouses.get(key) ?? new Set<number>();
+          if (vehicle.houseId) ids.add(vehicle.houseId);
+          plateHouses.set(key, ids);
+        }
+        const directory: HouseHit[] = [];
+        for (const c of communities) for (const b of c.buildings) for (const h of b.houses) {
+          directory.push({ id: h.id, roomNo: h.roomNo, lane: b.lane, buildingNo: b.buildingNo,
+            communityId: c.id, communityName: c.name,
+            owner: h.ownerId ? { id: h.ownerId, name: h.ownerName ?? null, phone: h.ownerPhone ?? null } : null });
+        }
         for (const row of rows) {
           const f = row.fields || {};
           // SQL providers preserve different identifier casing. Prefer the dedicated
@@ -253,20 +266,40 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
           const phoneHit = /^\d+$/.test(term) && [...fields].find(([key, value]) =>
             /(?:tel|phone|mobile)/.test(key) && String(value ?? '').includes(term));
           if (!plateHit && !phoneHit) continue;
-          const keepPlateOnly = () => {
-            if (!merged.vehicles.some(v => v.plateNo === plate)) merged.vehicles.push({ id: -(merged.vehicles.length + 1), plateNo: plate, houseId: null, ownerId: null, validUntil: null });
-          };
-          if (!room) { if (plateHit) keepPlateOnly(); continue; }
-          const rr = normSearch(await request<unknown>({ url: '/business/search', query: { q: room } }));
-          const parts = /^\d+\/\d+\/\d+$/.test(room) ? room.split('/') : null;
-          const candidates = parts ? rr.houses.filter(h => [h.lane, h.buildingNo, h.roomNo]
-            .every((part, index) => String(part ?? '').replace(/^0+(?=\d)/, '') === parts[index])) : rr.houses;
-          if (!parts || candidates.length !== 1) { if (plateHit) keepPlateOnly(); continue; }
-          const hit = candidates[0];
-          if (phoneHit && !matchedPhones[hit.id]) matchedPhones[hit.id] = String(phoneHit[1]);
-          if (!merged.houses.some((h) => h.id === hit.id)) merged.houses.push(hit);
-          if (plateHit && !merged.vehicles.some((v) => v.plateNo === plate)) merged.vehicles.push({ id: hit.id * 1000 + merged.vehicles.length, plateNo: plate, houseId: hit.id, ownerId: hit.owner?.id ?? null, validUntil: null });
+          const match = row.pmsMatch;
+          let hit: HouseHit | undefined;
+          if (match?.houseId) {
+            if (match.status !== 'disabled' && (!match.house || match.house.id === match.houseId)) {
+              hit = directory.find(h => h.id === match.houseId);
+            }
+          } else if (/^\d+\/\d+$/.test(room)) {
+            const [building, unit] = room.split('/').map(Number);
+            const candidates = directory.filter(h => /^\d+$/.test(h.buildingNo) && Number(h.buildingNo) === building &&
+              /^\d+$/.test(h.roomNo) && Number(h.roomNo) === unit);
+            if (candidates.length === 1) hit = candidates[0];
+          } else if (/^\d+\/\d+\/\d+$/.test(room)) {
+            const rr = normSearch(await request<unknown>({ url: '/business/search', query: { q: room } }));
+            const parts = room.split('/');
+            const candidates = rr.houses.filter(h => [h.lane, h.buildingNo, h.roomNo]
+              .every((part, index) => String(part ?? '').replace(/^0+(?=\d)/, '') === parts[index]));
+            if (candidates.length === 1) hit = candidates[0];
+          }
+          if (hit) {
+            if (phoneHit && !matchedPhones[hit.id]) matchedPhones[hit.id] = String(phoneHit[1]);
+            if (!merged.houses.some(h => h.id === hit.id)) merged.houses.push(hit);
+          }
+          if (plateHit) {
+            const ids = plateHouses.get(plate) ?? new Set<number>();
+            if (hit) ids.add(hit.id);
+            plateHouses.set(plate, ids);
+          }
         }
+        merged.vehicles = Array.from(plateHouses, ([plateNo, ids], index) => {
+          const existing = merged.vehicles.find(v => v.plateNo.toUpperCase() === plateNo);
+          const houseId = ids.size === 1 ? [...ids][0] : null;
+          return { id: existing?.id ?? -(index + 1), plateNo, houseId,
+            ownerId: merged.houses.find(h => h.id === houseId)?.owner?.id ?? null, validUntil: existing?.validUntil ?? null };
+        });
       } catch (error) {
         if (merged.vehicles.length || merged.houses.some(h => h.owner?.phone?.includes(term))) merged.searchWarning = '现场车牌查询未完成，当前仅显示 PMS 记录';
         else throw new Error(`车牌查询未完成：${error instanceof Error ? error.message : '现场停车库暂不可用'}。不能据此判断车辆不存在。`);
@@ -285,7 +318,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
       merged.plateMatches = merged.vehicles.length > 0;
     }
     return merged;
-  }, []);
+  }, [communities]);
 
   const loadBills = (h: HouseHit) => {
     const revision = navigationRevision.current;
@@ -344,6 +377,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
 
   /** 统一查询框的结果：房号→物业费；车牌→停车续期并选中该车；门禁卡→门禁 */
   const onUniPick = (p: UniPick) => {
+    setErr('');
     const all = p.all;
     const byHouse = (houseId: number | null) => (houseId == null ? null : all.houses.find((h) => h.id === houseId) ?? null);
     if (p.kind === 'house') {
@@ -352,7 +386,12 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
       return;
     }
     const h = byHouse(p.kind === 'vehicle' ? p.vehicle.houseId : p.card.houseId);
-    if (!h && p.kind === 'vehicle') { navigate('/vehicles?plate=' + encodeURIComponent(p.vehicle.plateNo)); return; }
+    if (!h && p.kind === 'vehicle') {
+      applyHouse(null, null);
+      setPicked(null);
+      setErr(`车牌 ${p.vehicle.plateNo} 未能确定唯一房号，请在收银台搜索并核对房号后办理。`);
+      return;
+    }
     if (!h) { setErr('这条记录没有关联房号，无法办理'); return; }
     applyHouse(h as HouseHit, {
       houses: [h as HouseHit],

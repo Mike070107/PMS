@@ -1,6 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const esbuild=require('node:module').createRequire(require.resolve('vite'))('esbuild');
-function productionSearch(deps){const source=fs.readFileSync(path.join(__dirname,'../src/pages/Cashier.tsx'),'utf8');const start=source.indexOf('  const normSearch ='),end=source.indexOf('\n  const loadBills',start);assert.ok(start>0&&end>start);const js=esbuild.transformSync(source.slice(start,end)+'\nglobalThis.search=searchByQ;', {loader:'ts',target:'es2022'}).code;const ctx={...deps,useCallback:f=>f,setTimeout:f=>{f();return 1;}};vm.runInNewContext(js,ctx);return ctx.search;}
+function productionSearch(deps){const source=fs.readFileSync(path.join(__dirname,'../src/pages/Cashier.tsx'),'utf8');const start=source.indexOf('  const normSearch ='),end=source.indexOf('\n  const loadBills',start);assert.ok(start>0&&end>start);const js=esbuild.transformSync(source.slice(start,end)+'\nglobalThis.search=searchByQ;', {loader:'ts',target:'es2022'}).code;const ctx={communities:[],...deps,useCallback:f=>f,setTimeout:f=>{f();return 1;}};vm.runInNewContext(js,ctx);return ctx.search;}
 const house={id:6,communityId:1,communityName:'合成一期',buildingNo:'6',lane:'198',roomNo:'601',owner:null};
 function fixture(query){const calls=[];const deps={request:async args=>{calls.push(args);return {houses:[house],vehicles:[],accessCards:[]}},accessCardIssuance:{createParkingQuery:async term=>{assert.equal(term,'03212');return query},parkingQuery:async()=>query}};return {search:productionSearch(deps),calls};}
 for(const fields of [{p_plate:'沪A03212',Owner__room:'198/6/601',p_note:null},{P_plate:'沪A03212',Owner__owner_Name:'198/6/601'},{p_plate:'沪A03212',p_note:'198/6/601'}])test('cashier tail 03212 keeps onsite row '+Object.keys(fields).join(','),async()=>{const{search,calls}=fixture({id:1,status:'completed',rows:[{database:'parking1',fields}]});const result=await search('03212');assert.equal(result.vehicles[0]?.plateNo,'沪A03212');assert.equal(result.vehicles[0]?.houseId,6);assert.ok(calls.some(c=>c.query.q==='198/6/601'));});
@@ -22,4 +22,32 @@ test('2199 优先返回真实车牌和所属房屋；保留电话中段和地址
  assert.deepEqual(Array.from(r.vehicles,v=>v.plateNo),['沪A02199']);
  assert.deepEqual(Array.from(r.houses,h=>h.id),[6,21,20]);
  assert.equal(r.plateMatches,true);
+});
+test('C678 uses the onsite PMS house, enriches an existing plate, and rejects conflicting houses',async()=>{
+ const plateNo='沪A1C678';
+ const room={...house,id:902,buildingNo:'53',lane:null,roomNo:'902',communityName:'枫桦景苑二期'};
+ const communities=[{id:1,name:room.communityName,buildings:[{buildingNo:'53',lane:null,houses:[room,{...room,id:903,roomNo:'903'}]}]}];
+ for(const [ids,expected] of [[[902],902],[[902,903],null]]){
+  const search=productionSearch({communities,request:async()=>({houses:[],vehicles:[{id:5,plateNo,houseId:null}],accessCards:[]}),
+   accessCardIssuance:{createParkingQuery:async()=>({status:'completed',rows:ids.map(id=>({fields:{P_plate:plateNo},pmsMatch:{houseId:id,house:{id}}}))})}});
+  for(const term of ['C678',plateNo]){
+   const result=await search(term);
+   assert.equal(result.vehicles.length,1);
+   assert.equal(result.vehicles[0].houseId,expected);
+   if(expected) assert.equal(result.houses[0].communityName,room.communityName);
+  }
+ }
+});
+test('two-part room lookup requires a unique exact room across the available communities',async()=>{
+ const building={buildingNo:'53',lane:null,houses:[{id:902,roomNo:'902'}]};
+ const community={id:1,name:'枫桦景苑二期',buildings:[building]};
+ for(const ambiguous of [false,true]){
+  const communities=[community];
+  if(ambiguous) communities.push({id:2,name:'其他小区',buildings:[{...building,houses:[{id:1902,roomNo:'902'}]}]});
+  const search=productionSearch({communities,request:async()=>({}),accessCardIssuance:{createParkingQuery:async()=>({
+   status:'completed',rows:[{fields:{P_plate:'沪A1C678',Owner__room:'53/902'}}]
+  })}});
+  const result=await search('C678');
+  assert.equal(result.vehicles[0].houseId,ambiguous?null:902);
+ }
 });
