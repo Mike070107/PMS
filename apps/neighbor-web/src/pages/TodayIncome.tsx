@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { request } from '@pms/api-client';
 import { Sheet } from '@/components/ui';
 import Icon from '@/components/Icon';
+import DateInput from '@/components/DateInput';
 import { money } from '@/lib/format';
 
 const categories = [
@@ -74,7 +75,20 @@ function Details({ date, category, firstPage, phase, source }: { source?:Source;
   </>;
 }
 
-export function TodayIncome({ date }: { date: string }) {
+export function TodayIncome({ date: today }: { date: string }) {
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const date = selectedDay ?? today;
+  return <section className="card today-income-card">
+    <div className="today-income-header">
+      <div className="side-h"><Icon name="chart" size={19}/>{date === today ? '今日分项收入' : '分项收入'}</div>
+      <label>对账日期 <DateInput value={date} max={today} required aria-label="对账日期"
+        onChange={e => setSelectedDay(e.target.value === today ? null : e.target.value)}/></label>
+    </div>
+    <IncomeBreakdown key={date} date={date}/>
+  </section>;
+}
+
+function IncomeBreakdown({ date }: { date: string }) {
   const [phaseResults, setPhaseResults] = useState<PhaseResults>({});
   const [phase, setPhase] = useState<Phase | null>(null);
   const [source, setSource] = useState<Source>('mis');
@@ -119,8 +133,7 @@ export function TodayIncome({ date }: { date: string }) {
   const amount = (v?:Response) => v && 'amountCents' in v ? v.amountCents : null;
   const display = (v?:Response) => !v ? '读取中…' : 'reason' in v ? '未获取' : money(v.amountCents/100);
   let offset = 0;
-  return <><section className="card today-income-card">
-    <div className="side-h"><Icon name="chart" size={19}/>今日分项收入</div>
+  return <>
     <div className="erp-fee-breakdown">
       <div className="erp-fee-donut-wrap"><svg viewBox="0 0 100 100" className="erp-fee-donut" aria-hidden="true">
         <circle cx="50" cy="50" r="43" fill="none" stroke="var(--line2)" strokeWidth="9"/>
@@ -157,7 +170,6 @@ export function TodayIncome({ date }: { date: string }) {
     </div>
     {categories.some(([id]) => compare(id) && [values[id],pms[id]].some(v => v && 'reason' in v)) && <button className="btn sm" onClick={()=>setRetry(n=>n+1)}>重试读取收入</button>}
     <small className="muted">泊位费和车辆管理费按 MIS 录入金额计入小计。</small>
-  </section>
     {selected && <Sheet open onClose={() => { select(null); setPhase(null); setSource('mis'); }} width={800} title={selected[1]+'明细'} subtitle={date}>
       {compare(selected[0]) ? <>
         <div aria-label="明细来源">{(['mis','pms'] as const).map(s=><button key={s} type="button" className={'btn sm'+(s===source?' primary':'')} aria-pressed={s===source} onClick={()=>setSource(s)}>{sourceLabels[s]}</button>)}</div>

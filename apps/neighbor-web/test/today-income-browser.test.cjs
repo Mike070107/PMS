@@ -11,6 +11,10 @@ test('income amounts fit narrow cards and open five-column paged receipts', asyn
     import '@/styles/erp-reference.css'; import '@/pages/erp-today.css';
     createRoot(document.getElementById('root')).render(<TodayIncome date="2026-11-20"/>);`;
   const fixture = `export async function request({url,query:q,data}) {
+    if(q?.date==='2026-11-19' && ['berth','garage'].includes(q.category)){
+      const paid=q.source==='pms'?3000:2000;
+      return {amountCents:paid,total:1,rows:q.page?[{paidAt:q.date,amountCents:paid,remark:q.source+' 昨日明细'}]:[]};
+    }
     if(url.includes('/parking/fees/details/queries')){
       if(data.category!=='exit_due'||!['parking1','parking2'].includes(data.database))throw Error('分期错误');
       const first=data.database==='parking1', amountCents=first?1000:500;
@@ -66,6 +70,23 @@ test('income amounts fit narrow cards and open five-column paged receipts', asyn
       assert.equal(await page.getByRole('tab',{selected:true}).innerText(),'一期');
       await page.getByRole('tab',{name:'二期'}).click();
       await page.getByRole('cell',{name:'亲情车',exact:true}).waitFor();
+      await page.keyboard.press('Escape');
+      const calendar=page.getByRole('textbox',{name:'对账日期'});
+      assert.equal(await calendar.inputValue(),'2026-11-20');
+      await calendar.click();
+      await page.locator('td[title="2026-11-19"]').click();
+      for(const name of ['泊位费','车辆管理费']){
+        const row=page.getByRole('button',{name:new RegExp(name)});
+        await row.filter({hasText:/MIS 人工录入.*20.00.*PMS 实收.*30.00.*差额.*10.00/}).waitFor();
+        await row.click();
+        await page.getByText('mis 昨日明细',{exact:true}).waitFor();
+        await page.getByRole('button',{name:'PMS 实收',exact:true}).click();
+        await page.getByText('pms 昨日明细',{exact:true}).waitFor();
+        await page.keyboard.press('Escape');
+      }
+      await calendar.click();
+      await page.locator('td[title="2026-11-20"]').click();
+      await button.filter({hasText:/1234567\.89/}).waitFor();
       await page.close();
       if(viewport===390){
         const failed=await browser.newPage({viewport:{width:390,height:680}});
