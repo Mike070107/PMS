@@ -310,7 +310,17 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
         // 本地旧库：先看上一轮建的任务有没有结果
         if (step.operationId) {
           const op = await this.opRepo.findOne({ where: { id: step.operationId, tenantId: txn.tenantId } });
-          if (op?.status === 'completed') { step.status = 'done'; step.note = `已续到 ${targetEndDate}（现场助手已回读）`; continue; }
+          if (op?.status === 'completed') {
+            const actual = op.result?.endDate;
+            if (!targetEndDate || actual !== targetEndDate) {
+              step.status = 'manual';
+              step.note = `现场助手回读到期日 ${actual || '未返回'}，本次提交到期日 ${targetEndDate || '未填写'}，请核对旧库记录`;
+            } else {
+              step.status = 'done';
+              step.note = `已续到 ${targetEndDate}（现场助手已回读）`;
+            }
+            continue;
+          }
           if (op && (op.status === 'pending' || op.status === 'running')) { step.status = 'waiting'; step.note = '现场助手处理中'; continue; }
           if (op?.status === 'failed') { step.status = 'failed'; step.note = op.lastError || '现场助手执行失败'; step.operationId = null; continue; }
         }

@@ -560,7 +560,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
                   {l.label}{l.endDate ? <span className="muted">（至 {l.endDate}）</span> : null}
                 </label>
               ))}
-              {mismatch ? <div className="note2" style={{ marginTop: 8 }}><Icon name="alert" />各系统到期日不一致，按最晚的 {currentEnd} 往后续；比目标还晚的系统会转人工核对，不会被改短。</div> : null}
+              {mismatch ? <div className="note2" style={{ marginTop: 8 }}><Icon name="alert" />各系统到期日不一致，按最晚的 {currentEnd} 往后续；一期、二期旧停车库将按本次提交的到期日更新。</div> : null}
             </div>
           ) : null}
           {classOptions.length || intakeId ? (

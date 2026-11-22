@@ -146,12 +146,11 @@ export function aggregateSteps(steps: ExecutionStep[]): ExternalSyncStatus {
   return 'synced';
 }
 
-/** 本地旧库续期前的核对：只往后延，不回退 */
+/** 本地旧库以本次收款提交的到期日为准；相同日期无需重复续期。 */
 export function planLocalRenewal(input: { previousEndDate: string | null; targetEndDate: string | null }): { action: 'renew' | 'noop' | 'manual'; reason?: string } {
   const prev = (input.previousEndDate || '').slice(0, 10);
   const target = input.targetEndDate;
   if (!isDate(target)) return { action: 'manual', reason: '本次收费没有到期日' };
   if (isDate(prev) && prev === target) return { action: 'noop', reason: '旧库到期日已是本次目标' };
-  if (isDate(prev) && prev > target) return { action: 'manual', reason: `旧库到期日 ${prev} 已晚于本次收费到期日 ${target}，不自动回退` };
   return { action: 'renew' };
 }

@@ -85,9 +85,36 @@ test('多系统汇总：有在等的算排队，失败优先于人工，全部�
   assert.equal(aggregateSteps([st('done'), st('done')]), 'synced');
 });
 
-test('旧库续期核对：只往后延', () => {
+test('旧库续期按提交日期写入，同日幂等', () => {
   assert.equal(planLocalRenewal({ previousEndDate: '2026-12-31 23:59:59', targetEndDate: '2027-06-30' }).action, 'renew');
   assert.equal(planLocalRenewal({ previousEndDate: '2027-06-30 23:59:59', targetEndDate: '2027-06-30' }).action, 'noop');
-  assert.equal(planLocalRenewal({ previousEndDate: '2028-01-01', targetEndDate: '2027-06-30' }).action, 'manual');
+  assert.equal(planLocalRenewal({ previousEndDate: '2027-11-30', targetEndDate: '2027-10-31' }).action, 'renew');
   assert.equal(planLocalRenewal({ previousEndDate: null, targetEndDate: '2027-06-30' }).action, 'renew');
+});
+
+test('已转人工的旧库步骤重试按原流水日期派发，回读一致才完成', async () => {
+  const { BusinessExecutionService } = await import('./business-execution.service');
+  const calls: any[] = [];
+  const op = { id: 7, status: 'pending', result: {} as Record<string, unknown> };
+  const service = Object.assign(Object.create(BusinessExecutionService.prototype), {
+    issuance: { createParkingOperation: async (input: unknown) => { calls.push(input); return op; } },
+    opRepo: { findOne: async () => op },
+    finish: async (_txn: unknown, status: string, state: any) => ({ status, state }),
+  });
+  const txn = { txnNo: 'TEST-RENEW', tenantId: 1, amountCents: 150000 };
+  const system = { kind: 'local', database: 'parking1', sourceRecordId: '42', label: '一期地面车库', previousEndDate: '2027-11-30' };
+  const run = (previous: unknown) => service.runSystems(txn,previous,'on',1,'测试车牌','2027-10-31',[system]);
+  const submitted = await run({ steps: [{key:'local:parking1:42',status:'pending'}] });
+  assert.equal(submitted.status,'queued');
+  assert.equal(calls[0].database,'parking1');
+  assert.equal(calls[0].payload.endDate,'2027-10-31');
+  assert.equal(calls[0].payload.businessTxnNo,txn.txnNo);
+  op.status = 'completed';
+  for (const endDate of ['2027-11-30',undefined]) {
+    op.result = {endDate};
+    assert.equal((await run(submitted.state)).status,'manual');
+  }
+  op.result = {endDate:'2027-10-31'};
+  assert.equal((await run(submitted.state)).status,'synced');
+  assert.equal(calls.length,1);
 });
