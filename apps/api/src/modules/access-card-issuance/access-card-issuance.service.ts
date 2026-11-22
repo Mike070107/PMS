@@ -2421,7 +2421,7 @@ export class AccessCardIssuanceService {
         .andWhere("(task.status = 'pending' OR (task.status = 'running' AND task.lease_expires_at < :now))", { now })
         .andWhere("(task.kind <> 'rebind_owner' OR :canRebind = true)", { canRebind: supportsParkingOwnerRebind(agent.version) })
         .andWhere(agent.capabilities?.parkingRenewalRangeV1 === true ? '1=1' :
-          "NOT ((task.kind = 'renew_vehicle' AND (task.payload ? 'renewalIdentity' OR task.payload ? 'startDate')) OR (task.kind = 'add_vehicle' AND (task.payload ? 'businessTxnNo' OR task.payload ? 'legacyDatePolicy')))")
+          "(NOT ((task.kind = 'renew_vehicle' AND (task.payload ? 'renewalIdentity' OR task.payload ? 'startDate')) OR (task.kind = 'add_vehicle' AND (task.payload ? 'businessTxnNo' OR task.payload ? 'legacyDatePolicy'))))")
         .andWhere("(task.kind <> 'renew_vehicle' OR task.expected->>'renewalAgentKey' IS NULL OR task.expected->>'renewalAgentKey' = :renewalAgentKey)", {renewalAgentKey:agent.agentKey})
         .andWhere(canSyncVehicleInfo ? '1=1' : "task.kind <> 'sync_vehicle_info'")
         .andWhere(canUseAuthorizationFixes ? '1=1' : "task.kind NOT IN ('update_garages', 'update_vehicle_type', 'download_vehicle')")
