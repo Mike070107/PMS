@@ -205,6 +205,25 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
   };
 
   const searchByQ = useCallback(async (kw: string): Promise<SearchResult> => {
+    const term = kw.trim().toUpperCase();
+    const fullPlate = /^[\u4e00-\u9fff][A-Z][A-Z0-9]{5,6}$/.test(term);
+    const plateFragment = /^[A-Z0-9]{4,7}$/.test(term);
+    const readOnsite = async () => {
+      try {
+        let q = await accessCardIssuance.createParkingQuery(kw.trim());
+        for (let i = 0; i < 10 && (q.status === 'pending' || q.status === 'running'); i += 1) {
+          await new Promise((r) => setTimeout(r, 800));
+          q = await accessCardIssuance.parkingQuery(q.id);
+        }
+        if (q.status === 'failed') throw new Error(q.error || '现场停车查询失败，请重试或检查现场助手');
+        if (q.status !== 'completed') throw new Error(`现场停车查询仍未完成（查询 ${q.id}），请稍后重试；当前不能判定没有车辆`);
+        return { query: q };
+      } catch (error) {
+        return { error };
+      }
+    };
+    // A suffix always needs the field gateway. Start its queue wait alongside PMS.
+    const earlyOnsite = plateFragment ? readOnsite() : null;
     const [parkRaw, cardRaw] = await Promise.all([
       request<unknown>({ url: '/business/search', query: { q: kw, serviceType: 'parking_monthly' } }),
       request<unknown>({ url: '/business/search', query: { q: kw, serviceType: 'access_card' } }),
@@ -213,9 +232,6 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
     const card = normSearch(cardRaw);
     const uniq = <T extends { id: number }>(a: T[], b: T[]) => [...a, ...b].filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i);
     const merged: SearchResult = { houses: uniq(park.houses, card.houses), vehicles: uniq(park.vehicles, card.vehicles), accessCards: uniq(park.accessCards, card.accessCards) };
-    const term = kw.trim().toUpperCase();
-    const fullPlate = /^[\u4e00-\u9fff][A-Z][A-Z0-9]{5,6}$/.test(term);
-    const plateFragment = /^[A-Z0-9]{4,7}$/.test(term);
     const matches = (plate: string) => fullPlate ? plate.toUpperCase() === term : plate.toUpperCase().endsWith(term);
     const onsitePhones: Record<number, string> = {};
     const matchedPhones: Record<number, string> = {};
@@ -239,13 +255,10 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
     }
     if (queryOnsite) {
       try {
-        let q = await accessCardIssuance.createParkingQuery(kw.trim());
-        for (let i = 0; i < 10 && (q.status === 'pending' || q.status === 'running'); i += 1) {
-          await new Promise((r) => setTimeout(r, 800));
-          q = await accessCardIssuance.parkingQuery(q.id);
-        }
-        if (q.status === 'failed') throw new Error(q.error || '现场停车查询失败，请重试或检查现场助手');
-        if (q.status !== 'completed') throw new Error(`现场停车查询仍未完成（查询 ${q.id}），请稍后重试；当前不能判定没有车辆`);
+        const q = await (earlyOnsite ?? readOnsite()).then(result => {
+          if ('error' in result) throw result.error;
+          return result.query;
+        });
         const rows = q.rows ?? [];
         const plateHouses = new Map<string, Set<number>>();
         for (const vehicle of merged.vehicles) {

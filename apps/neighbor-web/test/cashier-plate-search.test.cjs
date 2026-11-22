@@ -51,3 +51,22 @@ test('two-part room lookup requires a unique exact room across the available com
   assert.equal(result.vehicles[0].houseId,ambiguous?null:902);
  }
 });
+
+test('尾号现场查询和 PMS 搜索同时启动', async () => {
+  let finishPms;
+  const pendingPms = new Promise(resolve => { finishPms = resolve; });
+  let started = false;
+  const search = productionSearch({
+    request: () => pendingPms,
+    accessCardIssuance: {
+      createParkingQuery: async () => {
+        started = true;
+        return { status: 'completed', rows: [] };
+      },
+    },
+  });
+  const pendingResult = search('2381');
+  assert.equal(started, true);
+  finishPms({ houses: [], vehicles: [], accessCards: [] });
+  await pendingResult;
+});
