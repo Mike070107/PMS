@@ -633,6 +633,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
       {intakeParam === null ? <div className="findBar">
         <UniSearch
           communities={communities}
+          initialSearch={params.get('renewPlate') ?? undefined}
           onPick={onUniPick}
           search={(kw) => searchByQ(kw) as never}
           placeholder="房号 / 姓名 / 手机尾号 / 车牌尾号，回车查询"

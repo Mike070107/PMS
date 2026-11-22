@@ -13,7 +13,7 @@ import HousePicker, { type PickedHouse } from '@/components/HousePicker';
 import Icon from '@/components/Icon';
 
 import { field, vehicleIdentity, identityTone, deliyunVehicleIdentity, GARAGES, garageState, groupByPlate, normPlate } from '@/lib/parking-fields';
-import RenewSheet from '@/components/vehicle-ops/RenewSheet';
+import { RenewalCheckout } from '@/components/vehicle-ops/RenewSheet';
 import OwnerBusinessContact from '@/components/OwnerBusinessContact';
 import VehicleActions from '@/components/vehicle-ops/VehicleActions';
 import { DownloadSheet, DeleteSheet } from '@/components/vehicle-ops/OtherOpSheets';
@@ -369,7 +369,7 @@ function VehicleCard({ plate, rows, cloud, onChanged }: { plate: string; rows: P
       <div className="veh-hint">六项写操作 + 变更历史 / 更新住户资料 / 补建 PMS 业主都在本页直接办，走现场网关并等回执。</div>
 
       {op === 'renew' ? (
-        <RenewSheet plate={plate} rows={rows} cloud={cloud}
+        <RenewalCheckout plate={plate} rows={rows} cloud={cloud}
           onClose={() => setOp(null)} onDone={() => { setOp(null); onChanged(); }} />
       ) : null}
       {op === 'pmsOwner' ? (

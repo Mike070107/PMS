@@ -254,3 +254,13 @@ if (process.env.PMS_OWNER_BROWSER_PORT) {
     console.log('Parking owner in-memory browser regression API listening (no database connection).');
   });
 }
+
+test('外部接口不能绕过收银台新建有金额的续期任务', async () => {
+  const svc = Object.assign(Object.create(AccessCardIssuanceService.prototype), {
+    parkingOperationRepo: { findOne: async () => null },
+  });
+  await assert.rejects(svc.createParkingOperation({
+    idempotencyKey: 'external-renew', kind: 'renew_vehicle', database: 'parking2',
+    payload: { plate: '沪ATEST01', amount: 1500, businessTxnNo: '伪造关联' },
+  }, { tenantId: 1 } as any, {} as any), /请通过收银台/);
+});

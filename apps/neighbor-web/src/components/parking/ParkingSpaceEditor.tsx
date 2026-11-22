@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import { accessCardIssuance, request } from '@pms/api-client';
 import type { DeliyunVehicle, ParkingQueryRow } from '@pms/api-client/src/endpoints/access-card-issuance';
 import DateInput from '@/components/DateInput';
-import RenewSheet from '@/components/vehicle-ops/RenewSheet';
+import { RenewalCheckout } from '@/components/vehicle-ops/RenewSheet';
 import { Sheet, toast } from '@/components/ui';
 import { dayjs } from '@/lib/format';
 import { field, GARAGES, garageState, normPlate } from '@/lib/parking-fields';
@@ -87,7 +87,7 @@ export default function ParkingSpaceEditor({ row, onClose, onDone }: {
     finally { lock.current = false; setBusy(false); }
   };
 
-  if (renewal) return <RenewSheet plate={savedPlate} rows={renewal.rows} cloud={renewal.cloud}
+  if (renewal) return <RenewalCheckout plate={savedPlate} rows={renewal.rows} cloud={renewal.cloud}
     garage={row.garage} initialCommunityId={row.communityId}
     onClose={() => setRenewal(null)} onDone={endDate => { setRenewal(null); setVerifiedEndDate(endDate); }} />;
 

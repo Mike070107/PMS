@@ -52,6 +52,16 @@ function ymd(v: string): string {
 const dbName = (db: string) => (db === 'parking1' ? '一期库' : db === 'parking2' ? '二期库' : db);
 
 /** 续期收费：按费率表选月数计价，一二期库一起续到同一到期日（只在第一库记收款），人防随后同步 */
+export function RenewalCheckout(props: Parameters<typeof RenewSheet>[0]) {
+  if (loadPlan(props.plate)) return <RenewSheet {...props} />;
+  const plate = normPlate(props.plate);
+  const checkout = `${import.meta.env.BASE_URL}cashier?renewPlate=${encodeURIComponent(plate)}`;
+  return <Sheet open onClose={props.onClose} width={440} title={`续期收费 · ${plate}`}>
+    <p>在收银台确认续期和实收金额，收款后生成办理记录并同步停车库。</p>
+    <a className="btn p" href={checkout} target="_blank" rel="noopener">去收银台续费</a>
+  </Sheet>;
+}
+
 export default function RenewSheet({
   plate, rows, cloud, onClose, onDone, garage, initialCommunityId,
 }: {

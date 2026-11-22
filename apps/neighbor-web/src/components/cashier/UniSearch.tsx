@@ -42,19 +42,20 @@ function tokensOf(text: string): string[] {
     .filter(Boolean);
 }
 
-export default function UniSearch({ communities, onPick, search, placeholder, width = '100%' }: {
+export default function UniSearch({ communities, onPick, search, placeholder, initialSearch = '', width = '100%' }: {
   communities: AddressCommunity[];
   onPick: (p: UniPick) => void;
   search: (kw: string) => Promise<UniResult>;
   placeholder?: string;
+  initialSearch?: string;
   width?: number | string;
 }) {
-  const [text, setText] = useState('');
+  const [text, setText] = useState(initialSearch);
   const [browsing, setBrowsing] = useState(false);
   const [selectedPath, setSelectedPath] = useState<Array<number | string>>([]);
   const [selectionText, setSelectionText] = useState<string | null>(null);
   const [selectionRevision, setSelectionRevision] = useState(0);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!initialSearch);
   const [cid, setCid] = useState<number | null>(null);
   const [bid, setBid] = useState<number | null>(null);
   const [res, setRes] = useState<UniResult | null>(null);

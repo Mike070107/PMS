@@ -2032,6 +2032,8 @@ export class AccessCardIssuanceService {
       return this.parkingOperationResponse(existing);
     }
     const payload = normalizeParkingOperationPayload(dto.payload);
+    if (access && dto.kind === 'renew_vehicle' && Number(payload.amount) > 0)
+      throw new BadRequestException('收费续期请通过收银台登记实收，生成 PMS 办理流水后执行');
     const billingClass = payload.billingClass ?? payload.propertyBillingClass;
     if ((dto.kind === 'update_vehicle_type' || dto.kind === 'renew_vehicle') && billingClass) {
       const rules = await this.parkingOperationRepo.manager.getRepository(BusinessRule).findBy({
