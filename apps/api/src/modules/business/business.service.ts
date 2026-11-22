@@ -226,6 +226,20 @@ export class BusinessService {
     return rows;
   }
 
+  private async roomPropertySpaces(tenantId: number, houseId: number, communityIds: number[]) {
+    if (!communityIds.length) return [];
+    const house = await this.houseRepo.findOne({ where: { id: houseId, tenantId }, relations: { building: true, unit: true } });
+    if (!house?.building || !communityIds.includes(house.building.communityId)) return [];
+    const normalize = (value: string) => (value.match(/\d+/g) ?? []).map(Number).join('/');
+    const short = normalize([house.building.buildingNo, house.unit?.unitNo, house.roomNo].filter(Boolean).join('/'));
+    const full = normalize([house.building.lane, short].filter(Boolean).join('/'));
+    const cards = await this.spaceRepo.findBy({ tenantId, communityId: In(communityIds) });
+    return cards.filter(card => {
+      const room = normalize(card.houseNo || '');
+      return !!room && (room === full || (card.communityId === house.building.communityId && room === short));
+    });
+  }
+
   async householdPlateSpaces(houseId:number, plates:string[], user:AuthUser, access?:ResolvedAccess) {
     const tenantId = this.requireTenant(user);
     const house = await this.houseRepo.findOne({where:{id:houseId, tenantId}, relations:{building:{community:true}}});
@@ -236,7 +250,15 @@ export class BusinessService {
     const target = targetsForCommunity(community.name).find(t => t.key === 'local:phase2_main_garage');
     if (!target) return [];
     const communities = await this.communityRepo.findBy({tenantId, name:In(target.communities)});
-    return this.boundPropertySpaces(tenantId,houseId,communities.map(c=>c.id).filter(id=>!scope || scope.includes(id)),plates.map(normPlate).filter(Boolean));
+    const ids = communities.map(c => c.id).filter(id => !scope || scope.includes(id));
+    const normalized = [...new Set(plates.map(normPlate).filter(Boolean))];
+    const [direct, byRoom] = await Promise.all([
+      this.boundPropertySpaces(tenantId, houseId, ids, normalized),
+      this.roomPropertySpaces(tenantId, houseId, ids),
+    ]);
+    return [...direct, ...normalized.flatMap(plate => byRoom
+      .filter(card => !direct.some(row => normPlate(row.plate) === plate && row.garage === card.garage))
+      .map(card => ({ plate, garage: card.garage, spaceNo: card.spaceNo })))];
   }
 
   async householdParking(houseId: number, user: AuthUser, access?: ResolvedAccess) {
@@ -719,7 +741,11 @@ export class BusinessService {
       let exactNo = spaceNo?.trim();
       if (!exactNo && dto.houseId) {
         const bindings = (await this.boundPropertySpaces(tenantId,dto.houseId,ids,[plate])).filter(r=>r.garage===garage && normPlate(r.plate)===plate);
-        if (bindings.length === 1) exactNo = bindings[0].spaceNo;
+        const candidates = bindings.length ? bindings : (await this.roomPropertySpaces(tenantId,dto.houseId,ids)).filter(card => card.garage === garage);
+        const chosen = garage === 'main' ? dto.mainSpaceNo : dto.civilSpaceNo;
+        if (chosen && !candidates.some(card => card.spaceNo === chosen))
+          throw new BadRequestException('所选车位与该车牌或房号不匹配，请刷新收银台重新选择');
+        exactNo = chosen || (candidates.length === 1 ? candidates[0].spaceNo : '');
       }
       if (!exactNo) throw new BadRequestException('车位号未能唯一确认，请先核对车位卡片');
       const rows = await this.spaceRepo.findBy({tenantId,communityId:In(ids),garage,spaceNo:exactNo});

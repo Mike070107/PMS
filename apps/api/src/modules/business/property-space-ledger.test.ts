@@ -12,6 +12,24 @@ const civil: PropertySpaceRef = {id:2,communityId:10,garage:'civil',spaceNo:'R01
 const plate = '沪A1C678';
 const legacy = {database:'parking2',fields:{P_id:42,P_plate:plate,P_spaces:'A021',P_effective:'0'.repeat(14)+'1'}};
 
+test('按收银台房号核对进口车位，多个候选必须明确选择', async () => {
+  const svc = Object.create(BusinessService.prototype);
+  const room = { building: { lane: '228', buildingNo: '15', communityId: 10 }, roomNo: '401' };
+  const cards = [{ ...main, houseNo: '永德路228弄15号401室' }];
+  svc.houseRepo = { findOne: async () => room, manager: { getRepository: () => ({
+    findOne: async () => ({ rows: [{ ...legacy, fields: { ...legacy.fields, P_spaces: '' } }] }),
+  }) } };
+  svc.spaceRepo = { findBy: async (where: {spaceNo?: string}) => cards.filter(c => !where.spaceNo || c.spaceNo === where.spaceNo) };
+  svc.communityRepo = { findOneBy: async () => ({ name: '枫桦景苑二期' }), findBy: async () => [{ id: 10 }] };
+  svc.boundPropertySpaces = async () => [];
+  const dto = { houseId: 1, plateNo: plate, parkingSystems: [{ kind: 'local', database: 'parking2', sourceRecordId: '42' }] };
+  assert.deepEqual(await svc.propertySpaceRefs(dto, 1, 10, [10]), [main]);
+  cards.push({ ...main, id: 2, spaceNo: 'A022', houseNo: '228/15/401' });
+  await assert.rejects(svc.propertySpaceRefs(dto, 1, 10, [10]), /未能唯一确认/);
+  await assert.rejects(svc.propertySpaceRefs({ ...dto, mainSpaceNo: 'A099' }, 1, 10, [10]), /不匹配/);
+  assert.equal((await svc.propertySpaceRefs({ ...dto, mainSpaceNo: 'A022' }, 1, 10, [10]))[0].spaceNo, 'A022');
+});
+
 test('现场查询到的车牌可匹配导入卡片与多车绑定，隔离其他小区与租户', async()=>{
   const db=new PGlite();
   try {

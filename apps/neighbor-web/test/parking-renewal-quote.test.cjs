@@ -8,7 +8,7 @@ function make(){
  vm.runInNewContext(code,{module,exports:module.exports,require(name){
   if(name==='react')return react;if(name==='react/jsx-runtime')return{jsx,jsxs:jsx};
   if(name==='@pms/api-client')return{request(o){let resolve,reject;const p=new Promise((yes,no)=>{resolve=yes;reject=no});requests.push({o,resolve,reject});return p},accessCardIssuance:{}};
-  if(name==='@/lib/garage-selection')return{propertySpaceLabels:()=>[]};if(name==='@/lib/format')return{dayjs:require('dayjs'),money:n=>'¥'+n};
+  if(name==='@/lib/garage-selection')return{propertySpaceLabels:()=>[],PAID_GARAGE_KEYS:{main:'local:phase2_main_garage',civil:'deliyun:枫桦景苑'}};if(name==='@/lib/format')return{dayjs:require('dayjs'),money:n=>'¥'+n};
   if(name.endsWith('/RenewalMonths'))return{default:Months};return{default:()=>null};
  }});
  props={car:{plate:'SYNTHETIC',lots:[{key:'a',targetKey:'local:test',ref:{},label:'合成停车场',endDate:null}]},rules:[{id:18,serviceType:'parking_monthly',enabled:true,communityId:1,unitPriceCents:15000,config:{priceMode:'table',vehicleClass:'住户车-1',isDefault:true,tiers:[{months:1,amountCents:15000},{months:12,amountCents:150000}]}}],house:{id:1,communityId:1,buildingNo:'1',roomNo:'101'},onCart:(_p,c)=>carts.push(c),vehicleClass:'住户车-1'};
@@ -76,4 +76,16 @@ test('custom dates keep amount blank, explicit zero is quoted and clearing it in
  assert.equal(h.carts.at(-1).custom.manualAmountCents,0);assert.equal(h.carts.at(-1).custom.standardAmountCents,null);
  h.render();amount().props.onChange({target:{value:''}});assert.equal(h.carts.at(-1),null,'删除金额应立即撤下可收款项');
  h.render();h.commit();assert.equal(amount().props.value,'');assert.equal(h.carts.at(-1),null);
+});
+
+test('产权车有多个候选时先在收银台选车位，再把选定编号带入收款', async () => {
+ const h=make();
+ h.props.vehicleClass='产权车';
+ h.props.rules[0].config.vehicleClass='产权车';
+ Object.assign(h.props.car.lots[0],{targetKey:'local:phase2_main_garage',spaceChoices:['79','82']});
+ h.render();h.commit();h.requests.at(-1).resolve(h.quote(12));await flush();
+ assert.equal(h.carts.at(-1),null);
+ h.nodes().find(n=>n.type==='select'&&n.props.required).props.onChange({target:{value:'82'}});
+ h.render();h.commit();h.requests.at(-1).resolve(h.quote(12));await flush();
+ assert.equal(h.carts.at(-1).mainSpaceNo,'82');
 });

@@ -38,7 +38,7 @@ interface Estimate { unitPriceCents: number; quantity: number; startDate: string
 /** 一辆车在某套停车系统里的一条登记 */
 interface Lot {
   key: string; system: 'local' | 'deliyun'; label: string; targetKey: string | null;
-  propertySpace?: string | null; space: string | null; spaceFromNote: boolean; endDate: string | null; garages: string[];
+  spaceChoices?: string[]; propertySpace?: string | null; space: string | null; spaceFromNote: boolean; endDate: string | null; garages: string[];
   ref: SystemRef;
 }
 export interface Car { rows?: ParkingQuery['rows']; plate: string; identity: string | null; lots: Lot[]; mismatch?: { dates: string[]; latest: string } | null }
@@ -46,7 +46,7 @@ export type { Lot };
 
 export interface ParkingCart {
   plate: string; rule: ParkRule; months: number; currentEndDate: string | null;
-  legacyStartDate?: string; estimate: Estimate; systems: SystemRef[]; systemsLabel: string;
+  mainSpaceNo?: string; civilSpaceNo?: string; legacyStartDate?: string; estimate: Estimate; systems: SystemRef[]; systemsLabel: string;
   /** 新办车牌：扫码登记单编号（车牌由业主填，可能还没填） */
   intakeId?: number;
   /** 非标准续期：自定起止日期 + 手填实收金额，提交后等物业经理审核 */
@@ -245,7 +245,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
     for (const plate of bound) car(plate, null);
     const boundSpace = (plate:string, garage:string) => {
       const rows = (cardSpaces?.key === spaceKey ? cardSpaces.rows : hh?.propertySpaces ?? []).filter(row => normPlate(row.plate) === normPlate(plate) && row.garage === garage);
-      return [...new Set(rows.map(row => row.spaceNo).filter(Boolean))].sort().join('、') || null;
+      return [...new Set(rows.map(row => row.spaceNo).filter(Boolean))].sort();
     };
     const seenRecord = new Set<string>();
     for (const row of [...local.rows, ...plateRows]) {
@@ -269,24 +269,27 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
       const target = main ?? garages[0] ?? null;
       const end = day(field(f, /^end_time$/i) || field(f, /end|expire/i));
       const label = garages.length ? garages.map((g) => g.label).join('、') : db === 'parking1' ? '一期停车库（未授权车库）' : '二期停车库（未授权车库）';
-      const cardSpace = main ? boundSpace(p,'main') : null;
+      const spaceChoices = main && !spaceCol ? boundSpace(p,'main') : [];
+      const cardSpace = spaceChoices.length === 1 ? spaceChoices[0] : null;
       const confirmedSpace = spaceCol || cardSpace;
       const noteSpace = confirmedSpace ? null : spaceFromNote(note);
       const record = car(p, identityOf(f));
       (record.rows ??= []).push(row);
       record.lots.push({
         key: `local:${db}:${field(f, /^p_id$/i)}`, system: 'local', label, targetKey: target?.targetKey ?? (db === 'parking1' ? 'local:phase1_parking' : 'local:phase2_parking'),
-        propertySpace: confirmedSpace, space: confirmedSpace || noteSpace, spaceFromNote: !!noteSpace, endDate: end, garages: garages.map((g) => g.label),
+        spaceChoices, propertySpace: confirmedSpace, space: confirmedSpace || noteSpace, spaceFromNote: !!noteSpace, endDate: end, garages: garages.map((g) => g.label),
         ref: { kind: 'local', database: db as 'parking1' | 'parking2', sourceRecordId: String(field(f, /^p_id$/i) || ''), queryId: (row as typeof row & { queryId?: number }).queryId, previousEndDate: end, label },
       });
     }
     for (const d of hh?.deliyun ?? []) {
       for (const r of d.rows) {
+        const civil = d.targetKey === PAID_GARAGE_KEYS.civil;
+        const spaceChoices = civil && !r.parkingSpace && !r.cardNo ? boundSpace(r.plate,'civil') : [];
+        const space = r.parkingSpace || r.cardNo || (spaceChoices.length === 1 ? spaceChoices[0] : null);
         car(r.plate, deliyunIdentity(r)).lots.push({
           key: `deliyun:${d.park}:${r.id}`, system: 'deliyun', label: d.label, targetKey: d.targetKey,
           // 枫桦景苑人防接口将车位号保存在 cardNo，新办回读也校验此字段。
-          propertySpace: r.parkingSpace || (d.targetKey === PAID_GARAGE_KEYS.civil ? r.cardNo || boundSpace(r.plate,'civil') : null),
-          space: r.parkingSpace || r.cardNo || (d.targetKey === PAID_GARAGE_KEYS.civil ? boundSpace(r.plate,'civil') : null), spaceFromNote: false, endDate: day(r.endDate), garages: r.garageNames || [],
+          spaceChoices, propertySpace: civil ? space : null, space, spaceFromNote: false, endDate: day(r.endDate), garages: r.garageNames || [],
           ref: { kind: 'deliyun', park: d.park, label: d.label },
         });
       }
@@ -531,7 +534,13 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
   const manualCents = enteredCents != null && Number.isSafeInteger(enteredCents) && enteredCents >= 0 ? enteredCents : null;
   const amountMissing = attempted && manualCents == null;
   // 绑定完整报价上下文（同 id 规则改价、系统引用或身份变化也必须重新试算）。
-  const quoteKey = JSON.stringify([allowCart, quoteRevision, legacyStart, sel.plate, house.id, house.communityId, house.owner?.id, rule, lots, vehicleClass, months, monthsValid, custom, cs, ce, amt, reason, label, clsBusy]);
+  const [chosenSpaces, setChosenSpaces] = useState<Record<string, string>>({});
+  const propertyRate = !intakeId && /^产权车(?:位)?$/.test(group);
+  const selectableSpaces = propertyRate ? lots.filter(lot => (lot.spaceChoices?.length ?? 0) > 1) : [];
+  const confirmedChoice = (lot: Lot) => lot.spaceChoices?.includes(chosenSpaces[lot.key]) ? chosenSpaces[lot.key] : undefined;
+  const selectedMainSpace = selectableSpaces.find(lot => lot.targetKey === PAID_GARAGE_KEYS.main);
+  const selectedCivilSpace = selectableSpaces.find(lot => lot.targetKey === PAID_GARAGE_KEYS.civil);
+  const quoteKey = JSON.stringify([allowCart, chosenSpaces, quoteRevision, legacyStart, sel.plate, house.id, house.communityId, house.owner?.id, rule, lots, vehicleClass, months, monthsValid, custom, cs, ce, amt, reason, label, clsBusy]);
   const currentQuoteKey = useRef(quoteKey);
   if (currentQuoteKey.current !== quoteKey) { currentQuoteKey.current = quoteKey; quoteGeneration.current++; }
   const est = estimateKey === quoteKey && (custom || monthsValid) && !clsBusy ? quotedEst : null;
@@ -554,9 +563,9 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
           setEst(null); onCart(sel.plate, null); setEstErr('试算结果与当前续期不一致，请重新选择月份重试'); return;
         }
         setEst(e); setEstimateKey(quoteKey);
-        if (!allowCart) { onCart(sel.plate, null); return; }
+        if (!allowCart || selectableSpaces.some(lot => !confirmedChoice(lot))) { onCart(sel.plate, null); return; }
         if (legacyStart !== null && (!legacyStart || legacyStart > e.endDate)) { onCart(sel.plate, null); return; }
-        const base = { ...(legacyStart ? { legacyStartDate: legacyStart } : {}), plate: label ?? sel.plate, rule, months: e.quantity, currentEndDate: currentEnd, systems: lots.map((l) => l.ref), systemsLabel: lots.map((l) => l.label).join(' + '), ...(intakeId ? { intakeId } : {}) };
+        const base = { mainSpaceNo: selectedMainSpace && confirmedChoice(selectedMainSpace), civilSpaceNo: selectedCivilSpace && confirmedChoice(selectedCivilSpace), ...(legacyStart ? { legacyStartDate: legacyStart } : {}), plate: label ?? sel.plate, rule, months: e.quantity, currentEndDate: currentEnd, systems: lots.map((l) => l.ref), systemsLabel: lots.map((l) => l.label).join(' + '), ...(intakeId ? { intakeId } : {}) };
         if (!custom) { onCart(sel.plate, { ...base, months, estimate: e, custom: null }); return; }
         if (manualCents == null || !reason.trim()) { onCart(sel.plate, null); return; }
         onCart(sel.plate, { ...base, estimate: e, custom: { startDate: cs, endDate: ce, manualAmountCents: manualCents, reason: reason.trim(), standardAmountCents: e.standardAmountCents ?? null } });
@@ -592,6 +601,16 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
               {clsErr ? <span style={{ color: 'var(--dang)', fontSize: 14 }}>{clsErr}</span> : null}
             </div>
           ) : null}
+          {selectableSpaces.map(lot => <label key={lot.key} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+            {lot.targetKey === PAID_GARAGE_KEYS.main ? '大车库车位' : '人防车位'}
+            <select className="in" required value={confirmedChoice(lot) ?? ''} onChange={e => {
+              invalidateQuote();
+              setChosenSpaces(values => ({ ...values, [lot.key]: e.target.value }));
+            }}>
+              <option value="">请选择本次续费的车位</option>
+              {lot.spaceChoices?.map(space => <option key={space} value={space}>{space}</option>)}
+            </select>
+          </label>)}
           {garages}
           {usable.length > 1 ? (
             <div className="quickMonths" style={{ marginTop: 0, marginBottom: 10 }}>

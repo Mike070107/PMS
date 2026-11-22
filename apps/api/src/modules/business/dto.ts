@@ -192,6 +192,16 @@ export class HouseholdParkingQueryDto {
 
 export class CompleteBusinessDto extends EstimateBusinessDto {
   @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  mainSpaceNo?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  civilSpaceNo?: string;
+
+  @IsOptional()
   @IsInt()
   @Min(0)
   expectedAmountCents?: number;
