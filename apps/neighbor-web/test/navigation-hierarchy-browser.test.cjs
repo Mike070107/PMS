@@ -9,8 +9,9 @@ test('真实Shell子菜单向右错位且字号不缩，紧凑与手机导航可
  const files=new Map(built.outputFiles.map(f=>['/'+path.basename(f.path),f.contents]));const server=http.createServer((q,s)=>{s.setHeader('content-type',q.url.endsWith('.js')?'text/javascript':q.url.endsWith('.css')?'text/css':'text/html;charset=utf-8');s.end(files.get(q.url)||'<meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/fixture.css"><div id="root"></div><script src="/fixture.js"></script>')});await listenBrowserLocal(server);let browser;fs.mkdirSync(out,{recursive:true});
  try{browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});const context=await browser.newContext({viewport:{width:1440,height:1000},serviceWorkers:'block'}),errors=[];context.on('page',p=>p.on('pageerror',e=>errors.push(e.message)));const origin='http://127.0.0.1:'+server.address().port;await context.route('**/*',r=>r.request().url().startsWith(origin+'/')?r.continue():r.abort());const p=await context.newPage();await p.goto(origin+'/parking/main');await p.locator('.nav a.on').waitFor();
  async function measure(){return p.evaluate(()=>{const group=document.querySelector('.navGroupTitle.active-group'),parent=group.querySelector('.navGroupText'),link=group.nextElementSibling.querySelector('a.on'),child=link.querySelector('span');return{parentX:parent.getBoundingClientRect().left,childX:child.getBoundingClientRect().left,parentFont:parseFloat(getComputedStyle(parent).fontSize),childFont:parseFloat(getComputedStyle(child).fontSize),clickHeight:link.getBoundingClientRect().height}})}
- await p.goto(origin+'/records');
- const badge=p.locator('.nav a[title="办理记录"] .n');
+ await p.goto(origin+'/pending');
+ const badge=p.locator('.nav a[title="待处理"] .n');
+ assert.equal(await p.locator('.nav a[title="办理记录"] .n').count(),0);
  await badge.getByText('3',{exact:true}).waitFor();
  await p.evaluate(()=>{window.__recordCount=0;window.dispatchEvent(new Event('focus'))});
  await badge.waitFor({state:'detached'});

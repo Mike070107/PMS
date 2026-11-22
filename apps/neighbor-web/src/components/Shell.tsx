@@ -116,10 +116,10 @@ export default function Shell() {
   }, [activeGroup]);
   const current = NAV.find((i) => i.key === page) ?? NAV[0];
 
-  const [recordCount, setRecordCount] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
   useEffect(() => {
-    setRecordCount(0);
-    if (!canViewPath('/records', session.access) || !session.token) return;
+    setPendingCount(0);
+    if (!canViewPath('/pending', session.access) || !can('business', 'view') || !session.token) return;
     const identity = { token: session.token, generation: session.generation };
     let alive = true, loading = false;
     async function refresh() {
@@ -127,7 +127,7 @@ export default function Shell() {
       loading = true;
       try {
         const data = await request<{count:number}>({ url:'/business/execution/pending-count' });
-        if (alive && auth.isCurrent(identity) && auth.getAccess() === session.access && Number.isSafeInteger(data.count)) setRecordCount(data.count);
+        if (alive && auth.isCurrent(identity) && auth.getAccess() === session.access && Number.isSafeInteger(data.count)) setPendingCount(data.count);
       } catch { /* 保留本次会话最近一次成功读数 */ }
       finally { loading = false; }
     }
@@ -199,7 +199,7 @@ export default function Shell() {
   }, [q, session.access]);
 
   const badgeOf = (key: string) =>
-    key === 'records' ? recordCount : key === 'work-orders' ? counts.dispatch
+    key === 'pending' ? pendingCount : key === 'work-orders' ? counts.dispatch
       : key === 'today' ? counts.dispatch + counts.accept
         : 0;
 
@@ -259,7 +259,7 @@ export default function Shell() {
                   >
                     <Icon name={item.icon} size={22} />
                     <span>{item.name}</span>
-                    {badge ? <span className="n" aria-label={item.key === 'records' ? `${badge} 项待处理` : undefined}>{badge}</span> : item.legacy ? <span className="leg">旧</span> : null}
+                    {badge ? <span className="n" aria-label={item.key === 'pending' ? `${badge} 项待处理` : undefined}>{badge}</span> : item.legacy ? <span className="leg">旧</span> : null}
                   </a>
                 );
               })}</div>
