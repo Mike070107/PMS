@@ -244,7 +244,15 @@
 .park-tbl .radio.on { border: 6px solid var(--acc); }
 .park-tbl .ck-lg, .ck-lg { width: 19px; height: 19px; accent-color: var(--acc); cursor: pointer; vertical-align: middle; }
 .custom-renew { margin-top: 10px; padding: 12px; border: 1px dashed var(--line); border-radius: 9px; background: var(--sunken); }
-.custom-renew .cr-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.custom-renew .cr-grid { display: grid; grid-template-columns: max-content minmax(0, 1fr) minmax(0, .9fr); gap: 10px 12px; }
+.custom-renew .cr-grid-start { grid-template-columns: max-content repeat(2, minmax(0, 1fr)) minmax(0, .9fr); }
+.custom-renew .cr-grid label { min-width: 0; }
+.custom-renew .cr-grid .in { width: 100%; min-width: 0; height: 38px; }
+.custom-renew .cr-enable-start span { display: flex; align-items: center; min-height: 38px; }
+.custom-renew .cr-enable-start input { width: 20px; height: 20px; margin: 0; }
+@media (max-width: 600px) {
+  .custom-renew .cr-grid, .custom-renew .cr-grid-start { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .custom-renew label { display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; color: var(--ink2); }
 .pendGrid{grid-template-columns:repeat(5,1fr)}
 

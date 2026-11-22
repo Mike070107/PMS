@@ -478,7 +478,6 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
   const invalidateQuote = () => { quoteGeneration.current++; setQuoteRevision(value => value + 1); setEst(null); setEstErr(''); onCart(sel.plate, null); };
   // 非标准续期
   const [custom, setCustom] = useState(false);
-  const [cs, setCs] = useState('');
   const [ce, setCe] = useState('');
   const [amt, setAmt] = useState('');
   const [reason, setReason] = useState('');
@@ -521,7 +520,8 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
   const currentEnd = ends[ends.length - 1] ?? null;
   const mismatch = new Set(ends).size > 1;
   const defaultStart = currentEnd && !expired(currentEnd) ? dayjs(currentEnd).add(1, 'day').format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD');
-  useEffect(() => { if (custom && !cs) { setCs(defaultStart); setCe(dayjs(defaultStart).add(1, 'month').subtract(1, 'day').format('YYYY-MM-DD')); } }, [custom]); // eslint-disable-line react-hooks/exhaustive-deps
+  const cs = selectedStart ?? (ce && ce < defaultStart ? ce : defaultStart);
+  useEffect(() => { if (custom && !ce) setCe(dayjs(defaultStart).add(1, 'month').subtract(1, 'day').format('YYYY-MM-DD')); }, [custom]); // eslint-disable-line react-hooks/exhaustive-deps
   const attempted = useContext(ChargeAttempted);
   const errorId = useId();
   const reasonMissing = attempted && !reason.trim();
@@ -606,7 +606,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
           ) : null}
           {!lots.length && !intakeId ? <div className="muted">至少勾选一个要续期的系统</div> : (
             <>
-              {hasLocal && <LegacyStartDate value={selectedStart} end={est?.endDate ?? undefined} onChange={v => { invalidateQuote(); setSelectedStart(v); }} />}
+              {!custom && hasLocal && <LegacyStartDate value={selectedStart} end={est?.endDate ?? undefined} onChange={v => { invalidateQuote(); setSelectedStart(v); }} />}
               <div className="quickMonths" style={{ marginTop: 0 }}>
                 <span style={{ fontSize: 14, color: 'var(--ink2)', marginRight: 4 }}>{intakeId ? '车牌授权期限' : '续：'}</span>
                 <RenewalMonths value={months} active={!custom} onValidityChange={valid => { if (!valid) invalidateQuote(); setMonthsValid(valid); }} onChange={m => { invalidateQuote(); setCustom(false); setMonthsValid(true); setMonths(m); }} />
@@ -619,9 +619,15 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
               </div>
               {custom ? (
                 <div className="custom-renew">
-                  <div className="cr-grid">
-                    <label>计费开始日期<DateInput className="in" required aria-invalid={attempted && (!cs)} aria-describedby={attempted && (!cs) ? errorId+"-cs" : undefined} type="date" value={cs} onChange={(e) => { invalidateQuote(); setCs(e.target.value); }} />{attempted && (!cs) && <small id={errorId+"-cs"} role="alert">请选择开始日期</small>}</label>
-                    <label>结束日期<DateInput className="in" required aria-invalid={attempted && (!ce || (!!cs && ce < cs))} aria-describedby={attempted && (!ce || (!!cs && ce < cs)) ? errorId+"-ce" : undefined} type="date" value={ce} min={cs || undefined} onChange={(e) => { invalidateQuote(); setCe(e.target.value); }} />{attempted && (!ce || (!!cs && ce < cs)) && <small id={errorId+"-ce"} role="alert">请选择有效的结束日期</small>}</label>
+                  <div className={`cr-grid${selectedStart !== null ? ' cr-grid-start' : ''}`}>
+                    <label className="cr-enable-start">启用开始日期
+                      <span><input type="checkbox" checked={selectedStart !== null} onChange={e => {
+                        invalidateQuote();
+                        setSelectedStart(e.target.checked ? new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10) : null);
+                      }} /></span>
+                    </label>
+                    {selectedStart !== null && <label>计费开始日期<DateInput className="in" required aria-invalid={attempted && (!cs)} aria-describedby={attempted && (!cs) ? errorId+"-cs" : undefined} type="date" value={cs} onChange={(e) => { invalidateQuote(); setSelectedStart(e.target.value); }} />{attempted && (!cs) && <small id={errorId+"-cs"} role="alert">请选择开始日期</small>}</label>}
+                    <label>结束日期<DateInput className="in" required aria-invalid={attempted && (!ce || (!!cs && ce < cs))} aria-describedby={attempted && (!ce || (!!cs && ce < cs)) ? errorId+"-ce" : undefined} type="date" value={ce} min={selectedStart || undefined} onChange={(e) => { invalidateQuote(); setCe(e.target.value); }} />{attempted && (!ce || (!!cs && ce < cs)) && <small id={errorId+"-ce"} role="alert">请选择有效的结束日期</small>}</label>
                     <label>实收金额（元）<input className="in" type="number" {...moneyInputProps} min={0} step="0.01" value={amt} aria-required="true" aria-invalid={amountMissing} aria-describedby={amountMissing ? errorId+"-amount" : undefined} aria-label="自定日期实收金额" placeholder="请输入金额，0元请填0" onChange={(e) => { invalidateQuote(); setAmt(e.target.value); }} />{amountMissing && <small id={errorId+"-amount"} role="alert">请输入实收金额，零元请填 0</small>}</label>
                   </div>
                   <div className="muted" style={{ fontSize: 13.5, margin: '6px 0' }}>
