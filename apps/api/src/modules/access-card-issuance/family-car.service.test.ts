@@ -368,7 +368,7 @@ test('1个月登记按月末钳制期限执行，自定义未来起始日等待�
   await h.family.officeReview(car.id, 'approve', '', office);
   const approved = await h.family.managerReview(car.id, 'approve', '', manager);
   assert.equal(approved.startDate, '2026-01-31'); assert.equal(approved.endDate, '2026-02-27');
-  assert.equal(h.operations[0].payload.months, 1);
+  assert.equal(h.operations[0].payload.months, 1); assert.equal(h.operations[0].payload.startDate, undefined);
   h.complete(approved.operations.registration);
   await h.family.get(car.id, office);
   h.complete(h.operations.find(op => op.kind === 'update_garages').id);
@@ -378,7 +378,7 @@ test('1个月登记按月末钳制期限执行，自定义未来起始日等待�
 
   const custom = setup();
   const cq = await custom.check('豫GA1234');
-  const cc = await custom.family.create({ houseId: 502, plate: '豫GA1234', duplicateCheckQueryId: cq.id, carOwnerName: '李四', carOwnerPhone: '13800002222', relation: '父母', garages: ['phase2'], registrationTerm: { mode: 'dates', startDate: '2026-02-01', endDate: '2026-02-15', reason: '临时安排' } }, office);
+  const cc = await custom.family.create({ houseId: 502, plate: '豫GA1234', duplicateCheckQueryId: cq.id, carOwnerName: '李四', carOwnerPhone: '13800002222', relation: '父母', garages: ['phase2'], registrationTerm: { mode: 'dates', startDate: '2026-02-01', endDate: '2026-02-15', legacyStartDate: '2026-02-02', reason: '临时安排' } }, office);
   await custom.family.addFiles(cc.id, [{ buffer: PNG, originalname: 'a.png' } as any], office);
   await custom.family.submit(cc.id, office);
   await custom.family.officeReview(cc.id, 'approve', '', office);
@@ -392,7 +392,7 @@ test('1个月登记按月末钳制期限执行，自定义未来起始日等待�
   custom.repos.car.rows[0].duplicateCheckQueryId = fresh.id;
   await custom.family.get(cc.id, office);
   assert.equal(custom.operations.length, 1);
-  assert.equal(custom.operations[0].payload.startDate, '2026-02-01');
+  assert.equal(custom.operations[0].payload.approvalStartDate, '2026-02-01'); assert.equal(custom.operations[0].payload.startDate, '2026-02-02');
   assert.equal(custom.operations[0].payload.endDate, '2026-02-15');
   assert.ok(!('months' in custom.operations[0].payload), '自定义日期不伪装成12个月');
 });
