@@ -11,7 +11,8 @@ test('household parking table scrolls to final column without clipping or wideni
  assert.equal(await js("document.querySelectorAll('.park-tbl tbody tr').length"),2);
  for(let n=0;n<50&&!await js("document.querySelector('.park-tbl tbody tr td:nth-child(3)').textContent.includes('A021')");n++)await pause(100);
  assert.match(await js("document.querySelector('.park-tbl tbody tr td:nth-child(3)').textContent"),/产权车.*A021/);
- assert.equal(await js("document.querySelector('.park-tbl tbody tr td:nth-child(5)').textContent"),'A021');
+ assert.equal(await js("document.querySelector('.park-tbl tbody tr td:nth-child(5)').textContent.trim()"),'A021');
+ assert.deepEqual(await js("[...document.querySelectorAll('.park-tbl tbody tr td:nth-child(5)')].map(td=>[...td.children].map(line=>line.textContent.trim()))"),[['','A021'],['']]);
  const evidence=[];
  for(const width of [1280,1024,768,390,320]){await call('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false});await pause(150);
  const g=await js("(()=>{const t=document.querySelector('.park-tbl'),s=t.parentElement,h=t.querySelector('th:last-child');s.scrollLeft=0;const before=h.getBoundingClientRect().right;s.scrollLeft=s.scrollWidth;const r=s.getBoundingClientRect();return{width:innerWidth,pageWidth:document.documentElement.scrollWidth,overflowX:getComputedStyle(s).overflowX,client:s.clientWidth,scroll:s.scrollWidth,left:s.scrollLeft,top:r.top,x:r.x,right:r.right,lastColumnRight:h.getBoundingClientRect().right,before,focusable:s.tabIndex>=0}})()");evidence.push(g);console.log('geometry',JSON.stringify(g));

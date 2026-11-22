@@ -12,7 +12,7 @@ const civil: PropertySpaceRef = {id:2,communityId:10,garage:'civil',spaceNo:'R01
 const plate = '沪A1C678';
 const legacy = {database:'parking2',fields:{P_id:42,P_plate:plate,P_spaces:'A021',P_effective:'0'.repeat(14)+'1'}};
 
-test('按收银台房号核对进口车位，多个候选必须明确选择', async () => {
+test('按收银台房号核对进口车位，未选车位也能继续续费', async () => {
   const svc = Object.create(BusinessService.prototype);
   const room = { building: { lane: '228', buildingNo: '15', communityId: 10 }, roomNo: '401' };
   const cards = [{ ...main, houseNo: '永德路228弄15号401室' }];
@@ -25,8 +25,8 @@ test('按收银台房号核对进口车位，多个候选必须明确选择', as
   const dto = { houseId: 1, plateNo: plate, parkingSystems: [{ kind: 'local', database: 'parking2', sourceRecordId: '42' }] };
   assert.deepEqual(await svc.propertySpaceRefs(dto, 1, 10, [10]), [main]);
   cards.push({ ...main, id: 2, spaceNo: 'A022', houseNo: '228/15/401' });
-  await assert.rejects(svc.propertySpaceRefs(dto, 1, 10, [10]), /未能唯一确认/);
-  await assert.rejects(svc.propertySpaceRefs({ ...dto, mainSpaceNo: 'A099' }, 1, 10, [10]), /不匹配/);
+  assert.deepEqual(await svc.propertySpaceRefs(dto, 1, 10, [10]), []);
+  assert.deepEqual(await svc.propertySpaceRefs({ ...dto, mainSpaceNo: 'A099' }, 1, 10, [10]), []);
   assert.equal((await svc.propertySpaceRefs({ ...dto, mainSpaceNo: 'A022' }, 1, 10, [10]))[0].spaceNo, 'A022');
 });
 
@@ -55,7 +55,10 @@ test('产权费按选定车库解析新办和续费的真实车位，二期地�
   const dto={plateNo:plate,parkingSystems:[{kind:'local',database:'parking2',sourceRecordId:'42',queryId:12},{kind:'deliyun',park:'枫桦景苑'}]};
   assert.deepEqual(await svc.propertySpaceRefs(dto,1,10,[10]),[main,civil]);
   assert.deepEqual(await svc.propertySpaceRefs(dto,1,10,[10],{garages:['deliyun:枫桦景苑'],garageNumbers:{civil:'R012',main:'A021'}}),[civil]);
-  await assert.rejects(svc.propertySpaceRefs(dto,1,10,[11]),/管理范围/);
+  assert.deepEqual(await svc.propertySpaceRefs(dto,1,10,[11]),[]);
+  svc.deliyun.findVehiclesByPlate = async () => ({rows:[{plate,civilDefenseAuthorized:true,cardNo:'MF12'}]});
+  svc.boundPropertySpaces = async () => [{plate,garage:'civil',spaceNo:'R012'}];
+  assert.deepEqual(await svc.propertySpaceRefs({...dto,houseId:1},1,10,[10]),[main,civil]);
   assert.equal(mainSpaceFromQuery([{...legacy,fields:{...legacy.fields,P_effective:'0'.repeat(8)+'1'}}],plate,'42'),null);
   assert.throws(()=>mainSpaceFromQuery([legacy],'沪B1C678','42'),/已变化/);
 });

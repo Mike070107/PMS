@@ -709,6 +709,7 @@ export class BusinessService {
     const targets = targetsForCommunity(houseCommunity?.name ?? '');
     const plate = normPlate(dto.plateNo || '');
     const numbers = new Map<'main' | 'civil', string>();
+    let ambiguousMain = false;
     if (intake) {
       if (intake.garages.includes('local:phase2_main_garage')) numbers.set('main', intake.garageNumbers.main);
       if (intake.garages.includes('deliyun:枫桦景苑')) numbers.set('civil', intake.garageNumbers.civil);
@@ -718,38 +719,50 @@ export class BusinessService {
           const repo = this.houseRepo.manager.getRepository(ParkingQuery);
           const query = await repo.findOne({where:{tenantId,status:'completed',queryKind:'vehicle',
             ...(sys.queryId ? {id:sys.queryId} : {term:plate})},order:{id:'DESC'}});
-          if (!query) throw new BadRequestException('请重新查询车牌，核对大车库车位后再办理');
+          if (!query || ambiguousMain) continue;
           const no = mainSpaceFromQuery(query.rows,plate,sys.sourceRecordId || '');
-          if (no !== null && numbers.has('main') && numbers.get('main') !== no) throw new BadRequestException('同一车牌对应多个大车库车位，请核对');
+          if (no !== null && numbers.has('main') && numbers.get('main') !== no) {
+            ambiguousMain = true;
+            numbers.delete('main');
+            continue;
+          }
           if (no !== null) numbers.set('main',no);
         } else if (sys.kind === 'deliyun' && sys.park === '枫桦景苑') {
-          const results = await this.deliyun.findVehiclesByPlate(plate,sys.park);
-          const exact = results.rows.filter(r => normPlate(r.plate) === plate && r.civilDefenseAuthorized);
-          if (exact.length !== 1) throw new BadRequestException('人防车位号未能唯一确认，请核对后再办理');
+          const results = await this.deliyun.findVehiclesByPlate(plate,sys.park).catch(() => null);
+          const exact = (results?.rows ?? []).filter(r => normPlate(r.plate) === plate && r.civilDefenseAuthorized);
+          if (exact.length !== 1) continue;
           numbers.set('civil',exact[0].cardNo?.trim() || '');
         }
       }
     }
-    if (!numbers.size) throw new BadRequestException('产权车须选定大车库或人防车位后再收费');
+    if (intake && !numbers.size) throw new BadRequestException('产权车须选定大车库或人防车位后再收费');
     const refs: PropertySpaceRef[] = [];
     for (const [garage,spaceNo] of numbers) {
       const key = garage === 'main' ? 'local:phase2_main_garage' : 'deliyun:枫桦景苑';
       const target = targets.find(t => t.key === key);
-      if (!target || (intake && !spaceNo?.trim())) throw new BadRequestException('本次产权车位不在适用车库或缺少车位号');
+      if (!target || (intake && !spaceNo?.trim())) {
+        if (intake) throw new BadRequestException('本次产权车位不在适用车库或缺少车位号');
+        continue;
+      }
       const communities = await this.communityRepo.findBy({tenantId,name:In(target.communities)});
       const ids = communities.map(c=>c.id).filter(id=>!scope || scope.includes(id));
-      let exactNo = spaceNo?.trim();
-      if (!exactNo && dto.houseId) {
-        const bindings = (await this.boundPropertySpaces(tenantId,dto.houseId,ids,[plate])).filter(r=>r.garage===garage && normPlate(r.plate)===plate);
-        const candidates = bindings.length ? bindings : (await this.roomPropertySpaces(tenantId,dto.houseId,ids)).filter(card => card.garage === garage);
+      const lookup = (number: string) => this.spaceRepo.findBy({tenantId,communityId:In(ids),garage,spaceNo:number});
+      let rows = spaceNo?.trim() ? await lookup(spaceNo.trim()) : [];
+      if (rows.length !== 1 && !intake && dto.houseId) {
+        const bindings = (await this.boundPropertySpaces(tenantId,dto.houseId,ids,[plate]))
+          .filter(row => row.garage === garage && normPlate(row.plate) === plate);
+        // An external card number may have a different format from the bound PMS card number.
+        const candidates = bindings.length || spaceNo?.trim() ? bindings
+          : (await this.roomPropertySpaces(tenantId,dto.houseId,ids)).filter(card => card.garage === garage);
         const chosen = garage === 'main' ? dto.mainSpaceNo : dto.civilSpaceNo;
-        if (chosen && !candidates.some(card => card.spaceNo === chosen))
-          throw new BadRequestException('所选车位与该车牌或房号不匹配，请刷新收银台重新选择');
-        exactNo = chosen || (candidates.length === 1 ? candidates[0].spaceNo : '');
+        const number = chosen ? candidates.find(card => card.spaceNo === chosen)?.spaceNo
+          : candidates.length === 1 ? candidates[0].spaceNo : undefined;
+        rows = number ? await lookup(number) : [];
       }
-      if (!exactNo) throw new BadRequestException('车位号未能唯一确认，请先核对车位卡片');
-      const rows = await this.spaceRepo.findBy({tenantId,communityId:In(ids),garage,spaceNo:exactNo});
-      if (rows.length !== 1 || !rows[0].communityId) throw new BadRequestException('产权车位档案未能唯一匹配，请核对车库、车位号和管理范围');
+      if (rows.length !== 1 || !rows[0].communityId) {
+        if (intake) throw new BadRequestException('产权车位档案未能唯一匹配，请核对车库、车位号和管理范围');
+        continue;
+      }
       refs.push({id:rows[0].id,communityId:rows[0].communityId,garage,spaceNo:rows[0].spaceNo});
     }
     return refs;

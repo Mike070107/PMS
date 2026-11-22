@@ -41,6 +41,14 @@ interface Lot {
   spaceChoices?: string[]; propertySpace?: string | null; space: string | null; spaceFromNote: boolean; endDate: string | null; garages: string[];
   ref: SystemRef;
 }
+function parkingDisplayLines(lots: Lot[]) {
+  return lots.flatMap(lot => {
+    const labels = lot.system === 'local' && lot.garages.length ? lot.garages : [lot.label];
+    return labels.map(label => ({ key: `${lot.key}:${label}`, lot, label,
+      hasSpace: lot.system === 'deliyun' || label === '二期大车库' }));
+  });
+}
+
 export interface Car { rows?: ParkingQuery['rows']; plate: string; identity: string | null; lots: Lot[]; mismatch?: { dates: string[]; latest: string } | null }
 export type { Lot };
 
@@ -271,8 +279,8 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
       const label = garages.length ? garages.map((g) => g.label).join('、') : db === 'parking1' ? '一期停车库（未授权车库）' : '二期停车库（未授权车库）';
       const spaceChoices = main && !spaceCol ? boundSpace(p,'main') : [];
       const cardSpace = spaceChoices.length === 1 ? spaceChoices[0] : null;
-      const confirmedSpace = spaceCol || cardSpace;
-      const noteSpace = confirmedSpace ? null : spaceFromNote(note);
+      const confirmedSpace = main ? spaceCol || cardSpace : null;
+      const noteSpace = main && !confirmedSpace ? spaceFromNote(note) : null;
       const record = car(p, identityOf(f));
       (record.rows ??= []).push(row);
       record.lots.push({
@@ -353,6 +361,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
           <tbody>
             {cars.map((c) => {
               const on = picked.includes(c.plate);
+              const lines = parkingDisplayLines(c.lots);
               const minEnd = c.lots.map((l) => l.endDate).filter(Boolean).sort()[0] ?? null;
               return (
                 <tr key={c.plate} className={on ? 'sel' : ''} onClick={() => c.lots.length && toggle(c.plate)}>
@@ -364,9 +373,9 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
                     ) : null}
                   </td>
                   <td><span className={`tag ${identityTone(tags[c.plate] || c.identity)}`}>{vehicleClassCaption(tags[c.plate] || c.identity || '未标注', propertySpaceLabels(c.lots))}</span></td>
-                  <td>{c.lots.map((l) => <div key={l.key} className="lot-line">{l.label}<small className="muted"> · {l.system === 'deliyun' ? '德立云' : '本地库'}</small></div>)}</td>
-                  <td>{c.lots.map((l) => <div key={l.key} className="lot-line">{l.space ? <b>{l.space}</b> : <span className="muted">—</span>}{l.spaceFromNote ? <small className="muted">（取自备注）</small> : null}</div>)}</td>
-                  <td>{c.lots.map((l) => <div key={l.key} className="lot-line" style={{ color: expired(l.endDate) ? 'var(--dang)' : undefined }}>{l.endDate || '—'}</div>)}</td>
+                  <td>{lines.map(({ key, lot, label }) => <div key={key} className="lot-line">{label}<small className="muted"> · {lot.system === 'deliyun' ? '德立云' : '本地库'}</small></div>)}</td>
+                  <td>{lines.map(({ key, lot, hasSpace }) => <div key={key} className="lot-line">{hasSpace && lot.space ? <><b>{lot.space}</b>{lot.spaceFromNote && <small className="muted">（取自备注）</small>}</> : '\u00a0'}</div>)}</td>
+                  <td>{lines.map(({ key, lot }) => <div key={key} className="lot-line" style={{ color: expired(lot.endDate) ? 'var(--dang)' : undefined }}>{lot.endDate || '—'}</div>)}</td>
                   <td>{!c.lots.length ? <span className="tag">已绑定 · 待核对授权</span> : expired(minEnd) ? <span className="tag dang"><Icon name="alert" />已过期</span> : dayjs(minEnd).diff(dayjs(), 'day') <= 30 ? <span className="tag warn"><Icon name="clock" />快到期</span> : <span className="tag ok"><Icon name="check" />有效</span>}</td>
                 </tr>
               );
@@ -563,7 +572,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
           setEst(null); onCart(sel.plate, null); setEstErr('试算结果与当前续期不一致，请重新选择月份重试'); return;
         }
         setEst(e); setEstimateKey(quoteKey);
-        if (!allowCart || selectableSpaces.some(lot => !confirmedChoice(lot))) { onCart(sel.plate, null); return; }
+        if (!allowCart) { onCart(sel.plate, null); return; }
         if (legacyStart !== null && (!legacyStart || legacyStart > e.endDate)) { onCart(sel.plate, null); return; }
         const base = { mainSpaceNo: selectedMainSpace && confirmedChoice(selectedMainSpace), civilSpaceNo: selectedCivilSpace && confirmedChoice(selectedCivilSpace), ...(legacyStart ? { legacyStartDate: legacyStart } : {}), plate: label ?? sel.plate, rule, months: e.quantity, currentEndDate: currentEnd, systems: lots.map((l) => l.ref), systemsLabel: lots.map((l) => l.label).join(' + '), ...(intakeId ? { intakeId } : {}) };
         if (!custom) { onCart(sel.plate, { ...base, months, estimate: e, custom: null }); return; }
@@ -603,14 +612,15 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
           ) : null}
           {selectableSpaces.map(lot => <label key={lot.key} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
             {lot.targetKey === PAID_GARAGE_KEYS.main ? '大车库车位' : '人防车位'}
-            <select className="in" required value={confirmedChoice(lot) ?? ''} onChange={e => {
+            <select className="in" value={confirmedChoice(lot) ?? ''} onChange={e => {
               invalidateQuote();
               setChosenSpaces(values => ({ ...values, [lot.key]: e.target.value }));
             }}>
-              <option value="">请选择本次续费的车位</option>
+              <option value="">可选车位（可稍后补录）</option>
               {lot.spaceChoices?.map(space => <option key={space} value={space}>{space}</option>)}
             </select>
           </label>)}
+          {propertyRate && lots.some(lot => !lot.propertySpace && lot.spaceChoices?.length) && <p className="muted">车位可稍后补录，本次可直接续费。</p>}
           {garages}
           {usable.length > 1 ? (
             <div className="quickMonths" style={{ marginTop: 0, marginBottom: 10 }}>
