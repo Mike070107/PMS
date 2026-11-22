@@ -145,7 +145,7 @@ test('真实React/主题/权限→JWT API→SQL：层级、全部业主、房产
     assert.ok(calls.some(c=>c.method==='PATCH'&&/^\/(?:_api|api\/v1)\/houses\/1$/.test(c.url)&&c.status===200));
     assert.ok(calls.some(c=>/^\/(?:_api|api\/v1)\/auth\/me$/.test(c.url)&&c.status===200));
     const unconfiguredShellDependencies=calls.filter(c=>c.status>=400);
-    assert.ok(unconfiguredShellDependencies.every(c=>c.status===404&&/^\/(?:_api|api\/v1)\/(?:notifications\/unread-count|telemetry\/page-views?)$/.test(c.url)),JSON.stringify(unconfiguredShellDependencies));
+    assert.ok(unconfiguredShellDependencies.every(c=>c.status===404&&/^\/(?:_api|api\/v1)\/(?:business\/execution\/pending-count|notifications\/unread-count|telemetry\/page-views?)$/.test(c.url)),JSON.stringify(unconfiguredShellDependencies));
     fs.writeFileSync(path.join(out,'real-api-browser-evidence.json'),JSON.stringify({engine:boot.engine,auth:'real JwtStrategy + SQL AccessService + AuthController/AuthService; test-only session issuance (not password/QR login)',entry:useDist?'unmodified Vite dist + main/App/Shell/router/configureApi; contacts direct source component; test-only signed session bootstrap':'real App/Shell/router/configureApi source via esbuild; contacts direct component; not Vite artifact',servedArtifacts,unconfiguredShellDependencies,calls,errors},null,2));
   } catch(error) {
     if(page){await page.screenshot({path:path.join(out,'real-api-browser-failure.png'),animations:'disabled'});fs.writeFileSync(path.join(out,'real-api-browser-failure.html'),await page.content());}
