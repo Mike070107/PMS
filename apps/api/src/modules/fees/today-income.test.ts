@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
+import { FeesController } from './fees.controller';
 import { MisMirrorService } from './mis-mirror.service';
 import { incomeMisCodes, incomePage } from './today-income';
 
@@ -29,16 +30,36 @@ test('income preserves bill-level amounts across sources, Beijing midnight, tena
     const user = {tenantId:1} as any, access = {communityIds:[10]} as any, day='2026-11-20';
     const local = (offset:number,limit:number)=>svc.incomeFromPms('garage',day,user,access,undefined,offset,limit);
     const legacy = (offset:number,limit:number)=>svc.incomeFromMis(incomeMisCodes.garage,day,['01'],offset,limit,1);
-    const total = await incomePage(undefined,local,legacy);
-    const first = await incomePage(1,local,legacy), last = await incomePage(2,local,legacy);
-    assert.equal(total.amountCents,22*6750); assert.equal(total.total,22); assert.equal(total.rows.length,0);
-    assert.equal(first.rows[0].plate,'沪A12345'); assert.equal(first.rows[0].paidAt,'2026-11-20 00:00:00');
-    assert.equal(first.rows.length,20); assert.equal(last.rows.length,2);
+    const pms = await incomePage(1,local);
+    const total = await incomePage(undefined,legacy);
+    const first = await incomePage(1,legacy), last = await incomePage(2,legacy);
+    assert.equal(total.amountCents,21*6750); assert.equal(total.total,21); assert.equal(total.rows.length,0);
+    assert.equal(pms.amountCents,6750); assert.equal(pms.total,1);
+    assert.equal(pms.rows[0].plate,'沪A12345'); assert.equal(pms.rows[0].paidAt,'2026-11-20 00:00:00');
+    assert.equal(first.rows.length,20); assert.equal(last.rows.length,1);
     assert.equal([...first.rows,...last.rows].reduce((n,row)=>n+row.amountCents,0),total.amountCents);
-    assert.equal(first.rows[1].remark,'备注');
+    assert.equal(first.rows[0].remark,'备注');
     for (const [category,amount] of [['berth',0],['card',500],['repair',1200]] as const) {
       assert.equal((await svc.incomeFromPms(category,day,user,access,undefined,0,20)).amountCents,amount);
     }
     await assert.rejects(svc.incomeFromPms('card',day,user,access,[20],0,20));
   } finally { await db.close(); }
+});
+
+test('泊位费与车辆管理费各自按来源汇总；旧客户端默认只计 MIS', async () => {
+  const mis = { total: 1, amountCents: 12000, rows: [] };
+  const pms = { total: 2, amountCents: 15000, rows: [] };
+  const fees = Object.assign(Object.create(FeesController.prototype), {
+    misFeesService: { collectionCommunities: async () => [{offices:['01']}] },
+    misRead: async (_user: unknown, _direct: unknown, mirror: () => Promise<unknown>) => mirror(),
+    misMirrorService: {
+      incomeFromMis: async (code:string) => { assert.ok(['04','14'].includes(code)); return mis; },
+      incomeFromPms: async () => pms,
+    },
+  }) as FeesController;
+  for (const category of ['berth','garage'] as const) {
+    for (const source of [undefined,'mis','pms'] as const) {
+      assert.deepEqual(await fees.todayIncome({category,source}, {tenantId:1} as any, {} as any), source==='pms' ? pms : mis);
+    }
+  }
 });

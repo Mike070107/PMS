@@ -20,6 +20,8 @@ test('income amounts fit narrow cards and open five-column paged receipts', asyn
         {database:data.database,fields:{kind:'detail',vehicleClass:first?'临时车':'亲情车',occurredAt:'2026-11-20 19:23:50',enteredAt:'2026-11-20 18:42:52',plate:'测试车',amountCents}}]};
     }
     if(q.category==='temporary')return {available:false,reason:'停车实收待核对'};
+    if(q.category==='garage' && q.source==='mis' && window.phaseError)throw Error('MIS读取失败');
+    if(q.category==='garage' && q.source==='pms')return {amountCents:10000,total:1,rows:q.page?[{paidAt:'2026-11-20',plate:'沪B12345',amountCents:10000,remark:'PMS合成明细'}]:[]};
     if(q.category==='garage')return {amountCents:123456789,total:21,rows:q.page?[{paidAt:'2026-11-20',period:'202611',plate:'沪A12345',amountCents:6750,remark:q.page===2?'第二页':'合成明细'}]:[]};
     return {amountCents:0,total:0,rows:[]};
   }`;
@@ -42,11 +44,17 @@ test('income amounts fit narrow cards and open five-column paged receipts', asyn
         const r=el.getBoundingClientRect(),card=el.closest('section').getBoundingClientRect();
         return r.right<=card.right && el.scrollWidth<=el.clientWidth+1;
       })));
+      assert.match(await button.innerText(),/PMS 实收.*100.00/s);
+      assert.match(await button.innerText(),/差额.*-1234467.89/s);
+      assert.match(await page.locator('.erp-fee-donut-center').innerText(),/1234567.89/);
       await button.click();
       assert.deepEqual(await page.locator('.income-details th').allTextContents(),['收费时间','车牌','费用时段','收费金额','备注']);
       await page.getByText('合成明细',{exact:true}).waitFor();
       await page.getByRole('button',{name:'下一页'}).click();
       await page.getByText('第二页',{exact:true}).waitFor();
+      await page.getByRole('button',{name:'PMS 实收',exact:true}).click();
+      await page.getByText('PMS合成明细',{exact:true}).waitFor();
+      assert.equal(await page.getByText('第二页',{exact:true}).count(),0);
       await page.keyboard.press('Escape');
       const due=page.getByRole('button',{name:/临时停车费/});
       await due.filter({hasText:'15.00'}).click();
@@ -63,6 +71,7 @@ test('income amounts fit narrow cards and open five-column paged receipts', asyn
         const failed=await browser.newPage({viewport:{width:390,height:680}});
         await failed.setContent('<div id="root"></div>');await failed.evaluate(()=>window.phaseError=true);
         await failed.addScriptTag({content:bundle.outputFiles.find(f=>f.path.endsWith('.js')).text});
+        await failed.getByRole('button',{name:/车辆管理费.*MIS 人工录入.*未获取.*PMS 实收.*100.00.*差额.*—/}).waitFor();
         await failed.getByRole('button',{name:/临时停车费.*未获取/}).click();
         await failed.getByText('一期车类未识别',{exact:false}).first().waitFor();
         await failed.getByRole('tab',{name:'二期'}).click();

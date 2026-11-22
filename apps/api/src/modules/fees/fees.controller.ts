@@ -103,11 +103,11 @@ export class FeesController {
     const day = incomeDay(q.date);
     const local = (offset: number, limit: number) =>
       this.misMirrorService.incomeFromPms(q.category, day, user, access, q.communityIds, offset, limit);
-    if (q.category === 'card' || q.category === 'repair') return incomePage(q.page, local);
+    if (q.category === 'card' || q.category === 'repair' || (q.source === 'pms' && (q.category === 'berth' || q.category === 'garage'))) return incomePage(q.page, local);
     const code = incomeMisCodes[q.category];
     const communities = await this.misFeesService.collectionCommunities(undefined, user, access, q.communityIds);
     const offices = [...new Set(communities.flatMap(c => c.offices))];
-    return incomePage(q.page, local, (offset, limit) => this.misRead(user,
+    return incomePage(q.page, (offset, limit) => this.misRead(user,
       () => this.misFeesService.exactIncome(code, day, offices, offset, limit),
       () => this.misMirrorService.incomeFromMis(code, day, offices, offset, limit, Number(user.tenantId))));
   }

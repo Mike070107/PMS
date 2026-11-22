@@ -9,6 +9,7 @@ export const incomeMisCodes = { property: '01', berth: '04', garage: '14' } as c
 
 export class IncomeQueryDto extends MisTodayQueryDto {
   @IsIn(incomeCategories.slice()) category!: IncomeCategory;
+  @IsOptional() @IsIn(['mis', 'pms']) source?: 'mis' | 'pms';
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1000000) page?: number;
 }
 
@@ -23,13 +24,6 @@ export function incomeDay(date?: string) {
 }
 export const emptyIncome = (): IncomePage => ({ total: 0, amountCents: 0, rows: [] });
 
-// Sources with precise payment timestamps precede legacy entries carrying only a business date.
-export async function incomePage(page: number | undefined, local: (offset: number, limit: number) => Promise<IncomePage>,
-  legacy?: (offset: number, limit: number) => Promise<IncomePage>) {
-  const offset = page ? (page - 1) * 20 : 0;
-  const limit = page ? 20 : 0;
-  const first = await local(offset, limit);
-  if (!legacy) return first;
-  const second = await legacy(Math.max(0, offset - first.total), limit - first.rows.length);
-  return { total: first.total + second.total, amountCents: first.amountCents + second.amountCents, rows: [...first.rows, ...second.rows] };
+export function incomePage(page: number | undefined, read: (offset: number, limit: number) => Promise<IncomePage>) {
+  return read(page ? (page - 1) * 20 : 0, page ? 20 : 0);
 }

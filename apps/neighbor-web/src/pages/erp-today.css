@@ -70,3 +70,7 @@
   .erp-fee-list{gap:2px}
   .erp-fee-item{padding:7px 4px}
 }
+
+.erp-fee-comparison{flex:1 0 100%;display:grid;gap:4px;padding-left:18px;box-sizing:border-box;font-size:13px;color:var(--ink2)}
+.erp-fee-comparison > span{display:flex;justify-content:space-between;gap:8px}
+.erp-fee-comparison b{font-variant-numeric:tabular-nums;color:var(--ink)}

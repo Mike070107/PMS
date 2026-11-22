@@ -13,6 +13,9 @@ type Category = typeof categories[number][0];
 const phases = { parking1: '一期', parking2: '二期' } as const;
 type Phase = keyof typeof phases;
 const phaseKeys: Phase[] = ['parking1', 'parking2'];
+type Source = 'mis' | 'pms';
+const sourceLabels = {mis:'MIS 人工录入', pms:'PMS 实收'};
+const compare = (id: Category) => id === 'berth' || id === 'garage';
 type Row = { vehicleClass?: string; paidAt: string; plate: string | null; period: string | null; amountCents: number; remark: string | null };
 type Result = { total: number; amountCents: number; rows: Row[] };
 type Unavailable = { available: false; reason: string; retryable?: boolean };
@@ -21,8 +24,8 @@ type PhaseResults = Partial<Record<Phase, Response>>;
 type ExitQuery = { id:number; status:string; error?:string; rows:Array<{database:Phase;fields:{
   kind:string; count:number; amountCents:number; occurredAt:string; plate:string; enteredAt?:string; vehicleClass:string; remark?:string;
 }}> };
-async function fetchIncome(date:string, category:Category, active:()=>boolean, page?:number, phase?:Phase):Promise<Response> {
-  if (category !== 'temporary') return request<Response>({url:'/fees/today/income',query:{date,category,page}});
+async function fetchIncome(date:string, category:Category, active:()=>boolean, page?:number, phase?:Phase, source?:Source):Promise<Response> {
+  if (category !== 'temporary') return request<Response>({url:'/fees/today/income',query:{date,category,page,source}});
   const url = '/access-card-issuance/parking/fees/details/queries';
   let result = await request<ExitQuery>({url,method:'POST',data:{category:'exit_due',startDate:date,endDate:date,page:page ?? 1,database:phase}});
   for (let attempt=0; attempt<45 && (result.status==='pending' || result.status==='running'); attempt++) {
@@ -42,7 +45,7 @@ async function fetchIncome(date:string, category:Category, active:()=>boolean, p
   return data;
 }
 
-function Details({ date, category, firstPage, phase }: { phase?:Phase; firstPage?: Result; date: string; category: typeof categories[number] }) {
+function Details({ date, category, firstPage, phase, source }: { source?:Source; phase?:Phase; firstPage?: Result; date: string; category: typeof categories[number] }) {
   const [page, setPage] = useState(1);
   const [retry, setRetry] = useState(0);
   const [result, setResult] = useState<{page: number; data: Response} | null>(null);
@@ -50,10 +53,10 @@ function Details({ date, category, firstPage, phase }: { phase?:Phase; firstPage
     let active = true;
     setResult(null);
     if (page === 1 && firstPage) { setResult({page,data:firstPage}); return; }
-    fetchIncome(date, category[0], () => active, page, phase).then(data => { if (active) setResult({page, data}); })
+    fetchIncome(date, category[0], () => active, page, phase, source).then(data => { if (active) setResult({page, data}); })
       .catch(() => { if (active) setResult({page, data:{available:false, reason:'明细读取失败'}}); });
     return () => { active = false; };
-  }, [category, date, page, retry, firstPage, phase]);
+  }, [category, date, page, retry, firstPage, phase, source]);
   const data = result?.page === page ? result.data : null;
   return <>
     {phase && firstPage && <h3>当期应收 {money(firstPage.amountCents/100)} · {firstPage.total} 笔</h3>}
@@ -74,12 +77,14 @@ function Details({ date, category, firstPage, phase }: { phase?:Phase; firstPage
 export function TodayIncome({ date }: { date: string }) {
   const [phaseResults, setPhaseResults] = useState<PhaseResults>({});
   const [phase, setPhase] = useState<Phase | null>(null);
+  const [source, setSource] = useState<Source>('mis');
+  const [pms, setPms] = useState<Partial<Record<Category, Response>>>({});
   const [values, setValues] = useState<Partial<Record<Category, Response>>>({});
   const [retry, setRetry] = useState(0);
   const [selected, select] = useState<typeof categories[number] | null>(null);
   useEffect(() => {
     let active = true;
-    setValues({}); setPhaseResults({}); setPhase(null);
+    setValues({}); setPms({}); setPhaseResults({}); setPhase(null);
     for (const [id] of categories) {
       const put = (result: Response) => { if (active) setValues(prev => ({ ...prev, [id]:result })); };
       if (id === 'temporary') {
@@ -90,7 +95,12 @@ export function TodayIncome({ date }: { date: string }) {
         }
         continue;
       }
-      fetchIncome(date, id, () => active).then(put).catch(error => put({available:false,reason:error instanceof Error ? error.message : '读取失败',retryable:true}));
+      if (compare(id)) {
+        const savePms = (result: Response) => { if (active) setPms(prev => ({...prev,[id]:result})); };
+        fetchIncome(date,id,()=>active,undefined,undefined,'pms').then(savePms)
+          .catch(() => savePms({available:false,reason:'PMS 流水未获取',retryable:true}));
+      }
+      fetchIncome(date, id, () => active, undefined, undefined, compare(id) ? 'mis' : undefined).then(put).catch(error => put({available:false,reason:error instanceof Error ? error.message : '读取失败',retryable:true}));
     }
     return () => { active = false; };
   }, [date, retry]);
@@ -106,6 +116,8 @@ export function TodayIncome({ date }: { date: string }) {
     money(phaseValues.reduce((sum,item) => sum + (item && 'amountCents' in item ? item.amountCents : 0), 0)/100);
   const received = categories.filter(([id]) => id !== 'temporary').map(([id]) => values[id]);
   const total = received.reduce((sum,v) => sum+(v && 'amountCents' in v ? v.amountCents : 0),0);
+  const amount = (v?:Response) => v && 'amountCents' in v ? v.amountCents : null;
+  const display = (v?:Response) => !v ? '读取中…' : 'reason' in v ? '未获取' : money(v.amountCents/100);
   let offset = 0;
   return <><section className="card today-income-card">
     <div className="side-h"><Icon name="chart" size={19}/>今日分项收入</div>
@@ -125,6 +137,17 @@ export function TodayIncome({ date }: { date: string }) {
         const temp = cat[0] === 'temporary';
         const v = values[cat[0]];
         const failed=v && 'reason' in v && v.retryable;
+        if (compare(cat[0])) {
+          const misAmount = amount(v), pmsAmount = amount(pms[cat[0]]);
+          return <button type="button" className="erp-fee-item" key={cat[0]} onClick={()=>{setSource('mis');select(cat);}}>
+            <i className="erp-fee-dot" style={{background:cat[2]}}/><b className="erp-fee-name">{cat[1]}</b>
+            <span className="erp-fee-comparison">
+              <span>MIS 人工录入 <b>{display(v)}</b></span>
+              <span>PMS 实收 <b>{display(pms[cat[0]])}</b></span>
+              <span>差额（PMS − MIS） <b>{misAmount===null || pmsAmount===null ? '—' : money((pmsAmount-misAmount)/100)}</b></span>
+            </span>
+          </button>;
+        }
         return <button type="button" className="erp-fee-item" title={v && 'reason' in v ? v.reason : undefined} key={cat[0]} disabled={temp ? !visiblePhases.length : (!v || ('reason' in v && !failed))}
           onClick={()=>failed ? setRetry(n=>n+1) : select(cat)}>
           <i className="erp-fee-dot" style={{background:cat[2]}}/><span className="erp-fee-name">{cat[1]}</span>
@@ -132,9 +155,14 @@ export function TodayIncome({ date }: { date: string }) {
         </button>;
       })}</div>
     </div>
+    {categories.some(([id]) => compare(id) && [values[id],pms[id]].some(v => v && 'reason' in v)) && <button className="btn sm" onClick={()=>setRetry(n=>n+1)}>重试读取收入</button>}
+    <small className="muted">泊位费和车辆管理费按 MIS 录入金额计入小计。</small>
   </section>
-    {selected && <Sheet open onClose={() => { select(null); setPhase(null); }} width={800} title={selected[1]+'明细'} subtitle={date}>
-      {selected[0] !== 'temporary' ? <Details category={selected} date={date}/> : <>
+    {selected && <Sheet open onClose={() => { select(null); setPhase(null); setSource('mis'); }} width={800} title={selected[1]+'明细'} subtitle={date}>
+      {compare(selected[0]) ? <>
+        <div aria-label="明细来源">{(['mis','pms'] as const).map(s=><button key={s} type="button" className={'btn sm'+(s===source?' primary':'')} aria-pressed={s===source} onClick={()=>setSource(s)}>{sourceLabels[s]}</button>)}</div>
+        <Details key={source} category={selected} date={date} source={source}/>
+      </> : selected[0] !== 'temporary' ? <Details category={selected} date={date}/> : <>
         <div role="tablist" aria-label="小区">{visiblePhases.map(key =>
           <button type="button" role="tab" id={'income-tab-'+key} aria-controls="income-phase-panel" aria-selected={currentPhase===key}
             key={key} className={'btn sm'+(currentPhase===key?' primary':'')} onClick={() => setPhase(key)}>{phases[key]}</button>)}</div>
