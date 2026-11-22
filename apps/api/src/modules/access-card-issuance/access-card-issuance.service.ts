@@ -1,3 +1,4 @@
+import { legacyRegistrationProfile } from '../business/parking-registration-profile';
 import { BusinessRule } from '../../entities/business-rule.entity';
 import { BusinessServiceType } from '../../common/enums';
 import {
@@ -2032,7 +2033,7 @@ export class AccessCardIssuanceService {
     }
     const payload = normalizeParkingOperationPayload(dto.payload);
     const billingClass = payload.billingClass ?? payload.propertyBillingClass;
-    if (dto.kind === 'update_vehicle_type' && billingClass) {
+    if ((dto.kind === 'update_vehicle_type' || dto.kind === 'renew_vehicle') && billingClass) {
       const rules = await this.parkingOperationRepo.manager.getRepository(BusinessRule).findBy({
         tenantId, enabled:true, serviceType:BusinessServiceType.PARKING_MONTHLY,
       });
@@ -2040,6 +2041,11 @@ export class AccessCardIssuanceService {
       if (!rules.some(rule => rule.config?.vehicleClass === billingClass && (rule.communityId == null || !scope || scope.includes(rule.communityId))))
         throw new BadRequestException('未找到当前范围内启用的车辆收费档位');
     }
+    if (dto.kind === 'renew_vehicle' && payload.renewalIdentity &&
+        legacyRegistrationProfile(String(billingClass || payload.vehicleClass || ''))?.identity !== payload.renewalIdentity)
+      throw new BadRequestException('续期车辆类型与收费类别不一致');
+    const needsRangeSupport = (dto.kind === 'renew_vehicle' && !!(payload.renewalIdentity || payload.startDate)) ||
+      (dto.kind === 'add_vehicle' && (!!payload.businessTxnNo || payload.legacyDatePolicy === 1));
     if (dto.kind === 'update_garages' && payload.spaceSelection === 1) {
       const selected = payload.selectedGarages;
       const needsChoices = Array.isArray(selected) && selected.some(g => g === 'main' || g === 'civil');
@@ -2052,6 +2058,7 @@ export class AccessCardIssuanceService {
     const agents = await this.agentRepo.find({ where: { tenantId, kind: 'parking_gateway', enabled: true } });
     const gateway = orderAgentsByAvailability(agents).find((agent) =>
       effectiveAgentStatus(agent) === 'online' && agent.capabilities?.parkingDbWrite === true && supportsParkingOwnerUpdates(agent.version) &&
+      (!needsRangeSupport || agent.capabilities?.parkingRenewalRangeV1 === true) &&
       (!(dto.payload?.identity === '亲情车' || dto.payload?.familyReviewId) || supportsFamilyActivation(agent.version)) &&
       (!requiresVehiclePreservation(dto.kind) || agent.capabilities?.parkingVehiclePreservationV1 === true) &&
       (dto.kind !== 'rebind_owner' || supportsParkingOwnerRebind(agent.version)) &&
@@ -2059,7 +2066,7 @@ export class AccessCardIssuanceService {
       (!['update_garages', 'update_vehicle_type', 'download_vehicle'].includes(dto.kind) || supportsParkingAuthorizationFixes(agent.version)) &&
       (dto.kind !== 'download_vehicle' || supportsParkingDeviceConfirmation(agent.version)) &&
       (payload.spaceSelection !== 1 || supportsGarageSpaceSelection(agent.version)));
-    if (!gateway) throw new ServiceUnavailableException(payload.spaceSelection === 1 ? '选择车位调整授权需要 PMS 数据同步助手 2.5.55 及以上版本，请先更新现场助手' : requiresVehiclePreservation(dto.kind) ? '换牌和修改车型需要现场助手具备 parkingVehiclePreservationV1 原值保护能力，请先升级现场助手' : dto.payload?.identity === '亲情车' || dto.payload?.familyReviewId ? '亲情车待审核登记与自动开通需要现场助手升级到 2.5.40' : dto.kind === 'rebind_owner'
+    if (!gateway) throw new ServiceUnavailableException(needsRangeSupport ? '本次办理需要现场助手 2.6.6 或更新版本' : payload.spaceSelection === 1 ? '选择车位调整授权需要 PMS 数据同步助手 2.5.55 及以上版本，请先更新现场助手' : requiresVehiclePreservation(dto.kind) ? '换牌和修改车型需要现场助手具备 parkingVehiclePreservationV1 原值保护能力，请先升级现场助手' : dto.payload?.identity === '亲情车' || dto.payload?.familyReviewId ? '亲情车待审核登记与自动开通需要现场助手升级到 2.5.40' : dto.kind === 'rebind_owner'
       ? '变更绑定用户需要 PMS 数据同步助手 2.5.20 及以上版本，请先更新现场助手'
       : dto.kind === 'sync_vehicle_info' ? '车辆资料复用需要 PMS 数据同步助手 2.5.23 及以上版本，请先在现场电脑升级'
       : dto.kind === 'download_vehicle' ? '停车设备下发需要 PMS 数据同步助手 2.5.47 或更新版本，旧版只能写入队列、不能确认设备完成'
@@ -2219,7 +2226,7 @@ export class AccessCardIssuanceService {
       });
     }
     const cloudOperation = (p.garages as string[]).includes('civil') ? await this.setDeliyunCivilDefenseAuthorization({
-      plate: proof.plate, authorized: true, beginDate: String(p.startDate), endDate: String(p.endDate),
+      plate: proof.plate, authorized: true, beginDate: String(p.approvalStartDate ?? p.startDate), endDate: String(p.endDate),
       ownerRoom: String(p.ownerAddress || ''), parkingSpace: String((p.garageNumbers as Record<string, unknown> | undefined)?.civil || p.spaces || ''),
       remark: String(p.note || ''),
       idempotencyKey: `family-review-${id}-civil`,
@@ -2244,7 +2251,15 @@ export class AccessCardIssuanceService {
     if (source.kind === 'add_vehicle') kind = 'delete_vehicle';
     else if (source.kind === 'delete_vehicle') kind = 'add_vehicle';
     else if (source.kind === 'change_plate') throw new BadRequestException('换牌回退必须先重新查询新牌，再从变更车牌入口提交，保留当前旧库原值及 PMS 类别');
-    else if (source.kind === 'renew_vehicle') { kind = 'renew_vehicle'; reverse.endDate = payload.previousEndDate; }
+    else if (source.kind === 'renew_vehicle') {
+      kind = 'renew_vehicle';
+      reverse.endDate = source.result?.previousEndDate || payload.previousEndDate;
+      reverse.previousEndDate = payload.endDate;
+      // 原有撤销入口恢复到期日。独立的车型和开始日期变更不随到期日重发。
+      delete reverse.startDate;
+      delete reverse.renewalIdentity;
+      delete reverse.billingClass;
+    }
     else if (source.kind === 'rebind_owner') {
       if (!source.result?.previousOwnerId || !source.result?.targetOwnerId || !source.result?.previousRoom) {
         throw new BadRequestException('原任务缺少已核验的原住户信息，不能自动回滚，请重新选择原房号变更绑定');
@@ -2405,6 +2420,9 @@ export class AccessCardIssuanceService {
         .where('task.tenant_id = :tenantId', { tenantId: agent.tenantId })
         .andWhere("(task.status = 'pending' OR (task.status = 'running' AND task.lease_expires_at < :now))", { now })
         .andWhere("(task.kind <> 'rebind_owner' OR :canRebind = true)", { canRebind: supportsParkingOwnerRebind(agent.version) })
+        .andWhere(agent.capabilities?.parkingRenewalRangeV1 === true ? '1=1' :
+          "NOT ((task.kind = 'renew_vehicle' AND (task.payload ? 'renewalIdentity' OR task.payload ? 'startDate')) OR (task.kind = 'add_vehicle' AND (task.payload ? 'businessTxnNo' OR task.payload ? 'legacyDatePolicy')))")
+        .andWhere("(task.kind <> 'renew_vehicle' OR task.expected->>'renewalAgentKey' IS NULL OR task.expected->>'renewalAgentKey' = :renewalAgentKey)", {renewalAgentKey:agent.agentKey})
         .andWhere(canSyncVehicleInfo ? '1=1' : "task.kind <> 'sync_vehicle_info'")
         .andWhere(canUseAuthorizationFixes ? '1=1' : "task.kind NOT IN ('update_garages', 'update_vehicle_type', 'download_vehicle')")
         .andWhere(canConfirmParkingDevice ? '1=1' : "task.kind <> 'download_vehicle'")
@@ -2425,6 +2443,9 @@ export class AccessCardIssuanceService {
         if (item.attempt > 0 && item.expected.preservationAgentKey !== agent.agentKey)
           throw new BadRequestException('车辆原值快照属于原助手，不能换助手重领未知结果任务');
         item.expected = { ...item.expected, preservationAgentKey: agent.agentKey };
+      }
+      if (item.kind === 'renew_vehicle' && agent.capabilities?.parkingRenewalRangeV1 === true) {
+        item.expected = { ...item.expected, renewalAgentKey: agent.agentKey };
       }
       item.status = 'running'; item.attempt += 1; item.leaseAgentKey = agent.agentKey;
       item.leaseExpiresAt = new Date(now.getTime() + 90_000); item.updatedBy = null; await repo.save(item);
@@ -2464,9 +2485,16 @@ export class AccessCardIssuanceService {
             throw new BadRequestException('当前助手没有车辆原值保护能力');
           assertPreservedReceipt(task, dto.values ?? {});
         }
+        if (task.kind === 'renew_vehicle' && (task.payload.renewalIdentity || task.payload.startDate)) {
+          const values = dto.values ?? {};
+          if (values.verified !== true || values.endDate !== task.payload.endDate ||
+              (task.payload.startDate && values.startDate !== task.payload.startDate) ||
+              (task.payload.renewalIdentity && values.identity !== task.payload.renewalIdentity))
+            throw new BadRequestException('旧库车辆类别或有效期与本次提交不一致');
+        }
         let previousBillingClass: string | null = null;
         const billingClass = task.payload.billingClass ?? task.payload.propertyBillingClass;
-        if (task.kind === 'update_vehicle_type' && billingClass) {
+        if ((task.kind === 'update_vehicle_type' || task.kind === 'renew_vehicle') && billingClass) {
           const tags = manager.getRepository(ParkingPlateTag);
           const plate = plateKey(task.payload.plate);
           const vehicleClass = String(billingClass);
@@ -2527,7 +2555,7 @@ export class AccessCardIssuanceService {
         const plateBefore = textValue(task.payload.plate || task.payload.oldPlate);
         const plateAfter = textValue(task.payload.newPlate || task.payload.plate);
         const changes = operationChanges(task);
-        if (task.kind === 'update_vehicle_type' && billingClass && previousBillingClass !== billingClass)
+        if ((task.kind === 'update_vehicle_type' || task.kind === 'renew_vehicle') && billingClass && previousBillingClass !== billingClass)
           changes.push({ field: 'vehicleClass', label: '收费档位', before: previousBillingClass, after: String(billingClass) });
         await manager.getRepository(ParkingHistory).save(manager.getRepository(ParkingHistory).create({
           tenantId: task.tenantId, eventType: operationHistoryType(task.kind), source: 'pms', database: task.database,
@@ -4689,6 +4717,12 @@ function validateParkingOperation(
   targetRecordId?: string,
 ) {
   const requireValue = (key: string, label: string) => { if (!textValue(payload[key])) throw new BadRequestException(`${label}不能为空`); };
+  if ((kind === 'renew_vehicle' || kind === 'add_vehicle') && payload.startDate != null) {
+    const start = String(payload.startDate);
+    const day = new Date(start + 'T00:00:00Z');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !Number.isFinite(day.getTime()) || day.toISOString().slice(0,10) !== start || start > String(payload.endDate))
+      throw new BadRequestException('开始日期无效或晚于到期日期');
+  }
   if (kind === 'add_vehicle') { requireValue('plate', '车牌'); requireValue('ownerName', '住户姓名'); requireValue('endDate', '到期日期'); validateRegistrationGarageNumbers(payload); }
   if (kind === 'renew_vehicle') { requireValue('plate', '车牌'); requireValue('endDate', '到期日期'); }
   if (kind === 'change_plate') { requireValue('plate', '原车牌'); requireValue('newPlate', '新车牌'); }
@@ -4762,7 +4796,9 @@ function operationChanges(task: ParkingOperation): ParkingHistoryChange[] {
   const pairs: Array<[string, string, unknown, unknown]> = [
     ['plate', '车牌', p.plate, p.newPlate || p.plate],
     ['owner', '绑定用户', p.previousOwnerName || p.previousOwnerId, p.ownerName || p.ownerId],
-    ['endDate', '到期日期', p.previousEndDate, p.endDate],
+    ['endDate', '到期日期', task.result?.previousEndDate ?? p.previousEndDate, p.endDate],
+    ...(p.startDate ? [['startDate', '开始日期', task.result?.previousStartDate, p.startDate] as [string, string, unknown, unknown]] : []),
+    ...(p.renewalIdentity ? [['identity', '车辆授权类型', task.result?.previousIdentity, task.result?.identity] as [string, string, unknown, unknown]] : []),
     ...(task.kind === 'renew_vehicle' && p.customReason ? [['customReason', '调整原因', null, p.customReason] as [string, string, unknown, unknown]] : []),
     ['effective', '车库授权', p.previousGarages, p.garages || p.effective],
   ];

@@ -2,6 +2,7 @@ import { useContext, useId } from 'react';
 import { ChargeAttempted } from './charge-validation';
 import { moneyInputProps } from '@/lib/money-input';
 import RegistrationPermit from './RegistrationPermit';
+import LegacyStartDate from '@/components/LegacyStartDate';
 import DateInput from '@/components/DateInput';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { accessCardIssuance, request } from '@pms/api-client';
@@ -45,7 +46,7 @@ export type { Lot };
 
 export interface ParkingCart {
   plate: string; rule: ParkRule; months: number; currentEndDate: string | null;
-  estimate: Estimate; systems: SystemRef[]; systemsLabel: string;
+  legacyStartDate?: string; estimate: Estimate; systems: SystemRef[]; systemsLabel: string;
   /** 新办车牌：扫码登记单编号（车牌由业主填，可能还没填） */
   intakeId?: number;
   /** 非标准续期：自定起止日期 + 手填实收金额，提交后等物业经理审核 */
@@ -140,10 +141,9 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
   }, [house.id, focusedIntake]);
   // 车牌分类（业主车 / 租客车 …）：决定续期按哪套收费标准
   const [tags, setTags] = useState<Record<string, string>>({});
-  const setTag = useCallback(async (plate: string, cls: string) => {
-    await request({ method: 'POST', url: '/business/plate-tags', data: { plate, vehicleClass: cls, houseId: house.id } });
-    setTags((t) => ({ ...t, [plate]: cls }));
-  }, [house.id]);
+  const [draftClasses, setDraftClasses] = useState<Record<string,string>>({});
+  useEffect(() => { setDraftClasses({}); }, [house.id, reload]);
+  useEffect(() => { setDraftClasses(t => Object.fromEntries(Object.entries(t).filter(([plate]) => picked.includes(plate)))); }, [picked]);
   const [selectedEntry, setSelectedEntry] = useState<{ id: number; staff: boolean } | null>(null);
   const createIntake = async (kind: 'paid' | 'family', anotherVehicle = false, staff = true) => {
     if (creatingIntake.current) return;
@@ -216,6 +216,20 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [house.id, initialPlate, reload]);
 
+  const lookupPlates = [...new Set([
+    ...[...local.rows,...plateRows].map(row => normPlate(field(row.fields, /^p_plate$/i) || '')),
+    ...(hh?.deliyun ?? []).flatMap(d => d.rows.map(r => normPlate(r.plate))),
+  ].filter(Boolean))].sort().join(',');
+  const spaceKey = JSON.stringify([house.id,lookupPlates,reload]);
+  const [cardSpaces,setCardSpaces] = useState<{key:string;rows:NonNullable<Household['propertySpaces']>}>();
+  useEffect(() => {
+    if (!lookupPlates) return;
+    let active = true;
+    request<NonNullable<Household['propertySpaces']>>({url:'/business/household-plate-spaces',query:{houseId:house.id,plates:lookupPlates}})
+      .then(rows => { if (active) setCardSpaces({key:spaceKey,rows}); }).catch(() => undefined);
+    return () => { active = false; };
+  }, [spaceKey]);
+
   // 合并成「一辆车 → 多套系统里的登记」
   const cars = useMemo<Car[]>(() => {
     if (!hh && !local.rows.length && !plateRows.length) return [];
@@ -230,8 +244,8 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
     const bound = new Set((hh?.boundPlates || []).map(normPlate));
     for (const plate of bound) car(plate, null);
     const boundSpace = (plate:string, garage:string) => {
-      const rows = hh?.propertySpaces?.filter(row => normPlate(row.plate) === normPlate(plate) && row.garage === garage);
-      return rows?.length === 1 ? rows[0].spaceNo : null;
+      const rows = (cardSpaces?.key === spaceKey ? cardSpaces.rows : hh?.propertySpaces ?? []).filter(row => normPlate(row.plate) === normPlate(plate) && row.garage === garage);
+      return [...new Set(rows.map(row => row.spaceNo).filter(Boolean))].sort().join('、') || null;
     };
     const seenRecord = new Set<string>();
     for (const row of [...local.rows, ...plateRows]) {
@@ -255,11 +269,14 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
       const target = main ?? garages[0] ?? null;
       const end = day(field(f, /^end_time$/i) || field(f, /end|expire/i));
       const label = garages.length ? garages.map((g) => g.label).join('、') : db === 'parking1' ? '一期停车库（未授权车库）' : '二期停车库（未授权车库）';
+      const cardSpace = main ? boundSpace(p,'main') : null;
+      const confirmedSpace = spaceCol || cardSpace;
+      const noteSpace = confirmedSpace ? null : spaceFromNote(note);
       const record = car(p, identityOf(f));
       (record.rows ??= []).push(row);
       record.lots.push({
         key: `local:${db}:${field(f, /^p_id$/i)}`, system: 'local', label, targetKey: target?.targetKey ?? (db === 'parking1' ? 'local:phase1_parking' : 'local:phase2_parking'),
-        propertySpace: spaceCol || (main ? boundSpace(p,'main') : null), space: spaceCol || (main ? boundSpace(p,'main') : null) || spaceFromNote(note), spaceFromNote: !spaceCol && !!spaceFromNote(note), endDate: end, garages: garages.map((g) => g.label),
+        propertySpace: confirmedSpace, space: confirmedSpace || noteSpace, spaceFromNote: !!noteSpace, endDate: end, garages: garages.map((g) => g.label),
         ref: { kind: 'local', database: db as 'parking1' | 'parking2', sourceRecordId: String(field(f, /^p_id$/i) || ''), queryId: (row as typeof row & { queryId?: number }).queryId, previousEndDate: end, label },
       });
     }
@@ -269,13 +286,13 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
           key: `deliyun:${d.park}:${r.id}`, system: 'deliyun', label: d.label, targetKey: d.targetKey,
           // 枫桦景苑人防接口将车位号保存在 cardNo，新办回读也校验此字段。
           propertySpace: r.parkingSpace || (d.targetKey === PAID_GARAGE_KEYS.civil ? r.cardNo || boundSpace(r.plate,'civil') : null),
-          space: r.parkingSpace || r.cardNo || null, spaceFromNote: false, endDate: day(r.endDate), garages: r.garageNames || [],
+          space: r.parkingSpace || r.cardNo || (d.targetKey === PAID_GARAGE_KEYS.civil ? boundSpace(r.plate,'civil') : null), spaceFromNote: false, endDate: day(r.endDate), garages: r.garageNames || [],
           ref: { kind: 'deliyun', park: d.park, label: d.label },
         });
       }
     }
     return [...map.values()].sort((a, b) => a.plate.localeCompare(b.plate));
-  }, [hh, local.rows, plateRows, house, initialPlate, selectedVehicle]);
+  }, [hh, local.rows, plateRows, house, initialPlate, selectedVehicle, cardSpaces, spaceKey]);
 
   useEffect(() => {
     if (!cars.length) return;
@@ -366,7 +383,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
       {pickedCars.length ? (
         <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
           {pickedCars.map((c) => <div key={c.plate}>
-            <CarRenewal car={c} rules={rules} house={house} onCart={setCart} onRemove={() => toggle(c.plate)} vehicleClass={tags[c.plate] || ''} onClass={(v) => setTag(c.plate, v)} />
+            <CarRenewal car={c} rules={rules} house={house} onCart={setCart} onRemove={() => toggle(c.plate)} vehicleClass={draftClasses[c.plate] ?? tags[c.plate] ?? ''} onClass={async v => setDraftClasses(t => ({ ...t, [c.plate]: v }))} />
             {hh && local.state === 'done' && <CashierVehicleActions car={c} onChanged={() => {
               onCart([], false);
               setCarts({});
@@ -481,6 +498,9 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
   const group = vehicleClass ? (classOptions.includes(vehicleClass) ? vehicleClass : '') : defaultGroup;
   const [clsBusy, setClsBusy] = useState(false);
   const [clsErr, setClsErr] = useState('');
+  const [selectedStart, setSelectedStart] = useState<string | null>(null);
+  const hasLocal = lots.some(l => l.ref.kind === 'local');
+  const legacyStart = hasLocal ? selectedStart : null;
   const needClass = classOptions.length > 0 && !group;
   const candidates = useMemo(() => {
     const pool = classOptions.length ? (needClass ? [] : own.filter((r) => (r.config?.vehicleClass || '') === group)) : own;
@@ -511,7 +531,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
   const manualCents = enteredCents != null && Number.isSafeInteger(enteredCents) && enteredCents >= 0 ? enteredCents : null;
   const amountMissing = attempted && manualCents == null;
   // 绑定完整报价上下文（同 id 规则改价、系统引用或身份变化也必须重新试算）。
-  const quoteKey = JSON.stringify([allowCart, quoteRevision, sel.plate, house.id, house.communityId, house.owner?.id, rule, lots, vehicleClass, months, monthsValid, custom, cs, ce, amt, reason, label, clsBusy]);
+  const quoteKey = JSON.stringify([allowCart, quoteRevision, legacyStart, sel.plate, house.id, house.communityId, house.owner?.id, rule, lots, vehicleClass, months, monthsValid, custom, cs, ce, amt, reason, label, clsBusy]);
   const currentQuoteKey = useRef(quoteKey);
   if (currentQuoteKey.current !== quoteKey) { currentQuoteKey.current = quoteKey; quoteGeneration.current++; }
   const est = estimateKey === quoteKey && (custom || monthsValid) && !clsBusy ? quotedEst : null;
@@ -535,7 +555,8 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
         }
         setEst(e); setEstimateKey(quoteKey);
         if (!allowCart) { onCart(sel.plate, null); return; }
-        const base = { plate: label ?? sel.plate, rule, months: e.quantity, currentEndDate: currentEnd, systems: lots.map((l) => l.ref), systemsLabel: lots.map((l) => l.label).join(' + '), ...(intakeId ? { intakeId } : {}) };
+        if (legacyStart !== null && (!legacyStart || legacyStart > e.endDate)) { onCart(sel.plate, null); return; }
+        const base = { ...(legacyStart ? { legacyStartDate: legacyStart } : {}), plate: label ?? sel.plate, rule, months: e.quantity, currentEndDate: currentEnd, systems: lots.map((l) => l.ref), systemsLabel: lots.map((l) => l.label).join(' + '), ...(intakeId ? { intakeId } : {}) };
         if (!custom) { onCart(sel.plate, { ...base, months, estimate: e, custom: null }); return; }
         if (manualCents == null || !reason.trim()) { onCart(sel.plate, null); return; }
         onCart(sel.plate, { ...base, estimate: e, custom: { startDate: cs, endDate: ce, manualAmountCents: manualCents, reason: reason.trim(), standardAmountCents: e.standardAmountCents ?? null } });
@@ -566,7 +587,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
           {classOptions.length || intakeId ? (
             <div style={{ marginBottom: 16 }}>
               <VehicleClassChoices spaces={propertySpaceLabels(lots)} options={intakeId ? [...classOptions, '亲情车'] : classOptions} value={group} defaultValue={defaultGroup} disabled={clsBusy} onChange={c => { void pickClass(c); }} />
-              {needClass ? <span style={{ color: 'var(--warn, #b7791f)', fontSize: 14 }}>先选这辆车属于哪个类别（选了会记住，下次自动带出）</span>
+              {needClass ? <span style={{ color: 'var(--warn, #b7791f)', fontSize: 14 }}>先选这辆车属于哪个类别（收款后保存）</span>
                 : group && group !== vehicleClass ? <span className="muted" style={{ fontSize: 13.5 }}>未分类，按默认类别收</span> : null}
               {clsErr ? <span style={{ color: 'var(--dang)', fontSize: 14 }}>{clsErr}</span> : null}
             </div>
@@ -585,6 +606,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
           ) : null}
           {!lots.length && !intakeId ? <div className="muted">至少勾选一个要续期的系统</div> : (
             <>
+              {hasLocal && <LegacyStartDate value={selectedStart} end={est?.endDate ?? undefined} onChange={v => { invalidateQuote(); setSelectedStart(v); }} />}
               <div className="quickMonths" style={{ marginTop: 0 }}>
                 <span style={{ fontSize: 14, color: 'var(--ink2)', marginRight: 4 }}>{intakeId ? '车牌授权期限' : '续：'}</span>
                 <RenewalMonths value={months} active={!custom} onValidityChange={valid => { if (!valid) invalidateQuote(); setMonthsValid(valid); }} onChange={m => { invalidateQuote(); setCustom(false); setMonthsValid(true); setMonths(m); }} />
@@ -598,7 +620,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
               {custom ? (
                 <div className="custom-renew">
                   <div className="cr-grid">
-                    <label>开始日期<DateInput className="in" required aria-invalid={attempted && (!cs)} aria-describedby={attempted && (!cs) ? errorId+"-cs" : undefined} type="date" value={cs} onChange={(e) => { invalidateQuote(); setCs(e.target.value); }} />{attempted && (!cs) && <small id={errorId+"-cs"} role="alert">请选择开始日期</small>}</label>
+                    <label>计费开始日期<DateInput className="in" required aria-invalid={attempted && (!cs)} aria-describedby={attempted && (!cs) ? errorId+"-cs" : undefined} type="date" value={cs} onChange={(e) => { invalidateQuote(); setCs(e.target.value); }} />{attempted && (!cs) && <small id={errorId+"-cs"} role="alert">请选择开始日期</small>}</label>
                     <label>结束日期<DateInput className="in" required aria-invalid={attempted && (!ce || (!!cs && ce < cs))} aria-describedby={attempted && (!ce || (!!cs && ce < cs)) ? errorId+"-ce" : undefined} type="date" value={ce} min={cs || undefined} onChange={(e) => { invalidateQuote(); setCe(e.target.value); }} />{attempted && (!ce || (!!cs && ce < cs)) && <small id={errorId+"-ce"} role="alert">请选择有效的结束日期</small>}</label>
                     <label>实收金额（元）<input className="in" type="number" {...moneyInputProps} min={0} step="0.01" value={amt} aria-required="true" aria-invalid={amountMissing} aria-describedby={amountMissing ? errorId+"-amount" : undefined} aria-label="自定日期实收金额" placeholder="请输入金额，0元请填0" onChange={(e) => { invalidateQuote(); setAmt(e.target.value); }} />{amountMissing && <small id={errorId+"-amount"} role="alert">请输入实收金额，零元请填 0</small>}</label>
                   </div>

@@ -1,9 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
 import { addDays, addMonthsClamped } from '../modules/business/business-execution.util';
 
-export type VehicleRegistrationTerm =
+export type VehicleRegistrationTerm = { legacyStartDate?: string } & (
   | { mode: 'months'; months: number }
-  | { mode: 'dates'; startDate: string; endDate: string; reason: string };
+  | { mode: 'dates'; startDate: string; endDate: string; reason: string });
 
 export const MAX_REGISTRATION_MONTHS = 60;
 
@@ -18,18 +18,22 @@ export function normalizeRegistrationTerm(input: unknown, defaultMonths = 12): V
   const value = input === undefined || input === null ? { mode: 'months', months: defaultMonths } : input;
   if (typeof value !== 'object' || Array.isArray(value)) throw new BadRequestException('请选择登记期限');
   const term = value as Record<string, unknown>;
+  const start = term.legacyStartDate;
+  if (start !== undefined && (!isRegistrationDate(start) || (isRegistrationDate(term.endDate) && start > term.endDate)))
+    throw new BadRequestException('旧库开始日期无效或晚于结束日期');
+  const legacy = typeof start === 'string' ? { legacyStartDate: start } : {};
   if (term.mode === 'months') {
     if (typeof term.months !== 'number' || !Number.isInteger(term.months) || term.months < 1 || term.months > MAX_REGISTRATION_MONTHS)
       throw new BadRequestException(`登记月数须为 1 至 ${MAX_REGISTRATION_MONTHS} 的整数`);
     if (term.startDate !== undefined || term.endDate !== undefined) throw new BadRequestException('按月登记不能同时指定日期');
-    return { mode: 'months', months: term.months };
+    return { mode: 'months', months: term.months, ...legacy };
   }
   if (term.mode !== 'dates' || !isRegistrationDate(term.startDate) || !isRegistrationDate(term.endDate) || term.endDate < term.startDate)
     throw new BadRequestException('请填写合法的开始、结束日期，结束日期不得早于开始日期');
   if (term.months !== undefined) throw new BadRequestException('自定义日期不能同时指定月数');
   if (typeof term.reason !== 'string' || !term.reason.trim() || term.reason.trim().length > 500)
     throw new BadRequestException('自定义日期须填写原因（最多500字）');
-  return { mode: 'dates', startDate: term.startDate, endDate: term.endDate, reason: term.reason.trim() };
+  return { mode: 'dates', startDate: term.startDate, endDate: term.endDate, reason: term.reason.trim(), ...legacy };
 }
 
 /** Same clamped-month algorithm as paid parking; end = addMonths(start, n) - one day. */

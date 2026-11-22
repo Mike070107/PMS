@@ -261,6 +261,7 @@ namespace Pms.AccessCardAgent
                 { "accessCardQuery", config.Kind == "access_gateway" && accessCardQuery },
                 { "parkingDbRead", config.Kind == "parking_gateway" },
                 { "parkingDbWrite", config.Kind == "parking_gateway" && parkingWrite },
+                { "parkingRenewalRangeV1", config.Kind == "parking_gateway" && parkingWrite },
                 { "parkingVehiclePreservationV1", config.Kind == "parking_gateway" && parkingWrite },
                 { "controllerUpload", config.Kind == "access_gateway" && controllerUpload },
                 { "historicalAccessGrant", config.Kind == "access_gateway" && accessWrite && controllerUpload },

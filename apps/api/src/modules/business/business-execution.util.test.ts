@@ -25,10 +25,10 @@ test('幂等：德立云已是目标到期日 → 不再写', () => {
   assert.equal(p.action, 'noop');
 });
 
-test('不回退：德立云到期日更晚 → 转人工', () => {
+test('德立云原到期日更晚也按本次目标同步', () => {
   const p = planDeliyunRenewal({ plate: '沪A12345', targetEndDate: '2026-09-30', rows: [car()] });
-  assert.equal(p.action, 'manual');
-  assert.match((p as { reason: string }).reason, /不自动回退/);
+  assert.equal(p.action, 'renew');
+  if (p.action === 'renew') assert.equal(p.endDate, '2026-09-30');
 });
 
 test('对不上就转人工：未登记 / 多条 / 车位池 / 无到期日 / 无目标', () => {
@@ -117,4 +117,16 @@ test('已转人工的旧库步骤重试按原流水日期派发，回读一致�
   op.result = {endDate:'2027-10-31'};
   assert.equal((await run(submitted.state)).status,'synced');
   assert.equal(calls.length,1);
+  assert.equal(calls[0].payload.startDate,undefined);
+  Object.assign(txn,{snapshot:{parking:{legacyStartDate:'2027-01-02', vehicleClass:'住户车1'}}});
+  system.previousEndDate='2027-10-31';
+  op.status='pending';
+  const updated=await run({steps:[]});
+  assert.equal(calls[1].payload.startDate,'2027-01-02');
+  assert.equal(calls[1].payload.renewalIdentity,'住户车');
+  op.status='completed';
+  op.result={endDate:'2027-10-31',startDate:'2027-01-02',identity:'亲情车'};
+  assert.equal((await run(updated.state)).status,'manual');
+  op.result.identity='住户车';
+  assert.equal((await run(updated.state)).status,'synced');
 });

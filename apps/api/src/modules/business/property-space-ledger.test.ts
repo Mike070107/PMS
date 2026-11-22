@@ -12,6 +12,22 @@ const civil: PropertySpaceRef = {id:2,communityId:10,garage:'civil',spaceNo:'R01
 const plate = '沪A1C678';
 const legacy = {database:'parking2',fields:{P_id:42,P_plate:plate,P_spaces:'A021',P_effective:'0'.repeat(14)+'1'}};
 
+test('现场查询到的车牌可匹配导入卡片与多车绑定，隔离其他小区与租户', async()=>{
+  const db=new PGlite();
+  try {
+    await db.exec(`CREATE TABLE parking_spaces(tenant_id int,community_id int,garage text,space_no text,plate text,vehicle_bindings jsonb);
+      INSERT INTO parking_spaces VALUES
+      (1,10,'main','A021','沪B12345、沪a·TEST01','{}'),(1,10,'civil','R012',NULL,'{"沪ATEST01":{}}'),
+      (1,11,'main','B999','沪ATEST01','{}'),(2,10,'main','C999','沪ATEST01','{}'),
+      (1,10,'main','A999','沪ATEST012','{}');`);
+    const service=Object.assign(Object.create(BusinessService.prototype),{
+      houseRepo:{ manager:{connection:{query:async(sql:string,args:unknown[])=>(await db.query(sql,args)).rows}}}
+    });
+    const rows=await service.boundPropertySpaces(1,99,[10],['沪ATEST01']);
+    assert.deepEqual(rows.map((r:{spaceNo:string})=>r.spaceNo).sort(),['A021','R012']);
+  } finally { await db.close(); }
+});
+
 test('产权费按选定车库解析新办和续费的真实车位，二期地面不冒充大车库',async()=>{
   const svc:any=Object.create(BusinessService.prototype);
   svc.communityRepo={findOneBy:async()=>({name:'枫桦景苑二期'}),findBy:async()=>[{id:10}]};

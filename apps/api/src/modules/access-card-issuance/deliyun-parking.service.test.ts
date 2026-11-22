@@ -285,7 +285,7 @@ test('自定义到期日允许提前，回读一致后相同日期不重复下�
     return { ecode: 0 };
   };
   const request = { vehicleId: detail.id, plate: detail.plateNum, previousEndDate: detail.endDate, endDate: '2026-01-15' };
-  await assert.rejects(service.renewVehicle(request), /必须晚于/);
+  assert.equal((await service.renewVehicle(request)).verified, true);
   assert.equal((await service.renewVehicle({ ...request, customEndDate: true })).verified, true);
   assert.equal((await service.renewVehicle({ ...request, previousEndDate: request.endDate, customEndDate: true })).verified, true);
   assert.deepEqual(writes, [request.endDate]);

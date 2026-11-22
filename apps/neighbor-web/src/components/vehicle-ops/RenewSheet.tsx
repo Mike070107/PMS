@@ -1,3 +1,5 @@
+import { parkingIdentityForBillingClass } from '@pms/shared-types';
+import LegacyStartDate from '@/components/LegacyStartDate';
 import DateInput from '@/components/DateInput';
 import OwnerBusinessContact from '@/components/OwnerBusinessContact';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -18,7 +20,7 @@ interface FeeQuote { quantity: number; amountCents: number; startDate: string; e
 
 interface RenewalPlan {
   customEndDate?: boolean;
-  batch: string; plate: string; endDate: string; months: number;
+  billingClass?: string; startDate?: string; batch: string; plate: string; endDate: string; months: number;
   locals: Array<{ database: 'parking1' | 'parking2'; pid: string; amount: number; id?: number; status?: string }>;
   civil: { vehicleId: string; previousEndDate: string; id?: number; status?: string } | null;
 }
@@ -76,6 +78,7 @@ export default function RenewSheet({
   const [monthsValid, setMonthsValid] = useState(true);
   const [reason, setReason] = useState('');
   const [amountStr, setAmountStr] = useState('');
+  const [startDate, setStartDate] = useState<string | null>(null);
   const [endOverride, setEndOverride] = useState('');
   const [running, setRunning] = useState(false);
   const [log, setLog] = useState<string[]>([]);
@@ -124,7 +127,7 @@ export default function RenewSheet({
   const context = JSON.stringify([plate, targets.map(r => [r.database, r.fields]), identity]);
   const [formContext, setFormContext] = useState(context);
   useEffect(() => {
-    setFormContext(context); setMonths(12); setMonthsValid(true); setAmountStr(''); setEndOverride(''); setReason(''); setErr(''); setLog([]);
+    setStartDate(null); setFormContext(context); setMonths(12); setMonthsValid(true); setAmountStr(''); setEndOverride(''); setReason(''); setErr(''); setLog([]);
     planRef.current = loadPlan(plate); submitted.current = !!planRef.current; setCanRetryCivil(false);
     if (submitted.current) setErr('这张车牌有已提交的续期，先核对原任务；结果未知时禁止重新收费。');
     setRuleId(null); setQuote(null); setQuoteError(''); quoteGeneration.current++;
@@ -176,7 +179,7 @@ export default function RenewSheet({
   const formRef = useRef<HTMLDivElement>(null);
   const needsReason = !!endOverride || (manualAmount && amount !== rateAmount);
   const reasonMissing = needsReason && !reason.trim();
-  const canSubmit = !reasonMissing && !!selectedRule && entryAuthorized && cloudKnown && (garage !== 'civil' || syncCivil) && new Set(targets.map(t => t.database)).size === targets.length && formContext === context && targets.length > 0 && !running && !submitted.current && monthsValid && Number.isInteger(months) && months >= 1 && months <= 60 && amount !== null && Number.isFinite(amount) && amount >= 0 && amount <= 1000000 && /^\d{4}-\d{2}-\d{2}$/.test(newEnd) && dayjs(newEnd).isValid() && dayjs(newEnd).format('YYYY-MM-DD') === newEnd && (!!endOverride || !baseEnd || newEnd > baseEnd);
+  const canSubmit = (startDate === null || (!!startDate && startDate <= newEnd)) && !reasonMissing && !!selectedRule && entryAuthorized && cloudKnown && (garage !== 'civil' || syncCivil) && new Set(targets.map(t => t.database)).size === targets.length && formContext === context && targets.length > 0 && !running && !submitted.current && monthsValid && Number.isInteger(months) && months >= 1 && months <= 60 && amount !== null && Number.isFinite(amount) && amount >= 0 && amount <= 1000000 && /^\d{4}-\d{2}-\d{2}$/.test(newEnd) && dayjs(newEnd).isValid() && dayjs(newEnd).format('YYYY-MM-DD') === newEnd;
 
   const verify = async (plan: RenewalPlan) => {
     const readback = await freshRows(plan.plate);
@@ -195,7 +198,7 @@ export default function RenewSheet({
   };
 
   const validateLocal = (op: ParkingOperation, target: RenewalPlan['locals'][number], plan: RenewalPlan) => {
-    if (!Number.isFinite(target.amount) || !op.payload || op.payload.endDate !== plan.endDate || Number(op.payload.amount) !== target.amount)
+    if (!Number.isFinite(target.amount) || !op.payload || op.payload.endDate !== plan.endDate || op.payload.startDate !== plan.startDate || op.payload.billingClass !== plan.billingClass || (plan.startDate && op.status === 'completed' && op.result?.startDate !== plan.startDate) || Number(op.payload.amount) !== target.amount)
       throw new Error(`原任务 #${op.id} 的日期或金额与原提交不一致，必须到办理记录人工核对，不会解锁或再次收费`);
   };
 
@@ -257,15 +260,14 @@ export default function RenewSheet({
       setErr('');
     if (!canSubmit) { setErr('请核对月份、到期日和金额；未配置档位可手工填写金额，免费办理请明确填写 0'); return; }
     if (!targets.length) { setErr('这张车牌不在一期/二期旧库里，无法续期'); return; }
-    if (!endOverride && syncCivil && civil?.civilDefenseAuthorized && civil.endDate && dayjs(newEnd).isBefore(dayjs(ymd(civil.endDate)))) {
-      setErr(`新到期日 ${newEnd} 早于人防到期日 ${ymd(civil.endDate)}，请核对`); return;
-    }
     if (amount === null || !Number.isFinite(amount) || amount < 0) { setErr('金额不对'); return; }
     if (loadPlan(plate)) { submitted.current = true; planRef.current = loadPlan(plate); setErr('已有提交，先核对原任务，禁止重复收费'); return; }
     // Same plate/window uses the same server idempotency key even across tabs.
-    const batch = `pms-renew-v1-${normPlate(plate)}-${baseEnd || 'none'}-${newEnd}`;
+    const batch = `pms-renew-v1-${normPlate(plate)}-${baseEnd || 'none'}-${newEnd}${startDate ? '-from-' + startDate : ''}`;
     const amounts = allocateRenewalAmounts(amount, targets.length);
-    const plan: RenewalPlan = { customEndDate: !!endOverride, batch, plate, endDate: newEnd, months,
+    const billingClass = selectedRule!.config?.vehicleClass;
+    const renewalIdentity = parkingIdentityForBillingClass(billingClass || '');
+    const plan: RenewalPlan = { ...(billingClass && renewalIdentity ? {billingClass} : {}), ...(startDate ? { startDate } : {}), customEndDate: !!endOverride, batch, plate, endDate: newEnd, months,
       locals: targets.map((t, i) => ({ database: t.database as 'parking1' | 'parking2', pid: pidOf(t.fields), amount: amounts[i] })),
       civil: syncCivil && civil?.civilDefenseAuthorized ? { vehicleId: civil.id, previousEndDate: ymd(civil.endDate || '') } : null };
     try { storePlan(plan); } catch { setErr('无法保存防重复办理记录，未提交，请检查浏览器存储设置'); return; }
@@ -283,11 +285,12 @@ export default function RenewSheet({
           idempotencyKey: `${batch}-${db}-${pidOf(t.fields)}`,
           payload: {
             plate,
-            endDate: newEnd,
+            ...(plan.startDate ? { startDate: plan.startDate } : {}), endDate: newEnd,
             previousEndDate: ymd(field(t.fields, 'expiry')),
             amount: amounts[i],
             months,
             identity,
+            ...(plan.billingClass ? { billingClass: plan.billingClass, renewalIdentity } : {}),
             vehicleClass: selectedRule!.config?.vehicleClass || selectedRule!.name,
             ruleId: selectedRule!.id,
             communityId,
@@ -331,6 +334,7 @@ export default function RenewSheet({
           </select>
         </label>
         </div><h3>续期时长</h3>
+        <LegacyStartDate value={startDate} end={newEnd} disabled={running || submitted.current} onChange={setStartDate} />
         <RenewalMonths value={months} disabled={running || submitted.current || !selectedRule} onValidityChange={setMonthsValid}
           onChange={m => { quoteGeneration.current++; setQuote(null); setMonths(m); setMonthsValid(true); setAmountStr(''); setEndOverride(''); setReason(''); }} />
 

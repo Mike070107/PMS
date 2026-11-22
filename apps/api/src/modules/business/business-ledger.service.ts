@@ -42,6 +42,9 @@ function detailOf(row:any){
  const previousEnds=systems.map(s=>text(s.previousEndDate)).filter(Boolean) as string[];
  const extra:Record<string,unknown>={};
  if(systems.length)extra.parkingSystems=systems.map(s=>({label:text(s.label),database:text(s.database),previousEndDate:text(s.previousEndDate),target:text(s.target),sourceRecordId:text(s.sourceRecordId)}));
+ if(text(parking.previousVehicleClass))extra.previousVehicleClass=text(parking.previousVehicleClass);
+ if(text(parking.vehicleClass))extra.chargedVehicleClass=text(parking.vehicleClass);
+ if(text(parking.legacyStartDate))extra.legacyStartDate=text(parking.legacyStartDate);
  if(text(parking.target))extra.parkingTarget=text(parking.target);
  if(text(estimate.vehicleClass))extra.vehicleClass=text(estimate.vehicleClass);
  if(text(snapshot.ruleName))extra.ruleName=text(snapshot.ruleName);

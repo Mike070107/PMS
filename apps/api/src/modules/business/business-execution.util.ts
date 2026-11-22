@@ -53,8 +53,8 @@ export type RenewalPlan =
 const isDate = (s: unknown): s is string => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s);
 
 /**
- * 决定德立云要不要续、怎么续。原则：只把到期日往后延到本次收费的到期日；
- * 任何对不上的情况都转人工，不猜、不回退、不覆盖。
+ * 决定德立云要不要续、怎么续。以本次收费的到期日为准；
+ * 任何对不上的情况都转人工，保留原日期和目标日期。
  */
 export function planDeliyunRenewal(input: { plate: string; targetEndDate: string | null; rows: DeliyunVehicleLite[] }): RenewalPlan {
   const { plate, targetEndDate, rows } = input;
@@ -65,9 +65,6 @@ export function planDeliyunRenewal(input: { plate: string; targetEndDate: string
   if (v.cardPoolId) return { action: 'manual', reason: '该车属于车位池，有效期跟随关联车位，请在德立云按车位处理' };
   if (!isDate(v.endDate)) return { action: 'manual', reason: '德立云该车没有到期日，需人工核对后处理' };
   if (v.endDate === targetEndDate) return { action: 'noop', vehicleId: v.id, endDate: v.endDate, reason: '德立云到期日已是本次目标' };
-  if (v.endDate > targetEndDate) {
-    return { action: 'manual', reason: `德立云到期日 ${v.endDate} 已晚于本次收费到期日 ${targetEndDate}，不自动回退，请人工核对` };
-  }
   return { action: 'renew', vehicleId: v.id, previousEndDate: v.endDate, endDate: targetEndDate };
 }
 

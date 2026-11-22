@@ -876,32 +876,53 @@ ORDER BY COALESCE([out_Time], [Int_Time]) DESC;";
                 {
                     var effective = Value(payload, "effective") ?? ZeroBits();
                     var download = Value(payload, "download") ?? ZeroBits();
-                    using (var command = Procedure(connection, "AddIssue"))
+                    using (var transaction = connection.BeginTransaction(IsolationLevel.Serializable))
                     {
-                        Add(command, "@owner_Name", SqlDbType.VarChar, 20, LegacyOwnerRoom(payload));
-                        Add(command, "@owner_Add", SqlDbType.VarChar, 80, Value(payload, "ownerAddress") ?? "");
-                        Add(command, "@owner_Tel", SqlDbType.VarChar, 80, Value(payload, "ownerPhone") ?? "");
-                        Add(command, "@owner_Sex", SqlDbType.Int, 0, Number(payload, "ownerSex", 0));
-                        Add(command, "@owner_depa", SqlDbType.VarChar, 50, Value(payload, "ownerDepartment") ?? "PMS");
-                        Add(command, "@Owner_Image", SqlDbType.VarChar, 80, Value(payload, "ownerImage") ?? "");
-                        Add(command, "@P_plate", SqlDbType.VarChar, 50, plate);
-                        Add(command, "@P_Color", SqlDbType.VarChar, 10, Value(payload, "color") ?? "蓝");
-                        Add(command, "@Car_Lei", SqlDbType.Int, 0, Number(payload, "carType", 1));
-                        Add(command, "@Sart_Time", SqlDbType.DateTime, 0, DateValue(payload, "startDate", DateTime.Today));
-                        Add(command, "@End_Time", SqlDbType.DateTime, 0, DateValue(payload, "endDate", DateTime.Today));
-                        Add(command, "@Car_ID", SqlDbType.VarChar, 20, Value(payload, "carId") ?? "0000000000");
-                        Add(command, "@Car_Brand", SqlDbType.VarChar, 20, Value(payload, "identity") ?? "住户车");
-                        Add(command, "@Car_Money", SqlDbType.Float, 0, NumberDecimal(payload, "amount", 0));
-                        Add(command, "@Car_Deposit", SqlDbType.Float, 0, NumberDecimal(payload, "deposit", 0));
-                        Add(command, "@Car_Zt", SqlDbType.Int, 0, Number(payload, "state", 1));
-                        Add(command, "@P_note", SqlDbType.VarChar, 200, Value(payload, "note") ?? "操作来源：PMS系统");
-                        Add(command, "@P_Admin", SqlDbType.VarChar, 20, admin);
-                        Add(command, "@P_Spaces", SqlDbType.VarChar, 20, Value(payload, "spaces") ?? "");
-                        Add(command, "@P_Effective", SqlDbType.VarChar, 256, effective);
-                        Add(command, "@P_Download", SqlDbType.VarChar, 256, download);
-                        command.ExecuteNonQuery();
+                        if (TryReadBindingVehicle(connection, transaction, plate) != null)
+                            throw new InvalidOperationException("车牌已存在，请核对原登记记录");
+                        using (var command = Procedure(connection, transaction, "AddIssue"))
+                        {
+                            Add(command, "@owner_Name", SqlDbType.VarChar, 20, LegacyOwnerRoom(payload));
+                            Add(command, "@owner_Add", SqlDbType.VarChar, 80, Value(payload, "ownerAddress") ?? "");
+                            Add(command, "@owner_Tel", SqlDbType.VarChar, 80, Value(payload, "ownerPhone") ?? "");
+                            Add(command, "@owner_Sex", SqlDbType.Int, 0, Number(payload, "ownerSex", 0));
+                            Add(command, "@owner_depa", SqlDbType.VarChar, 50, Value(payload, "ownerDepartment") ?? "PMS");
+                            Add(command, "@Owner_Image", SqlDbType.VarChar, 80, Value(payload, "ownerImage") ?? "");
+                            Add(command, "@P_plate", SqlDbType.VarChar, 50, plate);
+                            Add(command, "@P_Color", SqlDbType.VarChar, 10, Value(payload, "color") ?? "蓝");
+                            Add(command, "@Car_Lei", SqlDbType.Int, 0, Number(payload, "carType", 1));
+                            if (payload.ContainsKey("startDate"))
+                                Add(command, "@Sart_Time", SqlDbType.DateTime, 0, RequiredDay(payload, "startDate"));
+                            Add(command, "@End_Time", SqlDbType.DateTime, 0, RequiredDay(payload, "endDate"));
+                            Add(command, "@Car_ID", SqlDbType.VarChar, 20, Value(payload, "carId") ?? "0000000000");
+                            Add(command, "@Car_Brand", SqlDbType.VarChar, 20, Value(payload, "identity") ?? "住户车");
+                            Add(command, "@Car_Money", SqlDbType.Float, 0, NumberDecimal(payload, "amount", 0));
+                            Add(command, "@Car_Deposit", SqlDbType.Float, 0, NumberDecimal(payload, "deposit", 0));
+                            Add(command, "@Car_Zt", SqlDbType.Int, 0, Number(payload, "state", 1));
+                            Add(command, "@P_note", SqlDbType.VarChar, 200, Value(payload, "note") ?? "操作来源：PMS系统");
+                            Add(command, "@P_Admin", SqlDbType.VarChar, 20, admin);
+                            Add(command, "@P_Spaces", SqlDbType.VarChar, 20, Value(payload, "spaces") ?? "");
+                            Add(command, "@P_Effective", SqlDbType.VarChar, 256, effective);
+                            Add(command, "@P_Download", SqlDbType.VarChar, 256, download);
+                            try { command.ExecuteNonQuery(); }
+                            catch (SqlException error)
+                            {
+                                // Some AddIssue definitions require an explicit argument even for an unspecified start.
+                                // Error 201 on this parameter occurs before SQL Server enters the procedure.
+                                if (payload.ContainsKey("startDate") || error.Number != 201 ||
+                                    error.Message.IndexOf("@Sart_Time", StringComparison.OrdinalIgnoreCase) < 0 ||
+                                    !String.Equals(error.Procedure.Split('.').Last(), "AddIssue", StringComparison.OrdinalIgnoreCase)) throw;
+                                Add(command, "@Sart_Time", SqlDbType.DateTime, 0, DBNull.Value);
+                                command.ExecuteNonQuery();
+                            }
+                        }
+                        var added = VerifyVehicle(connection, plate, "新增车牌", transaction);
+                        if (Value(added, "endDate") != Value(payload, "endDate") ||
+                            (payload.ContainsKey("startDate") && Value(added, "startDate") != Value(payload, "startDate")))
+                            throw new InvalidOperationException("新增有效期回读不一致，已撤销登记");
+                        transaction.Commit();
+                        return added;
                     }
-                    return VerifyVehicle(connection, plate, "新增车牌");
                 }
                 if (task.kind == "renew_vehicle")
                 {
@@ -909,25 +930,85 @@ ORDER BY COALESCE([out_Time], [Int_Time]) DESC;";
                     // 该表的操作员必须使用旧库中预先建立的 PMS 账号，不能接受网页随意传入的名称。
                     const string renewalOperator = "PMS";
                     var renewalType = Number(payload, "feeType", 5);
-                    using (var command = Procedure(connection, "Palte_extend"))
+                    var end = RequiredDay(payload, "endDate");
+                    DateTime? start = payload.ContainsKey("startDate") ? RequiredDay(payload, "startDate") : (DateTime?)null;
+                    if (start > end) throw new InvalidOperationException("开始日期晚于结束日期");
+                    var identity = Value(payload, "renewalIdentity");
+                    using (var transaction = connection.BeginTransaction(IsolationLevel.Serializable))
                     {
-                        Add(command, "@P_plate", SqlDbType.VarChar, 50, plate);
-                        Add(command, "@type", SqlDbType.Int, 0, renewalType);
-                        Add(command, "@P_money", SqlDbType.Float, 0, NumberDecimal(payload, "amount", 0));
-                        Add(command, "@End_Time", SqlDbType.DateTime, 0, DateValue(payload, "endDate", DateTime.Today));
-                        Add(command, "@P_Admin", SqlDbType.VarChar, 20, renewalOperator);
-                        command.ExecuteNonQuery();
+                        var before = ReadBindingVehicle(connection, transaction, plate);
+                        if (!String.IsNullOrEmpty(task.sourceRecordId)) AssertVehicleRecord(task, before);
+                        var issueId = Convert.ToInt32(before["P_id"], CultureInfo.InvariantCulture);
+                        var priorCharge = VerifyRenewalAudit(connection, plate, renewalOperator, renewalType, issueId, transaction);
+                        var journal = VehicleSnapshotPath(config, connection, task);
+                        var receipt = LoadVehicleSnapshot(journal);
+                        if (receipt != null)
+                        {
+                            if (priorCharge != null && Value(priorCharge, "id") == Value(receipt, "legacyAuditId") &&
+                                SqlDay(before["End_Time"]) == Value(receipt, "endDate") && SqlDay(before["Sart_Time"]) == Value(receipt, "startDate") &&
+                                Convert.ToString(RawVehicleIdentity(before)) == Value(receipt, "identity"))
+                            {
+                                transaction.Rollback();
+                                return receipt;
+                            }
+                            throw new InvalidOperationException("原续期流水已有执行凭据，现场数据已变化，请核对原流水");
+                        }
+                        if (identity != null && identity != Value(before, before.ContainsKey("Car_Beand") ? "Car_Beand" : "Car_Brand"))
+                        {
+                            if (identity != "住户车" && identity != "租户车" && identity != "亲情车")
+                                throw new InvalidOperationException("未知车辆类别");
+                            var owner = ReadBindingOwner(connection, transaction, Value(before, "Owner_ID"));
+                            using (var change = Procedure(connection, transaction, "Up_PakIssue"))
+                            {
+                                AddPreservedVehicleParameters(change, before, owner["owner_Name"], plate);
+                                change.Parameters["@Car_Brand"].Value = identity;
+                                change.ExecuteNonQuery();
+                            }
+                            AssertVehiclePreserved(before, ReadBindingVehicle(connection, transaction, plate), true);
+                        }
+                        using (var command = Procedure(connection, transaction, "Palte_extend"))
+                        {
+                            Add(command, "@P_plate", SqlDbType.VarChar, 50, plate);
+                            Add(command, "@type", SqlDbType.Int, 0, renewalType);
+                            Add(command, "@P_money", SqlDbType.Float, 0, NumberDecimal(payload, "amount", 0));
+                            Add(command, "@End_Time", SqlDbType.DateTime, 0, end);
+                            Add(command, "@P_Admin", SqlDbType.VarChar, 20, renewalOperator);
+                            command.ExecuteNonQuery();
+                        }
+                        if (start.HasValue)
+                        {
+                            using (var update = connection.CreateCommand())
+                            {
+                                update.Transaction = transaction;
+                                update.CommandText = "UPDATE dbo.Car_Issue SET Sart_Time=@start WHERE P_id=@id AND P_plate=@plate";
+                                Add(update, "@start", SqlDbType.DateTime, 0, start.Value);
+                                Add(update, "@id", SqlDbType.Int, 0, before["P_id"]);
+                                Add(update, "@plate", SqlDbType.VarChar, 50, plate);
+                                update.ExecuteNonQuery();
+                            }
+                        }
+                        var result = VerifyVehicle(connection, plate, "续期车牌", transaction);
+                        var audit = VerifyRenewalAudit(connection, plate, renewalOperator, renewalType, Convert.ToInt32(result["issueId"], CultureInfo.InvariantCulture), transaction);
+                        if (audit == null || (priorCharge != null && Value(priorCharge, "id") == Value(audit, "id")))
+                            throw new InvalidOperationException("续期已更新车辆，但未在旧库最近的充值延期车辆中读到 PMS 操作记录");
+                        result["legacyOperator"] = renewalOperator;
+                        result["legacyAuditTable"] = "P_moneyKeep";
+                        result["legacyAuditId"] = audit["id"];
+                        result["legacyAuditType"] = renewalType;
+                        result["legacyAuditVerified"] = true;
+                        var final = ReadBindingVehicle(connection, transaction, plate);
+                        result["previousIdentity"] = RawVehicleIdentity(before);
+                        result["identity"] = RawVehicleIdentity(final);
+                        result["previousStartDate"] = SqlDay(before["Sart_Time"]);
+                        result["previousEndDate"] = SqlDay(before["End_Time"]);
+                        if (SqlDay(final["End_Time"]) != Value(payload, "endDate") ||
+                            SqlDay(final["Sart_Time"]) != (start.HasValue ? Value(payload, "startDate") : SqlDay(before["Sart_Time"])) ||
+                            (identity != null && Value(result, "identity") != identity))
+                            throw new InvalidOperationException("续期后有效期或车辆类别回读不一致，已撤销");
+                        SaveVehicleSnapshot(journal, result);
+                        transaction.Commit();
+                        return result;
                     }
-                    var result = VerifyVehicle(connection, plate, "续期车牌");
-                    var audit = VerifyRenewalAudit(connection, plate, renewalOperator, renewalType, Convert.ToInt32(result["issueId"], CultureInfo.InvariantCulture));
-                    if (audit == null)
-                        throw new InvalidOperationException("续期已更新车辆，但未在旧库最近的充值延期车辆中读到 PMS 操作记录");
-                    result["legacyOperator"] = renewalOperator;
-                    result["legacyAuditTable"] = "P_moneyKeep";
-                    result["legacyAuditId"] = audit["id"];
-                    result["legacyAuditType"] = renewalType;
-                    result["legacyAuditVerified"] = true;
-                    return result;
                 }
                 if (task.kind == "rebind_owner") return RebindParkingOwner(connection, task, payload);
                 if (task.kind == "update_garages") return UpdateGarageAuthorizations(config, password, task, payload, plate, admin);
@@ -1919,16 +2000,31 @@ SELECT id FROM @created;";
             DateTime result; return value != null && DateTime.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), CultureInfo.InvariantCulture, DateTimeStyles.None, out result) ? result : fallback;
         }
 
-        private static Dictionary<string, object> VerifyVehicle(SqlConnection connection, string plate, string label)
+        private static string SqlDay(object date)
+        {
+            return date == null || date == DBNull.Value ? null : Convert.ToDateTime(date).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        }
+
+        private static DateTime RequiredDay(Dictionary<string, object> payload, string key)
+        {
+            DateTime result;
+            if (!DateTime.TryParseExact(Value(payload, key), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out result))
+                throw new InvalidOperationException("日期格式错误：" + key);
+            return result;
+        }
+
+        private static Dictionary<string, object> VerifyVehicle(SqlConnection connection, string plate, string label, SqlTransaction transaction = null)
         {
             using (var check = connection.CreateCommand())
             {
-                check.CommandText = "SELECT TOP 1 P_id, P_plate, End_Time, Car_Zt, P_Effective, P_Download FROM Car_Issue WHERE P_plate=@plate ORDER BY P_id DESC";
+                check.Transaction = transaction;
+                check.CommandText = "SELECT TOP 1 P_id, P_plate, Sart_Time, End_Time, Car_Zt, P_Effective, P_Download FROM Car_Issue WHERE P_plate=@plate ORDER BY P_id DESC";
                 Add(check, "@plate", SqlDbType.VarChar, 50, plate);
                 using (var reader = check.ExecuteReader())
                 {
                     if (!reader.Read()) throw new InvalidOperationException(label + "存储过程执行后未读回车牌");
                     var result = new Dictionary<string, object> { { "verified", true }, { "plate", Convert.ToString(reader["P_plate"]) }, { "issueId", Convert.ToString(reader["P_id"]) } };
+                    result["startDate"] = SqlDay(reader["Sart_Time"]);
                     if (!reader.IsDBNull(reader.GetOrdinal("End_Time"))) result["endDate"] = Convert.ToDateTime(reader["End_Time"]).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
                     if (!reader.IsDBNull(reader.GetOrdinal("P_Effective"))) result["effective"] = Convert.ToString(reader["P_Effective"]);
                     if (!reader.IsDBNull(reader.GetOrdinal("P_Download"))) result["download"] = Convert.ToString(reader["P_Download"]);
@@ -1938,10 +2034,11 @@ SELECT id FROM @created;";
             }
         }
 
-        private static Dictionary<string, object> VerifyRenewalAudit(SqlConnection connection, string plate, string operatorName, int renewalType, int issueId)
+        private static Dictionary<string, object> VerifyRenewalAudit(SqlConnection connection, string plate, string operatorName, int renewalType, int issueId, SqlTransaction transaction = null)
         {
             using (var check = connection.CreateCommand())
             {
+                check.Transaction = transaction;
                 // Palte_extend 的 type=5 是月租车延期；按本次类型和流水 ID 倒序取刚写入的一条。
                 check.CommandText = @"SELECT TOP 1 ID, P_Admin, P_plate, type
 FROM P_moneyKeep

@@ -1,5 +1,7 @@
 import {
   IsArray,
+  IsDateString,
+  Matches,
   IsBoolean,
   ArrayMaxSize,
   ValidateNested,
@@ -177,6 +179,11 @@ export class ReviewDecisionDto {
 }
 
 export class HouseholdParkingQueryDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(4096)
+  plates?: string;
+
   @Type(() => Number)
   @IsInt()
   @Min(1)
@@ -205,6 +212,16 @@ export class CompleteBusinessDto extends EstimateBusinessDto {
   @ValidateNested({ each: true })
   @Type(() => ParkingSystemRefDto)
   parkingSystems?: ParkingSystemRefDto[];
+
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  @IsDateString({ strict: true })
+  legacyStartDate?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  confirmedVehicleClass?: string;
 
   /** 新办车牌：收银台扫码登记单；车牌可以还没填（先收款，挂「待业主资料」） */
   @IsOptional()

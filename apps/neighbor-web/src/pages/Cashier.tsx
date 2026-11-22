@@ -483,7 +483,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
               ...(c.custom
                 ? { startDate: c.custom.startDate, endDate: c.custom.endDate, manualAmountCents: c.custom.manualAmountCents, customReason: c.custom.reason }
                 : { months: c.months, currentEndDate: c.currentEndDate || undefined }),
-              parkingSystems: c.systems, ...(c.intakeId ? { intakeId: c.intakeId, expectedAmountCents:c.estimate.amountCents } : {}), paymentMethod: payCode(pay), remark: payCode(pay) === 'other' ? `收款方式：${pay}` : undefined,
+              parkingSystems: c.systems, confirmedVehicleClass: c.rule.config?.vehicleClass || undefined, ...(c.legacyStartDate ? { legacyStartDate: c.legacyStartDate } : {}), ...(c.intakeId ? { intakeId: c.intakeId, expectedAmountCents:c.estimate.amountCents } : {}), paymentMethod: payCode(pay), remark: payCode(pay) === 'other' ? `收款方式：${pay}` : undefined,
             } });
             if (revision !== navigationRevision.current) return;
             okList.push({ c, txn });

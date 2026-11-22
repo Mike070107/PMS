@@ -25,6 +25,7 @@ const LABEL:Record<string,string>={parking_monthly:'停车续期',access_card:'�
 const syncLabel=(s:string)=>({synced:'已写入并回读',mis_queued:'等待MIS销账',mis_running:'MIS销账中',mis_checking:'原凭证核验中',mis_unknown:'结果未知 · 先核原单',mis_manual:'原单待人工核查',mis_failed:'MIS未完成',queued:'等待执行',running:'执行中',retry:'等待重试',failed:'执行失败',manual:'需人工',dry_run:'演练未写入',mocked:'未接自动同步',review:'待审批',awaiting_docs:'等待资料',rejected:'审批未通过'} as Record<string,string>)[s]||'核验状态未确认';
 /** 普通用户只展示业务白名单字段，不倾倒内部键名/对象。执行证据另按系统展示。 */
 const EXTRA_LABEL:Record<string,string>={
+  previousVehicleClass:'原收费类别', chargedVehicleClass:'本次收费类别', legacyStartDate:'本次指定旧库开始日期',
   plateNo:'车牌', periodFrom:'原到期时间', periodTo:'新到期时间', spaceNo:'车位编号', parkingSpaceNo:'车位编号', berthNo:'车位编号', parkingNo:'车位编号',
   cardNo:'卡号', icCardNo:'IC 卡号', wgCardNo:'WG 卡号', cardNumber:'卡号', validTo:'有效期', endDate:'有效期',
   operatorName:'操作人', paymentMethod:'收款方式', amountCents:'金额', paidAt:'收款时间', serviceType:'业务类型',
@@ -78,7 +79,7 @@ function detailItems(t:Txn):{items:DetailItem[];extra:Array<DetailItem&{key:stri
   return {items,extra:extraItems};
 }
 const stepLabel=(status?:string|null)=>({pending:'等待执行',waiting:'等待执行回执',done:'步骤已完成',manual:'需人工核查',failed:'执行失败',dry_run:'演练未写入'} as Record<string,string>)[status||'']||'未记录分步结果';
-const operationLabel=(action?:string|null)=>({check:'车牌查重',register:'新增车辆登记',renew:'延长停车有效期'} as Record<string,string>)[action||'']||'停车业务办理';
+const operationLabel=(action?:string|null)=>({check:'车牌查重',register:'新增车辆登记',renew:'调整停车有效期'} as Record<string,string>)[action||'']||'停车业务办理';
 const txnSyncLabel=(t:Txn)=>t.serviceType==='parking_monthly'?(t.detail?.execution?.manualDone?'人工登记办结':t.externalSyncStatus==='synced'?'流程已标记完成':syncLabel(t.externalSyncStatus)):syncLabel(t.externalSyncStatus);
 function renderParkingOperations(t:Txn){
  if(t.serviceType!=='parking_monthly')return null;
@@ -151,7 +152,7 @@ export default function Records(){
   );
  };
  return <>
-  <div className="ph"><div><h1>办理记录</h1><p>PMS收款事实 · 外部销账结果单独核验 · 数据范围：{session.access?.scopeAll?'全部管理处':`${session.access?.communityIds?.length||0}个授权小区`}</p></div><button className="btn" onClick={()=>nav('/fees')}><Icon name="receipt"/>收费流水</button></div>
+  <div className="ph"><div><h1>办理记录</h1><p>PMS收款事实 · 外部销账结果单独核验 · 数据范围：{session.access?.scopeAll?'全部管理处':`${session.access?.communityIds?.length||0}个授权小区`}</p></div><button className="btn" onClick={()=>nav('/pending')}>查看待处理</button><button className="btn" onClick={()=>nav('/fees')}><Icon name="receipt"/>收费流水</button></div>
   <div className="chips" style={{display:'flex',flexWrap:'nowrap',overflowX:'auto',marginBottom:12}}>{filters.map(([k,label])=><button className={`chip ${filter===k?'on':''}`} key={k} onClick={()=>{setFilter(k);setPage(1)}}>{label}</button>)}</div>
   <div className="card" style={{padding:14,marginBottom:12}}><div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
    <input className="in" aria-label="办理记录搜索" placeholder="房号 / 车牌 / 收款人 / 单号" style={{flex:'1 1 260px',minWidth:0}} value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')submit()}}/>

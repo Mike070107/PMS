@@ -131,6 +131,12 @@ export class BusinessController {
     return this.businessService.householdParking(query.houseId, user, access);
   }
 
+  @Get('household-plate-spaces')
+  @RequirePermission('business', 'view')
+  householdPlateSpaces(@Query() query: HouseholdParkingQueryDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.businessService.householdPlateSpaces(query.houseId, (query.plates || '').split(','), user, access);
+  }
+
   @Get('search')
   @RequirePermission('business', 'view')
   search(
@@ -171,6 +177,12 @@ export class BusinessController {
   }
 
   /** 执行层：待处理（排队/执行中/重试/转人工/失败/演练）的停车同步 */
+  @Get('execution/pending-count')
+  @RequirePermission('business', 'view')
+  pendingCount(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.execution.pendingCount(user.tenantId!, scopeCommunityIds(access));
+  }
+
   @Get('execution/pending')
   @RequirePermission('business', 'view')
   executionPending(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {

@@ -191,7 +191,6 @@ export class DeliyunParkingService {
     const plate = normalizePlate(input.plate);
     if (!vehicleId || !isFullPlate(plate) || !isDateOnly(input.previousEndDate) || !isDateOnly(input.endDate))
       throw new BadRequestException('德立云续期参数不完整');
-    if (!input.customEndDate && input.endDate <= input.previousEndDate)      throw new BadRequestException('续期后的有效期必须晚于当前到期日');
     const session = await this.ensureMiniappSession(input.parkName);
     const detailResponse = await this.h5Post<Record<string, unknown>>('/pma/card/findCard', {
       unitKey: session.park.unitKey, id: vehicleId,

@@ -1,3 +1,4 @@
+import { expiredDraftSql } from './vehicle-draft-expiry';
 import { Injectable, Logger, NotFoundException, BadRequestException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -28,6 +29,8 @@ import {
   RETRYABLE_BY_HAND,
   SyncMode,
 } from './business-execution.util';
+
+const PENDING_STATUSES: ExternalSyncStatus[] = ['awaiting_docs', 'review', 'rejected', 'queued', 'running', 'retry', 'manual', 'failed', 'dry_run'];
 
 /** snapshot.execution 的形状 */
 export interface ExecutionState {
@@ -277,6 +280,9 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
    */
   private async runSystems(txn: BusinessTransaction, prev: ExecutionState, mode: SyncMode, attempts: number,
     plate: string, targetEndDate: string | null, systems: ParkingSystemRef[]) {
+    const legacyStart = (txn.snapshot?.parking as { legacyStartDate?: string } | undefined)?.legacyStartDate;
+    const paidClass = (txn.snapshot?.parking as { vehicleClass?: string } | undefined)?.vehicleClass;
+    const renewalIdentity = paidClass && legacyRegistrationProfile(paidClass)?.identity;
     const old = new Map((prev.steps ?? []).map((s) => [s.key, s]));
     const locals = systems.filter((s) => s.kind === 'local');
     const amounts = splitAmountCents(txn.amountCents, locals.length);
@@ -312,9 +318,9 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
           const op = await this.opRepo.findOne({ where: { id: step.operationId, tenantId: txn.tenantId } });
           if (op?.status === 'completed') {
             const actual = op.result?.endDate;
-            if (!targetEndDate || actual !== targetEndDate) {
+            if (!targetEndDate || actual !== targetEndDate || (legacyStart && op.result?.startDate !== legacyStart) || (renewalIdentity && op.result?.identity !== renewalIdentity)) {
               step.status = 'manual';
-              step.note = `现场助手回读到期日 ${actual || '未返回'}，本次提交到期日 ${targetEndDate || '未填写'}，请核对旧库记录`;
+              step.note = `现场助手回读到期日 ${actual || '未返回'}，本次提交到期日 ${targetEndDate || '未填写'}，请核对旧库有效期和车辆类别`;
             } else {
               step.status = 'done';
               step.note = `已续到 ${targetEndDate}（现场助手已回读）`;
@@ -326,12 +332,12 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
         }
         const plan = planLocalRenewal({ previousEndDate: sys.previousEndDate, targetEndDate });
         if (plan.action === 'manual') { step.status = 'manual'; step.note = plan.reason ?? null; continue; }
-        if (plan.action === 'noop') { step.status = 'done'; step.note = plan.reason ?? null; continue; }
+        if (plan.action === 'noop' && !legacyStart && !renewalIdentity) { step.status = 'done'; step.note = plan.reason ?? null; continue; }
         if (mode !== 'on') { step.status = 'dry_run'; step.note = `将经现场助手把 ${(sys.previousEndDate || '无到期日').slice(0, 10)} 续到 ${targetEndDate}`; continue; }
         const created = await this.issuance.createParkingOperation({
           database: sys.database, kind: 'renew_vehicle', sourceRecordId: sys.sourceRecordId,
           idempotencyKey: `biz:${txn.txnNo}:${key}:${attempts}`,
-          payload: { plate, endDate: targetEndDate, previousEndDate: (sys.previousEndDate || '').slice(0, 10), amount: amounts[locals.indexOf(sys)] / 100, businessTxnNo: txn.txnNo },
+          payload: { plate, ...(renewalIdentity ? { renewalIdentity, vehicleClass: paidClass } : {}), ...(legacyStart ? { startDate: legacyStart } : {}), endDate: targetEndDate, previousEndDate: (sys.previousEndDate || '').slice(0, 10), amount: amounts[locals.indexOf(sys)] / 100, businessTxnNo: txn.txnNo },
         } as never, { id: txn.createdBy ?? 0, tenantId: txn.tenantId } as unknown as AuthUser);
         step.operationId = Number((created as { id?: number }).id) || null;
         step.status = 'waiting'; step.note = '已交给现场助手';
@@ -360,6 +366,7 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
     plate: string, endDate: string | null) {
     const user = { id: txn.createdBy!, tenantId: txn.tenantId } as AuthUser;
     const steps: ExecutionStep[] = [];
+    const legacyStart = (txn.snapshot?.parking as { legacyStartDate?: string } | undefined)?.legacyStartDate;
     const wait = () => this.finish(txn, 'queued', { ...prev, mode, attempts: attempts - 1, steps,
       nextAt: new Date(Date.now() + 5000).toISOString(), lastError: null });
     try {
@@ -428,7 +435,7 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
           idempotencyKey: `biz:${txn.txnNo}:register:${database}`,
           payload: { plate, ownerRoom, ownerName: intake.ownerName || ownerRoom, ownerAddress,
             ownerPhone: intake.contactPhone || intake.ownerPhone, identity, carType, amount: index === 0 ? txn.amountCents / 100 : 0,
-            startDate: txn.startDate, endDate, effective: bits, download: '0'.repeat(256), state: 1,
+            ...(legacyStart ? { startDate: legacyStart } : {}), endDate, effective: bits, download: '0'.repeat(256), state: 1,
             garages: [...new Set(garages.filter(g => database === 'parking1' ? g === 'phase1' : g !== 'phase1'))],
             garageNumbers: intake.garageNumbers, spaces: database === 'parking2' ? intake.garageNumbers.main || '' : '',
             duplicateCheckQueryId: query!.id, businessTxnNo: txn.txnNo, note: `操作来源：PMS系统；新办流水 ${txn.txnNo}` },
@@ -438,7 +445,7 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
         if (add.status === 'failed') { step.status = 'manual'; step.note = add.lastError || '新增任务失败；保留原任务，禁止重复新增'; continue; }
         if (add.status !== 'completed') continue;
         const result = add.result;
-        if (!result || result.verified !== true || result.plate !== plate || result.endDate !== endDate || result.effective !== bits || Number(result.state) !== 1 || !result.issueId) {
+        if (!result || result.verified !== true || result.plate !== plate || result.endDate !== endDate || (legacyStart && result.startDate !== legacyStart) || result.effective !== bits || Number(result.state) !== 1 || !result.issueId) {
           step.status = 'manual'; step.note = '新增后车牌、到期日、有效状态或授权回读不一致，未下发设备'; continue;
         }
         let download: (Pick<ParkingOperation, 'id' | 'status' | 'result'> & { lastError?: string | null }) | null = await this.opRepo.findOne({ where: { tenantId: txn.tenantId, idempotencyKey: `biz:${txn.txnNo}:register-download:${database}` } });
@@ -575,11 +582,28 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** 给前端的执行状态汇总（待处理页用） */
+  async pendingCount(tenantId: number, scope: number[] | null) {
+    if (scope && !scope.length) return { count: 0 };
+    const [row] = await this.txnRepo.query(`
+      WITH visible_intakes AS (
+        SELECT i.id FROM vehicle_intakes i WHERE i.tenant_id = $1 AND ($2::int[] IS NULL OR i.community_id = ANY($2))
+          AND i.status IN ('waiting','reupload','submitted') AND NOT ${expiredDraftSql('i')}
+      )
+      SELECT (SELECT count(*) FROM visible_intakes) + count(*) AS count
+      FROM business_transactions t
+      WHERE t.tenant_id = $1 AND ($2::int[] IS NULL OR t.community_id = ANY($2))
+        AND t.service_type = 'parking_monthly' AND t.external_sync_status = ANY($3)
+        AND (t.external_sync_status <> 'awaiting_docs' OR NOT EXISTS (
+          SELECT 1 FROM visible_intakes i WHERE i.id::text = t.snapshot #>> '{intake,id}'
+        ))`, [tenantId, scope, PENDING_STATUSES]);
+    return { count: Number(row.count) };
+  }
+
   async pending(tenantId: number, scope: number[] | null) {
     const where = {
       tenantId,
       serviceType: BusinessServiceType.PARKING_MONTHLY,
-      externalSyncStatus: In(['awaiting_docs', 'review', 'rejected', 'queued', 'running', 'retry', 'manual', 'failed', 'dry_run']),
+      externalSyncStatus: In(PENDING_STATUSES),
       ...(scope ? { communityId: In(scope) } : {}),
     };
     return this.txnRepo.find({ where, order: { id: 'DESC' }, take: 200 });

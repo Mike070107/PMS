@@ -24,6 +24,7 @@ test('先收款后扫码时从原收款快照取类别，四类均映射月租�
  for(const [cls,identity] of [['住户车-1','住户车'],['住户车-3','住户车'],['租户车-1','租户车'],['租户车-2','租户车'],['产权车位','住户车']]) {
   const h=fixture();h.txn.amountCents=15000;h.intake.vehicleClass='';h.txn.snapshot.estimate={vehicleClass:cls};
   await h.s.runOne(90);assert.equal(h.ops[0]?.kind,'add_vehicle',cls+' 应进入原新增队列');
+  assert.equal(h.ops[0].payload.startDate,undefined,'未启用开始日期');
   assert.equal(h.ops[0].payload.carType,1,cls+' 授权类型应为月租车');assert.equal(h.ops[0].payload.identity,identity,cls);
   assert.equal(h.ops[0].payload.amount,150);assert.equal(h.txn.amountCents,15000);
  }

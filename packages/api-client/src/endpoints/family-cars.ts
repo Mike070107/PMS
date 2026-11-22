@@ -1,8 +1,8 @@
 import { request } from '../request';
 
-export type VehicleRegistrationTerm =
+export type VehicleRegistrationTerm = { legacyStartDate?: string } & (
   | { mode: 'months'; months: number }
-  | { mode: 'dates'; startDate: string; endDate: string; reason: string };
+  | { mode: 'dates'; startDate: string; endDate: string; reason: string });
 
 export type FamilyCarStatus = 'upload' | 'office' | 'manager' | 'returned' | 'opening' | 'active' | 'expired' | 'void';
 

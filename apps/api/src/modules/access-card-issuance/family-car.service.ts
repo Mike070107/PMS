@@ -1031,7 +1031,7 @@ export class FamilyCarService {
             plate: car.plate, ownerName: car.ownerName || roomKey(car.lane, car.buildingNo, car.roomNo), ownerPhone: car.ownerPhone,
             ownerAddress: roomKey(car.lane, car.buildingNo, car.roomNo), identity: '亲情车', amount: 0,
             ...(term.mode === 'months' ? { months: term.months } : {}),
-            startDate: car.startDate, endDate: car.endDate, proofUploadId: proofId,
+            legacyDatePolicy: 1, approvalStartDate: car.startDate, ...(term.legacyStartDate ? { startDate: term.legacyStartDate } : {}), endDate: car.endDate, proofUploadId: proofId,
             garages: car.garages, garageNumbers: car.garageNumbers, spaces: car.garageNumbers.main || '',
             requiresProofReview: true, duplicateCheckQueryId: car.duplicateCheckQueryId,
             note: ['亲情车经理审批后登记', car.remark, '操作来源：PMS系统'].filter(Boolean).join('；'),
@@ -1130,7 +1130,7 @@ export class FamilyCarService {
           database: car.database as 'parking1' | 'parking2',
           idempotencyKey: `family-car-${car.id}-renew-${car.endDate}`,
           pmsUserId: car.ownerUserId,
-          payload: { plate: car.plate, startDate: car.startDate, endDate: car.endDate, amount: 0,
+          payload: { plate: car.plate, ...(term.legacyStartDate ? { startDate: term.legacyStartDate } : {}), endDate: car.endDate, amount: 0,
             ...(term.mode === 'months' ? { months: term.months } : {}), identity: '亲情车', note: '亲情车审批期限登记，不收费' },
         }, user);
         car.renewOperationId = renew.id;

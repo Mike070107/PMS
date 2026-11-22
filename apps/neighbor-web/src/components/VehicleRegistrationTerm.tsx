@@ -1,3 +1,4 @@
+import LegacyStartDate from './LegacyStartDate';
 import RenewalMonths from './cashier/RenewalMonths';
 import { useId } from 'react';
 import type { familyCars } from '@pms/api-client';
@@ -7,6 +8,7 @@ export function RegistrationTermSummary({ term }: { term?: RegistrationTerm | nu
   const value = term ?? { mode: 'months', months: 12 };
   return <div style={{ overflowWrap: 'anywhere' }}>
     <b>申请期限：</b>{value.mode === 'months' ? `${value.months}个月（允许生效日起算）` : `${value.startDate} 至 ${value.endDate}（自定义日期）`}
+    {value.legacyStartDate && <div>旧库开始日期：{value.legacyStartDate}</div>}
     {value.mode === 'dates' ? <div className="muted">原因：{value.reason}；未来日期审批后仍等待起始日。</div> : null}
   </div>;
 }
@@ -27,12 +29,14 @@ export function RegistrationTermEditor({ value, onChange, disabled, title = '申
   const field = { display: 'grid', gap: 6, minWidth: 0 };
   return <fieldset disabled={disabled} style={{ border: 0, padding: 0, margin: 0, display: 'grid', gap: 12, minWidth: 0 }}>
     <legend style={{ marginBottom: 8, fontWeight: 700 }}>{title}</legend>
+    <LegacyStartDate value={value.legacyStartDate ?? null} end={value.mode === 'dates' ? value.endDate : undefined} disabled={disabled}
+      onChange={date => onChange({ ...value, legacyStartDate: date ?? undefined })} />
     {value.mode === 'months' ? <>
-      <RenewalMonths value={value.months} disabled={disabled} onChange={months => onChange({ mode:'months', months })}
-        onInvalidDraft={() => onChange({ mode:'months', months:0 })} />
-      <button type="button" className="btn g sm" style={{justifySelf:'start'}} onClick={() => onChange({ mode:'dates', startDate:'', endDate:'', reason:'' })}>自定日期</button>
+      <RenewalMonths value={value.months} disabled={disabled} onChange={months => onChange({ legacyStartDate: value.legacyStartDate, mode:'months', months })}
+        onInvalidDraft={() => onChange({ legacyStartDate: value.legacyStartDate, mode:'months', months:0 })} />
+      <button type="button" className="btn g sm" style={{justifySelf:'start'}} onClick={() => onChange({ legacyStartDate: value.legacyStartDate, mode:'dates', startDate:'', endDate:'', reason:'' })}>自定日期</button>
     </> : <>
-      <button type="button" className="btn g sm" style={{justifySelf:'start'}} onClick={() => onChange({ mode:'months', months:12 })}>按月授权</button>
+      <button type="button" className="btn g sm" style={{justifySelf:'start'}} onClick={() => onChange({ legacyStartDate: value.legacyStartDate, mode:'months', months:12 })}>按月授权</button>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
         <label style={field} htmlFor={`${id}-start`}>开始日期<input id={`${id}-start`} {...errorProps('start')} className="in" style={{ minWidth: 0, width: '100%' }} type="date" required value={value.startDate} onChange={event => onChange({ ...value, startDate: event.target.value })} />{errorText('start')}</label>
         <label style={field} htmlFor={`${id}-end`}>结束日期<input id={`${id}-end`} {...errorProps('end')} className="in" style={{ minWidth: 0, width: '100%' }} type="date" required min={value.startDate || undefined} value={value.endDate} onChange={event => onChange({ ...value, endDate: event.target.value })} />{errorText('end')}</label>

@@ -17,12 +17,17 @@ test('parking two real components: mouse, zero/missing quote, late result, dates
  await type('input[aria-label="自定日期实收金额"]','150');await pause(200);assert.equal(await js("JSON.parse(document.querySelector('#cart').textContent).cents"),15000);
  await js(`document.querySelector('input[aria-label="自定日期实收金额"]').select()`);await call('Input.dispatchKeyEvent',{type:'keyDown',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8});await call('Input.dispatchKeyEvent',{type:'keyUp',key:'Backspace',code:'Backspace',windowsVirtualKeyCode:8});await pause(150);assert.match(await js("document.querySelector('#cart').textContent"),/无可收款报价/);
  await click('.renewal-months__presets button','3个月');
- await type('.renewal-months__stepper input','17');await pause(150);assert.match(await js("document.querySelector('#cart').textContent"),/无可收款报价/);await click('#switch');await pause(150);assert.equal(await js("JSON.parse(document.querySelector('#cart').textContent).months"),6);
+ await type('.renewal-months__stepper input','17');await pause(150);assert.match(await js("document.querySelector('#cart').textContent"),/无可收款报价/);await click('#switch');await pause(150);assert.equal(await js("JSON.parse(document.querySelector('#cart').textContent).months"),12);
  await click('#vehicle');await pause(200);
  assert.equal(await js("document.querySelector('.btn.p').disabled"),true,'类别未选时禁止提交');
  await js(`{const e=document.querySelector('select[aria-label="续期车辆类别"]');e.value='91';e.dispatchEvent(new Event('change',{bubbles:true}))}`);await pause(180);
- assert.match(await js("document.querySelector('.sheet').textContent"),/标准 ¥67.5/);
+ assert.match(await js("document.querySelector('.sheet').textContent"),/标准 ¥810/);
  await js(`{const e=document.querySelector('select[aria-label="续期车辆类别"]');e.value='90';e.dispatchEvent(new Event('change',{bubbles:true}))}`);await pause(180);
+ assert.equal(await js("document.querySelector('.sheet input[type=checkbox]').checked"), false);
+ await click('.sheet input[type=checkbox]');
+ assert.match(await js("document.querySelector('.sheet .pms-date-input input').value"), /^\d{4}-\d{2}-\d{2}$/);
+ await click('.sheet input[type=checkbox]');
+ await click('.renewal-months__presets button','1个月');
  assert.equal(await js("document.querySelector('.pms-date-input input').value"),'2027-02-28');assert.equal(await js("document.querySelector('.btn.p').disabled"),false);await type('.renewal-months__stepper input','17');assert.equal(await js("document.querySelector('.btn.p').disabled"),true);await type('input[aria-label="续期实收金额"]','0');assert.equal(await js("document.querySelector('.btn.p').disabled"),false);const v=await js("({w:innerWidth,scroll:document.documentElement.scrollWidth})");geometry.push({entry:'vehicle',...v});const sr=await js("(()=>{const r=document.querySelector('.sheet').getBoundingClientRect();return{left:r.left,right:r.right}})()");assert.ok(sr.left>=0 && sr.right<=width+1,JSON.stringify(sr));assert.ok(v.scroll<=width+1,JSON.stringify(v));const shot=await call('Page.captureScreenshot',{format:'png'});fs.writeFileSync(path.join(dir,`vehicle-${width}.png`),Buffer.from(shot.data,'base64'));
  for (const endDate of ['2027-01-31', '2026-12-15']) {
    await type('.pms-date-input input', endDate);

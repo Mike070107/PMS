@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { auth, useSession } from '@/lib/auth';
-import { notifications } from '@pms/api-client';
+import { notifications, request } from '@pms/api-client';
 import Icon from '@/components/Icon';
 import ThemePicker from '@/components/ThemePicker';
 import {useUiPreferences} from '@/components/UiPreferencesProvider';
@@ -116,6 +116,26 @@ export default function Shell() {
   }, [activeGroup]);
   const current = NAV.find((i) => i.key === page) ?? NAV[0];
 
+  const [recordCount, setRecordCount] = useState(0);
+  useEffect(() => {
+    setRecordCount(0);
+    if (!canViewPath('/records', session.access) || !session.token) return;
+    const identity = { token: session.token, generation: session.generation };
+    let alive = true, loading = false;
+    async function refresh() {
+      if (loading || document.hidden) return;
+      loading = true;
+      try {
+        const data = await request<{count:number}>({ url:'/business/execution/pending-count' });
+        if (alive && auth.isCurrent(identity) && auth.getAccess() === session.access && Number.isSafeInteger(data.count)) setRecordCount(data.count);
+      } catch { /* 保留本次会话最近一次成功读数 */ }
+      finally { loading = false; }
+    }
+    void refresh();
+    const timer = window.setInterval(refresh,15000);
+    window.addEventListener('focus',refresh);
+    return () => { alive = false; clearInterval(timer); window.removeEventListener('focus',refresh); };
+  }, [loc.pathname, session.token, session.generation, session.access]);
   const [counts, setCounts] = useState<{ dispatch: number; accept: number }>({ dispatch: 0, accept: 0 });
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackType, setFeedbackType] = useState<'suggestion' | 'error'>('suggestion');
@@ -179,7 +199,7 @@ export default function Shell() {
   }, [q, session.access]);
 
   const badgeOf = (key: string) =>
-    key === 'work-orders' ? counts.dispatch
+    key === 'records' ? recordCount : key === 'work-orders' ? counts.dispatch
       : key === 'today' ? counts.dispatch + counts.accept
         : 0;
 
@@ -239,7 +259,7 @@ export default function Shell() {
                   >
                     <Icon name={item.icon} size={22} />
                     <span>{item.name}</span>
-                    {badge ? <span className="n">{badge}</span> : item.legacy ? <span className="leg">旧</span> : null}
+                    {badge ? <span className="n" aria-label={item.key === 'records' ? `${badge} 项待处理` : undefined}>{badge}</span> : item.legacy ? <span className="leg">旧</span> : null}
                   </a>
                 );
               })}</div>
