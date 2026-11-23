@@ -8001,3 +8001,12 @@
   - 21ac8c08 按车牌收取续费并联动车位卡和注销入口
   - 540a0810 车辆变更历史读取两期旧库换牌和续费
 
+## 2026-11-23 19:00 · web · 3a5239f0
+
+- 包：`pms-web-20261123-185459.tar.gz`
+- 提交：3a5239f0 Support shops as destinations for vehicle and card registration
+- 自上次（f6490244）以来上线的相关提交：
+  - 3a5239f0 Support shops as destinations for vehicle and card registration
+  - 21ac8c08 按车牌收取续费并联动车位卡和注销入口
+  - 540a0810 车辆变更历史读取两期旧库换牌和续费
+
