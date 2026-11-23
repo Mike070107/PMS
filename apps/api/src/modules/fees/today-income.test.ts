@@ -57,10 +57,21 @@ test('income preserves bill-level amounts across sources, Beijing midnight, tena
     assert.equal(berthFirst.rows[0].samePlateCount, 2);
     assert.equal(berthLast.rows[1].samePlateCount, 2);
     assert.ok(berthFirst.rows.slice(1).every(row => row.samePlateCount === 1));
+    await db.exec(`UPDATE business_transactions SET snapshot=snapshot || '{"reversedByTxnNo":"PKR-30"}'::jsonb WHERE id=30;
+      INSERT INTO business_transactions VALUES
+        (35,1,10,'parking_monthly','refunded',-75000,'2027-04-30','2027-04-30','红冲 PK-30',
+         '{"vehicle":{"plateNo":"SU99999"},"reversal":{"originalTxnNo":"PK-30"}}','2026-11-20 03:00Z');`);
+    const afterReversal = await incomePage(1,berth), afterReversalLast = await incomePage(2,berth);
+    assert.equal(afterReversal.total,23);
+    assert.equal(afterReversal.amountCents,77000);
+    assert.equal(afterReversal.rows[0].amountCents,-75000);
+    assert.match(afterReversal.rows[1].remark || '',/已红冲 PKR-30/);
+    assert.equal(afterReversal.rows[1].samePlateCount,null);
+    assert.equal(afterReversalLast.rows[2].samePlateCount,1);
     assert.equal(first.rows.length,20); assert.equal(last.rows.length,1);
     assert.equal([...first.rows,...last.rows].reduce((n,row)=>n+row.amountCents,0),total.amountCents);
     assert.equal(first.rows[0].remark,'备注');
-    for (const [category,amount] of [['berth',152000],['card',500],['repair',1200]] as const) {
+    for (const [category,amount] of [['berth',77000],['card',500],['repair',1200]] as const) {
       assert.equal((await svc.incomeFromPms(category,day,user,access,undefined,0,20)).amountCents,amount);
     }
     await assert.rejects(svc.incomeFromPms('card',day,user,access,[20],0,20));

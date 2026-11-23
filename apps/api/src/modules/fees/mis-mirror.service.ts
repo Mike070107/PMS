@@ -968,7 +968,7 @@ export class MisMirrorService {
     if (!offices.length) return emptyIncome();
     await this.assertReady(tenantId);
     return this.incomeFromRows(`SELECT zj_id AS id, COALESCE(NULLIF(replace(receipt_paid_at,' 00:00:00',''),''),paid_date::text) AS "paidAt", NULL::text AS plate,
-        period, amount_cents AS "amountCents", receipt_remark AS remark
+        period, amount_cents AS "amountCents", receipt_remark AS remark, false AS "countsTowardsRepeat"
       FROM mis_mirror_bill WHERE office_code = ANY($1::text[]) AND paid_date=$2::date
         AND fee_code=$3 AND refund_date IS NULL AND amount_cents>0`, [offices, day, code], offset, limit);
   }
@@ -984,12 +984,18 @@ export class MisMirrorService {
     const garage = "COALESCE(snapshot#>>'{estimate,vehicleClass}',snapshot->>'ruleName','') IN ('产权车','产权车位')";
     const filter = category === 'card' ? "service_type='access_card'" :
       `service_type='parking_monthly' AND ${category === 'garage' ? garage : 'NOT (' + garage + ')'}`;
+    const parking = category === 'berth' || category === 'garage';
+    const reversed = "status='refunded' AND amount_cents<0 AND snapshot#>>'{reversal,originalTxnNo}' IS NOT NULL";
+    const collected = "status='paid' AND amount_cents>0";
     const source = repair
       ? "work_orders WHERE deleted_at IS NULL AND status<>'voided' AND fee_cents>0"
-      : `business_transactions WHERE status='paid' AND amount_cents>0 AND ${filter}`;
-    const fields = repair ? 'NULL::text AS plate, NULL::text AS period, fee_cents AS "amountCents", action_note AS remark'
+      : `business_transactions WHERE (${collected}${parking ? ` OR (${reversed})` : ''}) AND ${filter}`;
+    const countsTowardsRepeat = parking ? "(status='paid' AND NOT (snapshot ? 'reversedByTxnNo'))" : 'false';
+    const fields = repair ? 'NULL::text AS plate, NULL::text AS period, fee_cents AS "amountCents", action_note AS remark, false AS "countsTowardsRepeat"'
       : `COALESCE(NULLIF(snapshot#>>'{parking,plate}',''),NULLIF(snapshot#>>'{vehicle,plateNo}','')) AS plate,
-         NULLIF(concat_ws(' 至 ',start_date::text,end_date::text),'') AS period, amount_cents AS "amountCents", remark`;
+         NULLIF(concat_ws(' 至 ',start_date::text,end_date::text),'') AS period, amount_cents AS "amountCents",
+         CASE WHEN snapshot ? 'reversedByTxnNo' THEN concat_ws(' · ',NULLIF(remark,''),'已红冲 ' || (snapshot->>'reversedByTxnNo')) ELSE remark END AS remark,
+         ${countsTowardsRepeat} AS "countsTowardsRepeat"`;
     return this.incomeFromRows(`SELECT id, to_char(${timestamp} AT TIME ZONE 'Asia/Shanghai','YYYY-MM-DD HH24:MI:SS') AS "paidAt", ${fields}
       FROM ${source} AND tenant_id=$1 AND ($2::int[] IS NULL OR community_id=ANY($2::int[]))
       AND ${timestamp} >= ($3::date::timestamp AT TIME ZONE 'Asia/Shanghai')
@@ -999,11 +1005,11 @@ export class MisMirrorService {
   private async incomeFromRows(sql: string, args: unknown[], offset: number, limit: number): Promise<IncomePage> {
     const [result] = await this.dataSource.query(`WITH receipts AS (${sql})
       SELECT COUNT(*)::int AS total, COALESCE(SUM("amountCents"),0)::bigint AS amount,
-        (SELECT json_agg(to_jsonb(r)-'id' ORDER BY r."paidAt" DESC,r.id DESC)
+        (SELECT json_agg(to_jsonb(r)-'id'-'countsTowardsRepeat' ORDER BY r."paidAt" DESC,r.id DESC)
          FROM (
            SELECT receipts.*,
-             CASE WHEN NULLIF(BTRIM(plate),'') IS NOT NULL
-               THEN COUNT(*) OVER (PARTITION BY UPPER(BTRIM(plate)))::int END AS "samePlateCount"
+             CASE WHEN "countsTowardsRepeat" AND NULLIF(BTRIM(plate),'') IS NOT NULL
+               THEN (COUNT(*) FILTER (WHERE "countsTowardsRepeat") OVER (PARTITION BY UPPER(BTRIM(plate))))::int END AS "samePlateCount"
            FROM receipts ORDER BY "paidAt" DESC,id DESC LIMIT $4 OFFSET $5
          ) r) AS rows
       FROM receipts`, [...args, limit, offset]);

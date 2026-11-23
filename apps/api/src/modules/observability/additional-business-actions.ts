@@ -102,6 +102,7 @@ const TEMPLATES: ReadonlyArray<readonly [string, string, string, string, string]
   ["POST", "/business/transactions/:id/retry-sync", "post_business_transactions_id_retry_sync", "重试收费业务外部同步", "收费"],
   ["POST", "/business/plate-tags", "post_business_plate_tags", "设置车牌分类标签", "停车管理"],
   ["POST", "/business/transactions/:id/manual-done", "post_business_transactions_id_manual_done", "人工标记收费业务已处理", "收费"],
+  ["POST", "/business/transaction-ledger/:id/reverse", "post_business_transaction_ledger_id_reverse", "红冲停车收款原流水", "收费"],
   ["POST", "/vehicle-intakes", "post_vehicle_intakes", "新建车辆资料登记单", "车辆登记"],
   ["POST", "/vehicle-intakes/:id/show-qr", "post_vehicle_intakes_id_show_qr", "展示车辆资料填报二维码", "车辆登记"],
   ["POST", "/vehicle-intakes/:id/qr", "post_vehicle_intakes_id_qr", "重新生成车辆资料填报二维码", "车辆登记"],

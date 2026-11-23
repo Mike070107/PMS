@@ -706,6 +706,7 @@ export class BusinessService {
         amount_cents AS "amountCents", start_date::text AS "startDate", end_date::text AS "endDate"
       FROM business_transactions
       WHERE tenant_id = $1 AND service_type = 'parking_monthly' AND status = 'paid' AND amount_cents > 0
+        AND NOT (snapshot ? 'reversedByTxnNo')
         AND ($2::int[] IS NULL OR community_id = ANY($2::int[]))
         AND created_at >= ($3::date::timestamp AT TIME ZONE 'Asia/Shanghai')
         AND created_at < (($3::date + 1)::timestamp AT TIME ZONE 'Asia/Shanghai')

@@ -1,4 +1,11 @@
 import {Type} from 'class-transformer';import {IsDateString,IsIn,IsInt,IsOptional,IsString,Matches,Max,MaxLength,Min} from 'class-validator';
+
+export class ReverseParkingPaymentDto {
+  @IsString()
+  @Matches(/\S/, { message: '请填写红冲原因' })
+  @MaxLength(300)
+  reason!: string;
+}
 export class BusinessLedgerQueryDto{
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(1000000) page?:number;
  @IsOptional() @Type(()=>Number) @IsIn([20,50,100]) pageSize?:number;

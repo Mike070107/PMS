@@ -188,6 +188,7 @@ export enum BusinessBillingUnit {
 /** 业务办理单状态 */
 export enum BusinessTransactionStatus {
   PAID = 'paid',
+  REFUNDED = 'refunded',
   CANCELLED = 'cancelled',
 }
 

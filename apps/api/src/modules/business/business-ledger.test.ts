@@ -58,5 +58,61 @@ test('ledger uses SQL scope, whole-filter aggregates, stable 20/50/100 paging an
  const partial:any=(await service.list({...q,serviceType:'parking_monthly'},user,access)).rows[0];
  assert.equal(partial.detail.parkingOperations.length,1);
  assert.equal(partial.detail.parkingOperations[0].status,'unrecorded');
+ // Persist the locked reversal with the real ledger SQL and verify net totals after re-reading.
+ await db.exec('CREATE TABLE reversal_test_audit (original_id int, reversal_no text, reason text)');
+ let auditFails=true;
+ repo.manager.transaction=(run:any)=>db.transaction(async tx=>{
+  const journal={
+   findOne:async({where,lock}:any)=>{
+    assert.equal(lock.mode,'pessimistic_write');
+    const [row]=(await tx.query<any>(`SELECT id, tenant_id AS "tenantId", community_id AS "communityId", house_id AS "houseId",
+      txn_no AS "txnNo", service_type AS "serviceType", amount_cents AS "amountCents", status,
+      start_date::text AS "startDate", end_date::text AS "endDate", payment_method AS "paymentMethod",
+      external_sync_status AS "externalSyncStatus", snapshot, quantity FROM business_transactions
+      WHERE id=$1 AND tenant_id=$2 FOR UPDATE`,[where.id,where.tenantId])).rows;
+    return row;
+   },
+   create:(row:any)=>row,
+   save:async(row:any)=>{
+    if(row.id){
+     await tx.query('UPDATE business_transactions SET snapshot=$1 WHERE id=$2',[row.snapshot,row.id]);
+     return row;
+    }
+    await tx.query(`INSERT INTO business_transactions(id,txn_no,tenant_id,community_id,house_id,created_by,service_type,
+      status,amount_cents,payment_method,external_sync_status,created_at,snapshot,quantity,start_date,end_date)
+      VALUES(201,$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'2026-11-07T09:00:00+08',$11,$12,$13,$14)`,
+      [row.txnNo,row.tenantId,row.communityId,row.houseId,row.createdBy,row.serviceType,row.status,row.amountCents,
+       row.paymentMethod,row.externalSyncStatus,row.snapshot,row.quantity,row.startDate,row.endDate]);
+    return {...row,id:201};
+   },
+  };
+  return run({getRepository:()=>journal,create:(_entity:any,row:any)=>row,save:async(_entity:any,row:any)=>{
+   if(auditFails)throw Error('模拟审计写入失败');
+   await tx.query('INSERT INTO reversal_test_audit VALUES($1,$2,$3)',[row.transactionId,row.detail.reversalTxnNo,row.detail.reason]);
+  }});
+ });
+ await assert.rejects(service.reverseParkingPayment(200,'重复登记',user,{scopeAll:false,communityIds:[20]} as any),/范围/);
+ await assert.rejects(service.reverseParkingPayment(200,'重复登记',{...user,tenantId:2},access),/范围/);
+ await assert.rejects(service.reverseParkingPayment(200,'   ',user,access),/红冲原因/);
+ await db.exec("UPDATE business_transactions SET external_sync_status='running' WHERE id=200");
+ await assert.rejects(service.reverseParkingPayment(200,'重复登记',user,access),/仅可红冲/);
+ await db.exec("UPDATE business_transactions SET external_sync_status='synced' WHERE id=200");
+ await assert.rejects(service.reverseParkingPayment(200,'重复登记',user,access),/模拟审计写入失败/);
+ assert.equal((await service.list({serviceType:'parking_monthly'},user,access)).total,1,'审计失败整个事务回滚');
+ auditFails=false;
+ const reversed=await service.reverseParkingPayment(200,'确认重复登记',user,access);
+ assert.deepEqual(reversed,{reversalTxnNo:'PKR-200',amountCents:-150000});
+ assert.deepEqual(await service.reverseParkingPayment(200,'继续重试',user,access),reversed);
+ const both=await service.list({q:'PKT',serviceType:'parking_monthly'},user,access);
+ assert.equal(both.total,2);
+ assert.equal(both.summary.netCents,0);
+ assert.equal(both.rows[0].reversal.originalTxnNo,'PKT');
+ assert.equal(both.rows[1].reversedByTxnNo,'PKR-200');
+ assert.equal(both.rows[1].externalSyncStatus,'synced');
+ assert.equal(both.rows[1].detail.periodTo,'2027-10-30');
+ assert.equal(both.rows[1].canReverse,false);
+ assert.equal((await service.list({...q,serviceType:'parking_monthly'},user,access)).summary.netCents,150000);
+ assert.equal((await service.list({from:'2026-11-07',to:'2026-11-07',serviceType:'parking_monthly'},user,access)).summary.netCents,-150000);
+ assert.deepEqual((await db.query('SELECT * FROM reversal_test_audit')).rows,[{original_id:200,reversal_no:'PKR-200',reason:'确认重复登记'}]);
  }finally{await db.close()}
 });

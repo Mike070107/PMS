@@ -21,6 +21,8 @@ test('办理记录中文系统操作：真实React与ledger SQL，桌面/窄屏�
   {vehicle:{plateNo:'沪TEST03'},parking:{newVehicle:true,target:'local:phase1_parking',systems:[{kind:'local',database:'parking2',sourceRecordId:'10',label:'二期地面车库'},{kind:'local',database:'parking2',sourceRecordId:'11',label:'二期大车库'}]},execution:{steps:[{key:'registration:parking2',label:'二期停车资料',kind:'local',status:'dry_run',note:'仅演练，不写入'},{key:'registration:check',label:'一期二期车牌查重',kind:'local',status:'waiting',note:'尚未新增'},{key:'registration:parking1',label:'一期地面车库',kind:'local',status:'failed',operationId:73,note:'设备确认缺失'}],finishedAt:'2026-11-15T00:10:00Z',lastError:'设备确认缺失'}},
  ];
  for(let i=0;i<snapshots.length;i++)await db.query(`INSERT INTO business_transactions VALUES($1,$2,1,10,1,7,'parking_monthly','paid',0,'alipay',$3,'2026-11-15T00:15:00+08',$4,11,'2026-11-15','2027-10-30')`,[301+i,'SYNTHETIC-'+i,['queued','synced','failed'][i],JSON.stringify(snapshots[i])]);
+ await db.exec(`INSERT INTO business_transactions VALUES(304,'SYNTHETIC-RED',1,10,1,7,'parking_monthly','paid',75000,'alipay',
+   'synced','2026-11-15T21:08:07+08','{"vehicle":{"plateNo":"沪TEST04"}}',5,'2026-12-01','2027-04-30');`);
  const ds=new DataSource({type:'postgres',entities:[BusinessTransaction]});await ds.buildMetadatas();const real=ds.getRepository(BusinessTransaction);
  const wrap=qb=>{const clone=qb.clone.bind(qb);qb.clone=()=>wrap(clone());qb.getRawMany=async()=>{const[sql,params]=qb.getQueryAndParameters();return(await db.query(sql,params)).rows};qb.getRawOne=async()=>(await qb.getRawMany())[0];return qb};
  const repo={manager:{connection:{query:async(sql,params)=>(await db.query(sql,params)).rows}},createQueryBuilder:alias=>wrap(real.createQueryBuilder(alias))};
@@ -32,13 +34,22 @@ test('办理记录中文系统操作：真实React与ledger SQL，桌面/窄屏�
  createRoot(document.getElementById('root')).render(<MemoryRouter><main style={{padding:16,maxWidth:1200,margin:'auto'}}><p>隔离合成数据 · 不收费、不下发设备</p><Records/></main></MemoryRouter>);`},bundle:true,write:false,outfile:'entry.js',format:'iife',jsx:'automatic',alias:{'@':path.join(app,'src')},define:{'process.env.NODE_ENV':'"development"'},plugins:[{name:'scoped-ledger-fixture',setup(b){
   b.onResolve({filter:/^@pms\/api-client$/},()=>({path:'api',namespace:'fixture'}));
   b.onResolve({filter:/^@\/lib\/auth$/},()=>({path:'session',namespace:'fixture'}));
-  b.onLoad({filter:/.*/,namespace:'fixture'},a=>({loader:'js',contents:a.path==='session'?`const session={generation:1,user:{id:7},actingTenant:{id:1},access:{scopeAll:false,communityIds:[10]}};export const useSession=()=>session;`:`export async function request(o){const q=new URLSearchParams();for(const [k,v]of Object.entries(o.query||{}))if(v!==undefined)q.set(k,String(v));const r=await fetch('/fixture'+o.url+'?'+q);const v=await r.json();if(!r.ok)throw Error(v.error);return v;}`}));
+  b.onLoad({filter:/.*/,namespace:'fixture'},a=>({loader:'js',contents:a.path==='session'?`const session={generation:1,user:{id:7},actingTenant:{id:1},access:{scopeAll:false,communityIds:[10],pages:{fees:{edit:true}}}};export const useSession=()=>session;`:`export async function request(o){const q=new URLSearchParams();for(const [k,v]of Object.entries(o.query||{}))if(v!==undefined)q.set(k,String(v));const r=await fetch('/fixture'+o.url+'?'+q,{method:o.method||'GET',headers:{'Content-Type':'application/json'},body:o.data?JSON.stringify(o.data):undefined});const v=await r.json();if(!r.ok)throw Error(v.error);return v;}`}));
  }}]});
  const js=built.outputFiles.find(f=>f.path.endsWith('.js')).contents,css=built.outputFiles.find(f=>f.path.endsWith('.css'))?.contents||'';
  const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://127.0.0.1');
   if(url.pathname.startsWith('/fixture/')){
    calls.push({path:url.pathname,query:Object.fromEntries(url.searchParams)});res.setHeader('content-type','application/json');
+   if(req.method==='POST'&&url.pathname==='/fixture/business/transaction-ledger/304/reverse'){
+    let body='';for await(const chunk of req)body+=chunk;
+    assert.deepEqual(JSON.parse(body),{reason:'隔离验收重复录入'});
+    await db.exec(`UPDATE business_transactions SET snapshot=snapshot||'{"reversedByTxnNo":"PKR-304"}'::jsonb WHERE id=304;
+      INSERT INTO business_transactions VALUES(305,'PKR-304',1,10,1,7,'parking_monthly','refunded',-75000,'alipay',
+        'not_applicable','2026-11-15T22:00:00+08','{"vehicle":{"plateNo":"沪TEST04"},"reversal":{"originalTxnNo":"SYNTHETIC-RED","reason":"隔离验收重复录入"}}',
+        5,'2026-12-01','2027-04-30');`);
+    return res.end(JSON.stringify({reversalTxnNo:'PKR-304',amountCents:-75000}));
+   }
    try{assert.equal(req.method,'GET');assert.equal(url.pathname,'/fixture/business/transaction-ledger','禁止写接口');if(hold)await held;if(fail)throw Error('synthetic read failure');const q=Object.fromEntries(url.searchParams);q.page=Number(q.page||1);q.pageSize=Number(q.pageSize||20);return res.end(JSON.stringify(await service.list(q,{id:7,tenantId:1},{scopeAll:false,communityIds:[10]})));}catch(e){res.statusCode=400;return res.end(JSON.stringify({error:e.message}));}
   }
   if(url.pathname==='/entry.js'){res.setHeader('content-type','text/javascript');return res.end(js);}
@@ -56,7 +67,7 @@ test('办理记录中文系统操作：真实React与ledger SQL，桌面/窄屏�
    const row=page.getByRole('row').filter({hasText:'沪TEST01'});await row.getByRole('button',{name:'明细',exact:true}).click();
    const section=page.getByRole('region',{name:'车辆系统操作'}),detail=page.locator('.rec-detail');await section.waitFor();
    assert.equal(await section.locator('.rec-operation').count(),2);const body=await detail.textContent();
-   assert.match(body,/延长停车有效期/);assert.match(body,/关联任务#71/);assert.match(body,/等待执行回执/);assert.match(body,/日期不一致/);assert.match(body,/2027-10-30/);assert.match(body,/2027-10-31/);assert.match(body,/现场通行：未验证/);
+   assert.match(body,/调整停车有效期/);assert.match(body,/关联任务#71/);assert.match(body,/等待执行回执/);assert.match(body,/日期不一致/);assert.match(body,/2027-10-30/);assert.match(body,/2027-10-31/);assert.match(body,/现场通行：未验证/);
    assert.ok(!/parkingSystems|parkingTarget|sourceRecordId|local:parking|\{"/.test(body));assert.ok(!body.includes('车位编号隔离'));
    const geometry=await detail.boundingBox(),viewport=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));
    assert.ok(geometry.width<=width-30,JSON.stringify({geometry,width}));assert.ok(viewport.scroll<=width+1,JSON.stringify(viewport));
@@ -69,7 +80,25 @@ test('办理记录中文系统操作：真实React与ledger SQL，桌面/窄屏�
    await page.getByRole('alert').waitFor();assert.equal(await page.getByRole('textbox',{name:'办理记录搜索'}).inputValue(),'沪TEST01');
    assert.equal(await page.locator('.rec-detail').count(),0,'失败不残留旧单明细');fail=false;await page.getByRole('button',{name:'重试',exact:true}).click();
    await row.waitFor();assert.equal(await page.getByRole('button',{name:'明细',exact:true}).count(),1);await row.getByRole('button',{name:'明细',exact:true}).click();await page.getByRole('region',{name:'车辆系统操作'}).waitFor();
+   await page.getByRole('textbox',{name:'办理记录搜索'}).fill('沪TEST04');
+   await page.getByRole('button',{name:'查询',exact:true}).click();
+   const reverse=page.getByRole('button',{name:'红冲',exact:true});
+   await reverse.click();
+   const dialog=page.getByRole('dialog',{name:'红冲停车收款'});
+   assert.match(await dialog.innerText(),/沪TEST04[\s\S]*750\.00[\s\S]*另行核对/);
+   await dialog.getByRole('button',{name:'确认红冲',exact:true}).click();
+   const reason=dialog.getByRole('textbox',{name:'红冲原因'});
+   assert.equal(await reason.getAttribute('aria-invalid'),'true');
+   await reason.fill('隔离验收重复录入');
+   await page.screenshot({path:path.join(evidence,`records-reversal-${width}.png`),fullPage:true,animations:'disabled'});
+   await dialog.getByRole('button',{name:'确认红冲',exact:true}).click();
+   await page.getByText('已红冲 ¥ -750.00 · 红冲单 PKR-304',{exact:true}).waitFor();
+   await page.getByText('停车红冲 沪TEST04',{exact:true}).waitFor();
+   assert.equal(await reverse.count(),0);
+   assert.equal(await page.getByTestId('ledger-net').innerText(),'¥ 0.00');
    await page.close();
+   await db.exec(`DELETE FROM business_transactions WHERE id=305;
+    UPDATE business_transactions SET snapshot=snapshot-'reversedByTxnNo' WHERE id=304;`);
   }
   assert.deepEqual(errors,[]);fs.writeFileSync(path.join(evidence,'browser-verification.json'),JSON.stringify({result:'passed',widths:[1440,390],calls,errors,boundary:'Real React Records + BusinessLedgerService + isolated PGlite SQL; fixed auth fixture; no production, payment, assistant/device writes; no field access proof'},null,2));
  }finally{release();if(browser)await browser.close();await new Promise(r=>server.close(r));await db.close();}

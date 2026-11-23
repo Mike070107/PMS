@@ -1,5 +1,7 @@
 import {resolveAddressForTenant} from '../../common/address-lookup';
-import {BadRequestException,ForbiddenException,Injectable} from '@nestjs/common';import {InjectRepository} from '@nestjs/typeorm';import {Repository} from 'typeorm';import {BusinessTransaction} from '../../entities/business-transaction.entity';import {AuthUser} from '../../common/current-user.decorator';import {ResolvedAccess} from '../access/access.service';import {scopeCommunityIds} from '../access/scope.util';
+import {BadRequestException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';import {InjectRepository} from '@nestjs/typeorm';import {Repository} from 'typeorm';import {BusinessTransaction} from '../../entities/business-transaction.entity';import {AuthUser} from '../../common/current-user.decorator';import {ResolvedAccess} from '../access/access.service';import {scopeCommunityIds} from '../access/scope.util';
+import {BusinessLog} from '../../entities/business-log.entity';
+import {BusinessServiceType,BusinessTransactionStatus} from '../../common/enums';
 const PAYMENT_LABELS:Record<string,string>={cash:'现金',wechat:'微信',alipay:'支付宝',bank:'银行',pos:'刷卡',transfer:'转账',other:'其他'};
 const SERVICE_LABELS:Record<string,string>={parking_monthly:'停车续期',access_card:'门禁卡',mis_property:'物业费',mis_berth:'泊位费'};
 function text(value:unknown){const s=String(value??'').trim();return s||null}
@@ -75,6 +77,46 @@ export interface BusinessLedgerQuery{page?:number;pageSize?:number;from?:string;
 @Injectable()
 export class BusinessLedgerService{
  constructor(@InjectRepository(BusinessTransaction) private readonly repo:Repository<BusinessTransaction>){}
+
+ async reverseParkingPayment(id:number, reason:string, user:AuthUser, access?:ResolvedAccess){
+  const tenantId=user.tenantId;
+  if(!tenantId||!access)throw new ForbiddenException('缺少公司或数据范围授权');
+  const note=reason?.trim();
+  if(!note||note.length>300)throw new BadRequestException('请填写红冲原因，最多 300 字');
+  const scope=scopeCommunityIds(access);
+  return this.repo.manager.transaction(async manager=>{
+   const repo=manager.getRepository(BusinessTransaction);
+   const original=await repo.findOne({where:{id,tenantId},lock:{mode:'pessimistic_write'}});
+   if(!original||scope&&(original.communityId==null||!scope.includes(original.communityId)))
+    throw new NotFoundException('原流水不存在或不在当前数据范围');
+   const linkedTxnNo=text(original.snapshot?.reversedByTxnNo);
+   if(linkedTxnNo)return {reversalTxnNo:linkedTxnNo,amountCents:-original.amountCents};
+   if(!canReverseParkingPayment(original))throw new BadRequestException('仅可红冲已办结或审批驳回的停车收款正数原单');
+   const snapshot=original.snapshot||{};
+   const plate=text(object(snapshot.vehicle).plateNo)||text(object(snapshot.parking).plate);
+   const reversal=await repo.save(repo.create({
+    tenantId,txnNo:`PKR-${original.id}`,serviceType:BusinessServiceType.PARKING_MONTHLY,
+    status:BusinessTransactionStatus.REFUNDED,ruleId:original.ruleId,communityId:original.communityId,
+    houseId:original.houseId,ownerId:original.ownerId,targetType:'parking_reversal',targetId:original.id,quantity:original.quantity,
+    startDate:original.startDate,endDate:original.endDate,amountCents:-original.amountCents,
+    paymentMethod:original.paymentMethod,externalSyncStatus:'not_applicable',invoiceStatus:'not_required',
+    remark:`红冲 ${original.txnNo}；${note}`,
+    snapshot:{vehicle:{plateNo:plate},estimate:snapshot.estimate,ruleName:snapshot.ruleName,
+     intake:{propertyLabel:object(snapshot.intake).propertyLabel},
+     reversal:{originalTxnNo:original.txnNo,reason:note}},
+    createdBy:user.id,updatedBy:user.id,
+   }));
+   original.snapshot={...snapshot,reversedByTxnNo:reversal.txnNo};
+   original.updatedBy=user.id;
+   await repo.save(original);
+   await manager.save(BusinessLog,manager.create(BusinessLog,{
+    tenantId,transactionId:original.id,action:'parking_payment_reversed',
+    detail:{reason:note,reversalId:reversal.id,reversalTxnNo:reversal.txnNo,amountCents:reversal.amountCents},
+    createdBy:user.id,updatedBy:user.id,
+   }));
+   return {reversalTxnNo:reversal.txnNo,amountCents:reversal.amountCents};
+  });
+ }
  async list(q:BusinessLedgerQuery,user:AuthUser,access?:ResolvedAccess){
   if(!user.tenantId||!access)throw new ForbiddenException('缺少公司或数据范围授权');
   const requested=q.page??1,pageSize=q.pageSize??20;if(!Number.isInteger(requested)||requested<1||requested>1000000||![20,50,100].includes(pageSize))throw new BadRequestException('分页仅支持20、50、100条');
@@ -91,13 +133,23 @@ export class BusinessLedgerService{
   if(q.q?.trim()){
    const match=await resolveAddressForTenant(this.repo.manager.connection,user.tenantId!,q.q);
    if(match)base.andWhere(match.allHouseIds.length?'t.house_id IN (:...addressHouseIds)':'1=0',{addressHouseIds:match.allHouseIds});
-   else base.andWhere(`(t.txn_no ILIKE :term OR ${address} ILIKE :term OR ${plate} ILIKE :term OR u.name ILIKE :term)`,{term:'%'+q.q.trim().replace(/[\\%_]/g,c=>'\\'+c)+'%'});
+   else base.andWhere(`(t.txn_no ILIKE :term OR t.snapshot->>'reversedByTxnNo' ILIKE :term OR t.snapshot#>>'{reversal,originalTxnNo}' ILIKE :term
+    OR ${address} ILIKE :term OR ${plate} ILIKE :term OR u.name ILIKE :term)`,{term:'%'+q.q.trim().replace(/[\\%_]/g,c=>'\\'+c)+'%'});
   }
   const paid="COALESCE(SUM(CASE WHEN t.status='paid' THEN t.amount_cents::bigint ELSE 0 END),0)",refunded="COALESCE(SUM(CASE WHEN t.status='refunded' THEN ABS(t.amount_cents::bigint) ELSE 0 END),0)";
   const totals=await base.clone().select('COUNT(*)','total').addSelect(paid,'paidCents').addSelect(refunded,'refundedCents').addSelect(`(${paid})-(${refunded})`,'netCents').addSelect("COALESCE(SUM(CASE WHEN t.status='paid' AND t.amount_cents=0 THEN 1 ELSE 0 END),0)",'freeCount').addSelect("COALESCE(SUM(CASE WHEN t.status='paid' THEN 1 ELSE 0 END),0)",'paidCount').addSelect("COALESCE(SUM(CASE WHEN t.external_sync_status='synced' THEN 1 ELSE 0 END),0)",'syncedCount').getRawOne<Record<string,string>>();
   const safe=(v:unknown)=>{const n=Number(v??0);if(!Number.isSafeInteger(n))throw new BadRequestException('汇总超出安全范围，请缩小筛选');return n};const total=safe(totals?.total),page=Math.min(requested,Math.max(1,Math.ceil(total/pageSize)));
   const rows=await base.clone().select(['t.id AS id','t.txn_no AS "txnNo"','t.service_type AS "serviceType"','t.status AS status','t.amount_cents AS "amountCents"','t.payment_method AS "paymentMethod"','t.external_sync_status AS "externalSyncStatus"','t.created_at AS "createdAt"','t.community_id AS "communityId"','t.house_id AS "houseId"','t.quantity AS quantity','t.snapshot AS snapshot','t.start_date::text AS "startDate"','t.end_date::text AS "endDate"','u.name AS cashier',`${address} AS address`,`${plate} AS "plateNo"`]).orderBy('t.created_at','DESC').addOrderBy('t.id','DESC').offset((page-1)*pageSize).limit(pageSize).getRawMany();
   const byService=(await base.clone().select('t.service_type','serviceType').addSelect(paid,'paidCents').addSelect("COALESCE(SUM(CASE WHEN t.status='paid' THEN 1 ELSE 0 END),0)",'paidCount').groupBy('t.service_type').orderBy('t.service_type','ASC').getRawMany()).map(r=>({serviceType:String(r.serviceType),paidCents:safe(r.paidCents),paidCount:safe(r.paidCount)}));
-  return{rows:rows.map(r=>({...r,detail:detailOf(r)})),total,page,pageSize,summary:{paidCents:safe(totals?.paidCents),refundedCents:safe(totals?.refundedCents),netCents:safe(totals?.netCents),freeCount:safe(totals?.freeCount),syncedCount:safe(totals?.syncedCount),paidCount:safe(totals?.paidCount),byService}};
+  return{rows:rows.map(r=>({...r,detail:detailOf(r),canReverse:canReverseParkingPayment(r),
+   reversedByTxnNo:text(r.snapshot?.reversedByTxnNo),
+   reversal:object(r.snapshot?.reversal).originalTxnNo ? r.snapshot.reversal : null,
+  })),total,page,pageSize,summary:{paidCents:safe(totals?.paidCents),refundedCents:safe(totals?.refundedCents),netCents:safe(totals?.netCents),freeCount:safe(totals?.freeCount),syncedCount:safe(totals?.syncedCount),paidCount:safe(totals?.paidCount),byService}};
  }
+}
+
+function canReverseParkingPayment(row:Pick<BusinessTransaction,'serviceType'|'status'|'amountCents'|'externalSyncStatus'|'snapshot'>){
+ return row.serviceType===BusinessServiceType.PARKING_MONTHLY&&row.status===BusinessTransactionStatus.PAID&&
+  Number.isSafeInteger(row.amountCents)&&row.amountCents>0&&!row.snapshot?.reversedByTxnNo&&
+  ['synced','rejected'].includes(row.externalSyncStatus);
 }
