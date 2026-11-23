@@ -8037,3 +8037,10 @@
 - 自上次（3a5239f0）以来上线的相关提交：
   - 85f9d427 Read original parking exit fees and report offline access controller delivery
 
+## 2026-11-23 21:26 · api · cb94f5dc
+
+- 包：`pms-api-fast-20261123-212518.tar.gz`
+- 提交：cb94f5dc Fix paid vehicle registration defaults
+- 自上次（85f9d427）以来上线的相关提交：
+  - cb94f5dc Fix paid vehicle registration defaults
+
