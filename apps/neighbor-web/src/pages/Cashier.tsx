@@ -90,6 +90,7 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
   const navigate = useNavigate();
   const session = useSession();
   const [params] = useSearchParams();
+  const renewalSearch = params.get('renewPlate');
   const embedded = embeddedIntakeId !== undefined;
   const intakeParam = embedded ? String(embeddedIntakeId) : embeddedRenewalPlate ? null : params.get('intakeId');
   const validIntakeId = intakeParam !== null && /^[1-9]\d*$/.test(intakeParam) && Number.isSafeInteger(Number(intakeParam));
@@ -194,7 +195,7 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
       if (alive && revision === navigationRevision.current) setDeep({ query: intakeParam, error: e instanceof Error ? e.message : '读取本次登记失败' });
     });
     return () => { alive = false; };
-  }, [intakeParam, validIntakeId, communities, tree, session.access]);
+  }, [intakeParam, validIntakeId, renewalSearch, communities, tree, session.access]);
   const updateLinkedIntake = useCallback((row: Intake) => {
     setDeep(current => current?.query === intakeParam && current.row?.id === row.id ? { ...current, row } : current);
   }, [intakeParam]);
@@ -700,8 +701,9 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
 
       {intakeParam === null ? <div className="findBar">
         <UniSearch
+          key={embeddedRenewalPlate ?? renewalSearch ?? ''}
           communities={communities}
-          initialSearch={embeddedRenewalPlate ?? params.get('renewPlate') ?? undefined}
+          initialSearch={embeddedRenewalPlate ?? renewalSearch ?? undefined}
           onPick={onUniPick}
           onShopPick={embeddedRenewalPlate ? undefined : shop => {
             applyHouse(null, null);

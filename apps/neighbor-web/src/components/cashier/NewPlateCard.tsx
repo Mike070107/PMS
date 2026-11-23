@@ -18,6 +18,7 @@ import { dayjs, money } from '@/lib/format';
 import type { RegistrationTerm } from '@/components/VehicleRegistrationTerm';
 import { RegistrationTermEditor, RegistrationTermSummary } from '@/components/VehicleRegistrationTerm';
 import OfficeIntakeEditor from './OfficeIntakeEditor';
+import ExistingPlateNotice, { isExistingPlateMessage } from './ExistingPlateNotice';
 import { formBase, type Car, type Lot, type ParkHouse, type ParkingCart, type ParkRule, type ParkTarget } from './ParkingTab';
 
 type FamilyStage = 'upload' | 'office' | 'manager' | 'returned' | 'opening' | 'active' | 'expired' | 'void';
@@ -90,6 +91,8 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
   const [qr, setQr] = useState(it.qr ?? null);
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
+  const [existingPlate, setExistingPlate] = useState('');
+  const showExistingPlate = !!existingPlate && isExistingPlateMessage(err);
   const [note, setNote] = useState('');
   const [ask, setAsk] = useState<'' | 'reupload' | 'void'>('');
   const [converting, setConverting] = useState(false);
@@ -213,7 +216,12 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
     operation.current = label; ++epoch.current;
     setBusy(label); setErr('');
     try { const x = await fn(); acceptResponse(x); if (label !== '显示二维码') { setAsk(''); setNote(''); } }
-    catch (e) { setErr(e instanceof Error ? e.message : `${label}失败`); if (rethrow) throw e; }
+    catch (e) {
+      const message = e instanceof Error ? e.message : `${label}失败`;
+      setExistingPlate(it.kind === 'paid' && isExistingPlateMessage(message) ? edit.plate.trim() : '');
+      setErr(message);
+      if (rethrow) throw e;
+    }
     finally { operation.current = ''; setBusy(''); }
   };
   const uploadFiles = async (list: FileList | File[]) => {
@@ -405,6 +413,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
                 <div className="np-files">{it.files.map(f => <IntakeAttachment key={f.fileUrl} file={f}/>)}</div>
               </div>
               </details><button type="button" className="btn p" disabled={!!busy || savingGarages || (!defaultStaffMode && (plateInvalid || phoneInvalid || relationInvalid))} data-charge-next onClick={submitStaffFields}>{busy === '保存登记' ? '保存中…' : '保存资料，进入预览'}</button>
+              {showExistingPlate && <ExistingPlateNotice plate={existingPlate} />}
             </fieldset> : null}
           </section> : null}
       {it.reused ? <div className="note2">已继续原登记 #{it.id}，未新增单据；原资料及收款关联保留。</div> : null}
@@ -527,7 +536,8 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
               </div>
             </div>
           ) : null}
-          {err ? <div className="note2" role="alert" style={{ color: 'var(--dang)', marginTop: 8 }}><Icon name="alert" />{err}</div> : null}
+          {showExistingPlate ? (!staffMode || !canStaff) && <ExistingPlateNotice plate={existingPlate} />
+            : err ? <div className="note2" role="alert" style={{ color: 'var(--dang)', marginTop: 8 }}><Icon name="alert" />{err}</div> : null}
           {okMsg ? <div className="note2" style={{ marginTop: 8 }}><Icon name="check" />{okMsg}</div> : null}
 
           {/* 结果 */}

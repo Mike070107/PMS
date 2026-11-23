@@ -31,7 +31,7 @@ test('办理记录中文系统操作：真实React与ledger SQL，桌面/窄屏�
  const built=await esbuild.build({stdin:{resolveDir:app,loader:'tsx',contents:`
  import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import Records from '@/pages/Records';
  import '@/styles/app.css';import '@/styles/design.css';import '@/styles/guards.css';
- createRoot(document.getElementById('root')).render(<MemoryRouter><main style={{padding:16,maxWidth:1200,margin:'auto'}}><p>隔离合成数据 · 不收费、不下发设备</p><Records/></main></MemoryRouter>);`},bundle:true,write:false,outfile:'entry.js',format:'iife',jsx:'automatic',alias:{'@':path.join(app,'src')},define:{'process.env.NODE_ENV':'"development"'},plugins:[{name:'scoped-ledger-fixture',setup(b){
+ createRoot(document.getElementById('root')).render(<MemoryRouter initialEntries={['/records'+location.search]}><main style={{padding:16,maxWidth:1200,margin:'auto'}}><p>隔离合成数据 · 不收费、不下发设备</p><Records/></main></MemoryRouter>);`},bundle:true,write:false,outfile:'entry.js',format:'iife',jsx:'automatic',alias:{'@':path.join(app,'src')},define:{'process.env.NODE_ENV':'"development"'},plugins:[{name:'scoped-ledger-fixture',setup(b){
   b.onResolve({filter:/^@pms\/api-client$/},()=>({path:'api',namespace:'fixture'}));
   b.onResolve({filter:/^@\/lib\/auth$/},()=>({path:'session',namespace:'fixture'}));
   b.onLoad({filter:/.*/,namespace:'fixture'},a=>({loader:'js',contents:a.path==='session'?`const session={generation:1,user:{id:7},actingTenant:{id:1},access:{scopeAll:false,communityIds:[10],pages:{fees:{edit:true}}}};export const useSession=()=>session;`:`export async function request(o){const q=new URLSearchParams();for(const [k,v]of Object.entries(o.query||{}))if(v!==undefined)q.set(k,String(v));const r=await fetch('/fixture'+o.url+'?'+q,{method:o.method||'GET',headers:{'Content-Type':'application/json'},body:o.data?JSON.stringify(o.data):undefined});const v=await r.json();if(!r.ok)throw Error(v.error);return v;}`}));
@@ -96,6 +96,10 @@ test('办理记录中文系统操作：真实React与ledger SQL，桌面/窄屏�
    await page.getByText('停车红冲 沪TEST04',{exact:true}).waitFor();
    assert.equal(await reverse.count(),0);
    assert.equal(await page.getByTestId('ledger-net').innerText(),'¥ 0.00');
+   await page.goto(`http://127.0.0.1:${server.address().port}/?q=${encodeURIComponent('沪TEST04')}`);
+   await page.getByText('停车红冲 沪TEST04',{exact:true}).waitFor();
+   assert.equal(await page.getByRole('textbox',{name:'办理记录搜索'}).inputValue(),'沪TEST04');
+   assert.equal(await page.getByText('停车续期 沪TEST01',{exact:true}).count(),0);
    await page.close();
    await db.exec(`DELETE FROM business_transactions WHERE id=305;
     UPDATE business_transactions SET snapshot=snapshot-'reversedByTxnNo' WHERE id=304;`);

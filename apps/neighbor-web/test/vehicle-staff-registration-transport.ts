@@ -8,6 +8,7 @@ export const seed: any = { id: 71, kind: 'paid', status: 'waiting', houseId: 5, 
 let current = structuredClone(seed);
 w.__calls = []; w.__current = () => structuredClone(current); w.__failGarage = false; w.__failReview = false; w.__holdSubmit = false;
 export const accessCardIssuance = {};
+export const address = {};
 export async function request(o: any): Promise<any> {
   w.__calls.push(structuredClone(o)); const d = o.data || {};
   if (o.url === '/business/parking-targets') return targets;
@@ -19,6 +20,7 @@ export async function request(o: any): Promise<any> {
   if (o.url.endsWith('/class')) current = { ...current, vehicleClass: d.vehicleClass };
   if (o.url.endsWith('/kind')) current = { ...current, ...d, status: 'waiting', vehicleClass: d.kind === 'family' ? '' : d.vehicleClass, garages: d.kind === 'family' ? ['phase2'] : [], garageNumbers: {} };
   if (o.url.endsWith('/staff-submit')) {
+    if (w.__existingPlate) throw Error('该车牌已有登记，请核对原登记及收款流水，不可重复新办');
     if (w.__holdSubmit) await new Promise(r => { w.__releaseSubmit = r; });
     current = { ...current, ...d, status: 'submitted', submittedAt: '2026-11-17T09:00:00+08:00' };
   }

@@ -1,6 +1,6 @@
 import { formatBeijingDateTime } from '@pms/shared-types';
 import {useEffect,useRef,useState} from 'react';
-import {request} from '@pms/api-client';import {useNavigate} from 'react-router-dom';import {useSession} from '@/lib/auth';
+import {request} from '@pms/api-client';import {useNavigate,useSearchParams} from 'react-router-dom';import {useSession} from '@/lib/auth';
 import {dayjs,money,payLabel} from '@/lib/format';import DateInput from '@/components/DateInput';import Icon from '@/components/Icon';
 import '@/styles/records-detail.css';
 import ParkingReversalSheet from '@/components/ParkingReversalSheet';
@@ -115,7 +115,10 @@ function renderParkingOperations(t:Txn){
 }
 /** PMS收款事实与源库执行状态分开；统计来自完整服务端筛选，不累计本页。 */
 export default function Records(){
- const nav=useNavigate(),session=useSession();const [filter,setFilter]=useState<Filter>(''),[draft,setDraft]=useState(''),[term,setTerm]=useState(''),[page,setPage]=useState(1),[pageSize,setPageSize]=useState(20),[from,setFrom]=useState(''),[to,setTo]=useState(''),[revision,setRevision]=useState(0);
+ const nav=useNavigate(),session=useSession();
+ const [params]=useSearchParams();
+ const initialQuery=(params.get('q')??'').trim().slice(0,120);
+ const [filter,setFilter]=useState<Filter>(''),[draft,setDraft]=useState(initialQuery),[term,setTerm]=useState(initialQuery),[page,setPage]=useState(1),[pageSize,setPageSize]=useState(20),[from,setFrom]=useState(''),[to,setTo]=useState(''),[revision,setRevision]=useState(0);
  const [result,setResult]=useState<{key:string;data:Ledger}|null>(null),[failure,setFailure]=useState<{key:string;message:string}|null>(null),[loading,setLoading]=useState(false);
  const [expanded,setExpanded]=useState<number[]>([]);
  const [reverseTarget,setReverseTarget]=useState<Txn|null>(null);

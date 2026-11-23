@@ -5,6 +5,7 @@ import Icon from '@/components/Icon';
 import { RegistrationTermEditor, type RegistrationTerm } from '@/components/VehicleRegistrationTerm';
 import { newOfficeKey, saveOfficeIntake } from '@/lib/vehicle-intake-office';
 import type { Intake } from './NewPlateCard';
+import ExistingPlateNotice, { isExistingPlateMessage } from './ExistingPlateNotice';
 
 const MAX = 10;
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -25,6 +26,7 @@ export default function OfficeIntakeEditor({ intake, onSaved }: { intake: Intake
   const [keep, setKeep] = useState<number[]>(() => intake.files.map(file => file.index));
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
+  const [existingPlate, setExistingPlate] = useState('');
   const [ok, setOk] = useState('');
   const pasteRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -83,7 +85,11 @@ export default function OfficeIntakeEditor({ intake, onSaved }: { intake: Intake
       setKeep(((saved as Intake).files ?? []).map(file => file.index));
       setOk(confirm ? '已确认并提交办公室审核' : '草稿已保存，尚未提交审核');
     } catch (error) {
-      if (mounted.current) setErr(error instanceof Error ? error.message : '保存失败，请重试；已填写内容和选择的资料都还在');
+      if (mounted.current) {
+        const message = error instanceof Error ? error.message : '保存失败，请重试；已填写内容和选择的资料都还在';
+        setExistingPlate(intake.kind === 'paid' && isExistingPlateMessage(message) ? plate.trim() : '');
+        setErr(message);
+      }
     } finally {
       if (mounted.current) setBusy('');
     }
@@ -141,7 +147,8 @@ export default function OfficeIntakeEditor({ intake, onSaved }: { intake: Intake
         <button type="button" className="btn g sm" disabled={!!busy} onClick={reset}>恢复已保存内容</button>
         <span className="muted">{keep.length + picks.length} 份资料</span>
       </div>
-      {err ? <div className="note2" role="alert" style={{ color: 'var(--dang)', marginTop: 8 }}><Icon name="alert" />{err}</div> : null}
+      {err && existingPlate && isExistingPlateMessage(err) ? <ExistingPlateNotice plate={existingPlate} />
+        : err ? <div className="note2" role="alert" style={{ color: 'var(--dang)', marginTop: 8 }}><Icon name="alert" />{err}</div> : null}
       {ok ? <div className="note2" role="status" style={{ marginTop: 8 }}><Icon name="check" />{ok}</div> : null}
     </div> : null}
   </section>;
