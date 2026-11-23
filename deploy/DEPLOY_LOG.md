@@ -8121,3 +8121,10 @@
 - 自上次（e138d164）以来上线的相关提交：
   - eedfee30 Ship income receipt columns and family vehicle expiry
 
+## 2026-11-23 23:28 · web · d6956962
+
+- 包：`pms-web-20261123-232715.tar.gz`
+- 提交：d6956962 Keep ledger row actions inline under global wrapping rules
+- 自上次（d539de27）以来上线的相关提交：
+  - d6956962 Keep ledger row actions inline under global wrapping rules
+
