@@ -8010,3 +8010,10 @@
   - 21ac8c08 按车牌收取续费并联动车位卡和注销入口
   - 540a0810 车辆变更历史读取两期旧库换牌和续费
 
+## 2026-11-23 19:00 · assistant · 3a5239f0
+
+- 提交：3a5239f0 Support shops as destinations for vehicle and card registration
+- 自上次（1c4888ec）以来上线的相关提交：
+  - 21ac8c08 按车牌收取续费并联动车位卡和注销入口
+  - 540a0810 车辆变更历史读取两期旧库换牌和续费
+
