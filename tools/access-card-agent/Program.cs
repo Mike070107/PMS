@@ -175,6 +175,33 @@ namespace Pms.AccessCardAgent
                     if (AgentLoop.FirstWarning(mergedWarnings) == null ||
                         ((AccessControllerUploadResult)mergedWarnings[0]).warning == null)
                         throw new InvalidOperationException("iCCard 去零 warning 未传递到控制器回执/活动日志");
+                    var issuanceTask = new AgentTask { targetBuildings = new[] {
+                        new AccessTargetBuilding { id = 11, buildingNo = "11", accessSystem = "iccard" },
+                        new AccessTargetBuilding { id = 20, buildingNo = "20", accessSystem = "iccard" },
+                        new AccessTargetBuilding { id = 26, buildingNo = "26", accessSystem = "mjsystem" }
+                    } };
+                    var issuanceResults = AccessControllerUploader.ActivateIssuedCard(issuanceTask, single =>
+                    {
+                        var target = single.targetBuildings[0];
+                        if (target.id == 20) throw new InvalidOperationException("测试数据库写入失败");
+                        return new object[] { new AccessDatabaseWriteResult { buildingId = target.id, status = "access_db_written" } };
+                    }, single =>
+                    {
+                        var target = single.targetBuildings[0];
+                        if (target.id == 11) throw new System.TimeoutException("测试控制器未响应");
+                        if (target.id == 20) throw new InvalidOperationException("数据库写入失败后不应调用控制器");
+                        return new object[] { new AccessControllerUploadResult { buildingId = target.id, status = "controller_uploaded" } };
+                    });
+                    var issuanceMessage = AccessControllerUploader.IssuanceFailureMessage(issuanceResults);
+                    if (!AccessControllerUploader.NeedsManualUpload(issuanceResults) ||
+                        !issuanceMessage.Contains("11号楼：设备离线，已添加到二期门禁系统，请人工下发权限") ||
+                        !issuanceMessage.Contains("20号楼：添加到二期门禁系统失败") || issuanceMessage.Contains("26号楼"))
+                        throw new InvalidOperationException("发卡数据库与楼栋下发阶段回执不正确");
+                    if (ParkingDatabase.ExitDueClass(new[] { "" }) != null ||
+                        ParkingDatabase.ExitDueClass(new[] { "亲情车" }) != "亲情车" ||
+                        ParkingDatabase.ExitDueClass(new[] { "月租车" }) != null ||
+                        ParkingDatabase.ExitDueClass(new[] { "临时车" }) != "临时车")
+                        throw new InvalidOperationException("出场应收车类核验不正确");
                     // 门禁主板远程控制：命令构造与不支持设备的明确拒绝（不连控制器）。
                     if (AccessControllerUploader.BuildIcCardDoorOperationFunction("remote_open", 1, 0) != "9D100101")
                         throw new InvalidOperationException("iCCard 立即开门命令测试失败");

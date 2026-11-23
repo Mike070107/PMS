@@ -4058,6 +4058,10 @@ export class AccessCardIssuanceService {
     });
     if (!item) throw new NotFoundException('代理任务不存在');
     if (item.leaseAgentKey !== agent.agentKey) throw new ForbiddenException('任务租约不属于当前代理');
+    if (agent.kind === 'access_gateway' && (item.batch.projectPhase !== 'phase2' ||
+        item.cardStatus !== 'card_completed' || !item.legacyHouseSequence)) {
+      throw new BadRequestException('仅已完成写卡及捷顺登记的二期发卡任务可下发楼栋权限');
+    }
 
     if (dto.result === 'access_db_written') {
       if (agent.kind !== 'access_gateway') {
@@ -4115,7 +4119,13 @@ export class AccessCardIssuanceService {
         item.cardStatus = 'waiting_for_card';
         item.batch.status = dto.result === 'retry' ? 'waiting_for_card' : 'needs_operator';
       } else if (agent.kind === 'access_gateway') {
-        item.accessStatus = dto.result === 'retry' ? 'waiting_retry' : 'needs_operator';
+        const offline = (item.controllerResults ?? []).find(row => row.status === 'controller_failed'
+          && row.accessDatabaseWritten === true && row.deviceOffline === true
+          && item.batch.targetBuildingIds.includes(Number(row.buildingId)));
+        item.accessStatus = dto.result === 'retry' && !offline ? 'waiting_retry' : 'needs_operator';
+        if (offline && !dto.errorMessage) {
+          item.lastErrorMessage = '设备离线，已添加到二期门禁系统，请人工下发权限';
+        }
       } else {
         item.legacySyncStatus = dto.result === 'retry' ? 'waiting_retry' : 'conflict';
       }

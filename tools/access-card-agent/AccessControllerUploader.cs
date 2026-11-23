@@ -22,6 +22,8 @@ namespace Pms.AccessCardAgent
         public string acknowledgement { get; set; }
         public string warning { get; set; }
         public string error { get; set; }
+        public bool accessDatabaseWritten { get; set; }
+        public bool deviceOffline { get; set; }
     }
 
     /**
@@ -44,6 +46,37 @@ namespace Pms.AccessCardAgent
                 }
             }
             return results.ToArray();
+        }
+
+        internal static object[] ActivateIssuedCard(AgentTask task, Func<AgentTask, object[]> writeDatabase,
+            Func<AgentTask, object[]> upload)
+        {
+            return ExecutePerBuilding(task, delegate(AgentTask single)
+            {
+                var target = single.targetBuildings[0];
+                var written = writeDatabase(single);
+                if (!written.OfType<AccessDatabaseWriteResult>().Any(row =>
+                    row.buildingId == target.id && row.status == "access_db_written"))
+                    throw new InvalidOperationException("添加到二期门禁系统未获确认");
+                AccessControllerUploadResult[] rows;
+                try
+                {
+                    rows = upload(single).OfType<AccessControllerUploadResult>().ToArray();
+                    if (rows.Length == 0) throw new InvalidOperationException("控制器未返回下发结果");
+                }
+                catch (Exception error)
+                {
+                    rows = new[] { FailedResult(target, target.accessSystem, error) };
+                }
+                foreach (var row in rows) row.accessDatabaseWritten = true;
+                return AgentLoop.AttachIcCardWarnings(written, rows);
+            });
+        }
+
+        internal static bool NeedsManualUpload(object[] results)
+        {
+            return results.OfType<AccessControllerUploadResult>().Any(row =>
+                row.accessDatabaseWritten && row.deviceOffline && row.status == "controller_failed");
         }
 
         public static bool CanUpload(AgentConfig config)
@@ -411,9 +444,13 @@ namespace Pms.AccessCardAgent
                                 frame,
                                 IsMjSystemSerial(record.CommMode) ? cardProtocol : null,
                                 out response);
-                            if (result != 0) throw new InvalidOperationException(
-                                    target.buildingNo + "号楼控制器通信失败（" + record.ControllerName + " / " + record.CommMode + "）：" +
-                                    DescribeMjSystemError(result, response));
+                            if (result != 0)
+                            {
+                                var detail = target.buildingNo + "号楼控制器通信失败（" + record.ControllerName + " / " + record.CommMode + "）：" +
+                                    DescribeMjSystemError(result, response);
+                                if (detail.Contains("未收到控制器回包")) throw new TimeoutException(detail);
+                                throw new InvalidOperationException(detail);
+                            }
                             output.Add(new AccessControllerUploadResult
                             {
                                 buildingId = target.id,
@@ -462,7 +499,9 @@ namespace Pms.AccessCardAgent
                         var record = ReadIcCardUploadRecord(connection, task.wgCardNo, doorId);
                         var frame = vendor.BuildOldAddFrame(record, 1);
                         string response;
-                        var result = vendor.Send(record.CommMode, record.IpAddress, record.Port, frame, out response);
+                        bool noReply;
+                        var result = vendor.Send(record.CommMode, record.IpAddress, record.Port, frame, out response, out noReply);
+                        if (noReply) throw new TimeoutException("未收到控制器回包");
                         if (result != 0) throw new InvalidOperationException(
                                 target.buildingNo + "号楼控制器未确认接收（" + record.IpAddress + ":" + record.Port +
                                 "，返回码 " + result.ToString(CultureInfo.InvariantCulture) + "）。请检查控制器供电和网络后重试");
@@ -973,6 +1012,7 @@ namespace Pms.AccessCardAgent
                 buildingNo = target.buildingNo,
                 accessSystem = accessSystem,
                 status = "controller_failed",
+                deviceOffline = exception is TimeoutException,
                 error = exception.Message
             };
         }
@@ -1007,6 +1047,17 @@ namespace Pms.AccessCardAgent
                 .Select(item => item.buildingNo + "号楼：" + (String.IsNullOrWhiteSpace(item.error) ? "控制器下发失败" : item.error))
                 .ToArray();
             return failures.Length == 0 ? null : String.Join("；", failures);
+        }
+
+        internal static string IssuanceFailureMessage(object[] results)
+        {
+            return String.Join("；", results.OfType<AccessControllerUploadResult>()
+                .Where(row => row.status != "controller_uploaded")
+                .Select(row => row.buildingNo + "号楼：" + (!row.accessDatabaseWritten
+                    ? "添加到二期门禁系统失败。" + row.error
+                    : row.deviceOffline
+                        ? "设备离线，已添加到二期门禁系统，请人工下发权限"
+                        : "已添加到二期门禁系统，楼栋权限下发失败。" + row.error)).ToArray());
         }
 
         internal static string RemovalFailureMessage(AccessTargetBuilding[] targets, object[] results)
@@ -1392,6 +1443,13 @@ namespace Pms.AccessCardAgent
 
             public long Send(string commMode, string ipAddress, int port, string frame, out string response)
             {
+                bool ignored;
+                return Send(commMode, ipAddress, port, frame, out response, out ignored);
+            }
+
+            public long Send(string commMode, string ipAddress, int port, string frame, out string response, out bool noReply)
+            {
+                noReply = false;
                 var ipMode = commMode == "IP";
                 if (!ipMode && !System.Text.RegularExpressions.Regex.IsMatch(commMode ?? "", @"^COM[1-9]\d*$"))
                     throw new InvalidOperationException("iCCard 控制器通信方式无效，请核对 f_ComPort");
@@ -1417,6 +1475,7 @@ namespace Pms.AccessCardAgent
                     var getArguments = new object[] { commMode, ipAddress, frame, 5400, Convert.ToInt32(openArguments[4]), "", validPort };
                     var result = Convert.ToInt64(InvokeInstance(operation, "comm_get", getArguments), CultureInfo.InvariantCulture);
                     response = Convert.ToString(getArguments[5], CultureInfo.InvariantCulture);
+                    noReply = result != 0 && String.IsNullOrWhiteSpace(response);
                     return result;
                 }
                 finally

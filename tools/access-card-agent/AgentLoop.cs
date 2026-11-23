@@ -670,22 +670,20 @@ namespace Pms.AccessCardAgent
             {
                 try
                 {
-                    var controllerResults = AccessControllerUploader.ExecutePerBuilding(task, delegate(AgentTask single)
-                    {
-                        var written = AccessGatewayDatabase.Activate(_config, LoadSecret("iccard-db-password.dat"), single);
-                        return AttachIcCardWarnings(written,
-                            AccessControllerUploader.Upload(_config, LoadSecret("iccard-db-password.dat"), single));
-                    });
+                    var controllerResults = AccessControllerUploader.ActivateIssuedCard(task,
+                        single => AccessGatewayDatabase.Activate(_config, LoadSecret("iccard-db-password.dat"), single),
+                        single => AccessControllerUploader.Upload(_config, LoadSecret("iccard-db-password.dat"), single));
                     var failed = AccessControllerUploader.HasFailures(controllerResults);
+                    var failureMessage = failed ? AccessControllerUploader.IssuanceFailureMessage(controllerResults) : null;
                     _api.Report(new AgentReport
                     {
                         itemId = task.itemId,
-                        result = failed ? "retry" : "success",
+                        result = !failed ? "success" : AccessControllerUploader.NeedsManualUpload(controllerResults) ? "failed" : "retry",
                         controllerResults = controllerResults,
-                        errorMessage = failed ? AccessControllerUploader.FailureMessage(controllerResults) : null
+                        errorMessage = failureMessage == null || failureMessage.Length <= 500 ? failureMessage : failureMessage.Substring(0, 500)
                     });
                     var accessMessage = failed
-                        ? AccessControllerUploader.FailureMessage(controllerResults)
+                        ? failureMessage
                         : "数据库写入和控制器下发完成";
                     var accessWarning = FirstWarning(controllerResults);
                     if (!String.IsNullOrWhiteSpace(accessWarning)) accessMessage += "；警告：" + accessWarning;

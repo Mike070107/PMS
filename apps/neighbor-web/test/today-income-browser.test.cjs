@@ -52,18 +52,34 @@ test('income amounts fit narrow cards and open five-column paged receipts', asyn
       assert.match(await button.innerText(),/差额.*-1234467.89/s);
       assert.match(await page.locator('.erp-fee-donut-center').innerText(),/1234567.89/);
       await button.click();
+      assert.equal(Math.round((await page.getByRole('dialog').boundingBox()).width), Math.min(800, viewport));
       assert.deepEqual(await page.locator('.income-details th').allTextContents(),['收费时间','车牌','费用时段','收费金额','备注']);
       await page.getByText('合成明细',{exact:true}).waitFor();
+      assert.match(await page.getByRole('heading',{name:'清单汇总'}).innerText(), /21 笔.*1234567\.89/);
       await page.getByRole('button',{name:'下一页'}).click();
       await page.getByText('第二页',{exact:true}).waitFor();
+      assert.match(await page.getByRole('heading',{name:'清单汇总'}).innerText(), /21 笔.*1234567\.89/);
       await page.getByRole('button',{name:'PMS 实收',exact:true}).click();
       await page.getByText('PMS合成明细',{exact:true}).waitFor();
+      assert.match(await page.getByRole('heading',{name:'清单汇总'}).innerText(), /1 笔.*100\.00/);
       assert.equal(await page.getByText('第二页',{exact:true}).count(),0);
       await page.keyboard.press('Escape');
       const due=page.getByRole('button',{name:/临时停车费/});
       await due.filter({hasText:'15.00'}).click();
+      assert.equal(Math.round((await page.getByRole('dialog').boundingBox()).width), Math.min(1100, viewport));
       await page.getByText('当期应收 ¥ 10.00 · 1 笔',{exact:true}).waitFor();
       await page.getByRole('columnheader',{name:'车类'}).waitFor();
+      const tableWrap = page.locator('.intro-table-wrap');
+      if (viewport === 390) {
+        await page.waitForFunction(() => {
+          const el = document.querySelector('.income-exit-wrap');
+          if (!el) return false;
+          el.scrollLeft = el.scrollWidth;
+          return el.scrollLeft > 0 && el.getBoundingClientRect().right <= innerWidth + 1;
+        });
+      } else if (viewport === 1440) {
+        assert.equal(await tableWrap.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
+      }
       assert.deepEqual(await page.locator('.income-details th').allTextContents(),['出场时间','车牌','车类','停车时段','应收金额','备注']);
       await page.getByRole('cell',{name:'临时车',exact:true}).waitFor();
       assert.equal(await page.getByRole('cell',{name:'亲情车',exact:true}).count(),0);
@@ -80,8 +96,10 @@ test('income amounts fit narrow cards and open five-column paged receipts', asyn
         await row.filter({hasText:/MIS 人工录入.*20.00.*PMS 实收.*30.00.*差额.*10.00/}).waitFor();
         await row.click();
         await page.getByText('mis 昨日明细',{exact:true}).waitFor();
+        assert.match(await page.getByRole('heading',{name:'清单汇总'}).innerText(), /1 笔.*20\.00/);
         await page.getByRole('button',{name:'PMS 实收',exact:true}).click();
         await page.getByText('pms 昨日明细',{exact:true}).waitFor();
+        assert.match(await page.getByRole('heading',{name:'清单汇总'}).innerText(), /1 笔.*30\.00/);
         await page.keyboard.press('Escape');
       }
       await calendar.click();

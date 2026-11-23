@@ -1087,7 +1087,9 @@ function CardWorkspace({ historyHouse }: { historyHouse?: HistoryHouse }) {
               <>
                 <div className="note" style={{ marginBottom: 10 }}>
                   任务 #{batch.id} · 共 {batch.quantity} 张{batch.currentSequence ? ` · 当前第 ${batch.currentSequence} 张` : ''}
-                  {batch.status === 'needs_operator' ? '：任务已暂停，请核对原任务与实卡；结果未知时禁止重新写卡' : cur && cur.cardStatus !== 'card_completed' ? '：请把这张卡放到读卡器上' : ''}
+                  {batch.status === 'needs_operator' ? batch.items.some(i => i.accessStatus === 'needs_operator')
+                    ? ' · 门禁权限待人工处理' : '：任务已暂停，请核对原任务与实卡；结果未知时禁止重新写卡'
+                    : cur && cur.cardStatus !== 'card_completed' ? '：请把这张卡放到读卡器上' : ''}
                 </div>
                 <div className="t-scroll">
                   <table className="t" style={{ minWidth: 760 }}>
@@ -1095,7 +1097,7 @@ function CardWorkspace({ historyHouse }: { historyHouse?: HistoryHouse }) {
                     <tbody>
                       {batch.items.map((it) => {
                         const cs = cardStatusLabel(it.cardStatus);
-                        const as = accessStatusLabel(it.accessStatus);
+                        const as = accessStatusLabel(it.accessStatus, it.controllerResults);
                         const ls = legacyStatusLabel(it.legacySyncStatus);
                         const canRetry = !!it.icCardNo && /^(waiting_retry|needs_operator|permission_check_failed|not_uploaded)$/.test(it.accessStatus || '');
                         return (

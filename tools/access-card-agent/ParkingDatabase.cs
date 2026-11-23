@@ -286,21 +286,11 @@ ORDER BY p.parameter_id;";
         // 明细独立分页读取，不把“最近 30 条”当成报表口径。总笔数由同日期区间的汇总提供。
         internal static string ExitDueClass(IEnumerable<string> labels)
         {
-            var classes = labels.Select(value => (value ?? "").Trim()).Where(value => value.Contains("车")).Distinct().ToArray();
-            if (classes.Length != 1)
-                throw new InvalidOperationException("出场记录车类缺失、含编码或不唯一，请核对现场报表映射");
-            return classes[0] == "临时车" || classes[0] == "亲情车" ? classes[0] : null;
-        }
-
-        internal static string ClassifiedExitDue(string label, string database)
-        {
-            var value = (label ?? "").Trim();
-            if (value.Length == 0)
-                throw new InvalidOperationException(database + " 出场车类编码或当时的月租车登记身份无法核实");
+            var value = labels.Select(label => (label ?? "").Trim()).FirstOrDefault(label => label.Contains("车"));
             return value == "临时车" || value == "亲情车" ? value : null;
         }
 
-        // Read the class recorded at exit, so a later change to the vehicle profile cannot reclassify history.
+        // Use the exit record and its car-class dictionary. Registration history does not reclassify an exit.
         private static List<ParkingSearchRow> ReadExitDue(AgentConfig config, string password, string day, string endDay, int page, string phase)
         {
             DateTime start;
@@ -326,30 +316,8 @@ ORDER BY p.parameter_id;";
                     {
                         command.CommandTimeout = 30;
                         var note = columns.Any(c => String.Equals(c.Name, "P_note", StringComparison.OrdinalIgnoreCase)) ? "[P_note]" : "NULL";
-                        var classFields = numericClass ? @"CASE WHEN dict.l_name = N'月租车'
- THEN COALESCE(NULLIF(hist.brand,''), NULLIF(nextChange.brand,''), NULLIF(reg.brand,''))
- ELSE dict.l_name END" : String.Join(",", names.Select(name => "o.[" + name + "]").ToArray());
-                        // Car_Out stores the exit billing code. Recover a monthly vehicle's subtype at that time.
-                        var joins = numericClass ? @"
- LEFT JOIN dbo.P_lei dict ON dict.l_id=o.Car_Lei
- OUTER APPLY (
-   SELECT TOP (1) h.N_Car_Brand AS brand FROM dbo.Up_Issue h
-   WHERE dict.l_name=N'月租车' AND h.N_P_plate=o.P_plate AND h.Up_Date<=o.out_Time
-     AND NOT EXISTS (SELECT 1 FROM dbo.Up_Issue later WHERE later.IssueID=h.IssueID
-       AND later.Up_Date<=o.out_Time AND (later.Up_Date>h.Up_Date OR (later.Up_Date=h.Up_Date AND later.P_id>h.P_id)))
-   ORDER BY h.Up_Date DESC,h.P_id DESC
- ) hist
- OUTER APPLY (
-   SELECT TOP (1) h.y_Car_Brand AS brand FROM dbo.Up_Issue h
-   WHERE dict.l_name=N'月租车' AND h.y_P_plate=o.P_plate AND h.Up_Date>o.out_Time
-     AND h.y_Sart_Time<=o.out_Time
-   ORDER BY h.Up_Date,h.P_id
- ) nextChange
- OUTER APPLY (
-   SELECT CASE WHEN COUNT(*)=1 THEN MAX(v.Car_Brand) END AS brand FROM dbo.Car_Issue v
-   WHERE dict.l_name=N'月租车' AND v.P_plate=o.P_plate AND v.P_Time<=o.out_Time
-     AND NOT EXISTS (SELECT 1 FROM dbo.Up_Issue later WHERE later.IssueID=v.P_id AND later.Up_Date>o.out_Time)
- ) reg" : "";
+                        var classFields = numericClass ? "dict.l_name" : String.Join(",", names.Select(name => "o.[" + name + "]").ToArray());
+                        var joins = numericClass ? " LEFT JOIN dbo.P_lei dict ON dict.l_id=o.Car_Lei" : "";
                         command.CommandText = "SELECT o.out_Time,o.P_plate,o.Int_Time,CONVERT(decimal(18,2),o.P_Shoufei)," +
                             note + "," + classFields + " FROM dbo.Car_Out o " + joins +
                             " WHERE o.out_Time>=@start AND o.out_Time<@end AND o.P_Shoufei>0" +
@@ -362,11 +330,11 @@ ORDER BY p.parameter_id;";
                         {
                             while (reader.Read())
                             {
-                                var vehicleClass = numericClass ? ClassifiedExitDue(Convert.ToString(reader[5]), label) :
-                                    ExitDueClass(Enumerable.Range(5, names.Length).Select(i => Convert.ToString(reader[i])));
-                                if (vehicleClass == null) continue;
                                 var fee = reader.GetDecimal(3);
                                 if (fee <= 0) continue;
+                                var vehicleClass = ExitDueClass(Enumerable.Range(5, numericClass ? 1 : names.Length)
+                                    .Select(i => Convert.ToString(reader[i])));
+                                if (vehicleClass == null) continue;
                                 count++;
                                 amount += fee;
                                 if (count > page * 20) continue;

@@ -61,9 +61,12 @@ function Details({ date, category, firstPage, phase, source }: { source?:Source;
   const data = result?.page === page ? result.data : null;
   return <>
     {phase && firstPage && <h3>当期应收 {money(firstPage.amountCents/100)} · {firstPage.total} 笔</h3>}
+    {compare(category[0]) && data && 'amountCents' in data &&
+      <h3 aria-label="清单汇总">清单汇总 · {data.total} 笔 · {money(data.amountCents/100)}</h3>}
     {!data ? <p role="status">读取中…</p> : 'reason' in data ? <p>{data.reason} <button className="btn sm" onClick={() => setRetry(n => n+1)}>重试</button></p>
       : !data.total ? <p>当日暂无收费</p> : <>
-        <div className="intro-table-wrap"><table className="t usage-table income-details">
+        <div className={category[0] === 'temporary' ? 'intro-table-wrap income-exit-wrap' : 'intro-table-wrap'}>
+          <table className="t usage-table income-details">
           <thead><tr>{(category[0] === 'temporary' ? ['出场时间','车牌','车类','停车时段','应收金额','备注'] : ['收费时间','车牌','费用时段','收费金额','备注']).map(title => <th key={title}>{title}</th>)}</tr></thead>
           <tbody>{data.rows.map((r,i) => <tr key={i}><td>{r.paidAt}</td><td>{r.plate || '—'}</td>{category[0] === 'temporary' && <td>{r.vehicleClass}</td>}<td>{r.period?.replace(/^(\d{4})(\d{2})$/, '$1-$2') || '—'}</td><td className="usage-num">{money(r.amountCents/100)}</td><td>{r.remark || '—'}</td></tr>)}</tbody>
         </table></div>
@@ -170,7 +173,7 @@ function IncomeBreakdown({ date }: { date: string }) {
     </div>
     {categories.some(([id]) => compare(id) && [values[id],pms[id]].some(v => v && 'reason' in v)) && <button className="btn sm" onClick={()=>setRetry(n=>n+1)}>重试读取收入</button>}
     <small className="muted">泊位费和车辆管理费按 MIS 录入金额计入小计。</small>
-    {selected && <Sheet open onClose={() => { select(null); setPhase(null); setSource('mis'); }} width={800} title={selected[1]+'明细'} subtitle={date}>
+    {selected && <Sheet open onClose={() => { select(null); setPhase(null); setSource('mis'); }} width={selected[0] === 'temporary' ? 1100 : 800} title={selected[1]+'明细'} subtitle={date}>
       {compare(selected[0]) ? <>
         <div aria-label="明细来源">{(['mis','pms'] as const).map(s=><button key={s} type="button" className={'btn sm'+(s===source?' primary':'')} aria-pressed={s===source} onClick={()=>setSource(s)}>{sourceLabels[s]}</button>)}</div>
         <Details key={source} category={selected} date={date} source={source}/>

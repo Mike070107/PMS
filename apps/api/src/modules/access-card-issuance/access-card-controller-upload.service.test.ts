@@ -4,6 +4,28 @@ import { AccessCardIssuanceService, sanitizeParkingMovementRows } from './access
 
 const user = { id: 7, tenantId: 3 } as never;
 
+test('二期发卡已入门禁库但设备离线时停止自动重试，保留已成功的其他楼栋', async () => {
+  const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
+  const batch = { id: 10, projectPhase: 'phase2', targetBuildingIds: [11, 26] };
+  const item = { id: 1, batch, leaseAgentKey: 'gateway', cardStatus: 'card_completed', legacyHouseSequence: 5,
+    accessStatus: 'pending', lastErrorMessage: null, controllerResults: [{ buildingId: 26, buildingNo: '26', status: 'controller_uploaded' }] };
+  Object.assign(service, {
+    authenticateAgent: async () => ({ kind: 'access_gateway', agentKey: 'gateway', tenantId: 3 }),
+    itemRepo: { findOne: async () => item, save: async () => item },
+    refreshBatchStatus: async () => undefined,
+  });
+  const report = { itemId: 1, result: 'retry' as const, controllerResults: [
+    { buildingId: 11, buildingNo: '11', status: 'controller_failed', accessDatabaseWritten: true, deviceOffline: true },
+  ] };
+  await service.reportAgentTask('gateway', 'test', report);
+  assert.equal(item.accessStatus, 'needs_operator');
+  assert.match(item.lastErrorMessage ?? '', /设备离线，已添加到二期门禁系统，请人工下发权限/);
+  assert.ok(item.controllerResults.some(result => result.buildingId === 26 && result.status === 'controller_uploaded'));
+  item.leaseAgentKey = 'gateway';
+  batch.projectPhase = 'phase1';
+  await assert.rejects(service.reportAgentTask('gateway', 'test', report), /二期发卡任务/);
+});
+
 for (const [operation, success] of [['controller_upload', 'controller_uploaded'], ['controller_revoke', 'controller_removed']]) {
   test(`${operation} 领取任务跳过成功门栋，仅发送离线门栋`, async () => {
     const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;

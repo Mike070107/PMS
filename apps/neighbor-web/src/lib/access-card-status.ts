@@ -4,7 +4,11 @@
  */
 
 /** 门禁授权状态（这一张卡有没有真正下发到楼栋门禁控制器） */
-export function accessStatusLabel(v?: string | null): { text: string; tone: string } {
+export function accessStatusLabel(v?: string | null, results: Array<Record<string, unknown>> = []): { text: string; tone: string } {
+  if (v === 'needs_operator' && results.some(row =>
+    row.status === 'controller_failed' && row.accessDatabaseWritten === true && row.deviceOffline === true)) {
+    return { text: '已添加 · 设备离线', tone: 'dang' };
+  }
   switch (v) {
     case 'not_required': return { text: '不适用', tone: 'mute' };
     case 'controller_uploaded': return { text: '已下发', tone: 'ok' };
@@ -12,7 +16,7 @@ export function accessStatusLabel(v?: string | null): { text: string; tone: stri
     case 'access_db_written': return { text: '.88 门禁库已写入，控制器待确认', tone: 'mute' };
     case 'permission_check_pending': return { text: '权限核验中', tone: 'mute' };
     case 'permission_check_failed': return { text: '权限核验失败', tone: 'dang' };
-    case 'waiting_retry': return { text: '下载失败 · 门禁控制器离线', tone: 'dang' };
+    case 'waiting_retry': return { text: '下发失败 · 等待重试', tone: 'dang' };
     case 'needs_operator': return { text: '下载失败 · 需要处理', tone: 'dang' };
     case 'pending': return { text: '待处理', tone: 'mute' };
     default: return { text: v ? '处理中' : '—', tone: 'mute' };

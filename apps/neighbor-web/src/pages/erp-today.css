@@ -58,6 +58,8 @@
 .today-income-card .erp-fee-item:disabled{cursor:default;color:var(--ink2)}
 .today-income-card .erp-fee-donut-center b{max-width:73%;overflow-wrap:anywhere}
 .income-details td:last-child{overflow-wrap:anywhere;white-space:normal}
+.income-exit-wrap{max-width:100%;overflow-x:auto}
+.income-exit-wrap .income-details{min-width:820px}
 @container (max-width:510px){
   .today-income-card .erp-fee-breakdown{flex-direction:column;align-items:stretch}
   .today-income-card .erp-fee-donut-wrap{align-self:center;max-width:100%}

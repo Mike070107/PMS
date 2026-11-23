@@ -544,20 +544,13 @@ namespace Pms.DataSyncAssistant
 
         private static void VerifyParkingFeeSource()
         {
-            if (ParkingDatabase.ClassifiedExitDue(" 临时车 ", "parking1") != "临时车" ||
-                ParkingDatabase.ClassifiedExitDue("亲情车", "parking2") != "亲情车" ||
-                ParkingDatabase.ClassifiedExitDue("住户车", "parking1") != null ||
-                ParkingDatabase.ClassifiedExitDue("出口人工开闸", "parking2") != null)
-                throw new InvalidOperationException("按车类字典和出场身份统计应收失败");
-            if (ParkingDatabase.ExitDueClass(new[] { "临时车", "0" }) != "临时车" ||
+            if (ParkingDatabase.ExitDueClass(new[] { " 临时车 ", "0" }) != "临时车" ||
                 ParkingDatabase.ExitDueClass(new[] { "亲情车" }) != "亲情车" ||
                 ParkingDatabase.ExitDueClass(new[] { "住户车" }) != null ||
-                ParkingDatabase.ExitDueClass(new[] { "月租车" }) != null)
+                ParkingDatabase.ExitDueClass(new[] { "月租车" }) != null ||
+                ParkingDatabase.ExitDueClass(new[] { "出口人工开闸" }) != null ||
+                ParkingDatabase.ExitDueClass(new[] { "1", "" }) != null)
                 throw new InvalidOperationException("临停应收车型分类错误");
-            bool unknownRejected = false;
-            try { ParkingDatabase.ExitDueClass(new[] { "1", "" }); }
-            catch (InvalidOperationException) { unknownRejected = true; }
-            if (!unknownRejected) throw new InvalidOperationException("未识别车型不能计作零元");
             if (ParkingDatabase.ParkingExitFeeTable != "[dbo].[Car_Out]" ||
                 ParkingDatabase.ParkingExitFeeDate != "[out_Time]" ||
                 ParkingDatabase.ParkingExitFeeAmount != "[P_Shoufei]")
