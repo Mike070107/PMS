@@ -8141,3 +8141,10 @@
 - 自上次（41fdbff4）以来上线的相关提交：
   - 4b7e3d2c Restore verified parking expiry after future reversals
 
+## 2026-11-23 23:50 · web · 1abf8ea6
+
+- 包：`pms-web-20261123-234842.tar.gz`
+- 提交：1abf8ea6 deploy: api → 24cb542e
+- 自上次（d6956962）以来上线的相关提交：
+  - 4b7e3d2c Restore verified parking expiry after future reversals
+
