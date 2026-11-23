@@ -8017,3 +8017,10 @@
   - 21ac8c08 按车牌收取续费并联动车位卡和注销入口
   - 540a0810 车辆变更历史读取两期旧库换牌和续费
 
+## 2026-11-23 19:09 · api · 85f9d427
+
+- 包：`pms-api-fast-20261123-190832.tar.gz`
+- 提交：85f9d427 Read original parking exit fees and report offline access controller delivery
+- 自上次（3a5239f0）以来上线的相关提交：
+  - 85f9d427 Read original parking exit fees and report offline access controller delivery
+
