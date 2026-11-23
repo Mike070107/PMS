@@ -8086,3 +8086,10 @@
 - 自上次（9ce7dbb4）以来上线的相关提交：
   - bae6cd65 Recover reversed parking registrations that never opened
 
+## 2026-11-23 22:43 · web · e138d164
+
+- 包：`pms-web-20261123-224210.tar.gz`
+- 提交：e138d164 deploy: api → bae6cd65
+- 自上次（bd13e839）以来上线的相关提交：
+  - bae6cd65 Recover reversed parking registrations that never opened
+
