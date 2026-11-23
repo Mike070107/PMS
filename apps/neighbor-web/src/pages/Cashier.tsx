@@ -85,12 +85,12 @@ const PAYMENTS: Array<{ k: string; icon: IconName }> = [
  * 物业费、停车、门禁按 Tab 独立收款，不合并；只汇总当前 Tab 所选。
  * 金额一律服务端试算；收款只登记，后续 MIS/停车/写卡在「待处理」跟踪，不在这里谎称已核验。
  */
-export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIntakeId?: number; onBusyChange?: (busy: boolean) => void } = {}) {
+export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusyChange }: { embeddedIntakeId?: number; embeddedRenewalPlate?: string; onBusyChange?: (busy: boolean) => void } = {}) {
   const navigate = useNavigate();
   const session = useSession();
   const [params] = useSearchParams();
   const embedded = embeddedIntakeId !== undefined;
-  const intakeParam = embedded ? String(embeddedIntakeId) : params.get('intakeId');
+  const intakeParam = embedded ? String(embeddedIntakeId) : embeddedRenewalPlate ? null : params.get('intakeId');
   const validIntakeId = intakeParam !== null && /^[1-9]\d*$/.test(intakeParam) && Number.isSafeInteger(Number(intakeParam));
   const [deep, setDeep] = useState<{ query: string; row?: Intake; error?: string } | null>(null);
   const navigationRevision = useRef(0);
@@ -370,7 +370,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
     navigationRevision.current += 1;
     setHouse(h); setResult(from); setDone(null); setConfirmed(false);
     setParkPlate(null); setParkCarts([]); setParkReady(false); setCardEst(null); setCardQty(1); setCardFree(false); setTab('wy');
-    if (h) loadBills(h); else setBills(null);
+    if (h && !embeddedRenewalPlate) loadBills(h); else setBills(null);
   };
 
   const chooseHouse = async (p: PickedHouse) => {
@@ -408,6 +408,10 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
   /** 统一查询框的结果：房号→物业费；车牌→停车续期并选中该车；门禁卡→门禁 */
   const onUniPick = (p: UniPick) => {
     setErr('');
+    if (embeddedRenewalPlate && (p.kind !== 'vehicle' || p.vehicle.plateNo !== embeddedRenewalPlate || p.vehicle.openIntakeId)) {
+      setErr(`请选择已登记的车牌 ${embeddedRenewalPlate}`);
+      return;
+    }
     const all = p.all;
     const byHouse = (houseId: number | null) => (houseId == null ? null : all.houses.find((h) => h.id === houseId) ?? null);
     if (p.kind === 'house') {
@@ -577,8 +581,8 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
             <p>{house?.communityName} {house?.buildingNo}/{house?.roomNo} · {done.title} · {pay}{done.receiptNo !== '—' ? ` · 收据号 ${done.receiptNo}` : ''}</p>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 18 }}>
               {done.receiptNo !== '—' ? <button className="btn" onClick={() => navigate(`/fees?receipt=${encodeURIComponent(done.receiptNo)}`)}><Icon name="print" size={18} />打印收据</button> : null}
-              <button className="btn p" onClick={() => { setDone(null); if (house) loadBills(house); }}><Icon name="receipt" size={18} />继续给本户办理</button>
-              {!embedded ? <button className="btn" onClick={reset}><Icon name="search" size={18} />换一户</button> : null}
+              {!embeddedRenewalPlate && <button className="btn p" onClick={() => { setDone(null); if (house) loadBills(house); }}><Icon name="receipt" size={18} />继续给本户办理</button>}
+              {!embedded && !embeddedRenewalPlate ? <button className="btn" onClick={reset}><Icon name="search" size={18} />换一户</button> : null}
             </div>
           </div>
           <hr className="hr" />
@@ -604,7 +608,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
 
   return (
     <>
-      <div className="ph" style={{ marginBottom: 14, display: embedded ? 'none' : undefined }}>
+      <div className="ph" style={{ marginBottom: 14, display: embedded || embeddedRenewalPlate ? 'none' : undefined }}>
         <div>
           <div className="h1row"><ToneIcon kind="cashier" /><h1 style={{ fontSize: 22 }}>收银台</h1></div>
           <p>找到住户 → 按项目办理 → 一次确认收款 <span className="tag mute" style={{ marginLeft: 8 }}><Icon name="building" />数据范围：{scopeLabel}</span></p>
@@ -633,9 +637,9 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
       {intakeParam === null ? <div className="findBar">
         <UniSearch
           communities={communities}
-          initialSearch={params.get('renewPlate') ?? undefined}
+          initialSearch={embeddedRenewalPlate ?? params.get('renewPlate') ?? undefined}
           onPick={onUniPick}
-          search={(kw) => searchByQ(kw) as never}
+          search={searchByQ as (kw: string) => Promise<UniPick['all']>}
           placeholder="房号 / 姓名 / 手机尾号 / 车牌尾号，回车查询"
         />
       </div> : null}
@@ -666,7 +670,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
             </div>}
 
             {!embedded ? <OwnerBusinessContact key={house.id} houseId={house.id} preferredOwnerId={house.owner?.id} source="cashier" onSaved={owner => { setHouse(h => h && h.id === house.id && h.owner?.id === owner.id ? { ...h, owner: {id:owner.id,name:owner.name,phone:owner.phone} } : h); }} /> : null}
-            <div className="projTabs cashier-projects" style={{ marginTop: 18, display: embedded ? 'none' : undefined }}>
+            <div className="projTabs cashier-projects" style={{ marginTop: 18, display: embedded || embeddedRenewalPlate ? 'none' : undefined }}>
               {(Object.keys(billLabels) as BillTab[]).map(key => <button key={key} aria-pressed={tab === key} className={`projTab ${tab === key ? 'on' : ''}`} onClick={() => { setTab(key); if (bills === null) loadBills(house); }}>
                 <Icon name={key === 'wy' ? 'home' : 'car'} /><b>{billLabels[key]}</b>
                 <small>{bills === null ? '查询中' : billErr ? '查询失败' : groups[key].length ? `待缴 ${groups[key].length} 笔` : '无待缴'}</small>
@@ -704,7 +708,7 @@ export default function Cashier({ embeddedIntakeId, onBusyChange }: { embeddedIn
             ) : null}
 
             {linkedBlocked && !embedded ? (tab === 'pk' ? <div className="note2" role="status">本次登记不可收费，真实状态见上方。需要转类 / 撤销请进入本次登记详情。</div> : null) : <div ref={parkingForm} style={{ display: tab === 'pk' ? undefined : 'none' }}>
-              <ChargeAttempted.Provider value={embedded && chargeAttempted}><ParkingTab key={`${house.id}-${intakeParam ?? ''}`} house={house} rules={rules as never} onCart={onParkCart} initialPlate={parkPlate} selectedVehicle={selectedVehicle} focusedIntake={linkedIntake} staffRegistration={embedded} onIntakeChange={embedded ? updateLinkedIntake : undefined} /></ChargeAttempted.Provider>
+              <ChargeAttempted.Provider value={embedded && chargeAttempted}><ParkingTab key={`${house.id}-${intakeParam ?? ''}`} house={house} rules={rules as never} onCart={onParkCart} initialPlate={parkPlate} selectedVehicle={selectedVehicle} renewalOnly={!!embeddedRenewalPlate} focusedIntake={linkedIntake} staffRegistration={embedded} onIntakeChange={embedded ? updateLinkedIntake : undefined} /></ChargeAttempted.Provider>
             </div>}
 
             {tab === 'ac' ? (

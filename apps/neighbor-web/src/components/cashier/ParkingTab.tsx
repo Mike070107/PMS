@@ -114,7 +114,7 @@ export const payCode = (label: string) => PAY_EN[label] || (/微信|wechat/i.tes
  * 前台点一辆车、选月数，按收费标准算钱；收款后执行层把同一辆车在各系统的有效期一起续上。
  */
 /** Deep-link integration: Cashier passes focusedIntake={linkedIntake}; keep ordinary household checkout unchanged. */
-export default function ParkingTab({ house, rules, onCart, initialPlate, selectedVehicle, focusedIntake, staffRegistration = false, onIntakeChange }: { house: ParkHouse; rules: ParkRule[]; onCart: (items: ParkingCart[], ready: boolean) => void; initialPlate?: string | null; selectedVehicle?: { plateNo: string; houseId: number | null }; focusedIntake?: Intake; staffRegistration?: boolean; onIntakeChange?: (intake: Intake) => void }) {
+export default function ParkingTab({ house, rules, onCart, initialPlate, selectedVehicle, focusedIntake, staffRegistration = false, renewalOnly = false, onIntakeChange }: { house: ParkHouse; rules: ParkRule[]; onCart: (items: ParkingCart[], ready: boolean) => void; initialPlate?: string | null; selectedVehicle?: { plateNo: string; houseId: number | null }; focusedIntake?: Intake; staffRegistration?: boolean; renewalOnly?: boolean; onIntakeChange?: (intake: Intake) => void }) {
   const [hh, setHh] = useState<Household | null>(null);
   const [hhErr, setHhErr] = useState('');
   const [local, setLocal] = useState<{ state: 'idle' | 'loading' | 'done' | 'failed'; rows: ParkingQuery['rows']; error?: string }>({ state: 'idle', rows: [] });
@@ -302,8 +302,8 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
         });
       }
     }
-    return [...map.values()].sort((a, b) => a.plate.localeCompare(b.plate));
-  }, [hh, local.rows, plateRows, house, initialPlate, selectedVehicle, cardSpaces, spaceKey]);
+    return [...map.values()].filter(car => !renewalOnly || normPlate(car.plate) === normPlate(initialPlate || '')).sort((a, b) => a.plate.localeCompare(b.plate));
+  }, [hh, local.rows, plateRows, house, initialPlate, selectedVehicle, cardSpaces, spaceKey, renewalOnly]);
 
   useEffect(() => {
     if (!cars.length) return;
@@ -396,7 +396,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
         <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
           {pickedCars.map((c) => <div key={c.plate}>
             <CarRenewal car={c} rules={rules} house={house} onCart={setCart} onRemove={() => toggle(c.plate)} vehicleClass={draftClasses[c.plate] ?? tags[c.plate] ?? ''} onClass={async v => setDraftClasses(t => ({ ...t, [c.plate]: v }))} />
-            {hh && local.state === 'done' && <CashierVehicleActions car={c} onChanged={() => {
+            {!renewalOnly && hh && local.state === 'done' && <CashierVehicleActions car={c} onChanged={() => {
               onCart([], false);
               setCarts({});
               setPicked([]);
@@ -407,11 +407,11 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
         </div>
       ) : cars.length ? <div className="muted" style={{ marginTop: 10 }}>勾选要缴费的车（可多选）</div> : null}
 
-      <div className="newplate-bar">
+      {!renewalOnly && <div className="newplate-bar">
         <button className="btn" disabled={newBusy || !hh || !hh.targets.length} onClick={() => { setNewErr(''); setEntryKind('paid'); }}><Icon name="plus" size={16} />新办车牌（付费）</button>
         <button className="btn" disabled={newBusy} onClick={() => { setNewErr(''); setEntryKind('family'); }}><Icon name="plus" size={16} />亲情车（免费）</button>
         <span className="muted" style={{ fontSize: 13.5 }}>工作人员可直接登记，也可由住户扫码填写。</span>
-      </div>
+      </div>}
       </>}
       {entryKind ? <Sheet open title="新车登记" width={520} onClose={() => { if (!creatingIntake.current) setEntryKind(null); }}>
         <div className="registration-sheet" style={{ display: 'grid', gap: 14 }}>
@@ -424,13 +424,13 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
         </div>
       </Sheet> : null}
       {!entryKind && newErr ? <div className="note2" role="alert" style={{ color: 'var(--dang)' }}>{newErr}</div> : null}
-      {!focusedIntake && intakes.length > 0 && <label className="registration-draft-picker">未完成登记
+      {!renewalOnly && !focusedIntake && intakes.length > 0 && <label className="registration-draft-picker">未完成登记
         <select className="in" value={selectedEntry?.id ?? ''} onChange={e => setSelectedEntry(e.target.value ? {id:Number(e.target.value),staff:true} : null)}>
           <option value="">选择要办理的登记（{intakes.length} 笔）</option>
           {intakes.map(i => <option key={i.id} value={i.id}>#{i.id} · {i.kind === 'paid' ? '付费车' : '亲情车'} · {i.plate || '待填车牌'}</option>)}
         </select>
       </label>}
-      {visibleIntakes.length ? (
+      {!renewalOnly && visibleIntakes.length ? (
         <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
           {visibleIntakes.map((i) => (
             <section className="registration-workspace" key={i.id}>

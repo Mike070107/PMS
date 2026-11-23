@@ -10,8 +10,8 @@ const esbuild=createRequire(require.resolve('vite'))('esbuild');
 // Production entry components and shared contact component; deterministic API/auth adapters only.
 // This verifies entry wiring and interactions, not a running API, real auth, persistence or payments.
 test('新车登记业主信息只读；正式收银/公寓/已存车牌/续费可逐号确认，加载不写且不触发收费/设备动作',async()=>{
- const built=await esbuild.build({stdin:{contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {BrowserRouter} from 'react-router-dom';import {App,ConfigProvider} from 'antd';import Cashier from '@/pages/Cashier';import ApartmentCashier from '@/pages/ApartmentCashier';import Vehicles from '@/pages/Vehicles';import RenewSheet from '@/components/vehicle-ops/RenewSheet';import {fixtureRow} from '@pms/api-client';import '@/styles/design.css';import '@/styles/app.css';
- const route=location.pathname;createRoot(document.getElementById('root')).render(<BrowserRouter><ConfigProvider><App>{route==='/cashier'?<Cashier/>:route==='/apartment'?<ApartmentCashier/>:route==='/vehicles'?<Vehicles/>:<RenewSheet plate="沪A00001" rows={[fixtureRow]} cloud={null} onClose={()=>{}} onDone={()=>{}}/>}</App></ConfigProvider></BrowserRouter>);`,loader:'tsx',resolveDir:app},bundle:true,write:false,outfile:'entry.js',format:'iife',jsx:'automatic',alias:{'@':path.join(app,'src')},define:{'process.env.NODE_ENV':'"development"','import.meta.env.BASE_URL':'"/"','import.meta.env.VITE_LEGACY_BASE':'""','import.meta.env.VITE_API_BASE_URL':'"/api/v1"'},plugins:[{name:'entry-fixtures',setup(b){b.onResolve({filter:/^(@pms\/api-client|@\/lib\/auth|@\/lib\/perm)$/},a=>({path:a.path,namespace:'entry-fixture'}));b.onLoad({filter:/.*/,namespace:'entry-fixture'},a=>{
+ const built=await esbuild.build({stdin:{contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {BrowserRouter} from 'react-router-dom';import {App,ConfigProvider} from 'antd';import Cashier from '@/pages/Cashier';import ApartmentCashier from '@/pages/ApartmentCashier';import Vehicles from '@/pages/Vehicles';import RenewSheet,{RenewalCheckout} from '@/components/vehicle-ops/RenewSheet';import {fixtureRow} from '@pms/api-client';import '@/styles/design.css';import '@/styles/app.css';
+ const route=location.pathname;createRoot(document.getElementById('root')).render(<BrowserRouter><ConfigProvider><App>{route==='/cashier'?<Cashier/>:route==='/apartment'?<ApartmentCashier/>:route==='/vehicles'?<Vehicles/>:route==='/inline-renew'?<RenewalCheckout plate="沪A00001" rows={[fixtureRow]} cloud={null} onClose={()=>{}} onDone={()=>{}}/>:<RenewSheet plate="沪A00001" rows={[fixtureRow]} cloud={null} onClose={()=>{}} onDone={()=>{}}/>}</App></ConfigProvider></BrowserRouter>);`,loader:'tsx',resolveDir:app},bundle:true,write:false,outfile:'entry.js',format:'iife',jsx:'automatic',alias:{'@':path.join(app,'src')},define:{'process.env.NODE_ENV':'"development"','import.meta.env.BASE_URL':'"/"','import.meta.env.VITE_LEGACY_BASE':'""','import.meta.env.VITE_API_BASE_URL':'"/api/v1"'},plugins:[{name:'entry-fixtures',setup(b){b.onResolve({filter:/^(@pms\/api-client|@\/lib\/auth|@\/lib\/perm)$/},a=>({path:a.path,namespace:'entry-fixture'}));b.onLoad({filter:/.*/,namespace:'entry-fixture'},a=>{
  if(a.path.endsWith('/perm'))return {contents:`export const can=()=>true;`,loader:'js'};
  if(a.path.endsWith('/auth'))return {contents:`const session={user:{id:1,name:'测试收费员'},access:{isTenantAdmin:true,scopeAll:true,communityIds:[1]}};export const useSession=()=>session;`,loader:'js'};
  return {loader:'js',contents:`
@@ -26,6 +26,8 @@ test('新车登记业主信息只读；正式收银/公寓/已存车牌/续费�
  export async function request({url,method='GET',query={},data={}}){window.__entryCalls.push({url,method,query,data});
  if(url==='/owners-mgmt/business-contacts')return [structuredClone(owner)];
  if(url==='/owners-mgmt/1/business-contact'&&method==='PATCH'){Object.assign(owner,data);owner.phoneActivity=data.confirmedPhones.map(phone=>({phone,last_confirmed_at:'2026-11-12T00:00:00Z',confirmation_source:data.source}));return structuredClone(owner);}
+ if(location.pathname==='/inline-renew'&&url==='/business/estimate')return {quantity:12,amountCents:150000,startDate:'2027-01-01',endDate:'2027-12-31'};
+ if(location.pathname==='/inline-renew'&&url==='/business/complete')return {id:99,txnNo:'TEST-INLINE',externalSyncStatus:'queued'};
  if(method!=='GET')throw Error('禁止非联系人业务写入：'+url);
  if(url==='/communities')return [{id:1,name:'测试小区'}];
  if(url==='/buildings')return [{id:1,communityId:1,buildingNo:'3',lane:'198弄'}];
@@ -34,9 +36,9 @@ test('新车登记业主信息只读；正式收银/公寓/已存车牌/续费�
  if(url==='/fees/mis/postings/readiness')return {enabled:false,methods:[],reason:'演练'};
  if(url==='/fees/mis/bills')return {rows:[{id:'101',feeCode:'01',feeName:'物业费',amountCents:9900},{id:'102',feeCode:'14',feeName:'停车管理费',amountCents:6750},{id:'103',feeCode:'04',feeName:'泊位费',amountCents:8000}].map(r=>({...r,period:'202611',remark:'',status:query.status})),total:3};
  if(url==='/access-card-issuance/cards/history')return {status:'completed',rows:[{id:17,sequence:1,icCardNo:'00007777',roomLabel:'3/101',source:'legacy',communityId:1}],refreshedAt:'2026-11-20T02:00:00Z'};
- if(url==='/business/search')return {houses:[house],vehicles:[],accessCards:[]};
+ if(url==='/business/search')return {houses:[house],vehicles:location.pathname==='/inline-renew'?[{id:7,plateNo:'沪A00001',houseId:1}]:[],accessCards:[]};
  if(url==='/business/parking-spaces'||/^\\/vehicle-intakes\\/\\d+\\/parking-spaces$/.test(url))return {rows:[]};
- if(url==='/business/rules')return [];if(url==='/business/household-parking')return {room:'3/101',roomTerm:'3/101',targets:[],localDatabases:[],deliyun:[]};
+ if(url==='/business/rules')return location.pathname==='/inline-renew'?[{id:4,serviceType:'parking_monthly',enabled:true,communityId:1,unitPriceCents:15000,name:'住户车1',config:{vehicleClass:'住户车1'}}]:[];if(url==='/business/household-parking')return {room:'3/101',roomTerm:'3/101',targets:[],localDatabases:location.pathname==='/inline-renew'?['parking2']:[],deliyun:[]};
  if(url==='/fees/cashier/payment-methods')return ['cash'];
  if(url==='/fees/houses/1')return {standards:[]};
  if(url.includes('/today')||url.includes('/history')||url.includes('/bills'))return {rows:[],total:0,totalCents:0};
@@ -74,6 +76,19 @@ test('新车登记业主信息只读；正式收银/公寓/已存车牌/续费�
  assert.equal(calls.filter(c=>c.method&&c.method!=='GET'&&c.method!=='PATCH').length,0);assert.equal(calls.filter(c=>/execute|complete|issue|renew|addVehicle/i.test(c.methodName||'')).length,0);
  await contact.screenshot({path:path.join(evidence,entry+'-contacts.png')});results.push({entry,contactWrites:1,confirmationSource:writes[0].data.source,businessWrites:0});
  }
+ await page.setViewportSize({width:390,height:760});
+ await page.goto(origin+'/inline-renew');
+ const renewal=page.getByRole('dialog',{name:'续期收费 · 沪A00001'});
+ await page.getByRole('button',{name:/沪A00001/}).click();
+ await renewal.getByRole('row',{name:/沪A00001/}).getByRole('checkbox').check();
+ await renewal.getByRole('button',{name:/确认到账/}).click();
+ await renewal.getByRole('button',{name:/^确认收款/}).click();
+ await renewal.getByRole('heading',{name:'收款已登记'}).waitFor();
+ assert.equal(new URL(page.url()).pathname,'/inline-renew');
+ const posted=(await page.evaluate(()=>window.__entryCalls)).filter(c=>c.url==='/business/complete');
+ assert.equal(posted.length,1);assert.equal(posted[0].data.plateNo,'沪A00001');
+ assert.equal(await renewal.getByText('TEST-INLINE',{exact:false}).count(),1);
+ await page.setViewportSize({width:1440,height:1080});
  await page.goto(origin+'/cashier?intakeId=1');
  const tabs=page.locator('.cashier-projects');
  for (const [label,amount] of [['物业费','99.00'],['泊位费','80.00'],['车位管理费','67.50']]) {
