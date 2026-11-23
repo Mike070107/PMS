@@ -8093,3 +8093,9 @@
 - 自上次（bd13e839）以来上线的相关提交：
   - bae6cd65 Recover reversed parking registrations that never opened
 
+## 2026-11-23 23:10 · assistant · eedfee30
+
+- 提交：eedfee30 Ship income receipt columns and family vehicle expiry
+- 自上次（85f9d427）以来上线的相关提交：
+  - eedfee30 Ship income receipt columns and family vehicle expiry
+
