@@ -106,6 +106,7 @@ namespace Pms.DataSyncAssistant
                 VerifyLegacyRoomMatching();
                 VerifyLegacyHistoryFields();
                 VerifyParkingOwnerColumnMapping();
+                VerifyParkingRenewalHistory();
                 VerifyParkingMovementSource();
                 VerifyParkingFeeSource();
                 VerifyParkingDownloadParameters();
@@ -880,6 +881,29 @@ namespace Pms.DataSyncAssistant
                 throw new InvalidOperationException("旧库楼号前导零兼容失败");
             if (LegacyDatabase.TrySequence("228/2/102", "已隐藏228/02/101/5", out sequence))
                 throw new InvalidOperationException("旧库模糊查询把不同室号合并了");
+        }
+
+        private static void VerifyParkingRenewalHistory()
+        {
+            using (var rows = new System.Data.DataTable())
+            {
+                rows.Columns.Add("ID", typeof(int));
+                rows.Columns.Add("P_plate", typeof(string));
+                rows.Columns.Add("P_Time", typeof(DateTime));
+                rows.Columns.Add("P_Admin", typeof(string));
+                rows.Columns.Add("P_money", typeof(double));
+                var time = new DateTime(2026, 11, 23, 12, 30, 45);
+                rows.Rows.Add(52, "沪A12345 ", time, "岗亭员 ", 0.0);
+                rows.Rows.Add(51, "沪A12345", time.AddDays(-1), DBNull.Value, DBNull.Value);
+                using (var reader = rows.CreateDataReader())
+                {
+                    var events = new JavaScriptSerializer().Deserialize<Dictionary<string, object>[]>(ParkingDatabase.ReadRenewalHistory(reader));
+                    if (events.Length != 2 || (string)events[0]["id"] != "52" || (string)events[0]["plate"] != "沪A12345" ||
+                        (string)events[0]["operatorName"] != "岗亭员" || (string)events[0]["at"] != "2026-11-23T12:30:45.0000000+08:00" ||
+                        events[0]["amount"] == null || Convert.ToDouble(events[0]["amount"]) != 0 || events[1]["amount"] != null)
+                        throw new InvalidOperationException("停车续费流水未保留原车牌、时间、流水编号或金额");
+                }
+            }
         }
 
         private static void VerifyParkingOwnerColumnMapping()

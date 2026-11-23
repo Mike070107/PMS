@@ -42,10 +42,15 @@ const EVENT_LABEL: Record<string, string> = {
   vehicle_sync: '同步',
 };
 
+type HistoryEntry = ParkingHistoryEntry & { legacyRenewalId?: string };
+const historySource = (entry: HistoryEntry) => entry.source === 'pms' ? 'PMS 办理记录'
+  : entry.legacyRenewalId ? '旧停车系统续费流水' : entry.id === 0 ? '旧停车系统换牌流水' : '旧库同步记录';
+const renewalAmount = new Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'CNY' });
+
 /** 同库同车相同换牌方向、同一分钟的来源记录放在一起；保留每条原始时间。 */
-export function groupHistoryEntries(entries: ParkingHistoryEntry[]) {
-  const groups: ParkingHistoryEntry[][] = [];
-  const byChange = new Map<string, ParkingHistoryEntry[]>();
+export function groupHistoryEntries(entries: HistoryEntry[]) {
+  const groups: HistoryEntry[][] = [];
+  const byChange = new Map<string, HistoryEntry[]>();
   for (const entry of entries) {
     const minute = Math.floor(Date.parse(entry.occurredAt) / 60000);
     if (entry.eventType !== 'plate_change' || !entry.database || !entry.sourceRecordId ||
@@ -61,7 +66,7 @@ export function groupHistoryEntries(entries: ParkingHistoryEntry[]) {
   return groups;
 }
 
-function HistoryEvent({ records }: { records: ParkingHistoryEntry[] }) {
+function HistoryEvent({ records }: { records: HistoryEntry[] }) {
   const event = records.find(record => record.source === 'pms') ?? records[0];
   const change = event.eventType === 'plate_change';
   return <article className="veh-history-event">
@@ -73,10 +78,12 @@ function HistoryEvent({ records }: { records: ParkingHistoryEntry[] }) {
       <span aria-hidden="true">→</span>
       <div><small>新车牌</small><strong>{event.plateAfter || '未记录'}</strong></div>
     </div> : <p>{event.summary}</p>}
+    {event.id === 0 && <small>{historySource(event)}{event.operator && ' · 操作人 ' + event.operator}</small>}
     {event.source === 'pms' && event.operator && <small>经办人　{event.operator}</small>}
     <details><summary>查看来源记录（{records.length}）</summary>
       {records.map((r,i) => <div className="veh-history-source" key={i}>
-        <b>{r.source === 'pms' ? 'PMS 办理记录' : r.id === 0 ? '旧停车系统流水' : '旧库同步记录'}</b>
+        <b>{historySource(r)}</b>
+        {r.legacyRenewalId && <small>流水编号　{r.legacyRenewalId}</small>}
         <small>{r.timeBasis === 'detected' ? '发现时间' : '记录时间'}　{formatBeijingDateTime(r.occurredAt,'YYYY-MM-DD HH:mm:ss')}</small>
         {r.operator && <small>{r.source === 'parking_gateway' && r.id !== 0 ? '记录来源' : '操作人'}　{r.operator}</small>}
         {r.summary && <p>{r.summary}</p>}
@@ -86,9 +93,9 @@ function HistoryEvent({ records }: { records: ParkingHistoryEntry[] }) {
   </article>;
 }
 
-/** 车牌 / 住户的变更历史（旧停车系统 Up_Issue + PMS 写操作记录） */
+/** 合并旧停车系统换牌、续费流水与 PMS 办理记录。 */
 export function HistorySheet({ plate, rows, onClose }: OpProps) {
-  const [entries, setEntries] = useState<{ vehicle: ParkingHistoryEntry[]; owner: ParkingHistoryEntry[] }>({vehicle:[], owner:[]});
+  const [entries, setEntries] = useState<{ vehicle: HistoryEntry[]; owner: ParkingHistoryEntry[] }>({vehicle:[], owner:[]});
   const [tab, setTab] = useState<'vehicle' | 'owner'>('vehicle');
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState('');
@@ -99,13 +106,17 @@ export function HistorySheet({ plate, rows, onClose }: OpProps) {
       setBusy(true); setError('');
       const warnings = new Set<string>();
       let sources = targetsOf(rows);
-      if (sources.length && (attempt || sources.some(r => r.fields.PmsMeta__PlateHistory == null))) {
-        try { sources = await freshRows(plate); }
+      if (attempt || !sources.length || sources.some(r => r.fields.PmsMeta__PlateHistory == null || r.fields.PmsMeta__RenewalHistory == null)) {
+        try {
+          const refreshed = await freshRows(plate);
+          if (refreshed.length) sources = refreshed;
+          else warnings.add('现场停车库未返回当前车辆档案');
+        }
         catch { warnings.add('旧库流水未能刷新'); }
       }
       const vehicle = new Map<string, ParkingHistoryEntry>();
       const owner = new Map<number, ParkingHistoryEntry>();
-      const local = new Map<string, ParkingHistoryEntry>();
+      const local = new Map<string, HistoryEntry>();
       const eventKey = (e: ParkingHistoryEntry) => JSON.stringify([e.database,e.sourceRecordId,e.plateBefore,e.plateAfter,e.operator,Date.parse(e.occurredAt)]);
       const refs = sources.length ? sources : [null];
       for (const row of refs) {
@@ -120,13 +131,14 @@ export function HistorySheet({ plate, rows, onClose }: OpProps) {
           for (const item of result.vehicleHistory) vehicle.set(String(item.id), item);
           for (const item of result.userHistory) owner.set(item.id, item);
         } catch { warnings.add('PMS 历史未能加载'); }
-        if (!row) continue;
+        if (!row || !active) continue;
+        const databaseLabel = dbShort(row.database);
         const raw = row.fields.PmsMeta__PlateHistory;
         try {
-          if (typeof raw !== 'string') warnings.add('现场助手尚未返回旧库明细');
+          if (typeof raw !== 'string') warnings.add(databaseLabel + '未返回换牌明细');
           const events = typeof raw === 'string' ? JSON.parse(raw) : row.fields.PmsMeta__PlateChangedAt
             ? [{at:row.fields.PmsMeta__PlateChangedAt,after:plate}] : [];
-          if (events.length === 100) warnings.add('每个停车库最多显示最近 100 条流水');
+          if (events.length === 100) warnings.add(databaseLabel + '显示最近 100 条换牌流水');
           for (const e of events) {
             if (!e.after || !Number.isFinite(Date.parse(e.at))) continue;
             const item: ParkingHistoryEntry = { id:0,eventType:'plate_change',source:'parking_gateway',database,sourceRecordId,
@@ -135,6 +147,36 @@ export function HistorySheet({ plate, rows, onClose }: OpProps) {
             local.set(eventKey(item),item);
           }
         } catch { warnings.add('旧库流水格式异常'); }
+
+        try {
+          const renewals = row.fields.PmsMeta__RenewalHistory;
+          if (typeof renewals !== 'string') {
+            warnings.add(databaseLabel + (row.fields.PmsMeta__RenewalHistoryUnavailable
+              ? '续费流水读取失败' : '未返回续费流水，请核对现场助手版本'));
+            continue;
+          }
+          const events: unknown = JSON.parse(renewals);
+          if (!Array.isArray(events)) throw new Error('无效续费流水');
+          if (events.length === 100) warnings.add(databaseLabel + '显示最近 100 条续费流水');
+          for (const event of events) {
+            if (!event || typeof event.id !== 'string' || !/^\d+$/.test(event.id) ||
+                typeof event.at !== 'string' || !Number.isFinite(Date.parse(event.at))) {
+              warnings.add(databaseLabel + '部分续费流水格式异常');
+              continue;
+            }
+            const recordedPlate = typeof event.plate === 'string' ? event.plate : '';
+            const amount = typeof event.amount === 'number' && Number.isFinite(event.amount)
+              ? renewalAmount.format(event.amount) : '未记录';
+            local.set(JSON.stringify([database, event.id]), {
+              id: 0, legacyRenewalId: event.id, eventType: 'vehicle_renewed', source: 'parking_gateway',
+              database, sourceRecordId, pmsUserId: null, externalOwnerId: null,
+              plateBefore: null, plateAfter: recordedPlate || null,
+              summary: [recordedPlate, '续费金额 ' + amount].filter(Boolean).join(' · '),
+              changes: [], operator: typeof event.operatorName === 'string' ? event.operatorName : '',
+              occurredAt: event.at, timeBasis: 'operation',
+            });
+          }
+        } catch { warnings.add(databaseLabel + '续费流水格式异常'); }
       }
       const newest = (a: ParkingHistoryEntry,b: ParkingHistoryEntry) => Date.parse(b.occurredAt)-Date.parse(a.occurredAt) || b.id-a.id;
       if (active) {
@@ -155,7 +197,7 @@ export function HistorySheet({ plate, rows, onClose }: OpProps) {
       {error && <p role="status" className="muted">{error}</p>}
       {!entries[tab].length && <p className="muted">{error ? '暂无可展示的记录' : '暂无变更记录'}</p>}
       {groupHistoryEntries(entries[tab]).map(records =>
-        <HistoryEvent key={JSON.stringify([tab, records[0].id, records[0].database, records[0].sourceRecordId, records[0].occurredAt, records[0].plateBefore, records[0].plateAfter])} records={records} />)}
+        <HistoryEvent key={JSON.stringify([tab, records[0].id, records[0].database, records[0].sourceRecordId, records[0].occurredAt, records[0].plateBefore, records[0].plateAfter, records[0].legacyRenewalId])} records={records} />)}
     </>}
   </Sheet>;
 }

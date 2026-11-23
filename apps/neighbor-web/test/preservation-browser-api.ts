@@ -6,8 +6,13 @@ const fields = (id: number, identity: string | null) => ({ P_id: id, P_plate: pl
   P_Effective: '010000', P_Download: '001000', P_Spaces: 'A-021', P_note: '原备注', End_Time: '2027-01-31',
   Sart_Time: null, Car_Money: 20, Car_Deposit: 3, Car_Zt: 0, Car_ID: 'original-card', P_Color: null });
 const rows: any[] = [{ database: 'parking1', fields: fields(101, null) }, { database: 'parking2', fields: fields(202, '租户车') }];
-if (scenario === 'history') for (const [i,row] of rows.entries()) row.fields.PmsMeta__PlateHistory =
-  JSON.stringify([{before:'沪B12345',after:plate,at:'2026-11-01T10:00:00+08:00',operatorName:'值班员'+i}]);
+if (scenario === 'history') for (const [i,row] of rows.entries()) {
+  row.fields.PmsMeta__PlateHistory =
+    JSON.stringify([{before:'沪B12345',after:plate,at:'2026-11-01T10:00:00+08:00',operatorName:'值班员'+i}]);
+  row.fields.PmsMeta__RenewalHistory = JSON.stringify([{
+    id: '52', plate: '沪B12345', at: '2026-10-21T13:33:12+08:00', amount: i ? 810 : 0, operatorName: '岗亭'+i,
+  }]);
+}
 const fixture = { rows, calls: [] as any[], released: false, queryCount: 0, posts: 0, billed: '住户车-1' };
 (window as any).__preserveFixture = fixture;
 const operations = new Map<number, any>();
@@ -23,7 +28,12 @@ const finish = (op: any) => {
 };
 const query = (term: string) => ({ id: ++fixture.queryCount, term, status: 'completed', rows: structuredClone(rows.filter(r => r.fields.P_plate === term)), completedAt: new Date().toISOString(), error: null });
 const methods = {
-  async parkingHistory() { return {userHistory:[],vehicleHistory:[]}; },
+  async parkingHistory() {
+    return {userHistory:[],vehicleHistory:scenario === 'history' ? [{
+      id:41, eventType:'vehicle_renewed', source:'pms', database:'parking1', sourceRecordId:'101',
+      summary:'PMS 原续期记录', changes:[], occurredAt:'2026-11-22T10:00:00+08:00', operator:'测试员工',
+    }] : []};
+  },
   async createParkingQuery(term: string) { record('createParkingQuery', { term }); return query(term); },
   async parkingQuery(id: number) { record('parkingQuery', { id }); return query(plate); },
   async deliyunVehiclesByPlate(term: string) { record('deliyunVehiclesByPlate', { term }); if (scenario === 'cloudUnknown') throw new Error('人防查询网络失败'); return { rows: [] }; },

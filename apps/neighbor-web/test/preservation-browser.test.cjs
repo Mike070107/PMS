@@ -53,11 +53,36 @@ test('real new and legacy entries: preservation, isolated type, unknown recovery
       const history = await open('modern','history','history',390);
       const events = history.locator('details');
       await events.first().waitFor();
-      assert.equal(await events.count(),2);
-      assert.equal(await events.first().getAttribute('open'),null);
-      await events.first().locator('summary').click();
-      assert.ok((await events.first().innerText()).includes('值班员'));
+      assert.equal(await events.count(),5);
+      assert.match(await history.locator('article').first().innerText(), /PMS 原续期记录/);
+      const plateChanges = history.locator('article').filter({ has: page.getByText('变更车牌', { exact: true }) });
+      assert.equal(await plateChanges.count(), 2);
+      assert.match(await plateChanges.first().innerText(), /值班员/);
+      const renewals = history.locator('article').filter({ hasText: '续费金额' });
+      assert.match(await renewals.filter({ hasText: '一期库' }).innerText(), /沪B12345 · 续费金额 [¥￥]0\.00/);
+      assert.match(await renewals.filter({ hasText: '二期库' }).innerText(), /沪B12345 · 续费金额 [¥￥]810\.00/);
+      await renewals.last().locator('summary').click();
+      assert.match(await renewals.last().innerText(), /流水编号\s+52/);
+      assert.match(await renewals.last().innerText(), /2026-10-21 13:33:12/);
+      assert.equal((await posts()).length, 0);
       await shot('history-both-garages-390');
+      await page.setViewportSize({ width: 320, height: 580 });
+      await renewals.last().locator('summary').scrollIntoViewIfNeeded();
+      await renewals.last().locator('summary').click();
+      assert.equal(await history.evaluate(el => el.scrollWidth > el.clientWidth), false);
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await shot('history-both-garages-1440');
+      await page.evaluate(() => {
+        const second = window.__preserveFixture.rows[1];
+        delete second.fields.PmsMeta__RenewalHistory;
+        second.fields.PmsMeta__RenewalHistoryUnavailable = true;
+      });
+      await history.getByRole('button', { name: '刷新' }).click();
+      await history.getByText('二期库续费流水读取失败', { exact: true }).waitFor();
+      assert.equal(await renewals.count(), 1);
+      assert.equal(await plateChanges.count(), 2);
+      assert.match(await history.locator('article').first().innerText(), /PMS 原续期记录/);
+      assert.equal((await posts()).length, 0);
     }
     for (const entry of ['modern', 'legacy']) for (const kind of ['plate', 'type']) {
       const dialog = await open(entry, kind, 'success', 1440); await fill(dialog, entry, kind); await shot(`${entry}-${kind}-desktop`); await submit(dialog, entry, kind); await dialog.waitFor({ state: 'hidden' });

@@ -4826,7 +4826,12 @@ export function sanitizeParkingRows(rows: ParkingQueryReportDto['rows'], limit =
       if (!key || Object.prototype.hasOwnProperty.call(fields, key)) continue;
       if (rawValue === null || typeof rawValue === 'boolean') fields[key] = rawValue;
       else if (typeof rawValue === 'number' && Number.isFinite(rawValue)) fields[key] = rawValue;
-      else if (typeof rawValue === 'string') fields[key] = rawValue.slice(0, key === 'PmsMeta__PlateHistory' ? 32000 : 500);
+      else if (typeof rawValue === 'string') {
+        const historyField = key === 'PmsMeta__PlateHistory' || key === 'PmsMeta__RenewalHistory';
+        // Keep a complete JSON value or let the page report that the source did not arrive.
+        if (historyField && rawValue.length <= 32000) fields[key] = rawValue;
+        else if (!historyField) fields[key] = rawValue.slice(0, 500);
+      }
     }
     return { database: row.database.trim().slice(0, 80), fields };
   });

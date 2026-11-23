@@ -244,3 +244,14 @@ test('新能源车牌从四位尾号到七位省份后缀均可查询', () => {
   assert.equal(parseParkingSearch('沪AGK8206').kind, 'plate');
   assert.throws(() => parseParkingSearch('AAGK8206'));
 });
+
+test('一期、二期续费流水保留完整 JSON 与各自的车库来源', () => {
+  const rows = ['parking1', 'parking2'].map((database, index) => {
+    const renewals = Array.from({ length: 100 }, (_, id) => ({
+      id: String(id + 1), plate: '沪A12345', at: '2026-11-20T13:19:02+08:00',
+      operatorName: '岗亭值班员', amount: index ? 810 : 0,
+    }));
+    return { database, fields: { PmsMeta__RenewalHistory: JSON.stringify(renewals) } };
+  });
+  assert.deepEqual(sanitizeParkingRows(rows), rows);
+});

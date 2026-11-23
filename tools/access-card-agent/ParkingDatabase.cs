@@ -638,7 +638,9 @@ ORDER BY COALESCE([out_Time], [Int_Time]) DESC;";
                     // 住户表偶尔存在同一 UserID 的历史重复行，LEFT JOIN 会把同一辆车展开成多张完全相同的卡片。
                     // 以旧库车辆主键去重，并合并重复行里各自不为空的住户字段，既不丢真实多卡记录，也不重复展示同一条车牌。
                     rows = DeduplicateRows(rows);
-                    AttachPlateChangeTimes(connection, rows, plan.Kind == ParkingSearchKind.Plate && rows.Count <= 4);
+                    var includeHistory = plan.Kind == ParkingSearchKind.Plate && rows.Count <= 4;
+                    AttachPlateChangeTimes(connection, rows, includeHistory);
+                    if (includeHistory) AttachRenewalHistory(connection, rows);
                     return rows;
                 }
             }
@@ -3002,7 +3004,10 @@ ORDER BY c.column_id;";
         {
             if (!ObjectExists(connection, "Up_Issue", "U") || rows.Count == 0) return;
             var columns = LoadHistoryColumns(connection);
-            if (columns == null) return;
+            if (columns == null || columns.OldPlate == null) return;
+            var oldPlate = QuoteColumn(columns.OldPlate);
+            var newPlate = QuoteColumn(columns.NewPlate);
+            var plateChanged = " AND " + oldPlate + " IS NOT NULL AND " + oldPlate + " <> " + newPlate;
             foreach (var row in rows)
             {
                 object issueValue;
@@ -3013,12 +3018,11 @@ ORDER BY c.column_id;";
                 {
                     using (var history = connection.CreateCommand())
                     {
-                        var oldPlate = columns.OldPlate == null ? "NULL" : QuoteColumn(columns.OldPlate);
                         var time = QuoteColumn(columns.OccurredAt);
                         var actor = columns.Operator == null ? "NULL" : QuoteColumn(columns.Operator);
-                        history.CommandText = "SELECT TOP 100 " + oldPlate + ", " + QuoteColumn(columns.NewPlate) + ", " + time + ", " + actor +
+                        history.CommandText = "SELECT TOP 100 " + oldPlate + ", " + newPlate + ", " + time + ", " + actor +
                             " FROM [dbo].[Up_Issue] WHERE CONVERT(NVARCHAR(100), " + QuoteColumn(columns.IssueId) +
-                            ") = @issueId AND " + time + " IS NOT NULL ORDER BY " + time + " DESC" +
+                            ") = @issueId AND " + time + " IS NOT NULL AND " + newPlate + " IS NOT NULL" + plateChanged + " ORDER BY " + time + " DESC" +
                             (columns.RowId == null ? "" : ", " + QuoteColumn(columns.RowId) + " DESC");
                         history.Parameters.Add("@issueId", SqlDbType.NVarChar, 100).Value = Convert.ToString(issueValue, CultureInfo.InvariantCulture);
                         history.CommandTimeout = 5;
@@ -3042,8 +3046,8 @@ ORDER BY c.column_id;";
                 {
                     command.CommandText = "SELECT TOP 1 " + QuoteColumn(columns.OccurredAt) + " FROM [dbo].[Up_Issue] WITH (NOLOCK) " +
                         "WHERE CONVERT(NVARCHAR(100), " + QuoteColumn(columns.IssueId) + ") = @issueId " +
-                        "AND CONVERT(NVARCHAR(100), " + QuoteColumn(columns.NewPlate) + ") = @plate " +
-                        "ORDER BY " + QuoteColumn(columns.OccurredAt) + " DESC" +
+                        "AND CONVERT(NVARCHAR(100), " + newPlate + ") = @plate" + plateChanged +
+                        " ORDER BY " + QuoteColumn(columns.OccurredAt) + " DESC" +
                         (String.IsNullOrWhiteSpace(columns.RowId) ? "" : ", " + QuoteColumn(columns.RowId) + " DESC") + ";";
                     command.Parameters.Add("@issueId", SqlDbType.NVarChar, 100).Value = Convert.ToString(issueValue, CultureInfo.InvariantCulture);
                     command.Parameters.Add("@plate", SqlDbType.NVarChar, 100).Value = Convert.ToString(plateValue, CultureInfo.InvariantCulture);
@@ -3055,6 +3059,57 @@ ORDER BY c.column_id;";
                     row.fields["PmsMeta__PlateChangedAt"] = new DateTimeOffset(DateTime.SpecifyKind(occurredAt, DateTimeKind.Unspecified), TimeSpan.FromHours(8)).ToString("o", CultureInfo.InvariantCulture);
                 }
             }
+        }
+
+        private static void AttachRenewalHistory(SqlConnection connection, List<ParkingSearchRow> rows)
+        {
+            foreach (var row in rows)
+            {
+                object issueValue;
+                int issueId;
+                if (!TryField(row.fields, new[] { "p_id" }, out issueValue) ||
+                    !Int32.TryParse(Convert.ToString(issueValue, CultureInfo.InvariantCulture), out issueId) || issueId <= 0) continue;
+                try
+                {
+                    using (var command = connection.CreateCommand())
+                    {
+                        // Issue_ID remains the same after a plate change. The receipt carries the plate at payment time.
+                        command.CommandText = @"SELECT TOP (100) ID, P_plate, P_Time, P_Admin, P_money
+FROM dbo.P_moneyKeep
+WHERE Issue_ID = @issueId AND [type] = 5 AND P_Time IS NOT NULL
+ORDER BY P_Time DESC, ID DESC;";
+                        Add(command, "@issueId", SqlDbType.Int, 0, issueId);
+                        command.CommandTimeout = 3;
+                        using (var reader = command.ExecuteReader())
+                            row.fields["PmsMeta__RenewalHistory"] = ReadRenewalHistory(reader);
+                    }
+                }
+                catch (SqlException)
+                {
+                    // A ledger read failure must leave the vehicle and plate history available.
+                    row.fields["PmsMeta__RenewalHistoryUnavailable"] = true;
+                }
+            }
+        }
+
+        internal static string ReadRenewalHistory(System.Data.IDataReader reader)
+        {
+            var events = new List<object>();
+            while (reader.Read())
+            {
+                var plate = Convert.ToString(reader[1], CultureInfo.InvariantCulture).Trim();
+                var stamp = DateTime.SpecifyKind(reader.GetDateTime(2), DateTimeKind.Unspecified);
+                var operatorName = Convert.ToString(reader[3], CultureInfo.InvariantCulture).Trim();
+                var amount = reader.IsDBNull(4) ? (double?)null : Convert.ToDouble(reader[4], CultureInfo.InvariantCulture);
+                events.Add(new {
+                    id = Convert.ToString(reader[0], CultureInfo.InvariantCulture),
+                    plate = plate.Substring(0, Math.Min(32, plate.Length)),
+                    at = new DateTimeOffset(stamp, TimeSpan.FromHours(8)).ToString("o", CultureInfo.InvariantCulture),
+                    operatorName = operatorName.Substring(0, Math.Min(64, operatorName.Length)),
+                    amount
+                });
+            }
+            return new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(events);
         }
 
         private static ParkingHistoryColumns LoadHistoryColumns(SqlConnection connection)
