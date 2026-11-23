@@ -5,7 +5,7 @@ const fields = (id: number, identity: string | null) => ({ P_id: id, P_plate: pl
   Car_Lei: id === 101 ? null : '历史授权', Owner_ID: 'owner', Owner__owner_Name: '228/3/501',
   P_Effective: '010000', P_Download: '001000', P_Spaces: 'A-021', P_note: '原备注', End_Time: '2027-01-31',
   Sart_Time: null, Car_Money: 20, Car_Deposit: 3, Car_Zt: 0, Car_ID: 'original-card', P_Color: null });
-const rows: any[] = [{ database: 'parking1', fields: fields(101, null) }, { database: 'parking2', fields: fields(202, '租户车') }];
+const rows: any[] = [{ database: 'parking1', fields: fields(101, null) }, { database: 'parking2', fields: fields(202, scenario.startsWith('familyExpiry') ? '亲情车' : '租户车') }];
 if (scenario === 'history') for (const [i,row] of rows.entries()) {
   row.fields.PmsMeta__PlateHistory =
     JSON.stringify([{before:'沪B12345',after:plate,at:'2026-11-01T10:00:00+08:00',operatorName:'值班员'+i}]);
@@ -24,6 +24,12 @@ const finish = (op: any) => {
   if (op.payload.billingClass || op.payload.propertyBillingClass) fixture.billed = op.payload.billingClass || op.payload.propertyBillingClass;
   op.status = 'completed'; op.result = { verified: true, preserved: true, preservationContract: 1, database: op.database,
     plate: row.fields.P_plate, previousPlate: before.P_plate, identity: row.fields.Car_Brand, issueId: op.sourceRecordId, before, after: structuredClone(row.fields) };
+  if (op.kind === 'update_vehicle_type' && before.Car_Brand === '亲情车' && op.payload.identity !== '亲情车') {
+    op.result.familyAuthorizationExpired = true;
+    op.result.endDate = '2026-11-22';
+    op.result.after.End_Time = op.result.endDate;
+    if (scenario !== 'familyExpiryMismatch') row.fields.End_Time = op.result.endDate;
+  }
   if (scenario === 'badReceipt') op.result.preserved = false;
 };
 const query = (term: string) => ({ id: ++fixture.queryCount, term, status: 'completed', rows: structuredClone(rows.filter(r => r.fields.P_plate === term)), completedAt: new Date().toISOString(), error: null });

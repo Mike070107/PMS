@@ -132,6 +132,9 @@ export default function VehicleTypeSheet({ plate, rows, onClose, onDone }: {
       setProgress(`任务 #${operation.id} 已回报，正在独立查询现场读回…`);
       const after = uniqueRow(await freshRows(plate), active.database, active.sourceRecordId);
       if (field(after.fields, 'identity') !== active.payload.identity) throw new Error('写后独立读回类型不一致，尚未确认成功；请核对原任务，不会重新修改');
+      if (operation.result.familyAuthorizationExpired === true &&
+          field(after.fields, 'expiry').slice(0, 10) !== operation.result.endDate)
+        throw new Error('写后独立读回到期日不一致，尚未确认停用旧有效期；请核对原任务');
       const savedClass = active.payload.billingClass || active.payload.propertyBillingClass;
       if (savedClass && await readPlateBillingClass(plate) !== savedClass)
         throw new Error('停车库身份已核对，PMS 收费档位读回不一致，请核对原任务');
@@ -157,7 +160,8 @@ export default function VehicleTypeSheet({ plate, rows, onClose, onDone }: {
       {choice && <section className="vt-result" aria-live="polite"><h3>变更后</h3>
         <dl><dt>收费档位</dt><dd>{vehicleClassLabel(choice)}</dd>
           {ruleNames.length > 0 && <><dt>收费规则</dt><dd>{ruleNames.join('、')}</dd></>}
-          <dt>停车库身份</dt><dd>{identity}</dd></dl></section>}
+          <dt>停车库身份</dt><dd>{identity}</dd>
+          {target && field(target.fields, 'identity').trim() === '亲情车' && identity && identity !== '亲情车' ? <><dt>停车库到期日</dt><dd>改为昨天，旧有效期立即结束</dd></> : null}</dl></section>}
       {!writable ? <div role="alert" className="note">当前账号没有业务编辑权限，不能修改车辆类型。</div> : null}
       {targetIssue && !plan && (!!database || !targets.length) ? <div className="note">{targetIssue}</div> : null}
       {progress ? <div role="status" className="note">{progress}</div> : null}

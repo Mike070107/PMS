@@ -8,7 +8,7 @@ import {
 import { StandardParkingQueryService } from '../local-integrations/standard-parking-query.service';
 import { StandardCardIssuanceService } from '../local-integrations/standard-card-issuance.service';
 import { parkingReceiptCommitted } from './parking-receipts';
-import { requiresVehiclePreservation, validatePreservedOperation, assertPreservedReceipt, plateKey } from './parking-vehicle-preservation';
+import { requiresVehiclePreservation, validatePreservedOperation, assertPreservedReceipt, familyTypeExpiryDate, plateKey } from './parking-vehicle-preservation';
 import { changeLinkedSpacePlate, moveLinkedSpace, preservePlateBilling, removeLinkedSpacePlate, syncLinkedSpaceDetails, syncPmsPlateBindings } from './parking-plate-billing';
 import { ParkingPlateTag } from '../../entities/parking-plate-tag.entity';
 import { loadAddressTreeLite, resolveAddressForTenant } from '../../common/address-lookup';
@@ -2164,24 +2164,28 @@ export class AccessCardIssuanceService {
       payload.garageNumbers = numbers;
     }
     validatePreservedOperation(dto.kind, payload, dto.sourceRecordId);
+    const needsFamilyTypeExpiry = dto.kind === 'update_vehicle_type' && payload.identity !== '亲情车';
     const agents = await this.agentRepo.find({ where: { tenantId, kind: 'parking_gateway', enabled: true } });
     const gateway = orderAgentsByAvailability(agents).find((agent) =>
       effectiveAgentStatus(agent) === 'online' && agent.capabilities?.parkingDbWrite === true && supportsParkingOwnerUpdates(agent.version) &&
       (!needsRangeSupport || agent.capabilities?.parkingRenewalRangeV1 === true) &&
       (!(dto.payload?.identity === '亲情车' || dto.payload?.familyReviewId) || supportsFamilyActivation(agent.version)) &&
       (!requiresVehiclePreservation(dto.kind) || agent.capabilities?.parkingVehiclePreservationV1 === true) &&
+      (!needsFamilyTypeExpiry || agent.capabilities?.parkingFamilyTypeExpiryV1 === true) &&
       (dto.kind !== 'rebind_owner' || supportsParkingOwnerRebind(agent.version)) &&
       (dto.kind !== 'sync_vehicle_info' || supportsParkingVehicleSync(agent.version)) &&
       (!['update_garages', 'update_vehicle_type', 'download_vehicle'].includes(dto.kind) || supportsParkingAuthorizationFixes(agent.version)) &&
       (dto.kind !== 'download_vehicle' || supportsParkingDeviceConfirmation(agent.version)) &&
       (payload.spaceSelection !== 1 || supportsGarageSpaceSelection(agent.version)));
-    if (!gateway) throw new ServiceUnavailableException(needsRangeSupport ? '本次办理需要现场助手 2.6.6 或更新版本' : payload.spaceSelection === 1 ? '选择车位调整授权需要 PMS 数据同步助手 2.5.55 及以上版本，请先更新现场助手' : requiresVehiclePreservation(dto.kind) ? '换牌和修改车型需要现场助手具备 parkingVehiclePreservationV1 原值保护能力，请先升级现场助手' : dto.payload?.identity === '亲情车' || dto.payload?.familyReviewId ? '亲情车待审核登记与自动开通需要现场助手升级到 2.5.40' : dto.kind === 'rebind_owner'
+    if (!gateway) throw new ServiceUnavailableException(needsFamilyTypeExpiry ? '修改为非亲情车类型需要现场助手 2.6.9 或更新版本，请先升级现场停车网关' : needsRangeSupport ? '本次办理需要现场助手 2.6.6 或更新版本' : payload.spaceSelection === 1 ? '选择车位调整授权需要 PMS 数据同步助手 2.5.55 及以上版本，请先更新现场助手' : requiresVehiclePreservation(dto.kind) ? '换牌和修改车型需要现场助手具备 parkingVehiclePreservationV1 原值保护能力，请先升级现场助手' : dto.payload?.identity === '亲情车' || dto.payload?.familyReviewId ? '亲情车待审核登记与自动开通需要现场助手升级到 2.5.40' : dto.kind === 'rebind_owner'
       ? '变更绑定用户需要 PMS 数据同步助手 2.5.20 及以上版本，请先更新现场助手'
       : dto.kind === 'sync_vehicle_info' ? '车辆资料复用需要 PMS 数据同步助手 2.5.23 及以上版本，请先在现场电脑升级'
       : dto.kind === 'download_vehicle' ? '停车设备下发需要 PMS 数据同步助手 2.5.47 或更新版本，旧版只能写入队列、不能确认设备完成'
       : ['update_garages', 'update_vehicle_type'].includes(dto.kind) ? '车库授权和车辆类型修改需要 PMS 数据同步助手 2.5.21 及以上版本，请先更新现场助手'
       : '停车网关尚未就绪：请安装 2.4.0 及以上助手并确认旧库存储过程写入权限');
+    const now = new Date();
     const expected: Record<string, unknown> = requiresVehiclePreservation(dto.kind) ? { preservationContract: 1 } : normalizeParkingOperationPayload(dto.expected ?? {});
+    if (needsFamilyTypeExpiry) expected.familyTypeExpiryDate = familyTypeExpiryDate(now);
     if (dto.kind === 'change_plate') {
       const tags = this.parkingOperationRepo.manager.getRepository(ParkingPlateTag);
       const oldTag = await tags.findOne({ where: { tenantId, plate: String(payload.plate) } });
@@ -2269,7 +2273,6 @@ export class AccessCardIssuanceService {
       // 查重任务编号只用于 PMS 服务端校验，不传给现场助手的旧库存储过程。
       delete payload.duplicateCheckQueryId;
     }
-    const now = new Date();
     const task = this.parkingOperationRepo.create({
       tenantId, kind: dto.kind, database: dto.database, idempotencyKey,
       sourceRecordId: dto.sourceRecordId?.trim() || null, pmsUserId: dto.pmsUserId ?? null,
@@ -2537,6 +2540,7 @@ export class AccessCardIssuanceService {
         .andWhere(canConfirmParkingDevice ? '1=1' : "task.kind <> 'download_vehicle'")
         .andWhere(supportsGarageSpaceSelection(agent.version) ? '1=1' : "COALESCE(task.payload->>'spaceSelection', '') <> '1'")
         .andWhere(agent.capabilities?.parkingVehiclePreservationV1 === true ? '1=1' : "task.kind NOT IN ('change_plate', 'update_vehicle_type')")
+        .andWhere(agent.capabilities?.parkingFamilyTypeExpiryV1 === true ? '1=1' : "NOT (task.kind = 'update_vehicle_type' AND task.expected ? 'familyTypeExpiryDate')")
         .andWhere("(task.kind NOT IN ('change_plate', 'update_vehicle_type') OR (task.expected->>'preservationContract' = '1' AND (task.attempt = 0 OR task.expected->>'preservationAgentKey' = :preservationAgentKey)))", { preservationAgentKey: agent.agentKey })
         .andWhere("(task.kind <> 'change_plate' OR (task.expected ? 'billingTag' AND task.expected ? 'batchTargets' AND task.payload ? 'sourceQueryId' AND task.source_record_id IS NOT NULL))")
         .andWhere(supportsFamilyActivation(agent.version) ? '1=1' : "NOT (task.payload ? 'familyReviewId')")
@@ -2592,6 +2596,8 @@ export class AccessCardIssuanceService {
         if (requiresVehiclePreservation(task.kind)) {
           if (agent.capabilities?.parkingVehiclePreservationV1 !== true)
             throw new BadRequestException('当前助手没有车辆原值保护能力');
+          if (task.expected?.familyTypeExpiryDate && agent.capabilities?.parkingFamilyTypeExpiryV1 !== true)
+            throw new BadRequestException('当前助手不能确认亲情车旧有效期已失效');
           assertPreservedReceipt(task, dto.values ?? {});
         }
         if (task.kind === 'renew_vehicle' && (task.payload.renewalIdentity || task.payload.startDate)) {
@@ -4957,7 +4963,9 @@ function operationChanges(task: ParkingOperation): ParkingHistoryChange[] {
   }
   if (task.kind === 'update_vehicle_type') {
     return [{ field: 'identity', label: '车辆授权类型',
-      before: textValue(task.result?.previousIdentity), after: textValue(task.result?.identity || task.payload.identity) }];
+      before: textValue(task.result?.previousIdentity), after: textValue(task.result?.identity || task.payload.identity) },
+      ...(task.result?.familyAuthorizationExpired === true ? [{ field: 'endDate', label: '到期日期',
+        before: textValue(task.result.previousEndDate), after: textValue(task.result.endDate) }] : [])];
   }
   const pairs: Array<[string, string, unknown, unknown]> = [
     ['plate', '车牌', p.plate, p.newPlate || p.plate],

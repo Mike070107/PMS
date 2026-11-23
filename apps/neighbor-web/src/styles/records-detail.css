@@ -11,10 +11,8 @@
   background: #f7f9fc;
 }
 
-.rec-detail-btn {
-  white-space: nowrap;
-}
-.rec-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rec-actions { display: inline-flex; align-items: center; gap: 8px; }
+.rec-actions > .btn { flex: none; white-space: nowrap; }
 .rec-reverse-btn { color: var(--dang); }
 .rec-reverse-form { display: grid; gap: 12px; }
 .rec-reverse-form textarea { width: 100%; height: auto; min-height: 84px; padding: 8px; }

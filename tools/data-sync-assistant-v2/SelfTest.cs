@@ -57,6 +57,21 @@ namespace Pms.DataSyncAssistant
             var p2 = new Dictionary<string, object> { { "Car_Beand", "历史原文" } };
             if (!Object.Equals(ParkingDatabase.RawVehicleIdentity(p1), "租户车") || !Object.Equals(ParkingDatabase.RawVehicleIdentity(p2), "历史原文"))
                 throw new InvalidOperationException("两库车型必须独立保留");
+            var family = new Dictionary<string, object> { { "Car_Beand", "亲情车" }, { "End_Time", new DateTime(2027, 1, 1) }, { "Sart_Time", new DateTime(2026, 8, 5) } };
+            var policy = new Dictionary<string, object> { { "familyTypeExpiryDate", "2026-11-22" } };
+            var expiry = ParkingDatabase.FamilyTypeExpiry(family, "住户车", policy);
+            var expired = new Dictionary<string, object>(family);
+            expired["Car_Beand"] = "住户车";
+            expired["End_Time"] = new DateTime(2026, 11, 22);
+            if (expiry != new DateTime(2026, 11, 22) || ParkingDatabase.FamilyTypeExpiry(family, "亲情车", policy).HasValue ||
+                ParkingDatabase.FamilyTypeExpiry(expired, "租户车", policy).HasValue || ParkingDatabase.FamilyTypeExpiry(family, "住户车", null).HasValue)
+                throw new InvalidOperationException("只有亲情车转出使用 API 固定的昨日日期");
+            ParkingDatabase.AssertVehiclePreserved(family, expired, true, expiry);
+            expired["End_Time"] = new DateTime(2026, 11, 23);
+            var expiryRejected = false;
+            try { ParkingDatabase.AssertVehiclePreserved(family, expired, true, expiry); }
+            catch (InvalidOperationException) { expiryRejected = true; }
+            if (!expiryRejected) throw new InvalidOperationException("应拒绝未按期失效的旧车期");
         }
 
         public static void Run()

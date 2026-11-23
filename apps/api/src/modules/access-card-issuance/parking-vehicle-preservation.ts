@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { addDays, shanghaiDate } from './family-car.util';
 
 function parkingIdentityForBillingClass(value: string): string | undefined {
   const label = value.replace(/[-－\s]/g, '');
@@ -8,6 +9,7 @@ function parkingIdentityForBillingClass(value: string): string | undefined {
 }
 
 export const VEHICLE_IDENTITIES = ['住户车', '租户车', '亲情车'];
+export const familyTypeExpiryDate = (now = new Date()) => addDays(shanghaiDate(now), -1);
 export function requiresVehiclePreservation(kind: string): boolean {
   return kind === 'change_plate' || kind === 'update_vehicle_type';
 }
@@ -38,7 +40,7 @@ export function validatePreservedOperation(kind: string, payload: Record<string,
 export function plateKey(value: unknown): string { return String(value || '').replace(/[\s·.．・-]/g, '').toUpperCase(); }
 
 /** Exact JSON values, including null, are compared; no alias fallback or display labels. */
-export function assertPreservedReceipt(task: { kind: string; database: string; sourceRecordId: string | null; payload: Record<string, unknown> }, values: Record<string, any>) {
+export function assertPreservedReceipt(task: { kind: string; database: string; sourceRecordId: string | null; payload: Record<string, unknown>; expected?: Record<string, unknown> }, values: Record<string, any>) {
   const fail = () => { throw new BadRequestException('助手未返回完整一致的车辆原值保护回执，不能标为成功'); };
   if (values.verified !== true || values.preserved !== true || values.preservationContract !== 1 ||
       values.database !== task.database || String(values.issueId) !== task.sourceRecordId ||
@@ -50,9 +52,15 @@ export function assertPreservedReceipt(task: { kind: string; database: string; s
   if (!Object.prototype.hasOwnProperty.call(before, 'Car_Brand') && !Object.prototype.hasOwnProperty.call(before, 'Car_Beand')) fail();
   for (const row of [before, after]) if ('Car_Brand' in row && 'Car_Beand' in row && row.Car_Brand !== row.Car_Beand) fail();
   if (String(before.P_id) !== task.sourceRecordId || String(after.P_id) !== task.sourceRecordId || before.P_plate !== task.payload.plate || after.P_plate !== values.plate) fail();
+  const expiry = task.expected?.familyTypeExpiryDate;
+  const previousIdentity = String(before.Car_Brand ?? before.Car_Beand ?? '').trim();
+  const expiresFamily = task.kind === 'update_vehicle_type' && typeof expiry === 'string' && previousIdentity === '亲情车' && task.payload.identity !== '亲情车';
+  if (expiresFamily && (after.End_Time !== expiry || values.endDate !== expiry || values.familyAuthorizationExpired !== true)) fail();
+  if (!expiresFamily && values.familyAuthorizationExpired === true) fail();
   for (const key of Object.keys(before)) {
     if (key.toLowerCase() === 'p_admin') continue;
     if (task.kind === 'change_plate' && key === 'P_plate') continue;
+    if (expiresFamily && key === 'End_Time') continue;
     if (task.kind === 'update_vehicle_type' && ['Car_Brand', 'Car_Beand'].includes(key)) {
       if (after[key] !== task.payload.identity) fail();
     } else if (!(key in after) || JSON.stringify(before[key]) !== JSON.stringify(after[key])) fail();

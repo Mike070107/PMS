@@ -57,7 +57,8 @@
 .today-income-card .erp-fee-value{max-width:100%;margin-left:auto;white-space:normal;overflow-wrap:anywhere}
 .today-income-card .erp-fee-item:disabled{cursor:default;color:var(--ink2)}
 .today-income-card .erp-fee-donut-center b{max-width:73%;overflow-wrap:anywhere}
-.income-details td:last-child{overflow-wrap:anywhere;white-space:normal}
+.income-details td:first-child,.income-details td:last-child{overflow-wrap:anywhere;white-space:normal}
+.income-details th:first-child{min-width:8rem}
 .income-repeat{display:block;margin-top:3px;color:var(--warn);font-size:12px;font-weight:600;white-space:normal}
 .income-exit-wrap{max-width:100%;overflow-x:auto}
 .income-exit-wrap .income-details{min-width:820px}

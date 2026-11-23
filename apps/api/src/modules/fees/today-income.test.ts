@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import { FeesController } from './fees.controller';
+import { MisFeesService } from './mis-fees.service';
 import { MisMirrorService } from './mis-mirror.service';
 import { incomeMisCodes, incomePage } from './today-income';
 
@@ -21,8 +22,21 @@ test('income preserves bill-level amounts across sources, Beijing midnight, tena
         (5,2,10,'access_card','paid',300,NULL,NULL,NULL,'{}','2026-11-20 01:00Z'),
         (6,1,20,'access_card','paid',300,NULL,NULL,NULL,'{}','2026-11-20 01:00Z'),
         (7,1,10,'access_card','refunded',500,NULL,NULL,NULL,'{}','2026-11-20 01:00Z');
-      CREATE TABLE work_orders(id int,tenant_id int,community_id int,fee_cents int,completed_at timestamptz,status text,action_note text,deleted_at timestamptz);
-      INSERT INTO work_orders VALUES(1,1,10,1200,'2026-11-20 01:00Z','completed','换灯',NULL),(2,1,10,500,'2026-11-20 01:00Z','voided',NULL,NULL);`);
+      CREATE TABLE work_orders(id int,tenant_id int,community_id int,fee_cents int,completed_at timestamptz,status text,action_note text,deleted_at timestamptz,request_id int);
+      INSERT INTO work_orders VALUES(1,1,10,1200,'2026-11-20 01:00Z','completed','换灯',NULL,8),(2,1,10,500,'2026-11-20 01:00Z','voided',NULL,NULL,NULL);
+      CREATE TABLE repair_requests(id int,tenant_id int,address_text text);
+      INSERT INTO repair_requests VALUES(8,1,'某小区南门'),(8,2,'其他公司地址');
+      CREATE TABLE houses(id int,tenant_id int,building_id int,room_no text);
+      CREATE TABLE buildings(id int,tenant_id int,community_id int,lane text,building_no text);
+      CREATE TABLE communities(id int,tenant_id int,name text);
+      INSERT INTO houses VALUES(7,1,5,'501'),(7,2,5,'502');
+      INSERT INTO buildings VALUES(5,1,10,'198弄','10号');
+      INSERT INTO communities VALUES(10,1,'某小区');
+      ALTER TABLE mis_mirror_bill ADD COLUMN address text, ADD COLUMN room_no text, ADD COLUMN payment_method text;
+      UPDATE mis_mirror_bill SET address=' 某小区198弄20号503室 ',room_no='503',payment_method=' 银联聚合收款 ' WHERE zj_id=21;
+      UPDATE mis_mirror_bill SET address='  ',room_no=' 502 ',payment_method=' ' WHERE zj_id=20;
+      ALTER TABLE business_transactions ADD COLUMN house_id int, ADD COLUMN payment_method text;
+      UPDATE business_transactions SET house_id=7,payment_method='wechat' WHERE id=1;`);
     const svc = Object.assign(Object.create(MisMirrorService.prototype), {
       dataSource:{query:async (sql:string, args:unknown[]) => (await db.query(sql,args)).rows},
       assertReady:async()=>true,
@@ -36,6 +50,9 @@ test('income preserves bill-level amounts across sources, Beijing midnight, tena
     assert.equal(total.amountCents,21*6750); assert.equal(total.total,21); assert.equal(total.rows.length,0);
     assert.equal(pms.amountCents,6750); assert.equal(pms.total,1);
     assert.equal(pms.rows[0].plate,'沪A12345'); assert.equal(pms.rows[0].paidAt,'2026-11-20 00:00:00');
+    assert.equal(pms.rows[0].address,'某小区/198弄/10号/501'); assert.equal(pms.rows[0].paymentMethod,'wechat');
+    assert.equal(first.rows[0].address,'某小区198弄20号503室'); assert.equal(first.rows[0].paymentMethod,'银联聚合收款');
+    assert.equal(first.rows[1].address,'502'); assert.equal(first.rows[1].paymentMethod,null);
     assert.equal(pms.rows[0].samePlateCount, 1);
     await db.exec(`
       INSERT INTO business_transactions
@@ -74,8 +91,22 @@ test('income preserves bill-level amounts across sources, Beijing midnight, tena
     for (const [category,amount] of [['berth',77000],['card',500],['repair',1200]] as const) {
       assert.equal((await svc.incomeFromPms(category,day,user,access,undefined,0,20)).amountCents,amount);
     }
+    assert.equal((await svc.incomeFromPms('repair',day,user,access,undefined,0,20)).rows[0].address,'某小区南门');
     await assert.rejects(svc.incomeFromPms('card',day,user,access,[20],0,20));
   } finally { await db.close(); }
+});
+
+test('直接读取 MIS 时按原账单读完整地址及收款方式', async () => {
+  const service = Object.assign(Object.create(MisFeesService.prototype), {
+    read: async (sql: string) => {
+      assert.match(sql, /AS address/);
+      assert.match(sql, /COALESCE\(NULLIF\(LTRIM\(RTRIM\(w\.收款方式\)\),N''\),NULLIF\(LTRIM\(RTRIM\(m\.收款方式\)\),N''\)\) AS paymentMethod/);
+      return { recordsets: [[{ total: 1, cents: 100 }], [{ paidAt: '2026-11-20 00:00:00', address: '某小区501室', paymentMethod: '银联扫码', amountCents: 100 }]] };
+    },
+  }) as MisFeesService;
+  assert.deepEqual((await service.exactIncome('01','2026-11-20',['01'],0,20)).rows[0], {
+    paidAt:'2026-11-20',plate:null,address:'某小区501室',paymentMethod:'银联扫码',period:null,amountCents:100,remark:null,
+  });
 });
 
 test('泊位费与车辆管理费各自按来源汇总；旧客户端默认只计 MIS', async () => {

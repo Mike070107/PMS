@@ -5,7 +5,7 @@ const { createRequire } = require('node:module');
 const { chromium } = require('playwright-core');
 const esbuild = createRequire(require.resolve('vite'))('esbuild');
 const root = path.resolve(__dirname,'..');
-test('income amounts fit narrow cards and open five-column paged receipts', async () => {
+test('income amounts fit narrow cards and receipt details start with address and payment method', async () => {
   const source = `import {createRoot} from 'react-dom/client';
     import {TodayIncome} from '@/pages/TodayIncome'; import '@/styles/design.css'; import '@/styles/app.css';
     import '@/styles/erp-reference.css'; import '@/pages/erp-today.css';
@@ -32,7 +32,7 @@ test('income amounts fit narrow cards and open five-column paged receipts', asyn
     };
     if(q.category==='garage' && q.source==='mis' && window.phaseError)throw Error('MIS读取失败');
     if(q.category==='garage' && q.source==='pms')return {amountCents:10000,total:1,rows:q.page?[{paidAt:'2026-11-20',plate:'沪B12345',amountCents:10000,remark:'PMS合成明细'}]:[]};
-    if(q.category==='garage')return {amountCents:123456789,total:21,rows:q.page?[{paidAt:'2026-11-20',period:'202611',plate:'沪A12345',amountCents:6750,remark:q.page===2?'第二页':'合成明细'}]:[]};
+    if(q.category==='garage')return {amountCents:123456789,total:21,rows:q.page?[{paidAt:'2026-11-20',period:'202611',plate:'沪A12345',address:'枫桦景苑二期228弄50号703室',paymentMethod:q.page===2?' ':'银联聚合收款',amountCents:6750,remark:q.page===2?'第二页':'合成明细'}]:[]};
     return {amountCents:0,total:0,rows:[]};
   }`;
   const bundle = await esbuild.build({stdin:{contents:source,loader:'tsx',resolveDir:root},bundle:true,write:false,
@@ -59,11 +59,13 @@ test('income amounts fit narrow cards and open five-column paged receipts', asyn
       assert.match(await page.locator('.erp-fee-donut-center').innerText(),/1234567.89/);
       await button.click();
       assert.equal(Math.round((await page.getByRole('dialog').boundingBox()).width), Math.min(800, viewport));
-      assert.deepEqual(await page.locator('.income-details th').allTextContents(),['收费时间','车牌','费用时段','收费金额','备注']);
       await page.getByText('合成明细',{exact:true}).waitFor();
+      assert.deepEqual(await page.locator('.income-details th').allTextContents(),['房号地址','收款方式','收费时间','车牌','费用时段','收费金额','备注']);
+      assert.deepEqual((await page.locator('.income-details tbody td').allTextContents()).slice(0,2),['枫桦景苑二期228弄50号703室','银联聚合收款']);
       assert.match(await page.getByRole('heading',{name:'清单汇总'}).innerText(), /21 笔.*1234567\.89/);
       await page.getByRole('button',{name:'下一页'}).click();
       await page.getByText('第二页',{exact:true}).waitFor();
+      assert.equal(await page.locator('.income-details tbody td').nth(1).innerText(),'未记录');
       assert.match(await page.getByRole('heading',{name:'清单汇总'}).innerText(), /21 笔.*1234567\.89/);
       await page.getByRole('button',{name:'PMS 实收',exact:true}).click();
       await page.getByText('PMS合成明细',{exact:true}).waitFor();
@@ -95,7 +97,7 @@ test('income amounts fit narrow cards and open five-column paged receipts', asyn
       } else if (viewport === 1440) {
         assert.equal(await tableWrap.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
       }
-      assert.deepEqual(await page.locator('.income-details th').allTextContents(),['出场时间','车牌','车类','停车时段','应收金额','备注']);
+      assert.deepEqual(await page.locator('.income-details th').allTextContents(),['房号地址','收款方式','出场时间','车牌','车类','停车时段','应收金额','备注']);
       await page.getByRole('cell',{name:'临时车',exact:true}).waitFor();
       assert.equal(await page.getByRole('cell',{name:'亲情车',exact:true}).count(),0);
       assert.equal(await page.getByRole('tab',{selected:true}).innerText(),'一期');

@@ -15,6 +15,7 @@ export class IncomeQueryDto extends MisTodayQueryDto {
 
 export interface IncomeRow {
   paidAt: string; plate: string | null; period: string | null; amountCents: number; remark: string | null;
+  address: string | null; paymentMethod: string | null;
   samePlateCount?: number | null;
 }
 export interface IncomePage { total: number; amountCents: number; rows: IncomeRow[] }

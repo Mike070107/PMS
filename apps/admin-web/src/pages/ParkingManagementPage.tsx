@@ -425,14 +425,15 @@ export default function ParkingManagementPage({
         const plate = normalizeParkingPlate(plateValue(row.fields));
         const clouds = deliyunRows.filter(item => normalizeParkingPlate(item.plate) === plate);
         if (clouds.length > 1) throw new Error('同牌多条人防记录，禁止猜测换牌目标');
+        let familyExpired = false;
         const afterPlate = await runPreservedParkingOperation({
           scope: `${session.actingTenant?.id ?? session.user.tenantId}:${session.user.id}`,
           kind, plate, database: parkingDatabase(row.database)!, sourceRecordId: parkingHistoryRef(row).sourceRecordId || '', payload,
           cloudKnown: cloudChecked.includes(plate), cloudId: clouds[0]?.id ?? null,
           recordOf: item => ({ database: parkingDatabase(item.database)!, sourceRecordId: parkingHistoryRef(item).sourceRecordId || '', plate: plateValue(item.fields) }),
-          onTask: setLastOperation,
+          onTask: task => { setLastOperation(task); familyExpired = task.result?.familyAuthorizationExpired === true; },
         });
-        message.success(kind === 'change_plate' ? '全部原来源换牌及独立读回完成，车型、授权与 PMS 原类别保持' : payload.identity === '产权车' ? '已核对 PMS 产权车收费分类及所选停车库住户车身份' : '所选旧库车型已独立读回；授权与 PMS 类别保持');
+        message.success(kind === 'change_plate' ? '全部原来源换牌及独立读回完成，车型、授权与 PMS 原类别保持' : familyExpired ? '车辆类型及亲情车旧有效期已读回' : payload.identity === '产权车' ? '已核对 PMS 产权车收费分类及所选停车库住户车身份' : '所选旧库车型已独立读回，PMS 收费档位保持原设置');
         setOperationTarget(null);
         await searchParking(afterPlate);
         return;
@@ -1716,7 +1717,7 @@ function ParkingOperationModal({ open, kind, row, roomOptions, communitiesOverri
           : '德立云写入开关未开启，人防授权暂不可修改。'} />
         <label>车库授权<Checkbox.Group value={selectedGarages} onChange={(values) => setSelectedGarages(values as string[])} options={[{ label: '一期地面车库', value: 'phase1' }, { label: '二期地面车库', value: 'phase2' }, { label: '二期大车库', value: 'main' }, { label: '二期人防车库', value: 'civil', disabled: !deliyunWriteEnabled }]} /></label>
         {selectedGarages.includes('civil') && <label>地库车位号（必填）<Input aria-required="true" maxLength={20} value={civilParkingSpace} placeholder="将写入德立云卡号栏位" onChange={(event) => setCivilParkingSpace(event.target.value)} /></label>}</>}
-      {kind === 'update_vehicle_type' && <><Alert type="info" showIcon message={`仅修改 ${row?.database || ''} 的车牌 ${plate}，其他库需另行办理`} description={identity === '产权车' ? 'PMS 按产权车收费，所选停车库写入住户车。' : undefined} /><label>车辆类型<Select value={identity} options={['住户车', '租户车', '亲情车', '产权车'].map((value) => ({ value, label: value }))} onChange={setIdentity} /></label></>}
+      {kind === 'update_vehicle_type' && <><Alert type="info" showIcon message={`仅修改 ${row?.database || ''} 的车牌 ${plate}，其他库需另行办理`} description={identity === '产权车' ? 'PMS 按产权车收费，所选停车库写入住户车。' : undefined} /><label>车辆类型<Select value={identity} options={['住户车', '租户车', '亲情车', '产权车'].map((value) => ({ value, label: value }))} onChange={setIdentity} /></label>{row && vehicleIdentity(row.fields) === '亲情车' && identity !== '亲情车' && <p>到期日改为昨天，旧有效期立即结束。</p>}</>}
       {kind === 'download_vehicle' && <Alert type="info" showIcon message="重新下发并等待设备确认" description="系统会按当前授权通道重新生成下载任务，并等待旧停车系统确认所有现行通道已下载；只写入队列不会显示成功，60秒未确认会列出未完成通道，可排查现场下载服务后再次下发。" />}
       {kind === 'delete_vehicle' && <Alert type="warning" showIcon message="注销会调用旧系统 Add_Del_Plate" description="车辆从旧库移除并写入注销流水，网页不会直接删除 Car_Issue。" />}
       {task?.status === 'completed' && <Button danger onClick={onRollback}>为本次操作创建反向回滚任务</Button>}

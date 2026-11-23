@@ -113,6 +113,18 @@ test('real new and legacy entries: preservation, isolated type, unknown recovery
       assert.equal(writes[0].data.payload.identity,parkingIdentity);
       assert.equal((await state()).billed,billingClass);
     }
+    for (const scenario of ['familyExpiry', 'familyExpiryMismatch']) {
+      const dialog = await open('modern', 'type', scenario, 390);
+      await fill(dialog, 'modern', 'type', '住户车2');
+      await dialog.getByText('改为昨天，旧有效期立即结束', { exact: true }).waitFor();
+      await submit(dialog, 'modern', 'type');
+      if (scenario === 'familyExpiry') await dialog.waitFor({ state: 'hidden' });
+      else await dialog.getByRole('alert').filter({ hasText: '到期日不一致' }).waitFor();
+      const data = await state();
+      assert.equal((await posts()).length, 1);
+      assert.equal(data.rows[0].fields.End_Time, '2027-01-31');
+      assert.equal(data.rows[1].fields.End_Time, scenario === 'familyExpiry' ? '2026-11-22' : '2027-01-31');
+    }
     for (const entry of ['modern', 'legacy']) for (const width of [390, 320]) for (const kind of ['plate', 'type']) {
       const dialog = await open(entry, kind, 'success', width); await fill(dialog, entry, kind); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false); await shot(`${entry}-${kind}-${width}`); await submit(dialog, entry, kind); await dialog.waitFor({ state: 'hidden' }); results.push({ entry, width, kind, horizontalOverflow: false });
     }

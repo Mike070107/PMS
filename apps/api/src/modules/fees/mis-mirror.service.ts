@@ -968,6 +968,7 @@ export class MisMirrorService {
     if (!offices.length) return emptyIncome();
     await this.assertReady(tenantId);
     return this.incomeFromRows(`SELECT zj_id AS id, COALESCE(NULLIF(replace(receipt_paid_at,' 00:00:00',''),''),paid_date::text) AS "paidAt", NULL::text AS plate,
+        COALESCE(NULLIF(BTRIM(address),''),NULLIF(BTRIM(room_no),'')) AS address, NULLIF(BTRIM(payment_method),'') AS "paymentMethod",
         period, amount_cents AS "amountCents", receipt_remark AS remark, false AS "countsTowardsRepeat"
       FROM mis_mirror_bill WHERE office_code = ANY($1::text[]) AND paid_date=$2::date
         AND fee_code=$3 AND refund_date IS NULL AND amount_cents>0`, [offices, day, code], offset, limit);
@@ -988,18 +989,24 @@ export class MisMirrorService {
     const reversed = "status='refunded' AND amount_cents<0 AND snapshot#>>'{reversal,originalTxnNo}' IS NOT NULL";
     const collected = "status='paid' AND amount_cents>0";
     const source = repair
-      ? "work_orders WHERE deleted_at IS NULL AND status<>'voided' AND fee_cents>0"
-      : `business_transactions WHERE (${collected}${parking ? ` OR (${reversed})` : ''}) AND ${filter}`;
+      ? "work_orders t LEFT JOIN repair_requests r ON r.id=t.request_id AND r.tenant_id=t.tenant_id WHERE t.deleted_at IS NULL AND status<>'voided' AND fee_cents>0"
+      : `business_transactions t LEFT JOIN houses h ON h.id=t.house_id AND h.tenant_id=t.tenant_id
+         LEFT JOIN buildings b ON b.id=h.building_id AND b.tenant_id=t.tenant_id
+         LEFT JOIN communities c ON c.id=b.community_id AND c.tenant_id=t.tenant_id
+         WHERE (${collected}${parking ? ` OR (${reversed})` : ''}) AND ${filter}`;
     const countsTowardsRepeat = parking ? "(status='paid' AND NOT (snapshot ? 'reversedByTxnNo'))" : 'false';
-    const fields = repair ? 'NULL::text AS plate, NULL::text AS period, fee_cents AS "amountCents", action_note AS remark, false AS "countsTowardsRepeat"'
+    const fields = repair ? `NULL::text AS plate, NULL::text AS period, fee_cents AS "amountCents", action_note AS remark, false AS "countsTowardsRepeat",
+        NULLIF(BTRIM(r.address_text),'') AS address, NULL::text AS "paymentMethod"`
       : `COALESCE(NULLIF(snapshot#>>'{parking,plate}',''),NULLIF(snapshot#>>'{vehicle,plateNo}','')) AS plate,
          NULLIF(concat_ws(' 至 ',start_date::text,end_date::text),'') AS period, amount_cents AS "amountCents",
          CASE WHEN snapshot ? 'reversedByTxnNo' THEN concat_ws(' · ',NULLIF(remark,''),'已红冲 ' || (snapshot->>'reversedByTxnNo')) ELSE remark END AS remark,
-         ${countsTowardsRepeat} AS "countsTowardsRepeat"`;
-    return this.incomeFromRows(`SELECT id, to_char(${timestamp} AT TIME ZONE 'Asia/Shanghai','YYYY-MM-DD HH24:MI:SS') AS "paidAt", ${fields}
-      FROM ${source} AND tenant_id=$1 AND ($2::int[] IS NULL OR community_id=ANY($2::int[]))
-      AND ${timestamp} >= ($3::date::timestamp AT TIME ZONE 'Asia/Shanghai')
-      AND ${timestamp} < (($3::date+1)::timestamp AT TIME ZONE 'Asia/Shanghai')`, [user.tenantId, scope, day], offset, limit);
+         COALESCE(NULLIF(BTRIM(snapshot#>>'{intake,propertyLabel}'),''),NULLIF(BTRIM(snapshot#>>'{house,address}'),''),
+           NULLIF(CONCAT_WS('/',NULLIF(c.name,''),NULLIF(b.lane,''),NULLIF(b.building_no,''),NULLIF(h.room_no,'')),'')) AS address,
+         NULLIF(BTRIM(payment_method),'') AS "paymentMethod", ${countsTowardsRepeat} AS "countsTowardsRepeat"`;
+    return this.incomeFromRows(`SELECT t.id, to_char(t.${timestamp} AT TIME ZONE 'Asia/Shanghai','YYYY-MM-DD HH24:MI:SS') AS "paidAt", ${fields}
+      FROM ${source} AND t.tenant_id=$1 AND ($2::int[] IS NULL OR t.community_id=ANY($2::int[]))
+      AND t.${timestamp} >= ($3::date::timestamp AT TIME ZONE 'Asia/Shanghai')
+      AND t.${timestamp} < (($3::date+1)::timestamp AT TIME ZONE 'Asia/Shanghai')`, [user.tenantId, scope, day], offset, limit);
   }
 
   private async incomeFromRows(sql: string, args: unknown[], offset: number, limit: number): Promise<IncomePage> {

@@ -82,7 +82,15 @@ test('办理记录中文系统操作：真实React与ledger SQL，桌面/窄屏�
    await row.waitFor();assert.equal(await page.getByRole('button',{name:'明细',exact:true}).count(),1);await row.getByRole('button',{name:'明细',exact:true}).click();await page.getByRole('region',{name:'车辆系统操作'}).waitFor();
    await page.getByRole('textbox',{name:'办理记录搜索'}).fill('沪TEST04');
    await page.getByRole('button',{name:'查询',exact:true}).click();
-   const reverse=page.getByRole('button',{name:'红冲',exact:true});
+   const reversibleRow=page.getByRole('row').filter({hasText:'沪TEST04'});
+   const reverse=reversibleRow.getByRole('button',{name:'红冲',exact:true});
+   await reverse.waitFor();
+   const reversibleDetails=reversibleRow.getByRole('button',{name:'明细',exact:true});
+   await reverse.scrollIntoViewIfNeeded();
+   const detailButton=await reversibleDetails.boundingBox(), reverseButton=await reverse.boundingBox();
+   assert.ok(Math.abs(detailButton.y-reverseButton.y)<1 && reverseButton.x>=detailButton.x+detailButton.width,'明细和红冲左右并排');
+   await reversibleDetails.click();
+   await reversibleRow.getByRole('button',{name:'收起',exact:true}).click();
    await reverse.click();
    const dialog=page.getByRole('dialog',{name:'红冲停车收款'});
    assert.match(await dialog.innerText(),/沪TEST04[\s\S]*750\.00[\s\S]*另行核对/);

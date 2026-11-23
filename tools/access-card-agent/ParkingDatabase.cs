@@ -1461,7 +1461,7 @@ SELECT id FROM @created;";
         }
 
         internal static void AssertVehiclePreserved(Dictionary<string, object> before,
-            Dictionary<string, object> after, bool changingIdentity)
+            Dictionary<string, object> after, bool changingIdentity, DateTime? familyExpiry = null)
         {
             foreach (var key in before.Keys)
             {
@@ -1469,6 +1469,12 @@ SELECT id FROM @created;";
                 if (!changingIdentity && String.Equals(key, "P_plate", StringComparison.OrdinalIgnoreCase)) continue;
                 if (changingIdentity && (String.Equals(key, "Car_Beand", StringComparison.OrdinalIgnoreCase) ||
                     String.Equals(key, "Car_Brand", StringComparison.OrdinalIgnoreCase))) continue;
+                if (familyExpiry.HasValue && String.Equals(key, "End_Time", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!after.ContainsKey(key) || !VehicleValueEquals(familyExpiry.Value, after[key]))
+                        throw new InvalidOperationException("亲情车旧有效期写入后读回不一致，已撤销本次操作");
+                    continue;
+                }
                 if (!after.ContainsKey(key) || !VehicleValueEquals(before[key], after[key]))
                     throw new InvalidOperationException("存储过程意外改变车辆字段 " + key + "，已撤销本次操作");
             }
@@ -1584,6 +1590,34 @@ SELECT id FROM @created;";
             }
         }
 
+        internal static DateTime? FamilyTypeExpiry(Dictionary<string, object> original, string identity, Dictionary<string, object> expected)
+        {
+            if (identity == "亲情车" || Convert.ToString(RawVehicleIdentity(original), CultureInfo.InvariantCulture).Trim() != "亲情车" ||
+                expected == null || !expected.ContainsKey("familyTypeExpiryDate")) return null;
+            return RequiredDay(expected, "familyTypeExpiryDate");
+        }
+
+        private static Dictionary<string, object> VehicleTypeReceipt(ParkingOperationTask task, Dictionary<string, object> before,
+            Dictionary<string, object> after, string identity, DateTime? familyExpiry)
+        {
+            var result = new Dictionary<string, object> {
+                { "verified", true }, { "preservationContract", 1 }, { "preserved", true }, { "database", task.database },
+                { "before", before }, { "after", after }, { "plate", Value(after, "P_plate") }, { "issueId", Value(after, "P_id") },
+                { "previousIdentity", RawVehicleIdentity(before) }, { "identity", identity }
+            };
+            if (familyExpiry.HasValue)
+            {
+                var endDate = SqlDay(after["End_Time"]);
+                var receiptAfter = new Dictionary<string, object>(after);
+                receiptAfter["End_Time"] = endDate;
+                result["after"] = receiptAfter;
+                result["familyAuthorizationExpired"] = true;
+                result["previousEndDate"] = SqlDay(before["End_Time"]);
+                result["endDate"] = endDate;
+            }
+            return result;
+        }
+
         private static Dictionary<string, object> UpdateVehicleType(AgentConfig config, SqlConnection connection, ParkingOperationTask task,
             Dictionary<string, object> payload, string plate, string admin)
         {
@@ -1596,17 +1630,19 @@ SELECT id FROM @created;";
                 AssertVehicleRecord(task, before);
                 var journal = VehicleSnapshotPath(config, connection, task);
                 var snapshot = LoadVehicleSnapshot(journal);
+                var expiry = FamilyTypeExpiry(snapshot ?? before, identity, task.expected);
                 if (snapshot != null)
                 {
                     AssertVehicleRecord(task, snapshot);
-                    AssertVehiclePreserved(snapshot, before, true);
                     if (String.Equals(Convert.ToString(RawVehicleIdentity(before), CultureInfo.InvariantCulture), identity, StringComparison.Ordinal))
                     {
+                        AssertVehiclePreserved(snapshot, before, true, expiry);
                         transaction.Commit();
-                        return new Dictionary<string, object> { { "verified", true }, { "preservationContract", 1 }, { "preserved", true },
-                            { "database", task.database }, { "before", snapshot }, { "after", before }, { "plate", plate },
-                            { "issueId", Value(before, "P_id") }, { "previousIdentity", RawVehicleIdentity(snapshot) }, { "identity", identity }, { "recovered", true } };
+                        var recovered = VehicleTypeReceipt(task, snapshot, before, identity, expiry);
+                        recovered["recovered"] = true;
+                        return recovered;
                     }
+                    AssertVehiclePreserved(snapshot, before, true);
                     if (!Object.Equals(RawVehicleIdentity(snapshot), RawVehicleIdentity(before)))
                         throw new InvalidOperationException("原任务车型已发生其他变化，禁止重办，请重新查询");
                 }
@@ -1619,18 +1655,25 @@ SELECT id FROM @created;";
                     command.Parameters["@admin"].Value = admin;
                     command.ExecuteNonQuery();
                 }
+                if (expiry.HasValue)
+                {
+                    using (var update = connection.CreateCommand())
+                    {
+                        update.Transaction = transaction;
+                        update.CommandText = "UPDATE dbo.Car_Issue SET End_Time=@endDate WHERE P_id=@id AND P_plate=@plate";
+                        Add(update, "@endDate", SqlDbType.DateTime, 0, expiry.Value);
+                        Add(update, "@id", SqlDbType.Int, 0, before["P_id"]);
+                        Add(update, "@plate", SqlDbType.VarChar, 50, plate);
+                        update.ExecuteNonQuery();
+                    }
+                }
                 var after = ReadBindingVehicle(connection, transaction, plate);
-                AssertVehiclePreserved(before, after, true);
+                AssertVehiclePreserved(before, after, true, expiry);
                 var afterIdentity = Convert.ToString(RawVehicleIdentity(after), CultureInfo.InvariantCulture);
                 if (!String.Equals(afterIdentity, identity, StringComparison.Ordinal))
                     throw new InvalidOperationException("车辆授权类型写入后读回不一致，已撤销本次操作");
                 transaction.Commit();
-                return new Dictionary<string, object> {
-                    { "verified", true }, { "preservationContract", 1 }, { "preserved", true }, { "database", task.database },
-                    { "before", before }, { "after", after }, { "plate", Value(after, "P_plate") }, { "issueId", Value(after, "P_id") },
-                    { "previousIdentity", RawVehicleIdentity(before) },
-                    { "identity", afterIdentity }
-                };
+                return VehicleTypeReceipt(task, before, after, afterIdentity, expiry);
             }
         }
 

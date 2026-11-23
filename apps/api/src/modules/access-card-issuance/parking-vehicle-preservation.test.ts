@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { assertPreservedReceipt, validatePreservedOperation, VEHICLE_IDENTITIES } from './parking-vehicle-preservation';
+import { assertPreservedReceipt, familyTypeExpiryDate, validatePreservedOperation, VEHICLE_IDENTITIES } from './parking-vehicle-preservation';
 import { changeLinkedSpacePlate, preservePlateBilling, supersededParkingPlates, syncLinkedSpaceDetails } from './parking-plate-billing';
 import { Community } from '../../entities/community.entity';
 import { ParkingSpace } from '../../entities/parking-space.entity';
@@ -15,7 +15,7 @@ test('actual TypeORM claim SQL groups every OR behind tenant/status/capability f
   for (const capable of [false, true]) {
     let sql = '';
     const service: any = Object.create(AccessCardIssuanceService.prototype);
-    service.authenticateAgent = async () => ({ tenantId: 77, agentKey: 'gateway', kind: 'parking_gateway', version: '2.5.53', capabilities: { parkingDbWrite: true, parkingVehiclePreservationV1: capable } });
+    service.authenticateAgent = async () => ({ tenantId: 77, agentKey: 'gateway', kind: 'parking_gateway', version: '2.6.9', capabilities: { parkingDbWrite: true, parkingVehiclePreservationV1: capable, parkingFamilyTypeExpiryV1: capable } });
     const repository = ds.getRepository(ParkingOperation), actualBuilder = repository.createQueryBuilder.bind(repository);
     const fakeRepo = { createQueryBuilder: (alias: string) => {
       const builder = actualBuilder(alias);
@@ -33,7 +33,10 @@ test('actual TypeORM claim SQL groups every OR behind tenant/status/capability f
     assert.equal(depth, 0); assert.match(sql, /tenant_id/); assert.match(sql, /lease_expires_at/);
     assert.match(sql, /batchTargets/); assert.match(sql, /sourceQueryId/); assert.match(sql, /FOR UPDATE SKIP LOCKED/);
     assert.match(sql, /preservationAgentKey/); assert.match(sql, /preservationContract/);
-    if (!capable) assert.match(sql, /NOT IN \('change_plate', 'update_vehicle_type'\)/);
+    if (!capable) {
+      assert.match(sql, /NOT IN \('change_plate', 'update_vehicle_type'\)/);
+      assert.match(sql, /familyTypeExpiryDate/);
+    } else assert.doesNotMatch(sql, /familyTypeExpiryDate/);
   }
 });
 
@@ -62,11 +65,11 @@ test('snapshot recovery remains pinned to the original assistant, never a second
 
 function creationHarness() {
   const service: any = Object.create(AccessCardIssuanceService.prototype);
-  const state: any = { existing: null, sibling: null, duplicate: null, saved: null, capable: true,
+  const state: any = { existing: null, sibling: null, duplicate: null, saved: null, capable: true, familyExpiryCapable: false,
     query: { id: 18, database: null, status: 'completed', queryKind: 'vehicle', term: '测A12345', completedAt: new Date(),
       rows: [{ database: 'parking1', fields: before() }, { database: 'parking2', fields: { ...before('租户车'), P_id: 5046 } }] } };
   service.requireTenant = () => 2; service.parkingOperationResponse = (value: any) => value;
-  service.agentRepo = { find: async () => [{ kind: 'parking_gateway', version: '2.5.53', status: 'online', enabled: true, lastSeenAt: new Date(), capabilities: { parkingDbWrite: true, parkingVehiclePreservationV1: state.capable } }] };
+  service.agentRepo = { find: async () => [{ kind: 'parking_gateway', version: '2.6.9', status: 'online', enabled: true, lastSeenAt: new Date(), capabilities: { parkingDbWrite: true, parkingVehiclePreservationV1: state.capable, parkingFamilyTypeExpiryV1: state.familyExpiryCapable } }] };
   service.parkingQueryRepo = { findOne: async () => state.query };
   let builderCount = 0;
   service.parkingOperationRepo = { findOne: async () => state.existing,
@@ -142,6 +145,31 @@ test('type change ignores only intended identity columns', () => {
   const value: any = { ...receipt('1'), plate: '测A12345', after: { ...before('住户车'), P_Admin: 'PMS' } };
   assertPreservedReceipt(typeTask, value);
   value.after.Car_Lei = '1'; assert.throws(() => assertPreservedReceipt(typeTask, value));
+});
+
+test('family conversion must read back exactly the frozen expiry date and preserve all other fields', () => {
+  const date = '2026-11-22';
+  const typeTask = { ...task(), kind: 'update_vehicle_type', payload: { plate: '测A12345', identity: '住户车' }, expected: { familyTypeExpiryDate: date } };
+  const value = { ...receipt('亲情车'), plate: '测A12345', after: { ...before('住户车'), End_Time: date }, endDate: date, familyAuthorizationExpired: true };
+  assertPreservedReceipt(typeTask, value);
+  assert.throws(() => assertPreservedReceipt(typeTask, { ...value, endDate: '2026-11-23' }));
+  assert.throws(() => assertPreservedReceipt(typeTask, { ...value, after: { ...value.after, End_Time: '2026-11-23' } }));
+  assert.throws(() => assertPreservedReceipt(typeTask, { ...value, after: { ...value.after, Sart_Time: '2026-11-23' } }));
+  assert.throws(() => assertPreservedReceipt(typeTask, { ...value, familyAuthorizationExpired: false }));
+  assert.throws(() => assertPreservedReceipt(typeTask, { ...value, before: before('租户车') }));
+});
+
+test('车类转出使用北京时间昨日，日期由服务端生成并沿用原任务', async () => {
+  assert.equal(familyTypeExpiryDate(new Date('2026-12-31T15:59:59Z')), '2026-12-30');
+  assert.equal(familyTypeExpiryDate(new Date('2026-12-31T16:00:00Z')), '2026-12-31');
+  const { service, state, dto } = creationHarness();
+  const request = { ...dto, kind: 'update_vehicle_type', payload: { plate: '测A12345', ownerRoom: '228/3/501', identity: '住户车' }, expected: { familyTypeExpiryDate: '2099-01-01' } };
+  await assert.rejects(() => service.createParkingOperation(request, { id: 3 }), /2\.6\.9/);
+  state.familyExpiryCapable = true;
+  const created = await service.createParkingOperation(request, { id: 3 });
+  assert.equal(created.expected.familyTypeExpiryDate, familyTypeExpiryDate(created.requestedAt));
+  state.existing = created;
+  assert.equal(await service.createParkingOperation(request, { id: 3 }), created);
 });
 
 function billingFixture(hasTag = true) {

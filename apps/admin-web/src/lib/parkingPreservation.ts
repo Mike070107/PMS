@@ -1,5 +1,7 @@
 import { propertyCarBillingClass, readPlateBillingClass } from '../../../neighbor-web/src/components/vehicle-ops/propertyCarBilling';
 import { accessCardIssuance as api } from '@pms/api-client';
+import { field } from '../../../neighbor-web/src/lib/parking-fields';
+import { normalizeParkingDate } from './parkingVehicleMerge';
 
 type Target = { database: 'parking1' | 'parking2'; sourceRecordId: string; id?: number };
 type Plan = { kind: 'change_plate' | 'update_vehicle_type'; batchId: string; plate: string; payload: Record<string, unknown>;
@@ -51,6 +53,7 @@ export async function runPreservedParkingOperation(args: {
     plan = { kind: args.kind, batchId, plate, payload, targets, cloudId: args.kind === 'change_plate' ? args.cloudId : null };
     persist(plan); // Must succeed before first POST.
   }
+  let familyExpiry: string | null = null;
   for (const target of plan.targets) {
     let task = target.id ? await api.parkingOperation(target.id) : await api.createParkingOperation({
       database: target.database, kind: plan.kind, sourceRecordId: target.sourceRecordId,
@@ -67,6 +70,7 @@ export async function runPreservedParkingOperation(args: {
     if (task.result?.verified !== true || task.result.preserved !== true || task.result.preservationContract !== 1 ||
         task.result.database !== target.database || String(task.result.issueId) !== target.sourceRecordId ||
         task.result.plate !== (plan.payload.newPlate || plate)) throw new Error('原值保护回执不完整，原请求已保留');
+    if (plan.kind === 'update_vehicle_type' && task.result.familyAuthorizationExpired === true) familyExpiry = String(task.result.endDate || '');
   }
   if (plan.cloudId && !plan.cloudDone) {
     const cloudTask = await api.changeDeliyunPlate({ vehicleId: plan.cloudId, plate, newPlate: String(plan.payload.newPlate), idempotencyKey: `${plan.batchId}-deliyun` });
@@ -86,6 +90,8 @@ export async function runPreservedParkingOperation(args: {
       const row = query.rows.find(r => r.database === target.database && args.recordOf(r).sourceRecordId === target.sourceRecordId)!;
       const identities = Object.entries(row.fields).filter(([name]) => ['carbrand', 'carbeand', 'identity', '车型', '车辆类型'].includes(name.replace(/_/g, '').toLowerCase()));
       if (!identities.length || identities.some(([, value]) => value !== plan!.payload.identity)) throw new Error('车型独立读回不一致，原请求已保留');
+      if (familyExpiry !== null && (!familyExpiry || normalizeParkingDate(field(row.fields, 'expiry')) !== familyExpiry))
+        throw new Error('到期日独立读回不一致，原请求已保留');
     }
   }
   if (plan.payload.propertyBillingClass && await readPlateBillingClass(plate) !== plan.payload.propertyBillingClass)

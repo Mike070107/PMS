@@ -3,7 +3,7 @@ import { request } from '@pms/api-client';
 import { Sheet } from '@/components/ui';
 import Icon from '@/components/Icon';
 import DateInput from '@/components/DateInput';
-import { money } from '@/lib/format';
+import { money, payLabel } from '@/lib/format';
 
 const categories = [
   ['property', '物业费', '#2f9e6e'], ['berth', '泊位费', '#397abc'],
@@ -17,7 +17,7 @@ const phaseKeys: Phase[] = ['parking1', 'parking2'];
 type Source = 'mis' | 'pms';
 const sourceLabels = {mis:'MIS 人工录入', pms:'PMS 实收'};
 const compare = (id: Category) => id === 'berth' || id === 'garage';
-type Row = { vehicleClass?: string; paidAt: string; plate: string | null; period: string | null; amountCents: number; remark: string | null; samePlateCount?: number | null };
+type Row = { vehicleClass?: string; paidAt: string; address?: string | null; paymentMethod?: string | null; plate: string | null; period: string | null; amountCents: number; remark: string | null; samePlateCount?: number | null };
 type Result = { total: number; amountCents: number; rows: Row[] };
 type Unavailable = { available: false; reason: string; retryable?: boolean };
 type Response = Result | Unavailable;
@@ -59,6 +59,7 @@ function Details({ date, category, firstPage, phase, source }: { source?:Source;
     return () => { active = false; };
   }, [category, date, page, retry, firstPage, phase, source]);
   const data = result?.page === page ? result.data : null;
+  const mis = category[0] === 'property' || source === 'mis';
   return <>
     {phase && firstPage && <h3>当期应收 {money(firstPage.amountCents/100)} · {firstPage.total} 笔</h3>}
     {compare(category[0]) && data && 'amountCents' in data &&
@@ -67,8 +68,10 @@ function Details({ date, category, firstPage, phase, source }: { source?:Source;
       : !data.total ? <p>当日暂无收费</p> : <>
         <div className={category[0] === 'temporary' ? 'intro-table-wrap income-exit-wrap' : 'intro-table-wrap'}>
           <table className="t usage-table income-details">
-          <thead><tr>{(category[0] === 'temporary' ? ['出场时间','车牌','车类','停车时段','应收金额','备注'] : ['收费时间','车牌','费用时段','收费金额','备注']).map(title => <th key={title}>{title}</th>)}</tr></thead>
+          <thead><tr><th>房号地址</th><th>收款方式</th>{(category[0] === 'temporary' ? ['出场时间','车牌','车类','停车时段','应收金额','备注'] : ['收费时间','车牌','费用时段','收费金额','备注']).map(title => <th key={title}>{title}</th>)}</tr></thead>
           <tbody>{data.rows.map((r,i) => <tr key={i}>
+            <td>{r.address?.trim() || '未记录'}</td>
+            <td>{r.paymentMethod?.trim() ? (mis ? r.paymentMethod.trim() : payLabel(r.paymentMethod)) : '未记录'}</td>
             <td>{r.paidAt}</td>
             <td>
               {r.plate || '—'}
