@@ -12,6 +12,7 @@
 }
 
 .rec-actions { display: inline-flex; align-items: center; gap: 8px; }
+.rec-table .rec-actions { flex-wrap: nowrap; }
 .rec-actions > .btn { flex: none; white-space: nowrap; }
 .rec-reverse-btn { color: var(--dang); }
 .rec-reverse-form { display: grid; gap: 12px; }

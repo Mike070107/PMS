@@ -30,7 +30,7 @@ test('办理记录中文系统操作：真实React与ledger SQL，桌面/窄屏�
  const held=new Promise(r=>release=r);let hold=true;
  const built=await esbuild.build({stdin:{resolveDir:app,loader:'tsx',contents:`
  import React from 'react';import {createRoot} from 'react-dom/client';import {MemoryRouter} from 'react-router-dom';import Records from '@/pages/Records';
- import '@/styles/app.css';import '@/styles/design.css';import '@/styles/guards.css';
+ import '@/styles/design.css';import '@/styles/app.css';import '@/styles/large.css';import '@/styles/guards.css';
  createRoot(document.getElementById('root')).render(<MemoryRouter initialEntries={['/records'+location.search]}><main style={{padding:16,maxWidth:1200,margin:'auto'}}><p>隔离合成数据 · 不收费、不下发设备</p><Records/></main></MemoryRouter>);`},bundle:true,write:false,outfile:'entry.js',format:'iife',jsx:'automatic',alias:{'@':path.join(app,'src')},define:{'process.env.NODE_ENV':'"development"'},plugins:[{name:'scoped-ledger-fixture',setup(b){
   b.onResolve({filter:/^@pms\/api-client$/},()=>({path:'api',namespace:'fixture'}));
   b.onResolve({filter:/^@\/lib\/auth$/},()=>({path:'session',namespace:'fixture'}));
@@ -87,6 +87,7 @@ test('办理记录中文系统操作：真实React与ledger SQL，桌面/窄屏�
    await reverse.waitFor();
    const reversibleDetails=reversibleRow.getByRole('button',{name:'明细',exact:true});
    await reverse.scrollIntoViewIfNeeded();
+   assert.equal(await reversibleRow.locator('.rec-actions').evaluate(node=>getComputedStyle(node).flexWrap),'nowrap');
    const detailButton=await reversibleDetails.boundingBox(), reverseButton=await reverse.boundingBox();
    assert.ok(Math.abs(detailButton.y-reverseButton.y)<1 && reverseButton.x>=detailButton.x+detailButton.width,'明细和红冲左右并排');
    await reversibleDetails.click();
