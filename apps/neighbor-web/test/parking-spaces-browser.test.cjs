@@ -29,6 +29,7 @@ test('两库正式卡片：独立类别/完整字段、hover及focus清晰动效
         if (args.path.endsWith('/auth')) return { loader: 'js', contents: `const session={user:{id:1},access:{isTenantAdmin:true}};export const useSession=()=>session;export const auth={getAccess:()=>session.access,getToken:()=>null};` };
         if (args.path.endsWith('/perm')) return { loader: 'js', contents: `export const can=()=>true;` };
         return { loader: 'js', contents: `
+          export const repairs={}; export const uploadBlobTo=async()=>{throw Error("此测试不允许上传");};
           const make=(id,data)=>({id,garage:'main',spaceNo:String(id).padStart(3,'0'),houseNo:null,areaSqm:null,address:null,roomLabel:null,plate:null,ownerName:null,ownerTel:null,note:null,source:'fixture',endDate:null,category:null,...data});
           const main=[
             make(1,{category:'property',plate:'沪A12345',address:'228弄26号203室',ownerName:'测试业主甲与共同业主乙',ownerTel:'13800000001/021-12345678/13900000002',endDate:'2099-12-31'}),
