@@ -73,6 +73,19 @@ export class AccessCardIssuanceController {
     return this.service.readiness(user, access);
   }
 
+  @Get('shops/:shopId/cards')
+  @RequirePermission('business', 'view')
+  shopCards(@Param('shopId', ParseIntPipe) shopId: number, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.service.shopCards(shopId, user, access);
+  }
+
+  @Post('shops/:shopId/cards/:cardId')
+  @RequirePermission('business', 'edit')
+  bindShopCard(@Param('shopId', ParseIntPipe) shopId: number, @Param('cardId', ParseIntPipe) cardId: number,
+    @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.service.bindShopCard(shopId, cardId, user, access);
+  }
+
   @Post('agents')
   @RequirePermission('business', 'edit')
   enrollAgent(@Body() dto: EnrollAccessCardAgentDto, @CurrentUser() user: AuthUser) {

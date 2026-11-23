@@ -8,6 +8,8 @@ export const session = { user: { id: 1, name: '合成操作员' }, access: { sco
 export const targets = [{ key: 'phase1', label: '合成小区 一期地面', short: '一期地面', system: 'local', billing: 'vehicle', database: 'parking1', communities: ['合成小区'] }];
 const house = { id: 501, roomNo: '901', propertyType: 'residential', shopName: null, ownerId: 701, ownerName: '合成住户', ownerPhone: '13800000000' };
 const tree = [{ id: 1, name: '合成小区', isGroup: false, parentId: null, mainLane: '198', buildings: [{ id: 11, lane: '198', buildingNo: '8', roadName: null, houses: [house, { ...house, id: 502, roomNo: '902', ownerId: 702, ownerName: '第二合成住户' }] }] }, { id: 2, name: '未授权小区', isGroup: false, parentId: null, mainLane: '228', buildings: [{ id: 21, lane: '228', buildingNo: '8', roadName: null, houses: [{ ...house, id: 999 }] }] }];
+const shop = { id: 34, lane: null, buildingNo: 'S-08', shopName: '建行', buildingType: 'shop', roadName: null, houses: [] };
+tree[0].buildings.push(shop as any);
 const qr = { url: 'https://mock.invalid/intake/synthetic-only', dataUrl: qrFixture.dataUrl, expiresAt: '2099-11-11T23:59:00+08:00' };
 export function seed(id = 61, extra: any = {}) { return { id, kind: 'paid', status: 'waiting', houseId: 501, houseLabel: '不可解析的原始地址（不要当导航依据）', ownerName: '合成住户', ownerPhone: '', plate: '', contactName: '', contactPhone: '', relation: '', vehicleClass: '住户车-1', garages: ['phase1'], garageNumbers: {}, expiresAt: qr.expiresAt, qrValid: true, openedAt: null, submittedAt: null, reviewedAt: null, reviewNote: '', files: [], transaction: null, familyCarId: null, createdAt: '2026-11-11T08:00:00+08:00', qr, ...extra }; }
 w.__intakes = { 61: seed(), 62: seed(62, { houseId: 502, plate: '浙ADD422', status: 'approved' }), 63: seed(63, { kind: 'family' }), 64: seed(64, { status: 'void', qrValid: false }), 65: seed(65, { status: 'approved', transaction: { id: 800, txnNo: 'MOCK-800', amountCents: 15000, startDate: '2026-11-11', endDate: '2026-12-10', externalSyncStatus: 'awaiting_docs', execution: null } }), 66: seed(66, { houseId: 999 }), 67: seed(67, { expiresAt: '2020-01-01T00:00:00Z', qrValid: false }), 68: seed(68, { kind: 'family', status: 'approved', familyCarId: 901 }), 69: seed(69, { houseId: -1 }) };
@@ -34,9 +36,15 @@ export async function request(o: any): Promise<any> {
   if (o.url === '/business/search') throw Error('深链不应模糊查询或猜业主');
   if (o.url === '/fees/mis/bills') return { rows: [] };
   if (o.url === '/business/transactions') return [];
+  if (o.url === '/access-card-issuance/cards/recent') return { status: 'ready', rows: [], refreshedAt: '2026-11-23T11:00:00+08:00' };
+  if (o.url === '/access-card-issuance/shops/34/cards') return w.__shopCard
+    ? { cards: [w.__shopCard], candidates: [] } : { cards: [], candidates: [{ id: 98, cardNo: 'AB123456', label: '建行' }] };
+  if (o.url === '/access-card-issuance/shops/34/cards/98' && o.method === 'POST') return w.__shopCard = { cardNo: 'AB123456', status: 'active' };
   if (o.url === '/vehicle-intakes') {
-    if (o.method === 'POST') { const item = seed(71, { kind: d.kind, houseId: d.houseId }); w.__intakes[71] = item; return item; }
-    return Object.values(w.__intakes).filter((i: any) => (!o.query?.houseId || i.houseId === o.query.houseId) && (!o.query?.open || i.status !== 'void') && (!o.query?.status || o.query.status.split(',').includes(i.status)) && (!w.__listIds || w.__listIds.includes(i.id)));
+    if (o.method === 'POST') { const item = seed(71, { kind: d.kind, houseId: d.houseId ?? null, ...(d.shopBuildingId ? {
+      shopBuildingId: d.shopBuildingId, houseLabel: '合成小区/建行', communityId: 1, ownerName: '',
+    } : {}) }); w.__intakes[71] = item; return item; }
+    return Object.values(w.__intakes).filter((i: any) => (!o.query?.houseId || i.houseId === o.query.houseId) && (!o.query?.shopBuildingId || i.shopBuildingId === o.query.shopBuildingId) && (!o.query?.open || i.status !== 'void') && (!o.query?.status || o.query.status.split(',').includes(i.status)) && (!w.__listIds || w.__listIds.includes(i.id)));
   }
   const match = o.url.match(/^\/vehicle-intakes\/(\d+)(?:\/(.*))?$/);
   if (match) {
@@ -54,5 +62,5 @@ export async function request(o: any): Promise<any> {
   throw Error('隔离 fixture 未声明接口：' + o.url);
 }
 export const address = { tree: async () => { await record({ url: '/address/tree' }); return tree; } };
-export const accessCardIssuance = { createParkingQuery: async (term: string) => { const result = structuredClone({ id: 1, term, status: 'completed', rows: [], ...w.__queryResults?.[term] }); await record({ url: '/mock/parking-query/' + term, term }); return result; }, parkingQuery: async () => ({ id: 1, status: 'completed', rows: [] }), deliyunVehiclesByPlate: async () => ({ rows: [] }), parkingFeeRates: async () => ({ owner: { 1: 150 }, tenant: { 1: 260 } }) };
+export const accessCardIssuance = { readiness: async () => ({}), createParkingQuery: async (term: string) => { const result = structuredClone({ id: 1, term, status: 'completed', rows: [], ...w.__queryResults?.[term] }); await record({ url: '/mock/parking-query/' + term, term }); return result; }, parkingQuery: async () => ({ id: 1, status: 'completed', rows: [] }), deliyunVehiclesByPlate: async () => ({ rows: [] }), parkingFeeRates: async () => ({ owner: { 1: 150 }, tenant: { 1: 260 } }) };
 export const repairs = {};

@@ -9,6 +9,7 @@ import { dayjs } from '@/lib/format';
 import Icon from '@/components/Icon';
 import { Loading, Sheet, toast } from '@/components/ui';
 import HousePicker, { type PickedHouse } from '@/components/HousePicker';
+import type { PickedAddress } from '@/components/HouseAddressPicker';
 import { accessStatusLabel, legacyStatusLabel, rawTitle } from '@/lib/access-card-status';
 import '@/styles/access-door.css';
 import ToneIcon from '@/components/ToneIcon';
@@ -507,6 +508,68 @@ export function HouseholdCardHistory({ house }: { house: HistoryHouse }) {
   return <CardWorkspace key={house.houseId} historyHouse={house} />;
 }
 
+type ShopCardList = {
+  cards: { cardNo: string; status: string }[];
+  candidates: { id: number; cardNo: string; label: string }[];
+};
+
+function ShopCardBindings({ shopId, label, canEdit, snapshotAt, onRefresh }: {
+  shopId: number; label: string; canEdit: boolean; snapshotAt?: string | null; onRefresh: () => void;
+}) {
+  const url = `/access-card-issuance/shops/${shopId}/cards`;
+  const [list, setList] = useState<ShopCardList | null>(null);
+  const [selected, setSelected] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    let active = true;
+    request<ShopCardList>({ url }).then(result => {
+      if (active) { setList(result); setError(''); }
+    }).catch(cause => {
+      if (active) setError(cause instanceof Error ? cause.message : '商铺门禁卡读取失败');
+    });
+    return () => { active = false; };
+  }, [url, snapshotAt, revision]);
+  async function bind() {
+    if (!selected || saving) return;
+    setSaving(true); setError('');
+    try {
+      await request({ url: `${url}/${selected}`, method: 'POST' });
+      setSelected('');
+      setRevision(value => value + 1);
+      toast('门禁卡已关联');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '关联失败');
+    } finally {
+      setSaving(false);
+    }
+  }
+  return <section className="card" style={{ padding: 16 }}>
+    <div className="panelHd"><b>商铺门禁卡</b><span className="muted">{label}</span></div>
+    {list ? list.cards.length
+      ? <ul>{list.cards.map(card => <li key={card.cardNo}>{card.cardNo} · {card.status === 'active' ? '在用' : '已停用'}</li>)}</ul>
+      : <p className="muted">尚未关联门禁卡</p>
+      : !error ? <Loading /> : null}
+    {canEdit && list && <div style={{ display: 'flex', alignItems: 'end', flexWrap: 'wrap', gap: 8 }}>
+      <label>已发门禁卡
+        <select className="input" style={{ display: 'block', minHeight: 44, maxWidth: '100%' }} value={selected} disabled={saving}
+          onChange={event => { setSelected(event.target.value); setError(''); }}>
+          <option value="">{list.candidates.length ? '请选择已发门禁卡' : '暂无可关联的卡'}</option>
+          {list.candidates.map(card => <option key={card.id} value={card.id}>{card.cardNo} · {card.label}</option>)}
+        </select>
+      </label>
+      <button type="button" className="btn p" disabled={saving || !list.candidates.some(card => String(card.id) === selected)} onClick={() => void bind()}>
+        {saving ? '关联中…' : '关联门禁卡'}
+      </button>
+      <button type="button" className="btn" disabled={saving} onClick={() => {
+        setRevision(value => value + 1); onRefresh();
+      }}>刷新发卡记录</button>
+    </div>}
+    {error && <p role="alert" className="muted">{error} <button type="button" className="btn" onClick={() => setRevision(value => value + 1)}>重查</button></p>}
+  </section>;
+}
+
 function CardWorkspace({ historyHouse }: { historyHouse?: HistoryHouse }) {
   const session = useSession();
   const canEdit = can('business', 'edit');
@@ -557,6 +620,7 @@ function CardWorkspace({ historyHouse }: { historyHouse?: HistoryHouse }) {
   const [recentOpen, setRecentOpen] = useState<boolean>(() => {
     try { return localStorage.getItem('access.recent.open') === '1'; } catch { return false; }
   });
+  const [pickedShop, setPickedShop] = useState<PickedAddress | null>(null);
   const toggleRecent = () => setRecentOpen((open) => {
     const next = !open;
     try { localStorage.setItem('access.recent.open', next ? '1' : '0'); } catch { /* 忽略存储失败 */ }
@@ -628,7 +692,7 @@ function CardWorkspace({ historyHouse }: { historyHouse?: HistoryHouse }) {
   }, [historyKey, historyRetry, picked]);
 
   useEffect(() => {
-    if (historyHouse || !recentOpen) return undefined;
+    if (historyHouse || (!recentOpen && !pickedShop)) return undefined;
     let cancelled = false;
     let retryTimer = 0;
     let attempts = 0;
@@ -661,7 +725,7 @@ function CardWorkspace({ historyHouse }: { historyHouse?: HistoryHouse }) {
     };
     void run();
     return () => { cancelled = true; if (retryTimer) window.clearTimeout(retryTimer); };
-  }, [recentRetry, recentOpen, historyHouse]);
+  }, [recentRetry, recentOpen, historyHouse, pickedShop]);
 
   const refreshCardDetail = useCallback(async (cardId: number) => {
     const detail = await request<CardDetail>({ url: '/access-card-issuance/cards/' + cardId });
@@ -977,19 +1041,24 @@ function CardWorkspace({ historyHouse }: { historyHouse?: HistoryHouse }) {
       </div>
 
       <div className="findBar" style={{ marginBottom: 14 }}>
-        <HousePicker communities={communities} value={selection}
-          onPick={(p) => { setPicked(p); setBatch(null); }}
-          onClear={() => { setPicked(null); setBatch(null); }}
-          onIncomplete={() => toast('请再点一下具体室号：发卡要落到具体一户')} />
+        <HousePicker communities={communities} value={selection} shopValue={pickedShop}
+          placeholder="搜索室号、商铺号或商铺名称"
+          onPick={(p) => { setPicked(p); setPickedShop(null); setBatch(null); }}
+          onShopPick={(p) => { setPicked(null); setPickedShop(p); setBatch(null); }}
+          onClear={() => { setPicked(null); setPickedShop(null); setBatch(null); }}
+          onIncomplete={() => { setPicked(null); setPickedShop(null); toast('请选择具体室号或商铺'); }} />
       </div>
 
       </>}
       {err ? <div className="note2" style={{ background: 'var(--dang-w)', color: 'var(--dang)', marginBottom: 12 }}><Icon name="alert" />{err}</div> : null}
 
-      {!picked ? (
+      {pickedShop?.buildingId ? (
+        <ShopCardBindings key={pickedShop.buildingId} shopId={pickedShop.buildingId} label={pickedShop.fullText}
+          canEdit={canEdit} snapshotAt={recent?.refreshedAt} onRefresh={() => setRecentRetry(value => value + 1)} />
+      ) : !picked ? (
         <div className="card" style={{ padding: '56px 20px', textAlign: 'center' }}>
           <Icon name="key" size={42} style={{ color: 'var(--ink4)', marginBottom: 10 }} />
-          <div className="muted" style={{ fontSize: 15 }}>选一户，发卡或查看这一户的门禁卡</div>
+          <div className="muted" style={{ fontSize: 15 }}>选择室号或商铺，办理或查看门禁卡</div>
         </div>
       ) : (
         <>

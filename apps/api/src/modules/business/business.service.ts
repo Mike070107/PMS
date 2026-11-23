@@ -656,7 +656,7 @@ export class BusinessService {
     const filteredCards = await byHouseOrText(scopedByHouse(
       this.cardRepo
         .createQueryBuilder('ac')
-        .where('ac.tenant_id = :tenantId', { tenantId }),
+        .where('ac.tenant_id = :tenantId AND ac.house_id IS NOT NULL', { tenantId }),
       'ac',
     ), 'ac', 'card_no')
       .orderBy('ac.id', 'DESC')
@@ -695,6 +695,8 @@ export class BusinessService {
   }
 
   async complete(dto: CompleteBusinessDto, user: AuthUser, access?: ResolvedAccess) {
+    if (dto.shopBuildingId != null && (!dto.intakeId || dto.houseId != null || dto.serviceType !== BusinessServiceType.PARKING_MONTHLY))
+      throw new BadRequestException('商铺新车收费须关联原商铺登记');
     let existing = false;
     const plateOnly = dto.serviceType === BusinessServiceType.PARKING_MONTHLY && dto.houseId == null && !dto.intakeId;
     const txn = plateOnly ? await this.txnRepo.manager.transaction(async manager => {
@@ -872,7 +874,7 @@ export class BusinessService {
     const tenantId = this.requireTenant(user);
     // 新办车牌：车牌由业主扫码或办公室填写，登记期限以登记单为准，服务端重新报价。
     const intake = dto.intakeId && dto.serviceType === BusinessServiceType.PARKING_MONTHLY
-      ? await this.intakes.claimForPayment(dto.intakeId, dto.houseId, user, manager, access) : null;
+      ? await this.intakes.claimForPayment(dto.intakeId, dto.houseId, user, manager, access, dto.shopBuildingId) : null;
     const term = intake?.verifyGarages && dto.expectedAmountCents !== undefined ? null : intake?.row.registrationTerm ?? null;
     if (intake) {
       dto.plateNo = intake.plate || undefined;
@@ -913,7 +915,8 @@ export class BusinessService {
     if (dto.houseId && !house) throw new NotFoundException('house not found');
 
     // 房号 → 小区：落到流水上供范围过滤，同时校验经办权限与规则适用性
-    let communityId: number | null = plateRenewal?.communityId ?? null;
+    const shopIntake = intake?.row.shopBuildingId != null ? intake.row : null;
+    let communityId: number | null = plateRenewal?.communityId ?? shopIntake?.communityId ?? null;
     if (house) {
       const building = await this.buildingRepo.findOne({
         where: { id: house.buildingId, tenantId },
@@ -947,6 +950,10 @@ export class BusinessService {
       });
       snapshot.propertyContact = { houseId:currentHouse.id, houseNo:[building.lane,building.buildingNo,currentHouse.unit?.unitNo,currentHouse.roomNo].filter(Boolean).join('/'),
         ownerName:owner?.name ?? null, ownerPhone:owner?.phone ?? null, contactPhone:registration?.contactPhone || null };
+    }
+    if (shopIntake && ['产权车','产权车位'].includes(selectedParkingClass)) {
+      snapshot.propertyContact = { houseId: null, shopBuildingId: shopIntake.shopBuildingId, houseNo: shopIntake.houseLabel,
+        ownerName: shopIntake.ownerName || null, ownerPhone: shopIntake.ownerPhone || null, contactPhone: shopIntake.contactPhone || null };
     }
     if (intake) {
       snapshot.registrationTerm = term;
@@ -993,7 +1000,8 @@ export class BusinessService {
           });
           if (!keys.length || keys.some(k => !k) || keys.sort().join('|') !== [...intake.row.garages].sort().join('|')) throw new BadRequestException('车库已变化，请刷新后按原登记收款');
         }
-        snapshot.intake = { ...(intake.homeUpload ? {homeUpload:true} : {}), id: intake.row.id, plate: intake.row.plate, dataVersion: intake.row.dataVersion ?? 0 };
+        snapshot.intake = { ...(intake.homeUpload ? {homeUpload:true} : {}), id: intake.row.id, plate: intake.row.plate, dataVersion: intake.row.dataVersion ?? 0,
+          ...(shopIntake ? { shopBuildingId: shopIntake.shopBuildingId, propertyLabel: shopIntake.houseLabel } : {}) };
         snapshot.vehicle = { plateNo: intake.plate || '', validUntil: estimate.endDate };
         targetType = 'vehicle_intake';
         targetId = intake.row.id;

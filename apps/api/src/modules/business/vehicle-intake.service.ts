@@ -31,7 +31,7 @@ export const INTAKE_TTL_MS = 60 * 60 * 1000;
 const PHONE = /^1\d{10}$/;
 
 export interface CreateIntakeInput {
-  houseId: number; kind: VehicleIntakeKind; vehicleClass?: string; garages?: string[]; garageNumbers?: Record<string, string>; formBase: string;
+  houseId?: number; shopBuildingId?: number; kind: VehicleIntakeKind; vehicleClass?: string; garages?: string[]; garageNumbers?: Record<string, string>; formBase: string;
   /** Persist across timeouts/reloads. Optional only for pre-redesign clients. */
   operationKey?: string;
   /** Explicit, separately confirmed secondary action; requires a fresh operation key. */
@@ -148,7 +148,11 @@ export class VehicleIntakeService {
   async create(input: CreateIntakeInput, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.tenant(user);
     if (input.kind !== 'paid' && input.kind !== 'family') throw new BadRequestException('请选择付费车或亲情车');
-    const house = await this.resolveHouse(Number(input.houseId), tenantId, access);
+    if ((input.houseId == null) === (input.shopBuildingId == null)) throw new BadRequestException('请选择一个房号或商铺');
+    if (input.shopBuildingId != null && input.kind !== 'paid') throw new BadRequestException('商铺请选择付费新车登记');
+    const property = input.shopBuildingId != null
+      ? await this.resolveShop(Number(input.shopBuildingId), tenantId, access)
+      : { ...await this.resolveHouse(Number(input.houseId), tenantId, access), shopBuildingId: null };
     const formBase = this.checkFormBase(input.formBase);
     const operationKey = input.operationKey?.trim();
     if (input.operationKey !== undefined && (!operationKey || !/^[A-Za-z0-9_-]{16,100}$/.test(operationKey))) throw new BadRequestException('登记操作编号无效，请恢复原操作后重试');
@@ -156,12 +160,15 @@ export class VehicleIntakeService {
     if (input.anotherVehicle && !operationKey) throw new BadRequestException('再登记一辆需要新的操作编号');
     return this.repo.manager.transaction(async (manager) => {
       // A real DB row lock serializes every tab/process for this authorized house.
-      const houses = await manager.query('SELECT id FROM houses WHERE id = $1 AND tenant_id = $2 FOR UPDATE', [house.id, tenantId]);
-      if (!houses.length) throw new NotFoundException('房号不存在');
+      const locked = property.shopBuildingId == null
+        ? await manager.query('SELECT id FROM houses WHERE id = $1 AND tenant_id = $2 FOR UPDATE', [property.id, tenantId])
+        : await manager.query("SELECT id FROM buildings WHERE id = $1 AND tenant_id = $2 AND community_id = $3 AND building_type = 'shop' FOR UPDATE",
+          [property.shopBuildingId, tenantId, property.communityId]);
+      if (!locked.length) throw new NotFoundException('所选房号或商铺已变更，请重新选择');
       const service: VehicleIntakeService = Object.assign(Object.create(this), {
         repo: manager.getRepository(VehicleIntake), txnRepo: manager.getRepository(BusinessTransaction), inTransaction: true,
       });
-      return service.createDraft(input, user, access, house, formBase, operationKey);
+      return service.createDraft(input, user, access, property, formBase, operationKey);
     }).catch((error) => {
       // Different houses have different locks; the tenant/key unique constraint
       // is still authoritative if a client concurrently reuses one key there.
@@ -171,10 +178,12 @@ export class VehicleIntakeService {
   }
 
   private async createDraft(input: CreateIntakeInput, user: AuthUser, access: ResolvedAccess | undefined,
-    house: Awaited<ReturnType<VehicleIntakeService['resolveHouse']>>, formBase: string, operationKey?: string) {
+    house: Awaited<ReturnType<VehicleIntakeService['resolveShop']>> |
+      (Awaited<ReturnType<VehicleIntakeService['resolveHouse']>> & { shopBuildingId: null }), formBase: string, operationKey?: string) {
     const tenantId = this.tenant(user);
     const requestHash = this.hash(JSON.stringify({
-      houseId: house.id, kind: input.kind, anotherVehicle: !!input.anotherVehicle,
+      houseId: house.id, ...(house.shopBuildingId != null ? { shopBuildingId: house.shopBuildingId } : {}),
+      kind: input.kind, anotherVehicle: !!input.anotherVehicle,
       vehicleClass: input.kind === 'paid' ? this.cls(input.vehicleClass) : '',
       garages: this.cleanList(input.garages).sort(),
       garageNumbers: Object.entries(this.cleanNumbers(input.garageNumbers)).sort(([a], [b]) => a.localeCompare(b)),
@@ -191,7 +200,8 @@ export class VehicleIntakeService {
       }
     }
     {
-      const draft = { tenantId, houseId: house.id, kind: input.kind, createdAt:Raw(column => 'NOT ' + expiredDraftSql(column.split('.').slice(0,-1).join('.'))), status: In(['waiting', 'reupload']), familyCarId: IsNull() };
+      const property = house.shopBuildingId != null ? { houseId: IsNull(), shopBuildingId: house.shopBuildingId } : { houseId: house.id! };
+      const draft = { tenantId, ...property, kind: input.kind, createdAt:Raw(column => 'NOT ' + expiredDraftSql(column.split('.').slice(0,-1).join('.'))), status: In(['waiting', 'reupload']), familyCarId: IsNull() };
       const latest = { order: { id: 'DESC' as const }, lock: { mode: 'pessimistic_write' as const } };
       const previous = input.anotherVehicle
         ? await this.repo.findOne({ ...latest, where: { ...draft, status:'waiting', submittedAt:IsNull(), transactionId:IsNull() } })
@@ -207,7 +217,7 @@ export class VehicleIntakeService {
     const nonce = randomBytes(18).toString('base64url');
     const token = this.tokenOf(nonce);
     const row = await this.repo.save(this.repo.create({
-      tenantId, kind: input.kind, status: 'waiting', houseId: house.id, communityId: house.communityId,
+      tenantId, kind: input.kind, status: 'waiting', houseId: house.id, shopBuildingId: house.shopBuildingId, communityId: house.communityId,
       houseLabel: house.label, ownerName: house.ownerName, ownerPhone: house.ownerPhone,
       plate: '', contactName: '', contactPhone: '', relation: '', files: [], vehicleClass: input.kind === 'paid' ? this.cls(input.vehicleClass) : '',
       inputSource: 'owner', dataVersion: 1, officeConfirmedVersion: null, materialHistory: [], registrationTerm: null,
@@ -222,7 +232,7 @@ export class VehicleIntakeService {
     return this.draftResponse(row, formBase, false);
   }
 
-  private async rememberOperation(key: string | undefined, houseId: number, hash: string, row: VehicleIntake, tenantId: number) {
+  private async rememberOperation(key: string | undefined, houseId: number | null, hash: string, row: VehicleIntake, tenantId: number) {
     if (!key) return; // Old clients still receive serialized house/kind reuse.
     await this.repo.manager.query('INSERT INTO vehicle_intake_operations (tenant_id, operation_key, house_id, request_hash, intake_id) VALUES ($1, $2, $3, $4, $5)', [tenantId, key, houseId, hash, row.id]);
   }
@@ -231,8 +241,9 @@ export class VehicleIntakeService {
     const editable = ['waiting', 'reupload'].includes(row.status);
     const token = row.tokenNonce ? this.tokenOf(row.tokenNonce) : '';
     const valid = editable && row.expiresAt.getTime() > Date.now() && !!token && this.hash(token) === row.tokenHash;
+    const property = row.shopBuildingId != null ? { houseId: IsNull(), shopBuildingId: row.shopBuildingId } : { houseId: row.houseId! };
     const others = editable ? await this.repo.find({
-      where: { tenantId: row.tenantId, houseId: row.houseId, kind: row.kind, status: In(['waiting', 'reupload']), familyCarId: IsNull() },
+      where: { tenantId: row.tenantId, ...property, kind: row.kind, status: In(['waiting', 'reupload']), familyCarId: IsNull() },
       order: { id: 'DESC' }, take: 21,
     }) : [];
     return {
@@ -244,13 +255,18 @@ export class VehicleIntakeService {
     };
   }
 
-  async list(query: { status?: string; kind?: string; q?: string; houseId?: number; open?: boolean; reviewList?: string }, user: AuthUser, access?: ResolvedAccess) {
+  async list(query: { status?: string; kind?: string; q?: string; houseId?: number; shopBuildingId?: number; open?: boolean; reviewList?: string }, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.tenant(user);
     const scope = scopeCommunityIds(access);
     if (scope && !scope.length) return [];
     const qb = this.repo.createQueryBuilder('i').where('i.tenant_id = :tenantId', { tenantId }).andWhere('NOT ' + expiredDraftSql('i'));
     if (scope) qb.andWhere('i.community_id IN (:...scope)', { scope });
     if (query.houseId) qb.andWhere('i.house_id = :houseId', { houseId: Number(query.houseId) });
+    if (query.shopBuildingId !== undefined) {
+      if (query.houseId != null || !Number.isSafeInteger(query.shopBuildingId) || query.shopBuildingId <= 0)
+        throw new BadRequestException('请选择有效商铺');
+      qb.andWhere('i.shop_building_id = :shopBuildingId', { shopBuildingId: query.shopBuildingId });
+    }
     if (query.kind) qb.andWhere('i.kind = :kind', { kind: query.kind });
     qb.leftJoinAndMapOne('i.familyReview', FamilyCar, 'family',
       "i.kind = 'family' AND i.status = 'approved' AND family.id = i.family_car_id AND family.tenant_id = i.tenant_id AND family.house_id = i.house_id")
@@ -317,6 +333,7 @@ export class VehicleIntakeService {
     if (!this.inTransaction) return this.locked(id, user, access, (service) => service.setKind(id, input, user, access));
     const row = await this.load(id, user, access);
     if (input?.kind !== 'paid' && input?.kind !== 'family') throw new BadRequestException('请选择付费车或亲情车');
+    if (row.shopBuildingId != null && input.kind === 'family') throw new BadRequestException('商铺登记使用付费新车流程');
     await this.assertUnlinked(row);
     if (!['waiting', 'submitted', 'reupload', 'approved'].includes(row.status)) throw new BadRequestException('登记已作废，不能转换类型');
     if (row.kind === 'family' && row.status === 'approved') throw new BadRequestException('已进入亲情车办理，请到「亲情车管理」处理原登记，不能转换');
@@ -533,6 +550,7 @@ export class VehicleIntakeService {
     if (JSON.stringify(before) !== JSON.stringify(this.materialSnapshot(row))) reviseVehicleMaterial(row, before, user.id, '办公室审核时更正资料');
     await claimVehicleRegistration(this.repo.manager, { tenantId: row.tenantId, plate: row.plate, intakeId: row.id });
     if (row.kind === 'family') {
+      if (row.houseId == null) throw new BadRequestException('亲情车登记缺少住户房号');
       await this.assertUnlinked(row);
       if (!row.relation || row.relation === '其他亲属' || row.relation.length > 12) throw new BadRequestException('请选择车主与业主的关系；其他亲属请写明具体关系');
       await this.validateGarages(row, row.kind, row.garages);
@@ -649,14 +667,18 @@ export class VehicleIntakeService {
   // ---------------- 与收款流水衔接（付费车） ----------------
 
   /** Validation only without a manager; money creation must use withPaymentTransaction. */
-  async claimForPayment(intakeId: number, houseId: number | null | undefined, user: AuthUser, manager?: EntityManager, access?: ResolvedAccess) {
+  async claimForPayment(intakeId: number, houseId: number | null | undefined, user: AuthUser, manager?: EntityManager, access?: ResolvedAccess, shopBuildingId?: number) {
     const tenantId = this.tenant(user);
     const repo = manager ? manager.getRepository(VehicleIntake) : this.repo;
     const row = await repo.findOne({ where: { id: intakeId, tenantId }, ...(manager ? { lock: { mode: 'pessimistic_write' as const } } : {}) });
     if (!row || row.kind !== 'paid') throw new BadRequestException('新办付费车登记不存在或已转为亲情车，请刷新后重新选择');
     this.checkScope(row, access);
     await this.assertNoCreatedFamily(row, repo.manager);
-    if (!houseId || row.houseId !== houseId) throw new BadRequestException('新办车牌登记不属于这一户');
+    if (row.shopBuildingId != null) {
+      if (houseId != null || shopBuildingId !== row.shopBuildingId) throw new BadRequestException('收款商铺与原登记不一致');
+      const shop = await this.resolveShop(shopBuildingId, tenantId, access);
+      if (shop.communityId !== row.communityId) throw new BadRequestException('原登记的商铺所属小区已变更，请核对');
+    } else if (!houseId || row.houseId !== houseId || shopBuildingId != null) throw new BadRequestException('新办车牌登记不属于这一户');
     if (!['waiting', 'submitted', 'reupload', 'approved'].includes(row.status)) throw new BadRequestException('这条新办车牌登记已作废');
     if (row.log.some(entry => (entry as any).registrationVersion === 2) && row.status !== 'approved' && !this.isHomeUpload(row)) throw new BadRequestException('新车登记须先提交资料、选择车库编号并审核通过，才能收款');
     const txns = manager ? manager.getRepository(BusinessTransaction) : this.txnRepo;
@@ -925,14 +947,14 @@ export class VehicleIntakeService {
 
   private async view(row: VehicleIntake, withLog = false, joinedFamily?: FamilyCar | null) {
     const family = joinedFamily !== undefined ? joinedFamily
-      : row.kind === 'family' && row.status === 'approved' && row.familyCarId ? await this.repo.manager.getRepository(FamilyCar).findOne({
+      : row.kind === 'family' && row.status === 'approved' && row.familyCarId && row.houseId != null ? await this.repo.manager.getRepository(FamilyCar).findOne({
         select: { status: true, managerNote: true, managerReviewedAt: true },
         where: { id: row.familyCarId, tenantId: row.tenantId, houseId: row.houseId },
       }) : null;
     const txn = row.transactionId ? await this.txnRepo.findOne({ where: { id: row.transactionId, tenantId: row.tenantId } }) : null;
     const now = Date.now();
     return {
-      canConfigureApproved: this.canConfigureApproved(row), homeUpload: this.isHomeUpload(row), id: row.id, kind: row.kind, status: row.status, houseId: row.houseId, communityId: row.communityId, houseLabel: row.houseLabel,
+      canConfigureApproved: this.canConfigureApproved(row), homeUpload: this.isHomeUpload(row), id: row.id, kind: row.kind, status: row.status, houseId: row.houseId, shopBuildingId: row.shopBuildingId ?? null, communityId: row.communityId, houseLabel: row.houseLabel,
       ownerName: row.ownerName, ownerPhone: row.ownerPhone,
       plate: row.plate, contactName: row.contactName, contactPhone: row.contactPhone, relation: row.relation, vehicleClass: row.vehicleClass,
       garages: row.garages, garageNumbers: row.garageNumbers,
@@ -1029,6 +1051,23 @@ export class VehicleIntakeService {
     if (scope && (row.communityId == null || !scope.includes(row.communityId))) throw new ForbiddenException('不在你的管理范围内');
     this.assertDraftAvailable(row);
     return row;
+  }
+
+  private async resolveShop(shopBuildingId: number, tenantId: number, access?: ResolvedAccess) {
+    if (!Number.isSafeInteger(shopBuildingId) || shopBuildingId <= 0) throw new BadRequestException('请选择有效商铺');
+    const shop = await this.buildingRepo.findOne({ where: { id: shopBuildingId, tenantId, buildingType: 'shop' } });
+    if (!shop?.buildingNo?.trim()) throw new NotFoundException('商铺不存在');
+    const community = await this.communityRepo.findOne({ where: { id: shop.communityId, tenantId } });
+    const scope = scopeCommunityIds(access);
+    if (!community || (scope && !scope.includes(community.id))) throw new ForbiddenException('该商铺不在你的管理范围内');
+    const owners: { name: string | null; phone: string | null }[] = await this.repo.manager.query(`
+      SELECT u.name, u.phone FROM users u WHERE u.tenant_id = $1 AND u.role = $3 AND u.status = 'active'
+      AND (u.owner_building_id = $2 OR EXISTS (SELECT 1 FROM owner_property_links l
+        WHERE l.tenant_id = u.tenant_id AND l.owner_id = u.id AND l.building_id = $2))
+      ORDER BY u.id LIMIT 2`, [tenantId, shopBuildingId, UserRole.OWNER]);
+    const owner = owners.length === 1 ? owners[0] : undefined;
+    return { id: null, shopBuildingId, communityId: community.id, label: `${community.name}/${shop.shopName?.trim() || shop.buildingNo.trim()}`.slice(0, 120),
+      ownerName: owner?.name ?? '', ownerPhone: owner?.phone ?? '' };
   }
 
   private async resolveHouse(houseId: number, tenantId: number, access?: ResolvedAccess) {

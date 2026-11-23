@@ -7,9 +7,69 @@ import { ForbiddenException, RequestMethod, ServiceUnavailableException } from '
 import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { PERMISSION_KEY } from '../../common/require-permission.decorator';
 import { AccessCardIssuanceController } from './access-card-issuance.controller';
+import { AccessCard, AccessCardLegacySnapshot, Building, BusinessLog } from '../../entities';
 
 const user = { id: 7, tenantId: 3 } as never;
 const scopeAll = { scopeAll: true } as never;
+
+test('商铺门禁卡关联校验原卡、管理范围与地址冲突，重复保存只记一条日志', async () => {
+  const service = Object.create(AccessCardIssuanceService.prototype) as AccessCardIssuanceService;
+  const shops = [
+    { id: 41, tenantId: 3, communityId: 8, buildingType: 'shop', buildingNo: 'S-08', shopName: '建行' },
+    { id: 42, tenantId: 3, communityId: 9, buildingType: 'shop', buildingNo: 'S-09', shopName: '药房' },
+  ];
+  const history = [
+    { cardInfoId: 10, personName: '建行/1', icCardNo: 'B9F7D803' },
+    { cardInfoId: 11, personName: '已隐藏建行', icCardNo: '9B8FD803' },
+    { cardInfoId: 12, personName: '228/50/202/8', icCardNo: 'BA81D603' },
+    { cardInfoId: 13, personName: '药房', icCardNo: '0181D603' },
+    { cardInfoId: 14, personName: 'S-08', icCardNo: '0281D603' },
+  ];
+  const rows: Array<Record<string, any>> = [{ id: 90, tenantId: 3, houseId: 8, shopBuildingId: null, cardNo: '0281D603' }];
+  const audit: unknown[] = [];
+  const cardRepo = {
+    findBy: async (where: any) => rows.filter(row => row.tenantId === where.tenantId && row.shopBuildingId === where.shopBuildingId),
+    findOneByOrFail: async (where: any) => rows.find(row => row.tenantId === where.tenantId && row.cardNo === where.cardNo),
+    createQueryBuilder: () => {
+      let key: any;
+      let insert: any;
+      return {
+        where(_sql: string, args: any) { key = args; return this; },
+        andWhere(_sql: string, args: any) { key = { ...key, ...args }; return this; },
+        async getMany() { return rows.filter(row => row.tenantId === key.tenantId && (key.numbers.includes(row.cardNo) || row.externalRef === key.externalRef)); },
+        insert() { return this; },
+        values(values: any) { insert = values; return this; },
+        orIgnore() { return this; },
+        returning() { return this; },
+        async execute() { const row = { id: rows.length + 1, ...insert }; rows.push(row); return { raw: [row] }; },
+      };
+    },
+  };
+  const manager = {
+    getRepository(entity: unknown) {
+      if (entity === Building) return {
+        findOne: async ({ where }: any) => shops.find(shop => shop.id === where.id && shop.tenantId === where.tenantId && shop.buildingType === where.buildingType),
+        findBy: async ({ tenantId }: any) => shops.filter(shop => shop.tenantId === tenantId),
+      };
+      if (entity === AccessCardLegacySnapshot) return { findOneBy: async ({ tenantId }: any) => tenantId === 3 ? { history } : null };
+      if (entity === AccessCard) return cardRepo;
+      if (entity === BusinessLog) return { save: async (log: unknown) => audit.push(log) };
+      throw new Error('Unexpected repository');
+    },
+    transaction: async (fn: (tx: any) => Promise<unknown>) => fn(manager),
+  };
+  Object.assign(service, { buildingRepo: { manager } });
+  const enabled = { scopeAll: false, communityIds: [8] } as never;
+  assert.deepEqual((await service.shopCards(41, user, enabled)).candidates.map(card => card.id), [10, 14]);
+  await assert.rejects(service.bindShopCard(42, 13, user, enabled), /管理范围/);
+  for (const id of [11, 12, 13]) await assert.rejects(service.bindShopCard(41, id, user, enabled), /不可关联/);
+  await assert.rejects(service.bindShopCard(41, 14, user, enabled), /已关联其他地址/);
+  assert.deepEqual(await service.bindShopCard(41, 10, user, enabled), { cardNo: 'B9F7D803', status: 'active' });
+  await service.bindShopCard(41, 10, user, enabled);
+  assert.equal(audit.length, 1);
+  assert.deepEqual((await service.shopCards(41, user, enabled)).cards, [{ cardNo: 'B9F7D803', status: 'active' }]);
+  assert.equal(rows[1].houseId, null);
+});
 
 const toIso = (milliseconds: number) => new Date(milliseconds).toISOString();
 const rawRows = [

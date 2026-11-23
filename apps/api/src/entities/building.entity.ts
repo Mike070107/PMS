@@ -25,6 +25,9 @@ export class Building extends TenantEntity {
   @Column({ name: 'building_no', type: 'varchar', length: 30 })
   buildingNo: string; // 号
 
+  @Column({ name: 'shop_name', type: 'varchar', length: 60, nullable: true })
+  shopName?: string | null;
+
   /**
    * 路名（宝秀路、剑川路）。**路名是楼栋的属性，不是每户的**——
    * 原来只存在 houses 上，楼栋级地址（公区报修、只说到楼栋的工单）就永远显示不出路名：

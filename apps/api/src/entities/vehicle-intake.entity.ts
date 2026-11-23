@@ -49,8 +49,11 @@ export class VehicleIntake extends TenantEntity {
   @Column({ type: 'varchar', length: 12, default: 'waiting' })
   status: VehicleIntakeStatus;
 
-  @Column({ name: 'house_id', type: 'int' })
-  houseId: number;
+  @Column({ name: 'house_id', type: 'int', nullable: true })
+  houseId: number | null;
+
+  @Column({ name: 'shop_building_id', type: 'int', nullable: true })
+  shopBuildingId?: number | null;
 
   @Column({ name: 'community_id', type: 'int', nullable: true })
   communityId: number | null;

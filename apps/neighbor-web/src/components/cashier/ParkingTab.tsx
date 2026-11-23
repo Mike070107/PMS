@@ -30,7 +30,7 @@ const identityOf = (f: Record<string, unknown>): string | null => {
 /* ───── 类型 ───── */
 export interface ParkRule { id: number; serviceType: string; name: string; communityId: number | null; unitPriceCents: number; enabled: boolean; config?: { parkingTarget?: string; parkingTargets?: string[]; vehicleClass?: string; isDefault?: boolean; priceMode?: 'table' | 'monthly'; tiers?: Array<{ months: number; amountCents: number }> } | null }
 export interface ParkTarget { key: string; label: string; short?: string; system: 'deliyun' | 'local'; billing: 'vehicle' | 'space'; deliyunPark?: string; database?: string }
-export interface ParkHouse { id: number | null; communityId: number | null; lane?: string | null; buildingNo: string; roomNo: string; communityName?: string | null; owner?: { id: number; name?: string | null; phone?: string | null } | null }
+export interface ParkHouse { id: number | null; shopBuildingId?: number; communityId: number | null; lane?: string | null; buildingNo: string; roomNo: string; communityName?: string | null; owner?: { id: number | null; name?: string | null; phone?: string | null } | null }
 export type SystemRef =
   | { kind: 'local'; database: 'parking1' | 'parking2'; sourceRecordId: string; previousEndDate: string | null; label: string; queryId?: number; targetKey?: string }
   | { kind: 'deliyun'; park: string; label: string };
@@ -117,7 +117,7 @@ export const payCode = (label: string) => PAY_EN[label] || (/微信|wechat/i.tes
  */
 /** Deep-link integration: Cashier passes focusedIntake={linkedIntake}; keep ordinary household checkout unchanged. */
 export default function ParkingTab({ house, rules, onCart, initialPlate, selectedVehicle, focusedIntake, staffRegistration = false, renewalOnly = false, onIntakeChange }: { house: ParkHouse; rules: ParkRule[]; onCart: (items: ParkingCart[], ready: boolean) => void; initialPlate?: string | null; selectedVehicle?: { plateNo: string; houseId: number | null }; focusedIntake?: Intake; staffRegistration?: boolean; renewalOnly?: boolean; onIntakeChange?: (intake: Intake) => void }) {
-  const plateOnly = house.id == null;
+  const plateOnly = house.id == null && !house.shopBuildingId;
   const [hh, setHh] = useState<Household | null>(null);
   const [hhErr, setHhErr] = useState('');
   const [local, setLocal] = useState<{ state: 'idle' | 'loading' | 'done' | 'failed'; rows: ParkingQuery['rows']; error?: string }>({ state: 'idle', rows: [] });
@@ -141,15 +141,15 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
     // A deep link is one registration, not every unpaid registration in the house.
     // The parent already resolved this exact ID against the authorized address tree.
     if (focusedIntake) {
-      if (focusedIntake.houseId !== house.id) setNewErr('本次登记与所选住户不一致，不能收费');
+      if (focusedIntake.houseId !== house.id || (focusedIntake.shopBuildingId ?? null) !== (house.shopBuildingId ?? null)) setNewErr('本次登记与所选房产不一致，不能收费');
       else setIntakes([focusedIntake]);
-    } else if (house.id != null) {
-      request<Intake[]>({ url: '/vehicle-intakes', query: { houseId: house.id, open: '1' } })
+    } else if (house.id != null || house.shopBuildingId) {
+      request<Intake[]>({ url: '/vehicle-intakes', query: { houseId: house.id ?? undefined, shopBuildingId: house.shopBuildingId, open: '1' } })
         .then((r) => { if (alive) setIntakes(current => [...current, ...r.filter(row => !current.some(i => i.id === row.id))]); })
         .catch((e) => { if (alive) setNewErr(e instanceof Error ? e.message : '读取新办登记失败，请重试'); });
     }
     return () => { alive = false; };
-  }, [house.id, focusedIntake]);
+  }, [house.id, house.shopBuildingId, focusedIntake]);
   // 车牌分类（业主车 / 租客车 …）：决定续期按哪套收费标准
   const [tags, setTags] = useState<Record<string, string>>({});
   const [draftClasses, setDraftClasses] = useState<Record<string,string>>({});
@@ -157,11 +157,12 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
   useEffect(() => { setDraftClasses(t => Object.fromEntries(Object.entries(t).filter(([plate]) => picked.includes(plate)))); }, [picked]);
   const [selectedEntry, setSelectedEntry] = useState<{ id: number; staff: boolean } | null>(null);
   const createIntake = async (kind: 'paid' | 'family', anotherVehicle = false, staff = true) => {
-    if (creatingIntake.current || house.id == null) return;
+    if (creatingIntake.current || (house.id == null && !house.shopBuildingId)) return;
     creatingIntake.current = true; setNewBusy(true); setNewErr('');
-    const operation = vehicleIntakeOperation(house.id, kind, anotherVehicle);
+    const operation = vehicleIntakeOperation(house.shopBuildingId ? `shop:${house.shopBuildingId}` : house.id!, kind, anotherVehicle);
     try {
-      const r = await request<Intake>({ method: 'POST', url: '/vehicle-intakes', data: { houseId: house.id, kind, formBase: formBase(), operationKey: operation.operationKey, anotherVehicle: operation.anotherVehicle } });
+      const address = house.shopBuildingId ? { shopBuildingId: house.shopBuildingId } : { houseId: house.id };
+      const r = await request<Intake>({ method: 'POST', url: '/vehicle-intakes', data: { ...address, kind, formBase: formBase(), operationKey: operation.operationKey, anotherVehicle: operation.anotherVehicle } });
       operation.resolve();
       setIntakes((l) => [r, ...l.filter(i => i.id !== r.id)]);
       setSelectedEntry({ id: r.id, staff });
@@ -354,7 +355,9 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
 
   return (
     <div className="parking-household" style={{ marginTop: 16 }}>
-      {focusedIntake ? staffRegistration ? null : <div className="note2">仅处理本次新办登记 #{focusedIntake.id}，同户其他登记及续费车辆不参与本次收款。</div> : <>
+      {focusedIntake ? staffRegistration ? null : <div className="note2">{house.shopBuildingId
+        ? `本次收款对应商铺新办登记 #${focusedIntake.id}`
+        : `仅处理本次新办登记 #${focusedIntake.id}，同户其他登记及续费车辆不参与本次收款。`}</div> : house.shopBuildingId ? null : <>
       <div className="panelHd">
         <b>{plateOnly ? '本次续费车辆' : '这一户的车'}</b>
       {missPlate ? (
@@ -421,12 +424,12 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
         </div>
       ) : cars.length ? <div className="muted" style={{ marginTop: 10 }}>勾选要缴费的车（可多选）</div> : null}
 
-      {!renewalOnly && <div className="newplate-bar">
-        <button className="btn" disabled={newBusy || !hh || !hh.targets.length} onClick={() => { setNewErr(''); setEntryKind('paid'); }}><Icon name="plus" size={16} />新办车牌（付费）</button>
-        <button className="btn" disabled={newBusy} onClick={() => { setNewErr(''); setEntryKind('family'); }}><Icon name="plus" size={16} />亲情车（免费）</button>
-        <span className="muted" style={{ fontSize: 13.5 }}>工作人员可直接登记，也可由住户扫码填写。</span>
-      </div>}
       </>}
+      {!renewalOnly && !focusedIntake && <div className="newplate-bar">
+        <button className="btn" disabled={newBusy || (!house.shopBuildingId && !hh?.targets.length)} onClick={() => { setNewErr(''); setEntryKind('paid'); }}><Icon name="plus" size={16} />新办车牌（付费）</button>
+        {!house.shopBuildingId && <button className="btn" disabled={newBusy} onClick={() => { setNewErr(''); setEntryKind('family'); }}><Icon name="plus" size={16} />亲情车（免费）</button>}
+        <span className="muted" style={{ fontSize: 13.5 }}>工作人员可直接登记，{house.shopBuildingId ? '也可扫码填写。' : '也可由住户扫码填写。'}</span>
+      </div>}
       {entryKind ? <Sheet open title="新车登记" width={520} onClose={() => { if (!creatingIntake.current) setEntryKind(null); }}>
         <div className="registration-sheet" style={{ display: 'grid', gap: 14 }}>
           <RegistrationPermit house={house} />
@@ -521,7 +524,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
   const classOptions = useMemo(() => [...new Set(own.map((r) => r.config?.vehicleClass || '').filter(Boolean))], [own]);
   const residentGroup = classOptions.find(c => c.replace(/[-－\s]/g, '') === '住户车1');
   const defaultGroup = residentGroup || own.find((r) => r.config?.isDefault)?.config?.vehicleClass || '';
-  const group = vehicleClass ? (classOptions.includes(vehicleClass) ? vehicleClass : '') : house.id == null ? '' : defaultGroup;
+  const group = vehicleClass ? (classOptions.includes(vehicleClass) ? vehicleClass : '') : house.id == null && !intakeId ? '' : defaultGroup;
   const [clsBusy, setClsBusy] = useState(false);
   const [clsErr, setClsErr] = useState('');
   const [selectedStart, setSelectedStart] = useState<string | null>(null);

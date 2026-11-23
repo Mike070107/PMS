@@ -10,6 +10,7 @@ import AddressSearch from '@/components/AddressSearch';
 import { useAddressTree } from '@/lib/address-tree';
 import { Btn, Card, ErrorNote, Sheet, toast } from '@/components/ui';
 import HousePicker, { type PickedHouse } from '@/components/HousePicker';
+import type { PickedAddress } from '@/components/HouseAddressPicker';
 import Icon from '@/components/Icon';
 
 import { field, vehicleIdentity, identityTone, deliyunVehicleIdentity, GARAGES, garageState, groupByPlate, normPlate } from '@/lib/parking-fields';
@@ -50,21 +51,24 @@ export default function Vehicles() {
   const [newOpen, setNewOpen] = useState(false);
   const [newKind, setNewKind] = useState<'paid' | 'family'>('paid');
   const [newHouse, setNewHouse] = useState<PickedHouse | null>(null);
+  const [newShop, setNewShop] = useState<PickedAddress | null>(null);
   const [newQr, setNewQr] = useState<Intake | null>(null);
   const creating = useRef(false);
 
   const [newBusy, setNewBusy] = useState(false);
   const [newErr, setNewErr] = useState('');
   const createIntakeNow = async () => {
-    if (!newHouse?.houseId || creating.current || newQr) return;
+    const shopId = newShop?.buildingId;
+    const subject = shopId ? { shopBuildingId: shopId } : newHouse ? { houseId: newHouse.houseId } : null;
+    if (!subject || creating.current || newQr) return;
     creating.current = true;
     setNewBusy(true); setNewErr('');
     // 操作编号跨超时/刷新保留：重试继续原登记，不重复建单；只有明确成功才释放。
-    const operation = vehicleIntakeOperation(newHouse.houseId, newKind);
+    const operation = vehicleIntakeOperation(shopId ? `shop:${shopId}` : newHouse!.houseId, newKind);
     try {
       const formBase = `${window.location.origin}${import.meta.env.BASE_URL.replace(/\/+$/, '')}/m/plate`;
       const r = await request<Intake>({ method: 'POST', url: '/vehicle-intakes', data: {
-        houseId: newHouse.houseId, kind: newKind, formBase,
+        ...subject, kind: newKind, formBase,
         operationKey: operation.operationKey, anotherVehicle: operation.anotherVehicle,
       } });
       operation.resolve();
@@ -193,7 +197,7 @@ export default function Vehicles() {
           <p>按车牌管理车辆：授权车库、有效期、续期收费与车辆档案</p>
         </div>
         <div className="act">
-          <button className="btn p" onClick={() => { setNewHouse(queryHouse); setNewOpen(true); }}><Icon name="plus" size={16} />新车登记</button>
+          <button className="btn p" onClick={() => { setNewHouse(queryHouse); setNewShop(null); setNewOpen(true); }}><Icon name="plus" size={16} />新车登记</button>
         </div>
       </div>
 
@@ -237,26 +241,31 @@ export default function Vehicles() {
           <div className="registration-sheet">
             {!newQr ? (
               <>
-                <header className="registration-start"><span className="permit-sign" aria-hidden="true">P</span><h3>选择登记住户</h3></header>
-                <HousePicker communities={communities} value={newHouse} disabled={newBusy} placeholder="输入 228/5/201 或业主姓名" onPick={setNewHouse} onClear={() => setNewHouse(null)} />
+                <header className="registration-start"><span className="permit-sign" aria-hidden="true">P</span><h3>选择住户或商铺</h3></header>
+                <HousePicker communities={communities} value={newHouse} shopValue={newShop} disabled={newBusy}
+                  placeholder="输入房号、业主姓名、商铺号或商铺名称"
+                  onPick={picked => { setNewHouse(picked); setNewShop(null); setNewErr(''); }}
+                  onShopPick={picked => { setNewShop(picked); setNewHouse(null); setNewKind('paid'); setNewErr(''); }}
+                  onClear={() => { setNewHouse(null); setNewShop(null); }}
+                  onIncomplete={() => { setNewHouse(null); setNewShop(null); }} />
                 {newHouse?.houseId ? <p className="muted">业主：{newHouse.ownerName || '未登记'}</p> : null}
                 <h3 className="registration-label">登记类型</h3>
                 <div className="registration-types">
                   <button className={`chip ${newKind === 'paid' ? 'on' : ''}`} aria-pressed={newKind === 'paid'} disabled={newBusy} onClick={() => setNewKind('paid')}>新办车牌（按月收费）</button>
-                  <button className={`chip ${newKind === 'family' ? 'on' : ''}`} aria-pressed={newKind === 'family'} disabled={newBusy} onClick={() => setNewKind('family')}>亲情车（免费）</button>
+                  {!newShop && <button className={`chip ${newKind === 'family' ? 'on' : ''}`} aria-pressed={newKind === 'family'} disabled={newBusy} onClick={() => setNewKind('family')}>亲情车（免费）</button>}
                 </div>
                 {newErr ? <div className="note" style={{ background: 'var(--dang-w)', color: 'var(--dang)', margin: '12px 0' }}>{newErr}</div> : null}
                 <div style={{ marginTop: 16 }}>
-                  <button className="btn p" style={{ width: '100%' }} disabled={newBusy || !newHouse?.houseId} onClick={() => void createIntakeNow()}>
+                  <button className="btn p" style={{ width: '100%' }} disabled={newBusy || (!newHouse?.houseId && !newShop?.buildingId)} onClick={() => void createIntakeNow()}>
                     <Icon name="plus" size={16} />{newBusy ? '正在创建登记…' : '工作人员直接登记'}
                   </button>
-                  <p className="muted">也可在下一步邀请住户扫码填写。</p>
+                  <p className="muted">{newShop ? '也可在下一步请商铺联系人扫码填写。' : '也可在下一步邀请住户扫码填写。'}</p>
                 </div>
               </>
             ) : (
               <>
                 <Cashier key={newQr.id} embeddedIntakeId={newQr.id} onBusyChange={setNewBusy} />
-                <button className="btn" style={{ marginTop: 16 }} disabled={newBusy} onClick={() => { setNewQr(null); setNewHouse(null); setNewErr(''); }}>再登记一台</button>
+                <button className="btn" style={{ marginTop: 16 }} disabled={newBusy} onClick={() => { setNewQr(null); setNewHouse(null); setNewShop(null); setNewErr(''); }}>再登记一台</button>
               </>
             )}
           </div>

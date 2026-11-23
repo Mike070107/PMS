@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { BusinessExecutionService } from './business-execution.service';
-import { House, VehicleIntake } from '../../entities';
+import { Building, House, VehicleIntake } from '../../entities';
 import { legacyRegistrationProfile } from './parking-registration-profile';
 import { prepareFamilyRegistration } from '../access-card-issuance/parking-family';
 function fixture(){
@@ -95,6 +95,26 @@ test('729商铺沿用原收款流水新增停车登记，重复执行只保留�
   await h.s.runOne(90);
   assert.equal(h.ops[0]?.payload.ownerAddress, '729/商铺');
   assert.equal(h.ops[0]?.payload.ownerRoom, 'PMS-7');
+  await h.s.runOne(90);
+  assert.equal(h.ops.length, 1);
+});
+
+test('独立商铺通过正式收费任务发送原名和稳定商铺标识', async () => {
+  const h = fixture();
+  Object.assign(h.intake, { houseId: null, shopBuildingId: 34, houseLabel: '枫桦景苑二期/建行' });
+  Object.assign(h.txn, { houseId: null });
+  h.txn.snapshot.intake.shopBuildingId = 34;
+  const manager = h.s.txnRepo.manager;
+  const original = manager.getRepository;
+  manager.getRepository = (entity: unknown) => entity === Building ? {
+    findOneBy: async (where: any) => {
+      assert.deepEqual(where, { id: 34, tenantId: 1, buildingType: 'shop' });
+      return { id: 34, tenantId: 1, communityId: 2, buildingNo: 'S-08', shopName: '建行' };
+    },
+  } : original(entity);
+  await h.s.runOne(90);
+  assert.equal(h.ops[0]?.payload.ownerAddress, '建行');
+  assert.equal(h.ops[0]?.payload.ownerRoom, 'PMS-S34');
   await h.s.runOne(90);
   assert.equal(h.ops.length, 1);
 });

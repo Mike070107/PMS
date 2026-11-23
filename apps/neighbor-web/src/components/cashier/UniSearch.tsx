@@ -1,7 +1,7 @@
 import AddressSearchMatch from '../AddressSearchMatch';
 import SearchLoading from '../search/SearchLoading';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { dedupeAddressText, formatFullAddress, type AddressCommunity } from '@pms/shared-types';
+import { dedupeAddressText, formatFullAddress, formatShopLabel, type AddressCommunity } from '@pms/shared-types';
 import HouseAddressPicker, { type PickedAddress } from '@/components/HouseAddressPicker';
 import './UniSearch.css';
 
@@ -45,9 +45,11 @@ function tokensOf(text: string): string[] {
     .filter(Boolean);
 }
 
-export default function UniSearch({ communities, onPick, search, placeholder, initialSearch = '', width = '100%' }: {
+export default function UniSearch({ communities, onPick, onShopPick, onShopClear, search, placeholder, initialSearch = '', width = '100%' }: {
   communities: AddressCommunity[];
   onPick: (p: UniPick) => void;
+  onShopPick?: (p: PickedAddress) => void;
+  onShopClear?: () => void;
   search: (kw: string) => Promise<UniResult>;
   placeholder?: string;
   initialSearch?: string;
@@ -198,6 +200,22 @@ export default function UniSearch({ communities, onPick, search, placeholder, in
   const submit = async () => {
     const term = text.trim();
     if (!term) return;
+    if (onShopPick) {
+      const alias = (value: string) => value.normalize('NFKC').trim().toLowerCase();
+      const termKey = alias(term);
+      const shopHits = communities.flatMap(community => community.buildings
+        .filter(building => building.buildingType === 'shop' &&
+          [building.buildingNo, formatShopLabel(building)].some(name => alias(name) === termKey || alias(`${community.name}/${name}`) === termKey))
+        .map(building => ({ community, building })));
+      if (shopHits.length === 1 && !/^\d+$/.test(termKey)) {
+        const { community, building } = shopHits[0];
+        pickAddress({ locationKind: 'shop', communityId: community.id, communityName: community.name,
+          buildingId: building.id, buildingText: formatShopLabel(building),
+          fullText: `${community.name}/${formatShopLabel(building)}` });
+        return;
+      }
+      if (shopHits.length > 0) { setOpen(true); return; }
+    }
     if (parsed && !parsed.loose && curC && curB) {
       const h = shownHouses.find((x) => (parsed.room ? x.roomNo.startsWith(parsed.room) : false)) ?? shownHouses[0];
       if (h) { pickFromColumns(curC, curB, h.roomNo); return; }
@@ -248,7 +266,7 @@ export default function UniSearch({ communities, onPick, search, placeholder, in
 
   const pickAddress = (p: PickedAddress | null) => {
     setBrowsing(true);
-    if (!p) { invalidate(); setSelectionText(null); setText(''); setSelectedPath([]); setCid(null); setBid(null); return; }
+    if (!p) { invalidate(); setSelectionText(null); setText(''); setSelectedPath([]); setCid(null); setBid(null); onShopClear?.(); return; }
     const c = communities.find(c => c.id === p.communityId);
     if (!c) return;
     if (!p.buildingId) {
@@ -257,6 +275,15 @@ export default function UniSearch({ communities, onPick, search, placeholder, in
     const b = c.buildings.find(b => b.id === p.buildingId);
     if (!b) return;
     setCid(c.id); setBid(b.id);
+    if (p.locationKind === 'shop' && onShopPick) {
+      invalidate();
+      setBusy(false);
+      setSelectionText(p.fullText);
+      setSelectedPath([c.id, b.id]);
+      setOpen(false);
+      onShopPick(p);
+      return;
+    }
     pickFromColumns(c, b, p.roomNo ?? null);
   };
   const extraResults = showBottom ? (
@@ -307,6 +334,7 @@ export default function UniSearch({ communities, onPick, search, placeholder, in
   return (
     <div ref={box} className="addr-search uni-box" style={{ width, maxWidth: '100%', position: 'relative' }}>
       <HouseAddressPicker communities={communities} value={selectedPath} onChange={setSelectedPath}
+        allowShops={!!onShopPick}
         placeholder={placeholder ?? '房号 / 姓名 / 手机尾号 / 车牌尾号，回车查询'}
         searchText={browsing ? '' : selectionText ?? text} displayText={selectionText ?? text}
         selectionRevision={selectionRevision} inputRef={input} showCopy={false}

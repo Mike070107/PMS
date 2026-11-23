@@ -6,6 +6,7 @@ import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import {
   buildingMatchKeys,
   communityMatchKeys,
+  formatShopLabel,
   formatBuildingFull,
   formatBuildingLabel,
   formatFullAddress,
@@ -26,7 +27,7 @@ export const UNKNOWN_HOUSE_VALUE = '__unknown_house__';
 export const PUBLIC_AREA_VALUE = '__public_area__';
 
 export interface PickedAddress {
-  locationKind?: 'public';
+  locationKind?: 'public' | 'shop';
   communityId: number;
   communityName: string;
   buildingId?: number;
@@ -42,7 +43,7 @@ export interface PickedAddress {
 type AddrOption = DefaultOptionType & {
   value: number | string;
   keys: MatchKeys;
-  kind: 'community' | 'building' | 'house' | 'public';
+  kind: 'community' | 'building' | 'house' | 'public' | 'shop';
   community: AddressCommunity;
   building?: AddressBuilding;
   house?: AddressHouse;
@@ -51,7 +52,11 @@ type AddrOption = DefaultOptionType & {
 
 const UNKNOWN_KEYS: MatchKeys = { exact: [], prefix: [], loose: ['不肯说'] };
 
-function buildOptions(communities: AddressCommunity[], allowPublicArea = false): AddrOption[] {
+function shopNumber(building: AddressBuilding) {
+  return building.buildingNo !== formatShopLabel(building) ? `（${building.buildingNo}）` : '';
+}
+
+function buildOptions(communities: AddressCommunity[], allowPublicArea = false, allowShops = false): AddrOption[] {
   return communities
     .filter((community) => !community.isGroup)
     .map((community) => ({
@@ -67,7 +72,10 @@ function buildOptions(communities: AddressCommunity[], allowPublicArea = false):
           value: PUBLIC_AREA_VALUE, label: '本小区公共区域', kind: 'public' as const,
           keys: { exact: [], prefix: [], loose: ['公共区域', '小区公区'] }, community, isLeaf: true,
         }] : []),
-        ...community.buildings.map((building) => ({
+        ...community.buildings.map((building) => building.buildingType === 'shop' && allowShops ? ({
+          value: building.id, label: formatShopLabel(building) + shopNumber(building), kind: 'shop' as const,
+          keys: buildingMatchKeys(building), community, building, isLeaf: true,
+        }) : ({
         value: building.id,
         label: formatBuildingLabel(community, building),
         kind: 'building' as const,
@@ -137,7 +145,8 @@ export function describePickedAddress(path: AddrOption[]): PickedAddress | null 
   const building = path[1]?.building;
   const house = path[2]?.house;
   return {
-    ...(path[path.length - 1]?.kind === 'public' ? { locationKind: 'public' as const } : {}),
+    ...(path[path.length - 1]?.kind === 'public' ? { locationKind: 'public' as const }
+      : path[path.length - 1]?.kind === 'shop' ? { locationKind: 'shop' as const } : {}),
     communityId: community.id,
     communityName: community.name,
     buildingId: building?.id,
@@ -160,6 +169,7 @@ export default function HouseAddressPicker(props: {
   /** 挂载就展开下拉（搜索框里点「选地址」时用） */
   autoOpen?: boolean;
   allowPublicArea?: boolean;
+  allowShops?: boolean;
   placeholder?: string;
   disabled?: boolean;
   /** Search integrations keep the editable query separate from the selected address. */
@@ -192,7 +202,7 @@ export default function HouseAddressPicker(props: {
   const controlled = Object.prototype.hasOwnProperty.call(props, 'value');
   const [internalValue, setInternalValue] = useState<Array<number | string>>([]);
   const selectedValue = controlled ? value : internalValue;
-  const options = useMemo(() => buildOptions(communities, props.allowPublicArea), [communities, props.allowPublicArea]);
+  const options = useMemo(() => buildOptions(communities, props.allowPublicArea, props.allowShops), [communities, props.allowPublicArea, props.allowShops]);
   const allPaths = useMemo(() => flattenPaths(options), [options]);
   const [internalSearch, setInternalSearch] = useState('');
   const searchValue = props.searchText ?? internalSearch;
@@ -268,19 +278,23 @@ export default function HouseAddressPicker(props: {
     if (!tokens.length) return;
     let best: AddrOption[] | null = null;
     let bestScore = 0;
+    let ambiguousShop = false;
     for (const path of allPaths) {
       const kind = path[path.length - 1]?.kind;
-      if (kind !== 'house' && kind !== 'public') continue;
+      if (kind !== 'house' && kind !== 'public' && kind !== 'shop') continue;
       const score = scoreAddressPath(tokens, path.map((item) => item.keys));
       if (score > bestScore) {
         bestScore = score;
         best = path;
+        ambiguousShop = false;
+      } else if (score > 0 && score === bestScore && (kind === 'shop' || best?.at(-1)?.kind === 'shop')) {
+        ambiguousShop = true;
       }
     }
     if (!best) return;
     event.preventDefault();
     event.stopPropagation();
-    commitPath(best);
+    if (!ambiguousShop) commitPath(best);
   };
 
   const currentText = useMemo(() => {
@@ -339,14 +353,15 @@ export default function HouseAddressPicker(props: {
           filter: (input, path) => {
             if (!input.trim()) return false;
             const leaf = (path as AddrOption[])[path.length - 1];
-            return (props.selectionLevel === 'all' || leaf?.kind === 'house' || leaf?.kind === 'public') && scoreOf(input, path as AddrOption[]) > 0;
+            return (props.selectionLevel === 'all' || leaf?.kind === 'house' || leaf?.kind === 'public' || leaf?.kind === 'shop') && scoreOf(input, path as AddrOption[]) > 0;
           },
           sort: (a, b, input) =>
             scoreOf(input, b as AddrOption[]) - scoreOf(input, a as AddrOption[]),
           render: (input, path) => {
             const options = path as AddrOption[];
-            const address = pathText(options) || '—';
-            const house = options[options.length - 1]?.house;
+            const leaf = options[options.length - 1];
+            const address = (pathText(options) || '—') + (leaf.kind === 'shop' && leaf.building ? shopNumber(leaf.building) : '');
+            const house = leaf.house;
             return props.showMatchDetails
               ? <AddressSearchMatch address={address} query={input} phone={house?.ownerPhone} owner={house?.ownerName} />
               : address;
@@ -369,7 +384,7 @@ export default function HouseAddressPicker(props: {
           setSearchValue('');
           // 选到「室号」(叶子)就收起下拉；点小区/楼栋是在逐级展开，保持打开
           const leaf = opts[opts.length - 1];
-          if (leaf?.kind === 'house' || leaf?.kind === 'public') setOpen(false);
+          if (leaf?.kind === 'house' || leaf?.kind === 'public' || leaf?.kind === 'shop') setOpen(false);
         }}
       />
       {props.showCopy !== false && currentText && (

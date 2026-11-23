@@ -4,11 +4,12 @@ import RegistrationPermit from '@/components/cashier/RegistrationPermit';
 import { HouseholdCardHistory } from './AccessCards';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import OwnerBusinessContact from '@/components/OwnerBusinessContact';
-import ParkingTab, { payCode, type ParkingCart } from '@/components/cashier/ParkingTab';
+import ParkingTab, { payCode, type ParkHouse, type ParkingCart } from '@/components/cashier/ParkingTab';
 import PaidHistory from '@/components/cashier/PaidHistory';
 import { accessCardIssuance, address, request } from '@pms/api-client';
-import { parkingRoomAddress, type AddressCommunity } from '@pms/shared-types';
+import { formatShopLabel, parkingRoomAddress, type AddressCommunity } from '@pms/shared-types';
 import HousePicker, { type PickedHouse } from '@/components/HousePicker';
+import type { PickedAddress } from '@/components/HouseAddressPicker';
 import UniSearch, { type UniPick, type UniVehicle, type RegistrationMatch } from '@/components/cashier/UniSearch';
 import PayMethods from '@/components/PayMethods';
 import MisCollectionPanel from '@/components/cashier/MisCollectionPanel';
@@ -100,6 +101,7 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
   const [err, setErr] = useState('');
 
   const [picked, setPicked] = useState<PickedHouse | null>(null);
+  const [pickedShop, setPickedShop] = useState<PickedAddress | null>(null);
   const [house, setHouse] = useState<HouseHit | null>(null);
   const [result, setResult] = useState<SearchResult | null>(null);
   const [bills, setBills] = useState<Bill[] | null>(null);
@@ -160,14 +162,22 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
   // globally, parse houseLabel, or search a room string to guess an owner.
   useEffect(() => {
     const revision = ++navigationRevision.current;
-    setDeep(null); setHouse(null); setPicked(null); setResult(null); setDone(null); setErr('');
+    setDeep(null); setHouse(null); setPicked(null); setPickedShop(null); setResult(null); setDone(null); setErr('');
     setParkPlate(null); setParkCarts([]); setParkReady(false); setConfirmed(false); setBills(null);
     if (intakeParam === null || !validIntakeId) return;
     if (!tree || !session.access) return;
     let alive = true;
     request<Intake>({ url: `/vehicle-intakes/${intakeParam}` }).then(row => {
       if (!alive || revision !== navigationRevision.current) return;
-      if (row.id !== Number(intakeParam) || !Number.isSafeInteger(row.houseId) || row.houseId <= 0) throw new Error('登记返回的编号或房屋编号无效');
+      if (row.id !== Number(intakeParam)) throw new Error('登记返回的编号或房屋编号无效');
+      if (row.shopBuildingId != null) {
+        const community = communities.find(c => c.id === row.communityId);
+        const shop = community?.buildings.find(b => b.id === row.shopBuildingId && b.buildingType === 'shop');
+        if (row.houseId !== null || !shop) throw new Error('本次登记所属商铺不在当前授权地址范围，无法收费');
+        setTab('pk'); setDeep({ query: intakeParam, row });
+        return;
+      }
+      if (!row.houseId || !Number.isSafeInteger(row.houseId) || row.houseId <= 0) throw new Error('登记返回的编号或房屋编号无效');
       for (const community of communities) {
         for (const building of community.buildings) {
           const own = building.houses.find(h => h.id === row.houseId);
@@ -189,6 +199,11 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
     setDeep(current => current?.query === intakeParam && current.row?.id === row.id ? { ...current, row } : current);
   }, [intakeParam]);
   const linkedIntake = deep?.query === intakeParam ? deep.row : undefined;
+  const shopCommunity = linkedIntake?.shopBuildingId != null ? communities.find(c => c.id === linkedIntake.communityId) : undefined;
+  const shopBuilding = shopCommunity?.buildings.find(b => b.id === linkedIntake?.shopBuildingId && b.buildingType === 'shop');
+  const registeredShop: ParkHouse | null = shopBuilding && shopCommunity && linkedIntake
+    ? { id: null, shopBuildingId: shopBuilding.id, communityId: shopCommunity.id, communityName: shopCommunity.name,
+      buildingNo: formatShopLabel(shopBuilding), roomNo: '', owner: { id: null, name: linkedIntake.ownerName, phone: linkedIntake.ownerPhone } } : null;
   const deepReady = intakeParam === null || !!linkedIntake;
   const linkedBlocked = !!linkedIntake && (linkedIntake.kind !== 'paid' || linkedIntake.status === 'void' || !!linkedIntake.transaction || !!linkedIntake.familyCarId);
 
@@ -392,7 +407,7 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
 
   const applyHouse = (h: HouseHit | null, from: SearchResult | null) => {
     navigationRevision.current += 1;
-    setHouse(h); setResult(from); setDone(null); setConfirmed(false);
+    setHouse(h); setPickedShop(null); setResult(from); setDone(null); setConfirmed(false);
     setParkPlate(null); setParkCarts([]); setParkReady(false); setCardEst(null); setCardQty(1); setCardFree(false); setTab('wy');
     if (h && !embeddedRenewalPlate) loadBills(h); else setBills(null);
   };
@@ -480,7 +495,12 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
   const site = selectedVehicle?.onsiteDatabases?.includes('parking1') ? '枫桦景苑一期' : '枫桦景苑二期';
   const parkingCommunity = plateOnly ? communities.find(c => c.name === site)
     ?? communities.find(c => c.name === '枫桦景苑一期' || c.name === '枫桦景苑二期') : undefined;
-  const parkingSubject = house ?? (plateOnly
+  const selectedShop: ParkHouse | null = pickedShop?.buildingId ? {
+    id: null, shopBuildingId: pickedShop.buildingId, communityId: pickedShop.communityId, communityName: pickedShop.communityName,
+    buildingNo: pickedShop.buildingText ?? '', roomNo: '',
+  } : null;
+  const businessShop = registeredShop ?? selectedShop;
+  const parkingSubject = house ?? businessShop ?? (plateOnly
     ? { id: null, communityId: parkingCommunity?.id ?? null, communityName: parkingCommunity?.name, buildingNo: '', roomNo: '' } : null);
   const vehiclePhone = linkedIntake?.contactPhone || selectedVehicle?.contactPhone;
   const cardRule = useMemo(() => rules.find((r) => r.serviceType === 'access_card' && (r.communityId == null || r.communityId === house?.communityId)), [rules, house]);
@@ -516,7 +536,7 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
   const canCharge = deepReady && !(tab === 'pk' && linkedBlocked) && (isBillTab ? false : tab === 'pk' ? parkReady : (cardFree || !!cardEst));
 
   const charge = async () => {
-    if ((!house && !plateOnly) || !canCharge || charging.current || (cartTotal > 0 && !confirmed)) return;
+    if ((!house && !plateOnly && !businessShop) || !canCharge || charging.current || (cartTotal > 0 && !confirmed)) return;
     charging.current = true;
     const revision = navigationRevision.current;
     setBusy(true); setErr('');
@@ -532,12 +552,15 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
               const current = await request<Intake>({ url: `/vehicle-intakes/${c.intakeId}` });
               if (revision !== navigationRevision.current) return;
               if (intakeParam === String(current.id)) setDeep({ query: intakeParam, row: current });
-              if (current.id !== c.intakeId || current.houseId !== house?.id || current.kind !== 'paid' || current.transaction || current.status === 'void' || current.familyCarId) {
+              if (current.id !== c.intakeId || current.houseId !== (house?.id ?? null)
+                  || (current.shopBuildingId ?? null) !== (businessShop?.shopBuildingId ?? null)
+                  || current.kind !== 'paid' || current.transaction || current.status === 'void' || current.familyCarId) {
                 setConfirmed(false); throw new Error('本次登记状态已变化（已收款 / 已撤销 / 已转亲情车或房屋不匹配），请查看登记详情，不要重复收费');
               }
             }
             const txn = await request<{ id: number; txnNo: string; externalSyncStatus: string }>({ method: 'POST', url: '/business/complete', data: {
               serviceType: 'parking_monthly', ruleId: c.rule.id, houseId: house?.id, ownerId: house?.owner?.id, plateNo: c.plate,
+              ...(businessShop ? { shopBuildingId: businessShop.shopBuildingId } : {}),
               ...(c.custom
                 ? { startDate: c.custom.startDate, endDate: c.custom.endDate, manualAmountCents: c.custom.manualAmountCents, customReason: c.custom.reason }
                 : { months: c.months, currentEndDate: c.currentEndDate || undefined }),
@@ -608,7 +631,7 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
     setTimeout(tick, 1500);
   };
 
-  const reset = () => { navigationRevision.current += 1; setPicked(null); setHouse(null); setResult(null); setBills(null); setDone(null); setErr(''); if (intakeParam !== null) navigate('/cashier'); };
+  const reset = () => { navigationRevision.current += 1; setPicked(null); setPickedShop(null); setHouse(null); setResult(null); setBills(null); setDone(null); setErr(''); if (intakeParam !== null) navigate('/cashier'); };
 
   // ---------- 结果页 ----------
   if (done && deepReady) {
@@ -619,7 +642,7 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
             <div className="ring"><Icon name="check" /></div>
             <h2>收款已登记</h2>
             <div className="amt money">{money(done.amountCents / 100)}</div>
-            <p>{house?.communityName} {house?.buildingNo}/{house?.roomNo} · {done.title} · {pay}{done.receiptNo !== '—' ? ` · 收据号 ${done.receiptNo}` : ''}</p>
+            <p>{businessShop ? `${businessShop.communityName} ${businessShop.buildingNo}` : house ? `${house.communityName} ${house.buildingNo}/${house.roomNo}` : ''} · {done.title} · {pay}{done.receiptNo !== '—' ? ` · 收据号 ${done.receiptNo}` : ''}</p>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 18 }}>
               {done.receiptNo !== '—' ? <button className="btn" onClick={() => navigate(`/fees?receipt=${encodeURIComponent(done.receiptNo)}`)}><Icon name="print" size={18} />打印收据</button> : null}
               {!embeddedRenewalPlate && <button className="btn p" onClick={() => { setDone(null); if (house) loadBills(house); }}><Icon name="receipt" size={18} />继续给本户办理</button>}
@@ -659,14 +682,14 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
 
       {err ? <ErrorNote>{err}</ErrorNote> : null}
       {treeError ? <ErrorNote>{treeError}</ErrorNote> : null}
-      {intakeParam !== null && !(embedded && linkedIntake && deepReady && house) ? <section role="region" aria-label={`本次登记 #${intakeParam}`} className="card" style={{ padding: 16, marginBottom: 16 }}>
+      {intakeParam !== null && !(embedded && linkedIntake && deepReady && parkingSubject) ? <section role="region" aria-label={`本次登记 #${intakeParam}`} className="card" style={{ padding: 16, marginBottom: 16 }}>
         <h2 style={{ fontSize: 18, marginBottom: 10 }}>本次登记 #{intakeParam}</h2>
         {!validIntakeId ? <ErrorNote>登记编号必须是正整数</ErrorNote>
           : deep?.query === intakeParam && deep.error ? <ErrorNote>{deep.error}</ErrorNote>
             : !linkedIntake ? <Loading text={treeError ? '地址读取失败，无法定位本次登记' : '正在安全定位本次登记所属住户…'} />
               : <>
                 <b>{linkedIntake.plate || '业主尚未填写车牌'}</b> · {linkedIntake.kind === 'family' ? '亲情车（免费）' : '付费新车'} · <span className={`tag ${intakeStatus(linkedIntake)[1]}`}>{intakeStatus(linkedIntake)[0]}</span>
-                <p style={{ marginTop: 8 }}>{linkedIntake.transaction ? `已收款 · ${TXN_STATUS[linkedIntake.transaction.externalSyncStatus] || linkedIntake.transaction.externalSyncStatus}，请勿重复收款。` : linkedIntake.familyCarId ? '已转亲情车办理，不再按付费新车收款。' : linkedIntake.status === 'void' ? '本次登记已撤销，不能收费。' : linkedIntake.kind === 'family' ? '本次为免费亲情车，无需收费；按类型在登记详情转类 / 撤销。' : '已按房屋稳定 ID 定位授权住户。请在下方已有新办登记选择收费标准，不要重复新建；不会自动收款。'}</p>
+                <p style={{ marginTop: 8 }}>{linkedIntake.transaction ? `已收款 · ${TXN_STATUS[linkedIntake.transaction.externalSyncStatus] || linkedIntake.transaction.externalSyncStatus}，请勿重复收款。` : linkedIntake.familyCarId ? '已转亲情车办理，不再按付费新车收款。' : linkedIntake.status === 'void' ? '本次登记已撤销，不能收费。' : linkedIntake.kind === 'family' ? '本次为免费亲情车，无需收费；按类型在登记详情转类 / 撤销。' : `已定位登记房产 ${linkedIntake.houseLabel}。请在下方选择本次收费标准。`}</p>
                 {!linkedIntake.qrValid && linkedIntake.status !== 'void' ? <p className="muted">原二维码已失效；资料与收费状态以本次登记为准，需要填写时在登记详情处理二维码。</p> : null}
               </>}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
@@ -680,8 +703,13 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
           communities={communities}
           initialSearch={embeddedRenewalPlate ?? params.get('renewPlate') ?? undefined}
           onPick={onUniPick}
+          onShopPick={embeddedRenewalPlate ? undefined : shop => {
+            applyHouse(null, null);
+            setPicked(null); setPickedShop(shop); setErr(''); setTab('pk');
+          }}
+          onShopClear={() => { if (pickedShop) applyHouse(null, null); }}
           search={searchByQ as (kw: string) => Promise<UniPick['all']>}
-          placeholder="房号 / 姓名 / 手机尾号 / 车牌尾号，回车查询"
+          placeholder="房号 / 商铺 / 姓名 / 手机尾号 / 车牌尾号，回车查询"
         />
       </div> : null}
 
@@ -699,7 +727,7 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
                 <div className="addr">{selectedVehicle?.parkingRooms?.length
                   ? `旧库房号 ${selectedVehicle.parkingRooms.join('、')} · PMS 房号待核对` : 'PMS 房号待核对'}</div>
               </div>
-            </div> : house && (embedded && linkedIntake ? <RegistrationPermit house={house} intakeId={linkedIntake.id} kind={linkedIntake.kind} /> : <div className="card">
+            </div> : businessShop || (linkedIntake && embedded) ? <RegistrationPermit house={parkingSubject} intakeId={linkedIntake?.id} kind={linkedIntake?.kind} /> : house && <div className="card">
               <div className="ownerHead">
                 <div className="ownerAv">{initial}</div>
                 <div className="ownerMeta">
@@ -714,7 +742,7 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
                   <Icon name="wrench" size={16} />报修
                 </button>
               </div>
-            </div>)}
+            </div>}
 
             {house && !embedded ? <OwnerBusinessContact key={house.id} houseId={house.id} preferredOwnerId={house.owner?.id} source="cashier" onSaved={owner => { setHouse(h => h && h.id === house.id && h.owner?.id === owner.id ? { ...h, owner: {id:owner.id,name:owner.name,phone:owner.phone} } : h); }} /> : null}
             {house && <div className="projTabs cashier-projects" style={{ marginTop: 18, display: embedded || embeddedRenewalPlate ? 'none' : undefined }}>
@@ -755,7 +783,7 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
             ) : null}
 
             {linkedBlocked && !embedded ? (tab === 'pk' ? <div className="note2" role="status">本次登记不可收费，真实状态见上方。需要转类 / 撤销请进入本次登记详情。</div> : null) : <div ref={parkingForm} style={{ display: tab === 'pk' ? undefined : 'none' }}>
-              <ChargeAttempted.Provider value={embedded && chargeAttempted}><ParkingTab key={`${house?.id ?? parkPlate}-${intakeParam ?? ''}`} house={parkingSubject} rules={rules as never} onCart={onParkCart} initialPlate={parkPlate} selectedVehicle={selectedVehicle} renewalOnly={!!embeddedRenewalPlate || plateOnly} focusedIntake={linkedIntake} staffRegistration={embedded} onIntakeChange={embedded ? updateLinkedIntake : undefined} /></ChargeAttempted.Provider>
+              <ChargeAttempted.Provider value={embedded && chargeAttempted}><ParkingTab key={`${house?.id ?? (businessShop ? 'shop:' + businessShop.shopBuildingId : parkPlate)}-${intakeParam ?? ''}`} house={parkingSubject} rules={rules as never} onCart={onParkCart} initialPlate={parkPlate} selectedVehicle={selectedVehicle} renewalOnly={!!embeddedRenewalPlate || plateOnly} focusedIntake={linkedIntake} staffRegistration={embedded} onIntakeChange={embedded ? updateLinkedIntake : undefined} /></ChargeAttempted.Provider>
             </div>}
 
             {tab === 'ac' ? (

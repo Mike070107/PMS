@@ -120,6 +120,10 @@ export class UpdateCommunityDto {
 
 export class CreateBuildingDto {
   @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  shopName?: string;
+  @IsOptional()
   @IsIn(['residential', 'shop'])
   buildingType?: 'residential' | 'shop';
   @IsOptional()
@@ -153,6 +157,10 @@ export class CreateBuildingDto {
 }
 
 export class UpdateBuildingDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  shopName?: string | null;
   @IsOptional()
   @IsIn(['residential', 'shop'])
   buildingType?: 'residential' | 'shop';

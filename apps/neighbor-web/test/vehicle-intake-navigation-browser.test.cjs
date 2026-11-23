@@ -50,6 +50,71 @@ async function create(page, kind = 'paid') {
   return dialog;
 }
 
+for (const width of [1440, 390]) test(`商铺在车辆管理和收银台直达登记并按商铺收款 (${width})`, { timeout: 60000 }, async () => {
+  const f = await fixture(width); const { page, origin } = f;
+  try {
+    await page.goto(origin + '/vehicles');
+    await page.getByRole('button', { name: '新车登记', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '新车登记', exact: true });
+    await dialog.locator('.ant-select-selection-search-input').fill('S-08');
+    await page.locator('.ant-cascader-menu-item').filter({ hasText: '建行' }).first().waitFor();
+    await dialog.locator('.ant-select-selection-search-input').press('Enter');
+    assert.match(await dialog.locator('.ant-select-selector').innerText(), /建行/);
+    assert.doesNotMatch(await dialog.locator('.ant-select-selector').innerText(), /号楼/);
+    assert.equal(await dialog.getByRole('button', { name: '亲情车（免费）', exact: true }).count(), 0);
+    await shot(page, `shop-vehicle-address-${width}`);
+    await dialog.getByRole('button', { name: '工作人员直接登记', exact: true }).click();
+    await dialog.getByLabel('车牌号码（必填）').waitFor();
+    const vehicleCreate = (await calls(page)).find(call => call.url === '/vehicle-intakes' && call.method === 'POST');
+    assert.equal(vehicleCreate.data.shopBuildingId, 34);
+    assert.equal(vehicleCreate.data.houseId, undefined);
+
+    await page.goto(origin + '/cashier');
+    await page.locator('.ant-select-selection-search-input').fill('建行');
+    await page.locator('.ant-cascader-menu-item').filter({ hasText: '建行' }).first().click();
+    await page.getByRole('button', { name: '新办车牌（付费）', exact: true }).click();
+    await page.getByRole('button', { name: '工作人员直接登记', exact: true }).click();
+    await page.getByLabel('车牌号码（必填）').fill('沪A12345');
+    await page.getByLabel('联系手机（必填）').fill('13900000000');
+    await page.getByRole('button', { name: '保存资料，进入预览', exact: true }).click();
+    await page.getByRole('button', { name: '资料无误，通过', exact: true }).click();
+    await page.getByRole('button', { name: '现金', exact: true }).click();
+    await page.getByRole('button', { name: /收费并办理 ·|确认收款 ·/ }).click();
+    await page.getByText('收款已登记', { exact: true }).waitFor();
+    const actions = await calls(page);
+    for (const endpoint of ['/vehicle-intakes', '/business/complete']) {
+      const posted = actions.find(call => call.method === 'POST' && call.url === endpoint);
+      assert.equal(posted.data.shopBuildingId, 34);
+      assert.equal(posted.data.houseId, undefined);
+    }
+    assert.equal(actions.some(call => call.url === '/business/household-parking'), false);
+    await shot(page, `shop-cashier-paid-${width}`); await noOverflow(page);
+    assert.deepEqual(f.errors, []);
+  } finally { await f.close(); }
+});
+
+test('门禁卡按商铺选择，绑定后刷新仍可查看', { timeout: 20000 }, async () => {
+  const f = await fixture(390); const { page, origin } = f;
+  try {
+    await page.goto(origin + '/access-cards');
+    await page.locator('.ant-select-selector').click();
+    await page.locator('.ant-cascader-menu-item[data-path-key="1"]').click();
+    await page.locator('.ant-cascader-menu-item[data-path-key="1__RC_CASCADER_SPLIT__34"]').click();
+    await page.getByText('商铺门禁卡', { exact: true }).waitFor();
+    assert.match(await page.locator('.ant-select-selector').innerText(), /建行/);
+    await page.getByLabel('已发门禁卡').selectOption('98');
+    await page.getByRole('button', { name: '关联门禁卡', exact: true }).click();
+    await page.getByText('AB123456 · 在用', { exact: true }).waitFor();
+    await page.getByRole('button', { name: '刷新发卡记录', exact: true }).click();
+    await page.getByText('AB123456 · 在用', { exact: true }).waitFor();
+    const actions = await calls(page);
+    assert.equal(actions.filter(call => call.method === 'POST' && call.url === '/access-card-issuance/shops/34/cards/98').length, 1);
+    assert.equal(actions.some(call => call.url === '/access-card-issuance/cards/history'), false);
+    await shot(page, 'shop-card-linked-390'); await noOverflow(page);
+    assert.deepEqual(f.errors, []);
+  } finally { await f.close(); }
+});
+
 for (const width of [1440, 390]) test(`Vehicles unique query household prefills registration with stable ID (${width})`, async () => {
   const f = await fixture(width); const { page, origin } = f;
   try {
@@ -151,25 +216,25 @@ test('payment preflight rejects a registration changed to paid or family after n
     await page.evaluate(() => { Object.assign(window.__intakes[61], { status: 'approved', plate: '沪A12345', submittedAt: '2026-11-17T09:00:00Z', reviewedAt: '2026-11-17T09:01:00Z' }); });
     await navigate(page, '/cashier?intakeId=61');
     await page.getByRole('button', { name: '现金', exact: true }).click();
-    await page.waitForFunction(() => Array.from(document.querySelectorAll('button')).some(b => b.textContent.includes('确认收款 ·') && !b.disabled));
+    await page.waitForFunction(() => Array.from(document.querySelectorAll('button')).some(b => /收费并办理 ·|确认收款 ·/.test(b.textContent) && !b.disabled));
     await page.evaluate(() => { window.__failures['POST /business/complete'] = '合成网络失败，保留原登记和收费选择'; });
-    await page.getByRole('button', { name: /确认收款 ·/ }).click();
+    await page.getByRole('button', { name: /收费并办理 ·|确认收款 ·/ }).click();
     await page.getByText('合成网络失败，保留原登记和收费选择', { exact: false }).waitFor();
-    assert.equal(await page.getByRole('button', { name: /确认收款 ·/ }).isDisabled(), false);
+    assert.equal(await page.getByRole('button', { name: /收费并办理 ·|确认收款 ·/ }).isDisabled(), false);
     assert.ok((await page.locator('.cartFoot').innerText()).includes('现金'));
     await page.evaluate(() => { delete window.__failures['POST /business/complete']; window.__intakes[61].transaction = { ...window.__intakes[65].transaction }; });
-    await page.getByRole('button', { name: /确认收款 ·/ }).click();
+    await page.getByRole('button', { name: /收费并办理 ·|确认收款 ·/ }).click();
     await page.getByRole('region', { name: '本次登记 #61' }).getByText('已收款 ·', { exact: false }).waitFor();
-    assert.equal(await page.getByRole('button', { name: /确认收款 ·/ }).isDisabled(), true);
+    assert.equal(await page.getByRole('button', { name: /收费并办理 ·|确认收款 ·/ }).isDisabled(), true);
     assert.equal((await calls(page)).filter(c => c.url === '/business/complete').length, 1, 'preflight must stop a second payment attempt');
     await navigate(page, '/cashier');
     await page.evaluate(() => { window.__intakes[61].transaction = null; });
     await page.evaluate(() => { Object.assign(window.__intakes[61], { status: 'approved', plate: '沪A12345', submittedAt: '2026-11-17T09:00:00Z', reviewedAt: '2026-11-17T09:01:00Z' }); });
     await navigate(page, '/cashier?intakeId=61');
     await page.getByRole('button', { name: '现金', exact: true }).click();
-    await page.waitForFunction(() => Array.from(document.querySelectorAll('button')).some(b => b.textContent.includes('确认收款 ·') && !b.disabled));
+    await page.waitForFunction(() => Array.from(document.querySelectorAll('button')).some(b => /收费并办理 ·|确认收款 ·/.test(b.textContent) && !b.disabled));
     await page.evaluate(() => { window.__intakes[61].kind = 'family'; });
-    await page.getByRole('button', { name: /确认收款 ·/ }).click();
+    await page.getByRole('button', { name: /收费并办理 ·|确认收款 ·/ }).click();
     await page.getByText('本次为免费亲情车，无需收费', { exact: false }).waitFor();
     assert.equal((await calls(page)).filter(c => c.url === '/business/complete').length, 1, 'converted family is never submitted to payment');
     assert.equal(f.errors.length, 0, f.errors.join('\n'));
@@ -187,17 +252,17 @@ for (const width of [1440, 390]) {
       assert.ok(page.url().endsWith('/vehicles'), 'registration and payment stay inside Vehicles');
       assert.equal(await dialog.getByRole('button', { name: '去收银台收费', exact: true }).count(), 0);
       assert.equal((await calls(page)).filter(c => c.url === '/business/complete').length, 0);
-      assert.equal(await dialog.locator('.cart2').count(),0);
-      await dialog.getByRole('button',{ name:'保存登记，继续授权' }).click();
+      assert.equal(await dialog.locator('.cart2 .cartItem').count(), 0, '收费区在资料提交前没有收费项目');
+      await dialog.getByRole('button', { name: '保存资料，进入预览', exact: true }).click();
       assert.equal(await dialog.getByLabel('车牌号码（必填）',{exact:false}).getAttribute('aria-invalid'),'true');
       await dialog.getByLabel('车牌号码（必填）',{exact:false}).fill('沪A12345');
       await page.getByLabel('联系手机（必填）').fill('13900000000');
-      await page.getByRole('button', { name: '保存登记，继续授权', exact: true }).click();
+      await page.getByRole('button', { name: '保存资料，进入预览', exact: true }).click();
       await page.getByRole('button', { name: '资料无误，通过', exact: true }).click();
       await page.waitForFunction(() => window.__calls.some(c => c.url === '/business/estimate'));
-      const payButton = page.getByRole('button', { name: /确认收款 ·/ });
+      const payButton = page.getByRole('button', { name: /收费并办理 ·|确认收款 ·/ });
       await page.getByRole('button', { name: '现金', exact: true }).click();
-      await page.waitForFunction(() => Array.from(document.querySelectorAll('button')).some(b => b.textContent.includes('确认收款 ·') && !b.disabled));
+      await page.waitForFunction(() => Array.from(document.querySelectorAll('button')).some(b => /收费并办理 ·|确认收款 ·/.test(b.textContent) && !b.disabled));
       await shot(page, `cashier-ready-${width}`); await noOverflow(page);
       assert.equal((await calls(page)).filter(c => c.url === '/business/complete').length, 0, 'never auto-pay');
       await page.evaluate(() => { window.__waitFor = ['POST /business/complete']; });

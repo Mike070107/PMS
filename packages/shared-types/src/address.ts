@@ -26,6 +26,8 @@ export interface AddressBuilding {
   id: number;
   lane: string | null;
   buildingNo: string;
+  buildingType?: 'residential' | 'shop';
+  shopName?: string | null;
   roadName: string | null;
   houses: AddressHouse[];
 }
@@ -81,10 +83,15 @@ export function tokenizeAddress(input: string): string[] {
 // ---------------- 展示文案 ----------------
 
 /** 楼栋在下拉里的短标签：小区已经表达了主弄号，这里就不重复 */
+export function formatShopLabel(building: Pick<AddressBuilding, 'buildingNo' | 'shopName'>): string {
+  return building.shopName?.trim() || building.buildingNo;
+}
+
 export function formatBuildingLabel(
   community: Pick<AddressCommunity, 'mainLane'> & Partial<Pick<AddressCommunity, 'name'>>,
-  building: Pick<AddressBuilding, 'lane' | 'buildingNo' | 'roadName'>,
+  building: Pick<AddressBuilding, 'lane' | 'buildingNo' | 'roadName' | 'buildingType' | 'shopName'>,
 ): string {
+  if (building.buildingType === 'shop') return formatShopLabel(building);
   if (!building.buildingNo) return '本栋（无楼号）';
   if (building.lane && building.lane !== community.mainLane) {
     return `${building.lane}弄${building.buildingNo}号`;
@@ -98,8 +105,9 @@ export function formatBuildingLabel(
 
 /** 楼栋的完整写法：228弄4号 / 永德路153号 */
 export function formatBuildingFull(
-  building: Pick<AddressBuilding, 'lane' | 'buildingNo' | 'roadName'>,
+  building: Pick<AddressBuilding, 'lane' | 'buildingNo' | 'roadName' | 'buildingType' | 'shopName'>,
 ): string {
+  if (building.buildingType === 'shop') return formatShopLabel(building);
   if (!building.buildingNo) return building.roadName || '';
   if (building.lane) return `${building.lane}弄${building.buildingNo}号`;
   if (building.roadName) return `${building.roadName}${building.buildingNo}号`;
@@ -148,7 +156,7 @@ export function formatRoomText(roomNo?: string | null): string {
  */
 export function formatAddressLine(
   community: { name: string; mainLane?: string | null; laneCount?: number | null },
-  building?: Pick<AddressBuilding, 'lane' | 'buildingNo' | 'roadName'> | null,
+  building?: Pick<AddressBuilding, 'lane' | 'buildingNo' | 'roadName' | 'buildingType' | 'shopName'> | null,
   roomNo?: string | null,
 ): string {
   const lane = building?.lane || '';
@@ -174,7 +182,7 @@ export function dedupeAddressText(text?: string | null): string {
 /** 最终填进表单、可复制的地址：房号直接接楼号，保留不同弄号，仅裁相邻重复弄号。 */
 export function formatFullAddress(
   communityName: string,
-  building?: Pick<AddressBuilding, 'lane' | 'buildingNo' | 'roadName'> | null,
+  building?: Pick<AddressBuilding, 'lane' | 'buildingNo' | 'roadName' | 'buildingType' | 'shopName'> | null,
   roomNo?: string | null,
 ): string {
   const buildingText = building ? formatBuildingFull(building) : '';
@@ -310,6 +318,10 @@ export function communityMatchKeys(community: AddressCommunity): MatchKeys {
 
 export function buildingMatchKeys(building: AddressBuilding): MatchKeys {
   if (!building.buildingNo) return { exact: [], prefix: [], loose: [] };
+  if (building.buildingType === 'shop') {
+    const keys = [...new Set([building.buildingNo, formatShopLabel(building)])];
+    return { exact: keys, prefix: keys, loose: keys };
+  }
   const exact = [building.buildingNo];
   const prefix = [building.buildingNo];
   const loose = [building.buildingNo];

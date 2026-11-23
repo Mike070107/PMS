@@ -30,6 +30,7 @@ import { Brackets, EntityManager, In, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
 import { UserRole, UserStatus } from '../../common/enums';
 import {
+  AccessCard,
   AccessCardAgent,
   AccessCardAuthorization,
   AccessCardIssueBatch,
@@ -559,6 +560,89 @@ export class AccessCardIssuanceService {
       refreshing: recent.status === 'pending',
       rows: limited,
     };
+  }
+
+  private async requireShop(manager: EntityManager, tenantId: number, shopId: number, access?: ResolvedAccess, lock = false) {
+    const shop = await manager.getRepository(Building).findOne({
+      where: { id: shopId, tenantId, buildingType: 'shop' },
+      ...(lock ? { lock: { mode: 'pessimistic_write' } as const } : {}),
+    });
+    if (!shop) throw new NotFoundException('商铺档案不存在');
+    const scope = scopeCommunityIds(access);
+    if (scope && !scope.includes(shop.communityId)) throw new ForbiddenException('该商铺不在你的管理范围内');
+    return shop;
+  }
+
+  private async recentShopCards(manager: EntityManager, shop: Building, access?: ResolvedAccess) {
+    const snapshot = await manager.getRepository(AccessCardLegacySnapshot)
+      .findOneBy({ tenantId: shop.tenantId, roomKey: RECENT_LEGACY_ROOM_KEY });
+    const buildings = await manager.getRepository(Building).findBy({ tenantId: shop.tenantId });
+    const shops = buildings.filter(building => building.buildingType === 'shop');
+    const scope = scopeCommunityIds(access);
+    const normal = (value: string) => value.normalize('NFKC').trim().toLowerCase();
+    const aliases = (building: Building) => [building.buildingNo, building.shopName].filter(Boolean).map(value => normal(value!));
+    return (snapshot?.history ?? []).map(row => mapLegacyCardRow(row)).filter(row => {
+      if (row.hidden !== false || !row.icCardNo || !row.wgCardNo || row.cardInfoId == null) return false;
+      if (parseLegacyAccessCardRoomName(row.personName)) return false;
+      const label = normal(row.roomLabel).replace(/\/\d+$/, '');
+      const matched = shops.filter(building => aliases(building).includes(label));
+      const residential = parseLegacyCardRoomInput(row.personName);
+      if (matched.length) return matched.length === 1 && matched[0].id === shop.id
+        && (!residential || !buildings.some(building => building.buildingType !== 'shop'
+          && normalizeLegacyNumber(building.buildingNo) === normalizeLegacyNumber(residential.buildingNo)));
+      if (residential) return false;
+      return scope === null;
+    });
+  }
+
+  async shopCards(shopId: number, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const manager = this.buildingRepo.manager;
+    const shop = await this.requireShop(manager, tenantId, shopId, access);
+    const [cards, candidates] = await Promise.all([
+      manager.getRepository(AccessCard).findBy({ tenantId, shopBuildingId: shopId }),
+      this.recentShopCards(manager, shop, access),
+    ]);
+    const linked = new Set(cards.map(card => card.cardNo));
+    return {
+      cards: cards.map(({ cardNo, status }) => ({ cardNo, status })),
+      candidates: candidates.filter(card => !linked.has(card.icCardNo!))
+        .map(({ id, icCardNo, roomLabel }) => ({ id, cardNo: icCardNo!, label: roomLabel })),
+    };
+  }
+
+  async bindShopCard(shopId: number, cardId: number, user: AuthUser, access?: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const manager = this.buildingRepo.manager;
+    return manager.transaction(async tx => {
+      const shop = await this.requireShop(tx, tenantId, shopId, access, true);
+      const candidate = (await this.recentShopCards(tx, shop, access)).find(card => card.cardInfoId === cardId);
+      if (!candidate?.icCardNo) throw new BadRequestException('该卡不可关联到此商铺，请核对捷顺发卡记录');
+      const repo = tx.getRepository(AccessCard);
+      const storedNumber = candidate.icCardNo;
+      const externalRef = `jieshun:${cardId}`;
+      const existing = await repo.createQueryBuilder('card')
+        .where('card.tenantId = :tenantId', { tenantId })
+        .andWhere('(UPPER(card.cardNo) IN (:...numbers) OR card.externalRef = :externalRef)', {
+          numbers: [storedNumber, candidate.wgCardNo], externalRef,
+        }).getMany();
+      if (existing.some(card => card.shopBuildingId !== shopId)) throw new ConflictException('该门禁卡已关联其他地址');
+      if (existing.length) return { cardNo: existing[0].cardNo, status: existing[0].status };
+      const inserted = await repo.createQueryBuilder().insert().values({
+        tenantId, cardNo: storedNumber, houseId: null, shopBuildingId: shopId, status: 'active',
+        externalRef, createdBy: user.id, updatedBy: user.id,
+      }).orIgnore().returning('id').execute();
+      const card = await repo.findOneByOrFail({ tenantId, cardNo: storedNumber });
+      if (card.shopBuildingId !== shopId) throw new ConflictException('该门禁卡已关联其他地址');
+      if (inserted.raw.length) {
+        await tx.getRepository(BusinessLog).save({
+          tenantId, transactionId: null, action: 'shop_access_card_bound',
+          detail: { shopBuildingId: shopId, accessCardId: card.id, legacyCardId: cardId },
+          createdBy: user.id, updatedBy: user.id,
+        });
+      }
+      return { cardNo: card.cardNo, status: card.status };
+    });
   }
 
   /** 单卡详情 + 已写入 Access 库/已授权楼栋聚合。 */

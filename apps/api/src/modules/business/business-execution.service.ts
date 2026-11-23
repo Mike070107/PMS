@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, LessThan, Repository } from 'typeorm';
-import { BusinessLog, BusinessRule, BusinessTransaction, House, ParkingOperation, VehicleIntake } from '../../entities';
+import { Building, BusinessLog, BusinessRule, BusinessTransaction, House, ParkingOperation, VehicleIntake } from '../../entities';
 import { findParkingTarget } from './parking-targets';
 import { updatePropertySpaces, type PropertySpaceRef } from './property-space-ledger';
 import { legacyRegistrationProfile } from './parking-registration-profile';
@@ -373,28 +373,34 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
     const wait = () => this.finish(txn, 'queued', { ...prev, mode, attempts: attempts - 1, steps,
       nextAt: new Date(Date.now() + 5000).toISOString(), lastError: null });
     try {
-      const intakeId = Number((txn.snapshot?.intake as { id?: number })?.id);
+      const reference = txn.snapshot?.intake as { id?: number; shopBuildingId?: number } | undefined;
+      const intakeId = Number(reference?.id);
       const intake = await this.txnRepo.manager.getRepository(VehicleIntake).findOne({ where: { id: intakeId || 0, tenantId: txn.tenantId } });
       if (!intake || intake.kind !== 'paid' || intake.status !== 'approved' || intake.houseId !== txn.houseId ||
+          (intake.shopBuildingId ?? null) !== (reference?.shopBuildingId ?? null) ||
           intake.transactionId !== txn.id || intake.plate !== plate) throw new BadRequestException('新车资料未通过审核或与原收款记录不一致，禁止自动开通');
       if (!plate || !endDate || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || !txn.startDate || !txn.createdBy) throw new BadRequestException('新车登记缺少车牌、有效期或原办理人');
-      const property = await this.txnRepo.manager.getRepository(House).findOne({
+      const property = intake.houseId == null ? null : await this.txnRepo.manager.getRepository(House).findOne({
         where: { tenantId: txn.tenantId, id: intake.houseId }, relations: { building: true, unit: true },
       });
-      const building = property?.building;
-      if (!property || !building || building.tenantId !== txn.tenantId ||
+      const shop = intake.shopBuildingId == null ? null : await this.txnRepo.manager.getRepository(Building).findOneBy({
+        tenantId: txn.tenantId, id: intake.shopBuildingId, buildingType: 'shop',
+      });
+      const building = shop ?? property?.building;
+      if ((!shop && !property?.roomNo?.trim()) || !building || building.tenantId !== txn.tenantId ||
           building.communityId !== intake.communityId || building.communityId !== txn.communityId ||
-          !building.buildingNo?.trim() || !property.roomNo?.trim()) {
+          !building.buildingNo?.trim()) {
         throw new BadRequestException('原登记的房产或所属小区已变更，请核对后重试原流水');
       }
-      const parts = [building.lane, building.buildingNo, property.unit?.unitNo, property.roomNo]
+      const parts = [building.lane, building.buildingNo, property?.unit?.unitNo, property?.roomNo]
         .map(value => value?.trim()).filter((value): value is string => !!value);
-      const numericHome = parts.every(value => /^\d+$/.test(value));
-      const ownerAddress = (numericHome ? parts.map(value => value.replace(/^0+(?=\d)/, '')) : parts).join('/');
+      const numericHome = !shop && parts.every(value => /^\d+$/.test(value));
+      const ownerAddress = shop ? (shop.shopName?.trim() || shop.buildingNo.trim()) :
+        (numericHome ? parts.map(value => value.replace(/^0+(?=\d)/, '')) : parts).join('/');
       // 旧库的 owner_Name 是 varchar(20)，不同房产共用同名门牌时仍须独立。
       // 常规住宅沿用既有编码；商铺、公寓保留完整地址，并以房产 ID 区分同名档案。
-      const ownerRoom = numericHome && !property.unitId && building.lane && Buffer.byteLength(ownerAddress) <= 20
-        ? ownerAddress : `PMS-${property.id}`;
+      const ownerRoom = shop ? `PMS-S${shop.id}` : numericHome && !property?.unitId && building.lane && Buffer.byteLength(ownerAddress) <= 20
+        ? ownerAddress : `PMS-${property!.id}`;
       if (Buffer.byteLength(ownerAddress, 'utf8') > 80) throw new BadRequestException('房产地址超过旧停车库地址栏长度，请核对原登记');
       const selected = [...new Set(intake.garages)];
       const defs = selected.map(key => findParkingTarget(key));

@@ -20,8 +20,9 @@ export class VehicleIntakeController {
 
   @Get()
   @RequirePermission([...VIEW, ...MANAGER_REVIEW], 'view')
-  list(@Query() query: { status?: string; kind?: string; q?: string; houseId?: string; open?: string }, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
-    return this.service.list({ ...query, houseId: query.houseId ? Number(query.houseId) : undefined, open: query.open === '1' }, user, access);
+  list(@Query() query: { status?: string; kind?: string; q?: string; houseId?: string; shopBuildingId?: string; open?: string }, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.service.list({ ...query, houseId: query.houseId ? Number(query.houseId) : undefined,
+      shopBuildingId: query.shopBuildingId !== undefined ? Number(query.shopBuildingId) : undefined, open: query.open === '1' }, user, access);
   }
 
   @Get(':id')

@@ -11,13 +11,13 @@ import './property-archive.css';
 type Level = 'offices' | 'communities' | 'buildings' | 'houses' | 'owners';
 type Link = { house_id?: number; building_id?: number; community_name: string; building_no: string; room_no?: string; move_in_date?: string; billing_start_date?: string };
 type Row = { id: number; name?: string; officeId?: number | null; parentId?: number | null; isGroup?: boolean;
-  communityType?: string; communityId?: number; buildingId?: number; buildingType?: string; buildingNo?: string; lane?: string;
+  communityType?: string; communityId?: number; buildingId?: number; buildingType?: string; buildingNo?: string; shopName?: string | null; lane?: string;
   roomNo?: string; areaSqm?: number | string | null; floor?: string; propertyNature?: string; roomLayout?: string;
   owners?: Array<{ id: number; name: string }>; phone?: string; contactNote?: string; status?: string; archivedAt?: string | null;
   enabled?: boolean; address?: string; remark?: string; contactPhones?: string[]; properties?: Link[]; houseCount?: number; ownerCount?: number };
 const labels: Record<Level, string> = { offices: '管理处', communities: '小区 / 公寓', buildings: '楼栋 / 商铺', houses: '房号', owners: '业主' };
 const urls: Record<Level, string> = { offices: '/offices', communities: '/communities', buildings: '/buildings', houses: '/houses', owners: '/owners-mgmt' };
-const buildingLabel = (r?: Row) => !r ? '' : r.buildingType === 'shop' ? r.buildingNo : `${(r.buildingNo || '').replace(/(?:号楼|号|栋)$/, '')}号`;
+const buildingLabel = (r?: Row) => !r ? '' : r.buildingType === 'shop' ? (r.shopName || r.buildingNo) : `${(r.buildingNo || '').replace(/(?:号楼|号|栋)$/, '')}号`;
 const roomLabel = (r?: Row) => r?.roomNo?.replace(/室$/, '') || '';
 const required = (label: string) => [{ required: true, whitespace: true, message: `请填写${label}` }];
 const phonesOf = (r: Row) => [...new Set([r.phone, ...(r.contactPhones || [])].filter((p): p is string => !!p))];
@@ -76,6 +76,7 @@ function ArchiveWorkspace() {
   const targetLoading = targetBuildingsLoading || targetHousesLoading, targetError = targetBuildingsError || targetHousesError;
   const [targetVersion, setTargetVersion] = useState(0);
   const targetCommunityId = Form.useWatch('targetCommunityId', form), targetBuildingId = Form.useWatch('targetBuildingId', form);
+  const editingShop = Form.useWatch('buildingType', form) === 'shop';
   const building = buildings.find(r => r.id === buildingId && r.communityId === communityId), community = communities.find(r => r.id === communityId && !r.isGroup);
   const shop = building?.buildingType === 'shop';
   const currentLink = (r?: Row) => r?.properties?.find(p => shop ? p.building_id === buildingId : p.house_id === houseId);
@@ -115,7 +116,7 @@ function ArchiveWorkspace() {
   useEffect(() => {
     let current = true; setRows([]); setTotal(0); setLoading(false);
     if (!eligible || directoryLoading) return;
-    const match = (r: Row) => !q || [r.name,r.buildingNo,r.roomNo].some(v => v?.toLowerCase().includes(q.toLowerCase()));
+    const match = (r: Row) => !q || [r.name,r.buildingNo,r.shopName,r.roomNo].some(v => v?.toLowerCase().includes(q.toLowerCase()));
     const local = level === 'offices' ? offices : level === 'communities' ? visibleCommunities : level === 'buildings' ? buildings : null;
     if (local) { const result = local.filter(match).filter(r => !type || (level === 'buildings' ? r.buildingType : r.communityType) === type); setRows(result); setTotal(result.length); return; }
     setLoading(true); setError('');
@@ -241,7 +242,7 @@ function ArchiveWorkspace() {
         {(editor?.kind === 'offices' || editor?.kind === 'communities' || editor?.kind === 'owners') && <Form.Item name="name" label={editor?.kind === 'owners' ? '业主姓名' : '名称'} rules={required('名称')}><Input maxLength={editor?.kind === 'owners' ? 60 : 120} /></Form.Item>}
         {editor?.kind === 'offices' && <><Form.Item name="communityIds" label="管辖小区 / 公寓"><Select mode="multiple" options={communities.filter(c=>!c.parentId).map(c=>({value:c.id,label:c.name}))} /></Form.Item><Form.Item name="remark" label="备注"><Input.TextArea maxLength={255}/></Form.Item></>}
         {editor?.kind === 'communities' && <><Form.Item name="communityType" label="分类" rules={[{required:true,message:'请选择分类'}]}><Select options={[{value:'community',label:'小区'},{value:'apartment',label:'公寓'}]}/></Form.Item><Form.Item name="officeId" label="所属管理处"><Select allowClear options={offices.map(o=>({value:o.id,label:o.name}))}/></Form.Item><Form.Item name="address" label="地址"><Input maxLength={255}/></Form.Item></>}
-        {editor?.kind === 'buildings' && <><Form.Item name="buildingNo" label="楼栋 / 商铺名称" rules={required('楼栋或商铺名称')}><Input maxLength={30}/></Form.Item><Form.Item name="buildingType" label="分类" rules={[{required:true,message:'请选择分类'}]}><Select options={[{value:'residential',label:'住宅楼'},{value:'shop',label:'商铺'}]}/></Form.Item><Form.Item name="lane" label="弄号"><Input maxLength={30}/></Form.Item></>}
+        {editor?.kind === 'buildings' && <><Form.Item name="buildingNo" label={editingShop ? '商铺号或名称' : '楼栋 / 商铺名称'} rules={required(editingShop ? '商铺号或名称' : '楼栋或商铺名称')}><Input maxLength={30}/></Form.Item><Form.Item name="buildingType" label="分类" rules={[{required:true,message:'请选择分类'}]}><Select options={[{value:'residential',label:'住宅楼'},{value:'shop',label:'商铺'}]}/></Form.Item>{editingShop && <Form.Item name="shopName" label="商铺名称（选填）"><Input maxLength={60}/></Form.Item>}<Form.Item name="lane" label="弄号"><Input maxLength={30}/></Form.Item></>}
         {editor?.kind === 'houses' && <><Form.Item name="roomNo" label="房号" rules={required('房号')}><Input maxLength={30}/></Form.Item><Form.Item name="floor" label="楼层"><Input maxLength={30}/></Form.Item><Form.Item name="areaSqm" label="面积（㎡）"><InputNumber min={0} max={99999.99} precision={2} style={{width:'100%'}}/></Form.Item><Form.Item name="propertyNature" label="房产性质"><Select allowClear options={['商品房','公房','配套房','其他'].map(value=>({value,label:value}))}/></Form.Item><Form.Item name="roomLayout" label="房型"><Input maxLength={60}/></Form.Item><Form.Item name="remark" label="房产备注"><Input.TextArea maxLength={500}/></Form.Item></>}
         {editor?.kind === 'owners' && <><Form.Item name="phone" label="主要联系电话" rules={[...required('主要联系电话'),{pattern:/^[+\d][\d\s()+-]{4,29}$/,message:'请输入有效手机号或固定电话'}]}><Input maxLength={30}/></Form.Item>
           <Form.List name="contactPhones">{(fields,{add,remove})=><>{fields.map(({key,name,...rest})=><Space key={key} align="baseline"><Form.Item {...rest} name={name} label={`其他电话 ${name+1}`} rules={[...required('联系电话'),{pattern:/^[+\d][\d\s()+-]{4,29}$/,message:'电话格式不正确'}]}><Input maxLength={30}/></Form.Item><Button danger onClick={()=>remove(name)}>删除此电话</Button></Space>)}{fields.length<9 && <Button onClick={()=>add()}>添加联系电话</Button>}</>}</Form.List>

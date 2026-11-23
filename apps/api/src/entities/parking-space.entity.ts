@@ -2,7 +2,7 @@ import { Column, Entity, Index } from 'typeorm';
 import { TenantEntity } from '../common/base.entity';
 
 export interface PropertyVehicleBinding {
-  houseId: number; houseNo: string; ownerName: string | null; ownerPhone: string | null;
+  houseId: number | null; shopBuildingId?: number; houseNo: string; ownerName: string | null; ownerPhone: string | null;
   contactPhone: string | null; endDate: string; transactionId: number;
 }
 

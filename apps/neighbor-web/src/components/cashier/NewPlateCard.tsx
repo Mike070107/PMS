@@ -24,7 +24,7 @@ type FamilyStage = 'upload' | 'office' | 'manager' | 'returned' | 'opening' | 'a
 export interface IntakeFile { index: number; fileName: string; contentType: string; fileUrl: string; uploadedAt: string }
 export interface Intake {
   id: number; kind: 'paid' | 'family'; status: 'waiting' | 'submitted' | 'reupload' | 'approved' | 'void';
-  houseId: number; communityId?: number | null; houseLabel: string; ownerName: string; ownerPhone: string;
+  houseId: number | null; shopBuildingId?: number | null; communityId?: number | null; houseLabel: string; ownerName: string; ownerPhone: string;
   plate: string; contactName: string; contactPhone: string; relation: string; vehicleClass: string;
   garages: string[]; garageNumbers: Record<string, string>;
   canConfigureApproved?: boolean; homeUpload?: boolean; expiresAt: string; qrValid: boolean; openedAt: string | null; submittedAt: string | null; reviewedAt: string | null; reviewNote: string;
@@ -132,6 +132,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
   };
   // 本小区的停车场：直接读停车场目录（瞬时），不等「这一户的车」查询（德立云 + 现场库要十几秒）
   const community = it.houseLabel.split('/')[0];
+  const scanRegistrant = it.shopBuildingId ? '商铺联系人' : '住户';
   const [catalog, setCatalog] = useState<ParkTarget[] | null>(null);
   useEffect(() => { void loadTargets().then(setCatalog).catch(() => setCatalog([])); }, []);
   const targets = useMemo(() => {
@@ -374,7 +375,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
   const categoryPanel = !manage && it.kind === 'paid' && !it.transaction && it.status !== 'void' ? <div style={{ marginBottom: 12 }}>
         {renewal(car, it.plate ? `${it.plate}（新办）` : `新办车牌 #${it.id}`, it.vehicleClass, selectVehicleClass, (it.status === 'approved' || !!it.homeUpload && (!!it.submittedAt || !expired)) && picked.length > 0 && !garageError && !missingSpace && !converting && !busy && !savingGarages, canEditGarages ? garageFields : null)}
       </div> : <div className="note2" style={{ marginBottom: 10 }}>
-        <VehicleClassChoices spaces={propertySpaces} options={['亲情车', ...classOptions]} value={it.kind === 'family' ? '亲情车' : it.vehicleClass || classOptions.find(c => c.replace(/[-－\s]/g, '') === '住户车1') || ''} readOnly={!canConvert} disabled={!!busy || savingGarages} onChange={value => { void selectVehicleClass(value).catch(e => setErr(e instanceof Error ? e.message : '类别保存失败')); }} />
+        <VehicleClassChoices spaces={propertySpaces} options={it.shopBuildingId ? classOptions : ['亲情车', ...classOptions]} value={it.kind === 'family' ? '亲情车' : it.vehicleClass || classOptions.find(c => c.replace(/[-－\s]/g, '') === '住户车1') || ''} readOnly={!canConvert} disabled={!!busy || savingGarages} onChange={value => { void selectVehicleClass(value).catch(e => setErr(e instanceof Error ? e.message : '类别保存失败')); }} />
       </div>;
   return (
     <div ref={cardRef} className="card np-card np-review">
@@ -390,7 +391,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
       </div>
 
           {canStaff && !it.homeUpload ? <section className="intake-registration-form" aria-label="工作人员代填">
-            <header className="intake-registration-heading"><div><h3>{staffMode ? '办公室填写资料' : '住户扫码填写资料'}</h3></div><button type="button" className="btn" aria-expanded={staffMode} disabled={!!busy} onClick={() => setStaffMode(!staffMode)}>{staffMode ? defaultStaffMode ? '改由住户扫码' : '收起工作人员代填' : '工作人员直接代填'}</button></header>
+            <header className="intake-registration-heading"><div><h3>{staffMode ? '办公室填写资料' : `${scanRegistrant}扫码填写资料`}</h3></div><button type="button" className="btn" aria-expanded={staffMode} disabled={!!busy} onClick={() => setStaffMode(!staffMode)}>{staffMode ? defaultStaffMode ? `改由${scanRegistrant}扫码` : '收起工作人员代填' : '工作人员直接代填'}</button></header>
             {staffMode ? <fieldset disabled={!!busy || savingGarages} style={{ border: 0, padding: 0, minWidth: 0 }}>
               <IntakePlatePicker inputId={fieldId('plate')} invalid={attempted && plateInvalid} value={edit.plate} onChange={plate => setEdit({ ...edit, plate })} disabled={!!busy} />
               <div className="np-fields registration-contacts"><label>本车联系手机（必填）<input id={fieldId('phone')} aria-invalid={attempted && phoneInvalid} aria-describedby={attempted && phoneInvalid ? fieldId('phone-error') : undefined} className="in" inputMode="tel"  autoComplete="off" maxLength={11} placeholder="填写此车牌的联系手机" value={edit.contactPhone} onChange={e => setEdit({ ...edit, contactPhone: e.target.value })} />{attempted && phoneInvalid && <small id={fieldId('phone-error')}>请输入本车联系人 11 位手机号</small>}</label>{it.kind === 'family' ? <label>与业主关系（必填）<input id={fieldId('relation')} aria-invalid={attempted && relationInvalid} aria-describedby={attempted && relationInvalid ? fieldId('relation-error') : undefined} className="in" maxLength={12} value={edit.relation} onChange={e => setEdit({ ...edit, relation: e.target.value })} />{attempted && relationInvalid && <small id={fieldId('relation-error')}>请填写具体亲属关系</small>}</label> : null}<label>车主（选填）<input className="in" value={edit.contactName} onChange={e => setEdit({ ...edit, contactName: e.target.value })} /></label></div>

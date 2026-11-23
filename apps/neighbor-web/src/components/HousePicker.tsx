@@ -27,7 +27,7 @@ export interface PickedHouse {
 }
 
 export default function HousePicker({
-  communities, value, onPick, disabled, placeholder, onTextChange, onFallbackSearch, onClear, onIncomplete, allowPublicArea = false, onPublicPick, publicValue, selectionRevision,
+  communities, value, onPick, disabled, placeholder, onTextChange, onFallbackSearch, onClear, onIncomplete, allowPublicArea = false, onPublicPick, publicValue, onShopPick, shopValue, selectionRevision,
 }: {
   communities: AddressCommunity[];
   value?: PickedHouse | null;
@@ -42,6 +42,8 @@ export default function HousePicker({
   allowPublicArea?: boolean;
   onPublicPick?: (picked: PickedAddress) => void;
   publicValue?: PickedAddress | null;
+  onShopPick?: (picked: PickedAddress) => void;
+  shopValue?: PickedAddress | null;
   /** Increment to explicitly reset an in-progress partial navigation when value is already null. */
   selectionRevision?: number;
 }) {
@@ -49,7 +51,7 @@ export default function HousePicker({
   // A partial path is navigation, never a chargeable household. Parent may clear
   // the previous household in onIncomplete without collapsing the new columns.
   const [navigationPath, setNavigationPath] = useState<Array<number | string> | null>(null);
-  useEffect(() => { if (value || publicValue) setNavigationPath(null); }, [value, publicValue]);
+  useEffect(() => { if (value || publicValue || shopValue) setNavigationPath(null); }, [value, publicValue, shopValue]);
   useEffect(() => { setNavigationPath(null); setIncomplete(false); }, [selectionRevision, communities]);
   /**
    * 小区列的排序：有住宅房号的排在前面，纯商铺/办公（房号全是汉字或都带商铺名）排到最后。
@@ -68,6 +70,7 @@ export default function HousePicker({
 
   const cascaderValue = useMemo<Array<number | string>>(() => {
     if (navigationPath) return navigationPath;
+    if (shopValue?.buildingId) return [shopValue.communityId, shopValue.buildingId];
     if (allowPublicArea && publicValue?.locationKind === 'public') {
       return [publicValue.communityId, ...(publicValue.buildingId != null ? [publicValue.buildingId] : []), PUBLIC_AREA_VALUE];
     }
@@ -75,7 +78,7 @@ export default function HousePicker({
     const list: Array<number | string> = [value.communityId, value.buildingId];
     if (value.houseId) list.push(value.houseId);
     return list;
-  }, [value, publicValue, allowPublicArea, navigationPath]);
+  }, [value, publicValue, shopValue, allowPublicArea, navigationPath]);
 
   const toPicked = (p: PickedAddress): PickedHouse | null => {
     if (p.locationKind === 'public' || !p.buildingId || !p.houseId || !p.roomNo) return null;
@@ -113,12 +116,14 @@ export default function HousePicker({
         disabled={disabled}
         placeholder={placeholder}
         allowPublicArea={allowPublicArea}
+        allowShops={!!onShopPick}
         onSearchText={onTextChange}
         onPicked={(p) => {
           if (disabled) return;
           setIncomplete(false);
           if (!p) { onClear?.(); return; }
           if (p.locationKind === 'public' && allowPublicArea && onPublicPick) { onPublicPick(p); return; }
+          if (p.locationKind === 'shop' && onShopPick) { onShopPick(p); return; }
           const full = toPicked(p);
           if (full) onPick(full);
           else { setIncomplete(true); onIncomplete?.(); }

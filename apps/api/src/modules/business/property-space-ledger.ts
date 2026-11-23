@@ -21,8 +21,11 @@ export function mainSpaceFromQuery(rows: ParkingQueryRow[], plate: string, recor
 
 export async function updatePropertySpaces(manager: EntityManager, txn: BusinessTransaction, refs: PropertySpaceRef[]) {
   const plate = (txn.snapshot?.vehicle as {plateNo?:string})?.plateNo;
-  const contact = txn.snapshot.propertyContact as {houseId:number;houseNo:string;ownerName:string|null;ownerPhone:string|null;contactPhone:string|null};
-  if (!contact?.houseNo || contact.houseId !== txn.houseId) throw new BadRequestException('车位绑定房屋与本次流水不一致');
+  const contact = txn.snapshot.propertyContact as {houseId:number|null;shopBuildingId?:number;houseNo:string;ownerName:string|null;ownerPhone:string|null;contactPhone:string|null};
+  const shopBuildingId = (txn.snapshot.intake as { shopBuildingId?: number } | undefined)?.shopBuildingId;
+  if (!contact?.houseNo || contact.houseId !== txn.houseId
+      || (txn.houseId == null ? !shopBuildingId || contact.shopBuildingId !== shopBuildingId : contact.shopBuildingId != null))
+    throw new BadRequestException('车位绑定房产与本次流水不一致');
   if (!plate || !txn.endDate) throw new BadRequestException('产权车流水缺少车牌或到期日');
   for (const ref of [...refs].sort((a,b) => a.id - b.id)) {
     // 行锁序和事务保护多库更新；共用车位分别保存每辆车的资料。

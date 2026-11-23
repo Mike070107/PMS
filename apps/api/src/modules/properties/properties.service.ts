@@ -482,7 +482,7 @@ export class PropertiesService {
     if (!community) throw new NotFoundException('community not found');
     this.assertCommunityInScope(access, dto.communityId);
 
-    const building = await this.upsertBuilding(
+    const building = dto.buildingType === 'shop' ? await this.createShop(dto, tenantId, user.id) : await this.upsertBuilding(
       tenantId,
       dto.communityId,
       dto.lane ?? null,
@@ -506,6 +506,21 @@ export class PropertiesService {
     };
   }
 
+  private async createShop(dto: CreateBuildingDto, tenantId: number, operatorId: number) {
+    const buildingNo = dto.buildingNo.trim();
+    if (!buildingNo) throw new BadRequestException('请填写商铺号或名称');
+    const lane = dto.lane?.trim() || null;
+    const previous = await this.buildingRepo.findOne({
+      where: { tenantId, communityId: dto.communityId, buildingType: 'shop', lane: lane ?? IsNull(), buildingNo },
+    });
+    if (previous) throw new BadRequestException('该小区已登记同号商铺');
+    return this.buildingRepo.save(this.buildingRepo.create({
+      tenantId, communityId: dto.communityId, buildingNo, lane, buildingType: 'shop',
+      shopName: dto.shopName?.trim() || null, roadName: dto.roadName?.trim() || null, zone: dto.zone?.trim() || null,
+      createdBy: operatorId, updatedBy: operatorId,
+    }));
+  }
+
   async updateBuilding(
     id: number,
     dto: UpdateBuildingDto,
@@ -521,13 +536,15 @@ export class PropertiesService {
 
     const nextLane = dto.lane !== undefined ? (dto.lane || null) : building.lane;
     const nextNo = dto.buildingNo !== undefined ? dto.buildingNo : building.buildingNo;
-    if (nextLane !== building.lane || nextNo !== building.buildingNo) {
+    const nextType = dto.buildingType ?? building.buildingType;
+    if (nextLane !== building.lane || nextNo !== building.buildingNo || nextType !== building.buildingType) {
       const dup = await this.buildingRepo.findOne({
         where: {
           tenantId,
           communityId: building.communityId,
           lane: nextLane ?? IsNull(),
           buildingNo: nextNo,
+          buildingType: nextType,
         },
       });
       if (dup && dup.id !== id) {
@@ -541,6 +558,8 @@ export class PropertiesService {
     }
     if (dto.lane !== undefined) building.lane = dto.lane || null;
     if (dto.buildingNo !== undefined) building.buildingNo = dto.buildingNo;
+    if (dto.shopName !== undefined || building.buildingType !== 'shop')
+      building.shopName = building.buildingType === 'shop' ? dto.shopName?.trim() || null : null;
     if (dto.zone !== undefined) building.zone = dto.zone || null;
     if (dto.roadName !== undefined) building.roadName = dto.roadName || null;
     building.updatedBy = user.id;
@@ -554,10 +573,20 @@ export class PropertiesService {
     if (next === 'residential' && await this.buildingHasOwners(tenantId, building.id)) {
       throw new BadRequestException('该商铺已关联业主，不能直接改为住宅楼');
     }
+    if (building.buildingType === 'shop' && next === 'residential' && await this.shopHasBusiness(tenantId, building.id)) {
+      throw new BadRequestException('该商铺已有车辆登记或门禁卡，不能改为住宅楼');
+    }
   }
 
   private async buildingHasOwners(tenantId: number, id: number): Promise<boolean> {
     const [row] = await this.buildingRepo.query(`SELECT EXISTS(SELECT 1 FROM users WHERE tenant_id=$1 AND owner_building_id=$2) OR EXISTS(SELECT 1 FROM owner_property_links WHERE tenant_id=$1 AND building_id=$2) AS present`, [tenantId, id]);
+    return !!row?.present;
+  }
+
+  private async shopHasBusiness(tenantId: number, id: number): Promise<boolean> {
+    const [row] = await this.buildingRepo.query(`SELECT
+      EXISTS(SELECT 1 FROM vehicle_intakes WHERE tenant_id=$1 AND shop_building_id=$2) OR
+      EXISTS(SELECT 1 FROM access_cards WHERE tenant_id=$1 AND shop_building_id=$2) AS present`, [tenantId, id]);
     return !!row?.present;
   }
 
@@ -578,6 +607,8 @@ export class PropertiesService {
     }
     const owners = await this.buildingHasOwners(tenantId, id);
     if (owners) throw new BadRequestException('该商铺已关联业主，不能删除；请保留历史档案');
+    if (building.buildingType === 'shop' && await this.shopHasBusiness(tenantId, id))
+      throw new BadRequestException('该商铺已有车辆登记或门禁卡，不能删除');
     await this.buildingRepo.remove(building);
     return { ok: true };
   }
@@ -1301,6 +1332,8 @@ export class PropertiesService {
         communityId: number;
         lane: string | null;
         buildingNo: string;
+        buildingType: Building['buildingType'];
+        shopName: string | null;
         roadName: string | null;
         houses: Array<{
           id: number;
@@ -1319,6 +1352,8 @@ export class PropertiesService {
         communityId: b.communityId,
         lane: b.lane,
         buildingNo: b.buildingNo,
+        buildingType: b.buildingType,
+        shopName: b.shopName ?? null,
         roadName: null,
         houses: [],
       });
@@ -1489,6 +1524,7 @@ export class PropertiesService {
         communityId,
         lane: lane ?? IsNull(),
         buildingNo,
+        buildingType: 'residential',
       },
     });
     if (existing) {

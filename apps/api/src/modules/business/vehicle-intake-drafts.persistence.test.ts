@@ -10,6 +10,8 @@ import { VehicleIntake } from '../../entities/vehicle-intake.entity';
 import { VehicleIntakeOperations1796300000000 } from '../../migrations/1796300000000-VehicleIntakeOperations';
 import { VehicleMaterialVersions1796600000000 } from '../../migrations/1796600000000-VehicleMaterialVersions';
 import { VehicleIntakeService } from './vehicle-intake.service';
+import { VehicleIntakeShop1797200000000 } from '../../migrations/1797200000000-VehicleIntakeShop';
+import { CommercialAccessCard1797210000000 } from '../../migrations/1797210000000-CommercialAccessCard';
 
 // Execute actual TypeORM SELECT/INSERT/UPDATE SQL and migration in an isolated PG engine.
 // This fixture never opens a network socket or production configuration.
@@ -30,12 +32,22 @@ test('QR draft operations: transactional reuse, replay, expiry, history, isolati
     }).join(',');
     await db.exec(`CREATE TABLE houses (id int PRIMARY KEY, tenant_id int NOT NULL);
       INSERT INTO houses VALUES (5,1),(6,1),(7,2);
+      CREATE TABLE buildings (id int PRIMARY KEY, tenant_id int NOT NULL, community_id int NOT NULL, building_type varchar, building_no varchar);
+      INSERT INTO buildings VALUES(21,1,3,'shop','S-08'),(22,1,3,'shop','S-09'),(23,2,3,'shop','S-08'),(2,1,3,'residential','3');
+      CREATE TABLE users (id int PRIMARY KEY, tenant_id int, role varchar, status varchar, name varchar, phone varchar, owner_building_id int);
+      CREATE TABLE owner_property_links (tenant_id int, owner_id int, building_id int);
+      CREATE TABLE access_cards (id serial PRIMARY KEY, tenant_id int NOT NULL DEFAULT 1, house_id int NOT NULL REFERENCES houses(id));
       CREATE TABLE family_cars (id int PRIMARY KEY, tenant_id int, house_id int, status varchar, manager_note varchar, manager_reviewed_at timestamptz);
-      CREATE TABLE vehicle_intakes (${ddl});`);
+      CREATE TABLE vehicle_intakes (${ddl});
+      ALTER TABLE vehicle_intakes DROP COLUMN shop_building_id;`);
     const migration = new VehicleIntakeOperations1796300000000();
     await migration.up({ query: (sql: string) => db.query(sql) } as any);
     await migration.up({ query: (sql: string) => db.query(sql) } as any);
     await new UnsubmittedVehicleDraftExpiry1797000000000().up({query:(sql:string)=>db.query(sql)} as any);
+    await new VehicleIntakeShop1797200000000().up({ query: (sql: string) => db.query(sql) } as any);
+    await new CommercialAccessCard1797210000000().up({ query: (sql: string) => db.query(sql) } as any);
+    await db.exec(`UPDATE buildings SET shop_name='建行' WHERE id=21; INSERT INTO access_cards(house_id,shop_building_id) VALUES (5,NULL),(NULL,21)`);
+    await assert.rejects(db.exec('INSERT INTO access_cards(house_id,shop_building_id) VALUES (5,21)'), /ck_access_card_property/);
     const versions = new VehicleMaterialVersions1796600000000();
     await versions.up({ query: (sql: string) => db.query(sql) } as any);
     await versions.up({ query: (sql: string) => db.query(sql) } as any);
@@ -76,7 +88,11 @@ test('QR draft operations: transactional reuse, replay, expiry, history, isolati
     const manager = makeManager(db);
     const service = new VehicleIntakeService(manager.getRepository(VehicleIntake), { findOne: async () => null } as any, {} as any,
       { findOne: async ({ where }: any) => { const r: any = (await db.query('SELECT * FROM houses WHERE id=$1 AND tenant_id=$2', [where.id, where.tenantId])).rows[0]; return r ? { id: r.id, buildingId: 2, roomNo: '502' } : null; } } as any,
-      { findOne: async () => ({ communityId: 3, lane: '228', buildingNo: '3' }) } as any,
+      { findOne: async ({ where }: any) => {
+        if (!where.buildingType) return { communityId: 3, lane: '228', buildingNo: '3' };
+        return (await db.query(`SELECT community_id AS "communityId", building_no AS "buildingNo", shop_name AS "shopName"
+          FROM buildings WHERE id=$1 AND tenant_id=$2 AND building_type=$3`, [where.id, where.tenantId, where.buildingType])).rows[0];
+      } } as any,
       { findOne: async () => ({ id: 3, name: '枫桦景苑二期' }) } as any,
       { findOne: async () => ({ name: '合成测试', phone: '13900000000' }) } as any,
       {} as any, {} as any, {} as any, { get: () => 'https://prsznh.cn' } as any);
@@ -189,5 +205,25 @@ test('QR draft operations: transactional reuse, replay, expiry, history, isolati
     await db.exec("UPDATE family_cars SET tenant_id=2 WHERE id=42");
     assert.equal((await service.get(another.id, user)).familyReview, null);
     assert.equal((await reviewList('manager')).length, 0);
+    const shopInput = { shopBuildingId: 21, kind: 'paid' as const, formBase: base.formBase };
+    const shop = await service.create({ ...shopInput, operationKey: key(401) }, user);
+    assert.equal(shop.houseId, null);
+    assert.equal(shop.shopBuildingId, 21);
+    assert.equal(shop.houseLabel, '枫桦景苑二期/建行');
+    assert.equal((await service.create({ ...shopInput, operationKey: key(402) }, user)).id, shop.id);
+    await assert.rejects(service.create({ ...shopInput, shopBuildingId: 22, operationKey: key(401) }, user), /操作编号/);
+    await assert.rejects(service.create({ ...shopInput, houseId: 5 }, user), /请选择一个/);
+    await assert.rejects(service.create({ ...shopInput, kind: 'family' }, user), /付费新车/);
+    await assert.rejects(service.create({ ...shopInput, shopBuildingId: 23 }, user), /商铺不存在/);
+    await assert.rejects(service.create(shopInput, user, { scopeAll: false, communityIds: [] } as any), /管理范围/);
+    assert.deepEqual((await service.list({ shopBuildingId: 21, open: true }, user)).map(item => item.id), [shop.id]);
+    await db.query("UPDATE vehicle_intakes SET status='approved' WHERE id=$1", [shop.id]);
+    // The narrow FamilyCar table above supports review projections. There is no
+    // downstream family-car record for the new shop registration.
+    manager.getRepository = getRepository;
+    const cashier = Object.assign(Object.create(service), { txnRepo: { findOne: async () => null } }) as VehicleIntakeService;
+    await assert.rejects(cashier.claimForPayment(shop.id, undefined, user, undefined, undefined, 22), /原登记不一致/);
+    await assert.rejects(cashier.claimForPayment(shop.id, 5, user, undefined, undefined, 21), /原登记不一致/);
+    assert.equal((await cashier.claimForPayment(shop.id, undefined, user, undefined, undefined, 21)).row.id, shop.id);
   } finally { await db.close(); }
 });
