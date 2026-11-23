@@ -58,6 +58,7 @@ export type DeliyunCivilDefenseResult = {
   authorized: boolean;
   created: boolean;
   verified: true;
+  project?: string;
 };
 
 /** 德立云只读适配器。密码、协议密钥和会话仅来自进程内存，不写数据库、日志或前端。 */
@@ -232,7 +233,8 @@ export class DeliyunParkingService {
     const detail = await this.vehicleDetail(input.vehicleId, session);
     // 结果未知后的重试先查原车辆，已经换号则不再重复写。
     const currentPlate = normalizePlate(stringValue(detail.plateNum));
-    if (currentPlate === newPlate) return { vehicleId: input.vehicleId, plate, newPlate, verified: true };
+    if (currentPlate === newPlate) return { vehicleId: input.vehicleId, plate, newPlate, verified: true,
+      project: session.park.unitName, spaceNumber: nullableString(detail.cardNo) };
     if (currentPlate !== plate) throw new BadRequestException('人防车辆已变化，请刷新后重新操作');
     if ((await this.findVehiclesByPlate(newPlate)).rows.length)
       throw new BadRequestException('新车牌已在人防车库登记，不能覆盖');
@@ -245,7 +247,8 @@ export class DeliyunParkingService {
       throw new ServiceUnavailableException('人防已接受换牌，但车牌或原资料回读不一致，请刷新核对，勿重复提交');
     if ((await this.findVehiclesByPlate(plate)).rows.some(row => row.id === input.vehicleId))
       throw new ServiceUnavailableException('人防旧车牌仍可查到，请刷新核对');
-    return { vehicleId: input.vehicleId, plate, newPlate, verified: true };
+    return { vehicleId: input.vehicleId, plate, newPlate, verified: true,
+      project: session.park.unitName, spaceNumber: nullableString(verified.cardNo) };
   }
 
   async setCivilDefenseAuthorization(input: {
@@ -357,7 +360,7 @@ export class DeliyunParkingService {
       if (mismatches.length)
         throw new ServiceUnavailableException(`德立云车辆已建档，但以下字段回读不一致：${mismatches.join('、')}；请核对，暂勿重复提交`);
     }
-    return { vehicleId, plate, authorized: input.authorized, created, verified: true };
+    return { vehicleId, plate, authorized: input.authorized, created, verified: true, project: session.park.unitName };
   }
 
   private async ensureOwnerRoom(value: string | null | undefined, session: MiniappSession): Promise<string> {

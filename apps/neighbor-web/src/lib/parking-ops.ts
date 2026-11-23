@@ -114,8 +114,9 @@ export async function runOnTargets(
   kind: ParkingOperationKind,
   buildPayload: (row: ParkingQueryRow, index: number) => Record<string, unknown>,
   opts?: { pmsUserId?: number | null; onLog?: (line: string) => void; batchKey?: string },
-): Promise<{ ok: boolean; error?: string; timeout?: boolean }> {
+): Promise<{ ok: boolean; error?: string; timeout?: boolean; spaceNeedsReview?: boolean }> {
   const batch = opts?.batchKey || createIdempotencyKey();
+  let spaceNeedsReview = false;
   for (let i = 0; i < targets.length; i += 1) {
     const t = targets[i];
     const db = t.database as 'parking1' | 'parking2';
@@ -130,9 +131,13 @@ export async function runOnTargets(
     });
     if (outcome.kind === 'failed') { opts?.onLog?.(`✗ ${dbShort(db)} 失败`); return { ok: false, error: `${dbShort(db)}：${outcome.error}` }; }
     if (outcome.kind === 'timeout') { opts?.onLog?.(`… ${dbShort(db)} 超时，任务已保留`); return { ok: false, timeout: true, error: `${dbShort(db)} 现场网关响应超时，任务已保留，请稍后在办理记录查看，勿重复提交` }; }
+    if ((outcome.operation.result?.pmsBindings as { needsReview?: boolean } | undefined)?.needsReview) {
+      spaceNeedsReview = true;
+      opts?.onLog?.(`${dbShort(db)} 现场已完成，车位卡片绑定待核对`);
+    }
     opts?.onLog?.(`✓ ${dbShort(db)} 完成`);
   }
-  return { ok: true };
+  return { ok: true, ...(spaceNeedsReview ? { spaceNeedsReview } : {}) };
 }
 
 export async function freshRows(plate: string) {

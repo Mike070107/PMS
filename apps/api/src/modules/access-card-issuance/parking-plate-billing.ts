@@ -1,7 +1,200 @@
 import { BadRequestException } from '@nestjs/common';
-import { Repository } from 'typeorm';
+import { EntityManager, In, Repository } from 'typeorm';
 import { ParkingOperation } from '../../entities/parking-operation.entity';
 import { ParkingPlateTag } from '../../entities/parking-plate-tag.entity';
+import { ParkingVehicle } from '../../entities/parking-vehicle.entity';
+import { ParkingSpace } from '../../entities/parking-space.entity';
+import { Community } from '../../entities/community.entity';
+import { findParkingTarget } from '../business/parking-targets';
+import { plateKey } from './parking-vehicle-preservation';
+
+async function parkingSpaceCommunities(manager: EntityManager, tenantId: number, garage: 'main' | 'civil') {
+  const target = findParkingTarget(garage === 'main' ? 'local:phase2_main_garage' : 'deliyun:枫桦景苑')!;
+  const communities = await manager.getRepository(Community).findBy({ tenantId, name: In(target.communities) });
+  return communities.map(community => community.id);
+}
+
+async function matchingSpaces(manager: EntityManager, tenantId: number, garage: 'main' | 'civil', plates: string[]) {
+  const communities = await parkingSpaceCommunities(manager, tenantId, garage);
+  if (!communities.length) return [];
+  return manager.getRepository(ParkingSpace).createQueryBuilder('space').addSelect('space.vehicleBindings')
+    .where('space.tenant_id = :tenantId AND space.garage = :garage AND space.community_id IN (:...communities)',
+      { tenantId, garage, communities })
+    .andWhere('(space.plate IN (:...plates) OR jsonb_exists_any(space.vehicle_bindings, ARRAY[:...plates]))', { plates })
+    .orderBy('space.id', 'ASC').setLock('pessimistic_write').getMany();
+}
+
+function hasPlate(space: ParkingSpace, plate: string) {
+  return plateKey(space.plate) === plate || Object.hasOwn(space.vehicleBindings ?? {}, plate);
+}
+
+export async function changeLinkedSpacePlate(manager: EntityManager, input: {
+  tenantId: number; operatorId: number | null; garage: 'main' | 'civil'; oldPlate: string; newPlate: string; spaceNumber?: string;
+}) {
+  const { tenantId, operatorId, garage, oldPlate, newPlate, spaceNumber } = input;
+  const candidates = await matchingSpaces(manager, tenantId, garage, [oldPlate, newPlate]);
+  const oldSpaces = candidates.filter(space => hasPlate(space, oldPlate));
+  const newSpaces = candidates.filter(space => hasPlate(space, newPlate));
+  const space = oldSpaces.length === 1 ? oldSpaces[0] : null;
+  if (space && (!spaceNumber || space.spaceNo === spaceNumber) && !newSpaces.length) {
+    const { [oldPlate]: binding, ...other } = space.vehicleBindings ?? {};
+    if (binding) other[newPlate] = binding;
+    await manager.getRepository(ParkingSpace).update({ id: space.id, tenantId },
+      { ...(plateKey(space.plate) === oldPlate ? { plate: newPlate } : {}), vehicleBindings: other, updatedBy: operatorId });
+    return { spaceNo: space.spaceNo };
+  }
+  return { needsReview: !!oldSpaces.length || (!newSpaces.length && !!spaceNumber) };
+}
+
+export async function syncLinkedSpaceDetails(manager: EntityManager, input: {
+  tenantId: number; operatorId: number | null; garage: 'main' | 'civil'; plate: string;
+  houseId?: number; houseNo?: string; ownerName?: string; ownerPhone?: string; endDate?: string;
+}) {
+  const { tenantId, garage, plate, houseId, houseNo, ownerName, ownerPhone, endDate } = input;
+  if ([houseId, houseNo, ownerName, ownerPhone, endDate].every(value => value == null)) return {};
+  const candidates = await matchingSpaces(manager, tenantId, garage, [plate]);
+  if (candidates.length !== 1) return { needsReview: candidates.length > 1 };
+  const space = candidates[0];
+  const currentBinding = space.vehicleBindings?.[plate];
+  const primary = plateKey(space.plate) === plate;
+  const updatedBinding = currentBinding && {
+    ...currentBinding,
+    ...(houseId != null ? { houseId } : {}),
+    ...(houseNo != null ? { houseNo } : {}),
+    ...(ownerName != null ? { ownerName } : {}),
+    ...(ownerPhone != null ? { ownerPhone } : {}),
+    ...(endDate != null ? { endDate } : {}),
+  };
+  if (!primary && !updatedBinding) return { needsReview: true };
+  await manager.getRepository(ParkingSpace).update({ id: space.id, tenantId }, {
+    ...(primary && houseNo != null ? { houseNo } : {}),
+    ...(primary && ownerName != null ? { ownerName } : {}),
+    ...(primary && ownerPhone != null ? { ownerTel: ownerPhone } : {}),
+    ...(primary && endDate != null ? { endDate } : {}),
+    ...(updatedBinding ? { vehicleBindings: { ...space.vehicleBindings, [plate]: updatedBinding } } : {}),
+    updatedBy: input.operatorId,
+  });
+  return { spaceNo: space.spaceNo };
+}
+
+export async function removeLinkedSpacePlate(manager: EntityManager, tenantId: number, plate: string, operatorId: number | null) {
+  const candidates = await matchingSpaces(manager, tenantId, 'main', [plate]);
+  if (candidates.length !== 1) return { needsReview: candidates.length > 1 };
+  const space = candidates[0];
+  const { [plate]: removed, ...remaining } = space.vehicleBindings ?? {};
+  const primary = plateKey(space.plate) === plate;
+  if (!primary && !removed) return { needsReview: true };
+  const nextPlate = Object.keys(remaining).sort()[0];
+  const next = nextPlate ? remaining[nextPlate] : null;
+  await manager.getRepository(ParkingSpace).update({ id: space.id, tenantId }, {
+    vehicleBindings: remaining, updatedBy: operatorId,
+    ...(primary ? { plate: nextPlate ?? null, endDate: next?.endDate ?? null } : {}),
+    ...(primary && next ? { houseNo: next.houseNo, ownerName: next.ownerName, ownerTel: next.ownerPhone } : {}),
+  });
+  return { spaceNo: space.spaceNo };
+}
+
+export async function moveLinkedSpace(manager: EntityManager, tenantId: number, garage: 'main' | 'civil', plate: string, spaceNo: string, operatorId: number | null) {
+  const communities = await parkingSpaceCommunities(manager, tenantId, garage);
+  if (!communities.length) return { needsReview: true };
+  const repo = manager.getRepository(ParkingSpace);
+  // Lock the source and destination in the same order for concurrent moves.
+  const spaces = await repo.createQueryBuilder('space').addSelect('space.vehicleBindings')
+    .where('space.tenant_id = :tenantId AND space.garage = :garage AND space.community_id IN (:...communities)',
+      { tenantId, garage, communities })
+    .andWhere('(space.space_no = :spaceNo OR space.plate = :plate OR jsonb_exists(space.vehicle_bindings, :plate))', { spaceNo, plate })
+    .orderBy('space.id', 'ASC').setLock('pessimistic_write').getMany();
+  const origins = spaces.filter(space => hasPlate(space, plate));
+  const target = spaces.find(space => space.spaceNo === spaceNo);
+  if (origins.length !== 1 || !target) return { needsReview: true };
+  const source = origins[0];
+  if (source.id === target.id) return { spaceNo };
+  if (target.plate?.trim() || Object.keys(target.vehicleBindings ?? {}).length) return { needsReview: true };
+  const { [plate]: binding, ...remaining } = source.vehicleBindings ?? {};
+  const primary = plateKey(source.plate) === plate;
+  if (!primary && !binding) return { needsReview: true };
+  const houseNo = binding?.houseNo ?? source.houseNo;
+  if (target.houseNo?.trim() && target.houseNo.trim() !== houseNo?.trim()) return { needsReview: true };
+  const nextPlate = Object.keys(remaining).sort()[0];
+  const next = nextPlate ? remaining[nextPlate] : null;
+  await repo.update({ id: source.id, tenantId }, {
+    vehicleBindings: remaining, updatedBy: operatorId,
+    ...(primary ? { plate: nextPlate ?? null, endDate: next?.endDate ?? null } : {}),
+    ...(primary && next ? { houseNo: next.houseNo, ownerName: next.ownerName, ownerTel: next.ownerPhone } : {}),
+  });
+  await repo.update({ id: target.id, tenantId }, {
+    plate, vehicleBindings: binding ? { [plate]: binding } : {},
+    endDate: binding?.endDate ?? source.endDate,
+    houseNo,
+    ownerName: binding?.ownerName ?? source.ownerName,
+    ownerTel: binding?.ownerPhone ?? source.ownerTel,
+    updatedBy: operatorId,
+  });
+  return { spaceNo };
+}
+
+/** A partial batch cannot retire a plate that still exists in one of the source databases. */
+export function supersededParkingPlates(tasks: ParkingOperation[]): string[] {
+  const batches = new Map<string, ParkingOperation[]>();
+  const plates = new Set<string>();
+  for (const task of tasks) {
+    const { batchId, plate, newPlate } = task.payload;
+    if (task.kind === 'delete_vehicle') {
+      if (task.status === 'completed' && typeof plate === 'string' && task.result?.verified === true && task.result.remaining === 0)
+        plates.add(plate);
+      continue;
+    }
+    if (!batchId || typeof plate !== 'string' || typeof newPlate !== 'string' || !newPlate || plate === newPlate ||
+        task.status !== 'completed' || task.result?.verified !== true || task.result?.preserved !== true ||
+        task.result?.plate !== newPlate || String(task.result?.issueId) !== task.sourceRecordId) continue;
+    const key = JSON.stringify([task.createdBy, batchId, plate, newPlate]);
+    const batch = batches.get(key) ?? [];
+    batch.push(task);
+    batches.set(key, batch);
+  }
+  for (const batch of batches.values()) {
+    const targets = batch[0].expected.batchTargets as Array<{ database: string; sourceRecordId: string }> | undefined;
+    if (Array.isArray(targets) && targets.length && targets.every(target => target
+      && batch.some(task => task.database === target.database && task.sourceRecordId === target.sourceRecordId))) {
+      plates.add(String(batch[0].payload.plate));
+    }
+  }
+  return [...plates];
+}
+
+export async function syncPmsPlateBindings(task: ParkingOperation, manager: EntityManager, operations: Repository<ParkingOperation>) {
+  const oldPlate = String(task.payload.plate);
+  const newPlate = String(task.payload.newPlate);
+  await manager.query('SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))', [`parking-plate-bindings:${task.tenantId}`, oldPlate]);
+  const siblings = await operations.createQueryBuilder('task')
+    .where("task.tenant_id = :tenantId AND task.kind = 'change_plate' AND task.status = 'completed' AND task.created_by = :userId",
+      { tenantId: task.tenantId, userId: task.createdBy })
+    .andWhere("task.payload->>'batchId' = :batch AND task.payload->>'plate' = :oldPlate AND task.payload->>'newPlate' = :newPlate",
+      { batch: String(task.payload.batchId), oldPlate, newPlate }).getMany();
+  const batch = [...siblings.filter(item => item.id !== task.id), task];
+  if (!supersededParkingPlates(batch).includes(oldPlate)) return { status: 'waiting' };
+  const warnings: string[] = [];
+  const vehicles = manager.getRepository(ParkingVehicle);
+  const bindings = await vehicles.find({ where: { tenantId: task.tenantId, plateNo: In([oldPlate, newPlate]) }, order: { id: 'ASC' } });
+  const current = bindings.find(row => row.plateNo === oldPlate && row.status === 'active');
+  if (current && bindings.some(row => row.plateNo === newPlate)) warnings.push('新车牌已有 PMS 车辆档案，请核对归属');
+  else if (current) await vehicles.update({ id: current.id, tenantId: task.tenantId, plateNo: oldPlate },
+    { plateNo: newPlate, updatedBy: task.createdBy });
+
+  const phase2 = batch.find(item => item.database === 'parking2');
+  const snapshot = phase2?.result?.after as Record<string, unknown> | undefined;
+  const effective = String(snapshot?.P_Effective ?? '');
+  let mainSpace: string | null = null;
+  if ([15, 17, 19, 21].some(channel => effective[channel - 1] === '1')) {
+    const result = await changeLinkedSpacePlate(manager, {
+      tenantId: task.tenantId, operatorId: task.createdBy, garage: 'main', oldPlate, newPlate,
+      spaceNumber: String(snapshot?.P_Spaces ?? '').trim(),
+    });
+    mainSpace = result.spaceNo ?? null;
+    if (result.needsReview) warnings.push('大车库车位档案未能唯一核对，请检查车位号或新旧车牌绑定');
+  }
+  return { status: warnings.length ? 'review' : 'synced', mainSpace, warnings };
+}
 
 /** Source tag stays effective during split-plate partial success; temporary target tag is
  * removed only when every server-observed source has a verified successful task. */

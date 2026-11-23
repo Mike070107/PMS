@@ -10,6 +10,7 @@ import { CreateParkingOwnerUpdateDto } from './dto';
 import { ParkingOwnerUpdate } from '../../entities/parking-owner-update.entity';
 import { ParkingHistory } from '../../entities/parking-history.entity';
 import { ParkingRecordSnapshot } from '../../entities/parking-record-snapshot.entity';
+import { Community } from '../../entities/community.entity';
 import { issueAgentSecret } from './agent-auth';
 import { UserRole, UserStatus } from '../../common/enums';
 import { supportsParkingOwnerRebind } from './parking-owner-update.util';
@@ -120,6 +121,7 @@ function harness() {
     if (entity === ParkingOwnerUpdate) return repo;
     if (entity === ParkingHistory) return { create: (data: any) => data, save: async (data: any) => { history.push(data); return data; } };
     if (entity === ParkingRecordSnapshot) return { createQueryBuilder: () => chain(() => snapshots), save: async (data: any) => data };
+    if (entity === Community) return { findBy: async () => [] };
     throw new Error('Unexpected repository');
   } };
   repo.manager = { transaction: async (fn: any) => fn(manager) };

@@ -42,7 +42,7 @@ export function parkingRoomAddress(
     .trim()
     .replace(/^已隐藏\s*/, '')
     .replace(/\s+/g, '')
-    .replace(/(?:换车牌|新车)$/, '')
+    .replace(/(?:换车牌|新车|租客|租)$/, '')
     .replace(/[弄幢栋号]/g, '/')
     .replace(/室$/g, '')
     .replace(/\\/g, '/')

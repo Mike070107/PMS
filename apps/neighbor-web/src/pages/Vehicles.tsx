@@ -16,7 +16,7 @@ import { field, vehicleIdentity, identityTone, deliyunVehicleIdentity, GARAGES, 
 import { RenewalCheckout } from '@/components/vehicle-ops/RenewSheet';
 import OwnerBusinessContact from '@/components/OwnerBusinessContact';
 import VehicleActions from '@/components/vehicle-ops/VehicleActions';
-import { DownloadSheet, DeleteSheet } from '@/components/vehicle-ops/OtherOpSheets';
+import { DownloadSheet } from '@/components/vehicle-ops/OtherOpSheets';
 import { CreatePmsOwnerSheet } from '@/components/vehicle-ops/HistoryAndOwnerSheets';
 import ToneIcon from '@/components/ToneIcon';
 import type { Intake } from '@/components/cashier/NewPlateCard';
@@ -269,7 +269,7 @@ export default function Vehicles() {
 
 /** 单张车牌的完整档案卡：车库授权清单 + 旧库 vs PMS 信息 + 写操作入口 */
 function VehicleCard({ plate, rows, cloud, onChanged }: { plate: string; rows: ParkingQueryRow[]; cloud: CloudState; onChanged: (requeryTerm?: string) => void }) {
-  const [op, setOp] = useState<'renew' | 'download' | 'delete' | 'pmsOwner' | null>(null);  const first = rows[0];
+  const [op, setOp] = useState<'renew' | 'download' | 'pmsOwner' | null>(null);  const first = rows[0];
   const identity = vehicleIdentity(field(first?.fields, 'identity'));
   const note = rows.map((r) => field(r.fields, 'note', true)).find(Boolean) || '';
   const expiry = rows.map((r) => field(r.fields, 'expiry')).find(Boolean) || '';
@@ -364,7 +364,6 @@ function VehicleCard({ plate, rows, cloud, onChanged }: { plate: string; rows: P
         <VehicleActions plate={plate} rows={rows} cloud={cloud} onChanged={onChanged} />
         <button className="btn sm" onClick={() => setOp('pmsOwner')}><Icon name="plus" size={15} />补建PMS业主</button>
         <button className="btn sm" onClick={() => setOp('download')}><Icon name="download" size={15} />下发设备</button>
-        <button className="btn g sm" onClick={() => setOp('delete')}><Icon name="trash" size={15} />注销车辆</button>
       </div>
       <div className="veh-hint">六项写操作 + 变更历史 / 更新住户资料 / 补建 PMS 业主都在本页直接办，走现场网关并等回执。</div>
 
@@ -377,10 +376,6 @@ function VehicleCard({ plate, rows, cloud, onChanged }: { plate: string; rows: P
       ) : null}
       {op === 'download' ? (
         <DownloadSheet plate={plate} rows={rows} cloud={cloud}
-          onClose={() => setOp(null)} onDone={() => { setOp(null); onChanged(); }} />
-      ) : null}
-      {op === 'delete' ? (
-        <DeleteSheet plate={plate} rows={rows} cloud={cloud}
           onClose={() => setOp(null)} onDone={() => { setOp(null); onChanged(); }} />
       ) : null}
     </Card>

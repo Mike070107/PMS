@@ -29,16 +29,26 @@ test('两库正式车位入口：分类保存、授权和统一收银台入口',
  async function noOverflow(name){const sizes=await page.evaluate(()=>{const s=document.querySelector('.sheet');return{width:innerWidth,document:document.documentElement.scrollWidth,sheet:s.clientWidth,content:s.scrollWidth};});assert.ok(sizes.document<=sizes.width+1,JSON.stringify(sizes));assert.ok(sizes.content<=sizes.sheet+1,JSON.stringify(sizes));await page.screenshot({path:path.join(evidence,name+'.png'),fullPage:true,animations:'disabled'});return sizes;}
  for(const garage of ['main','civil']){
   await page.goto(`${origin}/?garage=${garage}`);
-  const binding=page.locator('.sp-bound-vehicle').first();
-  await binding.waitFor();
-  assert.match(await binding.innerText(),/沪ATEST01.*228\/3\/501/s);
-  assert.match(await binding.innerText(),/本车联系手机 13900001234/);
-  assert.match(await binding.innerText(),/业主电话 13800000001/);
+  const card=page.locator('.sp-card').first();
+  await card.waitFor();
+  assert.equal(await card.getByText('沪ATEST01',{exact:true}).count(),1);
+  assert.equal(await card.getByText('228/3/501',{exact:true}).count(),1);
+  assert.equal(await card.getByText('续费测试业主',{exact:true}).count(),1);
+  assert.equal(await card.locator('.sp-note-value').innerText(),'原备注不能被类别覆盖');
   await page.evaluate(()=>{
    window.__renewFixture.space.vehicleBindings['沪ATEST01'].endDate='2028-01-31';
+   window.__renewFixture.space.vehicleBindings['沪A00002']={...window.__renewFixture.space.vehicleBindings['沪ATEST01']};
    window.dispatchEvent(new Event('focus'));
   });
-  await page.locator('.sp-bound-vehicle').filter({hasText:'2028-01-31'}).first().waitFor();
+  await card.getByText('2028-01-31',{exact:true}).waitFor();
+  await card.getByText('沪A00002',{exact:false}).waitFor();
+  for (const width of [1440, 390, 320]) {
+   await page.setViewportSize({width,height:680});
+   assert.ok(await card.evaluate(el=>{
+    const rect=sel=>el.querySelector(sel).getBoundingClientRect();
+    return rect('.sp-extra-plates').bottom<=rect('.sp-note').top && rect('.sp-note').bottom<=el.getBoundingClientRect().bottom;
+   }));
+  }
  }
  // 新规格：默认产权，可显式切租赁再恢复产权；保留备注/来源，不PATCH业务日期。
  for(const garage of ['main','civil']){

@@ -9,7 +9,7 @@ import { StandardParkingQueryService } from '../local-integrations/standard-park
 import { StandardCardIssuanceService } from '../local-integrations/standard-card-issuance.service';
 import { parkingReceiptCommitted } from './parking-receipts';
 import { requiresVehiclePreservation, validatePreservedOperation, assertPreservedReceipt, plateKey } from './parking-vehicle-preservation';
-import { preservePlateBilling } from './parking-plate-billing';
+import { changeLinkedSpacePlate, moveLinkedSpace, preservePlateBilling, removeLinkedSpacePlate, syncLinkedSpaceDetails, syncPmsPlateBindings } from './parking-plate-billing';
 import { ParkingPlateTag } from '../../entities/parking-plate-tag.entity';
 import { loadAddressTreeLite, resolveAddressForTenant } from '../../common/address-lookup';
 import {
@@ -1756,6 +1756,19 @@ export class AccessCardIssuanceService {
       task.lastError = (error instanceof Error ? error.message : '人防换牌失败').slice(0, 500);
     }
     task.completedAt = new Date();
+    if (task.status === 'completed' && task.result?.verified === true && task.result.project === '枫桦景苑') {
+      await this.parkingOperationRepo.manager.transaction(async manager => {
+        const updated = await changeLinkedSpacePlate(manager, {
+          tenantId, operatorId: user.id, garage: 'civil', oldPlate: plateKey(dto.plate), newPlate: plateKey(dto.newPlate),
+          spaceNumber: textValue(task.result?.spaceNumber) ?? undefined,
+        });
+        task.result = { ...task.result, pmsBindings: updated.needsReview
+          ? { status: 'review', warnings: ['人防车位档案未能唯一核对，请核对车位和绑定'] }
+          : { status: 'synced', civilSpace: updated.spaceNo ?? null } };
+        await manager.getRepository(ParkingOperation).save(task);
+      });
+      return this.parkingOperationResponse(task);
+    }
     return this.parkingOperationResponse(await this.parkingOperationRepo.save(task));
   }
 
@@ -1811,6 +1824,16 @@ export class AccessCardIssuanceService {
       task.lastError = (error instanceof Error ? error.message : '德立云人防车库授权失败').slice(0, 500);
     }
     task.updatedBy = user.id;
+    if (task.status === 'completed' && task.result?.verified === true && task.result.authorized === true
+        && task.result.project === '枫桦景苑' && dto.parkingSpace?.trim()) {
+      const spaceNo = dto.parkingSpace.trim();
+      await this.parkingOperationRepo.manager.transaction(async manager => {
+        const linked = await moveLinkedSpace(manager, tenantId, 'civil', plateKey(dto.plate), spaceNo, user.id);
+        task.result = { ...task.result, pmsBindings: linked };
+        await manager.getRepository(ParkingOperation).save(task);
+      });
+      return this.parkingOperationResponse(task);
+    }
     return this.parkingOperationResponse(await this.parkingOperationRepo.save(task));
   }
 
@@ -2554,6 +2577,35 @@ export class AccessCardIssuanceService {
           }
         }
         task.status = 'completed'; task.result = dto.values ?? { verified: true }; task.lastError = null; task.completedAt = now;
+        if (task.kind === 'change_plate') task.result = { ...task.result, pmsBindings: await syncPmsPlateBindings(task, manager, repo) };
+        if (task.kind === 'update_garages' && task.payload.spaceSelection === 1) {
+          const spaceNo = textValue((task.payload.garageNumbers as Record<string, unknown>)?.main);
+          if (spaceNo && parkingGarageKeys(task.payload.garages).includes('main')) {
+            const linked = await moveLinkedSpace(manager, task.tenantId, 'main', plateKey(task.payload.plate), spaceNo, task.createdBy);
+            task.result = { ...task.result, pmsBindings: linked };
+          }
+        }
+        if (task.database === 'parking2' && task.result.verified === true) {
+          const card = { tenantId: task.tenantId, operatorId: task.createdBy, garage: 'main' as const, plate: plateKey(task.payload.plate) };
+          let linked: { spaceNo?: string; needsReview?: boolean } | undefined;
+          if (task.kind === 'rebind_owner') {
+            linked = await syncLinkedSpaceDetails(manager, {
+              ...card, houseId: Number(task.payload.houseId) || undefined, houseNo: String(task.payload.ownerRoom),
+              ownerName: textValue(task.payload.ownerName) ?? '', ownerPhone: textValue(task.result.targetPhone) ?? '',
+            });
+          }
+          if (task.kind === 'delete_vehicle' && task.result.remaining === 0) {
+            linked = await removeLinkedSpacePlate(manager, task.tenantId, card.plate, task.createdBy);
+          }
+          const endDate = textValue(task.result.endDate);
+          const effective = textValue(task.result.effective) ?? '';
+          if (task.kind === 'renew_vehicle' && endDate && endDate === task.payload.endDate &&
+              plateKey(task.result.plate) === card.plate && String(task.result.issueId) === task.sourceRecordId &&
+              [15, 17, 19, 21].some(channel => effective[channel - 1] === '1')) {
+            linked = await syncLinkedSpaceDetails(manager, { ...card, endDate });
+          }
+          if (linked) task.result = { ...task.result, pmsBindings: linked };
+        }
         const plateBefore = textValue(task.payload.plate || task.payload.oldPlate);
         const plateAfter = textValue(task.payload.newPlate || task.payload.plate);
         const changes = operationChanges(task);
@@ -2722,6 +2774,23 @@ export class AccessCardIssuanceService {
           snapshot.updatedBy = task.createdBy;
         }
         if (snapshots.length) await manager.getRepository(ParkingRecordSnapshot).save(snapshots);
+        if (task.database === 'parking2' && changes.some(change => ['name', 'phone', 'room'].includes(change.field))) {
+          const roomChanged = changes.some(change => change.field === 'room');
+          const room = roomChanged ? parkingRoomAddress(resultValues.room, task.database) : null;
+          const match = room ? await resolveAddressForTenant(manager.connection, task.tenantId, room.key) : null;
+          const houseId = match?.level === 'house' && match.houseIds.length === 1 ? match.houseIds[0] : undefined;
+          if (roomChanged && houseId == null) task.lastError = '旧库房号已更新，PMS 房号未能唯一核对';
+          const plates = new Set([task.plate, ...snapshots.map(snapshot => snapshot.values.plate)].map(plateKey).filter(Boolean));
+          for (const plate of plates) {
+            const linked = await syncLinkedSpaceDetails(manager, {
+              tenantId: task.tenantId, operatorId: task.createdBy, garage: 'main', plate,
+              ...(houseId && room ? { houseId, houseNo: room.key } : {}),
+              ...(changes.some(change => change.field === 'name') ? { ownerName: resultValues.name ?? '' } : {}),
+              ...(changes.some(change => change.field === 'phone') ? { ownerPhone: resultValues.phone ?? '' } : {}),
+            });
+            if (linked.needsReview) task.lastError = '旧库资料已更新，车位卡片匹配到多个档案';
+          }
+        }
       } else if (dto.result === 'retry' && task.attempt < 3) {
         task.status = 'pending';
         task.lastError = dto.errorMessage?.trim() || '停车数据库暂时无法更新，正在重试';
@@ -2798,6 +2867,7 @@ export class AccessCardIssuanceService {
       status: task.status,
       values: task.status === 'completed' ? task.resultValues : null,
       error: task.status === 'failed' ? task.lastError : null,
+      spaceSyncWarning: task.status === 'completed' ? task.lastError : null,
       requestedAt: task.requestedAt,
       completedAt: task.completedAt,
     };

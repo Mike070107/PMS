@@ -54,14 +54,13 @@ function formatRoomNo(row: SpaceRow) {
   }
   return candidates.find((value) => value?.trim())?.trim() || '—';
 }
-function BoundVehicles({row}: {row:SpaceRow}) {
-  return <>{Object.entries(row.vehicleBindings ?? {}).map(([plate,b]) => (
-    <div key={plate} className="sp-bound-vehicle">
-      <b>{plate}</b> · {b.houseNo} · 有效期 {b.endDate}
-      <div>本车联系手机 {b.contactPhone || '未登记'}</div>
-      <div>PMS 业主 {b.ownerName || '未登记'} · 业主电话 {b.ownerPhone || '未登记'}</div>
-    </div>
-  ))}</>;
+function spaceVehicles(row: SpaceRow) {
+  const bindings = Object.entries(row.vehicleBindings ?? {});
+  const plate = row.plate?.trim() || bindings[0]?.[0] || '';
+  const code = compactPlate(plate);
+  const primary = bindings.find(([key]) => compactPlate(key) === code)?.[1];
+  return { plate, endDate: primary?.endDate || row.endDate,
+    others: bindings.map(([key]) => compactPlate(key)).filter(key => key !== code) };
 }
 const dateLabel = (value: string | null) => value && dayjs(value).isValid() ? dayjs(value).format('YYYY-MM-DD') : '—';
 const META = {
@@ -152,25 +151,31 @@ export default function ParkingSpaces({ garage }: { garage: 'main' | 'civil' }) 
       ) : shown.length === 0 ? <div className="card" style={{ padding: 42, textAlign: 'center' }}><span className="muted">没有符合条件的车位</span></div> : activeView === 'table' ? (
         <div className="card t-scroll"><table className="t" style={{ minWidth: 800 }}>
           <thead><tr><th className="nw">车位号</th><th>类别</th><th className="nw">车牌</th><th>房号</th><th>业主</th><th>电话</th><th className="nw">有效期</th><th>备注</th><th>操作</th></tr></thead>
-          <tbody>{shown.map((r) => <tr key={r.id}>
+          <tbody>{shown.map((r) => {
+            const vehicle = spaceVehicles(r);
+            return <tr key={r.id}>
             <td className="nw"><b>{r.spaceNo}</b></td><td><CategoryTag row={r} /></td>
-            <td className="nw">{r.plate || <span className="muted">未绑车牌</span>}<BoundVehicles row={r}/></td><td>{formatRoomNo(r)}</td><td>{r.ownerName || '—'}</td><td>{r.ownerTel || '—'}</td><td className="nw">{dateLabel(r.endDate)}</td><td>{r.note || '—'}</td>
+            <td className="nw">{vehicle.plate || <span className="muted">未绑车牌</span>}{vehicle.others.length ? <div className="sp-extra-plates">{vehicle.others.join('、')}</div> : null}</td><td>{formatRoomNo(r)}</td><td>{r.ownerName || '—'}</td><td>{r.ownerTel || '—'}</td><td className="nw">{dateLabel(vehicle.endDate)}</td><td>{r.note || '—'}</td>
             <td><button className="btn sm" aria-label={`编辑车位 ${r.spaceNo}`} onClick={() => setEdit(r)}>编辑</button></td>
-          </tr>)}</tbody>
+          </tr>; })}</tbody>
         </table></div>
       ) : (
         <div className="sp-glass-wrap"><div className="sp-grid">{shown.map((r) => {
-          const hasPlate = !!r.plate?.trim();
+          const vehicle = spaceVehicles(r);
+          const hasPlate = !!vehicle.plate;
+          const end = dateLabel(vehicle.endDate);
           const abnormal = !!r.note && /异常|停用|故障|损坏/.test(r.note);
           return <article key={r.id} aria-label={`车位 ${r.spaceNo}`} className={`sp-card ${hasPlate ? '' : 'is-free'}${abnormal ? ' is-abnormal' : ''}`} data-state={hasPlate ? 'bound' : 'free'}>
             <div className="sp-top"><span className="ic-tile t-slate"><Icon name="car" size={18} /></span><div className="sp-no"><span title={r.spaceNo}>{r.spaceNo}</span><small>号位</small></div><CategoryTag row={r} /></div>
-            <div className="sp-plate"><span>{hasPlate ? <span className={`sp-plate-tag ${isNewEnergyPlate(r.plate!) ? 'nev' : 'blue'}`}>{compactPlate(r.plate!)}</span> : <span className="sp-empty">未绑车牌</span>}</span><button className="btn sm" aria-label={`编辑车位 ${r.spaceNo}`} onClick={() => setEdit(r)}>编辑</button></div>
+            <div className="sp-plate"><span>{hasPlate ? <span className={`sp-plate-tag ${isNewEnergyPlate(vehicle.plate) ? 'nev' : 'blue'}`}>{compactPlate(vehicle.plate)}</span> : <span className="sp-empty">未绑车牌</span>}</span><button className="btn sm" aria-label={`编辑车位 ${r.spaceNo}`} onClick={() => setEdit(r)}>编辑</button></div>
             <dl className="sp-kv">
-              <dt>有效期</dt><dd title={dateLabel(r.endDate)}>{dateLabel(r.endDate)}</dd><dt>房号</dt><dd title={formatRoomNo(r)}>{formatRoomNo(r)}</dd>
+              <dt>有效期</dt><dd title={end}>{end}</dd><dt>房号</dt><dd title={formatRoomNo(r)}>{formatRoomNo(r)}</dd>
                             <dt>业主</dt><dd title={r.ownerName || '—'}>{r.ownerName || '—'}</dd><dt>电话</dt><dd title={r.ownerTel || '—'}>{r.ownerTel || '—'}</dd>
             </dl>
-            <BoundVehicles row={r}/>
-            <p className="sp-note"><span>备注</span><span className="sp-note-value" title={r.note || '—'}>{r.note || '—'}</span></p>
+            <div className="sp-card-footer">
+              {vehicle.others.length ? <p className="sp-extra-plates">同位车牌　{vehicle.others.join('、')}</p> : null}
+              <p className="sp-note"><span>备注</span><span className="sp-note-value" title={r.note || '—'}>{r.note || '—'}</span></p>
+            </div>
           </article>;
         })}</div></div>
       )}

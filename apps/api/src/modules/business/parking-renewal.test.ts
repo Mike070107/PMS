@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BusinessService } from './business.service';
-import { BusinessTransaction } from '../../entities';
+import { BusinessLog, BusinessTransaction, ParkingPlateTag, ParkingQuery } from '../../entities';
 import { parkingRenewalWindow } from './parking-renewal-window';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
@@ -19,6 +19,70 @@ test('试算和收款DTO都不能把空白实收转换为0元', async () => {
 const service: any = Object.create(BusinessService.prototype);
 service.today = () => '2026-11-05';
 const rule: any = { id: 18, billingUnit: 'month', unitPriceCents: 15000, config: { vehicleClass: '住户车-1', tiers: [{ months: 1, amountCents: 15000 }, { months: 12, amountCents: 150000 }] } };
+
+test('无 PMS 房号按现场查询锁定旧库车辆，登记一笔流水并保留档案归属', async () => {
+  const svc: any = Object.create(BusinessService.prototype);
+  const plate = '沪AAV7788';
+  const actor = { id: 8, tenantId: 2 } as any;
+  const scope = { scopeAll: false, communityIds: [12] } as any;
+  const txnRows: any[] = [];
+  const entries: any[] = [];
+  const operations: number[] = [];
+  const tags: any[] = [];
+  const vehicleRow = { database: 'parking2', fields: { P_id: 22, P_plate: plate, End_Time: '2027-01-31', P_Effective: '0000000000100' } };
+  const local = { id: 9, status: 'completed', term: plate, completedAt: new Date(), rows: [vehicleRow] };
+  const builder: any = { where: () => builder, andWhere: () => builder, getCount: async () => txnRows.some(row => row.externalSyncStatus === 'queued') ? 1 : 0 };
+  const repo: any = { findOneBy: async ({txnNo}: any) => txnRows.find(row => row.txnNo === txnNo),
+    createQueryBuilder: () => builder, create: (row: any) => row,
+    save: async (row: any) => { const saved = { ...row, id: txnRows.length + 1 }; txnRows.push(saved); return saved; } };
+  const manager: any = {
+    query: async (sql: string) => { assert.match(sql, /pg_advisory_xact_lock/); },
+    transaction: async (fn: (em: any) => unknown) => fn(manager),
+    save: repo.save,
+    getRepository: (entity: unknown) => {
+      if (entity === BusinessTransaction) return repo;
+      if (entity === BusinessLog) return { create: (item: any) => item, save: async (items: any[]) => entries.push(...items) };
+      if (entity === ParkingPlateTag) return { upsert: async (tag: any) => tags.push(tag) };
+      if (entity === ParkingQuery) return { findOneBy: async (where: any) => {
+        assert.equal(where.tenantId, 2); assert.equal(where.createdBy, 8); assert.equal(where.term, plate);
+        return local;
+      } };
+      throw new Error('Unexpected repository');
+    },
+  };
+  repo.manager = manager;
+  Object.assign(svc, {
+    today: () => '2026-11-23', txnRepo: repo, findRule: async () => ({ ...rule, communityId: 12 }),
+    communityRepo: { findBy: async () => [{ id: 11, name: '枫桦景苑一期' }, { id: 12, name: '枫桦景苑二期' }],
+      findOne: async () => ({ id: 12, name: '枫桦景苑二期' }) },
+    tagRepo: { findOne: async () => null },
+    vehicleRepo: { save: () => assert.fail('Must not change the residential vehicle record') },
+    execution: { initialFor: () => ({ status: 'queued', execution: { mode: 'on' } }), kick: (id: number) => operations.push(id) },
+  });
+  const payment = () => ({ serviceType: 'parking_monthly', ruleId: 18, months: 1, plateNo: plate,
+    expectedAmountCents: 15000, confirmedVehicleClass: '住户车-1', paymentMethod: 'cash',
+    parkingSystems: [{ kind: 'local', queryId: 9, database: 'parking2', sourceRecordId: '22',
+      targetKey: 'local:phase2_parking', previousEndDate: '2050-01-01', label: '二期' }] });
+  const first = await svc.complete(payment(), actor, scope);
+  assert.equal(first.houseId, null);
+  assert.equal(first.communityId, 12);
+  assert.equal(first.targetType, 'parking_plate');
+  assert.equal(first.snapshot.vehicle.plateNo, plate);
+  assert.equal(first.snapshot.parking.systems[0].sourceRecordId, '22');
+  assert.equal(first.snapshot.parking.systems[0].previousEndDate, '2027-01-31');
+  assert.equal(first.endDate, '2027-02-28');
+  assert.ok(tags.every(tag => !Object.hasOwn(tag, 'houseId')));
+  assert.equal((await svc.complete(payment(), actor, scope)).id, first.id);
+  assert.deepEqual(operations, [first.id]);
+  assert.equal(entries.filter(entry => entry.action === 'payment_confirmed').length, 1);
+  const wrong = payment();
+  wrong.parkingSystems[0].sourceRecordId = '23';
+  await assert.rejects(svc.complete(wrong, actor, scope), /档案不唯一或已变化/);
+  await assert.rejects(svc.complete(payment(), actor, { scopeAll: false, communityIds: [11] }), /不在可办理的小区范围/);
+  local.rows.push({ ...vehicleRow, fields: { ...vehicleRow.fields, P_id: 23 } });
+  await assert.rejects(svc.complete(payment(), actor, scope), /档案不唯一或已变化/);
+  assert.equal(txnRows.length, 1);
+});
 
 test('配置的0元价格按真实服务试算保留，不因免费拒绝续期', () => {
   const free = { ...rule, config: { priceMode: 'table', tiers: [{ months: 1, amountCents: 0 }] } };

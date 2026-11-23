@@ -63,6 +63,11 @@ export function ChangePlateSheet({ plate, rows, cloud, onClose, onDone }: {
           cloudId: cloud ? cloud.id : null };
         store(active); // before POST: lost response must reuse the same request.
       }
+      const bindingWarnings = new Set<string>();
+      const collectBindingWarnings = (result: Record<string, unknown> | null | undefined) => {
+        const warnings = (result?.pmsBindings as { warnings?: unknown } | undefined)?.warnings;
+        if (Array.isArray(warnings)) for (const warning of warnings) if (typeof warning === 'string') bindingWarnings.add(warning);
+      };
       for (const target of active.targets) {
         setProgress(`${dbShort(target.database)}：正在核对原请求，等待现场读回…`);
         let op = target.id ? await accessCardIssuance.parkingOperation(target.id) : await accessCardIssuance.createParkingOperation({
@@ -80,6 +85,7 @@ export function ChangePlateSheet({ plate, rows, cloud, onClose, onDone }: {
         if (op.result?.verified !== true || op.result.preserved !== true || op.result.preservationContract !== 1 ||
             op.result.plate !== active.newPlate || String(op.result.issueId) !== target.sourceRecordId)
           throw new Error(`任务 #${op.id} 原值保护回执不完整，尚不能确认成功`);
+        collectBindingWarnings(op.result);
       }
       if (active.cloudId && !active.cloudDone) {
         setProgress('旧库已完成，正在核对人防换牌；不会重办旧库…');
@@ -88,6 +94,7 @@ export function ChangePlateSheet({ plate, rows, cloud, onClose, onDone }: {
             cloudTask.payload.plate !== active.plate || cloudTask.payload.newPlate !== active.newPlate)
           throw new Error(`旧库已完成，人防原任务 #${cloudTask.id} 尚未成功：${cloudTask.error || '结果未知'}；已保留原请求，不会重办旧库`);
         active.cloudDone = true; store(active);
+        collectBindingWarnings(cloudTask.result);
       }
       setProgress('写后独立查询新车牌…');
       let query = await accessCardIssuance.createParkingQuery(active.newPlate);
@@ -97,7 +104,10 @@ export function ChangePlateSheet({ plate, rows, cloud, onClose, onDone }: {
         const hits = query.rows.filter(r => r.database === target.database && normPlate(field(r.fields, 'plate')) === active!.newPlate);
         if (hits.length !== 1 || pidOf(hits[0].fields) !== target.sourceRecordId) throw new Error('新牌车辆记录读回不一致，请核对原任务');
       }
-      localStorage.removeItem(key); setPlan(null); toast(`已换牌为 ${active.newPlate}，原车型及 PMS 类别保持`); onDone(active.newPlate);
+      localStorage.removeItem(key); setPlan(null);
+      toast(bindingWarnings.size ? `已换牌为 ${active.newPlate}。${[...bindingWarnings].join('；')}`
+        : `已换牌为 ${active.newPlate}，原车型及 PMS 类别保持`);
+      onDone(active.newPlate);
     } catch (e) { setErr(e instanceof Error ? e.message : '尚未确认成功；输入与原请求已保留'); }
     finally { lock.current = false; setBusy(false); setProgress(''); }
   };

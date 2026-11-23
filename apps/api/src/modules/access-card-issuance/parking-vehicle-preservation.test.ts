@@ -2,7 +2,9 @@ import 'reflect-metadata';
 import { test } from 'node:test';
 import * as assert from 'node:assert/strict';
 import { assertPreservedReceipt, validatePreservedOperation, VEHICLE_IDENTITIES } from './parking-vehicle-preservation';
-import { preservePlateBilling } from './parking-plate-billing';
+import { changeLinkedSpacePlate, preservePlateBilling, supersededParkingPlates, syncLinkedSpaceDetails } from './parking-plate-billing';
+import { Community } from '../../entities/community.entity';
+import { ParkingSpace } from '../../entities/parking-space.entity';
 import { AccessCardIssuanceService } from './access-card-issuance.service';
 import { DataSource } from 'typeorm';
 import { ParkingOperation } from '../../entities/parking-operation.entity';
@@ -175,6 +177,56 @@ test('no original category never fabricates a default or copies another plate ca
   const f = billingFixture(false); await preservePlateBilling(f.first, f.tags, f.ops); assert.equal(f.rows.length, 0);
   f.rows.push({ id: 20, plate: '测B12345', vehicleClass: '住户车-1', houseId: 7 });
   await assert.rejects(() => preservePlateBilling(f.first, f.tags, f.ops));
+});
+
+test('旧车牌只有在全部停车库逐条回读后才从 PMS 占位名单移除', () => {
+  const f = billingFixture();
+  const complete = (row: any) => {
+    row.status = 'completed';
+    row.result = { verified: true, preserved: true, plate: row.payload.newPlate, issueId: row.sourceRecordId };
+  };
+  complete(f.first);
+  assert.deepEqual(supersededParkingPlates([f.first, f.second]), []);
+  complete(f.second);
+  assert.deepEqual(supersededParkingPlates([f.first, f.second]), [f.first.payload.plate]);
+});
+
+test('产权车换牌、续期和住户资料更新只变更匹配卡片且保留备注和其他车辆', async () => {
+  const before = { houseId: 7, houseNo: '228/19/101', ownerName: '验收联系人', ownerPhone: '02112345678',
+    contactPhone: null, endDate: '2027-12-31', transactionId: 33 };
+  const card: any = { id: 114, tenantId: 2, spaceNo: '114', garage: 'main', plate: '沪A66667',
+    endDate: before.endDate, note: '手填备注', category: 'property',
+    vehicleBindings: { 沪A66667: before, 沪A00001: { ...before, houseId: 22 } } };
+  const updates: any[] = [];
+  const builder = {
+    addSelect() { return this; }, where() { return this; }, andWhere() { return this; },
+    orderBy() { return this; }, setLock() { return this; }, getMany: async () => [card],
+  };
+  const manager: any = { getRepository: (entity: unknown) => {
+    if (entity === Community) return { findBy: async () => [{ id: 2 }] };
+    if (entity === ParkingSpace) return { createQueryBuilder: () => builder, update: async (where: any, patch: any) => {
+      assert.deepEqual(where, { id: 114, tenantId: 2 }); updates.push(patch); Object.assign(card, patch);
+    } };
+    throw new Error('Unexpected repository');
+  } };
+  const base = { tenantId: 2, operatorId: 9, garage: 'main' as const };
+  const change = { ...base, oldPlate: '沪A66667', newPlate: '沪A00852' };
+  assert.deepEqual(await changeLinkedSpacePlate(manager, { ...change, spaceNumber: '113' }), { needsReview: true });
+  assert.equal(updates.length, 0);
+  assert.deepEqual(await changeLinkedSpacePlate(manager, { ...change, spaceNumber: '114' }), { spaceNo: '114' });
+  assert.deepEqual(card.vehicleBindings.沪A00852, before);
+  assert.equal(card.vehicleBindings.沪A66667, undefined);
+  await syncLinkedSpaceDetails(manager, { ...base, plate: '沪A00852', houseId: 8, houseNo: '228/19/102',
+    ownerName: '新住户', ownerPhone: '02156789012', endDate: '2028-01-31' });
+  assert.equal(card.plate, '沪A00852');
+  assert.equal(card.endDate, '2028-01-31');
+  assert.equal(card.houseNo, '228/19/102');
+  assert.equal(card.ownerName, '新住户');
+  assert.equal(card.ownerTel, '02156789012');
+  assert.equal(card.vehicleBindings.沪A00852.houseId, 8);
+  assert.equal(card.vehicleBindings.沪A00001.houseId, 22);
+  assert.equal(card.note, '手填备注');
+  assert.equal(card.category, 'property');
 });
 test('completed duplicate receipt is acknowledged once with no history/tag writes, still capability gated', async () => {
   const op: any = { ...task(), status: 'completed', result: receipt() };

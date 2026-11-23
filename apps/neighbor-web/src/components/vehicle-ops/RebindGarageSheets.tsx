@@ -63,7 +63,7 @@ export function RebindSheet({ plate, rows, onClose, onDone }: OpProps) {
       ownerPhone: picked.ownerPhone,
     }), { pmsUserId: picked.ownerId, batchKey: batch, onLog: (l) => setLog((x) => [...x, l]) });
     if (!r.ok) { setErr(r.error || '换绑失败'); setRunning(false); return; }
-    toast(`已换绑到 ${picked.ownerName || ownerRoom}`);
+    toast(r.spaceNeedsReview ? '现场已换绑，车位卡片绑定待核对' : `已换绑到 ${picked.ownerName || ownerRoom}`);
     onDone();
   };
 
@@ -162,6 +162,7 @@ export function GaragesSheet({ plate, rows, cloud, onClose, onDone }: OpProps) {
     if (!targets.length) { setErr('读不到原车辆记录，无法安全调整授权'); return; }
     if (needsChoices && !can('business','edit')) { setErr('当前账号没有修改车辆收费档位的权限'); return; }
     setRunning(true); setLog([]);
+    let spaceNeedsReview = false;
     try {
     const billingClass = needsChoices ? await propertyCarBillingClass(plate, targets[0]?.pmsMatch?.house?.communityId) : null;
     setSubmitted(true);
@@ -174,6 +175,7 @@ export function GaragesSheet({ plate, rows, cloud, onClose, onDone }: OpProps) {
         spaceSelection: 1, selectedGarages: [...sel], garageNumbers: garageNumbersFor([...sel], nums),
       }), { batchKey: batch.current, onLog: (l) => setLog((x) => [...x, l]) });
       if (!r.ok) { setErr(r.error || '车库授权失败'); setRunning(false); return; }
+      spaceNeedsReview = !!r.spaceNeedsReview;
     }
     // 人防：期望态 ≠ 当前态时同步德立云
     const wantCivil = sel.has('civil');
@@ -186,6 +188,7 @@ export function GaragesSheet({ plate, rows, cloud, onClose, onDone }: OpProps) {
           idempotencyKey: `${batch.current}-deliyun`,
         });
         if (result.status !== 'completed') throw new Error(result.error || '人防任务尚未完成，请核对原任务');
+        spaceNeedsReview ||= !!(result.result?.pmsBindings as { needsReview?: boolean } | undefined)?.needsReview;
         setLog((l) => [...l, '✓ 人防已同步']);
       } catch (e) {
         setErr(`旧库授权已完成，但人防同步未完成：${e instanceof Error ? e.message : '失败'}，请在办理记录只重试人防`);
@@ -217,7 +220,7 @@ export function GaragesSheet({ plate, rows, cloud, onClose, onDone }: OpProps) {
         return;
       }
     }
-    toast('车库授权已更新');
+    toast(spaceNeedsReview ? '车库授权已更新，车位卡片绑定待核对' : '车库授权已更新');
     onDone();
     } catch (e) { setErr(`${e instanceof Error ? e.message : '授权结果未知'}；请核对原任务，不要重复办理`); }
     finally { setRunning(false); }

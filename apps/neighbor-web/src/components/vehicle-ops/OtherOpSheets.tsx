@@ -87,7 +87,7 @@ export function DeleteSheet({ plate, rows, onClose, onDone }: OpProps) {
       depositRefund: deposit.trim() ? Number(deposit) : 0,
     }), { onLog: (l) => setLog((x) => [...x, l]) });
     if (!r.ok) { setErr(r.error || '注销失败'); setRunning(false); return; }
-    toast('已注销');
+    toast(r.spaceNeedsReview ? '现场已注销，车位卡片绑定待核对' : '已注销');
     onDone();
   };
 

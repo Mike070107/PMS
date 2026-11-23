@@ -932,6 +932,9 @@ namespace Pms.DataSyncAssistant
             if (ParkingDatabase.SearchKindForTest("6/502") != "House")
                 throw new InvalidOperationException("停车房号查询类型识别失败");
             var housePatterns = ParkingDatabase.SearchPatternsForTest("6/502");
+            var rentalRoomPatterns = ParkingDatabase.SearchPatternsForTest("228/41/901");
+            if (!rentalRoomPatterns.Any(pattern => pattern.EndsWith("41-901租", StringComparison.Ordinal)))
+                throw new InvalidOperationException("停车房号查询未包含旧库尾缀“租”");
             if (!housePatterns.Contains("%/6/502") || !housePatterns.Contains("%/6/502/%") ||
                 !housePatterns.Contains("6/502") || !housePatterns.Contains("6/502/%") ||
                 housePatterns.Contains("%/6/502%") || housePatterns.Any(delegate(string value) { return value.Contains("36/502"); }))

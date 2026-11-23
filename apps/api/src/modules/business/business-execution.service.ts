@@ -318,7 +318,10 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
           const op = await this.opRepo.findOne({ where: { id: step.operationId, tenantId: txn.tenantId } });
           if (op?.status === 'completed') {
             const actual = op.result?.endDate;
-            if (!targetEndDate || actual !== targetEndDate || (legacyStart && op.result?.startDate !== legacyStart) || (renewalIdentity && op.result?.identity !== renewalIdentity)) {
+            if ((op.result?.pmsBindings as { needsReview?: boolean } | undefined)?.needsReview) {
+              step.status = 'manual';
+              step.note = '现场续期已完成，车位卡片绑定待核对';
+            } else if (!targetEndDate || actual !== targetEndDate || (legacyStart && op.result?.startDate !== legacyStart) || (renewalIdentity && op.result?.identity !== renewalIdentity)) {
               step.status = 'manual';
               step.note = `现场助手回读到期日 ${actual || '未返回'}，本次提交到期日 ${targetEndDate || '未填写'}，请核对旧库有效期和车辆类别`;
             } else {

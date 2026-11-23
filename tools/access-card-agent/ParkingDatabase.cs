@@ -2910,12 +2910,14 @@ ORDER BY c.column_id;";
 
         private static void AddBoundedHousePatterns(List<string> patterns, string basePattern)
         {
-            // 结尾只能是记录结尾、卡序号，或旧库已确认的“换车牌”操作说明。
+            // 保留房号边界，只追加已确认存在的旧库标记。
             // 禁止直接追加 `%`，否则 6/502 会再次命中 6/5021。
             AddVariant(patterns, basePattern);
             AddVariant(patterns, basePattern + "/%");
             AddVariant(patterns, basePattern + "-%");
             AddVariant(patterns, basePattern + EscapeLike("换车牌"));
+            AddVariant(patterns, basePattern + EscapeLike("租"));
+            AddVariant(patterns, basePattern + EscapeLike("租客"));
         }
 
         private static bool SearchAppliesToDatabase(

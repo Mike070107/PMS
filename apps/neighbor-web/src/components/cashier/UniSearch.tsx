@@ -21,7 +21,10 @@ export interface UniHouse {
   communityName: string; owner: { id: number; name: string | null; phone: string | null } | null;
 }
 export interface RegistrationMatch { id: number; plateNo: string; houseId: number; contactPhone: string; openIntakeId: number | null }
-export interface UniVehicle { contactPhone?: string; openIntakeId?: number | null; id: number; plateNo: string; houseId: number | null }
+export interface UniVehicle {
+  contactPhone?: string; openIntakeId?: number | null; id: number; plateNo: string; houseId: number | null;
+  parkingRooms?: string[]; multipleRooms?: boolean; onsiteDatabases?: string[];
+}
 export interface UniCard { id: number; cardNo: string; houseId: number; status?: string }
 export interface UniResult { onsitePhones?: Record<number,string>; addressMatches?: number[]; matchedPhones?: Record<number,string>; plateMatches?: boolean; searchWarning?: string; houses: UniHouse[]; vehicles: UniVehicle[]; accessCards: UniCard[] }
 
@@ -269,7 +272,7 @@ export default function UniSearch({ communities, onPick, search, placeholder, in
                   const h = res.houses.find((x) => x.id === v.houseId);
                   return (
                     <button type="button" key={`v:${v.plateNo}:${v.houseId}:${v.id}`} onClick={() => choose({ kind: 'vehicle', vehicle: v, all: res })}>
-                      <AddressSearchMatch address={h ? houseLabel(h) : '未关联房号'} query={kw} plate={v.plateNo} phone={v.contactPhone} />
+                      <AddressSearchMatch address={h ? houseLabel(h) : '房号待核对'} query={kw} plate={v.plateNo} phone={v.contactPhone} />
                     </button>
                   );
                 })}

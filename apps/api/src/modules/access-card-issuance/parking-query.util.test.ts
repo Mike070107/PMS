@@ -120,6 +120,13 @@ test('旧房号末尾的新车标注不影响小区与住户匹配', () => {
   assert.equal(parkingRoomAddress('198/17/201新车228/17/201'), null);
 });
 
+test('旧库租赁标记仅从完整房号末尾移除', () => {
+  assert.equal(parkingRoomAddress('228-41-901租', 'parking2')?.key, '228/41/901');
+  assert.equal(parkingRoomAddress('228-41-901租客', 'parking2')?.key, '228/41/901');
+  assert.equal(parkingRoomAddress('228-41-9010租', 'parking2')?.key, '228/41/9010');
+  assert.equal(parkingRoomAddress('228-41-901租228-41-902', 'parking2'), null);
+});
+
 test('换车牌是旧库名称的操作说明，不参与 PMS 房产匹配', () => {
   const expected = parkingPmsHouseKey('228', '16', '201');
   for (const value of [
@@ -152,7 +159,7 @@ test('真实住户匹配方法将三种旧库名称关联到同一 PMS 二期房
     communityRepo: { find: async () => [{ id: 2, tenantId: 1, name: '枫桦景苑二期' }] },
     userRepo: { find: async ({ where }: any) => { assert.equal(where.tenantId, 1); return [owner]; } },
   });
-  const names = ['228-16-201换车牌', '228/16/201', '228-16-201'];
+  const names = ['228-16-201换车牌', '228/16/201', '228-16-201', '228-16-201租'];
   const rows = names.map((name) => ({ database: 'parking2', fields: {
     Owner__owner_Name: name, Owner__owner_Tel: null, Owner_ID: 1851, P_plate: '沪A12345',
   } }));

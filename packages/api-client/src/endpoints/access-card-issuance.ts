@@ -314,6 +314,7 @@ export interface ParkingOwnerUpdate {
   status: 'pending' | 'running' | 'completed' | 'failed';
   values: ParkingOwnerValues | null;
   error: string | null;
+  spaceSyncWarning?: string | null;
   requestedAt: string;
   completedAt: string | null;
 }

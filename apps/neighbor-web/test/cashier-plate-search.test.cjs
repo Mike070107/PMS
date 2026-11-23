@@ -1,13 +1,45 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const esbuild=require('node:module').createRequire(require.resolve('vite'))('esbuild');
-function productionSearch(deps){const source=fs.readFileSync(path.join(__dirname,'../src/pages/Cashier.tsx'),'utf8');const start=source.indexOf('  const normSearch ='),end=source.indexOf('\n  const loadBills',start);assert.ok(start>0&&end>start);const js=esbuild.transformSync(source.slice(start,end)+'\nglobalThis.search=searchByQ;', {loader:'ts',target:'es2022'}).code;const ctx={communities:[],...deps,useCallback:f=>f,setTimeout:f=>{f();return 1;}};vm.runInNewContext(js,ctx);return ctx.search;}
+const shared = {exports:{}};
+vm.runInNewContext(esbuild.transformSync(fs.readFileSync(path.resolve(__dirname,'../../../packages/shared-types/src/parking-address.ts'),'utf8'), {loader:'ts',format:'cjs'}).code,{module:shared,exports:shared.exports});
+function productionSearch(deps){const source=fs.readFileSync(path.join(__dirname,'../src/pages/Cashier.tsx'),'utf8');const start=source.indexOf('  const normSearch ='),end=source.indexOf('\n  const loadBills',start);assert.ok(start>0&&end>start);const js=esbuild.transformSync(source.slice(start,end)+'\nglobalThis.search=searchByQ;', {loader:'ts',target:'es2022'}).code;const ctx={communities:[],parkingRoomAddress:shared.exports.parkingRoomAddress,...deps,useCallback:f=>f,setTimeout:f=>{f();return 1;}};vm.runInNewContext(js,ctx);return ctx.search;}
 const house={id:6,communityId:1,communityName:'合成一期',buildingNo:'6',lane:'198',roomNo:'601',owner:null};
 function fixture(query){const calls=[];const deps={request:async args=>{calls.push(args);return {houses:[house],vehicles:[],accessCards:[]}},accessCardIssuance:{createParkingQuery:async term=>{assert.equal(term,'03212');return query},parkingQuery:async()=>query}};return {search:productionSearch(deps),calls};}
 for(const fields of [{p_plate:'沪A03212',Owner__room:'198/6/601',p_note:null},{P_plate:'沪A03212',Owner__owner_Name:'198/6/601'},{p_plate:'沪A03212',p_note:'198/6/601'}])test('cashier tail 03212 keeps onsite row '+Object.keys(fields).join(','),async()=>{const{search,calls}=fixture({id:1,status:'completed',rows:[{database:'parking1',fields}]});const result=await search('03212');assert.equal(result.vehicles[0]?.plateNo,'沪A03212');assert.equal(result.vehicles[0]?.houseId,6);assert.ok(calls.some(c=>c.query.q==='198/6/601'));});
 test('onsite zero-padded building 198/03/301 resolves canonical house instead of dropping plate',async()=>{const canonical={...house,id:15,buildingNo:'3',roomNo:'301'};const search=productionSearch({request:async({query})=>({houses:query.q==='198/3/301'?[canonical]:[],vehicles:[],accessCards:[]}),accessCardIssuance:{createParkingQuery:async()=>({id:1,status:'completed',rows:[{fields:{P_plate:'沪A03212',Owner__owner_Name:'198/03/301'}}]})}});const result=await search('03212');assert.equal(result.vehicles[0]?.houseId,15);});
 test('actual shared address resolver distinguishes padded legacy address from canonical address',()=>{const m={exports:{}};vm.runInNewContext(esbuild.transformSync(fs.readFileSync(path.resolve(__dirname,'../../api/src/common/address.shared.ts'),'utf8'),{loader:'ts',format:'cjs'}).code,{module:m,exports:m.exports});const tree=[{id:1,name:'合成一期',mainLane:'198',buildings:[{id:3,lane:'198',buildingNo:'3',houses:[{id:15,roomNo:'301'}]}]}];assert.equal(m.exports.resolveAddressQuery('198/03/301',tree),null);assert.deepEqual(Array.from(m.exports.resolveAddressQuery('198/3/301',tree).houseIds),[15]);});
 test('ambiguous or wrong household is never silently selected',async()=>{for(const houses of [[{...house,buildingNo:'9'}],[house,{...house,id:99}]]){const search=productionSearch({request:async()=>({houses,vehicles:[],accessCards:[]}),accessCardIssuance:{createParkingQuery:async()=>({id:1,status:'completed',rows:[{fields:{P_plate:'沪A03212',Owner__owner_Name:'198/6/601'}}]})}});const r=await search('03212');assert.equal(r.vehicles[0].plateNo,'沪A03212');assert.equal(r.vehicles[0].houseId,null);}});
+
+test('7907 links the rental-tagged parking room only to a unique exact PMS house', async () => {
+  const exact = {...house, id: 41901, lane: '228', buildingNo: '41', roomNo: '901'};
+  for (const [houses, expected] of [[[exact], 41901], [[exact, {...exact, id: 2}], null], [[{...exact, roomNo: '9010'}], null]]) {
+    const search = productionSearch({
+      request: async ({query}) => ({houses: query.q === '228/41/901' ? houses : []}),
+      accessCardIssuance: {createParkingQuery: async () => ({status:'completed', rows:[
+        {database:'parking2', fields:{P_plate:'沪AAV7907', Owner__owner_Name:'228-41-901租'}},
+      ]})},
+    });
+    const result = await search('7907');
+    assert.equal(result.vehicles[0].plateNo, '沪AAV7907');
+    assert.equal(result.vehicles[0].houseId, expected);
+    assert.equal(result.vehicles[0].parkingRooms?.[0], '228-41-901租');
+    assert.equal(result.vehicles[0].multipleRooms, houses.length === 2);
+  }
+});
 test('onsite failure is not reported as no matching vehicle',async()=>{const{search}=fixture({id:2,status:'failed',error:'现场查询失败',rows:[]});await assert.rejects(search('03212'),/现场查询失败/);});
+test('a failed PMS address lookup still returns the observed complete plate and its parking room', async () => {
+  const search = productionSearch({
+    request: async ({query}) => { if (query.q === '228/41/901') throw Error('房号查询超时'); return {}; },
+    accessCardIssuance: {createParkingQuery: async () => ({status:'completed', rows:[
+      {database:'parking2', fields:{P_plate:'沪AAV7907', Owner__owner_Name:'228-41-901租'}},
+    ]})},
+  });
+  const result = await search('7907');
+  assert.equal(result.vehicles[0].plateNo, '沪AAV7907');
+  assert.equal(result.vehicles[0].houseId, null);
+  assert.equal(result.vehicles[0].parkingRooms[0], '228-41-901租');
+  assert.match(result.searchWarning, /房号查询未完成/);
+});
 test('still running query is not reported as empty result',async()=>{const{search}=fixture({id:3,status:'running',rows:[]});await assert.rejects(search('03212'),/未完成|查询中/);});
 
 test('2199 优先返回真实车牌和所属房屋；保留电话中段和地址命中，排除未命中车辆',async()=>{

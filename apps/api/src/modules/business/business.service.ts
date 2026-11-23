@@ -28,6 +28,7 @@ import {
   House,
   ParkingVehicle,
   ParkingQuery,
+  ParkingOperation,
   VehicleIntake,
   User,
   ParkingPlateTag,
@@ -52,6 +53,9 @@ import { ParkingSpace, PARKING_SPACE_CATEGORIES } from '../../entities/parking-s
 import { expiredDraftSql } from './vehicle-draft-expiry';
 import { mainSpaceFromQuery, type PropertySpaceRef } from './property-space-ledger';
 import { UpdateParkingSpaceDto } from './parking-space.dto';
+import { parkingExactFieldValue } from '../access-card-issuance/parking-query-history';
+import { parkingPlateFromFields } from '../access-card-issuance/parking-query.util';
+import { supersededParkingPlates } from '../access-card-issuance/parking-plate-billing';
 
 @Injectable()
 export class BusinessService {
@@ -276,6 +280,12 @@ export class BusinessService {
     const vehicles = await this.vehicleRepo.find({
       where: { tenantId, houseId, status: 'active' }, select: { plateNo: true },
     });
+    const boundPlates = vehicles.map(vehicle => normPlate(vehicle.plateNo)).filter(Boolean);
+    const changed = boundPlates.length
+      ? await this.vehicleRepo.manager.getRepository(ParkingOperation).createQueryBuilder('task')
+        .where("task.tenant_id = :tenantId AND task.kind IN ('change_plate', 'delete_vehicle') AND task.status = 'completed'", { tenantId })
+        .andWhere("task.payload->>'plate' IN (:...boundPlates)", { boundPlates })
+        .getMany() : [];
     const parks = [...new Map(targets.filter((t) => t.system === 'deliyun').map((t) => [t.deliyunPark!, t])).values()];
     const deliyun = await Promise.all(parks.map(async (t) => {
       try {
@@ -291,7 +301,7 @@ export class BusinessService {
     const localDatabases = [...new Set(targets.filter((t) => t.system === 'local').map((t) => t.database!))];
     return {
       houseId, room, communityId: community?.id ?? null, communityName: community?.name ?? null,
-      targets, deliyun, localDatabases, propertySpaces, boundPlates: vehicles.map(v => v.plateNo),
+      targets, deliyun, localDatabases, propertySpaces, boundPlates, supersededPlates: supersededParkingPlates(changed),
       /** 本地库查询词：旧库住户名里存的是 198-4-201 / 198/06/302 这类房号 */
       roomTerm: parts.length >= 2 ? parts.join('/') : null,
     };
@@ -685,7 +695,31 @@ export class BusinessService {
   }
 
   async complete(dto: CompleteBusinessDto, user: AuthUser, access?: ResolvedAccess) {
-    const txn = dto.intakeId && dto.serviceType === BusinessServiceType.PARKING_MONTHLY
+    let existing = false;
+    const plateOnly = dto.serviceType === BusinessServiceType.PARKING_MONTHLY && dto.houseId == null && !dto.intakeId;
+    const txn = plateOnly ? await this.txnRepo.manager.transaction(async manager => {
+      const tenantId = this.requireTenant(user);
+      const plate = normPlate(dto.plateNo || '');
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))', [`parking-payment:${tenantId}`, plate]);
+      const context = await this.plateRenewalContext(dto, user, access, manager);
+      const repo = manager.getRepository(BusinessTransaction);
+      const previous = await repo.findOneBy({ tenantId, txnNo: context.txnNo });
+      if (previous) {
+        if (previous.snapshot.plateRenewalSignature !== context.signature || previous.status !== BusinessTransactionStatus.PAID)
+          throw new BadRequestException('本次车牌查询已有收款记录，请先核对办理记录');
+        existing = true;
+        return previous;
+      }
+      const pending = await repo.createQueryBuilder('t').where('t.tenant_id = :tenantId', { tenantId })
+        .andWhere('t.target_type = :targetType AND t.status = :paid', { targetType: 'parking_plate', paid: BusinessTransactionStatus.PAID })
+        .andWhere("t.snapshot->'vehicle'->>'plateNo' = :plate", { plate })
+        .andWhere("t.external_sync_status <> 'synced'").getCount();
+      if (pending) throw new BadRequestException('该车牌有已收款、尚未完成的续期，请先在办理记录核对，避免重复收费');
+      const service: BusinessService = Object.assign(Object.create(this), {
+        txnRepo: repo, logRepo: manager.getRepository(BusinessLog),
+      });
+      return service.completePayment(dto, user, access, manager, context);
+    }) : dto.intakeId && dto.serviceType === BusinessServiceType.PARKING_MONTHLY
       ? await this.intakes.withPaymentTransaction(dto.intakeId, user, access, async (manager) => {
         // Only the intake path changes: create money + audit + attachment atomically under its row lock.
         const service: BusinessService = Object.assign(Object.create(this), {
@@ -694,6 +728,7 @@ export class BusinessService {
         return service.completePayment(dto, user, access, manager);
       })
       : await this.completePayment(dto, user, access);
+    if (existing) return txn;
     // External execution must not observe or act on uncommitted money/attachment.
     if (txn.externalSyncStatus === 'review') {
       const plate = (dto.plateNo || '').trim().toUpperCase() || '新办车牌';
@@ -701,6 +736,70 @@ export class BusinessService {
         { transactionId: txn.id, txnNo: txn.txnNo, page: '/pending' }, user.id);
     } else if (txn.externalSyncStatus === 'queued') this.execution.kick(txn.id);
     return txn;
+  }
+
+  private async plateRenewalContext(dto: CompleteBusinessDto, user: AuthUser, access: ResolvedAccess | undefined, manager: EntityManager) {
+    const tenantId = this.requireTenant(user);
+    const plate = normPlate(dto.plateNo || '');
+    if (!access || dto.ownerId != null || dto.vehicleId != null || !/^[\u4e00-\u9fff][A-Z][A-Z0-9]{5,6}$/.test(plate))
+      throw new BadRequestException('请按完整车牌查询现场车辆后办理');
+    const systems = dto.parkingSystems ?? [];
+    const queryId = systems[0]?.queryId;
+    if (!queryId || dto.expectedAmountCents == null ||
+        systems.some(sys => sys.kind !== 'local' || !sys.database || sys.queryId !== queryId) ||
+        new Set(systems.map(sys => sys.database)).size !== systems.length)
+      throw new BadRequestException('请重新查询车牌，并选择要续期的现场停车库');
+    const query = await manager.getRepository(ParkingQuery).findOneBy({
+      id: queryId, tenantId, queryKind: 'vehicle', status: 'completed', createdBy: user.id, term: plate,
+    });
+    if (!query?.completedAt) throw new BadRequestException('现场车辆查询不可用，请重新查询车牌');
+    const rule = await this.findRule(tenantId, dto.ruleId, dto.serviceType);
+    const allowedNames = PARKING_TARGETS.filter(target => target.system === 'local' && target.database === systems[0].database)
+      .flatMap(target => target.communities);
+    const phase = systems.some(sys => sys.database === 'parking1') ? '一期' : '二期';
+    const communities = (await this.communityRepo.findBy({ tenantId, name: In([...new Set(allowedNames)]) }));
+    const scope = scopeCommunityIds(access);
+    const permitted = communities.filter(community => !scope || scope.includes(community.id));
+    const choices = rule.communityId != null ? permitted.filter(community => community.id === rule.communityId)
+      : permitted.length === 1 ? permitted : permitted.filter(community => community.name.endsWith(phase));
+    if (choices.length !== 1) throw new ForbiddenException('当前收费规则或现场停车库不在可办理的小区范围');
+    const selectedKeys = new Set<string>();
+    const selected = systems.map(sys => {
+      const rows = query.rows.filter(row => row.database === sys.database && parkingPlateFromFields(row.fields) === plate);
+      if (rows.length !== 1 || parkingExactFieldValue(rows[0].fields, ['P_id']) !== sys.sourceRecordId ||
+          !/^[1-9]\d*$/.test(sys.sourceRecordId || ''))
+        throw new BadRequestException('所选停车库里的车牌档案不唯一或已变化，请刷新后核对车辆');
+      const row = rows[0];
+      const rawEnd = parkingExactFieldValue(row.fields, ['End_Time', 'EndDate', 'ExpireDate']);
+      const previousEndDate = /^\d{4}-\d{2}-\d{2}/.test(rawEnd || '') ? rawEnd!.slice(0, 10) : null;
+      const effective = parkingExactFieldValue(row.fields, ['P_Effective']) ?? '';
+      const available = sys.database === 'parking1' ? ['local:phase1_parking']
+        : [([9, 11, 13].some(channel => effective[channel - 1] === '1') ? 'local:phase2_parking' : null),
+          ([15, 17, 19, 21].some(channel => effective[channel - 1] === '1') ? 'local:phase2_main_garage' : null)]
+          .filter((key): key is string => key !== null);
+      if (!available.length) available.push('local:phase2_parking');
+      const target = findParkingTarget(sys.targetKey);
+      if (!target || !available.includes(target.key)) throw new BadRequestException('停车库授权与所选收费车库不一致');
+      available.forEach(key => selectedKeys.add(key));
+      return { ...sys, label: target.short ?? target.label, previousEndDate };
+    });
+    const config = rule.config as ParkingRuleConfig | null;
+    const ruleTargets = config?.parkingTargets ?? (config?.parkingTarget ? [config.parkingTarget] : []);
+    if (ruleTargets.length && !ruleTargets.some(key => selectedKeys.has(key)))
+      throw new BadRequestException('该收费标准不适用于所选停车车库');
+    const signature = JSON.stringify([dto.ruleId, dto.months, dto.startDate, dto.endDate, dto.manualAmountCents, dto.customReason,
+      dto.expectedAmountCents, dto.paymentMethod, dto.confirmedVehicleClass, dto.legacyStartDate,
+      selected.map(sys => [sys.database, sys.sourceRecordId, sys.targetKey]).sort()]);
+    const txnNo = `PKPL-${queryId}`;
+    const age = Date.now() - query.completedAt.getTime();
+    if (age < 0 || age > 10 * 60_000) {
+      const previous = await manager.getRepository(BusinessTransaction).findOneBy({ tenantId, txnNo });
+      if (!previous) throw new BadRequestException('现场查询已超过 10 分钟，请重新查询车牌后再收费');
+    }
+    dto.plateNo = plate;
+    dto.parkingSystems = selected;
+    dto.currentEndDate = selected.flatMap(system => system.previousEndDate ? [system.previousEndDate] : []).sort().at(-1);
+    return { communityId: choices[0].id, txnNo, signature };
   }
 
   private async propertySpaceRefs(dto: CompleteBusinessDto, tenantId: number, communityId: number,
@@ -768,7 +867,8 @@ export class BusinessService {
     return refs;
   }
 
-  private async completePayment(dto: CompleteBusinessDto, user: AuthUser, access?: ResolvedAccess, manager?: EntityManager) {
+  private async completePayment(dto: CompleteBusinessDto, user: AuthUser, access?: ResolvedAccess, manager?: EntityManager,
+    plateRenewal?: { communityId: number; txnNo: string; signature: string }) {
     const tenantId = this.requireTenant(user);
     // 新办车牌：车牌由业主扫码或办公室填写，登记期限以登记单为准，服务端重新报价。
     const intake = dto.intakeId && dto.serviceType === BusinessServiceType.PARKING_MONTHLY
@@ -813,7 +913,7 @@ export class BusinessService {
     if (dto.houseId && !house) throw new NotFoundException('house not found');
 
     // 房号 → 小区：落到流水上供范围过滤，同时校验经办权限与规则适用性
-    let communityId: number | null = null;
+    let communityId: number | null = plateRenewal?.communityId ?? null;
     if (house) {
       const building = await this.buildingRepo.findOne({
         where: { id: house.buildingId, tenantId },
@@ -831,10 +931,13 @@ export class BusinessService {
     let targetType: string | null = null;
     let targetId: number | null = null;
     const snapshot: Record<string, unknown> = { estimate, ruleName: rule.name };
-    if (['产权车','产权车位'].includes(selectedParkingClass)) {
+    if (plateRenewal) snapshot.plateRenewalSignature = plateRenewal.signature;
+    if (!plateRenewal && ['产权车','产权车位'].includes(selectedParkingClass)) {
       if (!communityId) throw new BadRequestException('产权车流水需要明确房屋所属小区');
       snapshot.propertySpaces = await this.propertySpaceRefs(dto, tenantId, communityId, scope, intake?.row);
-      const currentHouse = await this.houseRepo.findOneOrFail({where:{tenantId,id:house!.id},relations:{unit:true}});
+    }
+    if (house && ['产权车','产权车位'].includes(selectedParkingClass)) {
+      const currentHouse = await this.houseRepo.findOneOrFail({where:{tenantId,id:house.id},relations:{unit:true}});
       const building = await this.buildingRepo.findOneByOrFail({tenantId,id:currentHouse.buildingId});
       const owner = dto.ownerId ? await this.userRepo.findOneBy({tenantId,id:dto.ownerId,houseId:currentHouse.id,role:UserRole.OWNER})
         : (await this.userRepo.find({where:{tenantId,houseId:currentHouse.id,role:UserRole.OWNER},order:{id:'ASC'},take:1}))[0];
@@ -855,6 +958,8 @@ export class BusinessService {
       };
     }
     const exec = this.execution.initialFor(dto.serviceType);
+    if (plateRenewal && exec.execution?.mode !== 'on')
+      throw new BadRequestException('当前现场续期未启用，请恢复续期服务后再收款');
     if (exec.execution) snapshot.execution = exec.execution;
     if (custom) {
       snapshot.review = {
@@ -892,6 +997,9 @@ export class BusinessService {
         snapshot.vehicle = { plateNo: intake.plate || '', validUntil: estimate.endDate };
         targetType = 'vehicle_intake';
         targetId = intake.row.id;
+      } else if (plateRenewal) {
+        targetType = 'parking_plate';
+        snapshot.vehicle = { plateNo: dto.plateNo, validUntil: estimate.endDate };
       } else {
         const vehicle = await this.upsertVehicle(dto, tenantId, user.id, estimate.endDate);
         targetType = 'parking_vehicle';
@@ -907,7 +1015,7 @@ export class BusinessService {
 
     const record = this.txnRepo.create({
         tenantId,
-        txnNo: this.makeTxnNo(dto.serviceType),
+        txnNo: plateRenewal?.txnNo ?? this.makeTxnNo(dto.serviceType),
         serviceType: dto.serviceType,
         status: BusinessTransactionStatus.PAID,
         ruleId: rule.id,
@@ -932,7 +1040,7 @@ export class BusinessService {
       ? await this.txnRepo.manager.transaction(async manager => {
         const saved = await manager.save(record);
         await manager.getRepository(ParkingPlateTag).upsert({ tenantId, plate: normPlate(dto.plateNo!), vehicleClass: selectedParkingClass,
-          houseId: dto.houseId ?? null, updatedBy: user.id }, ['tenantId', 'plate']);
+          ...(plateRenewal ? {} : { houseId: dto.houseId ?? null }), updatedBy: user.id }, ['tenantId', 'plate']);
         return saved;
       }) : await this.txnRepo.save(record);
 

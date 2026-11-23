@@ -231,6 +231,7 @@ export function OwnerInfoSheet({ plate, rows, onClose, onDone }: OpProps) {
     if (missingOwnerId.length) { setErr(`${missingOwnerId.map((t) => dbShort(t.database)).join('、')} 读不到住户编号，无法写回，请在旧页处理`); return; }
     if (!room.trim()) { setErr('请填写房号'); return; }
     setRunning(true); setLog([]);
+    const warnings = new Set<string>();
     for (const t of targets) {
       const label = dbShort(t.database);
       setLog((l) => [...l, `正在写 ${label} …`]);
@@ -249,7 +250,10 @@ export function OwnerInfoSheet({ plate, rows, onClose, onDone }: OpProps) {
           await new Promise((resolve) => setTimeout(resolve, 800));
           task = await accessCardIssuance.parkingOwnerUpdate(created.id);
         }
-        if (task.status === 'completed') setLog((l) => [...l, `✓ ${label} 已更新并读回验证`]);
+        if (task.status === 'completed') {
+          if (task.spaceSyncWarning) warnings.add(task.spaceSyncWarning);
+          setLog((l) => [...l, `✓ ${label} 已更新并读回验证`]);
+        }
         else { setErr(`${label} 更新失败：${task.error || '现场助手未完成'}`); setRunning(false); return; }
       } catch (e) {
         setErr(`${label} 更新失败：${e instanceof Error ? e.message : '失败'}`);
@@ -257,7 +261,7 @@ export function OwnerInfoSheet({ plate, rows, onClose, onDone }: OpProps) {
         return;
       }
     }
-    toast('旧停车系统住户资料已更新');
+    toast(warnings.size ? [...warnings].join('；') : '旧停车系统住户资料已更新');
     onDone();
   };
 
