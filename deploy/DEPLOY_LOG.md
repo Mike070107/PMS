@@ -8114,3 +8114,10 @@
   - 41fdbff4 Disambiguate income receipt fields from address tables
   - eedfee30 Ship income receipt columns and family vehicle expiry
 
+## 2026-11-23 23:21 · web · d539de27
+
+- 包：`pms-web-20261123-231945.tar.gz`
+- 提交：d539de27 deploy: api → 41fdbff4
+- 自上次（e138d164）以来上线的相关提交：
+  - eedfee30 Ship income receipt columns and family vehicle expiry
+
