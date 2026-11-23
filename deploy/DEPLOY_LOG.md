@@ -8106,3 +8106,11 @@
 - 自上次（bae6cd65）以来上线的相关提交：
   - eedfee30 Ship income receipt columns and family vehicle expiry
 
+## 2026-11-23 23:18 · api · 41fdbff4
+
+- 包：`pms-api-fast-20261123-231623.tar.gz`
+- 提交：41fdbff4 Disambiguate income receipt fields from address tables
+- 自上次（bae6cd65）以来上线的相关提交：
+  - 41fdbff4 Disambiguate income receipt fields from address tables
+  - eedfee30 Ship income receipt columns and family vehicle expiry
+
