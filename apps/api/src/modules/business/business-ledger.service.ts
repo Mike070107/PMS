@@ -16,8 +16,9 @@ function parkingOperations(parking:Record<string,any>,execution:Record<string,an
  const operation=(step:Record<string,any>,sys:Record<string,any>={},key:string|null=null)=>({
   key:key||text(step.key),
   systemLabel:text(sys.label)||text(step.label)||findParkingTarget(parking.target||execution.target)?.label||'停车系统（名称未记录）',
-  action:step.key==='registration:check'?'check':register?'register':'renew',
-  previousEndDate:text(sys.previousEndDate),targetEndDate:step.key==='registration:check'?null:targetEndDate,
+  action:step.key==='registration:check'?'check':text(step.key)?.startsWith('reversal:')?'restore':register?'register':'renew',
+  previousEndDate:text(step.previousEndDate)||text(sys.previousEndDate),
+  targetEndDate:text(step.key)?.startsWith('reversal:')?text(step.targetEndDate):step.key==='registration:check'?null:targetEndDate,
   plannedPreviousEndDate:key==='legacy'?text(object(execution.planned).previousEndDate):null,
   plannedTargetEndDate:key==='legacy'?text(object(execution.planned).endDate):null,
   status:text(step.status)||'unrecorded',operationId:Number.isSafeInteger(step.operationId)&&step.operationId>0?step.operationId:null,note:text(step.note),
@@ -94,16 +95,18 @@ export class BusinessLedgerService{
    if(!canReverseParkingPayment(original))throw new BadRequestException('仅可红冲已办结或审批驳回的停车收款正数原单');
    const snapshot=original.snapshot||{};
    const plate=text(object(snapshot.vehicle).plateNo)||text(object(snapshot.parking).plate);
+   const parking=object(snapshot.parking);
+   const reviewValidity=!!plate&&original.externalSyncStatus==='synced'&&parking.newVehicle!==true;
    const reversal=await repo.save(repo.create({
     tenantId,txnNo:`PKR-${original.id}`,serviceType:BusinessServiceType.PARKING_MONTHLY,
     status:BusinessTransactionStatus.REFUNDED,ruleId:original.ruleId,communityId:original.communityId,
     houseId:original.houseId,ownerId:original.ownerId,targetType:'parking_reversal',targetId:original.id,quantity:original.quantity,
     startDate:original.startDate,endDate:original.endDate,amountCents:-original.amountCents,
-    paymentMethod:original.paymentMethod,externalSyncStatus:'not_applicable',invoiceStatus:'not_required',
+    paymentMethod:original.paymentMethod,externalSyncStatus:reviewValidity?'queued':'not_applicable',invoiceStatus:'not_required',
     remark:`红冲 ${original.txnNo}；${note}`,
     snapshot:{vehicle:{plateNo:plate},estimate:snapshot.estimate,ruleName:snapshot.ruleName,
      intake:{propertyLabel:object(snapshot.intake).propertyLabel},
-     reversal:{originalTxnNo:original.txnNo,reason:note}},
+     reversal:{originalTxnNo:original.txnNo,reason:note,...(reviewValidity?{reviewValidity:true}:{})}},
     createdBy:user.id,updatedBy:user.id,
    }));
    original.snapshot={...snapshot,reversedByTxnNo:reversal.txnNo};

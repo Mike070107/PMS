@@ -18,7 +18,7 @@ interface TxnDetail {
   operatorName?: string | null; paymentMethod?: string | null;
   serviceType?: string | null; extra?: Record<string, unknown> | null;
 }
-interface Txn{id:number;txnNo:string;serviceType:string;status:string;amountCents:number;paymentMethod:string|null;createdAt:string;externalSyncStatus:string;address?:string;plateNo?:string;cashier?:string;detail?:TxnDetail|null;canReverse?:boolean;reversedByTxnNo?:string|null;reversal?:{originalTxnNo:string;reason:string}|null;}
+interface Txn{id:number;txnNo:string;serviceType:string;status:string;amountCents:number;paymentMethod:string|null;createdAt:string;externalSyncStatus:string;address?:string;plateNo?:string;cashier?:string;detail?:TxnDetail|null;canReverse?:boolean;reversedByTxnNo?:string|null;reversal?:{originalTxnNo:string;reason:string;reviewValidity?:boolean}|null;}
 interface Ledger{rows:Txn[];total:number;page:number;pageSize:number;summary:{paidCents:number;refundedCents:number;netCents:number;freeCount:number;syncedCount:number};}
 type Filter=''|'parking_monthly'|'access_card'|'mis_property'|'mis_berth'|'free'|'refunded';
 type DetailItem={label:string;value:string};
@@ -82,17 +82,23 @@ function detailItems(t:Txn):{items:DetailItem[];extra:Array<DetailItem&{key:stri
   return {items,extra:extraItems};
 }
 const stepLabel=(status?:string|null)=>({pending:'等待执行',waiting:'等待执行回执',done:'步骤已完成',manual:'需人工核查',failed:'执行失败',dry_run:'演练未写入'} as Record<string,string>)[status||'']||'未记录分步结果';
-const operationLabel=(action?:string|null)=>({check:'车牌查重',register:'新增车辆登记',renew:'调整停车有效期'} as Record<string,string>)[action||'']||'停车业务办理';
+const operationLabel=(action?:string|null)=>({check:'车牌查重',register:'新增车辆登记',renew:'调整停车有效期',restore:'回退停车有效期'} as Record<string,string>)[action||'']||'停车业务办理';
 const txnSyncLabel=(t:Txn)=>t.serviceType==='parking_monthly'?(t.detail?.execution?.manualDone?'人工登记办结':t.externalSyncStatus==='synced'?'流程已标记完成':syncLabel(t.externalSyncStatus)):syncLabel(t.externalSyncStatus);
+function reversalSyncLabel(t:Txn) {
+ if(!t.reversal?.reviewValidity)return '仅冲销金额';
+ if(t.externalSyncStatus==='synced')return '有效期已核对';
+ if(['queued','running','retry'].includes(t.externalSyncStatus))return '有效期待回退核对';
+ return '有效期需人工核对';
+}
 function renderParkingOperations(t:Txn){
- if(t.serviceType!=='parking_monthly'||t.reversal)return null;
+ if(t.serviceType!=='parking_monthly'||(t.reversal&&!t.reversal.reviewValidity))return null;
  const d=t.detail||{},extra=d.extra||{},execution=d.execution;
  const legacy=Array.isArray(extra.parkingSystems)?extra.parkingSystems.filter(s=>s&&typeof s==='object').map((s:any)=>({systemLabel:typeof s.label==='string'?s.label:s.database==='parking1'?'一期停车系统':s.database==='parking2'?'二期停车系统':'停车系统（名称未记录）',previousEndDate:s.previousEndDate,targetEndDate:d.periodTo,status:'unrecorded',action:extra.newVehicle?'register':'renew'})):[];
  const operations:ParkingOperationDetail[]=Array.isArray(d.parkingOperations)&&d.parkingOperations.length?d.parkingOperations:legacy;
  const measured=typeof extra.periodEnd==='string'?extra.periodEnd.slice(0,10):null;
- const mismatch=measured&&d.periodTo&&measured!==d.periodTo.slice(0,10);
+ const mismatch=!t.reversal&&measured&&d.periodTo&&measured!==d.periodTo.slice(0,10);
  return <section className="rec-detail-extra" aria-label="车辆系统操作">
-  <div className="rec-operation-heading"><b>车辆系统操作</b><span className="tag mute">{txnSyncLabel(t)}</span></div>
+  <div className="rec-operation-heading"><b>车辆系统操作</b><span className="tag mute">{t.reversal?reversalSyncLabel(t):txnSyncLabel(t)}</span></div>
   {mismatch?<p className="rec-operation-warning" role="note">日期不一致：办理目标到期日 {d.periodTo}，计价测算到期日 {measured}。请核对原办理单及系统记录，不要据此重复收款或重办。</p>:null}
   <div className="rec-operation-list">{operations.map((op,i)=><article className="rec-operation" key={`${op.key||'system'}:${i}`}>
    <div className="rec-operation-heading"><b>{blank(op.systemLabel)}</b><span className={`tag ${/failed|manual/.test(op.status||'')?'warn':'mute'}`}>{stepLabel(op.status)}</span></div>
@@ -101,7 +107,7 @@ function renderParkingOperations(t:Txn){
     {op.operationId?<div className="rec-detail-item"><span>关联任务</span><b>#{op.operationId}</b></div>:null}
     {op.plannedPreviousEndDate?<div className="rec-detail-item"><span>执行计划原到期日</span><b>{op.plannedPreviousEndDate}</b></div>:null}
     {op.plannedTargetEndDate?<div className="rec-detail-item"><span>执行计划目标到期日</span><b>{op.plannedTargetEndDate}</b></div>:null}
-    {op.action!=='check'?<><div className="rec-detail-item"><span>原到期日（收款快照）</span><b>{blank(op.previousEndDate)}</b></div><div className="rec-detail-item"><span>办理目标到期日</span><b>{blank(op.targetEndDate)}</b></div></>:null}
+    {op.action!=='check'?<><div className="rec-detail-item"><span>{op.action==='restore'?'回退前应为':'原到期日（收款快照）'}</span><b>{blank(op.previousEndDate)}</b></div><div className="rec-detail-item"><span>{op.action==='restore'?'回退目标到期日':'办理目标到期日'}</span><b>{blank(op.targetEndDate)}</b></div></>:null}
    </div>
    <p className="rec-operation-note">执行记录说明：{op.note||'本单未保存该系统的分步执行说明，不能据总状态推定已写入或回读。'}</p>
   </article>)}</div>
@@ -184,7 +190,7 @@ export default function Records(){
       <td className="nw">{formatBeijingDateTime(t.createdAt, 'YYYY-MM-DD HH:mm')}</td>
       <td className="nw">{blank(t.detail?.operatorName??t.cashier)}</td>
       <td className="nw">{t.reversal?'红冲单':t.reversedByTxnNo?'已红冲':t.status==='paid'?'已登记收款':t.status==='refunded'?'已退款':t.status==='cancelled'?'已取消':'待核实'}</td>
-      <td><span className={`tag ${t.externalSyncStatus==='synced'?'ok':/unknown|failed|manual/.test(t.externalSyncStatus)?'warn':'mute'}`}>{t.reversal?'仅冲销金额':txnSyncLabel(t)}</span></td>
+      <td><span className={`tag ${t.externalSyncStatus==='synced'?'ok':/unknown|failed|manual/.test(t.externalSyncStatus)?'warn':'mute'}`}>{t.reversal?reversalSyncLabel(t):txnSyncLabel(t)}</span></td>
       <td className="nw"><div className="rec-actions">
        <button type="button" className="btn sm rec-detail-btn" aria-expanded={open} onClick={(e)=>{e.stopPropagation();toggle(t.id)}}>{open?'收起':'明细'}</button>
        {canEditFees&&t.canReverse&&<button type="button" className="btn sm rec-reverse-btn" onClick={e=>{e.stopPropagation();setReverseNotice('');setReverseTarget(t);}}>红冲</button>}

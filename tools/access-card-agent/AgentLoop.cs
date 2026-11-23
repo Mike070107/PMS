@@ -264,6 +264,7 @@ namespace Pms.AccessCardAgent
                 { "parkingRenewalRangeV1", config.Kind == "parking_gateway" && parkingWrite },
                 { "parkingVehiclePreservationV1", config.Kind == "parking_gateway" && parkingWrite },
                 { "parkingFamilyTypeExpiryV1", config.Kind == "parking_gateway" && parkingWrite },
+                { "parkingValidityReversalV1", config.Kind == "parking_gateway" && parkingWrite },
                 { "controllerUpload", config.Kind == "access_gateway" && controllerUpload },
                 { "historicalAccessGrant", config.Kind == "access_gateway" && accessWrite && controllerUpload },
                 { "remoteDoorControl", config.Kind == "access_gateway" && accessWrite && controllerUpload }

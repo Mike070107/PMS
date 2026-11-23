@@ -46,7 +46,7 @@ test('办理记录中文系统操作：真实React与ledger SQL，桌面/窄屏�
     assert.deepEqual(JSON.parse(body),{reason:'隔离验收重复录入'});
     await db.exec(`UPDATE business_transactions SET snapshot=snapshot||'{"reversedByTxnNo":"PKR-304"}'::jsonb WHERE id=304;
       INSERT INTO business_transactions VALUES(305,'PKR-304',1,10,1,7,'parking_monthly','refunded',-75000,'alipay',
-        'not_applicable','2026-11-15T22:00:00+08','{"vehicle":{"plateNo":"沪TEST04"},"reversal":{"originalTxnNo":"SYNTHETIC-RED","reason":"隔离验收重复录入"}}',
+        'queued','2026-11-15T22:00:00+08','{"vehicle":{"plateNo":"沪TEST04"},"reversal":{"originalTxnNo":"SYNTHETIC-RED","reason":"隔离验收重复录入","reviewValidity":true}}',
         5,'2026-12-01','2027-04-30');`);
     return res.end(JSON.stringify({reversalTxnNo:'PKR-304',amountCents:-75000}));
    }
@@ -103,6 +103,10 @@ test('办理记录中文系统操作：真实React与ledger SQL，桌面/窄屏�
    await dialog.getByRole('button',{name:'确认红冲',exact:true}).click();
    await page.getByText('已红冲 ¥ -750.00 · 红冲单 PKR-304',{exact:true}).waitFor();
    await page.getByText('停车红冲 沪TEST04',{exact:true}).waitFor();
+   const reversalRow=page.getByRole('row').filter({hasText:'停车红冲 沪TEST04'});
+   await reversalRow.getByText('有效期待回退核对',{exact:true}).waitFor();
+   await reversalRow.getByRole('button',{name:'明细',exact:true}).click();
+   await page.getByRole('region',{name:'车辆系统操作'}).getByText('有效期待回退核对',{exact:true}).waitFor();
    assert.equal(await reverse.count(),0);
    assert.equal(await page.getByTestId('ledger-net').innerText(),'¥ 0.00');
    await page.goto(`http://127.0.0.1:${server.address().port}/?q=${encodeURIComponent('沪TEST04')}`);

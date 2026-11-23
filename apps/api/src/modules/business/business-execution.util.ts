@@ -129,6 +129,8 @@ export interface ExecutionStep {
   status: 'pending' | 'waiting' | 'done' | 'manual' | 'failed' | 'dry_run';
   operationId?: number | null;
   note?: string | null;
+  previousEndDate?: string;
+  targetEndDate?: string;
 }
 
 export const stepKey = (s: ParkingSystemRef) => (s.kind === 'local' ? `local:${s.database}:${s.sourceRecordId}` : `deliyun:${s.park}`);

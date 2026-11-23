@@ -14,6 +14,8 @@ import { AuthUser } from '../../common/current-user.decorator';
 import { DeliyunParkingService, shanghaiDateOnly } from '../access-card-issuance/deliyun-parking.service';
 import { AccessCardIssuanceService } from '../access-card-issuance/access-card-issuance.service';
 import { ParkingReceipt, subscribeParkingReceipts } from '../access-card-issuance/parking-receipts';
+import { plateKey } from '../access-card-issuance/parking-vehicle-preservation';
+import { hasLaterParkingPayment, LATER_PARKING_PAYMENT, parkingDate, planVerifiedParkingReversal } from './parking-validity-reversal';
 import {
   aggregateSteps,
   ExecutionStep,
@@ -208,6 +210,8 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
     const targetEndDate = (txn.endDate as unknown as string | null) || null;
     let op: ParkingOperation | null = null;
 
+    if (txn.targetType === 'parking_reversal') return this.runValidityReversal(txn, prev, mode, attempts, plateKey(plate));
+
     const parkingSnap = txn.snapshot?.parking as { systems?: ParkingSystemRef[]; newVehicle?: boolean } | undefined;
     const systems = parkingSnap?.systems ?? [];
     if (parkingSnap?.newVehicle) return this.runRegistration(txn, prev, mode, attempts, plate, targetEndDate);
@@ -278,6 +282,85 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
    * - 已完成的步骤不重做；任何一步对不上转人工，不退款、不影响其他步骤；
    * - 演练模式只核对、写下每套系统「将要怎么续」，不建任务、不写入。
    */
+  private async runValidityReversal(txn: BusinessTransaction, prev: ExecutionState, mode: SyncMode, attempts: number, plate: string) {
+    const state = { ...prev, mode, attempts, nextAt: null };
+    const original = txn.targetId ? await this.txnRepo.findOne({ where: { tenantId: txn.tenantId, id: txn.targetId } }) : null;
+    if (mode !== 'on' || (txn.snapshot?.reversal as {reviewValidity?: boolean} | undefined)?.reviewValidity !== true || !plate || !original || original.snapshot?.reversedByTxnNo !== txn.txnNo)
+      return this.finish(txn, 'manual', { ...state, lastError: '原收款无法确认或停车同步未启用，请人工核对有效期' });
+    const execution = original.snapshot.execution as ExecutionState | undefined;
+    const systems = (original.snapshot.parking as { systems?: ParkingSystemRef[] } | undefined)?.systems ?? [];
+    const sourceSteps = execution?.steps?.length ? execution.steps : execution?.operationId ? [
+      { key: 'original', label: '原续期停车系统', kind: 'deliyun' as const, status: 'done' as const, operationId: execution.operationId },
+    ] : [];
+    if (!sourceSteps.length) return this.finish(txn, 'manual', { ...state, lastError: '原单没有可核对的停车续期回执' });
+
+    const previous = new Map(prev.steps?.map(step => [step.key, step]));
+    const steps: ExecutionStep[] = [];
+    for (const source of sourceSteps) {
+      const key = `reversal:${source.key}`;
+      const old = previous.get(key);
+      if (old?.status === 'done') { steps.push(old); continue; }
+      const step: ExecutionStep = { key, label: source.label, kind: source.kind, status: 'manual', operationId: null, note: '原续期的现场回执不足，请人工核对' };
+      steps.push(step);
+      const sys = systems.find(item => stepKey(item) === source.key);
+      if (source.status !== 'done') continue;
+      if (!source.operationId) {
+        if (sys?.kind === 'local' && parkingDate(sys.previousEndDate) === parkingDate(original.endDate) && parkingDate(original.endDate)) {
+          step.status = 'done'; step.note = '原单到期日未改变';
+        }
+        continue;
+      }
+      const operation = await this.opRepo.findOne({ where: { tenantId: txn.tenantId, id: source.operationId } });
+      const plan = operation ? planVerifiedParkingReversal(original, operation, plate) : null;
+      if (plan === 'unchanged') { step.status = 'done'; step.note = '原单到期日未改变'; continue; }
+      if (!plan || !operation) continue;
+      const park = typeof operation.payload.park === 'string' ? operation.payload.park : undefined;
+      if (operation.database === 'deliyun' && !park) continue;
+      step.previousEndDate = plan.appliedEndDate;
+      step.targetEndDate = plan.restoreEndDate;
+      const idempotencyKey = `parking-reversal:${txn.id}:${operation.id}`;
+      try {
+        const restored = await this.opRepo.manager.transaction(async manager => {
+          await manager.query('SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))', [`parking-payment:${txn.tenantId}`, plate]);
+          const repo = manager.getRepository(ParkingOperation);
+          const existing = await repo.findOne({ where: { tenantId: txn.tenantId, idempotencyKey } });
+          if (existing) {
+            const expected = existing.expected?.validityReversal as typeof plan | undefined;
+            if (existing.rollbackOfOperationId !== operation.id || existing.database !== operation.database ||
+                existing.sourceRecordId !== operation.sourceRecordId || expected?.originalId !== plan.originalId ||
+                expected.restoreEndDate !== plan.restoreEndDate || expected.appliedEndDate !== plan.appliedEndDate)
+              throw new BadRequestException('原有效期回退任务与本单不一致，请人工核对');
+            return existing;
+          }
+          if (await hasLaterParkingPayment(manager, txn.tenantId, original.id, plate)) throw new BadRequestException(LATER_PARKING_PAYMENT);
+          const local = operation.database !== 'deliyun';
+          const result = local ? null : await this.deliyun.renewVehicle({ vehicleId: operation.sourceRecordId!, plate,
+            previousEndDate: plan.appliedEndDate, endDate: plan.restoreEndDate, customEndDate: true, parkName: park });
+          const now = new Date();
+          return repo.save(repo.create({ tenantId: txn.tenantId, database: operation.database, kind: 'renew_vehicle', idempotencyKey,
+            sourceRecordId: operation.sourceRecordId, pmsUserId: operation.pmsUserId, rollbackOfOperationId: operation.id,
+            payload: { plate, previousEndDate: plan.appliedEndDate, endDate: plan.restoreEndDate, businessTxnNo: txn.txnNo, ...(park ? { park } : {}) },
+            expected: { validityReversal: plan }, status: local ? 'pending' : 'completed', result, attempt: local ? 0 : 1,
+            requestedAt: now, completedAt: local ? null : now, leaseAgentKey: null, leaseExpiresAt: null, lastError: null,
+            createdBy: txn.createdBy, updatedBy: txn.createdBy }));
+        });
+        step.operationId = restored.id;
+        if (restored.status === 'completed' && restored.result?.verified === true && restored.result.endDate === plan.restoreEndDate) {
+          step.status = 'done'; step.note = `有效期已由 ${plan.appliedEndDate} 回退到 ${plan.restoreEndDate}，已回读`;
+        } else if (restored.status === 'pending' || restored.status === 'running') {
+          step.status = 'waiting'; step.note = `等待现场助手回退到 ${plan.restoreEndDate} 并读回`;
+        } else step.note = restored.lastError || '有效期回退未确认，请核对现场';
+      } catch (error) {
+        step.note = error instanceof Error ? error.message : '有效期回退结果未知，请人工核对';
+      }
+    }
+    const waiting = steps.some(step => step.status === 'waiting');
+    const errors = steps.filter(step => step.status === 'manual').map(step => `[${step.label}] ${step.note}`);
+    return this.finish(txn, waiting ? 'queued' : errors.length ? 'manual' : 'synced', { ...state, steps,
+      attempts: waiting ? attempts - 1 : attempts, nextAt: waiting ? new Date(Date.now() + 30_000).toISOString() : null,
+      lastError: errors.join('；') || null });
+  }
+
   private async runSystems(txn: BusinessTransaction, prev: ExecutionState, mode: SyncMode, attempts: number,
     plate: string, targetEndDate: string | null, systems: ParkingSystemRef[]) {
     const legacyStart = (txn.snapshot?.parking as { legacyStartDate?: string } | undefined)?.legacyStartDate;

@@ -60,7 +60,7 @@ export default function ParkingReversalSheet({ payment, onClose, onReversed }: {
         <div className="rec-detail-item"><span>原金额</span><b>{money(payment.amountCents / 100)} · {payment.paymentMethod ? payLabel(payment.paymentMethod) : '—'}</b></div>
         <div className="rec-detail-item"><span>冲销金额</span><b>{money(-payment.amountCents / 100)}</b></div>
       </div>
-      <p className="note2">确认后生成负数红冲单并保留原流水。支付渠道退款、停车有效期请另行核对。</p>
+      <p className="note2">确认后生成负数红冲单并保留原流水。可安全恢复的停车有效期会排队回退，有后续续费或现场记录不一致时转人工核对。支付渠道退款请另行核对。</p>
       <label htmlFor="parking-reverse-reason">红冲原因 *</label>
       <textarea id="parking-reverse-reason" className="in" ref={input} autoFocus required maxLength={300} rows={3}
         value={reason} disabled={busy} aria-invalid={invalid} aria-describedby={invalid ? 'parking-reverse-reason-error' : undefined}

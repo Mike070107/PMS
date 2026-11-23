@@ -896,6 +896,8 @@ ORDER BY COALESCE([out_Time], [Int_Time]) DESC;";
                 }
                 if (task.kind == "renew_vehicle")
                 {
+                    if (task.expected != null && task.expected.ContainsKey("validityReversal"))
+                        return RestoreParkingValidity(connection, task, plate);
                     // Palte_extend 会把续期流水写入旧库 P_moneyKeep（“最近的充值延期车辆”）。
                     // 该表的操作员必须使用旧库中预先建立的 PMS 账号，不能接受网页随意传入的名称。
                     const string renewalOperator = "PMS";
@@ -2044,6 +2046,58 @@ SELECT id FROM @created;";
                     result["state"] = reader.IsDBNull(reader.GetOrdinal("Car_Zt")) ? -1 : Convert.ToInt32(reader["Car_Zt"], CultureInfo.InvariantCulture);
                     return result;
                 }
+            }
+        }
+
+        private static Dictionary<string, object> RestoreParkingValidity(SqlConnection connection, ParkingOperationTask task, string plate)
+        {
+            var policy = task.expected["validityReversal"] as Dictionary<string, object>;
+            if (policy == null || !String.Equals(plate, Value(policy, "plate"), StringComparison.Ordinal))
+                throw new InvalidOperationException("有效期回退与原车牌不一致");
+            var end = RequiredDay(policy, "restoreEndDate");
+            var applied = RequiredDay(policy, "appliedEndDate");
+            var start = RequiredDay(policy, "expectedStartDate");
+            using (var transaction = connection.BeginTransaction(IsolationLevel.Serializable))
+            {
+                var before = ReadBindingVehicle(connection, transaction, plate);
+                AssertVehicleRecord(task, before);
+                if (SqlDay(before["Sart_Time"]) != SqlDay(start) || start > end)
+                    throw new InvalidOperationException("现场开始日期已变化，请人工核对有效期");
+                using (var check = connection.CreateCommand())
+                {
+                    check.Transaction = transaction;
+                    check.CommandText = "SELECT TOP 1 ID FROM P_moneyKeep WHERE Issue_ID=@id AND P_plate=@plate ORDER BY ID DESC";
+                    Add(check, "@id", SqlDbType.Int, 0, before["P_id"]);
+                    Add(check, "@plate", SqlDbType.VarChar, 50, plate);
+                    if (Convert.ToString(check.ExecuteScalar(), CultureInfo.InvariantCulture) != Value(policy, "legacyAuditId"))
+                        throw new InvalidOperationException("现场停车续期流水已变化，请人工核对有效期");
+                }
+                var current = SqlDay(before["End_Time"]);
+                if (current != SqlDay(applied) && current != SqlDay(end))
+                    throw new InvalidOperationException("现场到期日与原续期写入值不一致，请人工核对有效期");
+                if (current != SqlDay(end))
+                {
+                    using (var update = connection.CreateCommand())
+                    {
+                        update.Transaction = transaction;
+                        update.CommandText = "UPDATE dbo.Car_Issue SET End_Time=@end WHERE P_id=@id AND P_plate=@plate";
+                        Add(update, "@end", SqlDbType.DateTime, 0, end);
+                        Add(update, "@id", SqlDbType.Int, 0, before["P_id"]);
+                        Add(update, "@plate", SqlDbType.VarChar, 50, plate);
+                        update.ExecuteNonQuery();
+                    }
+                }
+                var after = ReadBindingVehicle(connection, transaction, plate);
+                AssertVehicleRecord(task, after);
+                foreach (var key in before.Keys)
+                {
+                    if (!after.ContainsKey(key) || !VehicleValueEquals(key.Equals("End_Time", StringComparison.OrdinalIgnoreCase) ? (object)end : before[key], after[key]))
+                        throw new InvalidOperationException("有效期回退读回不一致：" + key);
+                }
+                transaction.Commit();
+                return new Dictionary<string, object> { { "verified", true }, { "validityRestored", true }, { "plate", plate },
+                    { "issueId", Value(after, "P_id") }, { "endDate", SqlDay(after["End_Time"]) }, { "startDate", SqlDay(after["Sart_Time"]) },
+                    { "previousEndDate", SqlDay(applied) }, { "effective", Value(after, "P_Effective") } };
             }
         }
 

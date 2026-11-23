@@ -9,6 +9,7 @@ import { StandardParkingQueryService } from '../local-integrations/standard-park
 import { StandardCardIssuanceService } from '../local-integrations/standard-card-issuance.service';
 import { parkingReceiptCommitted } from './parking-receipts';
 import { requiresVehiclePreservation, validatePreservedOperation, assertPreservedReceipt, familyTypeExpiryDate, plateKey } from './parking-vehicle-preservation';
+import { hasLaterParkingPayment, LATER_PARKING_PAYMENT, type ParkingValidityReversal } from '../business/parking-validity-reversal';
 import { changeLinkedSpacePlate, moveLinkedSpace, preservePlateBilling, removeLinkedSpacePlate, syncLinkedSpaceDetails, syncPmsPlateBindings } from './parking-plate-billing';
 import { ParkingPlateTag } from '../../entities/parking-plate-tag.entity';
 import { loadAddressTreeLite, resolveAddressForTenant } from '../../common/address-lookup';
@@ -2128,6 +2129,9 @@ export class AccessCardIssuanceService {
 
   async createParkingOperation(dto: CreateParkingOperationDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
+    if (dto.idempotencyKey.trim().startsWith('parking-reversal:') ||
+        (dto.expected && Object.prototype.hasOwnProperty.call(dto.expected, 'validityReversal')))
+      throw new BadRequestException('停车有效期回退只能从原收款红冲发起');
     const idempotencyKey = dto.idempotencyKey.trim();
     validatePreservedOperation(dto.kind, { ...dto.payload }, dto.sourceRecordId);
     const existing = await this.parkingOperationRepo.findOne({ where: { tenantId, idempotencyKey } });
@@ -2357,6 +2361,7 @@ export class AccessCardIssuanceService {
     const tenantId = this.requireTenant(user);
     const source = await this.parkingOperationRepo.findOne({ where: { id, tenantId } });
     if (!source || source.status !== 'completed') throw new BadRequestException('只有已完成的停车操作可以回滚');
+    if (source.expected?.validityReversal) throw new BadRequestException('红冲关联的有效期回退请在办理记录核对，不能重复回滚');
     const payload = source.payload;
     const reverse: Record<string, unknown> = { ...payload };
     let kind: CreateParkingOperationDto['kind'];
@@ -2541,12 +2546,18 @@ export class AccessCardIssuanceService {
         .andWhere(supportsGarageSpaceSelection(agent.version) ? '1=1' : "COALESCE(task.payload->>'spaceSelection', '') <> '1'")
         .andWhere(agent.capabilities?.parkingVehiclePreservationV1 === true ? '1=1' : "task.kind NOT IN ('change_plate', 'update_vehicle_type')")
         .andWhere(agent.capabilities?.parkingFamilyTypeExpiryV1 === true ? '1=1' : "NOT (task.kind = 'update_vehicle_type' AND task.expected ? 'familyTypeExpiryDate')")
+        .andWhere(agent.capabilities?.parkingValidityReversalV1 === true ? '1=1' : "NOT (task.expected ? 'validityReversal')")
         .andWhere("(task.kind NOT IN ('change_plate', 'update_vehicle_type') OR (task.expected->>'preservationContract' = '1' AND (task.attempt = 0 OR task.expected->>'preservationAgentKey' = :preservationAgentKey)))", { preservationAgentKey: agent.agentKey })
         .andWhere("(task.kind <> 'change_plate' OR (task.expected ? 'billingTag' AND task.expected ? 'batchTargets' AND task.payload ? 'sourceQueryId' AND task.source_record_id IS NOT NULL))")
         .andWhere(supportsFamilyActivation(agent.version) ? '1=1' : "NOT (task.payload ? 'familyReviewId')")
         .andWhere(supportsFamilyActivation(agent.version) ? '1=1' : "NOT (task.kind = 'add_vehicle' AND task.payload->>'requiresProofReview' = 'true')")
         .orderBy('task.created_at', 'ASC').setLock('pessimistic_write').setOnLocked('skip_locked').getOne();
       if (!item) return null;
+      const validityReversal = item.expected?.validityReversal as ParkingValidityReversal | undefined;
+      if (validityReversal && await hasLaterParkingPayment(manager, item.tenantId, validityReversal.originalId, validityReversal.plate)) {
+        item.status = 'failed'; item.lastError = LATER_PARKING_PAYMENT; item.completedAt = now;
+        item.leaseAgentKey = null; item.leaseExpiresAt = null; await repo.save(item); return null;
+      }
       if (item.attempt >= 3 && !requiresVehiclePreservation(item.kind)) {
         item.status = 'failed'; item.lastError = item.lastError || '停车操作连续失败，请检查旧库日志后重试'; item.completedAt = now;
         item.leaseAgentKey = null; item.leaseExpiresAt = null; await repo.save(item); return null;
@@ -2593,6 +2604,15 @@ export class AccessCardIssuanceService {
       if (task.status !== 'running' || task.leaseAgentKey !== agent.agentKey) throw new BadRequestException('停车操作任务不属于当前网关或已经结束');
       const now = new Date();
       if (dto.result === 'success') {
+        const validityReversal = task.expected?.validityReversal as ParkingValidityReversal | undefined;
+        if (validityReversal) {
+          const values = dto.values ?? {};
+          if (agent.capabilities?.parkingValidityReversalV1 !== true || values.verified !== true || values.validityRestored !== true ||
+              String(values.issueId) !== task.sourceRecordId || plateKey(values.plate) !== validityReversal.plate ||
+              values.endDate !== validityReversal.restoreEndDate || values.previousEndDate !== validityReversal.appliedEndDate ||
+              values.startDate !== validityReversal.expectedStartDate)
+            throw new BadRequestException('旧库有效期回退未按原单回读一致');
+        }
         if (requiresVehiclePreservation(task.kind)) {
           if (agent.capabilities?.parkingVehiclePreservationV1 !== true)
             throw new BadRequestException('当前助手没有车辆原值保护能力');
@@ -4944,6 +4964,7 @@ function operationHistoryType(kind: ParkingOperation['kind']): ParkingHistoryEve
 
 function operationSummary(task: ParkingOperation): string {
   const plate = textValue(task.payload.newPlate || task.payload.plate) || '未识别车牌';
+  if (task.expected?.validityReversal) return `红冲回退停车有效期：${plate}`;
   const labels: Record<string, string> = { add_vehicle: '新增车牌', renew_vehicle: '续期车牌', change_plate: '变更车牌', rebind_owner: '变更绑定用户', update_garages: '调整车库授权', update_vehicle_type: '修改车辆授权类型', download_vehicle: '下发停车设备', sync_vehicle_info: '同步一期二期停车资料', delete_vehicle: '注销车牌' };
   return `${labels[task.kind] || '停车操作'}：${plate}`;
 }
