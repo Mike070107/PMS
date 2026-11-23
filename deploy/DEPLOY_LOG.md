@@ -8099,3 +8099,10 @@
 - 自上次（85f9d427）以来上线的相关提交：
   - eedfee30 Ship income receipt columns and family vehicle expiry
 
+## 2026-11-23 23:13 · api · a6067b80
+
+- 包：`pms-api-fast-20261123-231137.tar.gz`
+- 提交：a6067b80 deploy: assistant → eedfee30
+- 自上次（bae6cd65）以来上线的相关提交：
+  - eedfee30 Ship income receipt columns and family vehicle expiry
+
