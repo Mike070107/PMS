@@ -8079,3 +8079,10 @@
 - 自上次（9ce7dbb4）以来上线的相关提交：
   - bd13e839 Guide existing plates from registration to renewal
 
+## 2026-11-23 22:41 · api · bae6cd65
+
+- 包：`pms-api-fast-20261123-224031.tar.gz`
+- 提交：bae6cd65 Recover reversed parking registrations that never opened
+- 自上次（9ce7dbb4）以来上线的相关提交：
+  - bae6cd65 Recover reversed parking registrations that never opened
+
