@@ -32,6 +32,8 @@ test('income preserves bill-level amounts across sources, Beijing midnight, tena
       INSERT INTO houses VALUES(7,1,5,'501'),(7,2,5,'502');
       INSERT INTO buildings VALUES(5,1,10,'198弄','10号');
       INSERT INTO communities VALUES(10,1,'某小区');
+      ALTER TABLE houses ADD COLUMN remark text, ADD COLUMN created_at timestamptz;
+      UPDATE houses SET remark='房屋档案备注' WHERE id=7;
       ALTER TABLE mis_mirror_bill ADD COLUMN address text, ADD COLUMN room_no text, ADD COLUMN payment_method text;
       UPDATE mis_mirror_bill SET address=' 某小区198弄20号503室 ',room_no='503',payment_method=' 银联聚合收款 ' WHERE zj_id=21;
       UPDATE mis_mirror_bill SET address='  ',room_no=' 502 ',payment_method=' ' WHERE zj_id=20;
@@ -51,6 +53,7 @@ test('income preserves bill-level amounts across sources, Beijing midnight, tena
     assert.equal(pms.amountCents,6750); assert.equal(pms.total,1);
     assert.equal(pms.rows[0].plate,'沪A12345'); assert.equal(pms.rows[0].paidAt,'2026-11-20 00:00:00');
     assert.equal(pms.rows[0].address,'某小区/198弄/10号/501'); assert.equal(pms.rows[0].paymentMethod,'wechat');
+    assert.equal(pms.rows[0].remark,'登记');
     assert.equal(first.rows[0].address,'某小区198弄20号503室'); assert.equal(first.rows[0].paymentMethod,'银联聚合收款');
     assert.equal(first.rows[1].address,'502'); assert.equal(first.rows[1].paymentMethod,null);
     assert.equal(pms.rows[0].samePlateCount, 1);

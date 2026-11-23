@@ -982,27 +982,27 @@ export class MisMirrorService {
     const scope = communityIds?.length ? communityIds : allowed;
     const repair = category === 'repair';
     const timestamp = repair ? 'completed_at' : 'created_at';
-    const garage = "COALESCE(snapshot#>>'{estimate,vehicleClass}',snapshot->>'ruleName','') IN ('产权车','产权车位')";
-    const filter = category === 'card' ? "service_type='access_card'" :
-      `service_type='parking_monthly' AND ${category === 'garage' ? garage : 'NOT (' + garage + ')'}`;
+    const garage = "COALESCE(t.snapshot#>>'{estimate,vehicleClass}',t.snapshot->>'ruleName','') IN ('产权车','产权车位')";
+    const filter = category === 'card' ? "t.service_type='access_card'" :
+      `t.service_type='parking_monthly' AND ${category === 'garage' ? garage : 'NOT (' + garage + ')'}`;
     const parking = category === 'berth' || category === 'garage';
-    const reversed = "status='refunded' AND amount_cents<0 AND snapshot#>>'{reversal,originalTxnNo}' IS NOT NULL";
-    const collected = "status='paid' AND amount_cents>0";
+    const reversed = "t.status='refunded' AND t.amount_cents<0 AND t.snapshot#>>'{reversal,originalTxnNo}' IS NOT NULL";
+    const collected = "t.status='paid' AND t.amount_cents>0";
     const source = repair
-      ? "work_orders t LEFT JOIN repair_requests r ON r.id=t.request_id AND r.tenant_id=t.tenant_id WHERE t.deleted_at IS NULL AND status<>'voided' AND fee_cents>0"
+      ? "work_orders t LEFT JOIN repair_requests r ON r.id=t.request_id AND r.tenant_id=t.tenant_id WHERE t.deleted_at IS NULL AND t.status<>'voided' AND t.fee_cents>0"
       : `business_transactions t LEFT JOIN houses h ON h.id=t.house_id AND h.tenant_id=t.tenant_id
          LEFT JOIN buildings b ON b.id=h.building_id AND b.tenant_id=t.tenant_id
          LEFT JOIN communities c ON c.id=b.community_id AND c.tenant_id=t.tenant_id
          WHERE (${collected}${parking ? ` OR (${reversed})` : ''}) AND ${filter}`;
-    const countsTowardsRepeat = parking ? "(status='paid' AND NOT (snapshot ? 'reversedByTxnNo'))" : 'false';
-    const fields = repair ? `NULL::text AS plate, NULL::text AS period, fee_cents AS "amountCents", action_note AS remark, false AS "countsTowardsRepeat",
+    const countsTowardsRepeat = parking ? "(t.status='paid' AND NOT (t.snapshot ? 'reversedByTxnNo'))" : 'false';
+    const fields = repair ? `NULL::text AS plate, NULL::text AS period, t.fee_cents AS "amountCents", t.action_note AS remark, false AS "countsTowardsRepeat",
         NULLIF(BTRIM(r.address_text),'') AS address, NULL::text AS "paymentMethod"`
-      : `COALESCE(NULLIF(snapshot#>>'{parking,plate}',''),NULLIF(snapshot#>>'{vehicle,plateNo}','')) AS plate,
-         NULLIF(concat_ws(' 至 ',start_date::text,end_date::text),'') AS period, amount_cents AS "amountCents",
-         CASE WHEN snapshot ? 'reversedByTxnNo' THEN concat_ws(' · ',NULLIF(remark,''),'已红冲 ' || (snapshot->>'reversedByTxnNo')) ELSE remark END AS remark,
-         COALESCE(NULLIF(BTRIM(snapshot#>>'{intake,propertyLabel}'),''),NULLIF(BTRIM(snapshot#>>'{house,address}'),''),
+      : `COALESCE(NULLIF(t.snapshot#>>'{parking,plate}',''),NULLIF(t.snapshot#>>'{vehicle,plateNo}','')) AS plate,
+         NULLIF(concat_ws(' 至 ',t.start_date::text,t.end_date::text),'') AS period, t.amount_cents AS "amountCents",
+         CASE WHEN t.snapshot ? 'reversedByTxnNo' THEN concat_ws(' · ',NULLIF(t.remark,''),'已红冲 ' || (t.snapshot->>'reversedByTxnNo')) ELSE t.remark END AS remark,
+         COALESCE(NULLIF(BTRIM(t.snapshot#>>'{intake,propertyLabel}'),''),NULLIF(BTRIM(t.snapshot#>>'{house,address}'),''),
            NULLIF(CONCAT_WS('/',NULLIF(c.name,''),NULLIF(b.lane,''),NULLIF(b.building_no,''),NULLIF(h.room_no,'')),'')) AS address,
-         NULLIF(BTRIM(payment_method),'') AS "paymentMethod", ${countsTowardsRepeat} AS "countsTowardsRepeat"`;
+         NULLIF(BTRIM(t.payment_method),'') AS "paymentMethod", ${countsTowardsRepeat} AS "countsTowardsRepeat"`;
     return this.incomeFromRows(`SELECT t.id, to_char(t.${timestamp} AT TIME ZONE 'Asia/Shanghai','YYYY-MM-DD HH24:MI:SS') AS "paidAt", ${fields}
       FROM ${source} AND t.tenant_id=$1 AND ($2::int[] IS NULL OR t.community_id=ANY($2::int[]))
       AND t.${timestamp} >= ($3::date::timestamp AT TIME ZONE 'Asia/Shanghai')
