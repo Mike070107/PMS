@@ -7992,3 +7992,12 @@
   - f6490244 补齐车位页面回归的收银台依赖
   - 101852fe 车辆办理内嵌收银台续期收费流程
 
+## 2026-11-23 18:55 · api · 3a5239f0
+
+- 包：`pms-api-fast-20261123-185459.tar.gz`
+- 提交：3a5239f0 Support shops as destinations for vehicle and card registration
+- 自上次（bdded267）以来上线的相关提交：
+  - 3a5239f0 Support shops as destinations for vehicle and card registration
+  - 21ac8c08 按车牌收取续费并联动车位卡和注销入口
+  - 540a0810 车辆变更历史读取两期旧库换牌和续费
+
