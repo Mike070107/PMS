@@ -105,6 +105,12 @@ export class VehicleIntakeController {
     return this.service.setGarages(id, body?.garages, body?.garageNumbers, user, access);
   }
 
+  @Post(':id/release-reversed')
+  @RequirePermission('business', 'edit')
+  releaseReversed(@Param('id', ParseIntPipe) id: number, @Body() body: { parkingChecked?: boolean }, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.service.releaseReversed(id, body?.parkingChecked === true, user, access);
+  }
+
   @Post(':id/review')
   @RequirePermission([...VIEW, ...MANAGER_REVIEW], 'edit')
   review(@Param('id', ParseIntPipe) id: number, @Body() body: ReviewIntakeInput, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {

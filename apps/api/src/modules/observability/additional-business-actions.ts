@@ -109,6 +109,7 @@ const TEMPLATES: ReadonlyArray<readonly [string, string, string, string, string]
   ["POST", "/vehicle-intakes/:id/class", "post_vehicle_intakes_id_class", "设置登记车辆类别", "车辆登记"],
   ["POST", "/vehicle-intakes/:id/garages", "post_vehicle_intakes_id_garages", "设置登记车辆车库资料", "车辆登记"],
   ["POST", "/vehicle-intakes/:id/review", "post_vehicle_intakes_id_review", "审核车辆资料登记单", "车辆登记"],
+  ["POST", "/vehicle-intakes/:id/release-reversed", "post_vehicle_intakes_id_release_reversed", "解除已红冲未入库的登记占用", "车辆登记"],
   ["POST", "/vehicle-intake-form/:token", "post_vehicle_intake_form_token", "填报车辆登记资料", "车辆登记"],
   ["POST", "/external-access/agents", "post_external_access_agents", "新建内网连接代理", "外部访问"],
   ["PATCH", "/external-access/agents/:id", "patch_external_access_agents_id", "修改内网连接代理", "外部访问"],

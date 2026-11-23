@@ -7,14 +7,14 @@ import { createHash, createHmac, randomBytes } from 'node:crypto';
 import * as QRCode from 'qrcode';
 import { Brackets, EntityManager, In, IsNull, Like, MoreThan, Raw, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
-import { claimVehicleRegistration, releaseVehicleRegistration } from '../../common/vehicle-registration-claim';
+import { claimVehicleRegistration, releaseVehicleRegistration, lockVehicleRegistration, normalizedPlateSql, REVERSED_INTAKE_RELEASED } from '../../common/vehicle-registration-claim';
 import { reviseVehicleMaterial } from '../../common/vehicle-registration-material';
 import { normalizeRegistrationTerm, type VehicleRegistrationTerm } from '../../common/vehicle-registration-term';
 import {
-  Building, BusinessLog, BusinessTransaction, Community, FamilyCar, House, Notification, ParkingPlateTag, ParkingSpace, ParkingVehicle, User, VehicleIntake,
+  Building, BusinessLog, BusinessTransaction, Community, FamilyCar, House, Notification, ParkingOperation, ParkingPlateTag, ParkingSpace, ParkingVehicle, User, VehicleIntake,
   type VehicleIntakeFile, type VehicleIntakeKind,
 } from '../../entities';
-import { BusinessServiceType, NotifyChannel, NotifyStatus, UserRole } from '../../common/enums';
+import { BusinessServiceType, BusinessTransactionStatus, NotifyChannel, NotifyStatus, UserRole } from '../../common/enums';
 import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
 import { FamilyCarService } from '../access-card-issuance/family-car.service';
@@ -476,6 +476,57 @@ export class VehicleIntakeService {
     return { ...(await this.view(row)), qr: await this.qr(base, token, row.expiresAt) };
   }
 
+  async releaseReversed(id: number, parkingChecked: boolean, user: AuthUser, access?: ResolvedAccess) {
+    if (!access) throw new ForbiddenException('缺少登记数据范围');
+    if (!this.inTransaction) return this.locked(id, user, access, service => service.releaseReversed(id, parkingChecked, user, access));
+    const row = await this.load(id, user, access);
+    if (row.status === 'void' && row.log.some(event => event.action === REVERSED_INTAKE_RELEASED)) return this.view(row, true);
+    if (parkingChecked !== true) throw new BadRequestException('请先核对原车库，确认车牌未入库');
+    const txn = await this.linkedTransaction(row);
+    if (!this.canReleaseReversed(row, txn)) throw new BadRequestException('原登记未满足已红冲、未自动入库的重办条件');
+    const original = txn!;
+    const reversal = await this.txnRepo.findOne({ where: { tenantId: row.tenantId,
+      txnNo: String(original.snapshot.reversedByTxnNo), targetType: 'parking_reversal', targetId: original.id,
+      serviceType: BusinessServiceType.PARKING_MONTHLY, status: BusinessTransactionStatus.REFUNDED, amountCents: -original.amountCents } });
+    if (!reversal) throw new BadRequestException('没有找到足额红冲流水，请核对原收款');
+    const plate = normalizeFamilyPlate(row.plate);
+    await this.repo.manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`vehicle-intake:${row.tenantId}:${plate}`]);
+    await lockVehicleRegistration(this.repo.manager, row.tenantId, plate);
+    await this.assertNoCreatedFamily(row);
+    const vehicle = await this.repo.manager.getRepository(ParkingVehicle).createQueryBuilder('v')
+      .where(`v.tenant_id = :tenantId AND ${normalizedPlateSql('v.plate_no')} = :plate`, { tenantId: row.tenantId, plate }).getOne();
+    if (vehicle) throw new BadRequestException('已找到车辆档案，请按原车核对并续费');
+    const steps = (original.snapshot.execution as { steps?: Array<{ operationId?: number | null }> } | undefined)?.steps ?? [];
+    const operationIds = [...new Set(steps.map(step => step.operationId).filter((value): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0))];
+    const operationPrefix = `biz:${original.txnNo.replace(/[\\%_]/g, value => '\\' + value)}`;
+    // A failed download can replace a successful add operation in the execution snapshot.
+    const operations = await this.repo.manager.getRepository(ParkingOperation).find({ where: [
+      { tenantId: row.tenantId, id: In(operationIds) },
+      { tenantId: row.tenantId, idempotencyKey: Like(`${operationPrefix}:register:%`) },
+      { tenantId: row.tenantId, idempotencyKey: Like(`${operationPrefix}:register-download:%`) },
+    ], lock: { mode: 'pessimistic_write' } });
+    if (operationIds.some(id => !operations.some(op => op.id === id)) || operations.some(op => op.status !== 'failed' && op.status !== 'cancelled'))
+      throw new BadRequestException('原停车任务可能已执行或仍在运行，请先核对停车系统');
+    await this.restoreBoundSpaces(row, user, { reversed: true });
+    row.status = 'void';
+    row.expiresAt = new Date(Math.min(row.expiresAt.getTime(), Date.now()));
+    row.updatedBy = user.id;
+    row.log = [...row.log, await this.entry(user, REVERSED_INTAKE_RELEASED, `经办人确认未入库。原收款 ${original.txnNo}，红冲 ${reversal.txnNo}`)];
+    await this.repo.save(row);
+    await releaseVehicleRegistration(this.repo.manager, row.tenantId, 'intake', row.id);
+    return this.view(row, true);
+  }
+
+  private canReleaseReversed(row: VehicleIntake, txn: BusinessTransaction | null) {
+    if (row.kind !== 'paid' || row.status !== 'approved' || row.familyCarId || !isValidFamilyPlate(normalizeFamilyPlate(row.plate)) ||
+      !txn || txn.id !== row.transactionId || txn.targetType !== 'vehicle_intake' || txn.targetId !== row.id ||
+      txn.serviceType !== BusinessServiceType.PARKING_MONTHLY || txn.status !== BusinessTransactionStatus.PAID ||
+      txn.amountCents <= 0 || typeof txn.snapshot?.reversedByTxnNo !== 'string' || !txn.snapshot.reversedByTxnNo) return false;
+    const execution = txn.snapshot.execution as { manualDone?: unknown; steps?: Array<{ key?: string; status?: string }> } | undefined;
+    return (txn.externalSyncStatus === 'rejected' || (txn.externalSyncStatus === 'synced' && !!execution?.manualDone)) &&
+      !(execution?.steps ?? []).some(step => step.key !== 'registration:check' && step.status === 'done');
+  }
+
   async review(id: number, input: ReviewIntakeInput, user: AuthUser, access?: ResolvedAccess) {
     if (!this.inTransaction) return this.locked(id, user, access, (service) => service.review(id, input, user, access));
     const row = await this.load(id, user, access);
@@ -911,11 +962,11 @@ export class VehicleIntakeService {
   }
 
   /** 仅撤回本次未收款的绑定；精确核对快照，绝不覆盖人工后改动。 */
-  private async restoreBoundSpaces(row: VehicleIntake, user: AuthUser) {
+  private async restoreBoundSpaces(row: VehicleIntake, user: AuthUser, options?: { reversed: true }) {
     const last = [...(row.log ?? [])].reverse().find(entry => entry.action === '关联共用车位' || entry.action === '关联车位档案' || entry.action === '恢复登记前车位档案');
     const bindings = (last as any)?.spaceBindings as Array<{ before: ParkingSpace; after: ParkingSpace }> | undefined;
     if (last?.action !== '关联车位档案' || !bindings?.length) return;
-    await this.assertUnlinked(row);
+    if (!options?.reversed) await this.assertUnlinked(row);
     const repo = this.repo.manager.getRepository(ParkingSpace);
     // 与绑定时统一 civil → main，避免两个登记各锁一个车位互等。
     for (const binding of [...bindings].sort((a, b) => a.after.garage.localeCompare(b.after.garage) || a.after.id - b.after.id)) {
@@ -962,7 +1013,7 @@ export class VehicleIntakeService {
     const txn = row.transactionId ? await this.txnRepo.findOne({ where: { id: row.transactionId, tenantId: row.tenantId } }) : null;
     const now = Date.now();
     return {
-      canConfigureApproved: this.canConfigureApproved(row), homeUpload: this.isHomeUpload(row), id: row.id, kind: row.kind, status: row.status, houseId: row.houseId, shopBuildingId: row.shopBuildingId ?? null, communityId: row.communityId, houseLabel: row.houseLabel,
+      canConfigureApproved: this.canConfigureApproved(row), canReleaseReversed: this.canReleaseReversed(row, txn), homeUpload: this.isHomeUpload(row), id: row.id, kind: row.kind, status: row.status, houseId: row.houseId, shopBuildingId: row.shopBuildingId ?? null, communityId: row.communityId, houseLabel: row.houseLabel,
       ownerName: row.ownerName, ownerPhone: row.ownerPhone,
       plate: row.plate, contactName: row.contactName, contactPhone: row.contactPhone, relation: row.relation, vehicleClass: row.vehicleClass,
       garages: row.garages, garageNumbers: row.garageNumbers,

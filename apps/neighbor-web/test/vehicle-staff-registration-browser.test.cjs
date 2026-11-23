@@ -47,6 +47,30 @@ test('已有登记时保留输入并给出原车续费和收款流水入口', { 
     await screenshot(p, 'existing-plate-renewal-375.png');
   } finally { await f.close(); }
 });
+test('原登记已红冲且未入库时解除占用并在原表单保存', { timeout: 60000 }, async () => {
+  const f = await fixture(375); const p = f.page;
+  try {
+    await button(p, '工作人员直接代填').click();
+    await button(p, '点选车牌').click();
+    for (const key of '沪A12345') await p.locator('.intake-plate-keys').getByRole('button', { name: key, exact: true }).click();
+    await p.getByLabel('本车联系手机（必填）').fill('13711112222');
+    await p.evaluate(() => { window.__existingPlate = true; window.__reversedIntake = true; });
+    await button(p, '保存资料，进入预览').click();
+    const release = button(p, '解除原登记占用');
+    await release.waitFor();
+    assert.equal(await release.isDisabled(), true);
+    assert.equal(await p.getByRole('link', { name: '查看原登记' }).getAttribute('href'), '/plates?intakeId=70');
+    assert.equal(await p.getByRole('link', { name: '按原车续费' }).count(), 0);
+    await screenshot(p, 'reversed-registration-release-375.png');
+    await p.getByLabel('已核对原车库，确认该车牌未入库').check();
+    await release.click();
+    await p.getByText('请重新保存本次资料。', { exact: false }).waitFor();
+    assert.equal(await p.getByLabel('本车联系手机（必填）').inputValue(), '13711112222');
+    await button(p, '保存资料，进入预览').click();
+    await p.waitForFunction(() => window.__current().status === 'submitted');
+    assert.equal(await p.evaluate(() => window.__calls.some(c => c.url === '/business/complete')), false);
+  } finally { await f.close(); }
+});
 for (const width of [1440, 375]) test(`staff no-attachment registration + garage failure/retry + actual inline CarRenewal ${width}px`, { timeout: 60000 }, async () => {
   const f = await fixture(width); const p = f.page;
   try {

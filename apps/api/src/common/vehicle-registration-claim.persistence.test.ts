@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
-import { claimVehicleRegistration, releaseVehicleRegistration, VEHICLE_CLAIM_CONFLICT } from './vehicle-registration-claim';
+import { claimVehicleRegistration, releaseVehicleRegistration, REVERSED_INTAKE_RELEASED, VEHICLE_CLAIM_CONFLICT } from './vehicle-registration-claim';
 import { VehicleRegistrationClaims1796500000000 } from '../migrations/1796500000000-VehicleRegistrationClaims';
 
 // Executes actual PostgreSQL statements and transaction rollback, not multi-connection race proof.
@@ -10,7 +10,7 @@ test('跨流程占用：历史冲突、别名移交、租户、续登、改牌�
   const db = new PGlite();
   t.after(() => db.close());
   await db.exec(`CREATE TABLE family_cars(id integer PRIMARY KEY, tenant_id integer, house_id integer, previous_id integer, plate text, status text);
-    CREATE TABLE vehicle_intakes(id integer PRIMARY KEY, tenant_id integer, house_id integer, family_car_id integer REFERENCES family_cars(id), plate text, status text, transaction_id integer)`);
+    CREATE TABLE vehicle_intakes(id integer PRIMARY KEY, tenant_id integer, house_id integer, family_car_id integer REFERENCES family_cars(id), plate text, status text, transaction_id integer, log jsonb NOT NULL DEFAULT '[]')`);
   const migration = new VehicleRegistrationClaims1796500000000();
   await migration.up({ query: (sql: string) => db.query(sql) } as any);
   await migration.up({ query: (sql: string) => db.query(sql) } as any);
@@ -56,5 +56,8 @@ test('跨流程占用：历史冲突、别名移交、租户、续登、改牌�
   await db.exec(`INSERT INTO vehicle_intakes(id,tenant_id,house_id,plate,status,transaction_id) VALUES (5,1,5,'沪D12345','void',42),(6,1,6,'沪D12345','submitted',NULL)`);
   await assert.rejects(claim({ tenantId: 1, plate: '沪D12345', intakeId: 6 }), new RegExp(VEHICLE_CLAIM_CONFLICT));
   assert.equal((await db.query("SELECT transaction_id FROM vehicle_intakes WHERE id=5")).rows.length, 1, 'historical collected/void records are held, never silently cleared');
+  await db.query('UPDATE vehicle_intakes SET log=$1 WHERE id=5', [JSON.stringify([{ action: REVERSED_INTAKE_RELEASED }])]);
+  await claim({ tenantId: 1, plate: '沪D12345', intakeId: 6 });
+  assert.equal((await db.query<{ transaction_id: number }>('SELECT transaction_id FROM vehicle_intakes WHERE id=5')).rows[0].transaction_id, 42);
   await assert.rejects(migration.down(), /retained/);
 });

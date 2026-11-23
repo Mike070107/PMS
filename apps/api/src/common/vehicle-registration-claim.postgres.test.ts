@@ -25,7 +25,7 @@ for (let round = 1; round <= 10; round++) test(`真实 PostgreSQL 多连接竞�
   const connect = async () => { const client = new Client({ connectionString: url }); await client.connect(); clients.push(client); await client.query(`SET search_path TO ${schema}`); return client; };
   const setup = await connect();
   await setup.query(`CREATE TABLE family_cars(id serial PRIMARY KEY,tenant_id integer,house_id integer,previous_id integer,plate text,status text);
-    CREATE TABLE vehicle_intakes(id serial PRIMARY KEY,tenant_id integer,house_id integer,family_car_id integer REFERENCES family_cars(id),plate text,status text,transaction_id integer);
+    CREATE TABLE vehicle_intakes(id serial PRIMARY KEY,tenant_id integer,house_id integer,family_car_id integer REFERENCES family_cars(id),plate text,status text,transaction_id integer,log jsonb NOT NULL DEFAULT '[]');
     CREATE TABLE proof_test(id serial PRIMARY KEY,family_car_id integer REFERENCES family_cars(id));
     INSERT INTO vehicle_intakes(tenant_id,house_id,plate,status) VALUES (1,5,'','waiting'),(1,6,'','waiting')`);
   await new VehicleRegistrationClaims1796500000000().up({ query: (sql: string) => setup.query(sql) } as any);

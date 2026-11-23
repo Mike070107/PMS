@@ -2,7 +2,11 @@ import { BadRequestException } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 
 export const VEHICLE_CLAIM_CONFLICT = '该车牌已有不兼容的登记，请联系有权限的管理人员核对';
+export const REVERSED_INTAKE_RELEASED = '已红冲未入库，解除登记占用';
 export const normalizedPlateSql = (column: string) => `regexp_replace(upper(${column}), '[[:space:]·.．・]', '', 'g')`;
+export async function lockVehicleRegistration(manager: EntityManager, tenantId: number, plate: string) {
+  await manager.query(`SELECT pg_advisory_xact_lock(hashtext('vehicle-registration:' || $1::text), hashtext($2::text))`, [tenantId, plate]);
+}
 
 /** All callers must pass their transaction manager, including intake -> family handoff. */
 export async function claimVehicleRegistration(manager: EntityManager, owner: {
@@ -13,7 +17,7 @@ export async function claimVehicleRegistration(manager: EntityManager, owner: {
   if (!plate || !owner.tenantId || (!owner.intakeId && !owner.familyCarId)) throw new BadRequestException('车辆办理占用信息不完整');
   const args = [owner.tenantId, plate, owner.intakeId ?? null, owner.familyCarId ?? null];
   // Two-key advisory locks serialize only this tenant/normalized plate, across connections and processes.
-  await manager.query(`SELECT pg_advisory_xact_lock(hashtext('vehicle-registration:' || $1::text), hashtext($2::text))`, args.slice(0, 2));
+  await lockVehicleRegistration(manager, owner.tenantId, plate);
   const claims = await manager.query(`SELECT intake_id,family_car_id FROM vehicle_registration_claims
     WHERE tenant_id=$1 AND plate=$2 FOR UPDATE`, args.slice(0, 2));
   const existing = claims[0];
@@ -27,7 +31,8 @@ export async function claimVehicleRegistration(manager: EntityManager, owner: {
   // Do not backfill claims by choosing a winner. Every acquisition checks untouched historical rows too.
   const intakes = await manager.query(`SELECT i.id FROM vehicle_intakes i
     LEFT JOIN family_cars linked ON linked.id=i.family_car_id AND linked.tenant_id=i.tenant_id
-    WHERE i.tenant_id=$1 AND ${normalizedPlateSql('i.plate')}=$2 AND (i.status <> 'void' OR i.transaction_id IS NOT NULL)
+    WHERE i.tenant_id=$1 AND ${normalizedPlateSql('i.plate')}=$2 AND (i.status <> 'void' OR
+      (i.transaction_id IS NOT NULL AND NOT i.log @> '${JSON.stringify([{ action: REVERSED_INTAKE_RELEASED }])}'::jsonb))
       AND (i.family_car_id IS NULL OR linked.id IS NULL OR linked.status NOT IN ('void','expired'))
       AND i.id IS DISTINCT FROM $3::integer AND ($4::integer IS NULL OR i.family_car_id IS DISTINCT FROM $4::integer)
       AND NOT (linked.status='active' AND EXISTS (SELECT 1 FROM family_cars successor

@@ -147,7 +147,7 @@ export default function OfficeIntakeEditor({ intake, onSaved }: { intake: Intake
         <button type="button" className="btn g sm" disabled={!!busy} onClick={reset}>恢复已保存内容</button>
         <span className="muted">{keep.length + picks.length} 份资料</span>
       </div>
-      {err && existingPlate && isExistingPlateMessage(err) ? <ExistingPlateNotice plate={existingPlate} />
+      {err && existingPlate && isExistingPlateMessage(err) ? <ExistingPlateNotice key={existingPlate} plate={existingPlate} intake={intake} message={err} />
         : err ? <div className="note2" role="alert" style={{ color: 'var(--dang)', marginTop: 8 }}><Icon name="alert" />{err}</div> : null}
       {ok ? <div className="note2" role="status" style={{ marginTop: 8 }}><Icon name="check" />{ok}</div> : null}
     </div> : null}

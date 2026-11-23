@@ -18,7 +18,7 @@ import { dayjs, money } from '@/lib/format';
 import type { RegistrationTerm } from '@/components/VehicleRegistrationTerm';
 import { RegistrationTermEditor, RegistrationTermSummary } from '@/components/VehicleRegistrationTerm';
 import OfficeIntakeEditor from './OfficeIntakeEditor';
-import ExistingPlateNotice, { isExistingPlateMessage } from './ExistingPlateNotice';
+import ExistingPlateNotice, { isExistingPlateMessage, ReleaseReversedRegistration } from './ExistingPlateNotice';
 import { formBase, type Car, type Lot, type ParkHouse, type ParkingCart, type ParkRule, type ParkTarget } from './ParkingTab';
 
 type FamilyStage = 'upload' | 'office' | 'manager' | 'returned' | 'opening' | 'active' | 'expired' | 'void';
@@ -28,7 +28,7 @@ export interface Intake {
   houseId: number | null; shopBuildingId?: number | null; communityId?: number | null; houseLabel: string; ownerName: string; ownerPhone: string;
   plate: string; contactName: string; contactPhone: string; relation: string; vehicleClass: string;
   garages: string[]; garageNumbers: Record<string, string>;
-  canConfigureApproved?: boolean; homeUpload?: boolean; expiresAt: string; qrValid: boolean; openedAt: string | null; submittedAt: string | null; reviewedAt: string | null; reviewNote: string;
+  canConfigureApproved?: boolean; canReleaseReversed?: boolean; homeUpload?: boolean; expiresAt: string; qrValid: boolean; openedAt: string | null; submittedAt: string | null; reviewedAt: string | null; reviewNote: string;
   files: IntakeFile[];
   transaction: { id: number; txnNo: string; amountCents: number; startDate: string | null; endDate: string | null; externalSyncStatus: string; execution: { lastError?: string | null } | null } | null;
   familyCarId: number | null;
@@ -413,7 +413,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
                 <div className="np-files">{it.files.map(f => <IntakeAttachment key={f.fileUrl} file={f}/>)}</div>
               </div>
               </details><button type="button" className="btn p" disabled={!!busy || savingGarages || (!defaultStaffMode && (plateInvalid || phoneInvalid || relationInvalid))} data-charge-next onClick={submitStaffFields}>{busy === '保存登记' ? '保存中…' : '保存资料，进入预览'}</button>
-              {showExistingPlate && <ExistingPlateNotice plate={existingPlate} />}
+              {showExistingPlate && <ExistingPlateNotice key={existingPlate} plate={existingPlate} intake={it} message={err} />}
             </fieldset> : null}
           </section> : null}
       {it.reused ? <div className="note2">已继续原登记 #{it.id}，未新增单据；原资料及收款关联保留。</div> : null}
@@ -432,7 +432,9 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
           <button type="button" className="btn" onClick={() => setConverting(false)}>暂不转换</button>
         </div>
       </fieldset> : null}
-      {it.status !== 'void' && handedOff ? <div className="note2" style={{ marginBottom: 10 }}>{it.familyCarId || (it.kind === 'family' && it.status === 'approved') ? '已转亲情车办理，请到「亲情车管理」核对；' : '原收款已进入执行或待核对阶段，请到「待处理」核对原流水；'}已入库车辆请到「车辆管理」注销，不在登记审核硬删，也不在这里退款。</div> : null}
+      {it.canReleaseReversed ? <div className="note2" style={{ marginBottom: 10 }}><div>原收款已红冲。核实原车库未入库后，可解除这张登记的占用并重新办理。原登记资料及流水会保留。
+        {can('business', 'edit') && <ReleaseReversedRegistration intakeId={it.id} onReleased={acceptResponse} />}
+      </div></div> : it.status !== 'void' && handedOff ? <div className="note2" style={{ marginBottom: 10 }}>{it.familyCarId || (it.kind === 'family' && it.status === 'approved') ? '已转亲情车办理，请到「亲情车管理」核对；' : '原收款已进入执行或待核对阶段，请到「待处理」核对原流水；'}已入库车辆请到「车辆管理」注销，不在登记审核硬删，也不在这里退款。</div> : null}
       {manage && !canQr && ['submitted'].includes(it.status) && !it.familyCarId && (it.kind === 'family' || !it.transaction)
         ? defaultStaffMode ? <details className="registration-options" open={!canStaff || undefined}><summary>办公室资料确认与申请期限</summary><OfficeIntakeEditor intake={it} onSaved={acceptResponse} /></details> : <OfficeIntakeEditor intake={it} onSaved={acceptResponse} /> : null}
 
@@ -536,7 +538,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
               </div>
             </div>
           ) : null}
-          {showExistingPlate ? (!staffMode || !canStaff) && <ExistingPlateNotice plate={existingPlate} />
+          {showExistingPlate ? (!staffMode || !canStaff) && <ExistingPlateNotice key={existingPlate} plate={existingPlate} intake={it} message={err} />
             : err ? <div className="note2" role="alert" style={{ color: 'var(--dang)', marginTop: 8 }}><Icon name="alert" />{err}</div> : null}
           {okMsg ? <div className="note2" style={{ marginTop: 8 }}><Icon name="check" />{okMsg}</div> : null}
 

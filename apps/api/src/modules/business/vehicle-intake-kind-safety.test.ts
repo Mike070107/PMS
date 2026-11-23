@@ -4,8 +4,9 @@ import test from 'node:test';
 import { createHash } from 'node:crypto';
 import { VehicleIntakeService } from './vehicle-intake.service';
 import { BusinessService } from './business.service';
-import { BusinessLog, BusinessTransaction, FamilyCar, Notification, ParkingSpace, ParkingVehicle, VehicleIntake } from '../../entities';
-import { BusinessServiceType } from '../../common/enums';
+import { BusinessLog, BusinessTransaction, FamilyCar, Notification, ParkingOperation, ParkingSpace, ParkingVehicle, VehicleIntake } from '../../entities';
+import { BusinessServiceType, BusinessTransactionStatus } from '../../common/enums';
+import { REVERSED_INTAKE_RELEASED } from '../../common/vehicle-registration-claim';
 import { Reflector } from '@nestjs/core';
 import { GUARDS_METADATA, METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { PERMISSION_KEY } from '../../common/require-permission.decorator';
@@ -34,7 +35,7 @@ function fixture() {
     },
     update: async (where: any, patch: any) => { const rows = tables.get(entity)!; rows.filter(r => matches(r, where)).forEach(r => Object.assign(r, clone(patch))); return { affected: 1 }; },
     createQueryBuilder: () => {
-      let params: any, patch: any; const qb: any = { getOne: async () => tables.get(entity)!.find(r => r.tenantId === params.tenantId && r.plate === params.plate && r.id !== params.id && r.status !== params.status) ?? null, update: () => qb, set: (v: any) => { patch = v; return qb; }, where: (_s: string, p: any) => { params = p; return qb; }, execute: async () => {
+      let params: any, patch: any; const qb: any = { getOne: async () => tables.get(entity)!.find(r => r.tenantId === params.tenantId && (r.plateNo ?? r.plate) === params.plate && r.id !== params.id && (params.status === undefined || r.status !== params.status)) ?? null, update: () => qb, set: (v: any) => { patch = v; return qb; }, where: (_s: string, p: any) => { params = p; return qb; }, execute: async () => {
         const row = tables.get(entity)!.find(r => r.id === params.id && (!params.st || (Array.isArray(params.st) ? params.st.includes(r.status) : r.externalSyncStatus === params.st)));
         if (!row) return { affected: 0 }; Object.assign(row, clone(patch)); return { affected: 1 };
       }}; return qb;
@@ -65,6 +66,41 @@ function fixture() {
   const pay = (extra = {}) => business.complete({ ...extra, serviceType: BusinessServiceType.PARKING_MONTHLY, intakeId: 1, houseId: 5, ruleId: 2, paymentMethod: 'cash' }, user);
   return { service: service as any, business, pay, user, token, txns, tables, row: () => tables.get(VehicleIntake)![0], transactions: () => tables.get(BusinessTransaction)!, audit: () => tables.get(BusinessLog)!, familyCreates: () => familyCreates, locks: () => locks, kicked, failAttach: () => { failAttach = true; } };
 }
+
+test('足额红冲且确认未入库才可解除占用，保留款项和登记资料', async () => {
+  const h = fixture();
+  const access = { scopeAll: true } as any;
+  h.row().transactionId = 10;
+  const original = { id: 10, tenantId: 1, txnNo: 'PK-10', targetType: 'vehicle_intake', targetId: 1,
+    serviceType: BusinessServiceType.PARKING_MONTHLY, status: BusinessTransactionStatus.PAID, amountCents: 45000,
+    externalSyncStatus: 'synced', snapshot: { reversedByTxnNo: 'PKR-10', execution: { manualDone: { at: '2026-11-23T13:17:00Z' }, steps: [{ key: 'registration:parking1', status: 'failed', operationId: 30 }] } } };
+  const reversal = { ...original, id: 11, txnNo: 'PKR-10', targetType: 'parking_reversal', targetId: 10,
+    amountCents: -44999, status: BusinessTransactionStatus.REFUNDED, snapshot: {} };
+  h.transactions().push(original, reversal);
+  h.tables.set(ParkingOperation, [{ id: 30, tenantId: 1, status: 'running' }]);
+  await assert.rejects(h.service.releaseReversed(1, true, h.user, { scopeAll: false, communityIds: [99] }), /范围/);
+  await assert.rejects(h.service.releaseReversed(1, false, h.user, access), /未入库/);
+  await assert.rejects(h.service.releaseReversed(1, true, h.user, access), /足额/);
+  h.transactions()[1].amountCents = -45000;
+  await assert.rejects(h.service.releaseReversed(1, true, h.user, access), /仍在运行/);
+  h.tables.get(ParkingOperation)![0].status = 'failed';
+  h.tables.get(ParkingOperation)!.push({ id: 31, tenantId: 1, status: 'completed', idempotencyKey: 'biz:PK-10:register:parking1' });
+  await assert.rejects(h.service.releaseReversed(1, true, h.user, access), /可能已执行/);
+  h.tables.get(ParkingOperation)!.pop();
+  h.tables.set(ParkingVehicle, [{ id: 99, tenantId: 1, plateNo: h.row().plate }]);
+  await assert.rejects(h.service.releaseReversed(1, true, h.user, access), /已有|车辆档案/);
+  h.tables.set(ParkingVehicle, []);
+  const before = structuredClone(h.row());
+  const ledger = structuredClone(h.transactions());
+  const released = await h.service.releaseReversed(1, true, h.user, access);
+  assert.equal(released.status, 'void');
+  assert.equal(h.row().transactionId, 10);
+  assert.deepEqual(h.transactions(), ledger);
+  assert.deepEqual(h.row().files, before.files);
+  assert.equal(h.row().log.at(-1).action, REVERSED_INTAKE_RELEASED);
+  assert.equal((await h.service.releaseReversed(1, true, h.user, access)).log.filter((entry: any) => entry.action === REVERSED_INTAKE_RELEASED).length, 1);
+  assert.deepEqual(h.kicked, []);
+});
 
 test('conversion preserves documents/contact/audit but invalidates approval and never inherits incompatible garages', async () => {
   const h = fixture(); const before = structuredClone(h.row());
