@@ -24,10 +24,21 @@ test('先收款后扫码时从原收款快照取类别，四类均映射月租�
  for(const [cls,identity] of [['住户车-1','住户车'],['住户车-3','住户车'],['租户车-1','租户车'],['租户车-2','租户车'],['产权车位','住户车']]) {
   const h=fixture();h.txn.amountCents=15000;h.intake.vehicleClass='';h.txn.snapshot.estimate={vehicleClass:cls};
   await h.s.runOne(90);assert.equal(h.ops[0]?.kind,'add_vehicle',cls+' 应进入原新增队列');
-  assert.equal(h.ops[0].payload.startDate,undefined,'未启用开始日期');
+  assert.equal(h.ops[0].payload.startDate,h.txn.startDate,'未手填起期时使用原收款起期');
   assert.equal(h.ops[0].payload.carType,1,cls+' 授权类型应为月租车');assert.equal(h.ops[0].payload.identity,identity,cls);
   assert.equal(h.ops[0].payload.amount,150);assert.equal(h.txn.amountCents,15000);
  }
+});
+
+test('一期新办任务明确传递开始日期，并保留手动指定的日期', async () => {
+  for (const override of [undefined, '2026-11-09']) {
+    const h = fixture();
+    h.intake.garages = ['local:phase1_parking'];
+    h.txn.snapshot.parking.legacyStartDate = override;
+    await h.s.runOne(90);
+    assert.equal(h.ops[0]?.database, 'parking1');
+    assert.equal(h.ops[0]?.payload.startDate, override ?? h.txn.startDate);
+  }
 });
 
 test('原收款快照优先于后来填写的类别，未知或冲突类别不自动猜测',async()=>{

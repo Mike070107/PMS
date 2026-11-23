@@ -380,6 +380,9 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
           (intake.shopBuildingId ?? null) !== (reference?.shopBuildingId ?? null) ||
           intake.transactionId !== txn.id || intake.plate !== plate) throw new BadRequestException('新车资料未通过审核或与原收款记录不一致，禁止自动开通');
       if (!plate || !endDate || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || !txn.startDate || !txn.createdBy) throw new BadRequestException('新车登记缺少车牌、有效期或原办理人');
+      // The original quote starts a new registration on the payment day unless a date was specified.
+      const registrationStart = legacyStart || txn.startDate;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(registrationStart) || registrationStart > endDate) throw new BadRequestException('新车登记开始日期无效或晚于到期日');
       const property = intake.houseId == null ? null : await this.txnRepo.manager.getRepository(House).findOne({
         where: { tenantId: txn.tenantId, id: intake.houseId }, relations: { building: true, unit: true },
       });
@@ -444,7 +447,7 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
           idempotencyKey: `biz:${txn.txnNo}:register:${database}`,
           payload: { plate, ownerRoom, ownerName: intake.ownerName || ownerRoom, ownerAddress,
             ownerPhone: intake.contactPhone || intake.ownerPhone, identity, carType, amount: index === 0 ? txn.amountCents / 100 : 0,
-            ...(legacyStart ? { startDate: legacyStart } : {}), endDate, effective: bits, download: '0'.repeat(256), state: 1,
+            startDate: registrationStart, endDate, effective: bits, download: '0'.repeat(256), state: 1,
             garages: [...new Set(garages.filter(g => database === 'parking1' ? g === 'phase1' : g !== 'phase1'))],
             garageNumbers: intake.garageNumbers, spaces: database === 'parking2' ? intake.garageNumbers.main || '' : '',
             duplicateCheckQueryId: query!.id, businessTxnNo: txn.txnNo, note: `操作来源：PMS系统；新办流水 ${txn.txnNo}` },

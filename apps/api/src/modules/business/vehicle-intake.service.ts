@@ -699,9 +699,17 @@ export class VehicleIntakeService {
     await this.assertNoCreatedFamily(row, repo.manager);
     if (normalizeFamilyPlate(row.plate)) await claimVehicleRegistration(repo.manager, { tenantId: row.tenantId, plate: row.plate, intakeId: row.id });
     if (this.canConfigureApproved(row) || (this.isHomeUpload(row) && row.status !== 'approved')) {
-      if (!row.garages.length || !row.vehicleClass) throw new BadRequestException('请先选择车辆类别和车库');
+      if (!row.garages.length) throw new BadRequestException('请先选择车库');
+      // The cashier can quote a default class without a separate class-selection request.
+      const quote = txn.snapshot?.estimate as { vehicleClass?: string | null } | undefined;
+      const vehicleClass = row.vehicleClass || this.cls(quote?.vehicleClass);
+      if (!vehicleClass) throw new BadRequestException('请先选择车辆类别');
       if (row.garages.includes('deliyun:枫桦景苑') && !row.garages.some(g => g === 'local:phase2_parking' || g === 'local:phase2_main_garage')) throw new BadRequestException('人防车库须同时选择二期地面入口');
       await this.bindSpaces(row, user, repo.manager);
+      if (!row.vehicleClass) {
+        row.vehicleClass = vehicleClass;
+        row.log = [...row.log, await this.entry(user, '收款确认车辆类别', vehicleClass)];
+      }
     }
     row.transactionId = txn.id;
     const systems = ((txn.snapshot?.parking as { systems?: Array<{ label?: string }> } | undefined)?.systems ?? []).map((s) => s.label).filter(Boolean);

@@ -92,6 +92,26 @@ const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x4
 const file = (name = 'xsz.jpg') => ({ buffer: jpeg, originalname: name }) as any;
 const tokenOf = (url: string) => url.split('/').pop()!;
 
+test('收款按报价保存未手点的车类，车库仍须在登记单上明确选择', async () => {
+  const { service, intakes, txns, user } = setup();
+  const created = await service.create({ houseId: 5, kind: 'paid', formBase: 'https://prsznh.cn/beta/m/plate' }, user);
+  const row = intakes.rows[0];
+  Object.assign(row, { status: 'approved', vehicleClass: '', garages: [] });
+  row.log.push({ action: '资料审核通过，待选授权' });
+  const claim = await service.claimForPayment(created.id, 5, user);
+  const txn = await txns.save({
+    tenantId: 1, txnNo: 'PK-DEFAULT', amountCents: 15000, externalSyncStatus: 'queued',
+    snapshot: { estimate: { vehicleClass: '住户车-1' } },
+  });
+  await assert.rejects(() => service.attachPayment(claim.row, txn, user), /车库/);
+  assert.equal(row.vehicleClass, '');
+  row.garages = ['local:phase2_parking'];
+  await service.attachPayment(claim.row, txn, user);
+  const persisted = await intakes.findOne({ where: { id: created.id, tenantId: 1 } });
+  assert.equal(persisted.vehicleClass, '住户车-1');
+  assert.equal(persisted.transactionId, txn.id);
+});
+
 test('paid intake: owner fills plate on phone, payment waits for docs, approval releases it into execution', async () => {
   const { service, intakes, txns, user, kicked } = setup();
   const created = await service.create({ houseId: 5, kind: 'paid', garages: ['local:phase2_parking'], formBase: 'https://prsznh.cn/beta/m/plate' }, user);
