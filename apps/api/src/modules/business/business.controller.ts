@@ -149,8 +149,8 @@ export class BusinessController {
 
   @Post('estimate')
   @RequirePermission('business', 'view')
-  estimate(@Body() dto: EstimateBusinessDto, @CurrentUser() user: AuthUser) {
-    return this.businessService.estimate(dto, user);
+  estimate(@Body() dto: EstimateBusinessDto, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.businessService.estimate(dto, user, access);
   }
 
   @Post('complete')

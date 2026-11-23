@@ -22,6 +22,8 @@ const rules = [
 test('自定义11个月：收银台及车辆续期接真实服务算法，桌面/窄屏、套餐、0元、缺价、等待和错误恢复', { timeout: 120000 }, async () => {
   fs.mkdirSync(evidence, { recursive: true });
   const svc = Object.create(BusinessService.prototype); svc.today = () => '2026-11-15';
+  svc.findRule = async (_tenantId, ruleId) => rules.find(rule => rule.id === ruleId);
+  svc.txnRepo = { query: async () => [] };
   const calls = [], errors = [];
   const built = await esbuild.build({ stdin: { resolveDir: app, loader: 'tsx', contents: `
 import React,{useState} from 'react'; import {createRoot} from 'react-dom/client';
@@ -32,11 +34,11 @@ window.__priceRule=priceRule;
 function Fixture(){const [cart,setCart]=useState(null);const rule=window.__rule;const vehicle=new URLSearchParams(location.search).has('vehicle');
 const lot={key:'local1',targetKey:'local:phase1_parking',label:'一期地面',endDate:'2027-01-31',system:'local',ref:{kind:'local',database:'parking1',sourceRecordId:'1',previousEndDate:'2027-01-31',label:'一期地面'}};
 return <ConfigProvider><main style={{padding:12,maxWidth:1000,margin:'auto'}}><h1>自定义月份隔离验收</h1><p>合成车辆，不真实收费，不下发设备</p>{vehicle?<RenewSheet plate="沪TEST01" rows={[{database:'parking1',fields:{P_id:1,P_plate:'沪TEST01',P_enddate:'2027-01-31',P_effective:'0000101000000000000000',Car_Brand:'亲情车'}}]} cloud={null} onClose={()=>{}} onDone={()=>{}}/>:<><CarRenewal car={{plate:'沪TEST01',identity:'亲情车',lots:[lot]}} rules={[rule]} house={{id:1,communityId:1}} onCart={(_,c)=>setCart(c)}/><output id="cart" style={{display:'block',overflowWrap:'anywhere'}}>{cart?JSON.stringify(cart.estimate):'无可收款报价'}</output></>}</main></ConfigProvider>}
-createRoot(document.getElementById('root')).render(<Fixture/>);` }, bundle: true, write: false, outfile: 'entry.js', format: 'iife', jsx: 'automatic', alias: { '@': path.join(app, 'src') }, define: { 'process.env.NODE_ENV': '"development"', 'import.meta.env.BASE_URL': '"/"' }, plugins: [{ name: 'loopback-only', setup(b) {
+createRoot(document.getElementById('root')).render(<Fixture/>);` }, bundle: true, write: false, outfile: 'entry.js', format: 'iife', jsx: 'automatic', alias: { '@': path.join(app, 'src') }, plugins: [{ name: 'loopback-only', setup(b) {
     b.onResolve({ filter: /^@pms\/api-client$/ }, () => ({ path: 'api', namespace: 'fixture' }));
     b.onResolve({ filter: /^@\/lib\/perm$/ }, () => ({ path: 'perm', namespace: 'fixture' }));
-    b.onLoad({ filter: /.*/, namespace: 'fixture' }, a => ({ loader: 'js', contents: a.path === 'perm' ? 'export const can=()=>true;' : `export const uploadBlobTo=async()=>{throw Error('Unexpected upload in price-only fixture')};export const accessCardIssuance={};export async function request(o){const r=await fetch('/fixture'+o.url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(o.data||{})});const v=await r.json();if(!r.ok)throw Error(v.error);return v;}` }));
-  } }] });
+    b.onLoad({ filter: /.*/, namespace: 'fixture' }, a => ({ loader: 'js', contents: a.path === 'perm' ? 'export const can=()=>true;' : `export const uploadBlobTo=async()=>{throw Error('Unexpected upload in price-only fixture')};export const accessCardIssuance={},address={},repairs={};export async function request(o){const r=await fetch('/fixture'+o.url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(o.data||{})});const v=await r.json();if(!r.ok)throw Error(v.error);return v;}` }));
+  } }], define: { 'process.env.NODE_ENV': '"development"', 'import.meta.env': '{"BASE_URL":"/","VITE_API_BASE_URL":"/fixture"}' } });
   const js = built.outputFiles.find(f => f.path.endsWith('.js')).contents, css = built.outputFiles.find(f => f.path.endsWith('.css'))?.contents || '';
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
@@ -51,7 +53,7 @@ createRoot(document.getElementById('root')).render(<Fixture/>);` }, bundle: true
         const rule = rules.find(r => r.id === data.ruleId); assert.ok(rule);
         // Deliberate quote delay proves old cart is invalidated while waiting.
         await new Promise(resolve => setTimeout(resolve, 150));
-        return res.end(JSON.stringify(svc.estimateParking(rule, data, 91)));
+        return res.end(JSON.stringify(await svc.estimate(data, { tenantId: 91 }, { scopeAll: false, communityIds: [1] })));
       } catch (e) { res.statusCode = 400; return res.end(JSON.stringify({ error: e.message })); }
     }
     if (url.pathname === '/entry.js') { res.setHeader('content-type', 'text/javascript'); return res.end(js); }
@@ -71,11 +73,12 @@ createRoot(document.getElementById('root')).render(<Fixture/>);` }, bundle: true
     async function waitCart(months, amountCents) { await page.waitForFunction(([m, a]) => { try { const v = JSON.parse(document.querySelector('#cart').textContent); return v.quantity === m && v.amountCents === a; } catch { return false; } }, [months, amountCents]); }
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 1000 }); await page.goto(origin);
-      await waitCart(6, 90000);
+      await waitCart(12, 150000);
       const input = page.getByLabel('自定义续期月数'); await input.fill('11');
       assert.equal(await cart().textContent(), '无可收款报价', '等待时旧报价立即失效');
       await waitCart(11, 165000);
       const quote = JSON.parse(await cart().textContent()); assert.equal(quote.startDate, '2027-02-01'); assert.equal(quote.endDate, '2027-12-31');
+      assert.deepEqual(quote.recordedPaymentsToday, []);
       assert.match(quote.breakdown, /11个月 × 150元\/月/);
       const geometry = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth })); assert.ok(geometry.scroll <= width + 1, JSON.stringify(geometry));
       await page.screenshot({ path: path.join(evidence, `cashier-11-${width}.png`), fullPage: true, animations: 'disabled' });
@@ -95,7 +98,7 @@ createRoot(document.getElementById('root')).render(<Fixture/>);` }, bundle: true
       await page.getByRole('button', { name: '12 个月', exact: true }).click(); await waitCart(12, 150000);
       await page.goto(`${origin}/?vehicle=1`);
       await page.getByLabel('续期车辆类别').selectOption('18');
-      await page.getByLabel('自定义续期月数').fill('11'); await page.getByText('标准 ¥1650（亲情车）', { exact: true }).waitFor();
+      await page.getByLabel('自定义续期月数').fill('11'); await page.getByText('标准 ¥1650', { exact: true }).waitFor();
       assert.equal(await page.locator('.sheet .btn.p').isDisabled(), false);
       assert.equal(await page.getByLabel('续期结束日期').inputValue(), '2027-12-31');
       await page.screenshot({ path: path.join(evidence, `vehicle-11-${width}.png`), fullPage: true, animations: 'disabled' });

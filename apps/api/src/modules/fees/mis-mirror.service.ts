@@ -1000,7 +1000,12 @@ export class MisMirrorService {
     const [result] = await this.dataSource.query(`WITH receipts AS (${sql})
       SELECT COUNT(*)::int AS total, COALESCE(SUM("amountCents"),0)::bigint AS amount,
         (SELECT json_agg(to_jsonb(r)-'id' ORDER BY r."paidAt" DESC,r.id DESC)
-         FROM (SELECT * FROM receipts ORDER BY "paidAt" DESC,id DESC LIMIT $4 OFFSET $5) r) AS rows
+         FROM (
+           SELECT receipts.*,
+             CASE WHEN NULLIF(BTRIM(plate),'') IS NOT NULL
+               THEN COUNT(*) OVER (PARTITION BY UPPER(BTRIM(plate)))::int END AS "samePlateCount"
+           FROM receipts ORDER BY "paidAt" DESC,id DESC LIMIT $4 OFFSET $5
+         ) r) AS rows
       FROM receipts`, [...args, limit, offset]);
     return { total: Number(result.total), amountCents: Number(result.amount), rows: result.rows ?? [] };
   }

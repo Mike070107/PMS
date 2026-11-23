@@ -465,6 +465,9 @@ textarea.in{height:auto;padding:9px 12px;min-height:72px;resize:vertical}
 .parkingCartItem .cv{grid-column:3;grid-row:1}
 .parkingCartItem .cx .parkingCartSummary{grid-column:1 / -1;grid-row:2;font-size:16px;font-weight:600;line-height:1.5;color:var(--ink2);overflow-wrap:anywhere}
 .parkingCartSummary > span{display:block}
+.parking-payment-note{grid-column:1 / -1;margin-top:5px;padding:8px 10px;border-radius:8px;background:var(--warn-w);color:var(--ink);font-size:13px;line-height:1.45;overflow-wrap:anywhere}
+.parking-payment-note ul{margin:4px 0 0;padding-inline-start:17px}
+.parking-payment-note li span{display:block}
 .cartItem .rm{color:var(--ink4);padding:2px} .cartItem .rm:hover{color:var(--dang)}
 .cartItem.free .cv{color:var(--ok)}
 .cartEmpty{padding:44px 24px;text-align:center;color:var(--ink3)}

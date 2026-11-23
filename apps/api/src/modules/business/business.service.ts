@@ -682,16 +682,37 @@ export class BusinessService {
     };
   }
 
-  async estimate(dto: EstimateBusinessDto, user: AuthUser) {
+  async estimate(dto: EstimateBusinessDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
     const rule = await this.findRule(tenantId, dto.ruleId, dto.serviceType);
     if (dto.serviceType === BusinessServiceType.PARKING_MONTHLY) {
-      return this.estimateParking(rule, dto, tenantId);
+      const quote = this.estimateParking(rule, dto, tenantId);
+      const plate = normPlate(dto.plateNo || '');
+      if (!access || !/^[\u4e00-\u9fff][A-Z][A-Z0-9]{5,6}$/.test(plate)) return quote;
+      const recordedPaymentsToday = await this.parkingPaymentsToday(tenantId, plate, scopeCommunityIds(access)).catch(() => null);
+      return { ...quote, recordedPaymentsToday };
     }
     if (dto.serviceType === BusinessServiceType.ACCESS_CARD) {
       return this.estimateAccessCard(rule, dto);
     }
     throw new BadRequestException('unsupported service type');
+  }
+
+  private parkingPaymentsToday(tenantId: number, plate: string, scope: number[] | null) {
+    return this.txnRepo.query<{
+      txnNo: string; paidAt: string; amountCents: number; startDate: string | null; endDate: string | null;
+    }[]>(`
+      SELECT txn_no AS "txnNo", to_char(created_at AT TIME ZONE 'Asia/Shanghai', 'HH24:MI:SS') AS "paidAt",
+        amount_cents AS "amountCents", start_date::text AS "startDate", end_date::text AS "endDate"
+      FROM business_transactions
+      WHERE tenant_id = $1 AND service_type = 'parking_monthly' AND status = 'paid' AND amount_cents > 0
+        AND ($2::int[] IS NULL OR community_id = ANY($2::int[]))
+        AND created_at >= ($3::date::timestamp AT TIME ZONE 'Asia/Shanghai')
+        AND created_at < (($3::date + 1)::timestamp AT TIME ZONE 'Asia/Shanghai')
+        AND UPPER(regexp_replace(COALESCE(NULLIF(snapshot#>>'{parking,plate}', ''), snapshot#>>'{vehicle,plateNo}'),
+          '[[:space:]·.．・-]', '', 'g')) = $4
+      ORDER BY created_at DESC, id DESC
+    `, [tenantId, scope, this.today(), plate]);
   }
 
   async complete(dto: CompleteBusinessDto, user: AuthUser, access?: ResolvedAccess) {

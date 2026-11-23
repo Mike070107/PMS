@@ -17,7 +17,7 @@ const phaseKeys: Phase[] = ['parking1', 'parking2'];
 type Source = 'mis' | 'pms';
 const sourceLabels = {mis:'MIS 人工录入', pms:'PMS 实收'};
 const compare = (id: Category) => id === 'berth' || id === 'garage';
-type Row = { vehicleClass?: string; paidAt: string; plate: string | null; period: string | null; amountCents: number; remark: string | null };
+type Row = { vehicleClass?: string; paidAt: string; plate: string | null; period: string | null; amountCents: number; remark: string | null; samePlateCount?: number | null };
 type Result = { total: number; amountCents: number; rows: Row[] };
 type Unavailable = { available: false; reason: string; retryable?: boolean };
 type Response = Result | Unavailable;
@@ -68,7 +68,18 @@ function Details({ date, category, firstPage, phase, source }: { source?:Source;
         <div className={category[0] === 'temporary' ? 'intro-table-wrap income-exit-wrap' : 'intro-table-wrap'}>
           <table className="t usage-table income-details">
           <thead><tr>{(category[0] === 'temporary' ? ['出场时间','车牌','车类','停车时段','应收金额','备注'] : ['收费时间','车牌','费用时段','收费金额','备注']).map(title => <th key={title}>{title}</th>)}</tr></thead>
-          <tbody>{data.rows.map((r,i) => <tr key={i}><td>{r.paidAt}</td><td>{r.plate || '—'}</td>{category[0] === 'temporary' && <td>{r.vehicleClass}</td>}<td>{r.period?.replace(/^(\d{4})(\d{2})$/, '$1-$2') || '—'}</td><td className="usage-num">{money(r.amountCents/100)}</td><td>{r.remark || '—'}</td></tr>)}</tbody>
+          <tbody>{data.rows.map((r,i) => <tr key={i}>
+            <td>{r.paidAt}</td>
+            <td>
+              {r.plate || '—'}
+              {source === 'pms' && compare(category[0]) && (r.samePlateCount ?? 0) > 1 &&
+                <small className="income-repeat">同日 {r.samePlateCount} 笔，核对是否重复</small>}
+            </td>
+            {category[0] === 'temporary' && <td>{r.vehicleClass}</td>}
+            <td>{r.period?.replace(/^(\d{4})(\d{2})$/, '$1-$2') || '—'}</td>
+            <td className="usage-num">{money(r.amountCents/100)}</td>
+            <td>{r.remark || '—'}</td>
+          </tr>)}</tbody>
         </table></div>
         <div className="erp-fee-detail-foot"><span>共 {data.total} 条</span>{(page>1 || data.total>20) && <div className="today-recent-pager">
           <button className="btn sm" disabled={page<=1} onClick={() => setPage(n=>n-1)}>上一页</button>

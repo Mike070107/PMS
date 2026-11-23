@@ -34,7 +34,10 @@ export interface ParkHouse { id: number | null; shopBuildingId?: number; communi
 export type SystemRef =
   | { kind: 'local'; database: 'parking1' | 'parking2'; sourceRecordId: string; previousEndDate: string | null; label: string; queryId?: number; targetKey?: string }
   | { kind: 'deliyun'; park: string; label: string };
-interface Estimate { unitPriceCents: number; quantity: number; startDate: string | null; endDate: string | null; amountCents: number; standardAmountCents?: number | null; requiresReview?: boolean; summary: string; breakdown?: string; vehicleClass?: string | null }
+interface RecordedPayment {
+  txnNo: string; paidAt: string; amountCents: number; startDate: string | null; endDate: string | null;
+}
+interface Estimate { unitPriceCents: number; quantity: number; startDate: string | null; endDate: string | null; amountCents: number; standardAmountCents?: number | null; requiresReview?: boolean; summary: string; breakdown?: string; vehicleClass?: string | null; recordedPaymentsToday?: RecordedPayment[] | null }
 
 /** 一辆车在某套停车系统里的一条登记 */
 interface Lot {

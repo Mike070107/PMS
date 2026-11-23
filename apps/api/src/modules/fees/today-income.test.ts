@@ -36,10 +36,31 @@ test('income preserves bill-level amounts across sources, Beijing midnight, tena
     assert.equal(total.amountCents,21*6750); assert.equal(total.total,21); assert.equal(total.rows.length,0);
     assert.equal(pms.amountCents,6750); assert.equal(pms.total,1);
     assert.equal(pms.rows[0].plate,'沪A12345'); assert.equal(pms.rows[0].paidAt,'2026-11-20 00:00:00');
+    assert.equal(pms.rows[0].samePlateCount, 1);
+    await db.exec(`
+      INSERT INTO business_transactions
+      SELECT n,1,10,'parking_monthly','paid',100,NULL,NULL,NULL,
+        jsonb_build_object('vehicle',jsonb_build_object('plateNo','TEST'||n)),'2026-11-20 01:00Z'
+        FROM generate_series(10,29) n;
+      INSERT INTO business_transactions VALUES
+        (30,1,10,'parking_monthly','paid',75000,'2027-04-30','2027-04-30',NULL,'{"parking":{"plate":" su99999 "}}','2026-11-20 02:00Z'),
+        (31,1,10,'parking_monthly','paid',75000,'2026-12-01','2027-04-30',NULL,'{"vehicle":{"plateNo":"SU99999"}}','2026-11-20 00:00Z'),
+        (32,2,10,'parking_monthly','paid',75000,NULL,NULL,NULL,'{"vehicle":{"plateNo":"SU99999"}}','2026-11-20 00:00Z'),
+        (33,1,20,'parking_monthly','paid',75000,NULL,NULL,NULL,'{"vehicle":{"plateNo":"SU99999"}}','2026-11-20 00:00Z'),
+        (34,1,10,'parking_monthly','refunded',75000,NULL,NULL,NULL,'{"vehicle":{"plateNo":"SU99999"}}','2026-11-20 00:00Z');
+    `);
+    const berth = (offset: number, limit: number) => svc.incomeFromPms('berth',day,user,access,undefined,offset,limit);
+    const berthFirst = await incomePage(1, berth), berthLast = await incomePage(2, berth);
+    assert.equal(berthFirst.total, 22);
+    assert.equal(berthFirst.amountCents, 152000);
+    assert.equal(berthLast.amountCents, 152000);
+    assert.equal(berthFirst.rows[0].samePlateCount, 2);
+    assert.equal(berthLast.rows[1].samePlateCount, 2);
+    assert.ok(berthFirst.rows.slice(1).every(row => row.samePlateCount === 1));
     assert.equal(first.rows.length,20); assert.equal(last.rows.length,1);
     assert.equal([...first.rows,...last.rows].reduce((n,row)=>n+row.amountCents,0),total.amountCents);
     assert.equal(first.rows[0].remark,'备注');
-    for (const [category,amount] of [['berth',0],['card',500],['repair',1200]] as const) {
+    for (const [category,amount] of [['berth',152000],['card',500],['repair',1200]] as const) {
       assert.equal((await svc.incomeFromPms(category,day,user,access,undefined,0,20)).amountCents,amount);
     }
     await assert.rejects(svc.incomeFromPms('card',day,user,access,[20],0,20));

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { PGlite } from '@electric-sql/pglite';
 import { BusinessService } from './business.service';
 import { BusinessLog, BusinessTransaction, ParkingPlateTag, ParkingQuery } from '../../entities';
 import { parkingRenewalWindow } from './parking-renewal-window';
@@ -19,6 +20,47 @@ test('试算和收款DTO都不能把空白实收转换为0元', async () => {
 const service: any = Object.create(BusinessService.prototype);
 service.today = () => '2026-11-05';
 const rule: any = { id: 18, billingUnit: 'month', unitPriceCents: 15000, config: { vehicleClass: '住户车-1', tiers: [{ months: 1, amountCents: 15000 }, { months: 12, amountCents: 150000 }] } };
+
+test('停车试算列出北京时间当天同车牌的已收款原流水，并保留不同收费时段', async () => {
+  const db = new PGlite();
+  const svc: any = Object.create(BusinessService.prototype);
+  svc.today = () => '2026-11-23';
+  svc.findRule = async () => rule;
+  svc.txnRepo = { query: async (sql: string, args: unknown[]) => (await db.query(sql, args)).rows };
+  try {
+    await db.exec(`
+      CREATE TABLE business_transactions (
+        id int, tenant_id int, community_id int, txn_no text, service_type text, status text,
+        amount_cents int, start_date date, end_date date, created_at timestamptz, snapshot jsonb
+      );
+      INSERT INTO business_transactions VALUES
+        (1,1,2,'PK-A','parking_monthly','paid',75000,'2026-12-01','2027-04-30','2026-11-23 09:57:53Z','{"parking":{"plate":"苏U93·5Z7"}}'),
+        (2,1,2,'PK-B','parking_monthly','paid',12000,'2027-05-01','2027-05-31','2026-11-23 13:08:07Z','{"vehicle":{"plateNo":"苏U935Z7"}}'),
+        (3,1,2,'PK-REFUND','parking_monthly','refunded',75000,NULL,NULL,'2026-11-23 13:08:07Z','{"vehicle":{"plateNo":"苏U935Z7"}}'),
+        (4,1,3,'PK-HIDDEN','parking_monthly','paid',75000,NULL,NULL,'2026-11-23 13:08:07Z','{"vehicle":{"plateNo":"苏U935Z7"}}'),
+        (5,2,2,'PK-TENANT','parking_monthly','paid',75000,NULL,NULL,'2026-11-23 13:08:07Z','{"vehicle":{"plateNo":"苏U935Z7"}}'),
+        (6,1,2,'PK-TOMORROW','parking_monthly','paid',75000,NULL,NULL,'2026-11-23 16:00:00Z','{"vehicle":{"plateNo":"苏U935Z7"}}');
+    `);
+    const dto = { serviceType: 'parking_monthly', ruleId: 18, plateNo: '苏u935z7', months: 1, currentEndDate: '2027-05-31' };
+    const user = { id: 1, tenantId: 1 };
+    const access = { scopeAll: false, communityIds: [2] };
+    const quote = await svc.estimate(dto, user, access);
+    assert.equal(quote.startDate, '2027-06-01');
+    assert.equal(quote.amountCents, 15000);
+    assert.deepEqual(quote.recordedPaymentsToday, [
+      { txnNo: 'PK-B', paidAt: '21:08:07', amountCents: 12000, startDate: '2027-05-01', endDate: '2027-05-31' },
+      { txnNo: 'PK-A', paidAt: '17:57:53', amountCents: 75000, startDate: '2026-12-01', endDate: '2027-04-30' },
+    ]);
+    assert.deepEqual((await svc.estimate({ ...dto, plateNo: '苏U99999' }, user, access)).recordedPaymentsToday, []);
+    assert.equal((await svc.estimate(dto, user)).recordedPaymentsToday, undefined, 'internal settlement estimate stays unchanged');
+    svc.txnRepo.query = async () => { throw new Error('lookup unavailable'); };
+    const unavailable = await svc.estimate(dto, user, access);
+    assert.equal(unavailable.recordedPaymentsToday, null);
+    assert.equal(unavailable.amountCents, quote.amountCents);
+  } finally {
+    await db.close();
+  }
+});
 
 test('无 PMS 房号按现场查询锁定旧库车辆，登记一笔流水并保留档案归属', async () => {
   const svc: any = Object.create(BusinessService.prototype);

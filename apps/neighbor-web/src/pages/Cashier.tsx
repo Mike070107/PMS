@@ -820,7 +820,29 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
               ) : tab === 'pk' ? (
                 parkCarts.length ? (<>
                   {parkCarts.map((pc) => (
-                    <div className="cartItem parkingCartItem" key={pc.plate}><div className="xi ic green"><Icon name="car" size={18} /></div><div className="cx"><b>{pc.plate} · {pc.custom ? '自定日期' : `${pc.months} 个月`}{pc.custom ? <span className="tag warn" style={{ marginLeft: 6, height: 20 }}>需经理审核</span> : null}</b><small className="parkingCartSummary"><span>{pc.systemsLabel}</span><span>{pc.estimate.startDate} → {pc.estimate.endDate}</span></small></div><div className="cv money">{money(pc.estimate.amountCents / 100)}</div></div>
+                    <div className="cartItem parkingCartItem" key={pc.plate}>
+                      <div className="xi ic green"><Icon name="car" size={18} /></div>
+                      <div className="cx">
+                        <b>{pc.plate} · {pc.custom ? '自定日期' : `${pc.months} 个月`}{pc.custom ? <span className="tag warn" style={{ marginLeft: 6, height: 20 }}>需经理审核</span> : null}</b>
+                        <small className="parkingCartSummary"><span>{pc.systemsLabel}</span><span>{pc.estimate.startDate} → {pc.estimate.endDate}</span></small>
+                      </div>
+                      <div className="cv money">{money(pc.estimate.amountCents / 100)}</div>
+                      {pc.estimate.recordedPaymentsToday === null ? (
+                        <div className="parking-payment-note" role="status">暂时无法核对当天的收款记录</div>
+                      ) : !!pc.estimate.recordedPaymentsToday?.length && (
+                        <div className="parking-payment-note" role="status">
+                          <strong>当天已登记 {pc.estimate.recordedPaymentsToday.length} 笔停车收款，请核对后确认。</strong>
+                          <ul>
+                            {pc.estimate.recordedPaymentsToday.map(payment => (
+                              <li key={payment.txnNo}>
+                                {payment.paidAt} · {money(payment.amountCents / 100)}
+                                <span>{payment.startDate && payment.endDate ? `${payment.startDate} 至 ${payment.endDate}` : '费用时段未记录'} · {payment.txnNo}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
                   ))}
                   {!parkReady ? <div className="muted" style={{ fontSize: 13, padding: '4px 2px' }}>还有勾选的车没算出金额（缺收费标准、没勾系统，或自定日期没填金额/原因），处理后才能收款</div> : null}
                 </>) : <div className="cartEmpty"><Icon name="car" /><div>勾选要缴费的车和续期月份</div></div>

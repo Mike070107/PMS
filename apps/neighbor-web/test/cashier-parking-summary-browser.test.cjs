@@ -19,7 +19,8 @@ import '@/styles/design.css';import '@/styles/app.css';import '@/styles/erp-refe
 function Fixture(){const [confirmed,setConfirmed]=useState(false),[pay,setPay]=useState('现金');
 const isBillTab=false,tab='pk',billLabel='',parkReady=true,busy=false,canCharge=true,cartTotal=150000;
 const PAYMENTS=[{k:'现金'},{k:'微信'},{k:'支付宝'},{k:'转账'}];
-const parkCarts=[{plate:'沪M03212',months:12,systemsLabel:'一期地面车库',estimate:{startDate:'2027-01-01',endDate:'2027-12-31',amountCents:150000}}];
+const parkCarts=[{plate:'沪M03212',months:12,systemsLabel:'一期地面车库',estimate:{startDate:'2027-01-01',endDate:'2027-12-31',amountCents:150000,
+recordedPaymentsToday:[{txnNo:'PK-TEST-1',paidAt:'17:57:53',startDate:'2026-12-01',endDate:'2027-04-30',amountCents:75000},{txnNo:'PK-TEST-2',paidAt:'21:08:07',startDate:'2027-05-01',endDate:'2027-05-31',amountCents:12000}]}}];
 const charge=()=>{window.__submitted=(window.__submitted||0)+1};
 return <main style={{maxWidth:400,margin:'24px auto',padding:12}}><IconSprite/>${cart}</main>}
 createRoot(document.getElementById('root')).render(<Fixture/>);` }, bundle: true, write: false, format: 'iife', jsx: 'automatic', outfile: 'fixture.js', alias: { '@': path.join(app, 'src') }, define: { 'process.env.NODE_ENV': '"test"' } });
@@ -31,7 +32,7 @@ createRoot(document.getElementById('root')).render(<Fixture/>);` }, bundle: true
   try {
     browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true });
     for (const width of [1440,375,320]) {
-      const page = await browser.newPage({viewport:{width,height:900}});
+      const page = await browser.newPage({viewport:{width,height:width === 320 ? 560 : 900}});
       page.on('pageerror', e => errors.push(e.message));
       const origin = `http://127.0.0.1:${server.address().port}`;
       await page.route('**/*', r => r.request().url().startsWith(origin) ? r.continue() : r.abort());
@@ -50,6 +51,10 @@ createRoot(document.getElementById('root')).render(<Fixture/>);` }, bundle: true
       assert.ok(parseFloat(geometry.fontSize)>=16);assert.ok(Number(geometry.fontWeight)>=600);
       assert.ok(geometry.scroll<=width);for(const r of geometry.controls)assert.ok(r.x>=0&&r.right<=width);
       assert.equal(await page.locator('.cv').textContent(),'¥ 1500.00');
+      const paymentNote = page.getByRole('status').filter({hasText:'当天已登记 2 笔停车收款，请核对后确认。'});
+      await paymentNote.waitFor();
+      assert.match(await paymentNote.innerText(),/17:57:53.*750\.00[\s\S]*2026-12-01 至 2027-04-30.*PK-TEST-1/);
+      assert.match(await paymentNote.innerText(),/21:08:07.*120\.00[\s\S]*2027-05-01 至 2027-05-31.*PK-TEST-2/);
       const submit=page.getByRole('button',{name:'确认收款 · ¥ 1500.00',exact:true});
       assert.equal(await submit.isDisabled(),true);await page.locator('.confirmLine').click();assert.equal(await submit.isDisabled(),false);await submit.click();
       assert.equal(await page.evaluate(()=>window.__submitted),1);

@@ -24,6 +24,12 @@ test('income amounts fit narrow cards and open five-column paged receipts', asyn
         {database:data.database,fields:{kind:'detail',vehicleClass:first?'临时车':'亲情车',occurredAt:'2026-11-20 19:23:50',enteredAt:'2026-11-20 18:42:52',plate:'测试车',amountCents}}]};
     }
     if(q.category==='temporary')return {available:false,reason:'停车实收待核对'};
+    if(q.category==='berth' && q.source==='pms')return {
+      amountCents:152000,total:22,rows:q.page?[{
+        paidAt:q.page===2?'2026-11-20 17:57:53':'2026-11-20 21:08:07',
+        plate:'苏U935Z7',amountCents:75000,samePlateCount:2,
+      },{paidAt:q.date,plate:'沪B12345',amountCents:100,samePlateCount:1}]:[],
+    };
     if(q.category==='garage' && q.source==='mis' && window.phaseError)throw Error('MIS读取失败');
     if(q.category==='garage' && q.source==='pms')return {amountCents:10000,total:1,rows:q.page?[{paidAt:'2026-11-20',plate:'沪B12345',amountCents:10000,remark:'PMS合成明细'}]:[]};
     if(q.category==='garage')return {amountCents:123456789,total:21,rows:q.page?[{paidAt:'2026-11-20',period:'202611',plate:'沪A12345',amountCents:6750,remark:q.page===2?'第二页':'合成明细'}]:[]};
@@ -63,6 +69,15 @@ test('income amounts fit narrow cards and open five-column paged receipts', asyn
       await page.getByText('PMS合成明细',{exact:true}).waitFor();
       assert.match(await page.getByRole('heading',{name:'清单汇总'}).innerText(), /1 笔.*100\.00/);
       assert.equal(await page.getByText('第二页',{exact:true}).count(),0);
+      await page.keyboard.press('Escape');
+      await page.getByRole('button',{name:/泊位费/}).click();
+      await page.getByRole('button',{name:'PMS 实收',exact:true}).click();
+      await page.getByText('同日 2 笔，核对是否重复',{exact:true}).waitFor();
+      assert.equal(await page.locator('.income-repeat').count(),1);
+      assert.match(await page.getByRole('heading',{name:'清单汇总'}).innerText(), /22 笔.*1520\.00/);
+      await page.getByRole('button',{name:'下一页'}).click();
+      await page.getByText('2026-11-20 17:57:53',{exact:true}).waitFor();
+      assert.equal(await page.getByText('同日 2 笔，核对是否重复',{exact:true}).count(),1);
       await page.keyboard.press('Escape');
       const due=page.getByRole('button',{name:/临时停车费/});
       await due.filter({hasText:'15.00'}).click();
