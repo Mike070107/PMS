@@ -8128,3 +8128,9 @@
 - 自上次（d539de27）以来上线的相关提交：
   - d6956962 Keep ledger row actions inline under global wrapping rules
 
+## 2026-11-23 23:44 · assistant · 4b7e3d2c
+
+- 提交：4b7e3d2c Restore verified parking expiry after future reversals
+- 自上次（eedfee30）以来上线的相关提交：
+  - 4b7e3d2c Restore verified parking expiry after future reversals
+
