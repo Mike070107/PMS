@@ -22,7 +22,7 @@ test('新车登记业主信息只读；正式收银/公寓/已存车牌/续费�
  window.__entryCalls=[];
  export const uploadBlobTo=async()=>{throw Error('禁止在联系人只读入口测试上传附件');};
  const plateMode=location.pathname==='/plate-only';export const address={tree:async()=>plateMode?[{...tree[0],id:2,name:'枫桦景苑二期'}]:tree};export const repairs=new Proxy({}, {get:(_,name)=>async()=>{throw Error('不应调用报修写入 '+String(name));}});
- export const accessCardIssuance=new Proxy({}, {get:(_,name)=>async(...args)=>{window.__entryCalls.push({methodName:String(name),args});if(plateMode&&name==='createParkingQuery')return {id:704,status:'completed',rows:[{database:'parking2',fields:{P_id:19,P_plate:'沪AAV7788',P_Effective:'0000000000100',Owner__owner_Name:'未匹配的停车户',End_Time:'2026-12-31'}}]};if(name==='deliyunVehiclesByPlate')return {rows:[]};if(name==='createParkingQuery'||name==='parkingQuery')return {id:1,status:'completed',term:'沪A00001',rows:[fixtureRow]};return {rows:[],status:'completed'};}});
+ export const accessCardIssuance=new Proxy({}, {get:(_,name)=>async(...args)=>{window.__entryCalls.push({methodName:String(name),args});if(plateMode&&name==='createParkingQuery')return {id:704,status:'completed',rows:[{database:'parking2',fields:{P_id:19,P_plate:'沪AAV7788',P_Effective:'0000000000100',Owner__owner_Name:'198/23/102测试姓名',End_Time:'2026-12-31'}}]};if(name==='deliyunVehiclesByPlate')return {rows:[]};if(name==='createParkingQuery'||name==='parkingQuery')return {id:1,status:'completed',term:'沪A00001',rows:[fixtureRow]};return {rows:[],status:'completed'};}});
  export async function request({url,method='GET',query={},data={}}){window.__entryCalls.push({url,method,query,data});
  if(url==='/owners-mgmt/business-contacts')return [structuredClone(owner)];
  if(url==='/owners-mgmt/1/business-contact'&&method==='PATCH'){Object.assign(owner,data);owner.phoneActivity=data.confirmedPhones.map(phone=>({phone,last_confirmed_at:'2026-11-12T00:00:00Z',confirmation_source:data.source}));return structuredClone(owner);}
@@ -79,7 +79,6 @@ test('新车登记业主信息只读；正式收银/公寓/已存车牌/续费�
  await page.setViewportSize({width:390,height:760});
  await page.goto(origin+'/inline-renew');
  const renewal=page.getByRole('dialog',{name:'续期收费 · 沪A00001'});
- await page.getByRole('button',{name:/沪A00001/}).click();
  await renewal.getByRole('row',{name:/沪A00001/}).getByRole('checkbox').check();
  await renewal.getByRole('button',{name:/确认到账/}).click();
  await renewal.getByRole('button',{name:/^确认收款/}).click();
@@ -92,6 +91,10 @@ test('新车登记业主信息只读；正式收银/公寓/已存车牌/续费�
  await page.getByRole('combobox').first().fill('7788');
  await page.getByRole('button',{name:/沪AAV7788.*房号待核对/s}).click();
  await page.getByText('按车牌续费 · 沪AAV7788',{exact:true}).waitFor();
+ await page.goto(origin+`/plate-only?renewPlate=${encodeURIComponent('沪AAV7788')}`);
+ await page.getByText('按车牌续费 · 沪AAV7788',{exact:true}).waitFor();
+ await page.getByText('现场查询完成',{exact:true}).waitFor();
+ await page.getByText('旧库房号 198/23/102测试姓名 · 按现场车牌续费',{exact:true}).waitFor();
  const unlinked = page.getByRole('row',{name:/沪AAV7788/});
  await unlinked.getByRole('checkbox').check();
  await page.getByText('车辆管理 · 沪AAV7788',{exact:true}).click();

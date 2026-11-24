@@ -367,7 +367,10 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
         <div className="note2" style={{ background: 'var(--warn-w)', color: 'var(--warn)', marginBottom: 8 }}>
           <Icon name="alert" />{missPlate} 尚未匹配到可续费的停车记录。
         </div>
-      ) : null}        <span className="tag mute">{hh ? (hh.targets.length ? hh.targets.map((t) => t.label).join(' · ') : '本小区未接停车系统') : '查询中'}</span>
+      ) : null}
+        <span className="tag mute">{plateOnly
+          ? local.state === 'done' ? '现场查询完成' : local.state === 'failed' ? '现场查询失败' : '查询中'
+          : hh ? (hh.targets.length ? hh.targets.map((t) => t.label).join(' · ') : '本小区未接停车系统') : '查询中'}</span>
         <button className="btn g sm" style={{ marginLeft: 'auto' }} disabled={loadingAny} onClick={() => setReload((n) => n + 1)}><Icon name="refresh" size={14} />重查</button>
       </div>
 

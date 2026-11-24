@@ -704,6 +704,7 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
           key={embeddedRenewalPlate ?? renewalSearch ?? ''}
           communities={communities}
           initialSearch={embeddedRenewalPlate ?? renewalSearch ?? undefined}
+          autoSelectInitialPlate={!!(embeddedRenewalPlate || renewalSearch)}
           onPick={onUniPick}
           onShopPick={embeddedRenewalPlate ? undefined : shop => {
             applyHouse(null, null);
@@ -727,7 +728,7 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
               <div className="ownerMeta">
                 <div className="nm">按车牌续费 · {parkPlate}</div>
                 <div className="addr">{selectedVehicle?.parkingRooms?.length
-                  ? `旧库房号 ${selectedVehicle.parkingRooms.join('、')} · PMS 房号待核对` : 'PMS 房号待核对'}</div>
+                  ? `旧库房号 ${selectedVehicle.parkingRooms.join('、')} · 按现场车牌续费` : '按现场车牌续费'}</div>
               </div>
             </div> : businessShop || (linkedIntake && embedded) ? <RegistrationPermit house={parkingSubject} intakeId={linkedIntake?.id} kind={linkedIntake?.kind} /> : house && <div className="card">
               <div className="ownerHead">

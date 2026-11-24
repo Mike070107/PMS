@@ -45,7 +45,7 @@ function tokensOf(text: string): string[] {
     .filter(Boolean);
 }
 
-export default function UniSearch({ communities, onPick, onShopPick, onShopClear, search, placeholder, initialSearch = '', width = '100%' }: {
+export default function UniSearch({ communities, onPick, onShopPick, onShopClear, search, placeholder, initialSearch = '', autoSelectInitialPlate = false, width = '100%' }: {
   communities: AddressCommunity[];
   onPick: (p: UniPick) => void;
   onShopPick?: (p: PickedAddress) => void;
@@ -53,6 +53,7 @@ export default function UniSearch({ communities, onPick, onShopPick, onShopClear
   search: (kw: string) => Promise<UniResult>;
   placeholder?: string;
   initialSearch?: string;
+  autoSelectInitialPlate?: boolean;
   width?: number | string;
 }) {
   const [text, setText] = useState(initialSearch);
@@ -70,6 +71,7 @@ export default function UniSearch({ communities, onPick, onShopPick, onShopClear
   const input = useRef<HTMLInputElement>(null);
   const seq = useRef(0);
   const pickSeq = useRef(0);
+  const autoSelected = useRef(false);
   // 所有用户意图共用失效入口，避免只给某一条异步路径补保护。
   const invalidate = () => {
     pickSeq.current += 1;
@@ -192,6 +194,17 @@ export default function UniSearch({ communities, onPick, onShopPick, onShopClear
     } else setSelectionText(null);
     onPick(p); setOpen(false);
   };
+
+  useEffect(() => {
+    if (!autoSelectInitialPlate || autoSelected.current || kw !== initialSearch ||
+      !/^[\u4e00-\u9fff][A-Z][A-Z0-9]{5,6}$/.test(kw) || !res) return;
+    const exact = res.vehicles.filter(vehicle => vehicle.plateNo === kw && !vehicle.openIntakeId &&
+      (vehicle.onsiteDatabases?.length || vehicle.houseId != null));
+    if (exact.length !== 1) return;
+    autoSelected.current = true;
+    choose({ kind: 'vehicle', vehicle: exact[0], all: res });
+    // Only the fresh result for the initial exact plate may select the renewal vehicle.
+  }, [autoSelectInitialPlate, initialSearch, kw, res]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * 回车：不能只等防抖那次查询的结果（多半还没回来，按下去像没反应）。
