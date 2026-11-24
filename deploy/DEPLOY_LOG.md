@@ -8148,3 +8148,10 @@
 - 自上次（d6956962）以来上线的相关提交：
   - 4b7e3d2c Restore verified parking expiry after future reversals
 
+## 2026-11-24 17:18 · api · c1ff8e59
+
+- 包：`pms-api-fast-20261124-171519.tar.gz`
+- 提交：c1ff8e59 Use scoped approval permission for parking fee reviews
+- 自上次（24cb542e）以来上线的相关提交：
+  - c1ff8e59 Use scoped approval permission for parking fee reviews
+
