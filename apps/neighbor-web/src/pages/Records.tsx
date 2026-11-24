@@ -18,7 +18,10 @@ interface TxnDetail {
   operatorName?: string | null; paymentMethod?: string | null;
   serviceType?: string | null; extra?: Record<string, unknown> | null;
 }
-interface Txn{id:number;txnNo:string;serviceType:string;status:string;amountCents:number;paymentMethod:string|null;createdAt:string;externalSyncStatus:string;address?:string;plateNo?:string;cashier?:string;detail?:TxnDetail|null;canReverse?:boolean;reversedByTxnNo?:string|null;reversal?:{originalTxnNo:string;reason:string;reviewValidity?:boolean}|null;}
+interface Txn{id:number;txnNo:string;serviceType:string;status:string;amountCents:number;paymentMethod:string|null;createdAt:string;collectionDate?:string;externalSyncStatus:string;address?:string;plateNo?:string;cashier?:string;detail?:TxnDetail|null;canReverse?:boolean;reversedByTxnNo?:string|null;reversal?:{originalTxnNo:string;reason:string;reviewValidity?:boolean}|null;}
+function backdatedCollection(t: Pick<Txn,'collectionDate'|'createdAt'>) {
+  return t.collectionDate && t.collectionDate !== formatBeijingDateTime(t.createdAt, 'YYYY-MM-DD') ? t.collectionDate : null;
+}
 interface Ledger{rows:Txn[];total:number;page:number;pageSize:number;summary:{paidCents:number;refundedCents:number;netCents:number;freeCount:number;syncedCount:number};}
 type Filter=''|'parking_monthly'|'access_card'|'mis_property'|'mis_berth'|'free'|'refunded';
 type DetailItem={label:string;value:string};
@@ -75,7 +78,9 @@ function detailItems(t:Txn):{items:DetailItem[];extra:Array<DetailItem&{key:stri
   items.push({label:t.reversal?'冲销金额':'实收金额',value:detailValue('amountCents',d.amountCents??t.amountCents)});
   items.push({label:'收款方式',value:payText(d.paymentMethod??t.paymentMethod)});
   items.push({label:'操作人',value:blank(d.operatorName??t.cashier)});
-  items.push({label:'收款时间',value:detailValue('paidAt',d.paidAt??t.createdAt)});
+  const collectionDate=backdatedCollection(t);
+  if(collectionDate)items.push({label:'收费日期',value:collectionDate});
+  items.push({label:collectionDate?'登记时间':'收款时间',value:detailValue('paidAt',d.paidAt??t.createdAt)});
   const extraItems=Object.entries(extra)
     .filter(([key,value])=>!used.has(key)&&!!EXTRA_LABEL[key]&&value!==null&&value!==undefined&&value!==''&&(typeof value!=='object'||key==='cards'))
     .map(([key,value])=>({key,label:EXTRA_LABEL[key],value:detailValue(key,value)}));
@@ -187,7 +192,7 @@ export default function Records(){
       <td><b>{t.reversal?'停车红冲':LABEL[t.serviceType]||'其他业务'} {t.plateNo||t.address||'—'}</b><div className="muted" style={{fontSize:13}}>单号 {t.txnNo}</div></td>
       <td className="nw"><b className="money">{money(t.amountCents/100)}</b></td>
       <td className="nw">{payText(t.detail?.paymentMethod??t.paymentMethod)}</td>
-      <td className="nw">{formatBeijingDateTime(t.createdAt, 'YYYY-MM-DD HH:mm')}</td>
+      <td className="nw">{backdatedCollection(t) ?? formatBeijingDateTime(t.createdAt, 'YYYY-MM-DD HH:mm')}</td>
       <td className="nw">{blank(t.detail?.operatorName??t.cashier)}</td>
       <td className="nw">{t.reversal?'红冲单':t.reversedByTxnNo?'已红冲':t.status==='paid'?'已登记收款':t.status==='refunded'?'已退款':t.status==='cancelled'?'已取消':'待核实'}</td>
       <td><span className={`tag ${t.externalSyncStatus==='synced'?'ok':/unknown|failed|manual/.test(t.externalSyncStatus)?'warn':'mute'}`}>{t.reversal?reversalSyncLabel(t):txnSyncLabel(t)}</span></td>

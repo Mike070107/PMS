@@ -52,6 +52,11 @@ test('停车试算列出北京时间当天同车牌的已收款原流水，并�
       { txnNo: 'PK-A', paidAt: '17:57:53', amountCents: 75000, startDate: '2026-12-01', endDate: '2027-04-30' },
     ]);
     assert.deepEqual((await svc.estimate({ ...dto, plateNo: '苏U99999' }, user, access)).recordedPaymentsToday, []);
+    await db.exec(`UPDATE business_transactions SET snapshot=snapshot || '{"collectionDate":"2026-11-22"}'::jsonb WHERE id=2`);
+    const prior = await svc.estimate({ ...dto, collectionDate: '2026-11-22' }, user, access);
+    assert.deepEqual(prior.recordedPaymentsToday.map((item: any) => [item.txnNo, item.paidAt]), [['PK-B', '2026-11-22']]);
+    assert.deepEqual((await svc.estimate(dto, user, access)).recordedPaymentsToday.map((item: any) => item.txnNo), ['PK-A']);
+    assert.equal(prior.startDate, quote.startDate);
     assert.equal((await svc.estimate(dto, user)).recordedPaymentsToday, undefined, 'internal settlement estimate stays unchanged');
     svc.txnRepo.query = async () => { throw new Error('lookup unavailable'); };
     const unavailable = await svc.estimate(dto, user, access);
@@ -102,10 +107,16 @@ test('无 PMS 房号按现场查询锁定旧库车辆，登记一笔流水并保
     execution: { initialFor: () => ({ status: 'queued', execution: { mode: 'on' } }), kick: (id: number) => operations.push(id) },
   });
   const payment = () => ({ serviceType: 'parking_monthly', ruleId: 18, months: 1, plateNo: plate,
+    collectionDate: '2026-11-22',
     expectedAmountCents: 15000, confirmedVehicleClass: '住户车-1', paymentMethod: 'cash',
     parkingSystems: [{ kind: 'local', queryId: 9, database: 'parking2', sourceRecordId: '22',
       targetKey: 'local:phase2_parking', previousEndDate: '2050-01-01', label: '二期' }] });
   const first = await svc.complete(payment(), actor, scope);
+  assert.equal(first.snapshot.collectionDate, '2026-11-22');
+  for (const collectionDate of ['2026-11-24', '2026-02-30', '2026-11-2', '']) {
+    await assert.rejects(svc.complete({ ...payment(), collectionDate }, actor, scope), /收费日期/);
+  }
+  await assert.rejects(svc.complete({ ...payment(), intakeId: 10 }, actor, scope), /仅停车续期/);
   assert.equal(first.houseId, null);
   assert.equal(first.communityId, 12);
   assert.equal(first.targetType, 'parking_plate');
@@ -117,6 +128,8 @@ test('无 PMS 房号按现场查询锁定旧库车辆，登记一笔流水并保
   assert.equal((await svc.complete(payment(), actor, scope)).id, first.id);
   assert.deepEqual(operations, [first.id]);
   assert.equal(entries.filter(entry => entry.action === 'payment_confirmed').length, 1);
+  assert.equal(entries.find(entry => entry.action === 'payment_confirmed').detail.collectionDate, '2026-11-22');
+  await assert.rejects(svc.complete({ ...payment(), collectionDate: '2026-11-21' }, actor, scope), /本次车牌查询已有收款记录/);
   const wrong = payment();
   wrong.parkingSystems[0].sourceRecordId = '23';
   await assert.rejects(svc.complete(wrong, actor, scope), /档案不唯一或已变化/);

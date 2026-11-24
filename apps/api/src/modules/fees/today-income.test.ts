@@ -95,6 +95,12 @@ test('income preserves bill-level amounts across sources, Beijing midnight, tena
       assert.equal((await svc.incomeFromPms(category,day,user,access,undefined,0,20)).amountCents,amount);
     }
     assert.equal((await svc.incomeFromPms('repair',day,user,access,undefined,0,20)).rows[0].address,'某小区南门');
+    await db.exec(`INSERT INTO business_transactions VALUES
+      (36,1,10,'parking_monthly','paid',45000,NULL,NULL,NULL,'{"collectionDate":"2026-11-19","vehicle":{"plateNo":"沪A67890"}}','2026-11-20 02:00Z',NULL,'cash');`);
+    const priorDay = await svc.incomeFromPms('berth','2026-11-19',user,access,undefined,0,20);
+    assert.equal(priorDay.amountCents,45000);
+    assert.equal(priorDay.rows[0].paidAt,'2026-11-19');
+    assert.equal((await incomePage(1,berth)).amountCents,77000);
     await assert.rejects(svc.incomeFromPms('card',day,user,access,[20],0,20));
   } finally { await db.close(); }
 });

@@ -15,6 +15,7 @@ import { billCursorId, billMirrorRows } from './bill-mirror.util';
 
 import { emptyIncome, IncomeCategory, IncomePage } from './today-income';
 import { scopeCommunityIds } from '../access/scope.util';
+import { collectionDaySql, collectionTimeTextSql } from '../business/collection-date';
 
 
 type MirrorMode = 'mis' | 'mirror';
@@ -981,7 +982,10 @@ export class MisMirrorService {
     if (allowed && communityIds?.some(id => !allowed.includes(id))) throw new ForbiddenException('该小区不在授权范围');
     const scope = communityIds?.length ? communityIds : allowed;
     const repair = category === 'repair';
-    const timestamp = repair ? 'completed_at' : 'created_at';
+    const paidAt = repair ? "to_char(t.completed_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM-DD HH24:MI:SS')"
+      : collectionTimeTextSql('t', 'YYYY-MM-DD HH24:MI:SS');
+    const onDay = repair ? `t.completed_at >= ($3::date::timestamp AT TIME ZONE 'Asia/Shanghai')
+      AND t.completed_at < (($3::date+1)::timestamp AT TIME ZONE 'Asia/Shanghai')` : `${collectionDaySql('t')} = $3`;
     const garage = "COALESCE(t.snapshot#>>'{estimate,vehicleClass}',t.snapshot->>'ruleName','') IN ('产权车','产权车位')";
     const filter = category === 'card' ? "t.service_type='access_card'" :
       `t.service_type='parking_monthly' AND ${category === 'garage' ? garage : 'NOT (' + garage + ')'}`;
@@ -1003,10 +1007,9 @@ export class MisMirrorService {
          COALESCE(NULLIF(BTRIM(t.snapshot#>>'{intake,propertyLabel}'),''),NULLIF(BTRIM(t.snapshot#>>'{house,address}'),''),
            NULLIF(CONCAT_WS('/',NULLIF(c.name,''),NULLIF(b.lane,''),NULLIF(b.building_no,''),NULLIF(h.room_no,'')),'')) AS address,
          NULLIF(BTRIM(t.payment_method),'') AS "paymentMethod", ${countsTowardsRepeat} AS "countsTowardsRepeat"`;
-    return this.incomeFromRows(`SELECT t.id, to_char(t.${timestamp} AT TIME ZONE 'Asia/Shanghai','YYYY-MM-DD HH24:MI:SS') AS "paidAt", ${fields}
+    return this.incomeFromRows(`SELECT t.id, ${paidAt} AS "paidAt", ${fields}
       FROM ${source} AND t.tenant_id=$1 AND ($2::int[] IS NULL OR t.community_id=ANY($2::int[]))
-      AND t.${timestamp} >= ($3::date::timestamp AT TIME ZONE 'Asia/Shanghai')
-      AND t.${timestamp} < (($3::date+1)::timestamp AT TIME ZONE 'Asia/Shanghai')`, [user.tenantId, scope, day], offset, limit);
+      AND ${onDay}`, [user.tenantId, scope, day], offset, limit);
   }
 
   private async incomeFromRows(sql: string, args: unknown[], offset: number, limit: number): Promise<IncomePage> {

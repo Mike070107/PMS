@@ -2,7 +2,7 @@ import { flushSync } from 'react-dom';
 import { ChargeAttempted, focusChargeIssue } from '@/components/cashier/charge-validation';
 import RegistrationPermit from '@/components/cashier/RegistrationPermit';
 import { HouseholdCardHistory } from './AccessCards';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import OwnerBusinessContact from '@/components/OwnerBusinessContact';
 import ParkingTab, { payCode, type ParkHouse, type ParkingCart } from '@/components/cashier/ParkingTab';
 import PaidHistory from '@/components/cashier/PaidHistory';
@@ -12,6 +12,7 @@ import HousePicker, { type PickedHouse } from '@/components/HousePicker';
 import type { PickedAddress } from '@/components/HouseAddressPicker';
 import UniSearch, { type UniPick, type UniVehicle, type RegistrationMatch } from '@/components/cashier/UniSearch';
 import PayMethods from '@/components/PayMethods';
+import DateInput from '@/components/DateInput';
 import MisCollectionPanel from '@/components/cashier/MisCollectionPanel';
 import Icon from '@/components/Icon';
 import type { IconName } from '@/components/Icon';
@@ -19,7 +20,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { intakeStatus, TXN_STATUS, type Intake } from '@/components/cashier/NewPlateCard';
 import { ErrorNote, Loading, toast } from '@/components/ui';
 import { useSession } from '@/lib/auth';
-import { dayjs, money, maskPhone } from '@/lib/format';
+import { dayjs, formatBeijingDateTime, money, maskPhone } from '@/lib/format';
 import './cashier-bills.css';
 import NewOrderSheet, { type RepairPrefill } from '@/components/NewOrderSheet';
 import FeeIcon from '@/components/FeeIcon';
@@ -118,6 +119,11 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
   const [cardQty, setCardQty] = useState(1);
   const [cardFree, setCardFree] = useState(false);
   const [parkCarts, setParkCarts] = useState<ParkingCart[]>([]);
+  const collectionDateInputId = useId();
+  const today = formatBeijingDateTime(new Date(), 'YYYY-MM-DD');
+  const [selectedCollectionDate, setSelectedCollectionDate] = useState('');
+  const collectionDate = selectedCollectionDate || today;
+  useEffect(() => setSelectedCollectionDate(''), [house?.id, parkPlate, intakeParam]);
   const parkingForm = useRef<HTMLDivElement>(null);
   const [chargeAttempted, setChargeAttempted] = useState(false);
   useEffect(() => setChargeAttempted(false), [house?.id, intakeParam]);
@@ -534,7 +540,8 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
 
   const cartTotal = isBillTab ? selBillTotal : tab === 'pk' ? parkCarts.reduce((t, x) => t + x.estimate.amountCents, 0) : (cardFree ? 0 : (cardEst?.amountCents ?? 0));
   // MIS 写账协议未落地：物业费/泊位费在这里只核对应收，收款仍在物业系统办理，避免两边账对不上
-  const canCharge = deepReady && !(tab === 'pk' && linkedBlocked) && (isBillTab ? false : tab === 'pk' ? parkReady : (cardFree || !!cardEst));
+  const canCharge = deepReady && !(tab === 'pk' && linkedBlocked) && (isBillTab ? false : tab === 'pk'
+    ? parkReady && parkCarts.every(item => item.intakeId || item.collectionDate === collectionDate) : (cardFree || !!cardEst));
 
   const charge = async () => {
     if ((!house && !plateOnly && !businessShop) || !canCharge || charging.current || (cartTotal > 0 && !confirmed)) return;
@@ -566,6 +573,7 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
                 ? { startDate: c.custom.startDate, endDate: c.custom.endDate, manualAmountCents: c.custom.manualAmountCents, customReason: c.custom.reason }
                 : { months: c.months, currentEndDate: c.currentEndDate || undefined }),
               parkingSystems: c.systems, mainSpaceNo: c.mainSpaceNo, civilSpaceNo: c.civilSpaceNo, confirmedVehicleClass: c.rule.config?.vehicleClass || undefined, ...(c.legacyStartDate ? { legacyStartDate: c.legacyStartDate } : {}), ...(c.intakeId ? { intakeId: c.intakeId } : {}), ...(c.intakeId || plateOnly ? { expectedAmountCents: c.estimate.amountCents } : {}), paymentMethod: payCode(pay), remark: payCode(pay) === 'other' ? `收款方式：${pay}` : undefined,
+              ...(!c.intakeId ? { collectionDate: c.collectionDate } : {}),
             } });
             if (revision !== navigationRevision.current) return;
             okList.push({ c, txn });
@@ -646,7 +654,7 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
             <p>{businessShop ? `${businessShop.communityName} ${businessShop.buildingNo}` : house ? `${house.communityName} ${house.buildingNo}/${house.roomNo}` : ''} · {done.title} · {pay}{done.receiptNo !== '—' ? ` · 收据号 ${done.receiptNo}` : ''}</p>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 18 }}>
               {done.receiptNo !== '—' ? <button className="btn" onClick={() => navigate(`/fees?receipt=${encodeURIComponent(done.receiptNo)}`)}><Icon name="print" size={18} />打印收据</button> : null}
-              {!embeddedRenewalPlate && <button className="btn p" onClick={() => { setDone(null); if (house) loadBills(house); }}><Icon name="receipt" size={18} />继续给本户办理</button>}
+              {!embeddedRenewalPlate && <button className="btn p" onClick={() => { setDone(null); setSelectedCollectionDate(''); if (house) loadBills(house); }}><Icon name="receipt" size={18} />继续给本户办理</button>}
               {!embedded && !embeddedRenewalPlate ? <button className="btn" onClick={reset}><Icon name="search" size={18} />换一户</button> : null}
             </div>
           </div>
@@ -786,7 +794,7 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
             ) : null}
 
             {linkedBlocked && !embedded ? (tab === 'pk' ? <div className="note2" role="status">本次登记不可收费，真实状态见上方。需要转类 / 撤销请进入本次登记详情。</div> : null) : <div ref={parkingForm} style={{ display: tab === 'pk' ? undefined : 'none' }}>
-              <ChargeAttempted.Provider value={embedded && chargeAttempted}><ParkingTab key={`${house?.id ?? (businessShop ? 'shop:' + businessShop.shopBuildingId : parkPlate)}-${intakeParam ?? ''}`} house={parkingSubject} rules={rules as never} onCart={onParkCart} initialPlate={parkPlate} selectedVehicle={selectedVehicle} renewalOnly={!!embeddedRenewalPlate || plateOnly} focusedIntake={linkedIntake} staffRegistration={embedded} onIntakeChange={embedded ? updateLinkedIntake : undefined} /></ChargeAttempted.Provider>
+              <ChargeAttempted.Provider value={embedded && chargeAttempted}><ParkingTab key={`${house?.id ?? (businessShop ? 'shop:' + businessShop.shopBuildingId : parkPlate)}-${intakeParam ?? ''}`} house={parkingSubject} rules={rules as never} onCart={onParkCart} initialPlate={parkPlate} selectedVehicle={selectedVehicle} renewalOnly={!!embeddedRenewalPlate || plateOnly} focusedIntake={linkedIntake} staffRegistration={embedded} onIntakeChange={embedded ? updateLinkedIntake : undefined} collectionDate={collectionDate} /></ChargeAttempted.Provider>
             </div>}
 
             {tab === 'ac' ? (
@@ -831,10 +839,10 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
                       </div>
                       <div className="cv money">{money(pc.estimate.amountCents / 100)}</div>
                       {pc.estimate.recordedPaymentsToday === null ? (
-                        <div className="parking-payment-note" role="status">暂时无法核对当天的收款记录</div>
+                        <div className="parking-payment-note" role="status">暂时无法核对{pc.collectionDate ? '所选收费日' : '当天'}的收款记录</div>
                       ) : !!pc.estimate.recordedPaymentsToday?.length && (
                         <div className="parking-payment-note" role="status">
-                          <strong>当天已登记 {pc.estimate.recordedPaymentsToday.length} 笔停车收款，请核对后确认。</strong>
+                          <strong>{pc.collectionDate || '当天'}已登记 {pc.estimate.recordedPaymentsToday.length} 笔停车收款，请核对后确认。</strong>
                           <ul>
                             {pc.estimate.recordedPaymentsToday.map(payment => (
                               <li key={payment.txnNo}>
@@ -857,6 +865,13 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
             </div>
             <div className="cartFoot">
               <div className="cartTot"><span className="k">本次应收（{isBillTab ? billLabel : tab === 'pk' ? '停车' : '门禁卡'}）</span><span className="v money">{money(cartTotal / 100)}</span></div>
+              {tab === 'pk' && !linkedIntake && (!parkCarts.length || parkCarts.some(item => !item.intakeId)) ? (
+                <div className="payPick" style={{ display: 'grid', gap: 6, marginBottom: 10 }}>
+                  <label htmlFor={collectionDateInputId}>收费日期</label>
+                  <DateInput id={collectionDateInputId} aria-label="收费日期" value={collectionDate} max={today} required disabled={busy}
+                    onChange={event => { setSelectedCollectionDate(event.target.value); setConfirmed(false); }} />
+                </div>
+              ) : null}
               <div className="payPick">
                 <PayMethods value={pay} onChange={(v) => { setPay(v); setConfirmed(true); }} options={PAYMENTS.map((p) => ({ value: p.k, label: p.k }))} />
               </div>

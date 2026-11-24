@@ -53,6 +53,7 @@ import { ParkingSpace, PARKING_SPACE_CATEGORIES } from '../../entities/parking-s
 import { expiredDraftSql } from './vehicle-draft-expiry';
 import { mainSpaceFromQuery, type PropertySpaceRef } from './property-space-ledger';
 import { UpdateParkingSpaceDto } from './parking-space.dto';
+import { collectionDaySql, collectionTimeTextSql } from './collection-date';
 import { parkingExactFieldValue } from '../access-card-issuance/parking-query-history';
 import { parkingPlateFromFields } from '../access-card-issuance/parking-query.util';
 import { supersededParkingPlates } from '../access-card-issuance/parking-plate-billing';
@@ -680,12 +681,13 @@ export class BusinessService {
 
   async estimate(dto: EstimateBusinessDto, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.requireTenant(user);
+    const collectionDate = this.validateCollectionDate(dto);
     const rule = await this.findRule(tenantId, dto.ruleId, dto.serviceType);
     if (dto.serviceType === BusinessServiceType.PARKING_MONTHLY) {
       const quote = this.estimateParking(rule, dto, tenantId);
       const plate = normPlate(dto.plateNo || '');
       if (!access || !/^[\u4e00-\u9fff][A-Z][A-Z0-9]{5,6}$/.test(plate)) return quote;
-      const recordedPaymentsToday = await this.parkingPaymentsToday(tenantId, plate, scopeCommunityIds(access)).catch(() => null);
+      const recordedPaymentsToday = await this.parkingPaymentsOn(tenantId, plate, scopeCommunityIds(access), collectionDate ?? this.today()).catch(() => null);
       return { ...quote, recordedPaymentsToday };
     }
     if (dto.serviceType === BusinessServiceType.ACCESS_CARD) {
@@ -694,25 +696,37 @@ export class BusinessService {
     throw new BadRequestException('unsupported service type');
   }
 
-  private parkingPaymentsToday(tenantId: number, plate: string, scope: number[] | null) {
+  private validateCollectionDate(dto: EstimateBusinessDto & { intakeId?: number }) {
+    const day = dto.collectionDate;
+    if (day == null) return undefined;
+    if (dto.serviceType !== BusinessServiceType.PARKING_MONTHLY || dto.intakeId)
+      throw new BadRequestException('仅停车续期可选择收费日期');
+    const parsed = new Date(`${day}T00:00:00Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day.startsWith('0000') || !Number.isFinite(parsed.getTime()) ||
+        parsed.toISOString().slice(0, 10) !== day || day > this.today())
+      throw new BadRequestException('收费日期须为有效日期且不能晚于今天');
+    return day;
+  }
+
+  private parkingPaymentsOn(tenantId: number, plate: string, scope: number[] | null, day: string) {
     return this.txnRepo.query<{
       txnNo: string; paidAt: string; amountCents: number; startDate: string | null; endDate: string | null;
     }[]>(`
-      SELECT txn_no AS "txnNo", to_char(created_at AT TIME ZONE 'Asia/Shanghai', 'HH24:MI:SS') AS "paidAt",
+      SELECT txn_no AS "txnNo", ${collectionTimeTextSql('t', 'HH24:MI:SS')} AS "paidAt",
         amount_cents AS "amountCents", start_date::text AS "startDate", end_date::text AS "endDate"
-      FROM business_transactions
+      FROM business_transactions t
       WHERE tenant_id = $1 AND service_type = 'parking_monthly' AND status = 'paid' AND amount_cents > 0
         AND NOT (snapshot ? 'reversedByTxnNo')
         AND ($2::int[] IS NULL OR community_id = ANY($2::int[]))
-        AND created_at >= ($3::date::timestamp AT TIME ZONE 'Asia/Shanghai')
-        AND created_at < (($3::date + 1)::timestamp AT TIME ZONE 'Asia/Shanghai')
+        AND ${collectionDaySql('t')} = $3
         AND UPPER(regexp_replace(COALESCE(NULLIF(snapshot#>>'{parking,plate}', ''), snapshot#>>'{vehicle,plateNo}'),
           '[[:space:]·.．・-]', '', 'g')) = $4
       ORDER BY created_at DESC, id DESC
-    `, [tenantId, scope, this.today(), plate]);
+    `, [tenantId, scope, day, plate]);
   }
 
   async complete(dto: CompleteBusinessDto, user: AuthUser, access?: ResolvedAccess) {
+    this.validateCollectionDate(dto);
     if (dto.shopBuildingId != null && (!dto.intakeId || dto.houseId != null || dto.serviceType !== BusinessServiceType.PARKING_MONTHLY))
       throw new BadRequestException('商铺新车收费须关联原商铺登记');
     let existing = false;
@@ -809,7 +823,7 @@ export class BusinessService {
       throw new BadRequestException('该收费标准不适用于所选停车车库');
     const signature = JSON.stringify([dto.ruleId, dto.months, dto.startDate, dto.endDate, dto.manualAmountCents, dto.customReason,
       dto.expectedAmountCents, dto.paymentMethod, dto.confirmedVehicleClass, dto.legacyStartDate,
-      selected.map(sys => [sys.database, sys.sourceRecordId, sys.targetKey]).sort()]);
+      selected.map(sys => [sys.database, sys.sourceRecordId, sys.targetKey]).sort(), ...(dto.collectionDate ? [dto.collectionDate] : [])]);
     const txnNo = `PKPL-${queryId}`;
     const age = Date.now() - query.completedAt.getTime();
     if (age < 0 || age > 10 * 60_000) {
@@ -952,6 +966,7 @@ export class BusinessService {
     let targetType: string | null = null;
     let targetId: number | null = null;
     const snapshot: Record<string, unknown> = { estimate, ruleName: rule.name };
+    if (dto.collectionDate) snapshot.collectionDate = dto.collectionDate;
     if (plateRenewal) snapshot.plateRenewalSignature = plateRenewal.signature;
     if (!plateRenewal && ['产权车','产权车位'].includes(selectedParkingClass)) {
       if (!communityId) throw new BadRequestException('产权车流水需要明确房屋所属小区');
@@ -1075,7 +1090,7 @@ export class BusinessService {
         tenantId,
         transactionId: txn.id,
         action: 'payment_confirmed',
-        detail: { amountCents: txn.amountCents, paymentMethod: txn.paymentMethod },
+        detail: { amountCents: txn.amountCents, paymentMethod: txn.paymentMethod, ...(dto.collectionDate ? { collectionDate: dto.collectionDate } : {}) },
         createdBy: user.id,
         updatedBy: user.id,
       }),

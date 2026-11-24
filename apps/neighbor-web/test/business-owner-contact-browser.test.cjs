@@ -80,12 +80,23 @@ test('新车登记业主信息只读；正式收银/公寓/已存车牌/续费�
  await page.goto(origin+'/inline-renew');
  const renewal=page.getByRole('dialog',{name:'续期收费 · 沪A00001'});
  await renewal.getByRole('row',{name:/沪A00001/}).getByRole('checkbox').check();
+ const dateInput=renewal.getByLabel('收费日期',{exact:true});
+ const shanghaiDay=await page.evaluate(()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()));
+ assert.equal(await dateInput.inputValue(),shanghaiDay);
+ await dateInput.click();
+ const yesterday=await page.evaluate((day)=>{
+   const date=new Date(day+'T00:00:00Z');date.setUTCDate(date.getUTCDate()-1);return date.toISOString().slice(0,10);
+ },shanghaiDay);
+ await page.locator(`.ant-picker-dropdown:visible td[title="${yesterday}"]:not(.ant-picker-cell-disabled)`).click();
+ await page.waitForFunction(day=>window.__entryCalls.some(c=>c.url==='/business/estimate'&&c.data.collectionDate===day),yesterday);
  await renewal.getByRole('button',{name:/确认到账/}).click();
  await renewal.getByRole('button',{name:/^确认收款/}).click();
  await renewal.getByRole('heading',{name:'收款已登记'}).waitFor();
  assert.equal(new URL(page.url()).pathname,'/inline-renew');
  const posted=(await page.evaluate(()=>window.__entryCalls)).filter(c=>c.url==='/business/complete');
  assert.equal(posted.length,1);assert.equal(posted[0].data.plateNo,'沪A00001');
+ assert.equal(posted[0].data.collectionDate,yesterday);
+ assert.equal(posted[0].data.months,12);
  assert.equal(await renewal.getByText('TEST-INLINE',{exact:false}).count(),1);
  await page.goto(origin+'/plate-only');
  await page.getByRole('combobox').first().fill('7788');
@@ -115,6 +126,7 @@ test('新车登记业主信息只读；正式收银/公寓/已存车牌/续费�
  assert.equal(receiptCalls.length,1);
  assert.equal(receiptCalls[0].data.plateNo,'沪AAV7788');
  assert.equal(receiptCalls[0].data.houseId,undefined);
+ assert.equal(receiptCalls[0].data.collectionDate,shanghaiDay);
  assert.equal(receiptCalls[0].data.parkingSystems[0].sourceRecordId,'19');
  assert.equal(receiptCalls[0].data.parkingSystems[0].queryId,704);
  await page.screenshot({path:path.join(evidence,'plate-only-receipt-390.png')});

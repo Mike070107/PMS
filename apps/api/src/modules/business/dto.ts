@@ -68,6 +68,11 @@ export class EstimateBusinessDto {
   @IsString()
   serviceType: BusinessServiceType;
 
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  @IsDateString({ strict: true })
+  collectionDate?: string;
+
   @Type(() => Number)
   @IsInt()
   ruleId: number;

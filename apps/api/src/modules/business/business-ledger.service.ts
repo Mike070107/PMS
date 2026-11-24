@@ -2,6 +2,7 @@ import {resolveAddressForTenant} from '../../common/address-lookup';
 import {BadRequestException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';import {InjectRepository} from '@nestjs/typeorm';import {Repository} from 'typeorm';import {BusinessTransaction} from '../../entities/business-transaction.entity';import {AuthUser} from '../../common/current-user.decorator';import {ResolvedAccess} from '../access/access.service';import {scopeCommunityIds} from '../access/scope.util';
 import {BusinessLog} from '../../entities/business-log.entity';
 import {BusinessServiceType,BusinessTransactionStatus} from '../../common/enums';
+import {collectionDaySql} from './collection-date';
 const PAYMENT_LABELS:Record<string,string>={cash:'现金',wechat:'微信',alipay:'支付宝',bank:'银行',pos:'刷卡',transfer:'转账',other:'其他'};
 const SERVICE_LABELS:Record<string,string>={parking_monthly:'停车续期',access_card:'门禁卡',mis_property:'物业费',mis_berth:'泊位费'};
 function text(value:unknown){const s=String(value??'').trim();return s||null}
@@ -132,7 +133,8 @@ export class BusinessLedgerService{
   const base=this.repo.createQueryBuilder('t').leftJoin('houses','h','h.id=t.house_id AND h.tenant_id=t.tenant_id').leftJoin('buildings','b','b.id=h.building_id AND b.tenant_id=t.tenant_id').leftJoin('communities','c','c.id=t.community_id AND c.tenant_id=t.tenant_id').leftJoin('users','u','u.id=t.created_by AND u.tenant_id=t.tenant_id').where('t.tenant_id=:tenant',{tenant:user.tenantId});
   if(scope)base.andWhere('t.community_id IN (:...scope)',{scope});if(q.communityId)base.andWhere('t.community_id=:community',{community:q.communityId});
   if(q.serviceType)base.andWhere('t.service_type=:service',{service:q.serviceType});if(q.status)base.andWhere('t.status=:status',{status:q.status});if(q.kind==='free')base.andWhere('t.amount_cents=0');
-  if(q.from)base.andWhere("t.created_at >= (CAST(:from AS date) AT TIME ZONE 'Asia/Shanghai')",{from:q.from});if(q.to)base.andWhere("t.created_at < ((CAST(:to AS date)+1) AT TIME ZONE 'Asia/Shanghai')",{to:q.to});
+  const collectionDay=collectionDaySql('t');
+  if(q.from)base.andWhere(`${collectionDay} >= :from`,{from:q.from});if(q.to)base.andWhere(`${collectionDay} <= :to`,{to:q.to});
   if(q.q?.trim()){
    const match=await resolveAddressForTenant(this.repo.manager.connection,user.tenantId!,q.q);
    if(match)base.andWhere(match.allHouseIds.length?'t.house_id IN (:...addressHouseIds)':'1=0',{addressHouseIds:match.allHouseIds});
@@ -142,7 +144,7 @@ export class BusinessLedgerService{
   const paid="COALESCE(SUM(CASE WHEN t.status='paid' THEN t.amount_cents::bigint ELSE 0 END),0)",refunded="COALESCE(SUM(CASE WHEN t.status='refunded' THEN ABS(t.amount_cents::bigint) ELSE 0 END),0)";
   const totals=await base.clone().select('COUNT(*)','total').addSelect(paid,'paidCents').addSelect(refunded,'refundedCents').addSelect(`(${paid})-(${refunded})`,'netCents').addSelect("COALESCE(SUM(CASE WHEN t.status='paid' AND t.amount_cents=0 THEN 1 ELSE 0 END),0)",'freeCount').addSelect("COALESCE(SUM(CASE WHEN t.status='paid' THEN 1 ELSE 0 END),0)",'paidCount').addSelect("COALESCE(SUM(CASE WHEN t.external_sync_status='synced' THEN 1 ELSE 0 END),0)",'syncedCount').getRawOne<Record<string,string>>();
   const safe=(v:unknown)=>{const n=Number(v??0);if(!Number.isSafeInteger(n))throw new BadRequestException('汇总超出安全范围，请缩小筛选');return n};const total=safe(totals?.total),page=Math.min(requested,Math.max(1,Math.ceil(total/pageSize)));
-  const rows=await base.clone().select(['t.id AS id','t.txn_no AS "txnNo"','t.service_type AS "serviceType"','t.status AS status','t.amount_cents AS "amountCents"','t.payment_method AS "paymentMethod"','t.external_sync_status AS "externalSyncStatus"','t.created_at AS "createdAt"','t.community_id AS "communityId"','t.house_id AS "houseId"','t.quantity AS quantity','t.snapshot AS snapshot','t.start_date::text AS "startDate"','t.end_date::text AS "endDate"','u.name AS cashier',`${address} AS address`,`${plate} AS "plateNo"`]).orderBy('t.created_at','DESC').addOrderBy('t.id','DESC').offset((page-1)*pageSize).limit(pageSize).getRawMany();
+  const rows=await base.clone().select(['t.id AS id','t.txn_no AS "txnNo"','t.service_type AS "serviceType"','t.status AS status','t.amount_cents AS "amountCents"','t.payment_method AS "paymentMethod"','t.external_sync_status AS "externalSyncStatus"','t.created_at AS "createdAt"','t.community_id AS "communityId"','t.house_id AS "houseId"','t.quantity AS quantity','t.snapshot AS snapshot','t.start_date::text AS "startDate"','t.end_date::text AS "endDate"','u.name AS cashier',`${address} AS address`,`${plate} AS "plateNo"`,`${collectionDay} AS "collectionDate"`]).orderBy('"collectionDate"','DESC').addOrderBy('t.created_at','DESC').addOrderBy('t.id','DESC').offset((page-1)*pageSize).limit(pageSize).getRawMany();
   const byService=(await base.clone().select('t.service_type','serviceType').addSelect(paid,'paidCents').addSelect("COALESCE(SUM(CASE WHEN t.status='paid' THEN 1 ELSE 0 END),0)",'paidCount').groupBy('t.service_type').orderBy('t.service_type','ASC').getRawMany()).map(r=>({serviceType:String(r.serviceType),paidCents:safe(r.paidCents),paidCount:safe(r.paidCount)}));
   return{rows:rows.map(r=>({...r,detail:detailOf(r),canReverse:canReverseParkingPayment(r),
    reversedByTxnNo:text(r.snapshot?.reversedByTxnNo),

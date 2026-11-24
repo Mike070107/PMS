@@ -22,7 +22,7 @@ test('办理记录中文系统操作：真实React与ledger SQL，桌面/窄屏�
  ];
  for(let i=0;i<snapshots.length;i++)await db.query(`INSERT INTO business_transactions VALUES($1,$2,1,10,1,7,'parking_monthly','paid',0,'alipay',$3,'2026-11-15T00:15:00+08',$4,11,'2026-11-15','2027-10-30')`,[301+i,'SYNTHETIC-'+i,['queued','synced','failed'][i],JSON.stringify(snapshots[i])]);
  await db.exec(`INSERT INTO business_transactions VALUES(304,'SYNTHETIC-RED',1,10,1,7,'parking_monthly','paid',75000,'alipay',
-   'synced','2026-11-15T21:08:07+08','{"vehicle":{"plateNo":"沪TEST04"}}',5,'2026-12-01','2027-04-30');`);
+   'synced','2026-11-15T21:08:07+08','{"collectionDate":"2026-11-14","vehicle":{"plateNo":"沪TEST04"}}',5,'2026-12-01','2027-04-30');`);
  const ds=new DataSource({type:'postgres',entities:[BusinessTransaction]});await ds.buildMetadatas();const real=ds.getRepository(BusinessTransaction);
  const wrap=qb=>{const clone=qb.clone.bind(qb);qb.clone=()=>wrap(clone());qb.getRawMany=async()=>{const[sql,params]=qb.getQueryAndParameters();return(await db.query(sql,params)).rows};qb.getRawOne=async()=>(await qb.getRawMany())[0];return qb};
  const repo={manager:{connection:{query:async(sql,params)=>(await db.query(sql,params)).rows}},createQueryBuilder:alias=>wrap(real.createQueryBuilder(alias))};
@@ -86,11 +86,13 @@ test('办理记录中文系统操作：真实React与ledger SQL，桌面/窄屏�
    const reverse=reversibleRow.getByRole('button',{name:'红冲',exact:true});
    await reverse.waitFor();
    const reversibleDetails=reversibleRow.getByRole('button',{name:'明细',exact:true});
+   assert.equal(await reversibleRow.getByRole('cell',{name:'2026-11-14',exact:true}).count(),1);
    await reverse.scrollIntoViewIfNeeded();
    assert.equal(await reversibleRow.locator('.rec-actions').evaluate(node=>getComputedStyle(node).flexWrap),'nowrap');
    const detailButton=await reversibleDetails.boundingBox(), reverseButton=await reverse.boundingBox();
    assert.ok(Math.abs(detailButton.y-reverseButton.y)<1 && reverseButton.x>=detailButton.x+detailButton.width,'明细和红冲左右并排');
    await reversibleDetails.click();
+   assert.match(await page.locator('.rec-detail').textContent(),/收费日期2026-11-14[\s\S]*登记时间2026-11-15 21:08/);
    await reversibleRow.getByRole('button',{name:'收起',exact:true}).click();
    await reverse.click();
    const dialog=page.getByRole('dialog',{name:'红冲停车收款'});

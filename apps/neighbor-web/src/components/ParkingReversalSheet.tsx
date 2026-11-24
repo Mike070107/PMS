@@ -9,6 +9,7 @@ interface ParkingPayment {
   txnNo: string;
   plateNo?: string;
   createdAt: string;
+  collectionDate?: string;
   amountCents: number;
   paymentMethod: string | null;
 }
@@ -56,7 +57,7 @@ export default function ParkingReversalSheet({ payment, onClose, onReversed }: {
     <form className="rec-reverse-form" noValidate onSubmit={e => { e.preventDefault(); void submit(); }}>
       <div className="rec-detail-grid">
         <div className="rec-detail-item"><span>车牌</span><b>{payment.plateNo || '—'}</b></div>
-        <div className="rec-detail-item"><span>收款时间</span><b>{formatBeijingDateTime(payment.createdAt,'YYYY-MM-DD HH:mm')}</b></div>
+        <div className="rec-detail-item"><span>收款时间</span><b>{payment.collectionDate && payment.collectionDate !== formatBeijingDateTime(payment.createdAt,'YYYY-MM-DD') ? payment.collectionDate : formatBeijingDateTime(payment.createdAt,'YYYY-MM-DD HH:mm')}</b></div>
         <div className="rec-detail-item"><span>原金额</span><b>{money(payment.amountCents / 100)} · {payment.paymentMethod ? payLabel(payment.paymentMethod) : '—'}</b></div>
         <div className="rec-detail-item"><span>冲销金额</span><b>{money(-payment.amountCents / 100)}</b></div>
       </div>

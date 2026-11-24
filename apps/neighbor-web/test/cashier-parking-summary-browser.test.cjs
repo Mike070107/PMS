@@ -14,10 +14,11 @@ test('parking cart: bold two-line summary and contained payment controls in Chro
   const cart = source.slice(start, end).trim().replace(/}$/, '');
   const built = await esbuild.build({ stdin: { loader: 'tsx', resolveDir: app, contents: `
 import React,{useState} from 'react';import {createRoot} from 'react-dom/client';
-import Icon,{IconSprite} from '@/components/Icon';import PayMethods from '@/components/PayMethods';import {money} from '@/lib/format';
+import Icon,{IconSprite} from '@/components/Icon';import PayMethods from '@/components/PayMethods';import DateInput from '@/components/DateInput';import {money} from '@/lib/format';
 import '@/styles/design.css';import '@/styles/app.css';import '@/styles/erp-reference.css';
 function Fixture(){const [confirmed,setConfirmed]=useState(false),[pay,setPay]=useState('现金');
 const isBillTab=false,tab='pk',billLabel='',parkReady=true,busy=false,canCharge=true,cartTotal=150000;
+const [collectionDate,setSelectedCollectionDate]=useState('2026-11-24');const today='2026-11-24',collectionDateInputId='collection-day',linkedIntake=null;
 const PAYMENTS=[{k:'现金'},{k:'微信'},{k:'支付宝'},{k:'转账'}];
 const parkCarts=[{plate:'沪M03212',months:12,systemsLabel:'一期地面车库',estimate:{startDate:'2027-01-01',endDate:'2027-12-31',amountCents:150000,
 recordedPaymentsToday:[{txnNo:'PK-TEST-1',paidAt:'17:57:53',startDate:'2026-12-01',endDate:'2027-04-30',amountCents:75000},{txnNo:'PK-TEST-2',paidAt:'21:08:07',startDate:'2027-05-01',endDate:'2027-05-31',amountCents:12000}]}}];
@@ -40,7 +41,7 @@ createRoot(document.getElementById('root')).render(<Fixture/>);` }, bundle: true
       const geometry = await page.evaluate(() => {
         const summary=document.querySelector('.cartItem .cx small'), spans=[...summary.children];
         const rect=e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom}};
-        return {width:innerWidth,scroll:document.documentElement.scrollWidth,summary:rect(summary),fontSize:getComputedStyle(summary).fontSize,fontWeight:getComputedStyle(summary).fontWeight,lines:spans.map(e=>({text:e.textContent,...rect(e),lineHeight:getComputedStyle(e).lineHeight})),controls:[...document.querySelectorAll('.cv,.cartTot,.cartFoot button')].map(rect)};
+        return {width:innerWidth,scroll:document.documentElement.scrollWidth,summary:rect(summary),fontSize:getComputedStyle(summary).fontSize,fontWeight:getComputedStyle(summary).fontWeight,lines:spans.map(e=>({text:e.textContent,...rect(e),lineHeight:getComputedStyle(e).lineHeight})),controls:[...document.querySelectorAll('.cv,.cartTot,.cartFoot input,.cartFoot button')].map(rect)};
       });
       await page.screenshot({path:path.join(out,`summary-${width}-${process.env.PMS_UI_EVIDENCE_PHASE||'after'}.png`),fullPage:true});
       assert.equal(geometry.lines.length,2,'garage and date range need separate semantic lines');

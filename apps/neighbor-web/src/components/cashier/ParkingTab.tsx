@@ -58,6 +58,7 @@ export type { Lot };
 
 export interface ParkingCart {
   plate: string; rule: ParkRule; months: number; currentEndDate: string | null;
+  collectionDate?: string;
   mainSpaceNo?: string; civilSpaceNo?: string; legacyStartDate?: string; estimate: Estimate; systems: SystemRef[]; systemsLabel: string;
   /** 新办车牌：扫码登记单编号（车牌由业主填，可能还没填） */
   intakeId?: number;
@@ -119,7 +120,7 @@ export const payCode = (label: string) => PAY_EN[label] || (/微信|wechat/i.tes
  * 前台点一辆车、选月数，按收费标准算钱；收款后执行层把同一辆车在各系统的有效期一起续上。
  */
 /** Deep-link integration: Cashier passes focusedIntake={linkedIntake}; keep ordinary household checkout unchanged. */
-export default function ParkingTab({ house, rules, onCart, initialPlate, selectedVehicle, focusedIntake, staffRegistration = false, renewalOnly = false, onIntakeChange }: { house: ParkHouse; rules: ParkRule[]; onCart: (items: ParkingCart[], ready: boolean) => void; initialPlate?: string | null; selectedVehicle?: { plateNo: string; houseId: number | null }; focusedIntake?: Intake; staffRegistration?: boolean; renewalOnly?: boolean; onIntakeChange?: (intake: Intake) => void }) {
+export default function ParkingTab({ house, rules, onCart, initialPlate, selectedVehicle, focusedIntake, staffRegistration = false, renewalOnly = false, onIntakeChange, collectionDate }: { house: ParkHouse; rules: ParkRule[]; onCart: (items: ParkingCart[], ready: boolean) => void; initialPlate?: string | null; selectedVehicle?: { plateNo: string; houseId: number | null }; focusedIntake?: Intake; staffRegistration?: boolean; renewalOnly?: boolean; onIntakeChange?: (intake: Intake) => void; collectionDate?: string }) {
   const plateOnly = house.id == null && !house.shopBuildingId;
   const [hh, setHh] = useState<Household | null>(null);
   const [hhErr, setHhErr] = useState('');
@@ -418,7 +419,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
       {pickedCars.length ? (
         <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
           {pickedCars.map((c) => <div key={c.plate}>
-            <CarRenewal car={c} rules={rules} house={house} onCart={setCart} onRemove={() => toggle(c.plate)} vehicleClass={draftClasses[c.plate] ?? tags[c.plate] ?? ''} onClass={async v => setDraftClasses(t => ({ ...t, [c.plate]: v }))} />
+            <CarRenewal car={c} rules={rules} house={house} onCart={setCart} collectionDate={collectionDate} onRemove={() => toggle(c.plate)} vehicleClass={draftClasses[c.plate] ?? tags[c.plate] ?? ''} onClass={async v => setDraftClasses(t => ({ ...t, [c.plate]: v }))} />
             {((!renewalOnly && hh) || plateOnly) && local.state === 'done' && <CashierVehicleActions car={c} onChanged={() => {
               onCart([], false);
               setCarts({});
@@ -501,7 +502,7 @@ function CashierVehicleActions({ car, onChanged }: { car: Car; onChanged: () => 
   </details>;
 }
 
-export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId, allowCart = true, garages, title = '续期', label, vehicleClass = '', onClass }: { car: Car; rules: ParkRule[]; house: ParkHouse; onCart: (plate: string, c: ParkingCart | null) => void; onRemove?: () => void; intakeId?: number; allowCart?: boolean; garages?: React.ReactNode; title?: string; label?: string; vehicleClass?: string; onClass?: (v: string) => Promise<void> | void }) {
+export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId, allowCart = true, garages, title = '续期', label, vehicleClass = '', onClass, collectionDate }: { car: Car; rules: ParkRule[]; house: ParkHouse; onCart: (plate: string, c: ParkingCart | null) => void; onRemove?: () => void; intakeId?: number; allowCart?: boolean; garages?: React.ReactNode; title?: string; label?: string; vehicleClass?: string; onClass?: (v: string) => Promise<void> | void; collectionDate?: string }) {
   const [months, setMonths] = useState(12);
   const [ruleId, setRuleId] = useState<number | null>(null);
   const [off, setOff] = useState<string[]>([]);
@@ -573,7 +574,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
   const confirmedChoice = (lot: Lot) => lot.spaceChoices?.includes(chosenSpaces[lot.key]) ? chosenSpaces[lot.key] : undefined;
   const selectedMainSpace = selectableSpaces.find(lot => lot.targetKey === PAID_GARAGE_KEYS.main);
   const selectedCivilSpace = selectableSpaces.find(lot => lot.targetKey === PAID_GARAGE_KEYS.civil);
-  const quoteKey = JSON.stringify([allowCart, chosenSpaces, quoteRevision, legacyStart, sel.plate, house.id, house.communityId, house.owner?.id, rule, lots, vehicleClass, months, monthsValid, custom, cs, ce, amt, reason, label, clsBusy]);
+  const quoteKey = JSON.stringify([allowCart, chosenSpaces, quoteRevision, legacyStart, sel.plate, house.id, house.communityId, house.owner?.id, rule, lots, vehicleClass, months, monthsValid, custom, cs, ce, amt, reason, label, clsBusy, collectionDate]);
   const currentQuoteKey = useRef(quoteKey);
   if (currentQuoteKey.current !== quoteKey) { currentQuoteKey.current = quoteKey; quoteGeneration.current++; }
   const est = estimateKey === quoteKey && (custom || monthsValid) && !clsBusy ? quotedEst : null;
@@ -589,7 +590,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
     const data = custom
       ? { serviceType: 'parking_monthly', ruleId: rule.id, houseId: house.id ?? undefined, ownerId: house.owner?.id, plateNo: sel.plate, startDate: cs, endDate: ce, manualAmountCents: manualCents!, customReason: reason.trim() }
       : { serviceType: 'parking_monthly', ruleId: rule.id, houseId: house.id ?? undefined, ownerId: house.owner?.id, plateNo: sel.plate, months, currentEndDate: currentEnd || undefined };
-    request<Estimate>({ method: 'POST', url: '/business/estimate', data })
+    request<Estimate>({ method: 'POST', url: '/business/estimate', data: { ...data, ...(collectionDate ? { collectionDate } : {}) } })
       .then((e) => {
         if (!alive || generation !== quoteGeneration.current) return;
         if ((!custom && e.quantity !== months) || (custom && (e.startDate !== cs || e.endDate !== ce || e.amountCents !== manualCents)) || !Number.isSafeInteger(e.amountCents) || e.amountCents < 0 || !e.startDate || !e.endDate) {
@@ -598,7 +599,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
         setEst(e); setEstimateKey(quoteKey);
         if (!allowCart) { onCart(sel.plate, null); return; }
         if (legacyStart !== null && (!legacyStart || legacyStart > e.endDate)) { onCart(sel.plate, null); return; }
-        const base = { mainSpaceNo: selectedMainSpace && confirmedChoice(selectedMainSpace), civilSpaceNo: selectedCivilSpace && confirmedChoice(selectedCivilSpace), ...(legacyStart ? { legacyStartDate: legacyStart } : {}), plate: label ?? sel.plate, rule, months: e.quantity, currentEndDate: currentEnd, systems: lots.map((l) => l.ref), systemsLabel: lots.map((l) => l.label).join(' + '), ...(intakeId ? { intakeId } : {}) };
+        const base = { mainSpaceNo: selectedMainSpace && confirmedChoice(selectedMainSpace), civilSpaceNo: selectedCivilSpace && confirmedChoice(selectedCivilSpace), ...(legacyStart ? { legacyStartDate: legacyStart } : {}), plate: label ?? sel.plate, rule, months: e.quantity, currentEndDate: currentEnd, systems: lots.map((l) => l.ref), systemsLabel: lots.map((l) => l.label).join(' + '), ...(intakeId ? { intakeId } : {}), ...(collectionDate ? { collectionDate } : {}) };
         if (!custom) { onCart(sel.plate, { ...base, months, estimate: e, custom: null }); return; }
         if (manualCents == null || !reason.trim()) { onCart(sel.plate, null); return; }
         onCart(sel.plate, { ...base, estimate: e, custom: { startDate: cs, endDate: ce, manualAmountCents: manualCents, reason: reason.trim(), standardAmountCents: e.standardAmountCents ?? null } });

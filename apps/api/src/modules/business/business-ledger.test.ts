@@ -23,6 +23,15 @@ test('ledger uses SQL scope, whole-filter aggregates, stable 20/50/100 paging an
  assert.equal(parking.detail.periodTo,'2027-10-30');
  assert.equal(parking.detail.operatorName,'Tester');
  assert.equal(parking.detail.paymentMethod,'微信');
+ await db.exec(`INSERT INTO business_transactions VALUES
+  (202,1,10,NULL,7,'PK-BACK','parking_monthly','paid',45000,'cash','synced','2026-11-07T09:30:00+08',
+   '{"collectionDate":"2026-11-05"}',3,'2026-11-01','2027-01-30');`);
+ const backdated=await service.list({from:'2026-11-05',to:'2026-11-05',serviceType:'parking_monthly'},user,access);
+ assert.equal(backdated.summary.paidCents,45000);
+ assert.equal(backdated.rows[0].collectionDate,'2026-11-05');
+ assert.equal(new Date(backdated.rows[0].createdAt).toISOString(),'2026-11-07T01:30:00.000Z');
+ assert.equal((await service.list({from:'2026-11-07',to:'2026-11-07',serviceType:'parking_monthly'},user,access)).total,0);
+ await db.exec('DELETE FROM business_transactions WHERE id=202');
  assert.equal(parking.detail.serviceType,'停车续期');
  assert.equal(parking.detail.amountCents,150000);
  assert.equal(parking.detail.extra.parkingSystems.length,2);
