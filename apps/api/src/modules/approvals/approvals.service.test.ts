@@ -85,11 +85,18 @@ test('counts/search/pagination are independent of category, no legacy 100/200 ro
   assert.equal(search.tabs.pending, 350);
 });
 
-test('business excludes self-approval; empty community scope leaks neither pending nor done', async () => {
-  const row = { id: 1, tenantId: 1, communityId: 3, serviceType: 'parking_monthly', externalSyncStatus: 'review', createdBy: 7, snapshot: { review: { required: true } } };
-  const f = fixture(['app:approve-business-manager'], { BusinessTransaction: [row] });
-  assert.equal((await f.service.list({}, user, f.access)).total, 0);
-  const limited = fixture(['app:approve-business-manager'], { BusinessTransaction: [{ ...row, createdBy: 8 }] }, []);
+test('收费经理可以处理自己登记的单据，审批权限和小区范围仍须匹配', async () => {
+  const row = { id: 1, tenantId: 1, communityId: 3, serviceType: 'parking_monthly', externalSyncStatus: 'review', createdBy: 7,
+    txnNo: 'PK-1', amountCents: 5000, createdAt: '2026-11-23', snapshot: { review: { required: true } } };
+  const data = { BusinessTransaction: [row, { ...row, id: 2, communityId: 4 }, { ...row, id: 3, tenantId: 2 }] };
+  const f = fixture(['app:approve-business-manager'], data, [3]);
+  assert.deepEqual((await f.service.list({}, user, f.access)).rows.map(item => item.id), [row.id]);
+  await f.service.decide('business', row.id, true, '', user, f.access);
+  assert.ok(f.calls.some(call => call[0] === 'business' && call[1] === row.id && call[4] === user));
+  for (const id of [2, 3]) await assert.rejects(f.service.decide('business', id, true, '', user, f.access), /可审批范围/);
+  f.access.pages['app:approve-business-manager'].edit = false;
+  await assert.rejects(f.service.decide('business', row.id, true, '', user, f.access), /可审批范围/);
+  const limited = fixture(['app:approve-business-manager'], data, []);
   assert.equal((await limited.service.list({}, user, limited.access)).total, 0);
 });
 

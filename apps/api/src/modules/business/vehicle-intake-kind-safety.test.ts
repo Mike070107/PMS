@@ -485,12 +485,18 @@ test('先审资料，再选车库和期限；报价变动不会入账', async ()
 
 test('回家补交且手填金额须办公室和经理都通过才启动停车任务', async () => {
   const h = staffFixture();
+  delete h.business.notifyReviewers;
+  h.business.access = { userIdsWithPermission: async () => [h.user.id] };
   const saved = await h.service.prepareHomeUpload(1,{plate:staffBody.plate,formBase:'https://prsznh.cn/plate-form'},h.user);
   const plan = {startDate:'2026-11-19', endDate:'2027-01-13', customReason:'自定义授权日期', parkingSystems:[{kind:'local',database:'parking2',label:'二期地面'}]};
   await assert.rejects(h.pay(plan),/实收金额/);
   const txn = await h.pay({...plan,manualAmountCents:12300});
   assert.equal(txn.externalSyncStatus,'review');
-  const approve = () => h.business.decideReview(txn.id,true,undefined,{...h.user,id:9});
+  assert.equal(h.tables.get(Notification)?.filter(item => item.eventKey==='business.review_requested' && item.receiverId===h.user.id).length,1);
+  const access = { scopeAll: false, communityIds: [txn.communityId] } as any;
+  assert.equal(txn.createdBy,h.user.id);
+  await assert.rejects(h.business.decideReview(txn.id,true,undefined,h.user,{...access,communityIds:[]}), /管理范围/);
+  const approve = () => h.business.decideReview(txn.id,true,undefined,h.user,access);
   await assert.rejects(approve(),/办公室/);
   const token = new URL(saved.qr.url).pathname.split('/').pop()!;
   await h.service.publicSubmit(token,[{buffer:Buffer.from('%PDF-1.4'),originalname:'doc.pdf'}],staffBody);
@@ -498,6 +504,9 @@ test('回家补交且手填金额须办公室和经理都通过才启动停车�
   assert.deepEqual(h.kicked,[]);
   assert.equal(h.transactions()[0].externalSyncStatus,'review');
   assert.equal((await approve()).externalSyncStatus,'queued');
+  assert.equal(h.transactions()[0].snapshot.review.decidedBy,h.user.id);
+  assert.equal(h.transactions()[0].snapshot.review.selfApproval,true);
+  assert.equal(h.tables.get(BusinessLog)?.find(entry => entry.action==='review_approved')?.detail.selfApproval,true);
   assert.deepEqual(h.kicked,[txn.id]);
 });
 

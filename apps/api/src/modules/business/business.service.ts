@@ -147,13 +147,10 @@ export class BusinessService {
     const scope = scopeCommunityIds(access);
     if (scope && (txn.communityId == null || !scope.includes(txn.communityId))) throw new ForbiddenException('这笔不在你的管理范围内');
     if (txn.externalSyncStatus !== 'review') throw new BadRequestException('这笔已经审核过了');
-    // 系统管理员可以自审（值班时一个人也要能走完），其余人仍然不能审自己登记的单子；
-    // 自审会在审计里留痕，出问题能查是谁自审了哪笔。
-    const isAdmin = !!access?.isTenantAdmin || !!access?.isPlatformAdmin;
+    // 入口校验审批权限，本方法校验小区范围，并记录登记人与审批人是否相同。
     const selfApproval = txn.createdBy === user.id;
-    if (selfApproval && !isAdmin) throw new ForbiddenException('不能审核自己收款登记的续期，请由其他有审批权限的人处理');
     if (!approve && !reason?.trim()) throw new BadRequestException('驳回请写原因');
-    const review: Record<string, unknown> = { ...((txn.snapshot?.review as Record<string, unknown>) || {}), decidedBy: user.id, decidedAt: new Date().toISOString(), decision: approve ? 'approved' : 'rejected', decisionReason: reason?.trim() || null, selfApproval: selfApproval && isAdmin ? '超管自审' : null };
+    const review: Record<string, unknown> = { ...((txn.snapshot?.review as Record<string, unknown>) || {}), decidedBy: user.id, decidedAt: new Date().toISOString(), decision: approve ? 'approved' : 'rejected', decisionReason: reason?.trim() || null, selfApproval };
     const exec = this.execution.initialFor(BusinessServiceType.PARKING_MONTHLY);
     // 新办车牌：金额通过了，但业主资料还没审核通过的，继续等资料
     const intakeId = (txn.snapshot?.intake as { id?: number } | undefined)?.id;
@@ -173,7 +170,7 @@ export class BusinessService {
         snapshot: { ...(txn.snapshot || {}), review, ...(approve && exec.execution ? { execution: exec.execution } : {}) } as any })
       .where('id = :id AND external_sync_status = :st', { id, st: 'review' }).execute();
     if (!claimed.affected) throw new BadRequestException('这笔已经审核过了');
-    await this.logRepo.save(this.logRepo.create({ tenantId, transactionId: id, action: approve ? 'review_approved' : 'review_rejected', detail: { reason: reason?.trim() || null }, createdBy: user.id, updatedBy: user.id }));
+    await this.logRepo.save(this.logRepo.create({ tenantId, transactionId: id, action: approve ? 'review_approved' : 'review_rejected', detail: { reason: reason?.trim() || null, selfApproval }, createdBy: user.id, updatedBy: user.id }));
     if (txn.createdBy) {
       const plate = (txn.snapshot?.vehicle as { plateNo?: string } | undefined)?.plateNo || '';
       await this.txnRepo.manager.save(Notification, this.txnRepo.manager.create(Notification, {
@@ -198,7 +195,6 @@ export class BusinessService {
       let ids = [...new Set(managerIdSets.flat())];
       const officeId = communityId ? (await this.communityRepo.findOne({ where: { id: communityId, tenantId } }))?.officeId ?? null : null;
       if (officeId) { const cover = await this.access.filterUsersCoveringOffice(tenantId, ids, officeId); ids = ids.filter((x) => cover.has(x)); }
-      ids = ids.filter((x) => x !== operatorId);
       if (!ids.length) return;
       await this.txnRepo.manager.save(Notification, ids.map((receiverId) => this.txnRepo.manager.create(Notification, {
         tenantId, receiverId, channel: NotifyChannel.IN_APP, eventKey: 'business.review_requested', title, payload,

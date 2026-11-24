@@ -130,7 +130,7 @@ export class ApprovalsService {
       for (const r of rows.filter(r => communityVisible(r.communityId))) {
         const review = r.snapshot?.review as any;
         const subtitle = [(r.snapshot?.vehicle as any)?.plateNo || r.snapshot?.plate, r.startDate, r.endDate, `¥${(r.amountCents / 100).toFixed(2)}`].filter(Boolean).join(' · ');
-        if (r.serviceType === 'parking_monthly' && r.externalSyncStatus === 'review' && (r.createdBy !== user.id || access.isPlatformAdmin || access.isTenantAdmin)) push('business', r, r.txnNo, subtitle, { lines: r.remark || '', snapshot: r.snapshot });
+        if (r.serviceType === 'parking_monthly' && r.externalSyncStatus === 'review') push('business', r, r.txnNo, subtitle, { lines: r.remark || '', snapshot: r.snapshot });
         if (review?.decidedBy && review.decidedAt) history('business', r.id, r.txnNo, subtitle, [{ userId: review.decidedBy, at: review.decidedAt, stage: 'manager', result: review.decision === 'approved' ? '已通过' : '已驳回', note: review.decisionReason }]);
       }
     }
