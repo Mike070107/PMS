@@ -15,7 +15,7 @@ const house: any = { id: 5, communityId: 3, communityName: '枫桦景苑二期',
 function App() {
   const [intake, setIntake] = useState(seed); const [cart, setCart] = useState<any>(null);
   (window as any).__rendered = intake; (window as any).__cart = cart;
-  return <MemoryRouter><IconSprite/><main style={{ maxWidth: 1180, margin: '0 auto', padding: 12 }}><h1>新车现场代登记</h1><p>合成浏览器回归 · 不写真实档案、不支付、不下发设备</p>
+  return <MemoryRouter><IconSprite/><main className="registration-workspace" style={{ maxWidth: 1180, margin: '0 auto', padding: 12 }}><h1>新车现场代登记</h1><p>合成浏览器回归 · 不写真实档案、不支付、不下发设备</p>
     <NewPlateCard intake={intake} house={house} rules={rules} targets={targets as any} onChange={setIntake} onDrop={() => {}} onCart={(_plate, c) => setCart(c)} renewal={(car, label, vehicleClass, onClass) => <CarRenewal car={car} rules={rules} house={house} onCart={(_plate, c) => setCart(c)} intakeId={intake.id} title="新办月租" label={label} vehicleClass={vehicleClass} onClass={onClass} />} />
     <output aria-label="本页收费清单">{cart ? `待收款 · 登记 ${cart.intakeId} · ${cart.months} 个月 · ${cart.estimate.amountCents / 100} 元` : '尚无待收款项目'}</output>
   </main></MemoryRouter>;

@@ -46,12 +46,12 @@ export default function ExistingPlateNotice({ plate, intake, message }: { plate:
     }).catch(() => undefined);
     return () => { active = false; };
   }, [plate, intake.id, intake.houseId, intake.shopBuildingId, message]);
-  if (released) return <div className="note2" role="status" style={{ marginTop: 8 }}>原登记已解除占用，原资料和流水已保留。请重新保存本次资料。</div>;
-  return <div className="note2" role="status" style={{ marginTop: 8 }}>
+  if (released) return <div className="note2 existing-plate-notice" role="status">原登记已解除占用，原资料和流水已保留。请重新保存本次资料。</div>;
+  return <div className="note2 existing-plate-notice" role="status">
     <Icon name="alert" />
     <div>
       <div>{plate} 已有登记。{original?.canReleaseReversed ? '原收款已红冲。核实原车库未入库后，可解除原登记占用，再保存本次资料。' : '核对原登记或车辆档案后继续办理。'}</div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+      <div className="existing-plate-actions">
         {original && <Link className="btn" to={`/plates?intakeId=${original.id}`}>查看原登记</Link>}
         {!original?.canReleaseReversed && <Link className="btn" to={`/cashier?renewPlate=${key}`}>按原车续费</Link>}
         <Link className="btn" to={`/records?q=${key}`}>查看收款流水</Link>

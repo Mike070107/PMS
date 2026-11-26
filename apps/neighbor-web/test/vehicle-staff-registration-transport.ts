@@ -11,7 +11,7 @@ export const accessCardIssuance = {};
 export const address = {};
 export async function request(o: any): Promise<any> {
   w.__calls.push(structuredClone(o)); const d = o.data || {};
-  if (o.url === '/vehicle-intakes' && o.query?.q) return w.__reversedIntake ? [{ ...seed, id: 70, plate: o.query.q, status: 'approved', canReleaseReversed: true }] : [];
+  if (o.url === '/vehicle-intakes' && o.query?.q) return w.__existingPlate ? [{ ...seed, id: 70, plate: o.query.q, status: 'approved', canReleaseReversed: !!w.__reversedIntake }] : [];
   if (o.url === '/vehicle-intakes/70/release-reversed' && d.parkingChecked === true) {
     w.__existingPlate = false;
     return { ...seed, id: 70, status: 'void' };

@@ -7,7 +7,7 @@ import { createHash, createHmac, randomBytes } from 'node:crypto';
 import * as QRCode from 'qrcode';
 import { Brackets, EntityManager, In, IsNull, Like, MoreThan, Raw, Repository } from 'typeorm';
 import { AuthUser } from '../../common/current-user.decorator';
-import { claimVehicleRegistration, releaseVehicleRegistration, lockVehicleRegistration, normalizedPlateSql, REVERSED_INTAKE_RELEASED } from '../../common/vehicle-registration-claim';
+import { CANCELLED_PLATE_RELEASED, releaseConfirmedParkingIntakes, claimVehicleRegistration, releaseVehicleRegistration, lockVehicleRegistration, normalizedPlateSql, REVERSED_INTAKE_RELEASED } from '../../common/vehicle-registration-claim';
 import { reviseVehicleMaterial } from '../../common/vehicle-registration-material';
 import { normalizeRegistrationTerm, type VehicleRegistrationTerm } from '../../common/vehicle-registration-term';
 import {
@@ -940,7 +940,14 @@ export class VehicleIntakeService {
     await this.repo.manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`vehicle-intake:${row.tenantId}:${plate}`]);
     const vehicle = await this.repo.manager.getRepository(ParkingVehicle).findOne({ where: { tenantId: row.tenantId, plateNo: plate } });
     if (vehicle) throw new BadRequestException(vehicle.houseId && vehicle.houseId !== row.houseId ? '该车牌已属于另一户，不能代登记或改绑' : '该车牌已有车辆档案，请使用原车辆续费，不可重复新办');
-    const other = await this.repo.createQueryBuilder('i').where('i.tenant_id = :tenantId AND i.plate = :plate AND i.id <> :id AND i.status <> :status', { tenantId: row.tenantId, plate, id: row.id, status: 'void' }).getOne();
+    const conflicting = () => this.repo.createQueryBuilder('i').where(
+      `i.tenant_id = :tenantId AND ${normalizedPlateSql('i.plate')} = :plate AND i.id <> :id AND i.status <> :status AND NOT i.log @> CAST(:released AS jsonb)`,
+      { tenantId: row.tenantId, plate, id: row.id, status: 'void', released: JSON.stringify([{ action: CANCELLED_PLATE_RELEASED }]) }).getOne();
+    let other = await conflicting();
+    if (other?.kind === 'paid' && other.status === 'approved') {
+      await releaseConfirmedParkingIntakes(this.repo.manager, row.tenantId, plate);
+      other = await conflicting();
+    }
     if (other) throw new BadRequestException('该车牌已有登记，请核对原登记及收款流水，不可重复新办');
   }
 

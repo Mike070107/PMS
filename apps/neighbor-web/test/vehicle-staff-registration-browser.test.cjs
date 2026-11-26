@@ -27,8 +27,8 @@ async function fixture(width) {
 }
 const button = (p, name) => p.getByRole('button', { name, exact: true });
 async function screenshot(page, name) { assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, 'no horizontal overflow'); await page.screenshot({ path: path.join(out, name), fullPage: true, animations: 'disabled' }); }
-test('已有登记时保留输入并给出原车续费和收款流水入口', { timeout: 60000 }, async () => {
-  const f = await fixture(375); const p = f.page;
+for (const width of [375, 1440]) test('已有登记时保留输入并给出原车续费和收款流水入口 ' + width, { timeout: 60000 }, async () => {
+  const f = await fixture(width); const p = f.page;
   try {
     await button(p, '工作人员直接代填').click();
     await button(p, '点选车牌').click();
@@ -39,12 +39,52 @@ test('已有登记时保留输入并给出原车续费和收款流水入口', { 
     const renew = p.getByRole('link', { name: '按原车续费' });
     const records = p.getByRole('link', { name: '查看收款流水' });
     await renew.waitFor();
+    const notice = p.locator('.existing-plate-notice');
+    await notice.getByRole('link', { name: '查看原登记' }).waitFor();
+    const sizes = await notice.evaluate(el => {
+      const bounds = el.getBoundingClientRect();
+      const text = el.querySelector('.existing-plate-actions').previousElementSibling;
+      const range = document.createRange();
+      range.selectNodeContents(text);
+      return { width: bounds.width, parent: el.parentElement.clientWidth,
+        textLines: new Set([...range.getClientRects()].map(rect => rect.top)).size,
+        rows: [...el.querySelectorAll('a')].map(a => a.offsetTop),
+        fits: el.scrollWidth <= el.clientWidth + 1 };
+    });
+    assert.ok(sizes.fits && sizes.width >= sizes.parent - 8, JSON.stringify(sizes));
+    if (width >= 1000) {
+      assert.equal(sizes.textLines, 1);
+      assert.equal(new Set(sizes.rows).size, 1);
+    }
     assert.equal(new URL(await renew.getAttribute('href'), p.url()).searchParams.get('renewPlate'), '沪A12345');
     assert.equal(new URL(await records.getAttribute('href'), p.url()).searchParams.get('q'), '沪A12345');
+    const layout = await p.locator('.registration-contacts').evaluate(group => {
+      const inputs = [...group.querySelectorAll('input')].map(input => input.getBoundingClientRect());
+      const help = group.querySelector('.intake-contact-help').getBoundingClientRect();
+      const bounds = group.getBoundingClientRect();
+      return { widths: inputs.map(input => input.width), helpGap: help.top - inputs[0].bottom,
+        inside: inputs.every(input => input.left >= bounds.left - 1 && input.right <= bounds.right + 1) };
+    });
+    assert.ok(layout.inside && layout.widths.every(w => w >= 180), JSON.stringify(layout));
+    assert.ok(layout.helpGap >= 0 && layout.helpGap < 16, JSON.stringify(layout));
     assert.equal(await p.getByLabel('本车联系手机（必填）').inputValue(), '13711112222');
     assert.equal(await p.evaluate(() => window.__current().status), 'waiting');
     assert.equal(await p.evaluate(() => window.__calls.some(c => c.url === '/business/complete')), false);
-    await screenshot(p, 'existing-plate-renewal-375.png');
+    await screenshot(p, `existing-plate-renewal-${width}.png`);
+  } finally { await f.close(); }
+});
+test('注销核对通过后由工作人员保存新能源车牌资料', async () => {
+  const f = await fixture(1440), p = f.page;
+  try {
+    await button(p, '工作人员直接代填').click();
+    await button(p, '点选车牌').click();
+    for (const key of '沪AEH6407') await p.locator('.intake-plate-keys').getByRole('button', { name: key, exact: true }).click();
+    await p.getByLabel('本车联系手机（必填）').fill('13711112222');
+    await screenshot(p, 'staff-before-save-1440.png');
+    await button(p, '保存资料，进入预览').click();
+    await p.waitForFunction(() => window.__current().status === 'submitted');
+    assert.equal(await p.evaluate(() => window.__current().plate), '沪AEH6407');
+    assert.equal(await p.evaluate(() => window.__calls.some(c => c.url === '/business/complete')), false);
   } finally { await f.close(); }
 });
 test('原登记已红冲且未入库时解除占用并在原表单保存', { timeout: 60000 }, async () => {

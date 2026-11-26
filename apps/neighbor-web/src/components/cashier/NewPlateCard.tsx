@@ -402,9 +402,30 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
             <header className="intake-registration-heading"><div><h3>{staffMode ? '办公室填写资料' : `${scanRegistrant}扫码填写资料`}</h3></div><button type="button" className="btn" aria-expanded={staffMode} disabled={!!busy} onClick={() => setStaffMode(!staffMode)}>{staffMode ? defaultStaffMode ? `改由${scanRegistrant}扫码` : '收起工作人员代填' : '工作人员直接代填'}</button></header>
             {staffMode ? <fieldset disabled={!!busy || savingGarages} style={{ border: 0, padding: 0, minWidth: 0 }}>
               <IntakePlatePicker inputId={fieldId('plate')} invalid={attempted && plateInvalid} value={edit.plate} onChange={plate => setEdit({ ...edit, plate })} disabled={!!busy} />
-              <div className="np-fields registration-contacts"><label>本车联系手机（必填）<input id={fieldId('phone')} aria-invalid={attempted && phoneInvalid} aria-describedby={attempted && phoneInvalid ? fieldId('phone-error') : undefined} className="in" inputMode="tel"  autoComplete="off" maxLength={11} placeholder="填写此车牌的联系手机" value={edit.contactPhone} onChange={e => setEdit({ ...edit, contactPhone: e.target.value })} />{attempted && phoneInvalid && <small id={fieldId('phone-error')}>请输入本车联系人 11 位手机号</small>}</label>{it.kind === 'family' ? <label>与业主关系（必填）<input id={fieldId('relation')} aria-invalid={attempted && relationInvalid} aria-describedby={attempted && relationInvalid ? fieldId('relation-error') : undefined} className="in" maxLength={12} value={edit.relation} onChange={e => setEdit({ ...edit, relation: e.target.value })} />{attempted && relationInvalid && <small id={fieldId('relation-error')}>请填写具体亲属关系</small>}</label> : null}<label>车主（选填）<input className="in" value={edit.contactName} onChange={e => setEdit({ ...edit, contactName: e.target.value })} /></label></div>
-              <p className="intake-contact-help">此手机仅用于当前车牌，不会修改房屋业主电话。</p>
-
+              <div className="registration-contacts">
+                <div className="registration-field">
+                  <label htmlFor={fieldId('phone')}>本车联系手机（必填）</label>
+                  <input id={fieldId('phone')} className="in" inputMode="tel" autoComplete="off" maxLength={11}
+                    value={edit.contactPhone} onChange={e => setEdit({ ...edit, contactPhone: e.target.value })}
+                    aria-invalid={attempted && phoneInvalid}
+                    aria-describedby={[fieldId('phone-help'), attempted && phoneInvalid ? fieldId('phone-error') : ''].filter(Boolean).join(' ')} />
+                  {attempted && phoneInvalid && <small id={fieldId('phone-error')}>请输入本车联系人 11 位手机号</small>}
+                  <span id={fieldId('phone-help')} className="intake-contact-help">仅用于本车，房屋业主电话保持原值。</span>
+                </div>
+                <div className="registration-field">
+                  <label htmlFor={fieldId('contact-name')}>车主（选填）</label>
+                  <input id={fieldId('contact-name')} className="in" value={edit.contactName}
+                    onChange={e => setEdit({ ...edit, contactName: e.target.value })} />
+                </div>
+                {it.kind === 'family' && <div className="registration-field">
+                  <label htmlFor={fieldId('relation')}>与业主关系（必填）</label>
+                  <input id={fieldId('relation')} className="in" maxLength={12} value={edit.relation}
+                    onChange={e => setEdit({ ...edit, relation: e.target.value })}
+                    aria-invalid={attempted && relationInvalid}
+                    aria-describedby={attempted && relationInvalid ? fieldId('relation-error') : undefined} />
+                  {attempted && relationInvalid && <small id={fieldId('relation-error')}>请填写具体亲属关系</small>}
+                </div>}
+              </div>
               <details open className="registration-attachments"><summary>附件（选填） · {it.files.length} 份</summary><div className="intake-upload" tabIndex={0} aria-label="本条登记附件上传区" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); void uploadFiles(e.dataTransfer.files); }} onPaste={e => { if (e.clipboardData.files.length) { e.preventDefault(); e.stopPropagation(); void uploadFiles(e.clipboardData.files); } }}>
                 <input ref={uploadInput} type="file" accept="image/*,application/pdf" multiple hidden onChange={e => { if (e.target.files) void uploadFiles(e.target.files); e.target.value = ''; }} />
                 <button type="button" className="btn" onClick={() => uploadInput.current?.click()}>本地上传附件（选填）</button>

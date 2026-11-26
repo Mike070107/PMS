@@ -48,13 +48,14 @@
 .registration-workspace .intake-registration-heading { margin-bottom:18px; }
 .registration-workspace .intake-registration-heading h3 { font-size:23px; }
 .registration-workspace .intake-registration-form > fieldset {
-  display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px 24px; align-items:start;
+  display:grid; grid-template-columns:minmax(0, 0.8fr) minmax(0, 1.2fr); gap:16px 24px; align-items:start;
 }
 
 .registration-attachments summary,.registration-options summary { cursor:pointer; padding:10px 0; font-weight:600; }
-.registration-workspace .registration-contacts { margin:0; display:grid; grid-template-columns:1fr; gap:10px; }
-.registration-workspace .registration-contacts label { max-width:none; }
-.registration-workspace .intake-contact-help { grid-column:2; font-size:13px; margin:-8px 0 0; }
+.registration-contacts { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%, 14rem),1fr)); gap:12px; align-items:start; min-width:0; }
+.registration-field { display:grid; gap:6px; min-width:0; color:var(--ink2); }
+.registration-contacts .in { width:100%; min-width:0; box-sizing:border-box; }
+.registration-workspace .intake-contact-help { font-size:13px; line-height:1.5; }
 .registration-attachments { grid-column:1/-1; border-top:1px dashed var(--permit-line); }
 .registration-workspace .intake-upload { padding:12px; }
 .registration-workspace .intake-registration-form > fieldset > .btn.p { grid-column:1/-1; justify-self:end; min-height:44px; background:var(--permit-dark); border-color:var(--permit-dark); color:white; }
@@ -76,7 +77,7 @@
   .permit-stub b { font-size:18px; }
   .permit-resident strong { font-size:18px; }
   .registration-workspace .intake-registration-form > fieldset { grid-template-columns:minmax(0,1fr); gap:12px; }
-  .registration-workspace .intake-contact-help { grid-column:1; }
+
   .registration-workspace .intake-registration-form > fieldset > .btn.p { width:100%; justify-content:center; }
   .registration-workspace .intake-registration-heading{flex-direction:row;justify-content:space-between;flex-wrap:wrap}
 }
@@ -124,3 +125,13 @@
   transform: rotate(-45deg);
 }
 .cashier-vehicle-actions[open] > summary::before { transform: rotate(45deg); }
+
+.existing-plate-notice {
+  grid-column: 1 / -1;
+  justify-self: stretch;
+  min-width: 0;
+  margin-top: 8px;
+}
+.existing-plate-notice > div { flex: 1; min-width: 0; }
+.existing-plate-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.existing-plate-actions .btn { white-space: nowrap; }

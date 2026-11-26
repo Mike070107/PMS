@@ -89,6 +89,15 @@ namespace Pms.AccessCardAgent
                 }
                 if (args.Length > 0 && args[0] == "--self-test")
                 {
+                    var originallySent = new System.Collections.Generic.HashSet<int>(new[] { 9, 11, 13, 15 });
+                    var exhausted = new System.Collections.Generic.HashSet<int>(new[] { 9, 13, 15, 17 });
+                    var retried = new System.Collections.Generic.HashSet<int>(new[] { 15 });
+                    var missing = new[] { 9, 11, 15, 17 };
+                    var eligible = ParkingDatabase.RetryDownloadChannels(missing, originallySent, exhausted, retried);
+                    if (!eligible.SetEquals(new[] { 9 })) throw new InvalidOperationException("仅补发本次已耗尽重试的未确认机号");
+                    retried.UnionWith(eligible);
+                    if (ParkingDatabase.RetryDownloadChannels(missing, originallySent, exhausted, retried).Count != 0)
+                        throw new InvalidOperationException("同一机号不可重复补发");
                     int sequence;
                     if (!LegacyDatabase.TrySequence("228/5/301", "228/05/301/6", out sequence) || sequence != 6)
                         throw new InvalidOperationException("旧库房号序号解析测试失败");

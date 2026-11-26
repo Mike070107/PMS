@@ -1008,8 +1008,9 @@ ORDER BY COALESCE([out_Time], [Int_Time]) DESC;";
                 }
                 if (task.kind == "download_vehicle")
                 {
-                    ExecuteDownloadVehicle(connection, payload, plate, admin);
-                    return WaitForDownloadConfirmation(connection, plate, task.database, 60000);
+                    var sent = new HashSet<int>();
+                    var issue = ExecuteDownloadVehicle(connection, payload, plate, admin, null, null, sent);
+                    return WaitForDownloadConfirmation(connection, plate, task.database, 60000, payload, admin, issue, sent);
                 }
                 throw new InvalidOperationException("不支持的停车操作：" + task.kind);
             }
@@ -2141,16 +2142,22 @@ ORDER BY ID DESC";
             return new Dictionary<string, object> { { "verified", true }, { "procedure", procedure }, { "message", label + "已提交，等待设备回执" } };
         }
 
-        private static void ExecuteDownloadVehicle(SqlConnection connection, Dictionary<string, object> payload, string plate, string admin)
+        private static string ExecuteDownloadVehicle(SqlConnection connection, Dictionary<string, object> payload, string plate, string admin,
+            string originalIssue, HashSet<int> retryCandidates, HashSet<int> sent)
         {
             using (var transaction = connection.BeginTransaction(IsolationLevel.Serializable))
             {
                 var vehicle = ReadBindingVehicle(connection, transaction, plate);
+                var issue = Value(vehicle, "P_id");
+                if (retryCandidates != null && (String.IsNullOrEmpty(originalIssue) || originalIssue != issue))
+                    throw new InvalidOperationException("车辆记录已变更，已停止补发");
                 var parameters = ProcedureParameters(connection, transaction, "Add_DownloadCard");
                 var hasMachine = parameters.Any(item => NormalizeName(item.Name) == "downloadid");
                 var channels = hasMachine ? DownloadMachineIds(Value(vehicle, "P_Effective")) : new[] { 0 };
                 foreach (var channel in channels)
                 {
+                    if (retryCandidates != null && (!retryCandidates.Contains(channel) ||
+                        !CanRetryDownload(connection, transaction, plate, channel, issue))) continue;
                     var mapped = new Dictionary<string, object>(payload);
                     mapped["downloadid"] = channel;
                     var downloading = new Dictionary<string, object>(vehicle, StringComparer.OrdinalIgnoreCase);
@@ -2169,8 +2176,30 @@ ORDER BY ID DESC";
                         Add(check, "@machine", SqlDbType.Int, 0, channel);
                         if (Convert.ToInt32(check.ExecuteScalar()) < 1) throw new InvalidOperationException("机号 " + channel + " 未读到待下载任务，已撤销本次下发");
                     }
+                    sent.Add(channel);
                 }
                 transaction.Commit();
+                return issue;
+            }
+        }
+
+        // Recheck under the same lock as the vendor procedure. A stale card, duplicate queue row,
+        // completed download or pending deletion must never be reset as a retry.
+        private static bool CanRetryDownload(SqlConnection connection, SqlTransaction transaction, string plate, int channel, string issue)
+        {
+            using (var check = connection.CreateCommand())
+            {
+                check.Transaction = transaction;
+                check.CommandText = @"SELECT COUNT(*) FROM (
+    SELECT MIN(Car_ID) AS card FROM dbo.Car_Download WITH (UPDLOCK,HOLDLOCK)
+    WHERE Plate=@plate AND Download_ID=@machine
+    HAVING COUNT(*)=1 AND MIN(Car_Zt)=1 AND MIN(D_State)>=3
+) q WHERE EXISTS (SELECT 1 FROM dbo.Car_Issue v JOIN dbo.Card_temp c ON c.Card_ID=v.Car_ID
+                  WHERE v.P_id=@issue AND v.P_plate=@plate AND c.Card_IC=q.card AND LEFT(c.Card_IC,2)<>'DE')";
+                Add(check, "@plate", SqlDbType.VarChar, 50, plate);
+                Add(check, "@machine", SqlDbType.Int, 0, channel);
+                Add(check, "@issue", SqlDbType.VarChar, 50, issue);
+                return Convert.ToInt32(check.ExecuteScalar()) == 1;
             }
         }
 
@@ -2259,20 +2288,35 @@ ORDER BY ID DESC";
             }
         }
 
-        private static Dictionary<string, object> WaitForDownloadConfirmation(SqlConnection connection, string plate, string database, int timeoutMs)
+        private static Dictionary<string, object> WaitForDownloadConfirmation(SqlConnection connection, string plate, string database, int timeoutMs,
+            Dictionary<string, object> payload, string admin, string issue, HashSet<int> sent)
         {
+            var retried = new HashSet<int>();
+            // Older queue schemas can still confirm downloads without supporting targeted retry.
+            bool supportsRetry;
+            using (var schema = connection.CreateCommand())
+            {
+                schema.CommandText = "SELECT CASE WHEN COL_LENGTH('dbo.Car_Download','D_State') IS NOT NULL AND COL_LENGTH('dbo.Card_temp','Card_IC') IS NOT NULL AND COL_LENGTH('dbo.Card_temp','Card_ID') IS NOT NULL THEN 1 ELSE 0 END";
+                supportsRetry = Convert.ToInt32(schema.ExecuteScalar()) == 1;
+            }
             var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
             int[] missing = new int[0];
             do
             {
                 var vehicle = VerifyVehicle(connection, plate, "设备下载确认");
                 var confirmed = new HashSet<int>();
+                var exhausted = new HashSet<int>();
                 using (var command = connection.CreateCommand())
                 {
-                    command.CommandText = "SELECT Download_ID FROM dbo.Car_Download WHERE Plate=@plate GROUP BY Download_ID HAVING COUNT(*)=COUNT(Car_Zt) AND MIN(Car_Zt)=0 AND MAX(Car_Zt)=0";
+                    command.CommandText = "SELECT Download_ID, CASE WHEN COUNT(*)=COUNT(Car_Zt) AND MIN(Car_Zt)=0 AND MAX(Car_Zt)=0 THEN 1 ELSE 0 END, " + (supportsRetry ? "CASE WHEN COUNT(*)=1 AND MIN(Car_Zt)=1 AND MIN(D_State)>=3 THEN 1 ELSE 0 END" : "0") + " FROM dbo.Car_Download WHERE Plate=@plate GROUP BY Download_ID";
                     Add(command, "@plate", SqlDbType.VarChar, 50, plate);
                     using (var reader = command.ExecuteReader())
-                        while (reader.Read()) if (!reader.IsDBNull(0)) confirmed.Add(Convert.ToInt32(reader[0]));
+                        while (reader.Read()) if (!reader.IsDBNull(0))
+                        {
+                            var channel = Convert.ToInt32(reader[0]);
+                            if (reader.GetInt32(1) == 1) confirmed.Add(channel);
+                            if (reader.GetInt32(2) == 1) exhausted.Add(channel);
+                        }
                 }
                 missing = MissingDownloadMachineIds(Value(vehicle, "effective"), confirmed, database);
                 if (missing.Length == 0)
@@ -2280,13 +2324,22 @@ ORDER BY ID DESC";
                     {
                         { "verified", true },
                         { "deviceVerification", "confirmed" },
+                        { "retryChannels", retried.OrderBy(id => id).ToArray() },
                         { "effective", Value(vehicle, "effective") },
                         { "download", Value(vehicle, "download") },
                         { "message", "旧停车系统已确认全部授权通道下载完成" }
                     };
+                exhausted = RetryDownloadChannels(missing, sent, exhausted, retried);
+                if (exhausted.Count > 0 && DateTime.UtcNow < deadline)
+                    ExecuteDownloadVehicle(connection, payload, plate, admin, issue, exhausted, retried);
                 if (DateTime.UtcNow < deadline) Thread.Sleep(2000);
             } while (DateTime.UtcNow < deadline);
-            throw new InvalidOperationException("控制器在60秒内未确认下载完成，未确认通道：" + String.Join("、", missing) + "；任务已保留，可排查现场下载服务后重新下发");
+            throw new InvalidOperationException("控制器在60秒内未确认下载完成，未确认通道：" + String.Join("、", missing) + (retried.Count == 0 ? "" : "；已补发一次的通道：" + String.Join("、", retried.OrderBy(id => id))) + "；任务已保留，可排查现场下载服务后重新下发");
+        }
+
+        internal static HashSet<int> RetryDownloadChannels(int[] missing, HashSet<int> sent, HashSet<int> exhausted, HashSet<int> retried)
+        {
+            return new HashSet<int>(missing.Where(id => sent.Contains(id) && exhausted.Contains(id) && !retried.Contains(id)));
         }
 
         internal static int[] MissingDownloadMachineIds(string effective, HashSet<int> confirmed, string database)

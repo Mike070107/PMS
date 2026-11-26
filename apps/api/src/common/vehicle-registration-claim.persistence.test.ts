@@ -1,3 +1,4 @@
+import { VehicleIntakeService } from '../modules/business/vehicle-intake.service';
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -60,4 +61,77 @@ test('跨流程占用：历史冲突、别名移交、租户、续登、改牌�
   await claim({ tenantId: 1, plate: '沪D12345', intakeId: 6 });
   assert.equal((await db.query<{ transaction_id: number }>('SELECT transaction_id FROM vehicle_intakes WHERE id=5')).rows[0].transaction_id, 42);
   await assert.rejects(migration.down(), /retained/);
+});
+
+test('二期注销回执后重新登记，保留原审核状态及流水，只转换车牌占用', async t => {
+  const db = new PGlite();
+  t.after(() => db.close());
+  await db.exec(`CREATE TABLE family_cars(id int primary key,tenant_id int,house_id int,previous_id int,plate text,status text);
+    CREATE TABLE vehicle_intakes(id int primary key,tenant_id int,house_id int,family_car_id int,plate text,status text,
+      transaction_id int,kind text,garages jsonb,log jsonb default '[]');
+    CREATE TABLE business_transactions(id int,tenant_id int,target_type text,target_id int,txn_no text,amount int);
+    CREATE TABLE parking_operations(id int,tenant_id int,database text,kind text,status text,idempotency_key text,
+      source_record_id text,payload jsonb,result jsonb,requested_at timestamptz,completed_at timestamptz);`);
+  await new VehicleRegistrationClaims1796500000000().up({ query: (sql: string) => db.query(sql) } as any);
+  await db.exec(`INSERT INTO vehicle_intakes VALUES
+    (1,1,8,NULL,'沪AEH6407','approved',21,'paid','["local:phase2_parking","local:phase2_main_garage"]','[]'),
+    (2,1,8,NULL,'','waiting',NULL,'paid','[]','[]');
+    INSERT INTO business_transactions VALUES (21,1,'vehicle_intake',1,'T21',30000);
+    INSERT INTO vehicle_registration_claims(tenant_id,plate,intake_id) VALUES(1,'沪AEH6407',1);
+    INSERT INTO parking_operations VALUES
+    (31,1,'parking2','add_vehicle','completed','biz:T21:register:parking2',NULL,'{"plate":"沪AEH6407"}','{"issueId":101}',now()-interval '2 day',now()-interval '1 day'),
+    (32,1,'parking2','delete_vehicle','running','delete','101','{"plate":"沪AEH6407"}','{}',now(),NULL);`);
+  const save = () => db.transaction(async tx => {
+    const manager = { queryRunner: { isTransactionActive: true }, query: async (sql: string,args: any[]) => (await tx.query(sql,args)).rows } as any;
+    // Adapt the narrow TypeORM repository surface to the isolated PostgreSQL transaction.
+    const read = async () => {
+      const data: any = (await tx.query('SELECT * FROM vehicle_intakes WHERE id=2')).rows[0];
+      return { ...data, tenantId: 1, houseId: 8, files: [], expiresAt: new Date(Date.now()+3600000) };
+    };
+    manager.getRepository = () => ({ findOne: async () => null });
+    const repo = { manager, findOne: read, createQueryBuilder: () => {
+      let where = '', values: any, patch: any;
+      const qb = {
+        where: (sql: string, args: any) => { where=sql; values=args; return qb; },
+        getOne: async () => {
+          const args: any[] = [];
+          const sql = where.replace(/:(tenantId|plate|id|status|released)\b/g, (_, key) => {
+            args.push(values[key]); return '$' + args.length;
+          });
+          return (await tx.query('SELECT i.* FROM vehicle_intakes i WHERE '+sql+' LIMIT 1',args)).rows[0];
+        },
+        update: () => qb, set: (data: any) => { patch=data; return qb; },
+        execute: async () => ({ affected: (await tx.query(
+          'UPDATE vehicle_intakes SET plate=$1,status=$2,log=$3 WHERE id=$4 AND status=ANY($5) RETURNING id',
+          [patch.plate,patch.status,JSON.stringify(patch.log),values.id,values.st])).rows.length }),
+      };
+      return qb;
+    }};
+    const service = Object.assign(Object.create(VehicleIntakeService.prototype), {
+      repo, inTransaction:true, load:read, get:read, linkedTransaction:async()=>null,
+      entry:async()=>({action:'工作人员代填新车登记'}), notify:async()=>{},
+    });
+    await service.staffSubmit(2,{plate:'沪AEH6407',contactPhone:'13800000000'},{id:8,tenantId:1});
+
+  });
+  await assert.rejects(save(), /该车牌已有登记/);
+  await db.exec(`UPDATE parking_operations SET status='completed',completed_at=now(),result='{"verified":true,"remaining":0}' WHERE id=32`);
+  for (const [change, restore] of [
+    ["database='parking1'", "database='parking2'"],
+    ["source_record_id='999'", "source_record_id='101'"],
+    [`result='{"verified":true,"remaining":1}'`, `result='{"verified":true,"remaining":0}'`],
+  ]) {
+    await db.exec('UPDATE parking_operations SET ' + change + ' WHERE id=32');
+    await assert.rejects(save(), /该车牌已有登记/);
+    await db.exec('UPDATE parking_operations SET ' + restore + ' WHERE id=32');
+  }
+  await db.exec(`INSERT INTO parking_operations SELECT 33,tenant_id,database,kind,'completed','new-add',
+    NULL,payload,result,now(),now() FROM parking_operations WHERE id=31`);
+  await assert.rejects(save(), /该车牌已有登记/);
+  await db.exec('DELETE FROM parking_operations WHERE id=33');
+  await save();
+  assert.deepEqual((await db.query('SELECT id,status,transaction_id FROM vehicle_intakes ORDER BY id')).rows,
+    [{id:1,status:'approved',transaction_id:21},{id:2,status:'submitted',transaction_id:null}]);
+  assert.deepEqual((await db.query('SELECT txn_no,amount FROM business_transactions')).rows,[{txn_no:'T21',amount:30000}]);
+  assert.deepEqual((await db.query('SELECT intake_id FROM vehicle_registration_claims')).rows,[{intake_id:2}]);
 });
