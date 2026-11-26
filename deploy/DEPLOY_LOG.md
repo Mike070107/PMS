@@ -8223,3 +8223,10 @@
 - 自上次（6622749e）以来上线的相关提交：
   - 19b08927 Include parking actions in the ledger and honor intake collection dates
 
+## 2026-11-27 00:23 · api · f88d8ae3
+
+- 包：`pms-api-fast-20261127-002136.tar.gz`
+- 提交：f88d8ae3 车辆查询保留旧库下载状态并将注销操作靠右
+- 自上次（91d9c2a2）以来上线的相关提交：
+  - f88d8ae3 车辆查询保留旧库下载状态并将注销操作靠右
+
