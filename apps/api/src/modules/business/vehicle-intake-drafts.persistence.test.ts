@@ -59,6 +59,7 @@ test('QR draft operations: transactional reuse, replay, expiry, history, isolati
     let failRemember = false;
     const makeManager = (engine: any): any => {
       const manager: any = {
+        queryRunner: { isTransactionActive: engine !== db },
         query: async (sql: string, params: any[] = []) => {
           queryLog.push(sql);
           if (failRemember && sql.startsWith('INSERT INTO vehicle_intake_operations')) throw Error('synthetic commit failure');
@@ -112,6 +113,13 @@ test('QR draft operations: transactional reuse, replay, expiry, history, isolati
     await assert.rejects(service.create({ ...base, operationKey: key(1) }, user, { scopeAll: false, communityIds: [] } as any), /管理范围/);
     assert.equal(await count(), 1);
 
+    for (const status of ['submitted','approved']) {
+      await db.query("UPDATE vehicle_intakes SET status=$1,plate='沪A12345',contact_name='原资料' WHERE id=$2",[status,initial.id]);
+      const resumed=await Promise.all([1,2].map(n=>service.create({...base,operationKey:key((status==='submitted'?240:250)+n)},user)));
+      assert.ok(resumed.every(row=>row.id===initial.id && row.reused && row.contactName==='原资料'),status+'：离开页面后回到同户继续同一办理单');
+      assert.equal(await count(),1);
+    }
+    await db.query("UPDATE vehicle_intakes SET status='waiting' WHERE id=$1",[initial.id]);
     await db.query("UPDATE vehicle_intakes SET expires_at=now()-interval '2 hours', plate='沪A12345', contact_name='保留资料', transaction_id=42 WHERE id=$1", [initial.id]);
     const expired = await service.create({ ...base, operationKey: key(6) }, user);
     assert.equal(expired.id, initial.id); assert.equal(expired.qrExpired, true); assert.equal(expired.qr, undefined);
@@ -221,6 +229,21 @@ test('QR draft operations: transactional reuse, replay, expiry, history, isolati
     // The narrow FamilyCar table above supports review projections. There is no
     // downstream family-car record for the new shop registration.
     manager.getRepository = getRepository;
+    await db.query("UPDATE vehicle_intakes SET plate='沪A12345' WHERE id=$1", [shop.id]);
+    const blank = await service.create({ ...shopInput, anotherVehicle: true, operationKey: key(409) }, user);
+    assert.equal(blank.untouchedDraft, true);
+    const resume = () => service.resumeOriginal(blank.id, shop.id, '沪A12345', user);
+    await assert.rejects(service.resumeOriginal(blank.id, shop.id, '沪A12346', user), /核对/);
+    await assert.rejects(service.resumeOriginal(blank.id, shop.id, '沪A12345', { ...user, id: 11 }), /其他经办人/);
+    await db.query("UPDATE vehicle_intakes SET files='[{}]' WHERE id=$1", [blank.id]);
+    await assert.rejects(resume(), /已有办理资料/);
+    await db.query("UPDATE vehicle_intakes SET files='[]', transaction_id=100 WHERE id=$1", [blank.id]);
+    await assert.rejects(resume(), /已有办理资料/);
+    await db.query("UPDATE vehicle_intakes SET transaction_id=NULL WHERE id=$1", [blank.id]);
+    assert.deepEqual(await resume(), { id: shop.id });
+    assert.deepEqual(await resume(), { id: shop.id });
+    assert.equal((await service.get(blank.id, user)).status, 'void');
+    assert.equal((await service.get(shop.id, user)).status, 'approved');
     const cashier = Object.assign(Object.create(service), { txnRepo: { findOne: async () => null } }) as VehicleIntakeService;
     await assert.rejects(cashier.claimForPayment(shop.id, undefined, user, undefined, undefined, 22), /原登记不一致/);
     await assert.rejects(cashier.claimForPayment(shop.id, 5, user, undefined, undefined, 21), /原登记不一致/);

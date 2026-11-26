@@ -111,6 +111,13 @@ export class VehicleIntakeController {
     return this.service.releaseReversed(id, body?.parkingChecked === true, user, access);
   }
 
+  @Post(':id/resume-original/:originalId')
+  @RequirePermission([...VIEW], 'edit')
+  resumeOriginal(@Param('id', ParseIntPipe) id: number, @Param('originalId', ParseIntPipe) originalId: number,
+    @Body('plate') plate: string, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
+    return this.service.resumeOriginal(id, originalId, plate, user, access);
+  }
+
   @Post(':id/review')
   @RequirePermission([...VIEW, ...MANAGER_REVIEW], 'edit')
   review(@Param('id', ParseIntPipe) id: number, @Body() body: ReviewIntakeInput, @CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {

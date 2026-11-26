@@ -50,6 +50,23 @@ async function create(page, kind = 'paid') {
   return dialog;
 }
 
+test('车辆管理离开未完成登记后同房重入，另办一辆须单独点击', async () => {
+  const f = await fixture(1440), { page } = f;
+  try {
+    await page.goto(f.origin + '/vehicles');
+    await create(page);
+    await navigate(page, '/plates');
+    await navigate(page, '/vehicles');
+    const dialog = await create(page);
+    const creates = async () => (await calls(page)).filter(c => c.method === 'POST' && c.url === '/vehicle-intakes');
+    const requests = await creates();
+    assert.deepEqual(requests.map(c => [c.data.houseId, c.data.anotherVehicle]), [[501, false], [501, false]]);
+    await dialog.getByRole('button', { name: '为同户另办一辆车', exact: true }).click();
+    await page.waitForFunction(() => window.__calls.some(c => c.url === '/vehicle-intakes' && c.data?.anotherVehicle === true));
+    assert.equal((await creates())[2].data.houseId, 501);
+  } finally { await f.close(); }
+});
+
 for (const width of [1440, 390]) test(`商铺在车辆管理和收银台直达登记并按商铺收款 (${width})`, { timeout: 60000 }, async () => {
   const f = await fixture(width); const { page, origin } = f;
   try {
@@ -268,8 +285,8 @@ for (const width of [1440, 390]) {
       await page.evaluate(() => { window.__waitFor = ['POST /business/complete']; });
       await payButton.click();
       await page.waitForFunction(() => !!window.__holds['POST /business/complete']);
-      await page.waitForFunction(() => Array.from(document.querySelectorAll('button')).some(b => b.textContent === '再登记一台' && b.disabled));
-      assert.equal(await dialog.getByRole('button', { name: '再登记一台', exact: true }).isDisabled(), true);
+      await page.waitForFunction(() => Array.from(document.querySelectorAll('button')).some(b => b.textContent === '为同户另办一辆车' && b.disabled));
+      assert.equal(await dialog.getByRole('button', { name: '为同户另办一辆车', exact: true }).isDisabled(), true);
       await page.keyboard.press('Escape');
       assert.equal(await dialog.isVisible(), true, 'cannot close and lose payment result while submitting');
       await page.evaluate(() => { window.__waitFor = []; window.__release('POST /business/complete'); });

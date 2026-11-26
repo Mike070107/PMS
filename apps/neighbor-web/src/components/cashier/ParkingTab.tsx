@@ -440,7 +440,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
       {entryKind ? <Sheet open title="新车登记" width={520} onClose={() => { if (!creatingIntake.current) setEntryKind(null); }}>
         <div className="registration-sheet" style={{ display: 'grid', gap: 14 }}>
           <RegistrationPermit house={house} />
-          <div className="note">{entryKind === 'paid' ? '付费新车' : '亲情车'}；继续本户同类型待提交申请。二维码过期可在原单换码；创建满 24 小时仍未提交资料的未收款申请会自动删除。</div>
+          <div className="note">{entryKind === 'paid' ? '付费新车' : '亲情车'}；继续本户同类型未办结的登记。二维码过期可在原单换码；创建满 24 小时仍未提交资料的未收款申请会自动删除。</div>
           {newErr ? <div role="alert" style={{ color: 'var(--dang)' }}>{newErr}</div> : null}
           {canEnterVehicleDetails() && <button className="btn p" disabled={newBusy} onClick={() => void createIntake(entryKind)}>工作人员直接登记</button>}
           <button className="btn" disabled={newBusy} onClick={() => void createIntake(entryKind, false, false)}><Icon name="qr" size={16} />{newBusy ? '正在读取原登记…' : '生成/继续登记二维码'}</button>

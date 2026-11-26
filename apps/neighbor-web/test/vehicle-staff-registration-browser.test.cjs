@@ -71,6 +71,9 @@ for (const width of [375, 1440]) test('已有登记时保留输入并给出原�
     assert.equal(await p.evaluate(() => window.__current().status), 'waiting');
     assert.equal(await p.evaluate(() => window.__calls.some(c => c.url === '/business/complete')), false);
     await screenshot(p, `existing-plate-renewal-${width}.png`);
+    await button(p, '继续原登记并撤销本张空单').click();
+    await p.waitForFunction(() => document.querySelector('[aria-label="当前办理入口"]').textContent === '/cashier?intakeId=70');
+    assert.equal(await p.evaluate(() => window.__calls.filter(c => c.url === '/vehicle-intakes/71/resume-original/70' && c.data?.plate === '沪A12345').length), 1);
   } finally { await f.close(); }
 });
 test('注销核对通过后由工作人员保存新能源车牌资料', async () => {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import Icon from '@/components/Icon';
 import { can } from '@/lib/perm';
 import { request } from '@pms/api-client';
@@ -34,8 +34,21 @@ export function ReleaseReversedRegistration({ intakeId, onReleased }: { intakeId
 export default function ExistingPlateNotice({ plate, intake, message }: { plate: string; intake: Intake; message: string }) {
   const [original, setOriginal] = useState<Intake | null>(null);
   const [released, setReleased] = useState(false);
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const resume = async () => {
+    if (!original || busy) return;
+    setBusy(true); setError('');
+    try {
+      const row = await request<{ id: number }>({ method: 'POST', url: `/vehicle-intakes/${intake.id}/resume-original/${original.id}`, data: { plate } });
+      navigate(`/${original.kind === 'paid' ? 'cashier' : 'plates'}?intakeId=${row.id}`);
+    } catch (e) { setError(e instanceof Error ? e.message : '继续原登记失败'); }
+    finally { setBusy(false); }
+  };
   const key = encodeURIComponent(plate);
   useEffect(() => {
+    setOriginal(null); setError('');
     if (message.startsWith('该车牌已有车辆档案，') || (intake.houseId == null && intake.shopBuildingId == null)) return;
     let active = true;
     const property = intake.shopBuildingId != null ? { shopBuildingId: intake.shopBuildingId } : { houseId: intake.houseId! };
@@ -52,10 +65,14 @@ export default function ExistingPlateNotice({ plate, intake, message }: { plate:
     <div>
       <div>{plate} 已有登记。{original?.canReleaseReversed ? '原收款已红冲。核实原车库未入库后，可解除原登记占用，再保存本次资料。' : '核对原登记或车辆档案后继续办理。'}</div>
       <div className="existing-plate-actions">
+        {intake.untouchedDraft && original?.kind === intake.kind && !original.familyCarId &&
+          (original.status !== 'approved' || (original.kind === 'paid' && !original.transaction)) &&
+          <button type="button" className="btn p" disabled={busy} onClick={() => void resume()}>继续原登记并撤销本张空单</button>}
         {original && <Link className="btn" to={`/plates?intakeId=${original.id}`}>查看原登记</Link>}
         {!original?.canReleaseReversed && <Link className="btn" to={`/cashier?renewPlate=${key}`}>按原车续费</Link>}
         <Link className="btn" to={`/records?q=${key}`}>查看收款流水</Link>
       </div>
+      {error && <p role="alert">{error}</p>}
       {original?.canReleaseReversed && can('business', 'edit') && <ReleaseReversedRegistration intakeId={original.id} onReleased={() => setReleased(true)} />}
     </div>
   </div>;

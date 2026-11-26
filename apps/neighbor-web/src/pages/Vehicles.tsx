@@ -57,14 +57,14 @@ export default function Vehicles() {
 
   const [newBusy, setNewBusy] = useState(false);
   const [newErr, setNewErr] = useState('');
-  const createIntakeNow = async () => {
+  const createIntakeNow = async (anotherVehicle = false) => {
     const shopId = newShop?.buildingId;
     const subject = shopId ? { shopBuildingId: shopId } : newHouse ? { houseId: newHouse.houseId } : null;
-    if (!subject || creating.current || newQr) return;
+    if (!subject || creating.current || (newQr && !anotherVehicle)) return;
     creating.current = true;
     setNewBusy(true); setNewErr('');
     // 操作编号跨超时/刷新保留：重试继续原登记，不重复建单；只有明确成功才释放。
-    const operation = vehicleIntakeOperation(shopId ? `shop:${shopId}` : newHouse!.houseId, newKind);
+    const operation = vehicleIntakeOperation(shopId ? `shop:${shopId}` : newHouse!.houseId, newKind, anotherVehicle);
     try {
       const formBase = `${window.location.origin}${import.meta.env.BASE_URL.replace(/\/+$/, '')}/m/plate`;
       const r = await request<Intake>({ method: 'POST', url: '/vehicle-intakes', data: {
@@ -265,7 +265,9 @@ export default function Vehicles() {
             ) : (
               <>
                 <Cashier key={newQr.id} embeddedIntakeId={newQr.id} onBusyChange={setNewBusy} />
-                <button className="btn" style={{ marginTop: 16 }} disabled={newBusy} onClick={() => { setNewQr(null); setNewHouse(null); setNewShop(null); setNewErr(''); }}>再登记一台</button>
+                {newErr && <p role="alert">{newErr}</p>}
+                <button className="btn" style={{marginTop:16}} disabled={newBusy} onClick={()=>void createIntakeNow(true)}>为同户另办一辆车</button>
+                <button className="btn" style={{ marginTop: 16 }} disabled={newBusy} onClick={() => { setNewQr(null); setNewHouse(null); setNewShop(null); setNewErr(''); }}>重新选房号</button>
               </>
             )}
           </div>

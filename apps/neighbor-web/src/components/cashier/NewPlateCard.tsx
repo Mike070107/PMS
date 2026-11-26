@@ -28,7 +28,7 @@ export interface Intake {
   houseId: number | null; shopBuildingId?: number | null; communityId?: number | null; houseLabel: string; ownerName: string; ownerPhone: string;
   plate: string; contactName: string; contactPhone: string; relation: string; vehicleClass: string;
   garages: string[]; garageNumbers: Record<string, string>;
-  canConfigureApproved?: boolean; canReleaseReversed?: boolean; homeUpload?: boolean; expiresAt: string; qrValid: boolean; openedAt: string | null; submittedAt: string | null; reviewedAt: string | null; reviewNote: string;
+  untouchedDraft?: boolean; canConfigureApproved?: boolean; canReleaseReversed?: boolean; homeUpload?: boolean; expiresAt: string; qrValid: boolean; openedAt: string | null; submittedAt: string | null; reviewedAt: string | null; reviewNote: string;
   files: IntakeFile[];
   transaction: { id: number; txnNo: string; amountCents: number; startDate: string | null; endDate: string | null; externalSyncStatus: string; execution: { lastError?: string | null } | null } | null;
   familyCarId: number | null;

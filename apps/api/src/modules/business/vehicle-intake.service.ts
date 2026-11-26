@@ -205,7 +205,11 @@ export class VehicleIntakeService {
       const latest = { order: { id: 'DESC' as const }, lock: { mode: 'pessimistic_write' as const } };
       const previous = input.anotherVehicle
         ? await this.repo.findOne({ ...latest, where: { ...draft, status:'waiting', submittedAt:IsNull(), transactionId:IsNull() } })
-        : await this.repo.findOne({ ...latest, where: { ...draft, expiresAt: MoreThan(new Date()) } })
+        : await this.repo.findOne({ ...latest, where: [
+            { ...draft, status: 'submitted' },
+            ...(input.kind === 'paid' ? [{ ...draft, status: 'approved' as const, transactionId: IsNull() }] : []),
+          ] })
+          ?? await this.repo.findOne({ ...latest, where: { ...draft, expiresAt: MoreThan(new Date()) } })
           ?? await this.repo.findOne({ ...latest, where: draft });
       if (previous) {
         this.checkScope(previous, access);
@@ -525,6 +529,35 @@ export class VehicleIntakeService {
     const execution = txn.snapshot.execution as { manualDone?: unknown; steps?: Array<{ key?: string; status?: string }> } | undefined;
     return (txn.externalSyncStatus === 'rejected' || (txn.externalSyncStatus === 'synced' && !!execution?.manualDone)) &&
       !(execution?.steps ?? []).some(step => step.key !== 'registration:check' && step.status === 'done');
+  }
+
+  private isUntouchedDraft(row: VehicleIntake) {
+    return row.status === 'waiting' && row.dataVersion === 1 && !row.plate && !row.contactName && !row.contactPhone &&
+      !row.relation && !row.openedAt && !row.submittedAt && !row.reviewedAt && !row.transactionId && !row.familyCarId &&
+      !row.officeConfirmedVersion && !row.registrationTerm && !row.files?.length && !row.materialHistory?.length &&
+      !row.garages?.length && !Object.keys(row.garageNumbers ?? {}).length &&
+      row.vehicleClass === (row.kind === 'paid' ? this.cls(undefined) : '') &&
+      row.log?.length === 1 && ['生成新办车牌扫码登记', '生成亲情车扫码登记'].includes(row.log[0].action);
+  }
+
+  async resumeOriginal(id: number, originalId: number, plate: string, user: AuthUser, access?: ResolvedAccess): Promise<{ id: number }> {
+    if (!this.inTransaction) return this.locked(id, user, access, service => service.resumeOriginal(id, originalId, plate, user, access));
+    const draft = await this.load(id, user, access);
+    const note = `继续原登记 #${originalId}，撤销重复空单`;
+    const replay = draft.status === 'void' && draft.log?.some(entry => entry.action === '作废' && entry.note === note);
+    if (draft.createdBy !== user.id || (!replay && !this.isUntouchedDraft(draft)))
+      throw new BadRequestException('本单已有办理资料或由其他经办人创建，请保留本单并查看原登记');
+    const normalized = normalizeFamilyPlate(String(plate ?? ''));
+    if (id === originalId || !isValidFamilyPlate(normalized)) throw new BadRequestException('请核对原登记车牌');
+    const original = await this.repo.findOne({ where: { id: originalId, tenantId: draft.tenantId }, lock: { mode: 'pessimistic_write' } });
+    if (!original || original.kind !== draft.kind || original.houseId !== draft.houseId || original.shopBuildingId !== draft.shopBuildingId ||
+      normalizeFamilyPlate(original.plate) !== normalized || original.familyCarId ||
+      !(['waiting', 'reupload', 'submitted'].includes(original.status) || (original.kind === 'paid' && original.status === 'approved' && !original.transactionId)))
+      throw new BadRequestException('原登记或办理状态已变化，请重新核对');
+    this.checkScope(original, access);
+    this.assertDraftAvailable(original);
+    if (!replay) await this.review(id, { decision: 'void', note, expectedVersion: draft.dataVersion }, user, access);
+    return { id: original.id };
   }
 
   async review(id: number, input: ReviewIntakeInput, user: AuthUser, access?: ResolvedAccess) {
@@ -1020,7 +1053,7 @@ export class VehicleIntakeService {
     const txn = row.transactionId ? await this.txnRepo.findOne({ where: { id: row.transactionId, tenantId: row.tenantId } }) : null;
     const now = Date.now();
     return {
-      canConfigureApproved: this.canConfigureApproved(row), canReleaseReversed: this.canReleaseReversed(row, txn), homeUpload: this.isHomeUpload(row), id: row.id, kind: row.kind, status: row.status, houseId: row.houseId, shopBuildingId: row.shopBuildingId ?? null, communityId: row.communityId, houseLabel: row.houseLabel,
+      untouchedDraft: this.isUntouchedDraft(row), canConfigureApproved: this.canConfigureApproved(row), canReleaseReversed: this.canReleaseReversed(row, txn), homeUpload: this.isHomeUpload(row), id: row.id, kind: row.kind, status: row.status, houseId: row.houseId, shopBuildingId: row.shopBuildingId ?? null, communityId: row.communityId, houseLabel: row.houseLabel,
       ownerName: row.ownerName, ownerPhone: row.ownerPhone,
       plate: row.plate, contactName: row.contactName, contactPhone: row.contactPhone, relation: row.relation, vehicleClass: row.vehicleClass,
       garages: row.garages, garageNumbers: row.garageNumbers,

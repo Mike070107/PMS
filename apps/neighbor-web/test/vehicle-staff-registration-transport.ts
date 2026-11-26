@@ -4,7 +4,7 @@ export const targets = [
   { key: 'local:phase2_parking', label: '枫桦景苑二期 地面', short: '二期地面', system: 'local', database: 'parking2', billing: 'vehicle', communities: ['枫桦景苑二期'] },
   { key: 'local:phase2_main_garage', label: '枫桦景苑二期 大车库', short: '大车库', system: 'local', database: 'parking2', billing: 'space', communities: ['枫桦景苑二期'] },
 ];
-export const seed: any = { id: 71, kind: 'paid', status: 'waiting', houseId: 5, communityId: 3, houseLabel: '枫桦景苑二期/228弄3号502', ownerName: '合成业主', ownerPhone: '13900000000', plate: '', contactName: '', contactPhone: '', relation: '', vehicleClass: '住户车-1', garages: [], garageNumbers: {}, expiresAt: '2099-11-11T23:59:00+08:00', qrValid: true, submittedAt: null, openedAt: null, reviewedAt: null, reviewNote: '', files: [], transaction: null, familyCarId: null, createdAt: '2026-11-17T08:00:00+08:00', qr: { url: 'https://mock.invalid/fixture-only', dataUrl: '/sample.png' }, log: [] };
+export const seed: any = { id: 71, untouchedDraft: true, kind: 'paid', status: 'waiting', houseId: 5, communityId: 3, houseLabel: '枫桦景苑二期/228弄3号502', ownerName: '合成业主', ownerPhone: '13900000000', plate: '', contactName: '', contactPhone: '', relation: '', vehicleClass: '住户车-1', garages: [], garageNumbers: {}, expiresAt: '2099-11-11T23:59:00+08:00', qrValid: true, submittedAt: null, openedAt: null, reviewedAt: null, reviewNote: '', files: [], transaction: null, familyCarId: null, createdAt: '2026-11-17T08:00:00+08:00', qr: { url: 'https://mock.invalid/fixture-only', dataUrl: '/sample.png' }, log: [] };
 let current = structuredClone(seed);
 w.__calls = []; w.__current = () => structuredClone(current); w.__failGarage = false; w.__failReview = false; w.__holdSubmit = false;
 export const accessCardIssuance = {};
@@ -16,6 +16,7 @@ export async function request(o: any): Promise<any> {
     w.__existingPlate = false;
     return { ...seed, id: 70, status: 'void' };
   }
+  if (o.url === '/vehicle-intakes/71/resume-original/70') return { id: 70 };
   if (o.url === '/business/parking-targets') return targets;
   if (o.url.endsWith('/parking-spaces')) return { rows: [
     { id: 1, garage: 'main', spaceNo: 'B12' },
