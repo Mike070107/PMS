@@ -18,9 +18,9 @@ import Icon,{IconSprite} from '@/components/Icon';import PayMethods from '@/comp
 import '@/styles/design.css';import '@/styles/app.css';import '@/styles/erp-reference.css';
 function Fixture(){const [confirmed,setConfirmed]=useState(false),[pay,setPay]=useState('现金');
 const isBillTab=false,tab='pk',billLabel='',parkReady=true,busy=false,canCharge=true,cartTotal=150000;
-const [collectionDate,setSelectedCollectionDate]=useState('2026-11-24');const today='2026-11-24',collectionDateInputId='collection-day',linkedIntake=null;
+const [collectionDate,setSelectedCollectionDate]=useState('2026-11-24');const today='2026-11-24',collectionDateInputId='collection-day',linkedIntake={id:37};
 const PAYMENTS=[{k:'现金'},{k:'微信'},{k:'支付宝'},{k:'转账'}];
-const parkCarts=[{plate:'沪M03212',months:12,systemsLabel:'一期地面车库',estimate:{startDate:'2027-01-01',endDate:'2027-12-31',amountCents:150000,
+const parkCarts=[{intakeId:37,plate:'沪M03212',months:12,systemsLabel:'一期地面车库',estimate:{startDate:'2027-01-01',endDate:'2027-12-31',amountCents:150000,
 recordedPaymentsToday:[{txnNo:'PK-TEST-1',paidAt:'17:57:53',startDate:'2026-12-01',endDate:'2027-04-30',amountCents:75000},{txnNo:'PK-TEST-2',paidAt:'21:08:07',startDate:'2027-05-01',endDate:'2027-05-31',amountCents:12000}]}}];
 const charge=()=>{window.__submitted=(window.__submitted||0)+1};
 return <main style={{maxWidth:400,margin:'24px auto',padding:12}}><IconSprite/>${cart}</main>}
@@ -43,6 +43,11 @@ createRoot(document.getElementById('root')).render(<Fixture/>);` }, bundle: true
         const rect=e=>{const r=e.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom}};
         return {width:innerWidth,scroll:document.documentElement.scrollWidth,summary:rect(summary),fontSize:getComputedStyle(summary).fontSize,fontWeight:getComputedStyle(summary).fontWeight,lines:spans.map(e=>({text:e.textContent,...rect(e),lineHeight:getComputedStyle(e).lineHeight})),controls:[...document.querySelectorAll('.cv,.cartTot,.cartFoot input,.cartFoot button')].map(rect)};
       });
+      const date=page.getByLabel('收费日期',{exact:true});
+      await date.waitFor();
+      await date.fill('2026-11-20');
+      await date.press('Enter');
+      assert.equal(await date.inputValue(),'2026-11-20');
       await page.screenshot({path:path.join(out,`summary-${width}-${process.env.PMS_UI_EVIDENCE_PHASE||'after'}.png`),fullPage:true});
       assert.equal(geometry.lines.length,2,'garage and date range need separate semantic lines');
       assert.equal(geometry.lines[0].text,'一期地面车库');
@@ -56,7 +61,7 @@ createRoot(document.getElementById('root')).render(<Fixture/>);` }, bundle: true
       await paymentNote.waitFor();
       assert.match(await paymentNote.innerText(),/17:57:53.*750\.00[\s\S]*2026-12-01 至 2027-04-30.*PK-TEST-1/);
       assert.match(await paymentNote.innerText(),/21:08:07.*120\.00[\s\S]*2027-05-01 至 2027-05-31.*PK-TEST-2/);
-      const submit=page.getByRole('button',{name:'确认收款 · ¥ 1500.00',exact:true});
+      const submit=page.getByRole('button',{name:'收费并办理 · ¥ 1500.00',exact:true});
       assert.equal(await submit.isDisabled(),true);await page.locator('.confirmLine').click();assert.equal(await submit.isDisabled(),false);await submit.click();
       assert.equal(await page.evaluate(()=>window.__submitted),1);
       evidence.push(geometry);await page.close();

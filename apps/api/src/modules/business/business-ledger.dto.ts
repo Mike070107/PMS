@@ -7,6 +7,7 @@ export class ReverseParkingPaymentDto {
   reason!: string;
 }
 export class BusinessLedgerQueryDto{
+ @IsOptional() @Type(()=>Number) @IsIn([1]) includeOperations?:number;
  @IsOptional() @Type(()=>Number) @IsInt() @Min(1) @Max(1000000) page?:number;
  @IsOptional() @Type(()=>Number) @IsIn([20,50,100]) pageSize?:number;
  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) @IsDateString({strict:true}) from?:string;

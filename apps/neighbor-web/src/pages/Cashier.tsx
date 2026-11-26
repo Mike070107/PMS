@@ -541,7 +541,7 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
   const cartTotal = isBillTab ? selBillTotal : tab === 'pk' ? parkCarts.reduce((t, x) => t + x.estimate.amountCents, 0) : (cardFree ? 0 : (cardEst?.amountCents ?? 0));
   // MIS 写账协议未落地：物业费/泊位费在这里只核对应收，收款仍在物业系统办理，避免两边账对不上
   const canCharge = deepReady && !(tab === 'pk' && linkedBlocked) && (isBillTab ? false : tab === 'pk'
-    ? parkReady && parkCarts.every(item => item.intakeId || item.collectionDate === collectionDate) : (cardFree || !!cardEst));
+    ? parkReady && parkCarts.every(item => item.collectionDate === collectionDate) : (cardFree || !!cardEst));
 
   const charge = async () => {
     if ((!house && !plateOnly && !businessShop) || !canCharge || charging.current || (cartTotal > 0 && !confirmed)) return;
@@ -573,7 +573,7 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
                 ? { startDate: c.custom.startDate, endDate: c.custom.endDate, manualAmountCents: c.custom.manualAmountCents, customReason: c.custom.reason }
                 : { months: c.months, currentEndDate: c.currentEndDate || undefined }),
               parkingSystems: c.systems, mainSpaceNo: c.mainSpaceNo, civilSpaceNo: c.civilSpaceNo, confirmedVehicleClass: c.rule.config?.vehicleClass || undefined, ...(c.legacyStartDate ? { legacyStartDate: c.legacyStartDate } : {}), ...(c.intakeId ? { intakeId: c.intakeId } : {}), ...(c.intakeId || plateOnly ? { expectedAmountCents: c.estimate.amountCents } : {}), paymentMethod: payCode(pay), remark: payCode(pay) === 'other' ? `收款方式：${pay}` : undefined,
-              ...(!c.intakeId ? { collectionDate: c.collectionDate } : {}),
+              collectionDate: c.collectionDate,
             } });
             if (revision !== navigationRevision.current) return;
             okList.push({ c, txn });
@@ -865,7 +865,7 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
             </div>
             <div className="cartFoot">
               <div className="cartTot"><span className="k">本次应收（{isBillTab ? billLabel : tab === 'pk' ? '停车' : '门禁卡'}）</span><span className="v money">{money(cartTotal / 100)}</span></div>
-              {tab === 'pk' && !linkedIntake && (!parkCarts.length || parkCarts.some(item => !item.intakeId)) ? (
+              {tab === 'pk' ? (
                 <div className="payPick" style={{ display: 'grid', gap: 6, marginBottom: 10 }}>
                   <label htmlFor={collectionDateInputId}>收费日期</label>
                   <DateInput id={collectionDateInputId} aria-label="收费日期" value={collectionDate} max={today} required disabled={busy}

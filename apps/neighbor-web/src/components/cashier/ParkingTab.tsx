@@ -461,7 +461,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
             {!staffRegistration && <RegistrationPermit house={house} intakeId={i.id} kind={i.kind} />}
             <NewPlateCard intake={i} house={house} rules={rules} targets={hh?.targets ?? []} defaultStaffMode entryMode={selectedEntry?.id === i.id ? selectedEntry : undefined}
               onChange={updateIntake} onDrop={dropIntake} onCart={setCart}
-              renewal={(car, label, cls, onCls, ready, garages) => <CarRenewal car={car} rules={rules} house={house} onCart={setCart} intakeId={i.id} allowCart={ready} garages={garages} title="新办" label={label} vehicleClass={cls} onClass={onCls} />} />
+              renewal={(car, label, cls, onCls, ready, garages) => <CarRenewal car={car} rules={rules} house={house} onCart={setCart} intakeId={i.id} collectionDate={collectionDate} allowCart={ready} garages={garages} title="新办" label={label} vehicleClass={cls} onClass={onCls} />} />
             </section>
           ))}
         </div>
@@ -556,7 +556,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
   const ends = lots.map((l) => l.endDate).filter((d): d is string => !!d).sort();
   const currentEnd = ends[ends.length - 1] ?? null;
   const mismatch = new Set(ends).size > 1;
-  const defaultStart = currentEnd && !expired(currentEnd) ? dayjs(currentEnd).add(1, 'day').format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD');
+  const defaultStart = intakeId && collectionDate ? collectionDate : currentEnd && !expired(currentEnd) ? dayjs(currentEnd).add(1, 'day').format('YYYY-MM-DD') : dayjs().format('YYYY-MM-DD');
   const cs = selectedStart ?? (ce && ce < defaultStart ? ce : defaultStart);
   useEffect(() => { if (custom && !ce) setCe(dayjs(defaultStart).add(1, 'month').subtract(1, 'day').format('YYYY-MM-DD')); }, [custom]); // eslint-disable-line react-hooks/exhaustive-deps
   const attempted = useContext(ChargeAttempted);
@@ -590,7 +590,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
     const data = custom
       ? { serviceType: 'parking_monthly', ruleId: rule.id, houseId: house.id ?? undefined, ownerId: house.owner?.id, plateNo: sel.plate, startDate: cs, endDate: ce, manualAmountCents: manualCents!, customReason: reason.trim() }
       : { serviceType: 'parking_monthly', ruleId: rule.id, houseId: house.id ?? undefined, ownerId: house.owner?.id, plateNo: sel.plate, months, currentEndDate: currentEnd || undefined };
-    request<Estimate>({ method: 'POST', url: '/business/estimate', data: { ...data, ...(collectionDate ? { collectionDate } : {}) } })
+    request<Estimate>({ method: 'POST', url: '/business/estimate', data: { ...data, ...(intakeId ? {intakeId} : {}), ...(collectionDate ? { collectionDate } : {}) } })
       .then((e) => {
         if (!alive || generation !== quoteGeneration.current) return;
         if ((!custom && e.quantity !== months) || (custom && (e.startDate !== cs || e.endDate !== ce || e.amountCents !== manualCents)) || !Number.isSafeInteger(e.amountCents) || e.amountCents < 0 || !e.startDate || !e.endDate) {

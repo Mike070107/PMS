@@ -699,8 +699,8 @@ export class BusinessService {
   private validateCollectionDate(dto: EstimateBusinessDto & { intakeId?: number }) {
     const day = dto.collectionDate;
     if (day == null) return undefined;
-    if (dto.serviceType !== BusinessServiceType.PARKING_MONTHLY || dto.intakeId)
-      throw new BadRequestException('仅停车续期可选择收费日期');
+    if (dto.serviceType !== BusinessServiceType.PARKING_MONTHLY)
+      throw new BadRequestException('仅停车收费可选择收费日期');
     const parsed = new Date(`${day}T00:00:00Z`);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day.startsWith('0000') || !Number.isFinite(parsed.getTime()) ||
         parsed.toISOString().slice(0, 10) !== day || day > this.today())
@@ -1156,7 +1156,7 @@ export class BusinessService {
     }
     const current = /^\d{4}-\d{2}-\d{2}/.test(dto.currentEndDate || '') ? dto.currentEndDate!.slice(0, 10) : null;
     // 续期：没到期的接着原到期日续，已过期的从今天起；结束日 = 开始 + N 月 − 1 天
-    const win = dto.startDate ? null : renewalWindow({ currentEndDate: current, today: this.today(), months: quantity });
+    const win = dto.startDate ? null : renewalWindow({ currentEndDate: current, today: dto.intakeId && dto.collectionDate ? dto.collectionDate : this.today(), months: quantity });
     const startDate = dto.startDate ?? win!.startDate;
     const endDate = dto.endDate ?? (win ? win.endDate : addDays(addMonthsClamped(startDate, quantity), -1));
     if (dto.startDate || dto.endDate) {

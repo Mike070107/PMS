@@ -53,6 +53,8 @@ test('停车试算列出北京时间当天同车牌的已收款原流水，并�
     ]);
     assert.deepEqual((await svc.estimate({ ...dto, plateNo: '苏U99999' }, user, access)).recordedPaymentsToday, []);
     await db.exec(`UPDATE business_transactions SET snapshot=snapshot || '{"collectionDate":"2026-11-22"}'::jsonb WHERE id=2`);
+    const newPlate = await svc.estimate({...dto, intakeId: 37, currentEndDate: undefined, collectionDate:'2026-11-20'},user,access);
+    assert.equal(newPlate.startDate,'2026-11-20','登记按所选收款日开始，报价和提交共用日期规则');
     const prior = await svc.estimate({ ...dto, collectionDate: '2026-11-22' }, user, access);
     assert.deepEqual(prior.recordedPaymentsToday.map((item: any) => [item.txnNo, item.paidAt]), [['PK-B', '2026-11-22']]);
     assert.deepEqual((await svc.estimate(dto, user, access)).recordedPaymentsToday.map((item: any) => item.txnNo), ['PK-A']);
@@ -116,7 +118,7 @@ test('无 PMS 房号按现场查询锁定旧库车辆，登记一笔流水并保
   for (const collectionDate of ['2026-11-24', '2026-02-30', '2026-11-2', '']) {
     await assert.rejects(svc.complete({ ...payment(), collectionDate }, actor, scope), /收费日期/);
   }
-  await assert.rejects(svc.complete({ ...payment(), intakeId: 10 }, actor, scope), /仅停车续期/);
+  await assert.rejects(svc.complete({ ...payment(), serviceType:'access_card' }, actor, scope), /仅停车收费/);
   assert.equal(first.houseId, null);
   assert.equal(first.communityId, 12);
   assert.equal(first.targetType, 'parking_plate');
@@ -247,7 +249,8 @@ test('新办与已有车辆的0元/150元自定日期登记保留待审核，不
       execution: { initialFor: () => ({ status: 'queued' }), kick: () => { kicked++; } },
       notifyReviewers: async () => { notified++; },
     });
-    const result = await svc.complete({ serviceType: 'parking_monthly', ruleId: 18, houseId: 1, plateNo: '沪TEST01', startDate: '2026-11-06', endDate: '2026-12-31', manualAmountCents: amount, customReason: '优惠减免', paymentMethod: 'cash', ...(intake ? { intakeId: 5 } : {}) }, { id: 7, tenantId: 91 }, { scopeAll: false, communityIds: [1] });
+    const result = await svc.complete({ serviceType: 'parking_monthly', ruleId: 18, houseId: 1, plateNo: '沪TEST01', startDate: '2026-11-06', endDate: '2026-12-31', manualAmountCents: amount, customReason: '优惠减免', paymentMethod: 'cash', ...(intake ? { intakeId: 5, collectionDate:"2026-11-04" } : {}) }, { id: 7, tenantId: 91 }, { scopeAll: false, communityIds: [1] });
+    if(intake)assert.equal(result.snapshot.collectionDate,"2026-11-04");
     assert.equal(saved.length, 1); assert.equal(result.amountCents, amount); assert.equal(result.externalSyncStatus, 'review');
     assert.equal(result.snapshot.review.standardAmountCents, 30000); assert.equal(result.snapshot.review.manualAmountCents, amount);
     assert.ok(logs.some(v => v.action === 'review_requested')); assert.equal(kicked, 0); assert.equal(notified, 1); assert.equal(attached, intake ? 1 : 0);

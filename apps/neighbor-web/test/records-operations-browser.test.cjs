@@ -23,6 +23,11 @@ test('办理记录中文系统操作：真实React与ledger SQL，桌面/窄屏�
  for(let i=0;i<snapshots.length;i++)await db.query(`INSERT INTO business_transactions VALUES($1,$2,1,10,1,7,'parking_monthly','paid',0,'alipay',$3,'2026-11-15T00:15:00+08',$4,11,'2026-11-15','2027-10-30')`,[301+i,'SYNTHETIC-'+i,['queued','synced','failed'][i],JSON.stringify(snapshots[i])]);
  await db.exec(`INSERT INTO business_transactions VALUES(304,'SYNTHETIC-RED',1,10,1,7,'parking_monthly','paid',75000,'alipay',
    'synced','2026-11-15T21:08:07+08','{"collectionDate":"2026-11-14","vehicle":{"plateNo":"沪TEST04"}}',5,'2026-12-01','2027-04-30');`);
+ await db.exec(`CREATE TABLE parking_operations(id int,tenant_id int,kind text,database text,idempotency_key text,source_record_id text,payload jsonb,result jsonb,status text,created_by int,requested_at timestamptz,completed_at timestamptz,last_error text);
+ CREATE TABLE parking_history(id int,tenant_id int,event_type text,source text,database text,source_record_id text,plate_before text,plate_after text,operator_user_id int,occurred_at timestamptz);
+ INSERT INTO parking_operations VALUES
+ (279,1,'add_vehicle','parking2','biz:SYNTHETIC-2:register:parking2',NULL,'{"plate":"沪TEST03","businessTxnNo":"SYNTHETIC-2"}','{"issueId":"12"}','completed',7,'2026-11-15T01:00Z','2026-11-15T01:00Z',NULL),
+ (294,1,'delete_vehicle','parking2','manual','12','{"plate":"沪TEST05","refund":0,"depositRefund":0}','{"verified":true,"remaining":0}','completed',7,'2026-11-16T13:46Z','2026-11-16T13:46Z',NULL);`);
  const ds=new DataSource({type:'postgres',entities:[BusinessTransaction]});await ds.buildMetadatas();const real=ds.getRepository(BusinessTransaction);
  const wrap=qb=>{const clone=qb.clone.bind(qb);qb.clone=()=>wrap(clone());qb.getRawMany=async()=>{const[sql,params]=qb.getQueryAndParameters();return(await db.query(sql,params)).rows};qb.getRawOne=async()=>(await qb.getRawMany())[0];return qb};
  const repo={manager:{connection:{query:async(sql,params)=>(await db.query(sql,params)).rows}},createQueryBuilder:alias=>wrap(real.createQueryBuilder(alias))};
@@ -50,7 +55,7 @@ test('办理记录中文系统操作：真实React与ledger SQL，桌面/窄屏�
         5,'2026-12-01','2027-04-30');`);
     return res.end(JSON.stringify({reversalTxnNo:'PKR-304',amountCents:-75000}));
    }
-   try{assert.equal(req.method,'GET');assert.equal(url.pathname,'/fixture/business/transaction-ledger','禁止写接口');if(hold)await held;if(fail)throw Error('synthetic read failure');const q=Object.fromEntries(url.searchParams);q.page=Number(q.page||1);q.pageSize=Number(q.pageSize||20);return res.end(JSON.stringify(await service.list(q,{id:7,tenantId:1},{scopeAll:false,communityIds:[10]})));}catch(e){res.statusCode=400;return res.end(JSON.stringify({error:e.message}));}
+   try{assert.equal(req.method,'GET');assert.equal(url.pathname,'/fixture/business/transaction-ledger','禁止写接口');if(hold)await held;if(fail)throw Error('synthetic read failure');const q=Object.fromEntries(url.searchParams);q.includeOperations=Number(q.includeOperations);q.page=Number(q.page||1);q.pageSize=Number(q.pageSize||20);return res.end(JSON.stringify(await service.list(q,{id:7,tenantId:1},{scopeAll:false,communityIds:[10]})));}catch(e){res.statusCode=400;return res.end(JSON.stringify({error:e.message}));}
   }
   if(url.pathname==='/entry.js'){res.setHeader('content-type','text/javascript');return res.end(js);}
   if(url.pathname==='/entry.css'){res.setHeader('content-type','text/css');return res.end(css);}
@@ -64,6 +69,11 @@ test('办理记录中文系统操作：真实React与ledger SQL，桌面/窄屏�
    await page.route('**/*',route=>{assert.equal(new URL(route.request().url()).hostname,'127.0.0.1','不得外联');return route.continue();});
    await page.goto(`http://127.0.0.1:${server.address().port}`);
    if(hold){await page.getByRole('status').waitFor();assert.match(await page.getByRole('status').textContent(),/正在读取/);hold=false;release();}
+   const cancelled=page.getByRole('row').filter({hasText:'注销车辆 沪TEST05'});
+   await cancelled.getByRole('button',{name:'明细'}).click();
+   await page.getByText('当时未记录',{exact:true}).waitFor();
+   await page.getByText('已核实，旧库剩余 0 条',{exact:true}).waitFor();
+   await cancelled.getByRole('button',{name:'收起'}).click();
    const row=page.getByRole('row').filter({hasText:'沪TEST01'});await row.getByRole('button',{name:'明细',exact:true}).click();
    const section=page.getByRole('region',{name:'车辆系统操作'}),detail=page.locator('.rec-detail');await section.waitFor();
    assert.equal(await section.locator('.rec-operation').count(),2);const body=await detail.textContent();

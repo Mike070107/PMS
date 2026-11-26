@@ -989,21 +989,47 @@ ORDER BY COALESCE([out_Time], [Int_Time]) DESC;";
                     return ChangePlatePreservingVehicle(config, connection, task, plate, newPlate);
                 if (task.kind == "delete_vehicle")
                 {
-                    using (var command = Procedure(connection, "Add_Del_Plate"))
+                    using (var transaction = connection.BeginTransaction())
                     {
-                        Add(command, "@P_plate", SqlDbType.VarChar, 50, plate);
-                        Add(command, "@Up_moey", SqlDbType.Int, 0, Number(payload, "refund", 0));
-                        Add(command, "@Up_Yajin", SqlDbType.Int, 0, Number(payload, "depositRefund", 0));
-                        Add(command, "@Admin", SqlDbType.VarChar, 20, admin);
-                        command.ExecuteNonQuery();
-                    }
-                    using (var check = connection.CreateCommand())
-                    {
-                        check.CommandText = "SELECT COUNT(*) FROM Car_Issue WHERE P_plate=@plate";
-                        Add(check, "@plate", SqlDbType.VarChar, 50, plate);
-                        var count = Convert.ToInt32(check.ExecuteScalar());
-                        if (count != 0) throw new InvalidOperationException("注销存储过程执行后旧库仍存在该车牌");
-                        return new Dictionary<string, object> { { "verified", true }, { "remaining", count } };
+                        var row = TryReadBindingVehicle(connection, transaction, plate);
+                        var journal = VehicleSnapshotPath(config, connection, task);
+                        var before = LoadVehicleSnapshot(journal);
+                        if (row != null)
+                        {
+                            if (!String.IsNullOrEmpty(task.sourceRecordId)) AssertVehicleRecord(task, row);
+                            var bits = Value(row, "P_Effective") ?? "";
+                            var garageKeys = task.database == "parking1" ? new[] { "phase1" } : new[] { "phase2", "main" };
+                            var authorized = garageKeys.Where(key => GarageChannels(key).Any(n => n <= bits.Length && bits[n - 1] == '1')).ToArray();
+                            var observed = new Dictionary<string, object> {
+                                { "issueId", Value(row, "P_id") }, { "garageList", String.Join(",", authorized) }, { "spaceNo", Value(row, "P_Spaces") },
+                                { "startDate", SqlDay(row["Sart_Time"]) }, { "endDate", SqlDay(row["End_Time"]) }
+                            };
+                            if (before == null) SaveVehicleSnapshot(journal, observed);
+                            else if (observed.Any(pair => Value(before, pair.Key) != Value(observed, pair.Key)))
+                                throw new InvalidOperationException("待注销记录已变更，请重新核对");
+                            before = observed;
+                        }
+                        if (row != null) using (var command = Procedure(connection, "Add_Del_Plate"))
+                        {
+                            command.Transaction = transaction;
+                            Add(command, "@P_plate", SqlDbType.VarChar, 50, plate);
+                            Add(command, "@Up_moey", SqlDbType.Int, 0, Number(payload, "refund", 0));
+                            Add(command, "@Up_Yajin", SqlDbType.Int, 0, Number(payload, "depositRefund", 0));
+                            Add(command, "@Admin", SqlDbType.VarChar, 20, admin);
+                            command.ExecuteNonQuery();
+                        }
+                        using (var check = connection.CreateCommand())
+                        {
+                            check.Transaction = transaction;
+                            check.CommandText = "SELECT COUNT(*) FROM Car_Issue WHERE P_plate=@plate";
+                            Add(check, "@plate", SqlDbType.VarChar, 50, plate);
+                            var count = Convert.ToInt32(check.ExecuteScalar());
+                            if (count != 0) throw new InvalidOperationException("注销存储过程执行后旧库仍存在该车牌");
+                            transaction.Commit();
+                            if (before != null)
+                                before["garages"] = (Value(before, "garageList") ?? "").Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                            return new Dictionary<string, object> { { "verified", true }, { "remaining", count }, { "beforeDeletion", before } };
+                        }
                     }
                 }
                 if (task.kind == "download_vehicle")

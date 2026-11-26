@@ -123,5 +123,26 @@ test('ledger uses SQL scope, whole-filter aggregates, stable 20/50/100 paging an
  assert.equal((await service.list({...q,serviceType:'parking_monthly'},user,access)).summary.netCents,150000);
  assert.equal((await service.list({from:'2026-11-07',to:'2026-11-07',serviceType:'parking_monthly'},user,access)).summary.netCents,-150000);
  assert.deepEqual((await db.query('SELECT * FROM reversal_test_audit')).rows,[{original_id:200,reversal_no:'PKR-200',reason:'确认重复登记'}]);
+ await db.exec(`CREATE TABLE parking_operations(id int,tenant_id int,kind text,database text,idempotency_key text,source_record_id text,payload jsonb,result jsonb,status text,created_by int,requested_at timestamptz,completed_at timestamptz,last_error text);
+ CREATE TABLE parking_history(id int,tenant_id int,event_type text,source text,database text,source_record_id text,plate_before text,plate_after text,operator_user_id int,occurred_at timestamptz);
+ INSERT INTO parking_operations VALUES(294,1,'delete_vehicle','parking2','manual','12','{"plate":"TEST123","refund":0}', '{"verified":true,"remaining":0}','completed',7,'2026-11-07T03:00Z','2026-11-07T03:00Z',NULL);`);
+ await db.query(`UPDATE business_transactions SET snapshot=snapshot||$1::jsonb WHERE id=200`,[JSON.stringify({
+  vehicle:{plateNo:'TEST123'},propertySpaces:[{garage:'main',spaceNo:'39'}],quote:{unitPriceCents:6750,quantity:2,standardAmountCents:13500},
+  review:{manualAmountCents:0,reason:'对齐到月底',requestedBy:7,decidedBy:7,decision:'approved'}
+ })]);
+ const timeline = await service.list({includeOperations:1,q:'TEST123'},user,{...access,scopeAll:true});
+ const deleted=timeline.rows.find((r:any)=>r.operation?.kind==='delete_vehicle');
+ assert.equal(deleted?.operation.taskId,294);
+ assert.equal(deleted?.canReverse,false);
+ const original=timeline.rows.find((r:any)=>r.id===200);
+ assert.equal(original?.detail.extra.spaceNo,'大车库 39号');
+ assert.equal(original?.detail.extra.manualAmountCents,0);
+ assert.equal(original?.detail.extra.standardAmountCents,13500);
+ assert.equal(original?.detail.extra.decidedBy,'Tester');
+ const paymentsOnly=await service.list({q:'TEST123'},user,{...access,scopeAll:true});
+ assert.equal(timeline.total,paymentsOnly.total+1);
+ assert.deepEqual(timeline.summary,paymentsOnly.summary);
+
+ assert.ok(!((await service.list({includeOperations:1,q:'TEST123'},user,access)).rows.some((r:any)=>r.operation)),'无可靠小区归属时不泄露独立任务');
  }finally{await db.close()}
 });
