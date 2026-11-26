@@ -511,3 +511,22 @@ for (const width of [1440,390]) test('office plate legibility '+width, async () 
     await noOverflow(f.page);
   } finally { await f.close(); }
 });
+
+for (const width of [1920, 390]) test('旧库下载状态与注销操作位置 ' + width, async () => {
+  const f = await fixture(width), { page } = f;
+  try {
+    await page.goto(f.origin + '/vehicles');
+    const search = page.locator('.hsearch input');
+    for (const [term, state, expected] of [['6407', 0, '旧库下载正常'], ['6408', '1', '旧库待下载'], ['6409', null, '旧库下载状态未知']]) {
+      await page.evaluate(([term, state]) => {
+        window.__queryResults = { [term]: { rows: [{ database: 'parking2', fields: { P_plate: '沪AEH' + term, Car_Zt: state, P_Effective: '000000001010101010101', P_Download: '0'.repeat(21) } }] } };
+      }, [term, state]);
+      await search.fill(term); await search.press('Enter');
+      await page.locator('.veh-garages').getByText('已授权 · ' + expected, {exact:true}).first().waitFor();
+      assert.equal(await page.locator('.veh-garages').getByText('已授权 · ' + expected, {exact:true}).count(), 2);
+    }
+    const actions = page.locator('.veh-ops');
+    assert.equal(await actions.getByRole('button').last().innerText(), '注销车辆');
+    assert.ok(await actions.getByRole('button').last().evaluate(el => Math.abs(el.getBoundingClientRect().right - el.parentElement.getBoundingClientRect().right) < 2));
+  } finally { await f.close(); }
+});

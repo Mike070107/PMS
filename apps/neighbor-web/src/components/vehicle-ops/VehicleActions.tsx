@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { DeliyunVehicle, ParkingQueryRow } from '@pms/api-client/src/endpoints/access-card-issuance';
 import Icon from '@/components/Icon';
 import { can } from '@/lib/perm';
@@ -7,7 +7,8 @@ import { ChangePlateSheet, DeleteSheet } from './OtherOpSheets';
 import { RebindSheet, GaragesSheet } from './RebindGarageSheets';
 import { HistorySheet, OwnerInfoSheet } from './HistoryAndOwnerSheets';
 
-export default function VehicleActions({ plate, rows, cloud, onChanged }: {
+export default function VehicleActions({ plate, rows, cloud, onChanged, children }: {
+  children?: ReactNode;
   plate: string;
   rows: ParkingQueryRow[];
   cloud: DeliyunVehicle | 'loading' | null | undefined;
@@ -23,7 +24,8 @@ export default function VehicleActions({ plate, rows, cloud, onChanged }: {
         <button className="btn sm" onClick={() => setOp('garages')}><Icon name="car" size={15} />调整车库授权</button>
         <button className="btn sm" onClick={() => setOp('history')}><Icon name="clock" size={15} />变更历史</button>
         <button className="btn sm" onClick={() => setOp('ownerInfo')}><Icon name="users" size={15} />更新住户资料</button>
-        <button className="btn g sm" disabled={!canDelete} onClick={() => setOp('delete')}><Icon name="trash" size={15} />注销车辆</button>
+        {children}
+        <button className="btn g sm veh-delete" disabled={!canDelete} onClick={() => setOp('delete')}><Icon name="trash" size={15} />注销车辆</button>
       {op === 'vehicleType' ? <VehicleTypeSheet plate={plate} rows={rows} onClose={() => setOp(null)} onDone={() => { setOp(null); onChanged(); }} /> : null}
       {op === 'changePlate' ? (
         <ChangePlateSheet plate={plate} rows={rows} cloud={cloud}

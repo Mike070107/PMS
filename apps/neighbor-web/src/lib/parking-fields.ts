@@ -124,6 +124,7 @@ const bitOn = (str: string, ch: number) => typeof str === 'string' && str.charAt
 export interface GarageState {
   authorized: boolean;
   downloaded: boolean;
+  legacyDownloadStatus?: 'normal' | 'pending';
   present: boolean; // 该车库所在库里有没有这条车牌记录
 }
 
@@ -137,7 +138,10 @@ export function garageState(rows: ParkingQueryRow[], g: GarageDef): GarageState 
   const onChannels = g.channels.filter((c) => bitOn(eff, c));
   const authorized = onChannels.length > 0;
   const downloaded = authorized && onChannels.every((c) => bitOn(dl, c));
-  return { authorized, downloaded, present: true };
+  const stateKey = Object.keys(row.fields).find(key => norm(key) === 'carzt');
+  const state = stateKey ? String(row.fields[stateKey]).trim() : '';
+  const legacyDownloadStatus = state === '0' ? 'normal' : state === '1' ? 'pending' : undefined;
+  return { authorized, downloaded, legacyDownloadStatus, present: true };
 }
 
 /** 车牌归一：大写、去空格和分隔符，用于把 parking1 / parking2 同一车牌并成一组 */

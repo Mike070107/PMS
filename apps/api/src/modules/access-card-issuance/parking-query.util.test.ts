@@ -262,3 +262,12 @@ test('一期、二期续费流水保留完整 JSON 与各自的车库来源', ()
   });
   assert.deepEqual(sanitizeParkingRows(rows), rows);
 });
+
+test('停车查询保留旧库车辆下载状态，允许零值和待下载值', () => {
+  for (const state of [0, '1', null]) {
+    const [row] = sanitizeParkingRows([{ database: 'parking2', fields: {
+      Car_Zt: state, Owner__Car_Zt: 1, P_Effective: '1', P_Download: '0',
+    } }]);
+    assert.deepEqual(row.fields, { Car_Zt: state, P_Effective: '1', P_Download: '0' });
+  }
+});

@@ -316,10 +316,14 @@ function VehicleCard({ plate, rows, cloud, onChanged }: { plate: string; rows: P
                 : { text: '德立云未授权', cls: '' };
           } else if (!st.present) {
             tag = { text: '该库无此车牌', cls: '' };
+          } else if (st.authorized && st.legacyDownloadStatus === 'normal') {
+            tag = { text: '已授权 · 旧库下载正常', cls: 's-done' };
+          } else if (st.authorized && st.legacyDownloadStatus === 'pending') {
+            tag = { text: '已授权 · 旧库待下载', cls: 's-warn' };
           } else if (st.authorized && st.downloaded) {
             tag = { text: '已授权 · 旧库标记已下载', cls: 's-done' };
           } else if (st.authorized) {
-            tag = { text: '已授权 · 设备下发未确认', cls: 's-warn' };
+            tag = { text: '已授权 · 旧库下载状态未知', cls: 's-warn' };
           } else {
             tag = { text: '未授权', cls: '' };
           }
@@ -372,9 +376,10 @@ function VehicleCard({ plate, rows, cloud, onChanged }: { plate: string; rows: P
       {pms?.houseId ? <OwnerBusinessContact key={pms.houseId} houseId={pms.houseId} preferredOwnerId={pms.userId} source="parking" onSaved={() => onChanged()} /> : null}
       <div className="veh-ops">
         <button className="btn p sm" onClick={() => setOp('renew')}><Icon name="cash" size={15} />续期收费</button>
-        <VehicleActions plate={plate} rows={rows} cloud={cloud} onChanged={onChanged} />
-        <button className="btn sm" onClick={() => setOp('pmsOwner')}><Icon name="plus" size={15} />补建PMS业主</button>
-        <button className="btn sm" onClick={() => setOp('download')}><Icon name="download" size={15} />下发设备</button>
+        <VehicleActions plate={plate} rows={rows} cloud={cloud} onChanged={onChanged}>
+          <button className="btn sm" onClick={() => setOp('pmsOwner')}><Icon name="plus" size={15} />补建PMS业主</button>
+          <button className="btn sm" onClick={() => setOp('download')}><Icon name="download" size={15} />下发设备</button>
+        </VehicleActions>
       </div>
       <div className="veh-hint">六项写操作 + 变更历史 / 更新住户资料 / 补建 PMS 业主都在本页直接办，走现场网关并等回执。</div>
 

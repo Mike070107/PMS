@@ -5179,6 +5179,7 @@ function isParkingQueryFieldAllowed(key: string): boolean {
   if (key.startsWith('PmsMeta__')) return true;
   const isOwner = key.startsWith('Owner__');
   const candidate = normalizeParkingFieldName(isOwner ? key.slice('Owner__'.length) : key);
+  if (!isOwner && candidate === 'carzt') return true;
   const aliases = isOwner ? parkingOwnerOutputAliases : parkingVehicleOutputAliases;
   return aliases.some((alias) => {
     const normalizedAlias = normalizeParkingFieldName(alias);
