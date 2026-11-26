@@ -8208,3 +8208,12 @@
   - 4361588c 按车牌串联历史业务并展示车库车位及核价快照
   - 19b08927 Include parking actions in the ledger and honor intake collection dates
 
+## 2026-11-27 00:08 · web · 91d9c2a2
+
+- 包：`pms-web-20261127-000114.tar.gz`
+- 提交：91d9c2a2 同户新车登记继续原单并安全撤销重复空单
+- 自上次（3c03da24）以来上线的相关提交：
+  - 91d9c2a2 同户新车登记继续原单并安全撤销重复空单
+  - 4361588c 按车牌串联历史业务并展示车库车位及核价快照
+  - 19b08927 Include parking actions in the ledger and honor intake collection dates
+
