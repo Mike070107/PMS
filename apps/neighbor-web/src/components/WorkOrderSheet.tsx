@@ -729,8 +729,8 @@ function FinishFlow({ detail, busy, run, shell }: { detail: WorkOrderDetail; bus
       <Field label="维修说明">
         <textarea className="in" rows={3} value={repairContent} onChange={e => setRepairContent(e.target.value)} placeholder="做了哪些维修？处理结果如何？" />
       </Field>
-      <Field label="完工照片">
-        <PhotoField value={photos} onChange={setPhotos} disabled={busy} onStatusChange={setPhotoStatus}/>
+      <Field label="完工照片 / 视频">
+        <PhotoField accept="image/*,video/*" max={7} size={144} value={photos} onChange={setPhotos} disabled={busy} onStatusChange={setPhotoStatus}/>
       </Field>
       <details className="wo-form-section"><summary>现场实际情况<span>位置与故障现象</span></summary>
         <Field label="实际维修位置"><input className="in" value={faultLocation} onChange={e => setFaultLocation(e.target.value)} /></Field>

@@ -1657,7 +1657,7 @@ function RepairSubmitDock({
                   <Form.Item label="上传照片 / 视频">
                     <div {...pasteTarget.pasteTargetProps}>
                       <Upload.Dragger {...uploadProps} style={attachmentDropStyle}>
-                        <p className="pms-repair-upload-icon"><UploadOutlined /></p>
+                        <strong className="workorder-add-media"><UploadOutlined /> 照片 / 视频</strong>
                         <p>点击、拖入，或 Ctrl+V 粘贴截图</p>
                         <Text type="secondary">照片最多 {MAX_IMAGE_COUNT} 张，视频最多 {MAX_VIDEO_COUNT} 个；单个不超过 50MB。</Text>
                         <AttachmentUploadPreview files={fileList} onRemove={(uid) => setFileList((list) => list.filter((file) => file.uid !== uid))} />
@@ -2168,7 +2168,7 @@ function isUploadImage(file: { type?: string; name?: string; url?: string; respo
 function RepairPhotoCell({ photos, total }: { photos: string[]; total: number }) {
   if (!photos.length) return <Text type="secondary">无附件</Text>;
   return <div onClick={event => event.stopPropagation()}>
-    <AttachmentPreview urls={photos} size={58} />
+    <AttachmentPreview urls={photos} size={128} />
     {total > photos.length && <Text type="secondary">共 {total} 个附件</Text>}
   </div>;
 }
@@ -4657,7 +4657,7 @@ function ProgressModal({
         />
         <div {...pasteTarget.pasteTargetProps}>
           <Upload.Dragger {...uploadProps} style={{ ...attachmentDropStyle, minHeight: 112 }}>
-            <p className="pms-repair-upload-icon"><UploadOutlined /></p>
+            <strong className="workorder-add-media"><UploadOutlined /> 照片 / 视频</strong>
             <p>点击、拖入，或 Ctrl+V 粘贴现场截图</p>
             <Text type="secondary">最多 6 张；图片会随这条进度一起保存。</Text>
             <AttachmentUploadPreview
@@ -5131,7 +5131,7 @@ function CompleteModal({
             <Form.Item label="维修照片 / 视频">
               <div {...pasteTarget.pasteTargetProps}>
                 <Upload.Dragger {...uploadProps} style={attachmentDropStyle}>
-                  <p style={{ marginBottom: 6 }}><UploadOutlined /> 拖拽、点击，或 Ctrl+V 粘贴维修截图</p>
+                  <strong className="workorder-add-media"><UploadOutlined /> 照片 / 视频</strong>
                   <Text type="secondary">照片最多 {MAX_IMAGE_COUNT} 张，视频最多 {MAX_VIDEO_COUNT} 个；单个不超过 50MB。</Text>
                   <AttachmentUploadPreview
                     files={fileList}

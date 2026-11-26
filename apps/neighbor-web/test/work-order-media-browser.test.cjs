@@ -32,12 +32,12 @@ for(const kind of ['neighbor','admin'])test(`${kind}: desktop/mobile current-pag
  await openVideo();await shot(page,kind+'-initial-video');
  const dialog=page.getByRole('dialog',{name:'视频预览',exact:true});await dialog.waitFor({timeout:5000});
  await dialog.getByRole('status').waitFor();await shot(page,kind+'-loading');const heldRoute=await blocked;await heldRoute.continue();await page.unroute('**/sample.mp4?**');
- const play=async()=>{const video=dialog.locator('video');await video.evaluate(v=>{window.__lastMedia=v;return v.play()});await page.waitForFunction(()=>{const v=document.querySelector('dialog video,.ant-modal video');return v&&!v.paused&&v.currentTime>0.15});assert.ok(await video.evaluate(v=>v.controls&&v.duration>=4));return video;};
+ const play=async()=>{const video=dialog.locator('video');await video.evaluate(v=>{window.__lastMedia=v;});await page.waitForFunction(()=>{const v=document.querySelector('dialog video,.ant-modal video');return v&&!v.paused&&v.currentTime>0.15});assert.ok(await video.evaluate(v=>v.controls&&v.duration>=4));return video;};
  await play();assert.equal(await dialog.locator('video').getAttribute('src'),urls[1]);await shot(page,kind+'-desktop-playing');
  await page.keyboard.press('Escape');await dialog.waitFor({state:'hidden'});assert.equal(await page.locator('video[data-work-order-player]').count(),0);assert.ok((await page.evaluate(()=>window.__stopped)).length>0);assert.ok(await page.evaluate(()=>window.__lastMedia.paused&&window.__lastMedia.getAttribute('src')===null&&window.__lastMedia.readyState===0));if(kind==='neighbor')assert.notEqual(await page.evaluate(()=>window.__detailClosed),true);
  for(const width of [1440,375]){await page.setViewportSize({width,height:width===375?812:1000});const thumb=page.getByRole('button',{name:'预览视频 1',exact:true}).first();
  const dimensions=await thumb.boundingBox();
- assert.ok(dimensions && Math.abs(dimensions.width-dimensions.height)<2);
+ assert.ok(dimensions && dimensions.width >= 120 && Math.abs(dimensions.width-dimensions.height)<2);
  assert.equal(await thumb.locator('video:not([controls])').count(),1);
  await shot(page,`${kind}-${width}-gallery`);
  await openVideo();await play();assert.ok(await dialog.evaluate(el=>{const r=el.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1}));assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await shot(page,`${kind}-${width}-playing`);await dialog.getByRole('button',{name:kind==='neighbor'?'关闭视频预览':'Close',exact:true}).click();await dialog.waitFor({state:'hidden'});

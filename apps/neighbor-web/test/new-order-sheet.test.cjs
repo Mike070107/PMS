@@ -101,7 +101,7 @@ test('失败保留输入并解除忙状态，重试成功走原API载荷与onCre
 
 test('真实JSX字段顺序：先地址再联系人，最后问题与补充信息', () => {
   const h = harness();
-  assert.deepEqual(h.nodes().filter(n => n.type === 'Field').map(n => n.props.label.replace(/ \*$/, '')), ['报修位置', '具体位置', '联系人', '手机号', '问题描述', '报修类型', '紧急程度', '照片附件（选填）']);
+  assert.deepEqual(h.nodes().filter(n => n.type === 'Field').map(n => n.props.label.replace(/ \*$/, '')), ['报修位置', '具体位置', '联系人', '手机号', '问题描述', '报修类型', '紧急程度', '现场照片 / 视频（选填）']);
   const row = h.nodes().find(n => n.props?.className === 'new-order-contact');
   assert.ok(row); assert.equal(h.nodes(row).filter(n => n.type === 'Field').length, 2);
 });

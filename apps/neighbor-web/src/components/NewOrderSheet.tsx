@@ -231,9 +231,9 @@ export default function NewOrderSheet({
             </details>
 
       <section className="new-order-section" aria-label="照片附件">
-        <Field label="照片附件（选填）">
-          <PhotoField key={pickerRevision} value={photos} onChange={setPhotos} disabled={busy} onStatusChange={setPhotoStatus} />
-          <div className="muted" role="status">{photoStatus.uploading ? '照片上传中，完成后即可提交。' : photoStatus.failedCount ? '有照片上传失败，请重试或放弃后再提交。' : '支持点击选择、拖拽和 Ctrl+V 粘贴，最多 6 张。'}</div>
+        <Field label="现场照片 / 视频（选填）">
+          <PhotoField accept="image/*,video/*" max={7} size={144} key={pickerRevision} value={photos} onChange={setPhotos} disabled={busy} onStatusChange={setPhotoStatus} />
+          <div className="muted" role="status">{photoStatus.uploading ? '照片上传中，完成后即可提交。' : photoStatus.failedCount ? '有照片上传失败，请重试或放弃后再提交。' : '支持点击选择、拖拽和 Ctrl+V 粘贴，最多 6 张照片和 1 段视频。'}</div>
         </Field>
       </section>
 

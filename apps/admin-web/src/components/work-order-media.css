@@ -1,3 +1,5 @@
 .workorder-video-thumb { position:relative; width:96px; height:96px; display:grid; place-items:center; overflow:hidden; border:0; padding:0; border-radius:8px; background:#dce3e9; cursor:pointer; }
 .workorder-video-thumb video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; pointer-events:none; }
 .workorder-video-thumb span { position:relative; display:grid; place-items:center; width:42px; height:42px; border-radius:50%; background:#0009; color:white; font-size:23px; }
+
+.workorder-add-media { display:inline-flex; align-items:center; gap:10px; min-height:48px; padding:0 20px; border-radius:8px; background:#245495; color:#fff; font-size:16px; white-space:nowrap; }

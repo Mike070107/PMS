@@ -5,7 +5,7 @@ import './work-order-media.css';
 
 const { Text } = Typography;
 
-export default function AttachmentPreview({ urls, size = 96 }: { urls: string[]; size?: number }) {
+export default function AttachmentPreview({ urls, size = 144 }: { urls: string[]; size?: number }) {
   const [video, setVideo] = useState<string | null>(null);
   let videoIndex = 0;
   if (!urls.length) return <Text type="secondary">未上传</Text>;
