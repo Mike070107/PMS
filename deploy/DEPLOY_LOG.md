@@ -8177,3 +8177,12 @@
 - 自上次（94afe68c）以来上线的相关提交：
   - 6622749e Release verified parking cancellations, registration layout and bounded device retry
 
+## 2026-11-26 23:25 · web · 6622749e
+
+- 包：`pms-web-20261126-231931.tar.gz`
+- 提交：6622749e Release verified parking cancellations, registration layout and bounded device retry
+- 自上次（94afe68c）以来上线的相关提交：
+  - 6622749e Release verified parking cancellations, registration layout and bounded device retry
+  - a381c09e Preserve video quality for uploads within the file size limit
+  - c394c87b Show mixed work-order media thumbnails and viewport playback on Web
+
