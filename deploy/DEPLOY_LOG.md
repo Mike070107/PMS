@@ -8170,3 +8170,10 @@
   - 94afe68c Record parking renewals on the selected collection date
   - c31bbb5f Open parking renewal by exact plate without a matched address
 
+## 2026-11-26 23:20 · api · 6622749e
+
+- 包：`pms-api-fast-20261126-231931.tar.gz`
+- 提交：6622749e Release verified parking cancellations, registration layout and bounded device retry
+- 自上次（94afe68c）以来上线的相关提交：
+  - 6622749e Release verified parking cancellations, registration layout and bounded device retry
+
