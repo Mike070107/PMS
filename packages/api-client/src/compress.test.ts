@@ -4,7 +4,7 @@ import { compressImageIfNeeded, compressMediaIfNeeded } from './compress';
 
 function fixture(options: { bigger?: boolean; fail?: boolean } = {}) {
   const calls: any[] = []; const previous = (globalThis as any).wx;
-  const sizes: Record<string, number> = { 'large.mp4': 60 * 1024 * 1024, 'photo.jpg': 2_000_000, 'small.png': 4000, 'tmp_extless_image': 2_000_000, 'video.mp4': 8_000_000, 'tmp_extless_video': 8_000_000, 'compressed.jpg': options.bigger ? 3_000_000 : 200_000, 'compressed.mp4': options.bigger ? 9_000_000 : 1_000_000 };
+  const sizes: Record<string, number> = { 'limit.mp4': 50 * 1024 * 1024, 'large.mp4': 60 * 1024 * 1024, 'photo.jpg': 2_000_000, 'small.png': 4000, 'tmp_extless_image': 2_000_000, 'video.mp4': 8_000_000, 'tmp_extless_video': 8_000_000, 'compressed.jpg': options.bigger ? 3_000_000 : 200_000, 'compressed.mp4': options.bigger ? 9_000_000 : 1_000_000 };
   (globalThis as any).wx = {
     getFileSystemManager: () => ({ getFileInfo: ({ filePath, success }: any) => success({ size: sizes[filePath] || 0 }) }),
     getImageInfo: ({ src, success, fail }: any) => src === 'tmp_extless_image' ? success({ width: 1600, height: 1200, type: 'jpeg' }) : fail({}),
@@ -23,11 +23,12 @@ test('大图统一压缩、小图不动、无扩展微信临时图片也识别',
     assert.deepEqual(f.calls, [['image', 80], ['image', 80]]);
   } finally { f.close(); }
 });
-test('视频走独立medium压缩，不送compressImage；无扩展视频可识别', async () => {
+test('可上传的视频保留原文件，包括无扩展视频及50MiB边界', async () => {
   const f = fixture(); try {
-    assert.equal(await compressMediaIfNeeded('video.mp4'), 'compressed.mp4');
-    assert.equal(await compressMediaIfNeeded('tmp_extless_video'), 'compressed.mp4');
-    assert.deepEqual(f.calls, [['video', 'medium'], ['video', 'medium']]);
+    assert.equal(await compressMediaIfNeeded('video.mp4'), 'video.mp4');
+    assert.equal(await compressMediaIfNeeded('tmp_extless_video'), 'tmp_extless_video');
+    assert.equal(await compressMediaIfNeeded('limit.mp4'), 'limit.mp4');
+    assert.deepEqual(f.calls, []);
   } finally { f.close(); }
 });
 for (const options of [{ bigger: true }, { fail: true }]) test(`压缩变大或失败安全回退:${JSON.stringify(options)}`, async () => {
@@ -46,7 +47,7 @@ test('文档、GIF、空路径不转码，无微信环境原样返回', async ()
 });
 test('大视频先独立压缩；原生压缩失败且仍超50MB时明确报错，不浪费网络上传', async () => {
   const f = fixture();
-  try { assert.equal(await compressMediaIfNeeded('large.mp4'), 'compressed.mp4'); }
+  try { assert.equal(await compressMediaIfNeeded('large.mp4'), 'compressed.mp4'); assert.deepEqual(f.calls, [['video', 'high']]); }
   finally { f.close(); }
   const failed = fixture({ fail: true });
   try { await assert.rejects(compressMediaIfNeeded('large.mp4'), /超过50MB/); }

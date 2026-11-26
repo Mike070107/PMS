@@ -4,7 +4,6 @@
  * Videos use compressVideo, never WebP. Keep the original on failure or if compression grows it.
  */
 const IMAGE_THRESHOLD = 600 * 1024;
-const VIDEO_THRESHOLD = 1024 * 1024;
 // PNG/WebP can be animated. Native APIs expose no frame count; let the server inspect them safely.
 const IMAGE_EXT = /\.(jpe?g|heic|heif|bmp)$/i;
 const VIDEO_EXT = /\.(mp4|mov|m4v|webm|avi|mkv)$/i;
@@ -45,7 +44,7 @@ async function mediaKind(path: string): Promise<MediaKind> {
 }
 async function compressKnown(path: string, kind: 'image' | 'video'): Promise<string> {
   const size = await fileSize(path);
-  if (!size || size <= (kind === 'image' ? IMAGE_THRESHOLD : VIDEO_THRESHOLD)) return path;
+  if (!size || size <= (kind === 'image' ? IMAGE_THRESHOLD : MAX_UPLOAD_BYTES)) return path;
   const candidate = await new Promise<string>((resolve) => {
     const handlers = { success: (r: any) => resolve(r?.tempFilePath || path), fail: () => resolve(path) };
     try {
@@ -54,7 +53,7 @@ async function compressKnown(path: string, kind: 'image' | 'video'): Promise<str
         wx.compressImage({ src: path, quality: 80, ...handlers });
       } else {
         // @ts-ignore miniapp runtime
-        wx.compressVideo({ src: path, quality: 'medium', ...handlers });
+        wx.compressVideo({ src: path, quality: 'high', ...handlers });
       }
     } catch { resolve(path); }
   });

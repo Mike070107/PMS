@@ -16,7 +16,7 @@ export async function chooseRepairMedia(urls: string[]) {
     selected = await wx.chooseMedia({
       count: Math.min(9, imageSlots + videoSlots),
       mediaType: [...(imageSlots ? ['image'] : []), ...(videoSlots ? ['video'] : [])],
-      sourceType: ['album', 'camera'], sizeType: ['compressed'], maxDuration: MAX_REPAIR_VIDEO_SECONDS,
+      sourceType: ['album', 'camera'], sizeType: ['original'], maxDuration: MAX_REPAIR_VIDEO_SECONDS,
     });
   } catch (err) {
     if (/cancel/i.test(String((err as {errMsg?: string}).errMsg || err))) return [];
