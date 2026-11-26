@@ -1,6 +1,7 @@
 {
   "navigationBarTitleText": "一键报修",
   "usingComponents": {
-    "place-picker": "/components/place-picker/index"
+    "place-picker": "/components/place-picker/index",
+    "media-gallery": "@pms/miniapp-ui/components/media-gallery/index"
   }
 }

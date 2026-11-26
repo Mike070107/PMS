@@ -1,3 +1,4 @@
+import { chooseRepairMedia } from '@pms/miniapp-ui';
 import { auth, qr, repairs, upload } from '@pms/api-client';
 import type {
   ParsedRepairAddress,
@@ -164,6 +165,7 @@ interface PageData {
 
   attachments: string[];
   uploading: boolean;
+  mediaPosters: Record<string, string>;
   submitting: boolean;
   errors: { place: string; type: string; content: string; phone: string };
 }
@@ -222,6 +224,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
 
     attachments: [],
     uploading: false,
+    mediaPosters: {} as Record<string, string>,
     submitting: false,
     errors: { place: '', type: '', content: '', phone: '' },
   },
@@ -673,47 +676,39 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
   // ---------------- 附件 ----------------
 
   async onChooseMedia() {
-    if (this.data.uploading) return;
-    const res = await wx
-      // 显式要压缩图，别靠微信默认值
-      .chooseMedia({
-        count: 6,
-        mediaType: ['image'],
-        sourceType: ['album', 'camera'],
-        sizeType: ['compressed'],
-      })
-      .catch(() => null);
-    if (!res?.tempFiles?.length) return;
-
+    if (this.data.uploading || this.data.submitting) return;
     this.setData({ uploading: true });
-    wx.showLoading({ title: '上传中…', mask: true });
+    let loading = false;
     try {
-      const uploaded = await upload.uploadTempFiles(res.tempFiles.map((f) => f.tempFilePath));
-      this.setData({
-        attachments: [...this.data.attachments, ...uploaded.map((item) => item.publicUrl)],
-      });
-    } catch (e: any) {
-      wx.showToast({ icon: 'none', title: e?.message || '上传失败' });
+      const files = await chooseRepairMedia(this.data.attachments);
+      if (!files.length) return;
+      wx.showLoading({ title: '处理中…', mask: true });
+      loading = true;
+      for (const file of files) {
+        const [item] = await upload.uploadTempFiles([file.tempFilePath]);
+        if (!item?.publicUrl) throw new Error('上传失败，请重试');
+        const mediaPosters = { ...this.data.mediaPosters };
+        if (file.isVideo && file.thumbTempFilePath) mediaPosters[item.publicUrl] = file.thumbTempFilePath;
+        this.setData({ attachments: [...this.data.attachments, item.publicUrl], mediaPosters });
+      }
+    } catch (err: any) {
+      wx.showToast({ icon: 'none', title: err?.message || '附件处理失败，请重试' });
     } finally {
-      wx.hideLoading();
+      if (loading) wx.hideLoading();
       this.setData({ uploading: false });
     }
   },
 
-  onRemoveMedia(e: WechatMiniprogram.BaseEvent) {
-    const idx = Number(e.currentTarget.dataset.index);
-    const next = this.data.attachments.slice();
-    next.splice(idx, 1);
-    this.setData({ attachments: next });
-  },
-
-  onPreviewMedia(e: WechatMiniprogram.BaseEvent) {
-    wx.previewImage({ current: e.currentTarget.dataset.url, urls: this.data.attachments });
+  onRemoveMedia(e: WechatMiniprogram.CustomEvent<{index: number}>) {
+    if (this.data.uploading || this.data.submitting) return;
+    const index = e.detail.index;
+    this.setData({ attachments: this.data.attachments.filter((_, i) => i !== index) });
   },
 
   // ---------------- 提交 ----------------
 
   async onSubmit() {
+    if (this.data.uploading || this.data.submitting) return;
     const { mode, scope, communityId, typeIndex, roomNo, content, contactPhone, detected } = this.data;
     // 家里的问题不给房号就必须留电话，否则维修工既不知道去哪、也联系不上人。
     // 公共区域本来就没有房号，再要求留电话就是无谓的拦路。

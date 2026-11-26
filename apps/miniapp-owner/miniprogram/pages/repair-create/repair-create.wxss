@@ -235,3 +235,5 @@ textarea { min-height: 220rpx; }
   line-height: 1.6;
   color: var(--color-text-tertiary);
 }
+
+.repair-add-media { display:inline-flex; align-items:center; margin:12rpx 0 0; padding:0 24rpx; min-height:80rpx; font-size:28rpx; white-space:nowrap; }

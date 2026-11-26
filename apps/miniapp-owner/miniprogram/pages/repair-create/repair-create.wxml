@@ -183,19 +183,8 @@
     </view>
 
     <view class="field">
-      <view class="label">故障照片<text class="label__opt">选填，最多 6 张</text></view>
-      <view class="thumbs">
-        <view wx:for="{{attachments}}" wx:key="*this" class="thumb-wrap">
-          <image class="thumb" src="{{item}}" mode="aspectFill" data-url="{{item}}" bindtap="onPreviewMedia"/>
-          <view class="thumb-remove" data-index="{{index}}" catchtap="onRemoveMedia">
-            <view class="icon icon--close"></view>
-          </view>
-        </view>
-        <view wx:if="{{attachments.length < 6}}" class="thumb-add" bindtap="onChooseMedia">
-          <view class="icon icon--camera"></view>
-          <text class="add-text">{{uploading ? '上传中' : '拍照/相册'}}</text>
-        </view>
-      </view>
+      <button class="repair-add-media" disabled="{{uploading || submitting}}" bindtap="onChooseMedia">{{uploading ? '处理中…' : '＋ 照片 / 视频'}}</button>
+      <media-gallery urls="{{attachments}}" posters="{{mediaPosters}}" editable="{{true}}" disabled="{{uploading || submitting}}" bind:remove="onRemoveMedia"/>
     </view>
   </view>
 

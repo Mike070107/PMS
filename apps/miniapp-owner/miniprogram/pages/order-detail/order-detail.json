@@ -1,6 +1,7 @@
 {
   "navigationBarTitleText": "工单详情",
   "usingComponents": {
-    "pms-tag": "@pms/miniapp-ui/components/status-tag/index"
+    "pms-tag": "@pms/miniapp-ui/components/status-tag/index",
+    "media-gallery": "@pms/miniapp-ui/components/media-gallery/index"
   }
 }

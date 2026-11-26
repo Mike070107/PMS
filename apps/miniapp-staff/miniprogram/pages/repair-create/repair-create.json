@@ -3,6 +3,7 @@
   "navigationStyle": "custom",
   "enablePullDownRefresh": true,
   "usingComponents": {
-    "place-picker": "/components/place-picker/index"
+    "place-picker": "/components/place-picker/index",
+    "media-gallery": "@pms/miniapp-ui/components/media-gallery/index"
   }
 }

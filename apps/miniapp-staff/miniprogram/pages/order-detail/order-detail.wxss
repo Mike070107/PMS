@@ -851,7 +851,7 @@ page { background: #f1f6fb; }
 .complete-empty { padding: 22rpx; border-radius: 16rpx; background: #fff5e7; color: #85591f; font-size: 29rpx; line-height: 1.6; }
 .complete-photo-speech-stack { display: flex; flex-direction: column; gap: 20rpx; }
 .complete-photo-block, .complete-speech-block { min-width: 0; }
-.complete-photo-entry { width: 100%; margin: 0; box-sizing: border-box; min-height: 106rpx; display: flex; align-items: center; justify-content: flex-start; gap: 18rpx; padding: 12rpx 22rpx; border: 2rpx dashed #8eafd0; border-radius: 18rpx; background: #f8fbfe; line-height: 1.4; text-align: left; }
+.complete-photo-entry { display:inline-flex; align-items:center; width:auto; min-height:80rpx; margin:0; padding:0 24rpx; font-size:28rpx; white-space:nowrap; color:#25496d; background:#f1f5fa; border-radius:12rpx; }
 .complete-photo-entry::after, .completion-remove::after { border: 0; }
 .complete-photo-entry[disabled] { opacity: .55; }
 .completion-media-limit { margin: 0 0 18rpx; color: var(--color-text-secondary); font-size: 28rpx; line-height: 1.6; }

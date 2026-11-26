@@ -81,3 +81,5 @@ page { background: #f1f6fb; }
 .review-button__send { width: 29rpx; height: 25rpx; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m22 2-7 20-4-9-9-4Z'/%3E%3Cpath d='M22 2 11 13'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: center; background-size: contain; }
 
 .repair-nav__side { display: flex; justify-content: flex-end; }
+
+.repair-add-media { display:inline-flex; align-items:center; margin:12rpx 0 0; padding:0 24rpx; min-height:80rpx; font-size:28rpx; white-space:nowrap; }

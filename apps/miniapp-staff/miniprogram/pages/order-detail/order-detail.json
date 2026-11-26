@@ -3,6 +3,7 @@
   "navigationStyle": "custom",
   "usingComponents": {
     "place-picker": "/components/place-picker/index",
-    "pms-tag": "@pms/miniapp-ui/components/status-tag/index"
+    "pms-tag": "@pms/miniapp-ui/components/status-tag/index",
+    "media-gallery": "@pms/miniapp-ui/components/media-gallery/index"
   }
 }

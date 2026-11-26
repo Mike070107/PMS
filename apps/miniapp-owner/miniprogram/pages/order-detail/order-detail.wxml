@@ -8,17 +8,7 @@
     <view class="desc">{{detail.request.content}}</view>
     <view class="meta">{{detail.request.addressText}} · {{createdAtText}}</view>
 
-    <view wx:if="{{detail.request.attachments.length}}" class="thumbs">
-      <image
-        wx:for="{{detail.request.attachments}}"
-        wx:key="*this"
-        class="thumb"
-        src="{{item}}"
-        mode="aspectFill"
-        data-url="{{item}}"
-        bindtap="onPreviewImage"
-      />
-    </view>
+    <media-gallery urls="{{detail.request.attachments}}"/>
   </view>
 
   <view class="card">
@@ -34,19 +24,7 @@
         <view class="timeline-operator">操作人：{{item.operatorName}}</view>
         <view wx:if="{{item.stay}}" class="timeline-stay">{{item.stay}}</view>
         <view wx:if="{{item.note}}" class="timeline-note">{{item.note}}</view>
-        <view wx:if="{{item.attachments.length}}" class="timeline-photos">
-          <image
-            wx:for="{{item.attachments}}"
-            wx:for-item="photo"
-            wx:key="*this"
-            class="timeline-photo"
-            src="{{photo}}"
-            mode="aspectFill"
-            data-url="{{photo}}"
-            data-urls="{{item.attachments}}"
-            bindtap="onPreviewImage"
-          />
-        </view>
+        <media-gallery urls="{{item.attachments}}"/>
       </view>
     </view>
   </view>
@@ -54,20 +32,7 @@
   <view wx:if="{{detail.workOrder.actionNote || detail.workOrder.resultAttachments.length}}" class="card">
     <view class="section-title">维修结果</view>
     <view wx:if="{{detail.workOrder.actionNote}}" class="desc">{{detail.workOrder.actionNote}}</view>
-    <view wx:if="{{resultPhotos.length}}" class="thumbs">
-      <image
-        wx:for="{{resultPhotos}}"
-        wx:key="*this"
-        class="thumb"
-        src="{{item}}"
-        mode="aspectFill"
-        data-url="{{item}}"
-        data-urls="{{resultPhotos}}"
-        bindtap="onPreviewImage"
-      />
-    </view>
-    <view wx:if="{{resultVideos.length}}" class="result-video-label">完工视频 · {{resultVideos.length}} 段</view>
-    <video wx:for="{{resultVideos}}" wx:key="*this" class="result-video" src="{{item}}" controls show-center-play-btn object-fit="contain"/>
+    <media-gallery urls="{{detail.workOrder.resultAttachments}}"/>
   </view>
 
   <view wx:if="{{canReview}}" class="card">

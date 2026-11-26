@@ -1,3 +1,4 @@
+import { chooseRepairMedia } from '@pms/miniapp-ui';
 import { address, auth, repairs, upload } from '@pms/api-client';
 import type {
   ParsedRepairAddress,
@@ -12,10 +13,6 @@ import {
   extractContact,
   extractFaultDescription,
   formatReporterRoomLabel,
-  isVideoUrl,
-  MAX_REPAIR_IMAGES,
-  MAX_REPAIR_VIDEO_SECONDS,
-  MAX_REPAIR_VIDEOS,
   mergeExtractedContact,
   REPAIR_TYPE_OPTIONS,
   urgencyReason,
@@ -145,10 +142,8 @@ Page({
     partial: '',
 
     attachments: [] as string[],
-    /** 和 attachments 一一对应的渲染用数据：wxml 里调不了 isVideoUrl */
-    mediaList: [] as Array<{ url: string; video: boolean }>,
-    videoCount: 0,
     uploading: false,
+    mediaPosters: {} as Record<string, string>,
     submitting: false,
     errors: { place: '', type: '', content: '', phone: '' },
     /** 代报角色才有值：提示他能报哪几个小区 */
@@ -203,7 +198,7 @@ Page({
       .split(',')
       .map((item) => item.trim())
       .filter(Boolean);
-    if (media.length) this.setAttachments(media);
+    if (media.length) this.setData({ attachments: media });
     if (storedHandoff) {
       const detected = storedHandoff.detected;
       this.suppressContactDefaults = true;
@@ -704,69 +699,34 @@ Page({
 
   // ---------------- 附件 ----------------
 
-  /** attachments 变了就同步渲染用的那份，别让两处各算各的 */
-  setAttachments(list: string[]) {
-    this.setData({
-      attachments: list,
-      mediaList: list.map((url) => ({ url, video: isVideoUrl(url) })),
-      videoCount: list.filter((url) => isVideoUrl(url)).length,
-    });
-  },
-
-  /**
-   * 拍照 / 拍视频。data-type="video" 走视频，其余走图片。
-   * 视频限 15 秒：现场情况一段十几秒就说清了，拍长了上传慢、维修工也不会看完。
-   */
-  async onChooseMedia(e: WechatMiniprogram.BaseEvent) {
-    if (this.data.uploading) return;
-    const wantVideo = e.currentTarget.dataset.type === 'video';
-    const images = this.data.attachments.length - this.data.videoCount;
-    if (wantVideo && this.data.videoCount >= MAX_REPAIR_VIDEOS) {
-      return wx.showToast({ icon: 'none', title: `最多 ${MAX_REPAIR_VIDEOS} 段视频` });
-    }
-    if (!wantVideo && images >= MAX_REPAIR_IMAGES) {
-      return wx.showToast({ icon: 'none', title: `最多 ${MAX_REPAIR_IMAGES} 张照片` });
-    }
-
-    const res = await wx
-      .chooseMedia({
-        count: wantVideo ? 1 : MAX_REPAIR_IMAGES - images,
-        mediaType: [wantVideo ? 'video' : 'image'],
-        sourceType: ['camera', 'album'],
-        // 图片显式要压缩图（不写就是微信默认值，机型不同可能给原图）；
-        // 视频不受 sizeType 影响，靠上面的 maxDuration 限时长
-        sizeType: ['compressed'],
-        maxDuration: MAX_REPAIR_VIDEO_SECONDS,
-        camera: 'back',
-      })
-      .catch(() => null);
-    if (!res?.tempFiles?.length) return;
-
+  async onChooseMedia() {
+    if (this.data.uploading || this.data.submitting) return;
     this.setData({ uploading: true });
-    wx.showLoading({ title: '上传中…', mask: true });
+    let loading = false;
     try {
-      const uploaded = await upload.uploadTempFiles(res.tempFiles.map((f) => f.tempFilePath));
-      this.setAttachments([...this.data.attachments, ...uploaded.map((item) => item.publicUrl)]);
-    } catch (e2: any) {
-      wx.showToast({ icon: 'none', title: e2?.message || '上传失败' });
+      const files = await chooseRepairMedia(this.data.attachments);
+      if (!files.length) return;
+      wx.showLoading({ title: '处理中…', mask: true });
+      loading = true;
+      for (const file of files) {
+        const [item] = await upload.uploadTempFiles([file.tempFilePath]);
+        if (!item?.publicUrl) throw new Error('上传失败，请重试');
+        const mediaPosters = { ...this.data.mediaPosters };
+        if (file.isVideo && file.thumbTempFilePath) mediaPosters[item.publicUrl] = file.thumbTempFilePath;
+        this.setData({ attachments: [...this.data.attachments, item.publicUrl], mediaPosters });
+      }
+    } catch (err: any) {
+      wx.showToast({ icon: 'none', title: err?.message || '附件处理失败，请重试' });
     } finally {
-      wx.hideLoading();
+      if (loading) wx.hideLoading();
       this.setData({ uploading: false });
     }
   },
 
-  onRemoveMedia(e: WechatMiniprogram.BaseEvent) {
-    const idx = Number(e.currentTarget.dataset.index);
-    const next = this.data.attachments.slice();
-    next.splice(idx, 1);
-    this.setAttachments(next);
-  },
-
-  /** 视频点开是全屏播放，图片才走 previewImage —— 视频丢进 previewImage 是一片黑 */
-  onPreviewMedia(e: WechatMiniprogram.BaseEvent) {
-    const url = String(e.currentTarget.dataset.url || '');
-    if (isVideoUrl(url)) return;
-    wx.previewImage({ current: url, urls: this.data.attachments.filter((item) => !isVideoUrl(item)) });
+  onRemoveMedia(e: WechatMiniprogram.CustomEvent<{index: number}>) {
+    if (this.data.uploading || this.data.submitting) return;
+    const index = e.detail.index;
+    this.setData({ attachments: this.data.attachments.filter((_, i) => i !== index) });
   },
 
   // ---------------- 提交 ----------------
@@ -806,6 +766,7 @@ Page({
   },
 
   async onSubmit() {
+    if (this.data.uploading || this.data.submitting) return;
     const { communityId, typeIndex, content, contactPhone, detected } = this.data;
     const errors = {
       place: communityId || detected?.matched ? '' : '请先选择报修位置',

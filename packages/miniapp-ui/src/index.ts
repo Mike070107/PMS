@@ -6,3 +6,5 @@ export * from './format';
 export * from './speech';
 export * from './autoUpdate';
 export * from './pageTelemetry';
+
+export * from './repair-media';

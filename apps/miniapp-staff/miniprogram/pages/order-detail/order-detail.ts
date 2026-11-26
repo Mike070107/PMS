@@ -1,5 +1,6 @@
+import { chooseRepairMedia } from '@pms/miniapp-ui';
 import { address, ai, repairs, upload } from '@pms/api-client';
-import { completionMediaState, validateCompletionVideo } from '../../utils/completion-media';
+import { completionMediaState } from '../../utils/completion-media';
 import { isVideoUrl, MAX_REPAIR_IMAGES, MAX_REPAIR_VIDEOS, MAX_REPAIR_VIDEO_SECONDS } from '@pms/shared-types';
 import type { PublicRepairType } from '@pms/api-client/src/endpoints/repairs';
 import { getSession } from '../../utils/session';
@@ -328,6 +329,7 @@ interface PageData {
   completionImageRemaining: number;
   completionVideoRemaining: number;
   completionMediaError: string;
+  mediaPosters: Record<string,string>;
   hasResult: boolean;
   /** 「王师傅」/「未派单」 */
   assigneeText: string;
@@ -437,6 +439,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     completionImageRemaining: MAX_REPAIR_IMAGES,
     completionVideoRemaining: MAX_REPAIR_VIDEOS,
     completionMediaError: '',
+    mediaPosters: {},
     hasResult: false,
     assigneeText: '未派单',
     canAccept: false,
@@ -1398,32 +1401,8 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
     this.setData({ uploading: true, errorMsg: '', completionMediaError: '' });
     let loadingShown = false;
     try {
-      const res = await wx.chooseMedia({
-        count: Math.min(9, remaining),
-        mediaType: ['image', 'video'],
-        sourceType: ['album', 'camera'],
-        sizeType: ['compressed'],
-        maxDuration: MAX_REPAIR_VIDEO_SECONDS,
-      }).catch((error) => {
-        if (/cancel/i.test(error?.errMsg || error?.message || '')) return null;
-        throw error;
-      });
-      if (!res?.tempFiles?.length) return;
-      const files = res.tempFiles.map((file) => ({
-        ...file,
-        // 原生选择器返回fileType；兼容旧SDK缺失字段时用临时路径识别。
-        isVideo: file.fileType === 'video' || (!file.fileType && isVideoUrl(file.tempFilePath)),
-      }));
-      const videos = files.filter((file) => file.isVideo);
-      const images = files.length - videos.length;
-      // 不截断混选结果：某类超额整批提示重选，不能悄悄丢掉用户选中的附件。
-      if (images > state.completionImageRemaining) {
-        throw new Error(`照片最多 6 张，还可添加 ${state.completionImageRemaining} 张，请重新选择`);
-      }
-      if (videos.length > state.completionVideoRemaining) {
-        throw new Error(`视频最多 1 段，还可添加 ${state.completionVideoRemaining} 段，请重新选择`);
-      }
-      for (const video of videos) await validateCompletionVideo(video.tempFilePath);
+      const files = await chooseRepairMedia(this.data.resultAttachments);
+      if (!files.length) return;
       loadingShown = true;
       wx.showLoading({ title: '上传中…', mask: true });
       // 单个成功立即落入本地草稿，后一个失败不能丢掉已上传成功的URL。
@@ -1433,6 +1412,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
         if (!url || isVideoUrl(url) !== file.isVideo) {
           throw new Error('附件上传结果无效，请重试');
         }
+        if (file.isVideo && file.thumbTempFilePath) this.setData({ mediaPosters: { ...this.data.mediaPosters, [url]: file.thumbTempFilePath } });
         this.setCompletionAttachments([...this.data.resultAttachments, url]);
       }
     } catch (e: any) {
@@ -1452,7 +1432,7 @@ Page<PageData, WechatMiniprogram.IAnyObject>({
 
   onRemoveMedia(e: WechatMiniprogram.BaseEvent) {
     if (this.data.uploading || this.data.busy) return;
-    const idx = Number(e.currentTarget.dataset.index);
+    const idx = Number((e as WechatMiniprogram.CustomEvent<{index:number}>).detail.index);
     const next = this.data.resultAttachments.slice();
     if (!Number.isInteger(idx) || idx < 0 || idx >= next.length) return;
     next.splice(idx, 1);

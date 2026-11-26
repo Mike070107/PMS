@@ -1,0 +1,10 @@
+<view wx:if="{{items.length}}" class="gallery">
+  <view class="tile" wx:for="{{items}}" wx:key="url">
+    <view class="preview" role="button" aria-label="{{item.type === 'video' ? '播放视频' : '查看照片'}}" data-index="{{index}}" bindtap="preview">
+      <image wx:if="{{item.type === 'image' || item.poster}}" class="frame" src="{{item.poster || item.url}}" mode="aspectFill"/>
+      <video wx:else class="frame" src="{{item.url}}" object-fit="cover" controls="{{false}}" show-center-play-btn="{{false}}" enable-play-gesture="{{false}}" muted/>
+      <cover-view wx:if="{{item.type === 'video'}}" class="overlay" data-index="{{index}}" catchtap="preview"><cover-view class="play">▶</cover-view></cover-view>
+    </view>
+    <cover-view wx:if="{{editable}}" class="remove" aria-label="移除附件" data-index="{{index}}" catchtap="remove">×</cover-view>
+  </view>
+</view>
