@@ -84,13 +84,7 @@
       </view>
     </block>
 
-    <view wx:if="{{mediaList.length}}" class="quick-media">
-      <view wx:for="{{mediaList}}" wx:key="url" class="thumb-wrap">
-        <video wx:if="{{item.video}}" class="thumb" src="{{item.url}}" object-fit="cover" show-center-play-btn="{{true}}" />
-        <image wx:else class="thumb" src="{{item.url}}" mode="aspectFill" data-url="{{item.url}}" bindtap="onPreviewMedia" />
-        <view class="thumb-remove" data-index="{{index}}" catchtap="onRemoveMedia"><view class="icon icon--close"></view></view>
-      </view>
-    </view>
+    <media-gallery urls="{{attachments}}" posters="{{mediaPosters}}" editable="{{true}}" disabled="{{uploading || submitting}}" bind:remove="onRemoveMedia"/>
 
     <view wx:if="{{content}}" class="after-recognize">
       <view class="urgency-simple">
@@ -133,9 +127,9 @@
         注意必须放在 hold-zone **外面** —— 放里面一点就开始录音了。
       -->
       <view class="dock-entries">
-        <view class="dock-entry" data-type="image" bindtap="onCapture">
+        <view class="dock-entry" bindtap="onChooseMedia">
           <view class="photo-entry__camera"></view>
-          <text>{{attachments.length ? '补拍照片 ' + attachments.length : '拍现场照片'}}</text>
+          <text>{{uploading ? '处理中…' : '照片 / 视频'}}</text>
         </view>
         <view class="dock-entry" bindtap="onEditInFull">
           <text class="dock-entry__icon">▦</text>
@@ -170,9 +164,9 @@
     </block>
     <block wx:else>
       <view class="dock-entries">
-        <view class="dock-entry" data-type="image" bindtap="onCapture">
+        <view class="dock-entry" bindtap="onChooseMedia">
           <view class="photo-entry__camera"></view>
-          <text>{{attachments.length ? '补拍照片 ' + attachments.length : '拍现场照片'}}</text>
+          <text>{{uploading ? '处理中…' : '照片 / 视频'}}</text>
         </view>
       </view>
       <!-- 报错放按钮上方，手指不会挡住（同工单详情页口径） -->

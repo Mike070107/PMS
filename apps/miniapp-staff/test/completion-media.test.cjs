@@ -41,3 +41,14 @@ for (const owner of [true,false]) test((owner?'业主':'员工')+'一键报修�
   assert.deepEqual(Array.from(f.ctx.data.attachments),['https://isolated.invalid/b.mp4']);
 });
 module.exports={fixture};
+test('员工语音报修识别前后均从底栏打开照片和视频相机', async () => {
+  const page = 'quick-repair';
+  const template = fs.readFileSync(path.join(root, 'apps/miniapp-staff/miniprogram/pages', page, page + '.wxml'), 'utf8');
+  assert.equal((template.match(/bindtap="onChooseMedia"/g) || []).length, 2);
+  const f = fixture(false, page);
+  f.files = [{tempFilePath: 'clip.mp4', fileType: 'video', thumbTempFilePath: 'poster.jpg'}];
+  await f.ctx.onChooseMedia();
+  assert.deepEqual(Array.from(f.choose[0].mediaType), ['image', 'video']);
+  assert.ok(f.choose[0].sourceType.includes('camera'));
+  assert.equal(f.ctx.data.mediaPosters[f.ctx.data.attachments[0]], 'poster.jpg');
+});

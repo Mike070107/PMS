@@ -1,5 +1,7 @@
 {
   "navigationBarTitleText": "语音报修",
   "navigationStyle": "custom",
-  "usingComponents": {}
+  "usingComponents": {
+    "media-gallery": "@pms/miniapp-ui/components/media-gallery/index"
+  }
 }
