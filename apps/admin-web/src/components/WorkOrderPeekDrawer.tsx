@@ -7,12 +7,13 @@
  * 表单里凡是「顺便看一眼工单」的链接都用它，别再各写一个跳转。
  */
 import { useEffect, useState } from 'react';
-import { Alert, Button, Descriptions, Drawer, Image, Space, Spin, Tag, Typography } from 'antd';
+import { Alert, Button, Descriptions, Drawer, Space, Spin, Tag, Typography } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { REPAIR_TYPE_LABELS, WORK_ORDER_STATUS_LABELS, formatDateTimeCn } from '@pms/shared-types';
 import type { WorkOrderStatus } from '@pms/shared-types';
 import { request } from '../lib/api';
 import { nameOr } from '../lib/displayName';
+import AttachmentPreview from './WorkOrderAttachmentPreview';
 import { imageSrc } from './MaterialPhotos';
 
 const { Text } = Typography;
@@ -162,21 +163,9 @@ export default function WorkOrderPeekDrawer({ workOrderId, onClose }: Props) {
           )}
           {!!photos.length && (
             <div>
-              <Text strong>现场照片</Text>
+              <Text strong>现场照片与视频</Text>
               <div style={{ marginTop: 6 }}>
-                <Image.PreviewGroup>
-                  <Space size={[8, 8]} wrap>
-                    {photos.map((url) => (
-                      <Image
-                        key={url}
-                        src={imageSrc(url)}
-                        width={88}
-                        height={88}
-                        style={{ objectFit: 'cover', borderRadius: 8 }}
-                      />
-                    ))}
-                  </Space>
-                </Image.PreviewGroup>
+                <AttachmentPreview urls={photos.map(url => imageSrc(url))} />
               </div>
             </div>
           )}

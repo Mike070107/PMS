@@ -5,7 +5,7 @@ import './image-preview.css';
 
 export interface PreviewImage { fileUrl: string; fileName: string }
 
-export default function ImagePreview({ files, initialIndex, title, onClose }: { files: PreviewImage[]; initialIndex: number; title: string; onClose: () => void }) {
+export default function ImagePreview({ files, initialIndex, title, onClose, viewport = false }: { files: PreviewImage[]; initialIndex: number; title: string; viewport?: boolean; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [index, setIndex] = useState(initialIndex);
   const [zoom, setZoom] = useState(1);
@@ -33,7 +33,7 @@ export default function ImagePreview({ files, initialIndex, title, onClose }: { 
   }, []);
   useEffect(() => { setZoom(1); setPan({ x: 0, y: 0 }); setFailed(false); drag.current = null; }, [index]);
   return createPortal(
-    <dialog ref={dialog} className="np-image-preview" aria-label={title} onCancel={(e) => { e.preventDefault(); onClose(); }}
+    <dialog ref={dialog} className={viewport ? "np-image-preview wo-viewport-preview" : "np-image-preview"} aria-label={title} onCancel={(e) => { e.preventDefault(); onClose(); }}
       onClick={(e) => { e.stopPropagation(); if (e.target === e.currentTarget) { const r = e.currentTarget.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) onClose(); } }}
       onKeyDown={(e) => {
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); return; }
