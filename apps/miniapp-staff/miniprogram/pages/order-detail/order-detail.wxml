@@ -503,8 +503,7 @@
       <view class="completion-media-limit">最多 6 张照片 + 1 段视频，视频最长 15 秒</view>
       <view class="complete-photo-speech-stack">
         <view class="complete-photo-block">
-          <button class="complete-photo-entry" disabled="{{uploading || busy || (!completionImageRemaining && !completionVideoRemaining)}}" bindtap="onChooseMedia">
-            <text>{{uploading ? '处理中…' : '＋ 照片 / 视频'}}</text></button>
+          <button class="repair-media-action" disabled="{{uploading || busy || (!completionImageRemaining && !completionVideoRemaining)}}" bindtap="onChooseMedia"><view class="repair-media-camera"></view><text>{{uploading ? '处理中…' : '＋ 照片 / 视频'}}</text></button>
           <view wx:if="{{completionMediaError}}" class="complete-error">{{completionMediaError}}</view>
           <media-gallery urls="{{resultAttachments}}" posters="{{mediaPosters}}" editable="{{true}}" disabled="{{uploading || busy}}" bind:remove="onRemoveMedia"/>
         </view>

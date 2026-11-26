@@ -102,7 +102,7 @@
       <view class="form-field"><view class="form-label">联系人</view><input class="large-input" placeholder="姓名" maxlength="20" value="{{contactName}}" bindinput="onContactName" /></view>
       <view class="form-field"><view class="form-label">联系电话</view><input class="large-input" type="number" placeholder="请输入手机号码" value="{{contactPhone}}" bindinput="onPhone" /><view class="field-error" wx:if="{{errors.phone}}">{{errors.phone}}</view></view>
 
-      <button class="repair-add-media" disabled="{{uploading || submitting}}" bindtap="onChooseMedia">{{uploading ? '处理中…' : '＋ 照片 / 视频'}}</button>
+      <button class="repair-media-action" disabled="{{uploading || submitting}}" bindtap="onChooseMedia"><view class="repair-media-camera"></view><text>{{uploading ? '处理中…' : '＋ 照片 / 视频'}}</text></button>
       <media-gallery urls="{{attachments}}" posters="{{mediaPosters}}" editable="{{true}}" disabled="{{uploading || submitting}}" bind:remove="onRemoveMedia"/>
     </view>
   </view>

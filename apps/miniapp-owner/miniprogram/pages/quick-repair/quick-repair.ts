@@ -84,6 +84,8 @@ Page({
      */
     detected: null as ParsedRepairAddress | null,
     media: [] as Array<{ url: string; type: 'image' | 'video' }>,
+    mediaUrls: [] as string[],
+    mediaPosters: {} as Record<string,string>,
     uploading: false,
     submitting: false,
     /**
@@ -276,12 +278,13 @@ Page({
     wx.showLoading({ title: '上传中…', mask: true });
     try {
       const uploaded = await upload.uploadTempFiles(res.tempFiles.map((f) => f.tempFilePath));
-      this.setData({
-        media: [
-          ...this.data.media,
-          ...uploaded.map((item) => ({ url: item.publicUrl, type: mediaType as 'image' | 'video' })),
-        ],
+      const media = [...this.data.media, ...uploaded.map(item => ({ url: item.publicUrl, type: mediaType as 'image' | 'video' }))];
+      const mediaPosters = { ...this.data.mediaPosters };
+      uploaded.forEach((item, index) => {
+        const poster = res.tempFiles[index]?.thumbTempFilePath;
+        if (mediaType === 'video' && poster) mediaPosters[item.publicUrl] = poster;
       });
+      this.setData({ media, mediaUrls: media.map(item => item.url), mediaPosters });
       this.refreshSubmittable();
     } catch (err: any) {
       wx.showToast({ icon: 'none', title: err?.message || '上传失败' });
@@ -291,25 +294,11 @@ Page({
     }
   },
 
-  onRemoveMedia(e: WechatMiniprogram.BaseEvent) {
-    const index = Number(e.currentTarget.dataset.index);
-    const media = this.data.media.slice();
-    media.splice(index, 1);
-    this.setData({ media });
+  onRemoveMedia(e: WechatMiniprogram.CustomEvent<{index: number}>) {
+    if (this.data.uploading || this.data.submitting) return;
+    const media = this.data.media.filter((_, i) => i !== e.detail.index);
+    this.setData({ media, mediaUrls: media.map(item => item.url) });
     this.refreshSubmittable();
-  },
-
-  onPreviewMedia(e: WechatMiniprogram.BaseEvent) {
-    const item = this.data.media[Number(e.currentTarget.dataset.index)];
-    if (!item) return;
-    if (item.type === 'video') {
-      wx.previewMedia({ sources: [{ url: item.url, type: 'video' }] });
-      return;
-    }
-    wx.previewImage({
-      current: item.url,
-      urls: this.data.media.filter((m) => m.type === 'image').map((m) => m.url),
-    });
   },
 
   // ---------------- 语音转文字 ----------------

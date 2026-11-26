@@ -20,13 +20,14 @@ test('一键报修和完工详情共用混排缩略图与原生全屏预览',()=
     assert.doesNotMatch(template,/class="(?:completion-draft-video|result-video)"/);
   }
   const script=fs.readFileSync(path.join(root,'packages/miniapp-ui/components/media-gallery/index.js'),'utf8');
-  let gallery,preview;
-  vm.runInNewContext(script,{require:()=>shared,Component:def=>gallery=def,wx:{previewMedia:args=>preview=args}});
-  const ctx={data:{},setData(p){Object.assign(this.data,p)}};
+  let gallery,preview,played = 0,expanded = 0;
+  vm.runInNewContext(script,{require:()=>shared,Component:def=>gallery=def,wx:{previewMedia:args=>preview=args, createVideoContext:()=>({play(){played++;},requestFullScreen(){expanded++;}})}});
+  const ctx={data:{},setData(p,done){Object.assign(this.data,p);done?.();}};
   gallery.observers['urls, posters'].call(ctx,['a.jpg','b.mp4','c.jpg'],{'b.mp4':'thumb.jpg'});
   assert.equal(ctx.data.items[1].poster,'thumb.jpg');
   gallery.methods.preview.call(ctx,evt(1));
-  assert.equal(preview.current,1); assert.deepEqual(Array.from(preview.sources,x=>x.type),['image','video','image']);
+  assert.equal(ctx.data.playingUrl,'b.mp4'); assert.equal(played,1); assert.equal(expanded,1);
+  gallery.methods.preview.call(ctx,evt(2)); assert.equal(preview.current,1); assert.deepEqual(Array.from(preview.sources,x=>x.type),['image','image']);
 });
 test('完工成功的隔离transport保存后回读同URL，保持6图1视频兼容且关闭表单',async()=>{const f=fixture();const urls=['a.jpg','b.mp4'];f.ctx.setCompletionAttachments(urls);f.ctx.data.panel='complete';await f.ctx.onComplete();assert.equal(f.completeCalls.length,1);assert.equal(f.ctx.data.panel,'');assert.equal(f.ctx.data.busy,false);const refreshed=f.ctx.buildResult(f.detail);assert.deepEqual(Array.from(refreshed.resultPhotos),['a.jpg']);assert.deepEqual(Array.from(refreshed.resultVideos),['b.mp4']);});
 test('原生选择取消不报错且不改草稿，真实选择失败需反馈并释放锁',async()=>{const f=fixture();f.ctx.setCompletionAttachments(['old.jpg']);f.chooseError={errMsg:'chooseMedia:fail cancel'};await f.ctx.onChooseMedia();assert.equal(f.ctx.data.completionMediaError,'');assert.equal(f.ctx.data.uploading,false);assert.deepEqual(Array.from(f.ctx.data.resultAttachments),['old.jpg']);f.chooseError=Error('选择器不可用');await f.ctx.onChooseMedia();assert.match(f.ctx.data.completionMediaError,/选择器不可用/);assert.equal(f.ctx.data.uploading,false);assert.equal(f.uploads.length,0);});

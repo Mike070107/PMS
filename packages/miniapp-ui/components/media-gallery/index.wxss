@@ -1,6 +1,11 @@
 .gallery { display:flex; flex-wrap:wrap; gap:12rpx; margin-top:12rpx; }
-.tile { position:relative; width:128rpx; height:128rpx; border-radius:12rpx; overflow:hidden; background:#dce3e9; }
+.tile { position:relative; width:calc((100% - 24rpx) / 3); height:0; padding-bottom:calc((100% - 24rpx) / 3); border-radius:12rpx; overflow:hidden; background:#dce3e9; }
 .preview,.frame,.overlay { width:100%; height:100%; display:block; }
 .overlay { position:absolute; top:0; left:0; display:flex; align-items:center; justify-content:center; }
 .play { width:60rpx; height:60rpx; line-height:60rpx; border-radius:50%; background:rgba(0,0,0,.58); color:white; font-size:36rpx; text-align:center; }
 .remove { position:absolute; top:0; right:0; width:44rpx; height:44rpx; line-height:44rpx; border-radius:0 0 0 12rpx; background:rgba(0,0,0,.6); color:white; text-align:center; font-size:32rpx; }
+
+.preview { position:absolute; inset:0; }
+.player-layer { position:fixed; inset:0; z-index:9999; background:#000; }
+.player { width:100%; height:100%; }
+.player-close { position:absolute; top:15%; right:24rpx; padding:16rpx 24rpx; color:#fff; background:#333; border-radius:8rpx; }

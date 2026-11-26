@@ -77,35 +77,10 @@
       <view class="card__title">拍下来</view>
       <view class="card__desc">拍张照片或一段短视频，师傅一眼就懂</view>
 
+      <media-gallery urls="{{mediaUrls}}" posters="{{mediaPosters}}" editable="{{true}}" disabled="{{uploading || submitting}}" bind:remove="onRemoveMedia"/>
       <view class="media">
-        <view class="media__item" wx:for="{{media}}" wx:key="url">
-          <image
-            wx:if="{{item.type === 'image'}}"
-            class="media__thumb"
-            src="{{item.url}}"
-            mode="aspectFill"
-            data-index="{{index}}"
-            bindtap="onPreviewMedia"
-          />
-          <view
-            wx:else
-            class="media__thumb media__thumb--video"
-            data-index="{{index}}"
-            bindtap="onPreviewMedia"
-          >视频</view>
-          <view class="media__remove" data-index="{{index}}" catchtap="onRemoveMedia">
-            <view class="icon icon--close"></view>
-          </view>
-        </view>
-
-        <view wx:if="{{media.length < 3}}" class="media__add" data-type="image" bindtap="onCapture">
-          <view class="icon icon--camera media__icon"></view>
-          <text class="media__hint">{{uploading ? '上传中' : '拍照'}}</text>
-        </view>
-        <view wx:if="{{media.length < 3}}" class="media__add" data-type="video" bindtap="onCapture">
-          <view class="icon icon--play media__icon"></view>
-          <text class="media__hint">录视频</text>
-        </view>
+        <button wx:if="{{media.length < 3}}" class="repair-media-action" disabled="{{uploading || submitting}}" data-type="image" bindtap="onCapture"><view class="repair-media-camera"></view><text>{{uploading ? '上传中' : '拍照'}}</text></button>
+        <button wx:if="{{media.length < 3}}" class="repair-media-action" disabled="{{uploading || submitting}}" data-type="video" bindtap="onCapture"><view class="repair-media-camera"></view><text>录视频</text></button>
       </view>
     </view>
 

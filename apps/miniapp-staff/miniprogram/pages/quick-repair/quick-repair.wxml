@@ -127,10 +127,10 @@
         注意必须放在 hold-zone **外面** —— 放里面一点就开始录音了。
       -->
       <view class="dock-entries">
-        <view class="dock-entry" bindtap="onChooseMedia">
-          <view class="photo-entry__camera"></view>
+        <button class="repair-media-action" disabled="{{uploading || submitting}}" bindtap="onChooseMedia">
+          <view class="repair-media-camera"></view>
           <text>{{uploading ? '处理中…' : '照片 / 视频'}}</text>
-        </view>
+        </button>
         <view class="dock-entry" bindtap="onEditInFull">
           <text class="dock-entry__icon">▦</text>
           <text>改用填表报修</text>
@@ -164,10 +164,10 @@
     </block>
     <block wx:else>
       <view class="dock-entries">
-        <view class="dock-entry" bindtap="onChooseMedia">
-          <view class="photo-entry__camera"></view>
+        <button class="repair-media-action" disabled="{{uploading || submitting}}" bindtap="onChooseMedia">
+          <view class="repair-media-camera"></view>
           <text>{{uploading ? '处理中…' : '照片 / 视频'}}</text>
-        </view>
+        </button>
       </view>
       <!-- 报错放按钮上方，手指不会挡住（同工单详情页口径） -->
       <view wx:if="{{errorMsg}}" class="action-dock__error">{{errorMsg}}</view>

@@ -8,3 +8,7 @@
     <cover-view wx:if="{{editable}}" class="remove" aria-label="移除附件" data-index="{{index}}" catchtap="remove">×</cover-view>
   </view>
 </view>
+<view wx:if="{{playingUrl}}" class="player-layer">
+  <video id="gallery-player" class="player" src="{{playingUrl}}" object-fit="contain" controls autoplay bindfullscreenchange="fullscreenChanged" binderror="playbackFailed"/>
+  <cover-view class="player-close" bindtap="closeVideo">关闭</cover-view>
+</view>
