@@ -8217,3 +8217,9 @@
   - 4361588c 按车牌串联历史业务并展示车库车位及核价快照
   - 19b08927 Include parking actions in the ledger and honor intake collection dates
 
+## 2026-11-27 00:09 · assistant · 91d9c2a2
+
+- 提交：91d9c2a2 同户新车登记继续原单并安全撤销重复空单
+- 自上次（6622749e）以来上线的相关提交：
+  - 19b08927 Include parking actions in the ledger and honor intake collection dates
+
