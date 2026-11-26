@@ -20,6 +20,9 @@ test('办理记录中文系统操作：真实React与ledger SQL，桌面/窄屏�
   {vehicle:{plateNo:'沪TEST02'},parking:{systems:[{kind:'local',database:'parking1',sourceRecordId:'5275',label:'一期地面车库',previousEndDate:'2026-06-30'}]},execution:{manualDone:{at:'2026-11-15T00:00:00Z',by:7,note:'物业人工核查登记'}}},
   {vehicle:{plateNo:'沪TEST03'},parking:{newVehicle:true,target:'local:phase1_parking',systems:[{kind:'local',database:'parking2',sourceRecordId:'10',label:'二期地面车库'},{kind:'local',database:'parking2',sourceRecordId:'11',label:'二期大车库'}]},execution:{steps:[{key:'registration:parking2',label:'二期停车资料',kind:'local',status:'dry_run',note:'仅演练，不写入'},{key:'registration:check',label:'一期二期车牌查重',kind:'local',status:'waiting',note:'尚未新增'},{key:'registration:parking1',label:'一期地面车库',kind:'local',status:'failed',operationId:73,note:'设备确认缺失'}],finishedAt:'2026-11-15T00:10:00Z',lastError:'设备确认缺失'}},
  ];
+ Object.assign(snapshots[0],{propertySpaces:[{garage:'main',spaceNo:'39'}],review:{reason:'对齐到月底',manualAmountCents:0,standardAmountCents:13500,requestedBy:7,decision:'approved'}});
+ snapshots[0].parking.systems[1].targetKey='local:phase2_main_garage';
+ snapshots[0].parking.systems[1].label='二期大车库';
  for(let i=0;i<snapshots.length;i++)await db.query(`INSERT INTO business_transactions VALUES($1,$2,1,10,1,7,'parking_monthly','paid',0,'alipay',$3,'2026-11-15T00:15:00+08',$4,11,'2026-11-15','2027-10-30')`,[301+i,'SYNTHETIC-'+i,['queued','synced','failed'][i],JSON.stringify(snapshots[i])]);
  await db.exec(`INSERT INTO business_transactions VALUES(304,'SYNTHETIC-RED',1,10,1,7,'parking_monthly','paid',75000,'alipay',
    'synced','2026-11-15T21:08:07+08','{"collectionDate":"2026-11-14","vehicle":{"plateNo":"沪TEST04"}}',5,'2026-12-01','2027-04-30');`);
@@ -78,6 +81,12 @@ test('办理记录中文系统操作：真实React与ledger SQL，桌面/窄屏�
    const section=page.getByRole('region',{name:'车辆系统操作'}),detail=page.locator('.rec-detail');await section.waitFor();
    assert.equal(await section.locator('.rec-operation').count(),2);const body=await detail.textContent();
    assert.match(body,/调整停车有效期/);assert.match(body,/关联任务#71/);assert.match(body,/等待执行回执/);assert.match(body,/日期不一致/);assert.match(body,/2027-10-30/);assert.match(body,/2027-10-31/);assert.match(body,/现场通行：未验证/);
+   assert.match(await section.locator('article').nth(1).locator('.rec-operation-heading').innerText(),/二期大车库.*车位号 39/);
+   assert.doesNotMatch(await section.locator('article').first().innerText(),/车位号 39/);
+   const pricing=page.getByRole('region',{name:'人工核价'});
+   assert.deepEqual(await pricing.locator('dd').allTextContents(),['¥ 135.00','¥ 0.00','¥ 0.00']);
+   assert.match(await pricing.innerText(),/对齐到月底/);
+   assert.match(await pricing.innerText(),/当时未记录/);
    assert.ok(!/parkingSystems|parkingTarget|sourceRecordId|local:parking|\{"/.test(body));assert.ok(!body.includes('车位编号隔离'));
    const geometry=await detail.boundingBox(),viewport=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));
    assert.ok(geometry.width<=width-30,JSON.stringify({geometry,width}));assert.ok(viewport.scroll<=width+1,JSON.stringify(viewport));

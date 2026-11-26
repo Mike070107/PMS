@@ -115,3 +115,7 @@
     box-sizing: border-box;
   }
 }
+
+.rec-review-amounts { display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,100px),1fr));gap:12px;margin:12px 0; }
+.rec-review-amounts dt { color:var(--ink3); }
+.rec-review-amounts dd { margin:4px 0;font-weight:700; }

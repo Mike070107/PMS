@@ -136,13 +136,27 @@ test('ledger uses SQL scope, whole-filter aggregates, stable 20/50/100 paging an
  assert.equal(deleted?.canReverse,false);
  const original=timeline.rows.find((r:any)=>r.id===200);
  assert.equal(original?.detail.extra.spaceNo,'大车库 39号');
- assert.equal(original?.detail.extra.manualAmountCents,0);
+ assert.equal(original?.detail.manualPricing.approvedAmount,0);
  assert.equal(original?.detail.extra.standardAmountCents,13500);
- assert.equal(original?.detail.extra.decidedBy,'Tester');
+ assert.equal(original?.detail.manualPricing.decidedBy,'账号 #7');
  const paymentsOnly=await service.list({q:'TEST123'},user,{...access,scopeAll:true});
  assert.equal(timeline.total,paymentsOnly.total+1);
  assert.deepEqual(timeline.summary,paymentsOnly.summary);
 
  assert.ok(!((await service.list({includeOperations:1,q:'TEST123'},user,access)).rows.some((r:any)=>r.operation)),'无可靠小区归属时不泄露独立任务');
+ await db.exec(`INSERT INTO parking_history VALUES
+ (485,1,'vehicle_deleted','pms','parking2','12','TEST123','TEST123',7,'2026-11-07T03:00Z'),
+ (501,1,'plate_change','pms','parking2','88','沪A12345','沪A23456',7,'2026-11-06T01:00Z'),
+ (502,1,'vehicle_deleted','pms','parking2','88','沪A23456','沪A23456',7,'2026-11-07T04:00Z');
+ UPDATE business_transactions SET snapshot=jsonb_set(snapshot,'{parking}','{"plate":"沪A12345","systems":[{"database":"parking2","sourceRecordId":"88"}]}') WHERE id=200;
+ INSERT INTO parking_operations VALUES(900,1,'download_vehicle','parking2','biz:PKT:register-download:parking2','88','{"plate":"沪A12345"}','{"deviceVerification":"confirmed"}','completed',7,now(),now(),null);`);
+ const full=await service.list({includeOperations:1,q:'沪A23456'},user,{...access,scopeAll:true});
+ assert.ok(full.rows.some((r:any)=>r.operation?.historyId===502),'无原任务的历史注销也可查到');
+ const oldPayment=full.rows.find((r:any)=>r.id===200);
+ assert.ok(oldPayment,'用新车牌可查到同一旧库登记的原收款');
+ assert.deepEqual(oldPayment.detail.tasks.map((t:any)=>t.taskId),[900],'按业务键关联的设备任务仅挂在原单');
+ assert.ok(!full.rows.some((r:any)=>r.operation?.taskId===900));
+ const dedup=await service.list({includeOperations:1,q:'TEST123'},user,{...access,scopeAll:true});
+ assert.equal(dedup.rows.filter((r:any)=>r.operation?.kind==='delete_vehicle').length,1,'注销回执及同一次PMS变更历史只显示一次');
  }finally{await db.close()}
 });

@@ -2,7 +2,7 @@ import {resolveAddressForTenant} from '../../common/address-lookup';
 import {BadRequestException,ForbiddenException,Injectable,NotFoundException} from '@nestjs/common';import {InjectRepository} from '@nestjs/typeorm';import {Repository} from 'typeorm';import {BusinessTransaction} from '../../entities/business-transaction.entity';import {AuthUser} from '../../common/current-user.decorator';import {ResolvedAccess} from '../access/access.service';import {scopeCommunityIds} from '../access/scope.util';
 import {BusinessLog} from '../../entities/business-log.entity';
 import {BusinessServiceType,BusinessTransactionStatus} from '../../common/enums';
-import {parkingTimelinePage} from './parking-timeline';
+import {parkingTimelinePage,plateSearchKey,changedVehicleSources,linkedParkingTaskSql} from './parking-timeline';
 import {collectionDaySql} from './collection-date';
 const PAYMENT_LABELS:Record<string,string>={cash:'现金',wechat:'微信',alipay:'支付宝',bank:'银行',pos:'刷卡',transfer:'转账',other:'其他'};
 const SERVICE_LABELS:Record<string,string>={parking_monthly:'停车续期',access_card:'门禁卡',mis_property:'物业费',mis_berth:'泊位费'};
@@ -12,13 +12,19 @@ function dateText(value:unknown){if(value instanceof Date)return value.toISOStri
 import {findParkingTarget} from './parking-targets';
 const object=(v:unknown):Record<string,any>=>v&&typeof v==='object'&&!Array.isArray(v)?v as Record<string,any>:{};
 const objects=(v:unknown):Array<Record<string,any>>=>Array.isArray(v)?v.filter(x=>x&&typeof x==='object'&&!Array.isArray(x)):[];
+function garageSpace(system:Record<string,any>,spaces:Array<Record<string,any>>) {
+ const target=system.targetKey||system.target;
+ const garage=target==='local:phase2_main_garage'?'main':target==='deliyun:枫桦景苑'||system.park==='枫桦景苑'?'civil':null;
+ const direct=text(system.spaceNo)||text(system.parkingSpaceNo)||text(system.parkingSpace);
+ const numbers=garage?[...new Set(spaces.filter(s=>s.garage===garage).map(s=>text(s.spaceNo)).filter(Boolean))]:[];
+ return {spaceNo:direct||numbers.join('、')||null,showSpace:!!garage||!!direct};
+}
 /** 本单保存的执行快照，不查询/重放任务，也不由总状态推断各系统成功。 */
 function parkingOperations(parking:Record<string,any>,execution:Record<string,any>,targetEndDate:string|null,spaces:Array<Record<string,any>>){
  const steps=objects(execution.steps),seen=new Set<string>(),register=parking.newVehicle===true;
  const operation=(step:Record<string,any>,sys:Record<string,any>={},key:string|null=null)=>({
   key:key||text(step.key),
-  spaceNo:sys.targetKey==='local:phase2_main_garage'?text(spaces.find(s=>s.garage==='main')?.spaceNo):
-    sys.kind==='deliyun'?text(spaces.find(s=>s.garage==='civil')?.spaceNo):null,
+  ...garageSpace(sys,spaces),
   systemLabel:text(sys.label)||text(step.label)||findParkingTarget(parking.target||execution.target)?.label||'停车系统（名称未记录）',
   action:step.key==='registration:check'?'check':text(step.key)?.startsWith('reversal:')?'restore':register?'register':'renew',
   previousEndDate:text(step.previousEndDate)||text(sys.previousEndDate),
@@ -52,9 +58,14 @@ function detailOf(row:any){
  if(spaces.length)extra.spaceNo=spaces.map(s=>(s.garage==='main'?'大车库':s.garage==='civil'?'人防车库':'车位')+' '+s.spaceNo+'号').join('、');
  const quote=object(snapshot.quote),review=object(snapshot.review);
  for(const key of ['quantity','unitPriceCents','standardAmountCents'])if((quote[key]??estimate[key])!=null)extra[key]=quote[key]??estimate[key];
- if(review.manualAmountCents!=null)Object.assign(extra,{manualAmountCents:review.manualAmountCents,reason:review.reason,
-   requestedBy:row.requester||review.requestedBy,decidedBy:row.decider||review.decidedBy,requestedAt:review.requestedAt,decidedAt:review.decidedAt,
-   decision:review.decision==='approved'?'通过':review.decision==='rejected'?'驳回':undefined});
+ const manualPricing=row.serviceType==='parking_monthly'&&!snapshot.reversal&&(Object.keys(review).length>0||estimate.requiresReview===true)?{
+   standard:review.standardAmountCents??quote.standardAmountCents??estimate.standardAmountCents??null,
+   approvedAmount:review.manualAmountCents??null,received:row.status==='paid'?row.amountCents:null,
+   reason:text(review.reason),decision:text(review.decision)||(row.externalSyncStatus==='review'?'pending':null),
+   requestedBy:text(review.requestedByName)||(review.requestedBy!=null?'账号 #'+review.requestedBy:null),
+   decidedBy:text(review.decidedByName)||(review.decidedBy!=null?'账号 #'+review.decidedBy:null),
+   requestedAt:isoText(review.requestedAt),decidedAt:isoText(review.decidedAt),decisionReason:text(review.decisionReason),
+ }:null;
  if(systems.length)extra.parkingSystems=systems.map(s=>({label:text(s.label),database:text(s.database),previousEndDate:text(s.previousEndDate),target:text(s.target),sourceRecordId:text(s.sourceRecordId)}));
  if(text(parking.previousVehicleClass))extra.previousVehicleClass=text(parking.previousVehicleClass);
  if(text(parking.vehicleClass))extra.chargedVehicleClass=text(parking.vehicleClass);
@@ -72,7 +83,7 @@ function detailOf(row:any){
   periodFrom:row.serviceType==='parking_monthly'?(previousEnds.sort()[0]||null):null,
   periodTo:row.serviceType==='parking_monthly'?targetEndDate:null,
    ...(row.serviceType==='parking_monthly'?{
-    parkingOperations:parkingOperations(parking,execution,targetEndDate,spaces),
+    manualPricing,parkingOperations:parkingOperations(parking,execution,targetEndDate,spaces),
     execution:{status:text(row.externalSyncStatus),mode:text(execution.mode),finishedAt:isoText(execution.finishedAt),lastError:text(execution.lastError),
      operationId:Number.isSafeInteger(execution.operationId)&&execution.operationId>0?execution.operationId:null,
      manualDone:text(manualDone.note)?{at:isoText(manualDone.at),note:text(manualDone.note)}:null},
@@ -148,13 +159,22 @@ export class BusinessLedgerService{
   if(q.q?.trim()){
    const match=await resolveAddressForTenant(this.repo.manager.connection,user.tenantId!,q.q);
    if(match)base.andWhere(match.allHouseIds.length?'t.house_id IN (:...addressHouseIds)':'1=0',{addressHouseIds:match.allHouseIds});
-   else base.andWhere(`(t.txn_no ILIKE :term OR t.snapshot->>'reversedByTxnNo' ILIKE :term OR t.snapshot#>>'{reversal,originalTxnNo}' ILIKE :term
-    OR ${address} ILIKE :term OR ${plate} ILIKE :term OR u.name ILIKE :term)`,{term:'%'+q.q.trim().replace(/[\\%_]/g,c=>'\\'+c)+'%'});
+   else {
+    const key=q.includeOperations===1&&plateSearchKey(q.q);
+    const related=key?` OR (t.service_type='parking_monthly' AND EXISTS (
+      SELECT 1 FROM (${changedVehicleSources('t.tenant_id',':changedPlate')}) old
+      WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(t.snapshot#>'{parking,systems}')='array' THEN t.snapshot#>'{parking,systems}' ELSE '[]'::jsonb END) sys
+        WHERE sys->>'database'=old.database AND sys->>'sourceRecordId'=old.source_record_id)
+        OR EXISTS (SELECT 1 FROM parking_operations a WHERE a.tenant_id=t.tenant_id AND a.kind='add_vehicle' AND a.status='completed'
+          AND a.database=old.database AND a.result->>'issueId'=old.source_record_id AND a.idempotency_key='biz:'||t.txn_no||':register:'||a.database)))`:'';
+    base.andWhere(`(t.txn_no ILIKE :term OR t.snapshot->>'reversedByTxnNo' ILIKE :term OR t.snapshot#>>'{reversal,originalTxnNo}' ILIKE :term
+    OR ${address} ILIKE :term OR ${plate} ILIKE :term OR u.name ILIKE :term${related})`,{changedPlate:key,term:'%'+q.q.trim().replace(/[\\%_]/g,c=>'\\'+c)+'%'});
+   }
   }
   const paid="COALESCE(SUM(CASE WHEN t.status='paid' THEN t.amount_cents::bigint ELSE 0 END),0)",refunded="COALESCE(SUM(CASE WHEN t.status='refunded' THEN ABS(t.amount_cents::bigint) ELSE 0 END),0)";
   const totals=await base.clone().select('COUNT(*)','total').addSelect(paid,'paidCents').addSelect(refunded,'refundedCents').addSelect(`(${paid})-(${refunded})`,'netCents').addSelect("COALESCE(SUM(CASE WHEN t.status='paid' AND t.amount_cents=0 THEN 1 ELSE 0 END),0)",'freeCount').addSelect("COALESCE(SUM(CASE WHEN t.status='paid' THEN 1 ELSE 0 END),0)",'paidCount').addSelect("COALESCE(SUM(CASE WHEN t.external_sync_status='synced' THEN 1 ELSE 0 END),0)",'syncedCount').getRawOne<Record<string,string>>();
   const safe=(v:unknown)=>{const n=Number(v??0);if(!Number.isSafeInteger(n))throw new BadRequestException('汇总超出安全范围，请缩小筛选');return n};let total=safe(totals?.total),page=Math.min(requested,Math.max(1,Math.ceil(total/pageSize)));
-  const detailQuery=base.clone().select(['t.id AS id','t.txn_no AS "txnNo"','t.service_type AS "serviceType"','t.status AS status','t.amount_cents AS "amountCents"','t.payment_method AS "paymentMethod"','t.external_sync_status AS "externalSyncStatus"','t.created_at AS "createdAt"','t.community_id AS "communityId"','t.house_id AS "houseId"','t.quantity AS quantity','t.snapshot AS snapshot',"(SELECT u1.name FROM users u1 WHERE u1.tenant_id=t.tenant_id AND u1.id::text=t.snapshot#>>'{review,requestedBy}') AS requester","(SELECT u2.name FROM users u2 WHERE u2.tenant_id=t.tenant_id AND u2.id::text=t.snapshot#>>'{review,decidedBy}') AS decider",'t.start_date::text AS "startDate"','t.end_date::text AS "endDate"','u.name AS cashier',`${address} AS address`,`${plate} AS "plateNo"`,`${collectionDay} AS "collectionDate"`]);
+  const detailQuery=base.clone().select(['t.id AS id','t.txn_no AS "txnNo"','t.service_type AS "serviceType"','t.status AS status','t.amount_cents AS "amountCents"','t.payment_method AS "paymentMethod"','t.external_sync_status AS "externalSyncStatus"','t.created_at AS "createdAt"','t.community_id AS "communityId"','t.house_id AS "houseId"','t.quantity AS quantity','t.snapshot AS snapshot','t.start_date::text AS "startDate"','t.end_date::text AS "endDate"','u.name AS cashier',`${address} AS address`,`${plate} AS "plateNo"`,`${collectionDay} AS "collectionDate"`]);
   let timeline:Awaited<ReturnType<typeof parkingTimelinePage>>|undefined;
   if(q.includeOperations===1 && !q.kind && !q.status && (!q.serviceType||q.serviceType==='parking_monthly')){
     const paymentKeys=base.clone().select(['t.id AS id','t.created_at AS at',`${collectionDay} AS day`]);
@@ -171,9 +191,11 @@ export class BusinessLedgerService{
    reversal:object(r.snapshot?.reversal).originalTxnNo ? r.snapshot.reversal : null,
   }));
   if(timeline && payments.length){
-   const tasks=await this.repo.manager.connection.query(`SELECT o.payload->>'businessTxnNo' AS txn,o.id AS "taskId",o.kind,o.database,o.status,
+   const tasks=await this.repo.manager.connection.query(`SELECT t.txn_no AS txn,o.id AS "taskId",o.kind,o.database,o.status,
     o.completed_at AS "completedAt",o.result->>'deviceVerification' AS "deviceVerification",o.result->'retryChannels' AS "retryChannels"
-    FROM parking_operations o WHERE o.tenant_id=$1 AND o.payload->>'businessTxnNo'=ANY($2::text[]) ORDER BY o.id`,[user.tenantId,payments.map(p=>p.txnNo)]);
+    FROM business_transactions t JOIN parking_operations o ON t.tenant_id=o.tenant_id AND
+      ${linkedParkingTaskSql}
+      WHERE t.tenant_id=$1 AND t.txn_no=ANY($2::text[]) ORDER BY o.id`,[user.tenantId,payments.map(p=>p.txnNo)]);
    for(const payment of payments)Object.assign(payment.detail,{tasks:tasks.filter((task:any)=>task.txn===payment.txnNo)});
   }
   const indexed=new Map(payments.map(row=>[Number(row.id),row]));

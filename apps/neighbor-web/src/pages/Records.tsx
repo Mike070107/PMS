@@ -7,10 +7,12 @@ import ParkingReversalSheet from '@/components/ParkingReversalSheet';
 
 /** 后端 detail（api-followups 新增）：业务明细；未上线时下面所有字段都按可选处理。 */
 interface ParkingOperationDetail {
-  spaceNo?:string|null;key?:string|null;systemLabel?:string|null;action?:string|null;previousEndDate?:string|null;targetEndDate?:string|null;
+  showSpace?:boolean;spaceNo?:string|null;key?:string|null;systemLabel?:string|null;action?:string|null;previousEndDate?:string|null;targetEndDate?:string|null;
   status?:string|null;operationId?:number|null;note?:string|null;plannedPreviousEndDate?:string|null;plannedTargetEndDate?:string|null;
 }
 interface TxnDetail {
+  manualPricing?:{standard:number|null;approvedAmount:number|null;received:number|null;reason:string|null;decision:string|null;
+    requestedBy:string|null;decidedBy:string|null;requestedAt:string|null;decidedAt:string|null;decisionReason:string|null};
   tasks?:ParkingEvent[];
   parkingOperations?:ParkingOperationDetail[];
   execution?:{status?:string|null;mode?:string|null;finishedAt?:string|null;lastError?:string|null;operationId?:number|null;manualDone?:{at?:string|null;note?:string|null}|null}|null;
@@ -20,12 +22,12 @@ interface TxnDetail {
   serviceType?: string | null; extra?: Record<string, unknown> | null;
 }
 interface ParkingEvent {
- taskId?:number; historyId?:number; kind:string; database?:string; status:string; verified?:boolean; remaining?:number;
+ taskId?:number; historyId?:number; timeBasis?:string; kind:string; database?:string; status:string; verified?:boolean; remaining?:number;
  completedAt?:string; refund?:string; depositRefund?:string; plate?:string; newPlate?:string; deviceVerification?:string; retryChannels?:number[];
  before?:{spaceNo?:string;startDate?:string;endDate?:string;garages?:string[]}; garages?:string[]; garageNumbers?:Record<string,string>;
 }
 const actions:Record<string,string>={delete_vehicle:'注销车辆',add_vehicle:'新增车辆',renew_vehicle:'车辆续期',change_plate:'变更车牌',rebind_owner:'变更绑定用户',update_garages:'调整车库授权',update_vehicle_type:'修改车辆类型',download_vehicle:'下发设备',sync_vehicle_info:'同步车辆资料',owner_info_update:'更新住户资料'};
-const taskStates:Record<string,string>={completed:'已完成',failed:'失败',cancelled:'已取消',pending:'待执行',running:'执行中'};
+const taskStates:Record<string,string>={observed:'旧库变更记录',completed:'已完成',failed:'失败',cancelled:'已取消',pending:'待执行',running:'执行中'};
 const garages:Record<string,string>={main:'二期大车库',civil:'人防车库',phase1:'一期地面车库',phase2:'二期地面车库'};
 interface Txn{operation?:ParkingEvent;id:number;txnNo:string;serviceType:string;status:string;amountCents:number;paymentMethod:string|null;createdAt:string;collectionDate?:string;externalSyncStatus:string;address?:string;plateNo?:string;cashier?:string;detail?:TxnDetail|null;canReverse?:boolean;reversedByTxnNo?:string|null;reversal?:{originalTxnNo:string;reason:string;reviewValidity?:boolean}|null;}
 function backdatedCollection(t: Pick<Txn,'collectionDate'|'createdAt'>) {
@@ -50,7 +52,7 @@ const CURRENCY_KEYS=new Set(['standardAmountCents','unitPriceCents','manualAmoun
 const DATE_KEYS=new Set(['requestedAt','decidedAt','paidAt','createdAt','periodFrom','periodTo','validTo','endDate']);
 const blank=(v:unknown)=>v===null||v===undefined||v===''?'—':String(v);
 function detailValue(key:string,value:unknown):string{
-  if(value===null||value===undefined||value==='')return '—';
+  if(value===null||value===undefined||value==='')return '当时未记录';
   if(CURRENCY_KEYS.has(key)&&Number.isFinite(Number(value)))return money(Number(value)/100);
   if(DATE_KEYS.has(key)){
     const text=String(value);
@@ -79,7 +81,7 @@ function detailItems(t:Txn):{items:DetailItem[];extra:Array<DetailItem&{key:stri
     }
     items.push({label:'关联地址',value:blank(t.address)});
     const space=extra.spaceNo??extra.parkingSpaceNo??extra.berthNo??extra.parkingNo;
-    if(space)items.push(pick('spaceNo','车位编号',space));
+    if(space&&!d.parkingOperations?.some(op=>op.spaceNo))items.push(pick('spaceNo','车位编号',space));
   }else if(t.serviceType==='access_card'){
     items.push(pick('cardNo','卡号',extra.cardNo??extra.icCardNo??extra.wgCardNo??extra.cardNumber));
     items.push(pick('validTo','有效期',extra.validTo??extra.endDate??d.periodTo));
@@ -92,7 +94,7 @@ function detailItems(t:Txn):{items:DetailItem[];extra:Array<DetailItem&{key:stri
   if(collectionDate)items.push({label:'收费日期',value:collectionDate});
   items.push({label:collectionDate?'登记时间':'收款时间',value:detailValue('paidAt',d.paidAt??t.createdAt)});
   const extraItems=Object.entries(extra)
-    .filter(([key,value])=>!used.has(key)&&!!EXTRA_LABEL[key]&&value!==null&&value!==undefined&&value!==''&&(typeof value!=='object'||key==='cards'))
+    .filter(([key,value])=>!used.has(key)&&!(d.manualPricing&&key==='standardAmountCents')&&key!=='spaceNo'&&!!EXTRA_LABEL[key]&&value!==null&&value!==undefined&&value!==''&&(typeof value!=='object'||key==='cards'))
     .map(([key,value])=>({key,label:EXTRA_LABEL[key],value:detailValue(key,value)}));
   return {items,extra:extraItems};
 }
@@ -116,14 +118,13 @@ function renderParkingOperations(t:Txn){
   <div className="rec-operation-heading"><b>车辆系统操作</b><span className="tag mute">{t.reversal?reversalSyncLabel(t):txnSyncLabel(t)}</span></div>
   {mismatch?<p className="rec-operation-warning" role="note">日期不一致：办理目标到期日 {d.periodTo}，计价测算到期日 {measured}。请核对原办理单及系统记录，不要据此重复收款或重办。</p>:null}
   <div className="rec-operation-list">{operations.map((op,i)=><article className="rec-operation" key={`${op.key||'system'}:${i}`}>
-   <div className="rec-operation-heading"><b>{blank(op.systemLabel)}</b><span className={`tag ${/failed|manual/.test(op.status||'')?'warn':'mute'}`}>{stepLabel(op.status)}</span></div>
+   <div className="rec-operation-heading"><b>{blank(op.systemLabel)}{(op.showSpace||op.spaceNo)&&<span> · 车位号 {op.spaceNo||'当时未记录'}</span>}</b><span className={`tag ${/failed|manual/.test(op.status||'')?'warn':'mute'}`}>{stepLabel(op.status)}</span></div>
    <div className="rec-detail-grid">
     <div className="rec-detail-item"><span>办理动作</span><b>{operationLabel(op.action)}</b></div>
-    {op.spaceNo?<div className="rec-detail-item"><span>车位号</span><b>{op.spaceNo}</b></div>:null}
     {op.operationId?<div className="rec-detail-item"><span>关联任务</span><b>#{op.operationId}</b></div>:null}
     {op.plannedPreviousEndDate?<div className="rec-detail-item"><span>执行计划原到期日</span><b>{op.plannedPreviousEndDate}</b></div>:null}
     {op.plannedTargetEndDate?<div className="rec-detail-item"><span>执行计划目标到期日</span><b>{op.plannedTargetEndDate}</b></div>:null}
-    {op.action!=='check'?<><div className="rec-detail-item"><span>{op.action==='restore'?'回退前应为':'原到期日（收款快照）'}</span><b>{op.action==='register'&&!op.previousEndDate?'新办，无原到期日':blank(op.previousEndDate)}</b></div><div className="rec-detail-item"><span>{op.action==='restore'?'回退目标到期日':'办理目标到期日'}</span><b>{blank(op.targetEndDate)}</b></div></>:null}
+    {op.action!=='check'?<><div className="rec-detail-item"><span>{op.action==='restore'?'回退前应为':'原到期日（收款快照）'}</span><b>{op.action==='register'&&!op.previousEndDate?'新办，无原到期日':op.previousEndDate||'当时未记录'}</b></div><div className="rec-detail-item"><span>{op.action==='restore'?'回退目标到期日':'办理目标到期日'}</span><b>{blank(op.targetEndDate)}</b></div></>:null}
    </div>
    <p className="rec-operation-note">执行记录说明：{op.note||'本单未保存该系统的分步执行说明，不能据总状态推定已写入或回读。'}</p>
   </article>)}</div>
@@ -167,7 +168,7 @@ export default function Records(){
    const op=t.operation,before=op.before;
    const facts:Array<[string,unknown]>=[
     ['停车系统',op.database==='parking2'?'二期停车库':op.database==='parking1'?'一期停车库':op.database],
-    ['操作人',t.cashier],['完成时间',op.completedAt&&formatBeijingDateTime(op.completedAt,'YYYY-MM-DD HH:mm:ss')],
+    ['时间依据',op.historyId?(op.timeBasis==='detected'?'旧库变化发现时间':op.timeBasis==='operation'?'实际办理时间':'当时未记录'):null],['操作人',t.cashier],['完成时间',op.completedAt&&formatBeijingDateTime(op.completedAt,'YYYY-MM-DD HH:mm:ss')],
     ['新车牌',op.newPlate!==op.plate?op.newPlate:null],['退款申请额',op.refund],['退押金申请额',op.depositRefund],
     ['注销回读',op.kind==='delete_vehicle'&&op.verified===true&&op.remaining===0?'已核实，旧库剩余 0 条':null],
     ['设备回执',op.deviceVerification==='confirmed'?'已确认':null],['已补发机号',op.retryChannels?.join('、')],
@@ -180,6 +181,11 @@ export default function Records(){
    return <div className="rec-detail"><div className="rec-detail-grid">{facts.filter(([,v])=>v!=null&&v!=='').map(([label,v])=><div key={label} className="rec-detail-item"><span>{label}</span><b>{String(v)}</b></div>)}</div></div>;
   }
   const {items,extra}=detailItems(t);
+  const review=t.detail?.manualPricing;
+  const missing='当时未记录';
+  const amount=(cents:number|null)=>cents!=null&&Number.isSafeInteger(Number(cents))?money(Number(cents)/100):missing;
+  const auditDate=(value:string|null)=>value?formatBeijingDateTime(value,'YYYY-MM-DD HH:mm'):missing;
+
   return (
    <div className="rec-detail">
     <div className="rec-detail-head"><b>业务明细</b><span className="muted">单号 {t.txnNo}</span></div>
@@ -188,6 +194,11 @@ export default function Records(){
     <div className="rec-detail-grid">
      {items.map((item)=><div className="rec-detail-item" key={item.label}><span>{item.label}</span><b>{item.value}</b></div>)}
     </div>
+    {review&&<section className="rec-detail-extra" aria-label="人工核价"><b>人工核价</b>
+      <dl className="rec-review-amounts">{[['标准金额',amount(review.standard)],['核定金额',amount(review.approvedAmount)],['实收金额',amount(review.received)]].map(([k,v])=><div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
+      <div className="rec-detail-grid">{[['调整理由',review.reason],['审批结果',({approved:'通过',rejected:'驳回',pending:'待审批'} as Record<string,string>)[review.decision||'']],
+        ['申请人',review.requestedBy],['申请时间',auditDate(review.requestedAt)],['审批人',review.decidedBy],['审批时间',auditDate(review.decidedAt)],['审批意见',review.decisionReason]].map(([k,v])=><div className="rec-detail-item" key={k}><span>{k}</span><b>{v||missing}</b></div>)}</div>
+    </section>}
     {renderParkingOperations(t)}
     {!!t.detail?.tasks?.length&&<section className="rec-detail-extra"><b>关联现场任务</b>{t.detail.tasks.map(op=><div key={op.taskId} className="rec-operation-note">#{op.taskId} · {actions[op.kind]||'车辆操作'} · {taskStates[op.status]||'未记录'}{op.completedAt?' · '+formatBeijingDateTime(op.completedAt,'YYYY-MM-DD HH:mm:ss'):''}{op.deviceVerification==='confirmed'?' · 设备已确认':''}{op.retryChannels?.length?' · 补发机号 '+op.retryChannels.join('、'):''}</div>)}</section>}
      {extra.length?(
