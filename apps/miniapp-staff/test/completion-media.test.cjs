@@ -20,13 +20,16 @@ test('一键报修和完工详情共用混排缩略图与原生全屏预览',()=
     assert.doesNotMatch(template,/class="(?:completion-draft-video|result-video)"/);
   }
   const script=fs.readFileSync(path.join(root,'packages/miniapp-ui/components/media-gallery/index.js'),'utf8');
-  let gallery,preview,played = 0,expanded = 0;
-  vm.runInNewContext(script,{require:()=>shared,Component:def=>gallery=def,wx:{previewMedia:args=>preview=args, createVideoContext:()=>({play(){played++;},requestFullScreen(){expanded++;}})}});
+  let gallery,preview,played = 0,direction, windowWidth = 390, windowHeight = 844;
+  vm.runInNewContext(script,{require:()=>shared,Component:def=>gallery=def,wx:{getWindowInfo:()=>({windowWidth,windowHeight}),previewMedia:args=>preview=args, createVideoContext:()=>({play(){played++;},requestFullScreen(opts){direction=opts?.direction;}})}});
   const ctx={data:{},setData(p,done){Object.assign(this.data,p);done?.();}};
   gallery.observers['urls, posters'].call(ctx,['a.jpg','b.mp4','c.jpg'],{'b.mp4':'thumb.jpg'});
   assert.equal(ctx.data.items[1].poster,'thumb.jpg');
   gallery.methods.preview.call(ctx,evt(1));
-  assert.equal(ctx.data.playingUrl,'b.mp4'); assert.equal(played,1); assert.equal(expanded,1);
+  assert.equal(ctx.data.playingUrl,'b.mp4'); assert.equal(played,1); assert.equal(direction,0);
+  windowWidth=844; windowHeight=390; gallery.methods.preview.call(ctx,evt(1)); assert.equal(direction,90);
+  const styles=fs.readFileSync(path.join(root,'packages/miniapp-ui/components/media-gallery/index.wxss'),'utf8');
+  assert.match(styles,/width:calc\(\(100% - 12rpx\) \/ 2\)/);
   gallery.methods.preview.call(ctx,evt(2)); assert.equal(preview.current,1); assert.deepEqual(Array.from(preview.sources,x=>x.type),['image','image']);
 });
 test('完工成功的隔离transport保存后回读同URL，保持6图1视频兼容且关闭表单',async()=>{const f=fixture();const urls=['a.jpg','b.mp4'];f.ctx.setCompletionAttachments(urls);f.ctx.data.panel='complete';await f.ctx.onComplete();assert.equal(f.completeCalls.length,1);assert.equal(f.ctx.data.panel,'');assert.equal(f.ctx.data.busy,false);const refreshed=f.ctx.buildResult(f.detail);assert.deepEqual(Array.from(refreshed.resultPhotos),['a.jpg']);assert.deepEqual(Array.from(refreshed.resultVideos),['b.mp4']);});

@@ -22,7 +22,8 @@ Component({
       if (item.type === 'video') {
         this.setData({ playingUrl: item.url }, () => {
           const player = wx.createVideoContext('gallery-player', this);
-          player.requestFullScreen();
+          const viewport = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
+          player.requestFullScreen({ direction: viewport.windowWidth > viewport.windowHeight ? 90 : 0 });
           player.play();
         });
         return;
