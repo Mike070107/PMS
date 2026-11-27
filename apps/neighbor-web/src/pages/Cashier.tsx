@@ -318,9 +318,12 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
               databases.add(row.database);
               onsiteDatabases.set(plate, databases);
             }
-            if (legacyRoom) {
+            // 未能解析的门牌可能带有人名后缀，仅保留原文供按车牌续费核对。
+            const displayRoom = legacyRoom || [textField('owner__owner_name'), textField('owner__owner_add')]
+              .find(value => /^(?:198|228)[/-]\d{1,2}[/-]\d{2,4}/.test(value));
+            if (displayRoom) {
               const labels = parkingRooms.get(plate) ?? new Set<string>();
-              labels.add(legacyRoom);
+              labels.add(displayRoom);
               parkingRooms.set(plate, labels);
             }
           }
