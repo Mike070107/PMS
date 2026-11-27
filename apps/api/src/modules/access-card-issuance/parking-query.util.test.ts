@@ -207,7 +207,7 @@ test('真实住户匹配方法按数据库把裸房号关联到对应弄号，�
   });
   const rows = [
     { database: 'parking1', fields: { Owner__owner_Name: '合成住户', Owner__owner_Add: '12/101', Owner__owner_Tel: '13800000002', Owner_ID: 1, P_plate: '沪A11111' } },
-    { database: 'parking2', fields: { Owner__owner_Name: '12/101', Owner__owner_Tel: null, Owner_ID: 2, P_plate: '沪A22222' } },
+    { database: 'parking2', fields: { Owner__owner_Name: '12/101', Owner__owner_Add: null, Owner__owner_Tel: null, Owner_ID: 2, P_plate: '沪A22222' } },
   ];
   const result = await service['matchParkingRowsToPms'](1, rows);
   assert.equal(result[0].pmsMatch?.userId, 19801);
