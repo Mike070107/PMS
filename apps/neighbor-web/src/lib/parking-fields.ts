@@ -1,3 +1,4 @@
+import { legacyParkingRoomField } from '@pms/shared-types';
 /**
  * 停车库查询结果的字段解析 + 车库授权位解码。
  *
@@ -35,6 +36,7 @@ const norm = (s: string) => s.toLowerCase().replace(/[\s_\-./]/g, '');
 /** 按别名组取值；房号/电话/备注这类连表列优先取 Owner__ 开头的 */
 export function field(fields: Fields | undefined, group: FieldGroup, preferOwner = false): string {
   if (!fields) return '';
+  if (group === 'room') return legacyParkingRoomField(fields)?.value ?? '';
   const aliases = ALIASES[group] as readonly string[];
   const keys = Object.keys(fields).filter((k) => {
     const v = fields[k];

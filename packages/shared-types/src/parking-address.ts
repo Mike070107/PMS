@@ -40,3 +40,23 @@ export function parkingPmsHouseKey(lane: string | null | undefined, buildingNo: 
   const buildingKey = parkingPmsBuildingKey(lane, buildingNo);
   return buildingKey && roomNo ? `${buildingKey}/${normalizeAddressPart(roomNo)}` : null;
 }
+
+/** 旧车库的房号可落在姓名栏或地址栏；返回实际列名供资料编辑回显。 */
+export function legacyParkingRoomField(fields: Record<string, unknown>) {
+  const entries = Object.entries(fields);
+  const joined = entries.filter(([key]) => /^Owner__/i.test(key));
+  const candidates = (joined.length ? joined : entries).map(([key, value]) => ({
+    column: key.replace(/^Owner__/i, ''),
+    value: String(value ?? '').trim(),
+  }));
+  for (const alias of ['ownername', 'owneradd', 'roomno', 'roomnumber', 'houseno', 'owneraddress', 'address', 'addr', 'proom', 'room', '房号', '地址']) {
+    for (const entry of candidates) {
+      if (entry.column.toLowerCase().replace(/[\s_./-]/g, '') !== alias) continue;
+      // 展示层只取原值；两段房号在已知车库才生成完整房产键。
+      const full = parkingRoomAddress(entry.value);
+      const parsed = full ?? parkingRoomAddress(entry.value, 'parking1');
+      if (parsed) return { ...entry, lane: full?.lane, building: parsed.buildingNo, room: parsed.roomNo };
+    }
+  }
+  return null;
+}

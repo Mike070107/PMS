@@ -106,3 +106,12 @@ test('成功回报必须逐项等于请求值，备注允许补来源标记并�
   assert.deepEqual(parkingOwnerWriteMismatches(request, { ...result, note: '其他备注' }), ['备注']);
   assert.deepEqual(parkingOwnerWriteMismatches({ ...request, note: null }, { ...result, note: '操作来源：PMS系统' }), []);
 });
+
+test('旧库姓名栏和地址栏依次验证，不能把人名当成房号', () => {
+  const read = (name: string, address: string) => parkingLegacyOwnerValuesFromFields({
+    Owner__owner_Name: name, Owner__owner_Add: address,
+  }).room;
+  assert.equal(read('张三', '198/33/401'), '198/33/401');
+  assert.equal(read('198-33-401', '228/6/502'), '198-33-401');
+  assert.equal(read('张三', '办公室'), null);
+});

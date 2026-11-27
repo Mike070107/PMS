@@ -574,6 +574,10 @@ namespace Pms.DataSyncAssistant
 
         private static void VerifyParkingOwnerRebind()
         {
+            var mixedOwner = new Dictionary<string, object> { { "owner_Name", "测试住户" }, { "owner_Add", "198/33/401" } };
+            if (ParkingDatabase.BindingRoom(mixedOwner) != "198/33/401" ||
+                ParkingDatabase.ResolveOwnerColumnForTest("room", "owner_Add", "owner_Name", "owner_Add") != "owner_Add")
+                throw new InvalidOperationException("旧库地址栏房号未识别");
             if (ParkingDatabase.CanonicalBindingRoom("198-08-0102") != "198/8/102") throw new InvalidOperationException("绑定房号规范化失败");
             if (ParkingDatabase.NextBindingRoom("198/8/102", new string[0]) != "198/8/102") throw new InvalidOperationException("空房号分配失败");
             if (ParkingDatabase.NextBindingRoom("198/8/102", new[] { "198/8/102" }) != "198/8/102/2") throw new InvalidOperationException("房号重名编号失败");

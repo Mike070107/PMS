@@ -1,3 +1,4 @@
+import { legacyParkingRoomField } from '@pms/shared-types';
 import PlateNumberField from '../../../neighbor-web/src/components/PlateNumberField';
 import { formatBeijingDateTime } from '@pms/shared-types';
 import {
@@ -1069,11 +1070,13 @@ function ownerFieldEntry(fields: ParkingQueryRow['fields'], aliases: readonly st
 }
 
 function ownerFieldValue(fields: ParkingQueryRow['fields'], aliases: readonly string[]): string | null {
+  if (aliases === fieldAliases.room) return legacyParkingRoomField(fields)?.value ?? null;
   const joinedOwnerFields = Object.keys(fields).some((key) => key.startsWith('Owner__'));
   return ownerFieldEntry(fields, aliases)?.[1] ?? (joinedOwnerFields ? null : fieldValue(fields, aliases));
 }
 
 function ownerFieldHint(fields: ParkingQueryRow['fields'], aliases: readonly string[]): string | null {
+  if (aliases === fieldAliases.room) return legacyParkingRoomField(fields)?.column ?? null;
   return ownerFieldEntry(fields, aliases)?.[0] ?? null;
 }
 

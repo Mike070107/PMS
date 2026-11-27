@@ -1,3 +1,4 @@
+import { parkingRoomAddress } from './parking-query.util';
 import type { ParkingHistoryChange } from '../../entities/parking-history.entity';
 import type { ParkingOwnerFieldHints, ParkingOwnerValues } from '../../entities/parking-owner-update.entity';
 import type { ParkingSnapshotValues } from './parking-history.util';
@@ -133,18 +134,26 @@ export function parkingOwnerJoinedFieldValue(
 }
 
 /**
- * 枫桦旧停车库字段语义：P_Owner.owner_Name 保存房号，不保存姓名。
+ * 旧库房号可能在姓名栏或地址栏，逐列验证。
  * 姓名只接受明确的人名列，避免把 228-31-702 当成姓名。
  */
 export function parkingLegacyOwnerValuesFromFields(
   fields: Record<string, string | number | boolean | null>,
+  database?: string | null,
 ): Pick<ParkingOwnerValues, 'name' | 'phone' | 'room'> {
+  let room: string | null = null;
+  for (const alias of ['ownername', 'owneradd', 'roomno', 'houseno', 'owneraddress', 'address', 'proom', 'roomnumber', 'addr', 'room', '房号', '地址']) {
+    const candidate = parkingOwnerJoinedFieldValue(fields, [alias]);
+    if (parkingRoomAddress(candidate, database)) {
+      room = candidate;
+      break;
+    }
+  }
   return {
     name: null,
     phone: clean(parkingOwnerJoinedFieldValue(fields,
       ['mobile', 'telephone', 'phone', 'tel', 'ptel', 'ownertel', 'ownermobile', 'ownerphone', '手机', '电话'])),
-    room: clean(parkingOwnerJoinedFieldValue(fields,
-      ['ownername', 'owner_name', 'roomno', 'houseno', 'owneradd', 'owneraddress', 'address', 'proom', 'roomnumber', 'addr', 'room', '房号', '地址'])),
+    room,
   };
 }
 

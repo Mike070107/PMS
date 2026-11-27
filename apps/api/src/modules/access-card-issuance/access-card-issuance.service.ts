@@ -3342,7 +3342,7 @@ export class AccessCardIssuanceService {
       .map((row) => parkingOwnerJoinedFieldValue(row.fields, ['phone', 'mobile', 'telephone', 'tel', 'ptel', 'ownertel', 'ownermobile', 'ownerphone', '手机', '电话']))
       .map((value) => normalizeParkingPhone(value))
       .filter((value): value is string => Boolean(value))));
-    const rowRooms = rows.map((row) => parkingRoomAddress(parkingSnapshotValues(row.fields).room, row.database));
+    const rowRooms = rows.map((row) => parkingRoomAddress(parkingSnapshotValues(row.fields, row.database).room, row.database));
     const roomKeys = new Set(rowRooms.flatMap((address) => address ? [address.key] : []));
     const buildingKeys = new Set(rowRooms.flatMap((address) => address ? [`${address.lane}/${address.buildingNo}`] : []));
 
@@ -3440,7 +3440,7 @@ export class AccessCardIssuanceService {
     const communityById = new Map(communities.map((community) => [community.id, community]));
     return rows.map((row) => {
       const rawPhone = parkingOwnerJoinedFieldValue(row.fields, ['phone', 'mobile', 'telephone', 'tel', 'ptel', 'ownertel', 'ownermobile', 'ownerphone', '手机', '电话']);
-      const roomAddress = parkingRoomAddress(parkingSnapshotValues(row.fields).room, row.database);
+      const roomAddress = parkingRoomAddress(parkingSnapshotValues(row.fields, row.database).room, row.database);
       const matchedHouse = roomAddress ? roomHouseByKey.get(roomAddress.key) : undefined;
       const phoneUser = rawPhone ? byPhone.get(normalizeParkingPhone(rawPhone) ?? '') : undefined;
       const roomUser = matchedHouse ? byHouse.get(matchedHouse.id) : undefined;

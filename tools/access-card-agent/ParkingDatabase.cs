@@ -1094,9 +1094,9 @@ ORDER BY COALESCE([out_Time], [Int_Time]) DESC;";
                 using (var targetTransaction = targetConnection.BeginTransaction(IsolationLevel.Serializable))
                 {
                     var source = ReadVehicleSyncSnapshot(sourceConnection, sourceTransaction, sourceOwner,
-                        sourceRoomColumn, sourceNoteColumn, sourceRecordId, sourcePlate, true);
+                        ref sourceRoomColumn, sourceNoteColumn, sourceRecordId, sourcePlate, true);
                     var target = ReadVehicleSyncSnapshot(targetConnection, targetTransaction, targetOwner,
-                        targetRoomColumn, targetNoteColumn, targetRecordId, targetPlate, true);
+                        ref targetRoomColumn, targetNoteColumn, targetRecordId, targetPlate, true);
                     if (source.Room == null)
                         throw new InvalidOperationException("源停车库房号为空，不会清空目标库房号");
                     var desiredRoom = ResolveAvailableOwnerRoom(targetConnection, targetTransaction, targetOwner,
@@ -1119,7 +1119,7 @@ ORDER BY COALESCE([out_Time], [Int_Time]) DESC;";
                             target.IssueId, targetPlate, target.Note, source.Note);
 
                     var written = ReadVehicleSyncSnapshot(targetConnection, targetTransaction, targetOwner,
-                        targetRoomColumn, targetNoteColumn, targetRecordId, targetPlate, false);
+                        ref targetRoomColumn, targetNoteColumn, targetRecordId, targetPlate, false);
                     AssertVehicleSyncWritten(source, desiredRoom, written);
                     var result = VehicleSyncResult(sourceDatabase, task.database, target, written,
                         !String.Equals(source.Room, desiredRoom, StringComparison.Ordinal), false);
@@ -1131,7 +1131,7 @@ ORDER BY COALESCE([out_Time], [Int_Time]) DESC;";
         }
 
         private static ParkingVehicleSyncSnapshot ReadVehicleSyncSnapshot(SqlConnection connection,
-            SqlTransaction transaction, ParkingOwnerSource ownerSource, ParkingColumn roomColumn,
+            SqlTransaction transaction, ParkingOwnerSource ownerSource, ref ParkingColumn roomColumn,
             ParkingColumn noteColumn, string issueId, string plate, bool lockRow)
         {
             string ownerId;
@@ -1166,6 +1166,7 @@ ORDER BY COALESCE([out_Time], [Int_Time]) DESC;";
                 { "name", null }, { "phone", null }, { "room", roomColumn }, { "note", null }
             };
             var owner = ReadOwner(connection, transaction, ownerSource, columns, ownerId, lockRow);
+            roomColumn = columns["room"];
             return new ParkingVehicleSyncSnapshot
             {
                 IssueId = actualIssueId,
@@ -1343,6 +1344,22 @@ ORDER BY COALESCE([out_Time], [Int_Time]) DESC;";
                 throw new InvalidOperationException("任务指定的停车数据库不在本机配置中：" + database);
         }
 
+        private static bool IsLegacyRoom(string value)
+        {
+            var text = Regex.Replace((value ?? "").Trim(), @"\s+", "");
+            text = Regex.Replace(text, @"^已隐藏|(?:换车牌|新车|租客|租)$|室$", "");
+            text = Regex.Replace(text, @"[弄号幢栋\\-]", "/");
+            return Regex.IsMatch(text, @"^(?:(?:198|228)/\d{1,2}/\d{2,4}(?:/\d+)?|\d{1,2}/\d{2,4}(?:/\d{1,2})?)$");
+        }
+
+        internal static string BindingRoom(Dictionary<string, object> owner)
+        {
+            var name = Value(owner, "owner_Name");
+            if (IsLegacyRoom(name)) return name;
+            var address = Value(owner, "owner_Add");
+            return IsLegacyRoom(address) ? address : null;
+        }
+
         internal static string CanonicalBindingRoom(string room)
         {
             var match = Regex.Match((room ?? "").Trim(), @"^(198|228)[/-](\d{1,2})[/-](\d{2,4})(?:/\d+)?$");
@@ -1398,7 +1415,7 @@ ORDER BY COALESCE([out_Time], [Int_Time]) DESC;";
                 var restoreId = Value(payload, "restoreOwnerId");
                 var marker = "PMS绑定:" + task.taskId.ToString(CultureInfo.InvariantCulture);
                 // 只有本任务的专属建档标记才允许作为丢失回执后的幂等重放依据。
-                if ((Value(oldOwner, "owner_depa") == marker || (!String.IsNullOrEmpty(restoreId) && oldId == restoreId)) && CanonicalBindingRoom(Value(oldOwner, "owner_Name")) == room &&
+                if ((Value(oldOwner, "owner_depa") == marker || (!String.IsNullOrEmpty(restoreId) && oldId == restoreId)) && CanonicalBindingRoom(BindingRoom(oldOwner)) == room &&
                     (Value(oldOwner, "owner_Tel") ?? "") == phone)
                 {
                     var original = ReadBindingOwner(connection, transaction, expectedId);
@@ -1412,7 +1429,7 @@ ORDER BY COALESCE([out_Time], [Int_Time]) DESC;";
                 if (!String.IsNullOrEmpty(restoreId))
                 {
                     target = ReadBindingOwner(connection, transaction, restoreId);
-                    if (CanonicalBindingRoom(Value(target, "owner_Name")) != room || (Value(target, "owner_Tel") ?? "") != phone)
+                    if (CanonicalBindingRoom(BindingRoom(target)) != room || (Value(target, "owner_Tel") ?? "") != phone)
                         throw new InvalidOperationException("原住户资料已变化，不能自动恢复，请重新选择房号");
                 }
                 else
@@ -1860,7 +1877,7 @@ SELECT id FROM @created;";
             using (var command = connection.CreateCommand())
             {
                 command.Transaction = transaction;
-                command.CommandText = "SELECT UserID,owner_Name,owner_Tel,owner_depa FROM dbo.P_Owner WHERE UserID=@id";
+                command.CommandText = "SELECT UserID,owner_Name,owner_Add,owner_Tel,owner_depa FROM dbo.P_Owner WHERE UserID=@id";
                 Add(command, "@id", SqlDbType.VarChar, 30, id);
                 return ReadSingleBindingRow(command, "旧库住户");
             }
@@ -1881,8 +1898,8 @@ SELECT id FROM @created;";
         private static Dictionary<string, object> BindingResult(Dictionary<string, object> vehicle, Dictionary<string, object> previous, Dictionary<string, object> target, string previousId, string targetId)
         {
             return new Dictionary<string, object> { { "verified", true }, { "plate", Value(vehicle, "P_plate") }, { "issueId", Value(vehicle, "P_id") },
-                { "previousOwnerId", previousId }, { "targetOwnerId", targetId }, { "previousRoom", Value(previous, "owner_Name") },
-                { "previousPhone", Value(previous, "owner_Tel") }, { "targetRoom", Value(target, "owner_Name") }, { "targetPhone", Value(target, "owner_Tel") } };
+                { "previousOwnerId", previousId }, { "targetOwnerId", targetId }, { "previousRoom", BindingRoom(previous) },
+                { "previousPhone", Value(previous, "owner_Tel") }, { "targetRoom", BindingRoom(target) }, { "targetPhone", Value(target, "owner_Tel") } };
         }
 
         private static SqlCommand Procedure(SqlConnection connection, string name)
@@ -2466,6 +2483,8 @@ ORDER BY ID DESC";
             ParkingOwnerSource source, Dictionary<string, ParkingColumn> columns, string ownerId, bool lockRow)
         {
             var selected = columns.Where(delegate(KeyValuePair<string, ParkingColumn> item) { return item.Value != null; }).ToList();
+            var alternateRooms = source.Columns.Where(c => (NormalizeName(c.Name) == "owneradd" || NormalizeName(c.Name) == "ownername") &&
+                columns["room"] != null && c != columns["room"]).ToList();
             if (selected.Count == 0) throw new InvalidOperationException("住户表没有可更新的资料列");
             using (var command = connection.CreateCommand())
             {
@@ -2474,7 +2493,7 @@ ORDER BY ID DESC";
                 {
                     return QuoteColumn(item.Value.Name) + " AS " + QuoteColumn(item.Key);
                 }).ToArray();
-                command.CommandText = "SELECT TOP 2 " + String.Join(", ", fields) + " FROM " +
+                command.CommandText = "SELECT TOP 2 " + String.Join(", ", fields.Concat(alternateRooms.Select(c => QuoteColumn(c.Name))).ToArray()) + " FROM " +
                     QuoteName(source.Schema, source.Table) + (lockRow ? " WITH (UPDLOCK, HOLDLOCK)" : "") +
                     " WHERE CONVERT(NVARCHAR(200), " + QuoteColumn(source.KeyColumn) + ") = @ownerId;";
                 command.Parameters.Add("@ownerId", SqlDbType.NVarChar, 200).Value = ownerId.Trim();
@@ -2487,6 +2506,17 @@ ORDER BY ID DESC";
                     {
                         var value = reader[item.Key];
                         SetOwnerValue(result, item.Key, value == DBNull.Value ? null : Convert.ToString(value));
+                    }
+                    if (!IsLegacyRoom(result.room))
+                    {
+                        foreach (var column in alternateRooms)
+                        {
+                            var candidate = Clean(Convert.ToString(reader[column.Name]));
+                            if (!IsLegacyRoom(candidate)) continue;
+                            columns["room"] = column;
+                            result.room = candidate;
+                            break;
+                        }
                     }
                     if (reader.Read()) throw new InvalidOperationException("住户编号 #" + ownerId + " 对应多条记录，已停止更新");
                     return result;
@@ -2667,6 +2697,7 @@ ORDER BY ID DESC";
             string[] aliases;
             // P_Owner.owner_Name 是房号，不是姓名。姓名只接受明确的人名列，避免把
             // 228-31-702 之类房号显示或回写为住户姓名。
+            if (semantic == "room" && normalized == "owneradd") return 95;
             if (semantic == "name") aliases = new[] { "username", "customername", "personname", "residentname", "pname", "姓名", "业主姓名", "住户姓名" };
             else if (semantic == "phone") aliases = new[] { "mobilephone", "mobile", "telephone", "phone", "tel", "ptel", "手机", "电话", "联系电话" };
             else if (semantic == "room") aliases = new[] { "ownername", "roomnumber", "roomno", "houseno", "house", "address", "addr", "room", "proom", "房号", "地址", "住址" };

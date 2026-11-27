@@ -1,3 +1,4 @@
+import { legacyParkingRoomField } from '@pms/shared-types';
 import PlateNumberField from '../../../neighbor-web/src/components/PlateNumberField';
 import { formatBeijingDateTime, sortTimelineNewestFirst } from '@pms/shared-types';
 import {
@@ -85,8 +86,9 @@ function legacyField(row: LegacyRow, aliases: string[]) {
 const legacyPlate = (row: LegacyRow) => normalizePlate(legacyField(row, ['pplate', 'plate', 'carno', 'plateno']));
 const legacyIdentity = (row: LegacyRow) => legacyField(row, ['carbrand', 'carbeand']);
 const legacyRoom = (row: LegacyRow) => {
-  const parts = legacyField(row, ['ownername', 'owneradd', 'owneraddress']).match(/\d+/g);
-  return parts && parts.length >= 3 ? parts.slice(-3).map((part) => String(Number(part))).join('/') : '';
+  const room = legacyParkingRoomField(row.fields);
+  const lane = room?.lane || (row.database === 'parking1' ? '198' : row.database === 'parking2' ? '228' : null);
+  return room && lane ? `${lane}/${room.building}/${room.room}` : '';
 };
 const legacyEnd = (row: LegacyRow) => legacyField(row, ['endtime', 'enddate']).slice(0, 10);
 

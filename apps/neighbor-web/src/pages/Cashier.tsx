@@ -7,7 +7,7 @@ import OwnerBusinessContact from '@/components/OwnerBusinessContact';
 import ParkingTab, { payCode, type ParkHouse, type ParkingCart } from '@/components/cashier/ParkingTab';
 import PaidHistory from '@/components/cashier/PaidHistory';
 import { accessCardIssuance, address, request } from '@pms/api-client';
-import { formatShopLabel, parkingRoomAddress, type AddressCommunity } from '@pms/shared-types';
+import { formatShopLabel, legacyParkingRoomField, parkingRoomAddress, type AddressCommunity } from '@pms/shared-types';
 import HousePicker, { type PickedHouse } from '@/components/HousePicker';
 import type { PickedAddress } from '@/components/HouseAddressPicker';
 import UniSearch, { type UniPick, type UniVehicle, type RegistrationMatch } from '@/components/cashier/UniSearch';
@@ -299,7 +299,7 @@ export default function Cashier({ embeddedIntakeId, embeddedRenewalPlate, onBusy
           const fields = new Map(Object.entries(f).map(([key, value]) => [key.toLowerCase(), value]));
           const textField = (...keys: string[]) => keys.map(key => String(fields.get(key) ?? '').trim()).find(Boolean) || '';
           const plate = textField('p_plate', 'car_no').toUpperCase();
-          const legacyRoom = textField('owner__room', 'owner__owner_name', 'p_note');
+          const legacyRoom = legacyParkingRoomField(f)?.value || (parkingRoomAddress(textField('p_note'), row.database) ? textField('p_note') : '');
           const rawRoom = parkingRoomAddress(legacyRoom, row.database)?.key
             ?? legacyRoom.replace(/^(\d+)-(\d+)-(\d+)$/, '$1/$2/$3');
           // Legacy parking uses zero-padded building numbers (198/03/301),

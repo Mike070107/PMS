@@ -1,3 +1,4 @@
+import { legacyParkingRoomField } from '@pms/shared-types';
 import { useContext, useId } from 'react';
 import { parkingRoomAddress } from '@pms/shared-types';
 import { ChargeAttempted } from './charge-validation';
@@ -278,7 +279,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
       if (hh && !hh.localDatabases.includes(db)) continue;
       if (plateOnly && (ambiguousDatabases.has(db) || !['parking1', 'parking2'].includes(db) || !/^[1-9]\d*$/.test(recordId))) continue;
       const f = row.fields as Record<string, unknown>;
-      const owner = field(f, /^owner__owner_name$/i) || field(f, /owner_?name|room|addr/i) || '';
+      const owner = legacyParkingRoomField(f)?.value || '';
       const p = field(f, /^p_plate$/i) || field(f, /plate|carno/i);
       if (!p) continue;
       const exactSelection = (plateOnly || hh?.localDatabases.includes(db)) && selectedVehicle?.houseId === house.id && !!initialPlate &&

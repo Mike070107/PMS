@@ -5,7 +5,7 @@ import { parkingLegacyRoomFromName } from './parking-query.util';
 import { parkingLegacyOwnerValuesFromFields } from './parking-owner-update.util';
 
 export async function captureParkingQueryHistory(manager: EntityManager, query: ParkingQuery, observedAt: Date,
-  snapshotValues: (fields: ParkingQuery['rows'][number]['fields']) => ParkingSnapshotValues = parkingSnapshotValues) {
+  snapshotValues: (fields: ParkingQuery['rows'][number]['fields'], database: string) => ParkingSnapshotValues = parkingSnapshotValues) {
   const factsByKey = new Map<string, {
     database: string;
     sourceRecordId: string;
@@ -17,7 +17,7 @@ export async function captureParkingQueryHistory(manager: EntityManager, query: 
       const fact = {
       database: row.database,
       sourceRecordId,
-      values: snapshotValues(row.fields),
+      values: snapshotValues(row.fields, row.database),
       };
       // 同一批结果若重复返回同一主键，只保留最后一份快照，避免一次查询生成多条伪变更。
       factsByKey.set(`${fact.database}\u0000${fact.sourceRecordId}`, fact);
@@ -152,9 +152,9 @@ export function parkingExternalOwnerId(fields: Record<string, string | number | 
   return parkingExactFieldValue(fields, ['owner_id', 'ownerid', '住户编号', '业主编号']);
 }
 
-export function parkingSnapshotValues(fields: Record<string, string | number | boolean | null>): ParkingSnapshotValues {
-  const owner = parkingLegacyOwnerValuesFromFields(fields);
-  const room = parkingLegacyRoomFromName(owner.room) ?? owner.room;
+export function parkingSnapshotValues(fields: Record<string, string | number | boolean | null>, database?: string): ParkingSnapshotValues {
+  const owner = parkingLegacyOwnerValuesFromFields(fields, database);
+  const room = parkingLegacyRoomFromName(owner.room, database) ?? owner.room;
   return {
     plate: normalizeParkingText(parkingFieldValue(fields, ['p_plate', 'carno', 'carcode', 'carnumber', 'plateno', 'plate', 'license', '车牌'])),
     ownerId: parkingExternalOwnerId(fields),
