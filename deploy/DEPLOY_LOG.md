@@ -8260,3 +8260,10 @@
   - d45952d5 递增停车房号识别修复的助手版本至 2.6.13
   - 4c32c944 按实际房号格式读取旧车库姓名栏和地址栏
 
+## 2026-11-28 00:59 · api · c73a3e6b
+
+- 包：`pms-api-fast-20261128-005527.tar.gz`
+- 提交：c73a3e6b parking-renewal-garage-deregistration-and-shop-search
+- 自上次（0198e722）以来上线的相关提交：
+  - c73a3e6b parking-renewal-garage-deregistration-and-shop-search
+
