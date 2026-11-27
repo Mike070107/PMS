@@ -1009,15 +1009,8 @@ ORDER BY COALESCE([out_Time], [Int_Time]) DESC;";
                                 throw new InvalidOperationException("待注销记录已变更，请重新核对");
                             before = observed;
                         }
-                        if (row != null) using (var command = Procedure(connection, "Add_Del_Plate"))
-                        {
-                            command.Transaction = transaction;
-                            Add(command, "@P_plate", SqlDbType.VarChar, 50, plate);
-                            Add(command, "@Up_moey", SqlDbType.Int, 0, Number(payload, "refund", 0));
-                            Add(command, "@Up_Yajin", SqlDbType.Int, 0, Number(payload, "depositRefund", 0));
-                            Add(command, "@Admin", SqlDbType.VarChar, 20, admin);
-                            command.ExecuteNonQuery();
-                        }
+                        if (row != null) DeleteGaragePlate(connection, transaction, plate, admin,
+                            Number(payload, "refund", 0), Number(payload, "depositRefund", 0));
                         using (var check = connection.CreateCommand())
                         {
                             check.Transaction = transaction;
@@ -1736,11 +1729,12 @@ SELECT id FROM @created;";
                 sourceConnection.Open();
                 using (var sourceTransaction = sourceConnection.BeginTransaction(IsolationLevel.Serializable))
                 {
-                    source = ReadBindingVehicle(sourceConnection, sourceTransaction, plate);
+                    source = TryReadBindingVehicle(sourceConnection, sourceTransaction, plate);
+                    if (source != null && !String.IsNullOrEmpty(task.sourceRecordId)) AssertVehicleRecord(task, source);
                     sourceTransaction.Commit();
                 }
             }
-            foreach (var database in new[] { "parking1", "parking2" })
+            foreach (var database in new[] { "parking1", "parking2" }.OrderBy(db => RequestedGaragesForDatabase(requested, db).Any() ? 0 : 1))
             {
                 Validate(config, password, database);
                 using (var connection = new SqlConnection(ConnectionString(config, password, database)))
@@ -1750,26 +1744,38 @@ SELECT id FROM @created;";
                     {
                         var before = TryReadBindingVehicle(connection, transaction, plate);
                         var wants = RequestedGaragesForDatabase(requested, database).ToArray();
-                        if (before == null && wants.Length == 0)
+                        if (wants.Length == 0 && (before == null ||
+                            (Number(payload, "spaceSelection", 0) == 1 && Number(payload, "familyReviewId", 0) == 0)))
                         {
+                            if (before != null)
+                            {
+                                DeleteGaragePlate(connection, transaction, plate, admin, 0, 0);
+                                if (TryReadBindingVehicle(connection, transaction, plate) != null)
+                                    throw new InvalidOperationException("取消授权后该库仍存在此车牌");
+                            }
                             transaction.Commit();
                             results.Add(new Dictionary<string, object> {
-                                { "database", database }, { "existed", false }, { "changed", false },
+                                { "database", database }, { "existed", before != null }, { "changed", before != null },
                                 { "effective", ZeroBits() }, { "download", ZeroBits() }
                             });
                             continue;
                         }
                         if (before == null)
                         {
+                            if (source == null) throw new InvalidOperationException("原库车辆档案不存在，无法复制授权，请重新查询");
                             InsertVehicleCopy(connection, transaction, source, payload, database, requested, admin);
                         }
                         else
                         {
                             var nextEffective = ApplyGarageSelection(Value(before, "P_Effective"), requested, database);
                             var nextDownload = ClearManagedDownload(Value(before, "P_Download"), database);
+                            if (Value(before, "P_Effective") != nextEffective ||
+                                (selectedMainSpace != null && database == "parking2" && Value(before, "P_Spaces") != selectedMainSpace) ||
+                                (Number(payload, "familyReviewId", 0) > 0 && Number(before, "Car_Zt", -1) != 1))
                             using (var command = Procedure(connection, transaction, "Up_PakIssue"))
                             {
-                                AddBindingProcedureParameters(command, before, Value(before, "owner_Name") ?? LegacyOwnerRoom(payload));
+                                var owner = ReadBindingOwner(connection, transaction, Value(before, "Owner_ID"));
+                                AddBindingProcedureParameters(command, before, Value(owner, "owner_Name"));
                                 command.Parameters["@P_Effective"].Value = nextEffective;
                                 command.Parameters["@P_Download"].Value = nextDownload;
                                 if (database == "parking2" && selectedMainSpace != null) command.Parameters["@P_Spaces"].Value = selectedMainSpace;
@@ -1780,6 +1786,8 @@ SELECT id FROM @created;";
                         }
                         var after = ReadBindingVehicle(connection, transaction, plate);
                         AssertGarageSelection(after, requested, database);
+                        if (before != null && Value(before, "Owner_ID") != Value(after, "Owner_ID"))
+                            throw new InvalidOperationException("授权后绑定住户发生变化，已撤销该库本次修改");
                         if (database == "parking2" && selectedMainSpace != null && (Value(after, "P_Spaces") ?? "").Trim() != selectedMainSpace)
                             throw new InvalidOperationException("大车库车位号读回不一致，已撤销该库本次修改");
                         if (Number(payload, "familyReviewId", 0) > 0 && Number(after, "Car_Zt", -1) != 1)
@@ -1799,6 +1807,19 @@ SELECT id FROM @created;";
                 }
             }
             return new Dictionary<string, object> { { "verified", true }, { "plate", plate }, { "garages", String.Join(",", requested.ToArray()) }, { "databases", results } };
+        }
+
+        private static void DeleteGaragePlate(SqlConnection connection, SqlTransaction transaction, string plate,
+            string admin, int refund, int depositRefund)
+        {
+            using (var command = Procedure(connection, transaction, "Add_Del_Plate"))
+            {
+                Add(command, "@P_plate", SqlDbType.VarChar, 50, plate);
+                Add(command, "@Up_moey", SqlDbType.Int, 0, refund);
+                Add(command, "@Up_Yajin", SqlDbType.Int, 0, depositRefund);
+                Add(command, "@Admin", SqlDbType.VarChar, 20, admin);
+                command.ExecuteNonQuery();
+            }
         }
 
         internal static string SelectedMainSpace(Dictionary<string, object> payload, ISet<string> requested, string database)

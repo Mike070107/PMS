@@ -79,6 +79,17 @@ test('共享地址控件真实鼠标三级、跨期公区回填、收银回车DO
     const columns = () => js("document.querySelectorAll('.ant-cascader-dropdown:not(.ant-select-dropdown-hidden) .ant-cascader-menu').length");
     const enter = async () => { for (const type of ['keyDown', 'keyUp']) await call('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 }); await pause(300); };
     const inputState = selector => js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});return {value:e.value,start:e.selectionStart,end:e.selectionEnd}})()`);
+    await t.test('门牌和旧库写法均优先命中同一商铺', async () => {
+      await click('#shop .ant-select-selector');
+      for (const text of ['234','234商铺','永德路234商铺','永德路234号商铺']) {
+        await js("document.querySelector('#shop input').select()");
+        await call('Input.insertText', {text});
+        await pause(180);
+        assert.match(await js(`document.querySelector(${JSON.stringify(menu)})?.textContent || ''`), /永德路234号商铺/, text);
+      }
+      await enter();
+      assert.equal(await js('window.selectedShop'), 2340);
+    });
     for (const selector of ['#list input', '#uni input']) {
       await t.test(`${selector}: separate character events accumulate ABC`, async () => {
         await js(`document.querySelector(${JSON.stringify(selector)}).focus();document.querySelector(${JSON.stringify(selector)}).select()`);

@@ -295,6 +295,7 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
       const garages = localGarages(db, field(f, /^p_effective$/i));
       const main = garages.find((g) => g.targetKey === 'local:phase2_main_garage');
       const target = main ?? garages[0] ?? null;
+      const targetKey = target?.targetKey ?? (db === 'parking1' ? 'local:phase1_parking' : 'local:phase2_parking');
       const end = day(field(f, /^end_time$/i) || field(f, /end|expire/i));
       const label = garages.length ? garages.map((g) => g.label).join('、') : db === 'parking1' ? '一期停车库（未授权车库）' : '二期停车库（未授权车库）';
       const spaceChoices = main && !spaceCol ? boundSpace(p,'main') : [];
@@ -304,9 +305,9 @@ export default function ParkingTab({ house, rules, onCart, initialPlate, selecte
       const record = car(p, identityOf(f));
       (record.rows ??= []).push(row);
       record.lots.push({
-        key: `local:${db}:${field(f, /^p_id$/i)}`, system: 'local', label, targetKey: target?.targetKey ?? (db === 'parking1' ? 'local:phase1_parking' : 'local:phase2_parking'),
+        key: `local:${db}:${field(f, /^p_id$/i)}`, system: 'local', label, targetKey,
         spaceChoices, propertySpace: confirmedSpace, space: confirmedSpace || noteSpace, spaceFromNote: !!noteSpace, endDate: end, garages: garages.map((g) => g.label),
-        ref: { kind: 'local', database: db as 'parking1' | 'parking2', sourceRecordId: String(field(f, /^p_id$/i) || ''), queryId: (row as typeof row & { queryId?: number }).queryId, previousEndDate: end, label },
+        ref: { kind: 'local', targetKey, database: db as 'parking1' | 'parking2', sourceRecordId: String(field(f, /^p_id$/i) || ''), queryId: (row as typeof row & { queryId?: number }).queryId, previousEndDate: end, label },
       });
     }
     for (const d of hh?.deliyun ?? []) {
