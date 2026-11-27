@@ -336,10 +336,18 @@ export function buildingMatchKeys(building: AddressBuilding): MatchKeys {
   return { exact, prefix, loose };
 }
 
-export function houseMatchKeys(house: AddressHouse): MatchKeys {
+export function houseMatchKeys(house: AddressHouse, building?: AddressBuilding): MatchKeys {
   const exact = [house.roomNo];
   const prefix = [house.roomNo];
   const loose = [house.roomNo];
+  // 商铺常以“门牌 = 楼号、房号 = 商铺”建档；门牌也是这一户的搜索键。
+  if (building && (building.buildingType === 'shop' || house.propertyType === '商铺' || house.roomNo.includes('商铺'))) {
+    const door = building.buildingNo.trim();
+    if (door) {
+      exact.push(door);
+      prefix.push(door);
+    }
+  }
   const floorRoom = /^(\d+)楼(.+)$/.exec(house.roomNo);
   if (floorRoom) {
     const room = floorRoom[2].replace(/^(\d+)室$/, '$1');

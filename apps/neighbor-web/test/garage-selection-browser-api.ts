@@ -15,6 +15,7 @@ if (scenario === 'family') Object.assign(intake, { kind: 'family', garages: ['ph
 export const parkingTargets = [{ key: 'local:phase1_parking', label: '一期地面', short: '一期地面', communities: ['枫桦景苑二期'] }, { key: 'local:phase2_parking', label: '二期地面', short: '二期地面', communities: ['枫桦景苑二期'] }, { key: 'local:phase2_main_garage', label: '二期大车库', short: '二期大车库', communities: ['枫桦景苑二期'] }, { key: 'deliyun:枫桦景苑', label: '二期人防车库', short: '二期人防车库', communities: ['枫桦景苑二期'] }];
 export async function request(input: any) {
   fixture.calls.push(structuredClone(input));
+  if (input.url.endsWith('/parking/deregistrations')) return {verified:true};
   if (input.url.endsWith('/parking-spaces') || input.url.endsWith('/space-choices')) {
     if (scenario === 'loadError' && !fixture.retries++) throw new Error('受控读取失败');
     if (scenario === 'loading') while (!fixture.choicesReleased) await new Promise(r => setTimeout(r, 40));
@@ -28,6 +29,12 @@ export async function request(input: any) {
   return { rows: [], total: 0 };
 }
 const finish = (op: any) => {
+  if (op.kind === 'delete_vehicle') {
+    const index = fixtureRows.findIndex(row => row.database === op.database);
+    if (index >= 0) fixtureRows.splice(index, 1);
+    op.status = 'completed';
+    return op;
+  }
   if (op.kind === 'update_vehicle_type') {
     fixtureRows.find(row => row.database === op.database)!.fields.Car_Brand = op.payload.identity;
     op.status = 'completed'; return op;
@@ -38,9 +45,11 @@ const finish = (op: any) => {
   }
   op.status = 'completed'; return op;
 };
+let civilRegistered = ['civilExisting','keepCivil','removeAll'].includes(scenario);
+if (scenario === 'keepCivil' || scenario === 'removeAll') fixtureRows[1].fields.P_Effective = bits([9,11,13]);
 export const accessCardIssuance = new Proxy(base, { get(target, name) {
-  if (name === 'deliyunVehiclesByPlate') return async () => ({ rows: scenario === 'civilExisting' ? [{ id: 'cloud1', plate: '沪ATEST01', civilDefenseAuthorized: true, parkingSpace: 'R-OLD' }] : [] });
-  if (name === 'setDeliyunCivilDefenseAuthorization') return async (data: any) => { fixture.calls.push({ name, data }); return { status: 'completed' }; };
+  if (name === 'deliyunVehiclesByPlate') return async () => ({ rows: civilRegistered ? [{ id: 'cloud1', plate: '沪ATEST01', civilDefenseAuthorized: true, parkingSpace: 'R-OLD' }] : [] });
+  if (name === 'setDeliyunCivilDefenseAuthorization') return async (data: any) => { fixture.calls.push({ name, data }); civilRegistered = data.authorized; return { status: 'completed' }; };
   if (name === 'createParkingOperation') return async (data: any) => {
     fixture.calls.push({ name, data }); const prior = fixture.tasks.find(t => t.idempotencyKey === data.idempotencyKey); if (prior) return structuredClone(prior);
     const op = { ...structuredClone(data), id: 900 + fixture.tasks.length, status: 'pending', error: null }; fixture.tasks.push(op);

@@ -79,7 +79,8 @@ test('无 PMS 房号按现场查询锁定旧库车辆，登记一笔流水并保
   const operations: number[] = [];
   const tags: any[] = [];
   const vehicleRow = { database: 'parking2', fields: { P_id: 22, P_plate: plate, End_Time: '2027-01-31', P_Effective: '0000000000100' } };
-  const local = { id: 9, status: 'completed', term: plate, completedAt: new Date(), rows: [vehicleRow] };
+  const phase1Row = { database: 'parking1', fields: { P_id: 11, P_plate: plate, End_Time: '2026-09-30', P_Effective: '0000101' } };
+  const local = { id: 9, status: 'completed', term: plate, completedAt: new Date(), rows: [vehicleRow, phase1Row] };
   const builder: any = { where: () => builder, andWhere: () => builder, getCount: async () => txnRows.some(row => row.externalSyncStatus === 'queued') ? 1 : 0 };
   const repo: any = { findOneBy: async ({txnNo}: any) => txnRows.find(row => row.txnNo === txnNo),
     createQueryBuilder: () => builder, create: (row: any) => row,
@@ -112,7 +113,9 @@ test('无 PMS 房号按现场查询锁定旧库车辆，登记一笔流水并保
     collectionDate: '2026-11-22',
     expectedAmountCents: 15000, confirmedVehicleClass: '住户车-1', paymentMethod: 'cash',
     parkingSystems: [{ kind: 'local', queryId: 9, database: 'parking2', sourceRecordId: '22',
-      targetKey: 'local:phase2_parking', previousEndDate: '2050-01-01', label: '二期' }] });
+      targetKey: 'local:phase2_parking', previousEndDate: '2050-01-01', label: '二期' },
+      { kind: 'local', queryId: 9, database: 'parking1', sourceRecordId: '11',
+        targetKey: 'local:phase1_parking', previousEndDate: '2026-09-30', label: '一期' }] });
   const first = await svc.complete(payment(), actor, scope);
   assert.equal(first.snapshot.collectionDate, '2026-11-22');
   for (const collectionDate of ['2026-11-24', '2026-02-30', '2026-11-2', '']) {
@@ -125,6 +128,7 @@ test('无 PMS 房号按现场查询锁定旧库车辆，登记一笔流水并保
   assert.equal(first.snapshot.vehicle.plateNo, plate);
   assert.equal(first.snapshot.parking.systems[0].sourceRecordId, '22');
   assert.equal(first.snapshot.parking.systems[0].previousEndDate, '2027-01-31');
+  assert.equal(first.snapshot.parking.systems[1].previousEndDate, '2026-09-30');
   assert.equal(first.endDate, '2027-02-28');
   assert.ok(tags.every(tag => !Object.hasOwn(tag, 'houseId')));
   assert.equal((await svc.complete(payment(), actor, scope)).id, first.id);

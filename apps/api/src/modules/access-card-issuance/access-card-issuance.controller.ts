@@ -134,6 +134,12 @@ export class AccessCardIssuanceController {
     return this.service.setDeliyunCivilDefenseAuthorization(dto, user);
   }
 
+  @Post('parking/deregistrations')
+  @RequirePermission('business', 'edit')
+  finalizeDeregistration(@Body() body: {queryId: number; cloudOperationKey: string}, @CurrentUser() user: AuthUser) {
+    return this.service.finalizeDeregistration(body?.queryId, body?.cloudOperationKey, user);
+  }
+
   @Post('parking/movements/queries')
   @RequirePermission('business', 'view')
   createParkingMovementQuery(@Body() dto: CreateParkingMovementQueryDto, @CurrentUser() user: AuthUser) {

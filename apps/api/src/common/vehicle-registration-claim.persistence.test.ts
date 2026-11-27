@@ -1,4 +1,7 @@
 import { VehicleIntakeService } from '../modules/business/vehicle-intake.service';
+import { AccessCardIssuanceService } from '../modules/access-card-issuance/access-card-issuance.service';
+import { ParkingOperation } from '../entities/parking-operation.entity';
+import { ParkingVehicle } from '../entities/parking-vehicle.entity';
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -63,7 +66,7 @@ test('跨流程占用：历史冲突、别名移交、租户、续登、改牌�
   await assert.rejects(migration.down(), /retained/);
 });
 
-test('二期注销回执后重新登记，保留原审核状态及流水，只转换车牌占用', async t => {
+for (const allSystems of [false,true]) test(allSystems ? '三系统注销后可重新登记，旧注销重试不释放新车牌' : '二期注销回执后重新登记，保留原审核状态及流水，只转换车牌占用', async t => {
   const db = new PGlite();
   t.after(() => db.close());
   await db.exec(`CREATE TABLE family_cars(id int primary key,tenant_id int,house_id int,previous_id int,plate text,status text);
@@ -81,6 +84,7 @@ test('二期注销回执后重新登记，保留原审核状态及流水，只�
     INSERT INTO parking_operations VALUES
     (31,1,'parking2','add_vehicle','completed','biz:T21:register:parking2',NULL,'{"plate":"沪AEH6407"}','{"issueId":101}',now()-interval '2 day',now()-interval '1 day'),
     (32,1,'parking2','delete_vehicle','running','delete','101','{"plate":"沪AEH6407"}','{}',now(),NULL);`);
+  let hasParkingArchive = false;
   const save = () => db.transaction(async tx => {
     const manager = { queryRunner: { isTransactionActive: true }, query: async (sql: string,args: any[]) => (await tx.query(sql,args)).rows } as any;
     // Adapt the narrow TypeORM repository surface to the isolated PostgreSQL transaction.
@@ -88,7 +92,8 @@ test('二期注销回执后重新登记，保留原审核状态及流水，只�
       const data: any = (await tx.query('SELECT * FROM vehicle_intakes WHERE id=2')).rows[0];
       return { ...data, tenantId: 1, houseId: 8, files: [], expiresAt: new Date(Date.now()+3600000) };
     };
-    manager.getRepository = () => ({ findOne: async () => null });
+    manager.getRepository = (entity: unknown) => ({ findOne: async () => entity === ParkingVehicle && hasParkingArchive
+      ? (await tx.query("SELECT house_id AS \"houseId\", status FROM parking_vehicles WHERE tenant_id=1 AND plate_no='沪AEH6407'")).rows[0] : null });
     const repo = { manager, findOne: read, createQueryBuilder: () => {
       let where = '', values: any, patch: any;
       const qb = {
@@ -129,7 +134,39 @@ test('二期注销回执后重新登记，保留原审核状态及流水，只�
     NULL,payload,result,now(),now() FROM parking_operations WHERE id=31`);
   await assert.rejects(save(), /该车牌已有登记/);
   await db.exec('DELETE FROM parking_operations WHERE id=33');
-  await save();
+  if (allSystems) {
+    await db.exec(`ALTER TABLE vehicle_intakes ADD updated_at timestamptz, ADD updated_by int;
+      ALTER TABLE family_cars ADD updated_at timestamptz, ADD updated_by int, ADD log jsonb DEFAULT '[]', ADD data_version int DEFAULT 0;
+      CREATE TABLE parking_vehicles(id int, tenant_id int, plate_no text, status text, updated_at timestamptz, updated_by int, house_id int);
+      INSERT INTO parking_vehicles VALUES(1,1,'沪AEH6407','active',now()-interval '1 day',1,8);
+      INSERT INTO family_cars(id,tenant_id,house_id,plate,status) VALUES (15,1,8,'沪AEH6407','active');
+      UPDATE vehicle_intakes SET garages=garages || '["deliyun:枫桦景苑"]'::jsonb WHERE id=1;`);
+    await assert.rejects(save(), /该车牌已有登记/);
+    hasParkingArchive = true;
+    await assert.rejects(save(), /该车牌已有车辆档案/);
+    const now = Date.now();
+    const task = {id:45,status:'completed',requestedAt:new Date(now-5000),completedAt:new Date(now-4000),
+      payload:{plate:'沪AEH6407',authorized:false},result:{verified:true,authorized:false}};
+    const query = {id:66,term:'沪AEH6407',database:null,rows:[] as object[],requestedAt:new Date(now-2000),completedAt:new Date(now)};
+    let receipt = task;
+    let civilRows: object[] = [{}];
+    const service = Object.assign(Object.create(AccessCardIssuanceService.prototype),{requireTenant:()=>1,
+      deliyun:{findVehiclesByPlate:async()=>({rows:civilRows})},
+      parkingOperationRepo:{manager:{transaction:(work:any)=>db.transaction(tx=>work({
+        queryRunner:{isTransactionActive:true},query:async(sql:string,args:any[])=>(await tx.query(sql,args)).rows,
+        getRepository:(entity:unknown)=>entity===ParkingOperation?{findOne:async()=>structuredClone(receipt),save:async(value:any)=>{receipt=value;}}:{findOneBy:async()=>query},
+      }))}}});
+    const retire = ()=>service.finalizeDeregistration(66,'batch-deliyun',{id:8,tenantId:1});
+    query.rows.push({database:'parking2'}); await assert.rejects(retire(),/全库无车牌/); query.rows=[];
+    await assert.rejects(retire(),/德立云仍有/);
+    civilRows=[];
+    await retire();
+    assert.deepEqual((await db.query('SELECT status FROM parking_vehicles')).rows,[{status:'deregistered'}]);
+    await save();
+    await retire();
+  } else {
+    await save();
+  }
   assert.deepEqual((await db.query('SELECT id,status,transaction_id FROM vehicle_intakes ORDER BY id')).rows,
     [{id:1,status:'approved',transaction_id:21},{id:2,status:'submitted',transaction_id:null}]);
   assert.deepEqual((await db.query('SELECT txn_no,amount FROM business_transactions')).rows,[{txn_no:'T21',amount:30000}]);

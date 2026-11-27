@@ -644,7 +644,8 @@ export class BusinessService {
     const filteredVehicles = await byHouseOrText(scopedByHouse(
       this.vehicleRepo
         .createQueryBuilder('v')
-        .where('v.tenant_id = :tenantId', { tenantId }),
+        .where('v.tenant_id = :tenantId', { tenantId })
+        .andWhere("v.status <> 'deregistered'"),
       'v',
     ), 'v', 'plate_no')
       .orderBy('v.id', 'DESC')
@@ -1233,6 +1234,7 @@ export class BusinessService {
       if (dto.plateNo && normPlate(vehicle.plateNo) !== normPlate(dto.plateNo)) {
         throw new BadRequestException('车辆记录与提交车牌不一致，请重新查询后办理');
       }
+      if (vehicle.status === 'deregistered') throw new BadRequestException('该车牌已注销，请从新车登记办理');
       if (vehicle.houseId != null && vehicle.houseId !== dto.houseId) {
         throw new BadRequestException('该车已关联其他住户房号，不能在当前住户下续费；请先核对车辆档案');
       }

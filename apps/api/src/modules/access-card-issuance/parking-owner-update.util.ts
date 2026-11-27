@@ -102,6 +102,14 @@ export function supportsGarageSpaceSelection(version?: string | null): boolean {
   return major > 2 || (major === 2 && (minor > 5 || (minor === 5 && patch >= 55)));
 }
 
+/** 2.6.14 起，人工调整车库授权可按库注销并回查。 */
+export function supportsGarageDeregistration(version?: string | null): boolean {
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:\.|$)/.exec(version ?? '');
+  if (!match) return false;
+  const [major, minor, patch] = match.slice(1).map(Number);
+  return major > 2 || (major === 2 && (minor > 6 || (minor === 6 && patch >= 14)));
+}
+
 /** 2.5.47 起停车下发必须等待 P_Download 覆盖全部现行授权通道，不能只确认入队。 */
 export function supportsParkingDeviceConfirmation(version?: string | null): boolean {
   const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version ?? '');

@@ -140,11 +140,15 @@ export async function runOnTargets(
   return { ok: true, ...(spaceNeedsReview ? { spaceNeedsReview } : {}) };
 }
 
-export async function freshRows(plate: string) {
+export async function freshParkingQuery(plate: string) {
   let query = await accessCardIssuance.createParkingQuery(plate);
   for (let i = 0; !['completed', 'failed'].includes(query.status) && i < 30; i++) {
     await new Promise(resolve => setTimeout(resolve, 500)); query = await accessCardIssuance.parkingQuery(query.id);
   }
   if (query.status !== 'completed') throw new Error(query.error || '现场查询仍在等待，暂不能确认结果');
-  return query.rows.filter(row => normPlate(field(row.fields, 'plate')) === normPlate(plate));
+  return query;
+}
+
+export async function freshRows(plate: string) {
+  return (await freshParkingQuery(plate)).rows.filter(row => normPlate(field(row.fields, 'plate')) === normPlate(plate));
 }

@@ -10,6 +10,46 @@ export async function lockVehicleRegistration(manager: EntityManager, tenantId: 
 
 export const CANCELLED_PLATE_RELEASED = '停车库注销已核实，释放车牌占用';
 
+/** Caller validates the three parking systems and consumes the deregistration receipt in this transaction. */
+export async function retireConfirmedPlate(manager: EntityManager, tenantId: number, plate: string,
+  operatorId: number, startedAt: Date, cloudOperationId: number, queryId: number) {
+  if (!manager.queryRunner?.isTransactionActive) throw new Error('Plate deregistration requires a transaction');
+  await lockVehicleRegistration(manager, tenantId, plate);
+  const args = [tenantId, plate, startedAt];
+  const audit = JSON.stringify([{at:new Date().toISOString(), userId:operatorId, userName:'PMS',
+    action:CANCELLED_PLATE_RELEASED, queryId, cloudOperationId}]);
+  const match = (col:string) => `tenant_id=$1 AND ${normalizedPlateSql(col)}=$2`;
+  const newer = await manager.query(`SELECT 1 FROM parking_operations WHERE tenant_id=$1
+    AND (${normalizedPlateSql("payload->>'plate'")}=$2 OR ${normalizedPlateSql("payload->>'newPlate'")}=$2)
+    AND kind NOT IN ('delete_vehicle','download_vehicle') AND id<>$4
+    AND (status IN ('running','pending') OR (status='completed' AND completed_at >= $3))
+    UNION ALL SELECT 1 FROM vehicle_intakes WHERE ${match('plate')} AND status<>'void' AND updated_at>$3
+    UNION ALL SELECT 1 FROM family_cars WHERE ${match('plate')} AND status NOT IN ('expired','void') AND updated_at>$3
+    UNION ALL SELECT 1 FROM parking_vehicles WHERE ${match('plate_no')} AND status='active' AND updated_at>$3 LIMIT 1`,
+    [...args,cloudOperationId]);
+  if (newer.length) throw new BadRequestException('此车牌有并行办理或较新的登记，请重新查询后核对注销');
+  const intakes = await manager.query(`WITH retired AS (UPDATE vehicle_intakes SET
+    status=CASE WHEN status='approved' AND transaction_id IS NOT NULL THEN status ELSE 'void' END,
+    log=log || $3::jsonb, updated_by=$4, updated_at=now()
+    WHERE ${match('plate')} AND (status<>'void' OR transaction_id IS NOT NULL)
+      AND NOT log @> $5::jsonb RETURNING id)
+    SELECT id FROM retired`, [tenantId,plate,audit,operatorId,JSON.stringify([{action:CANCELLED_PLATE_RELEASED}])]);
+  for (const row of intakes) await releaseVehicleRegistration(manager,tenantId,'intake',row.id);
+  const families = await manager.query(`WITH retired AS (UPDATE family_cars SET status='void', log=log || $3::jsonb,
+    updated_by=$4, updated_at=now(), data_version=data_version+1
+    WHERE ${match('plate')} AND status NOT IN ('void','expired') RETURNING id) SELECT id FROM retired`,
+    [tenantId,plate,audit,operatorId]);
+  for (const row of families) await releaseVehicleRegistration(manager,tenantId,'family',row.id);
+  await manager.query(`DELETE FROM vehicle_registration_claims c WHERE c.tenant_id=$1 AND c.plate=$2
+    AND (c.intake_id IS NULL OR EXISTS (SELECT 1 FROM vehicle_intakes i WHERE i.id=c.intake_id
+      AND i.tenant_id=c.tenant_id AND (i.status='void' OR i.log @> $3::jsonb)))
+    AND (c.family_car_id IS NULL OR EXISTS (SELECT 1 FROM family_cars f WHERE f.id=c.family_car_id
+      AND f.tenant_id=c.tenant_id AND f.status IN ('void','expired')))`,
+    [tenantId,plate,JSON.stringify([{action:CANCELLED_PLATE_RELEASED}])]);
+  await manager.query(`UPDATE parking_vehicles SET status='deregistered', updated_at=now(), updated_by=$3
+    WHERE ${match('plate_no')} AND status='active'`, [tenantId,plate,operatorId]);
+}
+
 /** Lazily reconcile pre-existing receipts under the same lock as new registrations. */
 export async function releaseConfirmedParkingIntakes(manager: EntityManager, tenantId: number, plate: string) {
   if (!manager.queryRunner?.isTransactionActive) throw new Error('Vehicle ownership release requires the caller transaction');

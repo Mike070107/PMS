@@ -1,3 +1,4 @@
+import { retireConfirmedPlate } from '../../common/vehicle-registration-claim';
 import { legacyRegistrationProfile } from '../business/parking-registration-profile';
 import { BusinessRule } from '../../entities/business-rule.entity';
 import { BusinessServiceType } from '../../common/enums';
@@ -55,7 +56,7 @@ import { ResolvedAccess } from '../access/access.service';
 import { scopeCommunityIds } from '../access/scope.util';
 import { PARKING_TARGETS } from '../business/parking-targets';
 import { parkingSpaceChoices, validateSelectedSpaces } from '../business/parking-space-choices';
-import { supportsGarageSpaceSelection } from './parking-owner-update.util';
+import { supportsGarageSpaceSelection, supportsGarageDeregistration } from './parking-owner-update.util';
 import {
   accessBuildingsForHouse,
   accessCardHistoryRoomLabel,
@@ -1922,6 +1923,33 @@ export class AccessCardIssuanceService {
     return this.parkingOperationResponse(await this.parkingOperationRepo.save(task));
   }
 
+  async finalizeDeregistration(queryId:number, cloudOperationKey:string, user:AuthUser) {
+    const tenantId = this.requireTenant(user);
+    if (!Number.isSafeInteger(queryId) || queryId < 1 || typeof cloudOperationKey !== 'string' || !cloudOperationKey.trim())
+      throw new BadRequestException('缺少停车系统注销核验记录');
+    return this.parkingOperationRepo.manager.transaction(async manager => {
+      const repo = manager.getRepository(ParkingOperation);
+      const task = await repo.findOne({where:{tenantId,createdBy:user.id,idempotencyKey:cloudOperationKey,
+        kind:'update_garages',database:'deliyun'},lock:{mode:'pessimistic_write'}});
+      if (!task || task.status !== 'completed' || !task.completedAt || task.payload.authorized !== false ||
+        task.result?.verified !== true || task.result.authorized !== false)
+        throw new BadRequestException('缺少已回查确认的人防注销记录');
+      if (task.result.pmsDeregistered === true) return { verified:true };
+      const plate = plateKey(task.payload.plate);
+      const query = await manager.getRepository(ParkingQuery).findOneBy({id:queryId,tenantId,createdBy:user.id,
+        queryKind:'vehicle',status:'completed'});
+      if (!plate || !query || query.database != null || plateKey(query.term)!==plate || query.rows.length ||
+        !query.completedAt || query.requestedAt < task.completedAt || Date.now()-query.completedAt.getTime()>600000)
+        throw new BadRequestException('需要本次人防注销之后的一期、二期全库无车牌查询回执');
+      if ((await this.deliyun.findVehiclesByPlate(plate)).rows.length)
+        throw new BadRequestException('德立云仍有此车牌，PMS 注销未完成');
+      await retireConfirmedPlate(manager,tenantId,plate,user.id,task.requestedAt,task.id,query.id);
+      task.result = {...task.result,pmsDeregistered:true,localQueryId:query.id};
+      await repo.save(task);
+      return {verified:true};
+    });
+  }
+
   async getParkingQuery(id: number, user: AuthUser) {
     const tenantId = this.requireTenant(user);
     const query = await this.parkingQueryRepo.findOne({ where: { id, tenantId, queryKind: 'vehicle' } });
@@ -2169,6 +2197,7 @@ export class AccessCardIssuanceService {
     }
     validatePreservedOperation(dto.kind, payload, dto.sourceRecordId);
     const needsFamilyTypeExpiry = dto.kind === 'update_vehicle_type' && payload.identity !== '亲情车';
+    const manualGarageChange = dto.kind === 'update_garages' && payload.spaceSelection === 1 && !payload.familyReviewId;
     const agents = await this.agentRepo.find({ where: { tenantId, kind: 'parking_gateway', enabled: true } });
     const gateway = orderAgentsByAvailability(agents).find((agent) =>
       effectiveAgentStatus(agent) === 'online' && agent.capabilities?.parkingDbWrite === true && supportsParkingOwnerUpdates(agent.version) &&
@@ -2180,7 +2209,9 @@ export class AccessCardIssuanceService {
       (dto.kind !== 'sync_vehicle_info' || supportsParkingVehicleSync(agent.version)) &&
       (!['update_garages', 'update_vehicle_type', 'download_vehicle'].includes(dto.kind) || supportsParkingAuthorizationFixes(agent.version)) &&
       (dto.kind !== 'download_vehicle' || supportsParkingDeviceConfirmation(agent.version)) &&
+      (!manualGarageChange || supportsGarageDeregistration(agent.version)) &&
       (payload.spaceSelection !== 1 || supportsGarageSpaceSelection(agent.version)));
+    if (!gateway && manualGarageChange) throw new ServiceUnavailableException('调整授权需要在线停车网关运行数据同步助手 2.6.14 或更新版本，请在现场助手检查更新');
     if (!gateway) throw new ServiceUnavailableException(needsFamilyTypeExpiry ? '修改为非亲情车类型需要现场助手 2.6.9 或更新版本，请先升级现场停车网关' : needsRangeSupport ? '本次办理需要现场助手 2.6.6 或更新版本' : payload.spaceSelection === 1 ? '选择车位调整授权需要 PMS 数据同步助手 2.5.55 及以上版本，请先更新现场助手' : requiresVehiclePreservation(dto.kind) ? '换牌和修改车型需要现场助手具备 parkingVehiclePreservationV1 原值保护能力，请先升级现场助手' : dto.payload?.identity === '亲情车' || dto.payload?.familyReviewId ? '亲情车待审核登记与自动开通需要现场助手升级到 2.5.40' : dto.kind === 'rebind_owner'
       ? '变更绑定用户需要 PMS 数据同步助手 2.5.20 及以上版本，请先更新现场助手'
       : dto.kind === 'sync_vehicle_info' ? '车辆资料复用需要 PMS 数据同步助手 2.5.23 及以上版本，请先在现场电脑升级'
@@ -2544,6 +2575,8 @@ export class AccessCardIssuanceService {
         .andWhere(canUseAuthorizationFixes ? '1=1' : "task.kind NOT IN ('update_garages', 'update_vehicle_type', 'download_vehicle')")
         .andWhere(canConfirmParkingDevice ? '1=1' : "task.kind <> 'download_vehicle'")
         .andWhere(supportsGarageSpaceSelection(agent.version) ? '1=1' : "COALESCE(task.payload->>'spaceSelection', '') <> '1'")
+        .andWhere(supportsGarageDeregistration(agent.version) ? '1=1' :
+          "(task.kind <> 'update_garages' OR COALESCE(task.payload->>'spaceSelection','') <> '1' OR task.payload->>'familyReviewId' IS NOT NULL)")
         .andWhere(agent.capabilities?.parkingVehiclePreservationV1 === true ? '1=1' : "task.kind NOT IN ('change_plate', 'update_vehicle_type')")
         .andWhere(agent.capabilities?.parkingFamilyTypeExpiryV1 === true ? '1=1' : "NOT (task.kind = 'update_vehicle_type' AND task.expected ? 'familyTypeExpiryDate')")
         .andWhere(agent.capabilities?.parkingValidityReversalV1 === true ? '1=1' : "NOT (task.expected ? 'validityReversal')")

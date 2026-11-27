@@ -140,7 +140,11 @@ export default function Vehicles() {
   }, [requestedPlate]);
 
   const rows = query?.rows ?? [];
-  const groups = useMemo(() => groupByPlate(rows), [rows]);
+  const localGroups = useMemo(() => groupByPlate(query?.rows ?? []), [query]);
+  const exactPlate = normPlate(query?.term || '');
+  const checkCloudOnly = !localGroups.length && /^[\u4e00-\u9fff][A-Z][A-Z0-9]{5,6}$/.test(exactPlate);
+  const cloudOnly = checkCloudOnly ? cloud[exactPlate] : null;
+  const groups = cloudOnly && cloudOnly !== 'loading' ? [{plate:exactPlate,rows:[]}] : localGroups;
 
   // Carry the completed query's stable PMS household, never guess IDs from room text.
   // All rows must agree; incomplete/ambiguous/out-of-scope matches stay manual.
@@ -174,20 +178,22 @@ export default function Vehicles() {
   // 查询完成后，按车牌拉一次德立云人防授权状态（civil 车库不走旧库位串）
   useEffect(() => {
     if (query?.status !== 'completed') return;
-    for (const g of groups) {
+    const generation = searchGeneration.current;
+    for (const g of checkCloudOnly ? [{plate: exactPlate}] : localGroups) {
       const key = normPlate(g.plate);
       if (!key || cloud[key] !== undefined) continue;
       setCloud((c) => ({ ...c, [key]: 'loading' }));
       accessCardIssuance.deliyunVehiclesByPlate(g.plate)
         .then((r) => {
+          if (generation !== searchGeneration.current) return;
           const hits = (r.rows || []).filter((v) => normPlate(v.plate) === key);
           if (hits.length > 1) throw new Error('人防同牌记录不唯一，请核对后再换牌');
           setCloud((c) => ({ ...c, [key]: hits[0] || null }));
         })
-        .catch((e) => { setCloud((c) => ({ ...c, [key]: undefined })); setErr(e instanceof Error ? e.message : '人防查询失败，不能当成无授权，请重新查询'); });
+        .catch((e) => { if (generation !== searchGeneration.current) return; setCloud((c) => ({ ...c, [key]: undefined })); setErr(e instanceof Error ? e.message : '人防查询失败，不能当成无授权，请重新查询'); });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query?.status, groups]);
+  }, [query?.status, localGroups, checkCloudOnly, exactPlate]);
 
   return (
     <>
@@ -217,7 +223,7 @@ export default function Vehicles() {
             </Card>
           ) : null}
 
-          {polling && !rows.length ? (
+          {(polling || (checkCloudOnly && !err && cloudOnly !== null && !groups.length)) && !rows.length ? (
             <Card><SearchLoading /></Card>
           ) : null}
 
@@ -233,7 +239,7 @@ export default function Vehicles() {
             </div>
           ) : null}
 
-          {query?.status === 'completed' && query.term === term.trim() && !polling && !err && !rows.length ? (
+          {query?.status === 'completed' && query.term === term.trim() && !polling && !err && !groups.length && (!checkCloudOnly || cloudOnly === null) ? (
             <Card style={{ padding: 36 }}><div className="empty">停车库里没有查到「{query.term}」的记录</div></Card>
           ) : null}
       {newOpen ? (

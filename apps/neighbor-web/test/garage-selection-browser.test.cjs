@@ -15,6 +15,28 @@ test('real authorization entry and registration share mandatory isolated parking
  async function open(entry='adjust',scenario='success',width=1440){await page.setViewportSize({width,height:1000});await page.goto(`${origin}/?entry=${entry}&scenario=${scenario}`);if(entry==='adjust'){await page.locator('.hsearch input').first().fill('沪ATEST01');await page.getByRole('button',{name:'查询',exact:true}).click();await page.locator('.veh-card').first().getByRole('button',{name:'调整车库授权',exact:true}).click();await page.getByRole('button',{name:'保存车库授权',exact:true}).waitFor();}else await page.locator('.np-garage-option').first().waitFor();}
  const box=label=>page.getByRole('checkbox',{name:new RegExp(label)}).last();
  async function pick(label,no){await box(label).click();const modal=page.locator('.ant-modal-content');await modal.waitFor();assert.equal(await modal.getByRole('button',{name:'确认车位'}).isDisabled(),true);if(no.startsWith('A')){assert.equal(await modal.getByRole('radio',{name:'R-012',exact:true}).count(),0);assert.equal(await modal.getByRole('radio',{name:/A-099/}).isDisabled(),true);}else assert.equal(await modal.getByRole('radio',{name:'A-021',exact:true}).count(),0);await modal.getByRole('radio',{name:no,exact:true}).check();await modal.getByRole('button',{name:'确认车位'}).click();await modal.waitFor({state:'hidden'});assert.equal(await box(label).isChecked(),true);assert.equal(await box('二期地面').isChecked(),true);}
+ for (const scenario of ['keepCivil','removeAll']) {
+   await open('adjust',scenario);
+   await box('一期地面').uncheck();
+   await box('二期地面').uncheck();
+   assert.equal(await box('二期人防车库').isChecked(), true);
+   if (scenario === 'removeAll') await box('二期人防车库').uncheck();
+   await page.getByRole('button',{name:scenario === 'removeAll' ? '注销所有车库登记' : '保存车库授权',exact:true}).click();
+   await page.getByRole('button',{name:'现场执行中…',exact:true}).waitFor({state:'hidden'});
+   await page.waitForFunction(()=>window.__garage.tasks.filter(t=>t.kind==='delete_vehicle').length===2);
+   await box('二期地面').waitFor({state:'hidden'});
+   const done = await state();
+   assert.deepEqual(done.tasks.map(t=>[t.kind,t.database]),[['delete_vehicle','parking1'],['delete_vehicle','parking2']]);
+   assert.deepEqual(done.calls.filter(c=>c.name==='setDeliyunCivilDefenseAuthorization').map(c=>c.data.authorized), scenario==='removeAll'?[false]:[]);
+   if (scenario === 'keepCivil') {
+     await page.locator('.veh-card').getByRole('button',{name:'调整车库授权'}).click();
+     await box('二期人防车库').uncheck();
+     await page.getByRole('button',{name:'注销所有车库登记'}).click();
+   }
+   await page.getByText('停车库里没有查到「沪ATEST01」的记录',{exact:true}).waitFor();
+   assert.equal((await state()).tasks.length,2);
+   assert.equal((await state()).calls.filter(call=>call.url?.endsWith('/parking/deregistrations')).length,1);
+ }
  // Cancel and Escape must not close the parent drawer or accidentally authorize.
  await open();await box('二期大车库').click();await page.locator('.ant-modal-content').waitFor();await page.getByRole('textbox',{name:'搜索车位号'}).press('Escape');await page.locator('.ant-modal-content').waitFor({state:'hidden'});assert.equal(await box('二期大车库').isChecked(),false);assert.equal(await page.getByRole('button',{name:'保存车库授权',exact:true}).count(),1);assert.equal((await state()).tasks.length,0);results.push('cancel/Escape do not authorize or close drawer');
  for(const entry of ['adjust','intake'])for(const width of [1440,375]){

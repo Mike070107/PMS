@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import GarageSpacePicker, { useGarageSpaces, type SpaceChoice } from '@/components/parking/GarageSpacePicker';
 import { toggleGarage, garageNumbersFor, basementLabel, type BasementGarage } from '@/lib/garage-selection';
-import { accessCardIssuance } from '@pms/api-client';
+import { accessCardIssuance, request } from '@pms/api-client';
 import type { ParkingQueryRow, DeliyunVehicle } from '@pms/api-client/src/endpoints/access-card-issuance';
 import { Sheet, toast } from '@/components/ui';
 import Icon from '@/components/Icon';
@@ -10,7 +10,7 @@ import { useAddressTree } from '@/lib/address-tree';
 import { field, GARAGES, garageState } from '@/lib/parking-fields';
 import { propertyCarBillingClass, readPlateBillingClass } from './propertyCarBilling';
 import { can } from '@/lib/perm';
-import { freshRows, runOnTargets, pidOf, ymd, createIdempotencyKey, dbShort } from '@/lib/parking-ops';
+import { freshParkingQuery, freshRows, runOnTargets, pidOf, ymd, createIdempotencyKey, dbShort } from '@/lib/parking-ops';
 
 type CloudState = 'loading' | DeliyunVehicle | null | undefined;
 
@@ -132,18 +132,22 @@ export function GaragesSheet({ plate, rows, cloud, onClose, onDone }: OpProps) {
   const prevOldDb = GARAGES.filter((g) => g.key !== 'civil' && garageState(rows, g).authorized).map((g) => g.key);
   const toggle = (k: string) => {
     if (running || submitted) return;
-    if (k === 'civil' || k === 'phase2') civilTouched.current = true;
+    if (k === 'civil') civilTouched.current = true;
     if (!sel.has(k) && (k === 'main' || k === 'civil')) { setSpaceGarage(k); return; }
     const next = toggleGarage([...sel], k);
+    if (k === 'phase2' && sel.has('phase2') && sel.has('civil')) next.push('civil');
     setSel(new Set(next)); setNums(n => garageNumbersFor(next, n));
   };
   const confirmSpace = (space: SpaceChoice) => {
-    const next = toggleGarage([...sel].filter(g => g !== space.garage), space.garage);
+    const next = space.garage === 'civil' ? [...new Set([...sel, 'civil'])] :
+      toggleGarage([...sel].filter(g => g !== space.garage), space.garage);
     if (space.garage === 'civil') civilTouched.current = true;
     setSel(new Set(next)); setNums(n => ({ ...n, [space.garage]: space.spaceNo })); setSpaceGarage(null);
   };
-  const needsChoices = sel.has('main') || sel.has('civil');
-  const missingSpace = (['main', 'civil'] as const).some(g => sel.has(g) && !spaceSource.rows.some(s => s.garage === g && s.spaceNo === nums[g] && !s.unavailableReason));
+  const keepCivil = oldDbSel.length === 0 && sel.has('civil') && civilV?.civilDefenseAuthorized &&
+    (nums.civil || '') === (civilV.parkingSpace || '');
+  const needsChoices = sel.has('main') || (sel.has('civil') && !keepCivil);
+  const missingSpace = needsChoices && (['main', 'civil'] as const).some(g => sel.has(g) && !spaceSource.rows.some(s => s.garage === g && s.spaceNo === nums[g] && !s.unavailableReason));
 
   // 一二期到期日一致性（phase1 在 parking1，phase2/main 在 parking2）
   const end1 = ymd(field(rows.find((r) => r.database === 'parking1')?.fields, 'expiry'));
@@ -154,18 +158,21 @@ export function GaragesSheet({ plate, rows, cloud, onClose, onDone }: OpProps) {
     setErr('');
     // 只有勾了人防才需要德立云状态；只改一期/二期/大车库时不查德立云也能保存
     const needCivil = sel.has('civil');
-    if (needCivil && !cloudKnown) { setErr('开通/关闭人防需要先读到德立云状态，请稍候'); return; }
-    if (!ownerRoom) { setErr('读不到房号，无法调整授权，请在旧页处理'); return; }
-    if (oldDbSel.length === 0 && !needCivil) { setErr('至少选一个车库'); return; }
+    if ((needCivil || !oldDbSel.length) && !cloudKnown) { setErr('请等人防状态查回再提交'); return; }
+    if (oldDbSel.length && !ownerRoom) { setErr('读不到房号，无法调整授权，请在旧页处理'); return; }
     if (mixing && end1 && end2 && end1 !== end2) { setErr(`一期(${end1})和二期(${end2})到期日不一致，请先续期同步再一起授权`); return; }
     if (spaceGarage || missingSpace || (needsChoices && (spaceSource.loading || spaceSource.error))) { setErr('请先从对应车库档案选定有效车位号'); return; }
-    if (!targets.length) { setErr('读不到原车辆记录，无法安全调整授权'); return; }
+    if (oldDbSel.length && !targets.length) { setErr('读不到原车辆记录，无法安全调整授权'); return; }
     if (needsChoices && !can('business','edit')) { setErr('当前账号没有修改车辆收费档位的权限'); return; }
     setRunning(true); setLog([]);
     let spaceNeedsReview = false;
     try {
     const billingClass = needsChoices ? await propertyCarBillingClass(plate, targets[0]?.pmsMatch?.house?.communityId) : null;
     setSubmitted(true);
+    const onLog = (line: string) => setLog(lines => [...lines, line]);
+    const localToRemove = oldDbSel.length ? [] : targetsOf(await freshRows(plate));
+    if (localToRemove.some(row => !pidOf(row.fields)) || new Set(localToRemove.map(row => row.database)).size !== localToRemove.length)
+      throw new Error('本地车牌记录不唯一或缺少编号，请核对后办理');
     // 旧库：一个操作里现场助手会跨 parking1/parking2 处理（提交到任一现存库即可）
     if (oldDbSel.length) {
       const srcDb = (targets[0].database as 'parking1' | 'parking2');
@@ -179,7 +186,7 @@ export function GaragesSheet({ plate, rows, cloud, onClose, onDone }: OpProps) {
     }
     // 人防：期望态 ≠ 当前态时同步德立云
     const wantCivil = sel.has('civil');
-    if (wantCivil !== !!civilV?.civilDefenseAuthorized || (wantCivil && nums.civil !== civilV?.parkingSpace)) {
+    if ((!oldDbSel.length && !wantCivil) || wantCivil !== !!civilV?.civilDefenseAuthorized || (wantCivil && !keepCivil && nums.civil !== civilV?.parkingSpace)) {
       setLog((l) => [...l, `正在${wantCivil ? '开通' : '关闭'}人防（德立云）…`]);
       try {
         const result = await accessCardIssuance.setDeliyunCivilDefenseAuthorization({
@@ -191,16 +198,37 @@ export function GaragesSheet({ plate, rows, cloud, onClose, onDone }: OpProps) {
         spaceNeedsReview ||= !!(result.result?.pmsBindings as { needsReview?: boolean } | undefined)?.needsReview;
         setLog((l) => [...l, '✓ 人防已同步']);
       } catch (e) {
-        setErr(`旧库授权已完成，但人防同步未完成：${e instanceof Error ? e.message : '失败'}，请在办理记录只重试人防`);
+        setErr(`人防同步未完成：${e instanceof Error ? e.message : '失败'}，请核对原任务`);
         setRunning(false); return;
       }
     }
-    if (billingClass) {
+    if (!oldDbSel.length) {
+      const cloudNow = await accessCardIssuance.deliyunVehiclesByPlate(plate);
+      if (wantCivil ? cloudNow.rows.length !== 1 || !cloudNow.rows[0].civilDefenseAuthorized ||
+        (civilV?.id && civilV.id !== cloudNow.rows[0].id) : cloudNow.rows.length !== 0)
+        throw new Error('人防车牌登记与所选状态不一致，请核对原任务');
+      for (const row of localToRemove) {
+        const r = await runOnTargets([row], 'delete_vehicle', () => ({ plate, refund: 0, depositRefund: 0 }),
+          { batchKey: batch.current + '-delete-' + row.database, onLog });
+        if (!r.ok) throw new Error(r.error || '本地车库注销失败');
+        spaceNeedsReview ||= !!r.spaceNeedsReview;
+      }
+      const finalQuery = await freshParkingQuery(plate);
+      if (targetsOf(finalQuery.rows).length) throw new Error('注销后一期或二期仍有车辆记录，请核对原任务');
+      if (!wantCivil) {
+        onLog('三个停车系统已核实，正在办理 PMS 注销…');
+        const retired = await request<{verified:boolean}>({method:'POST', url:'/access-card-issuance/parking/deregistrations',
+          data:{queryId:finalQuery.id, cloudOperationKey:batch.current + '-deliyun'}});
+        if (retired?.verified !== true) throw new Error('未收到 PMS 注销回执，请核对原任务');
+      }
+      if (billingClass && await readPlateBillingClass(plate) !== billingClass) {
+        await request({method:'POST', url:'/business/plate-tags', data:{plate, vehicleClass:billingClass}});
+        if (await readPlateBillingClass(plate) !== billingClass) throw new Error('产权车收费档位读回不一致');
+      }
+    } else if (billingClass) {
       setLog(lines => [...lines,'车库授权已确认，正在同步产权车收费档位…']);
       const latest = await freshRows(plate);
       const databases = new Set(oldDbSel.map(key => key === 'phase1' ? 'parking1' : 'parking2'));
-      // 仅选人防时保留原有地面权限，在当前档案所在旧库同步身份。
-      if (!databases.size) targets.forEach(row => databases.add(row.database as 'parking1' | 'parking2'));
       const selectedRows = [...databases].sort().map(database => {
         const matches = latest.filter(row => row.database === database);
         if (matches.length !== 1 || !pidOf(matches[0].fields) || field(matches[0].fields,'room',true) !== ownerRoom)
@@ -220,7 +248,8 @@ export function GaragesSheet({ plate, rows, cloud, onClose, onDone }: OpProps) {
         return;
       }
     }
-    toast(spaceNeedsReview ? '车库授权已更新，车位卡片绑定待核对' : '车库授权已更新');
+    const message = sel.size ? '车库授权已更新' : 'PMS 已注销，可以重新登记此车牌';
+    toast(spaceNeedsReview ? message + '，车位卡片绑定待核对' : message);
     onDone();
     } catch (e) { setErr(`${e instanceof Error ? e.message : '授权结果未知'}；请核对原任务，不要重复办理`); }
     finally { setRunning(false); }
@@ -258,7 +287,7 @@ export function GaragesSheet({ plate, rows, cloud, onClose, onDone }: OpProps) {
         {err ? <div className="note" style={{ background: 'var(--dang-w)', color: 'var(--dang)', marginBottom: 12 }}>{err}</div> : null}
         <div style={{ display: 'flex', gap: 10 }}>
           <button className="btn p" style={{ flex: 1 }} disabled={running || !!spaceGarage || missingSpace || (needsChoices && (spaceSource.loading || !!spaceSource.error)) || (sel.has('civil') && !cloudKnown) || (!sel.has('civil') && !!civilV?.civilDefenseAuthorized && !cloudKnown)} onClick={() => void run()}>
-            <Icon name="car" size={16} />{running ? '现场执行中…' : submitted ? '核对原任务（不重复办理）' : '保存车库授权'}
+            <Icon name="car" size={16} />{running ? '现场执行中…' : submitted ? '核对原任务（不重复办理）' : !sel.size ? '注销所有车库登记' : '保存车库授权'}
           </button>
           <button className="btn" disabled={running} onClick={onClose}>取消</button>
         </div>

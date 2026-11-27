@@ -972,7 +972,7 @@ export class VehicleIntakeService {
   private async assertNewPlate(row: VehicleIntake, plate: string) {
     await this.repo.manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`vehicle-intake:${row.tenantId}:${plate}`]);
     const vehicle = await this.repo.manager.getRepository(ParkingVehicle).findOne({ where: { tenantId: row.tenantId, plateNo: plate } });
-    if (vehicle) throw new BadRequestException(vehicle.houseId && vehicle.houseId !== row.houseId ? '该车牌已属于另一户，不能代登记或改绑' : '该车牌已有车辆档案，请使用原车辆续费，不可重复新办');
+    if (vehicle && vehicle.status !== 'deregistered') throw new BadRequestException(vehicle.houseId && vehicle.houseId !== row.houseId ? '该车牌已属于另一户，不能代登记或改绑' : '该车牌已有车辆档案，请使用原车辆续费，不可重复新办');
     const conflicting = () => this.repo.createQueryBuilder('i').where(
       `i.tenant_id = :tenantId AND ${normalizedPlateSql('i.plate')} = :plate AND i.id <> :id AND i.status <> :status AND NOT i.log @> CAST(:released AS jsonb)`,
       { tenantId: row.tenantId, plate, id: row.id, status: 'void', released: JSON.stringify([{ action: CANCELLED_PLATE_RELEASED }]) }).getOne();

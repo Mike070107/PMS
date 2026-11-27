@@ -12,6 +12,10 @@ communities.push({
  buildings:[{id:33, lane:null, roadName:'吴泾一村', buildingNo:'18',
  houses:Array.from({length:50}, (_,i)=>({id:300+i,roomNo:String(101+i),ownerName:'测试长名称'.repeat(12)}))}],
 });
+const shopCommunity = [{...communities[1], buildings:[
+ {id:22,lane:'228',buildingNo:'6',houses:[{id:222,roomNo:'502',ownerPhone:'13900002345'}]},
+ {id:23,lane:null,roadName:'永德路',buildingNo:'234',houses:[{id:2340,roomNo:'商铺',propertyType:'商铺'}]},
+]}];
 function Fixture(){
  const [query,setQuery]=useState(''),[house,setHouse]=useState<any>(null),[pub,setPub]=useState<any>(null);
  return <div style={{padding:20,maxWidth:900}}>
@@ -24,6 +28,7 @@ function Fixture(){
   return {houses:term.includes('228')?houses.filter(h=>h.communityId===2):term.includes('198')?houses.filter(h=>h.communityId===1):[],vehicles:term==='沪TEST'? [{id:5,houseId:111,plateNo:'沪TEST'}]:[],accessCards:[]};
  }}/></section>
  <button id="outside">其他输入焦点</button>
+ <section id="shop"><HousePicker communities={shopCommunity} onPick={p=>{(window as any).selectedShop=p.houseId}}/></section>
  </div>;
 }
 createRoot(document.getElementById('root')!).render(<Fixture/>);
