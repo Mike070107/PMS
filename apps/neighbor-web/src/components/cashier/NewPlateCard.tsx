@@ -116,8 +116,6 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
   const uploadInput = useRef<HTMLInputElement>(null);
   const [officeMode, setStaffMode] = useState(defaultStaffMode);
   const staffMode = officeMode && !it.homeUpload;
-  const [checkedSubmission, setCheckedSubmission] = useState<string | null>(null);
-  const familyNeedsPreview = !manage && it.kind === 'family' && it.status === 'submitted' && checkedSubmission !== it.submittedAt;
   const [homeDraft, setHomeDraft] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -426,14 +424,15 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
                   {attempted && relationInvalid && <small id={fieldId('relation-error')}>请填写具体亲属关系</small>}
                 </div>}
               </div>
-              <details open className="registration-attachments"><summary>附件（选填） · {it.files.length} 份</summary><div className="intake-upload" tabIndex={0} aria-label="本条登记附件上传区" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); void uploadFiles(e.dataTransfer.files); }} onPaste={e => { if (e.clipboardData.files.length) { e.preventDefault(); e.stopPropagation(); void uploadFiles(e.clipboardData.files); } }}>
+              {it.kind === 'family' && it.status !== 'submitted' && <div className="registration-term-field"><RegistrationTermEditor title="车牌授权期限" attempted={attempted} value={term} onChange={setDraftTerm} /></div>}
+              <div className="intake-upload" tabIndex={0} aria-label="本条登记附件上传区" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); void uploadFiles(e.dataTransfer.files); }} onPaste={e => { if (e.clipboardData.files.length) { e.preventDefault(); e.stopPropagation(); void uploadFiles(e.clipboardData.files); } }}>
                 <input ref={uploadInput} type="file" accept="image/*,application/pdf" multiple hidden onChange={e => { if (e.target.files) void uploadFiles(e.target.files); e.target.value = ''; }} />
                 <button type="button" className="btn" onClick={() => uploadInput.current?.click()}>本地上传附件（选填）</button>
                 <p>点击选择、拖入，或先点击本区域再 Ctrl+V 粘贴。最多 10 份，每份 20MB。</p>
                 <span role="status">已上传 {it.files.length} 份{busy === '上传附件' ? ' · 上传中…' : ''}</span>
                 <div className="np-files">{it.files.map(f => <IntakeAttachment key={f.fileUrl} file={f}/>)}</div>
               </div>
-              </details><button type="button" className="btn p" disabled={!!busy || savingGarages || (!defaultStaffMode && (plateInvalid || phoneInvalid || relationInvalid))} data-charge-next onClick={submitStaffFields}>{busy === '保存登记' ? '保存中…' : '保存资料，进入预览'}</button>
+              <button type="button" className="btn p" disabled={!!busy || savingGarages || (!defaultStaffMode && (plateInvalid || phoneInvalid || relationInvalid))} data-charge-next onClick={submitStaffFields}>{busy === '保存登记' ? '保存中…' : '保存资料，进入预览'}</button>
               {showExistingPlate && <ExistingPlateNotice key={existingPlate} plate={existingPlate} intake={it} message={err} />}
             </fieldset> : null}
           </section> : null}
@@ -457,7 +456,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
         {can('business', 'edit') && <ReleaseReversedRegistration intakeId={it.id} onReleased={acceptResponse} />}
       </div></div> : it.status !== 'void' && handedOff ? <div className="note2" style={{ marginBottom: 10 }}>{it.familyCarId || (it.kind === 'family' && it.status === 'approved') ? '已转亲情车办理，请到「亲情车管理」核对；' : '原收款已进入执行或待核对阶段，请到「待处理」核对原流水；'}已入库车辆请到「车辆管理」注销，不在登记审核硬删，也不在这里退款。</div> : null}
       {manage && !canQr && ['submitted'].includes(it.status) && !it.familyCarId && (it.kind === 'family' || !it.transaction)
-        ? defaultStaffMode ? <details className="registration-options" open={!canStaff || undefined}><summary>办公室资料确认与申请期限</summary><OfficeIntakeEditor intake={it} onSaved={acceptResponse} /></details> : <OfficeIntakeEditor intake={it} onSaved={acceptResponse} /> : null}
+        ? <OfficeIntakeEditor intake={it} onSaved={acceptResponse} /> : null}
 
       {!defaultStaffMode ? progress : null}
       <div className={canQr && (!staffMode || !canStaff) && it.homeUpload ? "np-grid" : "registration-review"}>
@@ -526,26 +525,20 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
             </>
           ) : defaultStaffMode ? null : <div className="muted" style={{ padding: '6px 0 10px' }}>扫码填写是另一种登记方式；住户提交后，这里会显示本车资料。</div>}
 
-          {familyNeedsPreview && canReview && <button type="button" className="btn p" onClick={() => setCheckedSubmission(it.submittedAt)}>资料已核对，选择授权</button>}
-          {!familyNeedsPreview && (it.status === 'approved' || it.homeUpload || manage || it.kind === 'family' && it.submittedAt) && <>
-      {defaultStaffMode ? <details className="registration-options" key={it.kind + it.status} open={it.kind === 'paid' && !it.transaction && it.status !== 'void'}>
-        <summary>{it.kind === 'family' ? '车辆类别' : '车辆类别与授权期限'}<span>{it.kind === 'family' ? '亲情车 · 免费' : vehicleClassCaption(it.vehicleClass || '', propertySpaces) || '选择标准'}</span></summary>
-        {categoryPanel}
-      </details> : categoryPanel}
-          </>}
+          {(!defaultStaffMode || it.status === 'approved' || it.homeUpload || manage || it.submittedAt) && categoryPanel}
           {/* 开通哪些车库 */}
           {!canEditGarages && picked.length ? (
             <div style={{ marginTop: 6, fontSize: 14 }}><span style={{ color: 'var(--ink2)' }}>开通车库：</span>{picked.map((k) => <span key={k} className="tag mute" style={{ marginRight: 4 }}>{(it.kind === 'family' ? FAMILY_GARAGES.find(([x]) => x === k)?.[1] : (targets.find((t) => t.key === k)?.short || targets.find((t) => t.key === k)?.label)) || k}{nums[k] ? ` ${nums[k]}` : ''}</span>)}</div>
           ) : null}
-          {!familyNeedsPreview && canEditGarages && (manage || it.kind === 'family') && (it.status === 'approved' || it.homeUpload || manage || it.kind === 'family' && it.submittedAt) ? (
-            defaultStaffMode && canStaff ? <details className="registration-options"><summary>车库授权<span>已选 {picked.length} 项</span></summary>{garageFields}</details> : garageFields
+          {canEditGarages && (manage || it.kind === 'family') && (it.status === 'approved' || it.homeUpload || manage || it.kind === 'family' && it.submittedAt) ? (
+            garageFields
           ) : null}
 
-              {!familyNeedsPreview && it.kind === 'family' && it.status === 'submitted' && <div className="registration-term-field"><RegistrationTermEditor title="车牌授权期限" attempted={attempted} value={term} onChange={setDraftTerm} /></div>}
+              {it.kind === 'family' && it.status === 'submitted' && <div className="registration-term-field"><RegistrationTermEditor title="车牌授权期限" attempted={attempted} value={term} onChange={setDraftTerm} /></div>}
           {/* 审核 */}
           {canReview && ['submitted', 'reupload'].includes(it.status) && it.submittedAt ? (
             <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-              {!familyNeedsPreview && <button className="btn p" disabled={!!busy || savingGarages || ((it.kind === 'family' || !!it.transaction) && (!!garageError || !picked.length || !!missingSpace)) || (it.kind === 'family' && (!edit.relation.trim() || edit.relation === '其他亲属'))} data-charge-next onClick={approve}><Icon name="check" size={16} />{busy === '旧库查重' ? '旧库查重中…' : busy === '审核' ? '提交中…' : it.kind === 'family' ? '提交经理审核' : '资料无误，通过'}</button>}
+              <button className="btn p" disabled={!!busy || savingGarages || ((it.kind === 'family' || !!it.transaction) && (!!garageError || !picked.length || !!missingSpace)) || (it.kind === 'family' && (!edit.relation.trim() || edit.relation === '其他亲属'))} data-charge-next onClick={approve}><Icon name="check" size={16} />{busy === '旧库查重' ? '旧库查重中…' : busy === '审核' ? '提交中…' : it.kind === 'family' ? '提交经理审核' : '资料无误，通过'}</button>
               <button className="btn" disabled={!!busy} onClick={() => setAsk(ask === 'reupload' ? '' : 'reupload')}>退回重传</button>
             </div>
           ) : null}
@@ -580,7 +573,6 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
         <ol className="np-log">{sortTimelineNewestFirst(it.log, l => l.at).map((l, i) => <li key={i}><time>{formatBeijingDateTime(l.at, 'MM-DD HH:mm')}</time><b>{l.userName}</b>{l.action}{l.note ? <small> · {l.note}</small> : null}</li>)}</ol>
       ) : null}
       {manage && it.kind === 'paid' && !it.transaction && it.status !== 'void' ? <div className="muted" style={{ marginTop: 8 }}>还没收款：<Link className="btn sm" to={`/cashier?intakeId=${it.id}`}>去收银台处理此登记</Link>（定位原登记，不新建计费业务）</div> : null}
-      {defaultStaffMode ? <details className="registration-options"><summary>办理记录</summary>{progress}</details> : null}
     </div>
   );
 }

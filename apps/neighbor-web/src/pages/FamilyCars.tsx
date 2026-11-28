@@ -3,7 +3,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { accessCardIssuance, request } from '@pms/api-client';
 import Icon from '@/components/Icon';
 import ImagePreviewButton from '@/components/ImagePreviewButton';
-import { Loading, toast } from '@/components/ui';
+import { Loading, Sheet, toast } from '@/components/ui';
 import { dayjs } from '@/lib/format';
 import { can } from '@/lib/perm';
 import { useSession } from '@/lib/auth';
@@ -23,12 +23,13 @@ interface FamilyMaterials {
   files: Array<{ index: number; fileName: string; contentType: string; fileUrl: string; source: string; uploadedAt?: string }>;
 }
 interface FamilyDetail extends FamilyCar {
+  dataVersion: number;
   files: Array<{ index: number; fileName: string; contentType: string; fileUrl: string; source: string }>;
   officeNote: string; managerNote: string; log: Array<{ at: string; userName: string; action: string; note?: string }>;
 }
 
 const GARAGE: Record<string, string> = { phase1: '一期地面', phase2: '二期地面', main: '二期大车库', civil: '二期人防' };
-const FAMILY_FILTERS: Array<[string, string]> = [['', '全部'], ['office', '待办公室审核'], ['manager', '待经理审核'], ['opening', '开通中'], ['active', '已生效'], ['expired', '已过期'], ['upload', '待上传资料']];
+const FAMILY_FILTERS: Array<[string, string]> = [['', '全部'], ['office', '待办公室审核'], ['manager', '待经理审核'], ['returned', '退回补正'], ['opening', '开通中'], ['active', '已生效'], ['expired', '已过期'], ['upload', '待上传资料']];
 const familyTone = (s: string) => (s === 'active' ? 'ok' : ['expired', 'void'].includes(s) ? 'mute' : s === 'returned' ? 'dang' : 'warn');
 
 export default function FamilyCars() {
@@ -52,7 +53,7 @@ export default function FamilyCars() {
 }
 
 function FamilyList({ kw }: { kw: string }) {
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState(() => new URLSearchParams(window.location.search).get('status') || '');
   const [rows, setRows] = useState<FamilyCar[] | null>(null);
   const [open, setOpen] = useState<FamilyDetail | null>(null);
   const [busy, setBusy] = useState(false);
@@ -129,13 +130,13 @@ function FamilyList({ kw }: { kw: string }) {
     ++materialsGeneration.current; setMaterials(null);
     try {
       const r = await request<FamilyDetail>({ url: `/family-cars/${id}` });
-      if (mounted.current && turn === detailGeneration.current) { setOpen(r); setEditingTerm(false); setTermDraft(r.registrationTerm ?? { mode: 'months', months: 12 }); }
+      if (mounted.current && turn === detailGeneration.current) { setOpen(r); setNote(''); setEditingTerm(false); setTermDraft(r.registrationTerm ?? { mode: 'months', months: 12 }); }
     } catch { if (mounted.current && turn === detailGeneration.current) toast('办理详情读取失败，请重新点击办理详情重试'); }
   };
   const initialDetail = useRef(Number(new URLSearchParams(window.location.search).get('detail')));
   useEffect(() => {
     const id = initialDetail.current;
-    if (id > 0 && rows?.some(row => row.id === id)) {
+    if (id > 0 && rows) {
       initialDetail.current = 0;
       void detail(id);
     }
@@ -147,7 +148,7 @@ function FamilyList({ kw }: { kw: string }) {
     if (actionBusy.current) return;
     actionBusy.current = true;
     setBusy(true);
-    try { await fn(); toast(`${label}：已提交`); setNote(''); if (open) await detail(open.id); load(); }
+    try { await fn(); toast(`${label}：已提交`); setNote(''); load(); if (open) await detail(open.id); }
     catch (e) { toast(e instanceof Error ? e.message : `${label}失败`); }
     finally { actionBusy.current = false; setBusy(false); }
   };
@@ -210,7 +211,7 @@ function FamilyList({ kw }: { kw: string }) {
 
   return (
     <>
-      <div className="quickMonths" style={{ marginTop: 0, marginBottom: 10, flexWrap: 'nowrap', overflowX: 'auto', maxWidth: '100%' }}>
+      <div className="quickMonths" style={{ marginTop: 0, marginBottom: 10, flexWrap: 'wrap', overflowX: 'auto', maxWidth: '100%' }}>
         {FAMILY_FILTERS.map(([k, l]) => <button key={k} className={`chip ${status === k ? 'on' : ''}`} onClick={() => { setStatus(k); setPaging({ kw, page: 1, pageSize }); }}>{l}</button>)}
         {canEdit ? <button className="btn sm" style={{ marginLeft: 'auto' }} disabled={pull?.step === 'running'} onClick={() => void startPull()}><Icon name="sync" size={15} />从旧停车库拉取</button> : null}
       </div>
@@ -242,21 +243,21 @@ function FamilyList({ kw }: { kw: string }) {
         <p>亲情车查询失败：{error}</p><button className="btn sm" onClick={load}>重试</button>
       </div> : rows === null ? <div role="status" data-testid="family-cars-loading"><Loading />正在查询亲情车…</div> : (
         <div className="card t-scroll" style={{ overflowX: 'auto', containerType: 'inline-size' }}>
-          <table className="tbl" data-testid="family-cars-table" style={{ minWidth: 1120 }}>
+          <table className="tbl family-case-table" data-testid="family-cars-table">
             <thead><tr><th>车牌</th><th>房号</th><th>车主 · 关系</th><th>授权车库</th><th>有效期</th><th>状态</th><th>办理资料</th><th>问题</th><th>操作</th></tr></thead>
             <tbody>
               {rows.map((c) => (
                 <Fragment key={c.id}>
                   <tr key={c.id} className={open?.id === c.id ? 'sel' : ''} onClick={() => toggleDetail(c.id)}>
                     <td><b className="plate">{c.plate}</b></td>
-                    <td>{c.roomKey}<div className="muted" style={{ fontSize: 13 }}>{c.ownerName}</div></td>
-                    <td>{c.carOwnerName || '—'}{c.relation ? ` · ${c.relation}` : ''}<div className="muted" style={{ fontSize: 13 }}>{c.carOwnerPhone}</div></td>
-                    <td>{(c.garages ?? []).map((g) => <span key={g} className="tag mute" style={{ marginRight: 4 }}>{GARAGE[g] || g}{c.garageNumbers?.[g] ? ` ${c.garageNumbers[g]}` : ''}</span>)}</td>
-                    <td>{c.startDate ? `${c.startDate} ~ ${c.endDate}` : '—'}{c.daysLeft != null ? <div className="muted" style={{ fontSize: 13, color: c.expiringSoon ? 'var(--dang)' : undefined }}>剩 {c.daysLeft} 天</div> : null}</td>
+                    <td data-label="房号">{c.roomKey}<div className="muted" style={{ fontSize: 13 }}>{c.ownerName}</div></td>
+                    <td data-label="车主">{c.carOwnerName || '—'}{c.relation ? ` · ${c.relation}` : ''}<div className="muted" style={{ fontSize: 13 }}>{c.carOwnerPhone}</div></td>
+                    <td data-label="车库">{(c.garages ?? []).map((g) => <span key={g} className="tag mute" style={{ marginRight: 4 }}>{GARAGE[g] || g}{c.garageNumbers?.[g] ? ` ${c.garageNumbers[g]}` : ''}</span>)}</td>
+                    <td data-label="有效期">{c.startDate ? `${c.startDate} ~ ${c.endDate}` : '—'}{c.daysLeft != null ? <div className="muted" style={{ fontSize: 13, color: c.expiringSoon ? 'var(--dang)' : undefined }}>剩 {c.daysLeft} 天</div> : null}</td>
                     <td><span className={`tag ${familyTone(c.status)}`}>{c.statusLabel}</span></td>
                     <td className="nw"><button className="btn sm" data-testid={`family-cars-materials-${c.id}`} onClick={e => { e.stopPropagation(); void readMaterials(c); }}>{c.fileCount > 0 ? `查看资料（${c.fileCount}）` : '暂无资料'}</button></td>
                     <td style={{ color: 'var(--dang)', fontSize: 13.5, maxWidth: 260 }}>{c.lastError || ''}</td>
-                    <td className="nw"><button className="btn sm" onClick={e => { e.stopPropagation(); toggleDetail(c.id); }}>办理详情</button></td>
+                    <td className="nw"><button className="btn sm" onClick={e => { e.stopPropagation(); toggleDetail(c.id); }}>{c.status === 'office' && canEdit ? '办公室审核' : c.status === 'manager' && canManager ? '经理审核' : '办理详情'}</button></td>
                   </tr>
                   {materials?.id === c.id ? <tr style={{ cursor: 'default' }}><td colSpan={9} style={{ background: 'var(--sunken)', padding: 14 }}>
                     <section data-testid="family-cars-materials" aria-label={`${materials.plate} 办理资料`}>
@@ -269,45 +270,6 @@ function FamilyList({ kw }: { kw: string }) {
                       </div>}
                     </section>
                   </td></tr> : null}
-                  {open?.id === c.id ? (
-                    <tr key={`d${c.id}`} style={{ cursor: 'default' }}><td colSpan={9} style={{ background: 'var(--sunken)', padding: 14 }}>
-                      <div data-testid="family-cars-detail-panel" style={{ position: 'sticky', left: 14, width: 'min(calc(100cqw - 28px), 1050px)', maxWidth: 'calc(100vw - 76px)', whiteSpace: 'normal' }}>
-                      <div className="np-files" style={{ marginBottom: 10 }}>
-                        {(open.files ?? []).map(f => f.contentType.startsWith('image/')
-                          ? <ImagePreviewButton key={f.index} fileUrl={f.fileUrl} fileName={f.fileName} files={open.files.filter(item => item.contentType.startsWith('image/'))}><img src={f.fileUrl} alt={f.fileName} /></ImagePreviewButton>
-                          : <a key={f.index} href={f.fileUrl} target="_blank" rel="noreferrer" title={f.fileName}><span className="np-pdf"><Icon name="file" size={22} />{f.contentType === 'application/pdf' ? 'PDF' : '文件'}</span></a>)}
-                        {!open.files.length ? <span className="muted">还没有资料</span> : null}
-                      </div>
-                      <div style={{ marginBottom: 12 }}><RegistrationTermSummary term={open.registrationTerm} /></div>
-                      {canEdit && ['upload', 'office', 'returned'].includes(open.status) ? <div style={{ marginBottom: 12, maxWidth: 520 }}>
-                        {editingTerm ? <>
-                          <RegistrationTermEditor value={termDraft} onChange={setTermDraft} disabled={busy} />
-                          <div className="muted" style={{ marginTop: 8 }}>修改期限后，原办公室确认与经理审批失效，需重新审核。</div>
-                          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                            <button className="btn p sm" disabled={busy} onClick={() => act('保存申请期限', () => request({ method: 'PATCH', url: `/family-cars/${open.id}`, data: { registrationTerm: termDraft } }))}>保存期限</button>
-                            <button className="btn sm" disabled={busy} onClick={() => setEditingTerm(false)}>取消修改</button>
-                          </div>
-                        </> : <button className="btn sm" disabled={busy} onClick={() => { setTermDraft(open.registrationTerm ?? { mode: 'months', months: 12 }); setEditingTerm(true); }}>修改申请期限</button>}
-                      </div> : null}
-                      {open.lastError ? <div className="note2" style={{ color: 'var(--dang)', marginBottom: 8 }}><Icon name="alert" />{open.lastError}</div> : null}
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                        <input className="in" style={{ width: 240, height: 38 }} value={note} onChange={(e) => setNote(e.target.value)} placeholder="备注 / 原因（退回、作废必填）" />
-                        {canEdit && ['office', 'returned'].includes(open.status) ? <>
-                          <button className="btn p sm" disabled={busy || editingTerm} onClick={() => act('办公室审核', () => request({ method: 'POST', url: `/family-cars/${open.id}/office-review`, data: { decision: 'approve', note } }))}>办公室审核通过</button>
-                          <button className="btn sm" disabled={busy} onClick={() => act('要求补资料', () => request({ method: 'POST', url: `/family-cars/${open.id}/office-review`, data: { decision: 'reupload', note } }))}>要求补资料</button>
-                        </> : null}
-                        {canManager && open.status === 'manager' ? <>
-                          <button className="btn p sm" disabled={busy} onClick={() => act('经理审核', () => request({ method: 'POST', url: `/family-cars/${open.id}/manager-review`, data: { decision: 'approve', note } }))}>经理审核通过（按申请期限）</button>
-                          <button className="btn sm" disabled={busy || !note.trim()} onClick={() => act('退回办公室', () => request({ method: 'POST', url: `/family-cars/${open.id}/manager-review`, data: { decision: 'return', note } }))}>退回办公室</button>
-                        </> : null}
-                        {canEdit && (open.status === 'opening' || open.lastError) ? <button className="btn sm" disabled={busy} onClick={() => act('重试', () => request({ method: 'POST', url: `/family-cars/${open.id}/retry` }))}><Icon name="refresh" size={15} />失败重试</button> : null}
-                        {canEdit && (open.status === 'expired' || (open.status === 'active' && open.expiringSoon)) ? <button className="btn sm" disabled={busy} onClick={() => renew(open)}>{busy ? '处理中…' : '续登一年'}</button> : null}
-                        {canEdit && open.status === 'active' ? <button className="btn sm d" disabled={busy || !note.trim()} onClick={() => act('停用', () => request({ method: 'POST', url: `/family-cars/${open.id}/stop`, data: { note } }))}>停用</button> : null}
-                      </div>
-                      <ol className="np-log">{sortTimelineNewestFirst(open.log, l => l.at).map((l, i) => <li key={i}><time>{formatBeijingDateTime(l.at, 'MM-DD HH:mm')}</time><b>{l.userName}</b>{l.action}{l.note ? <small> · {l.note}</small> : null}</li>)}</ol>
-                      </div>
-                    </td></tr>
-                  ) : null}
                 </Fragment>
               ))}
               {!rows.length ? <tr style={{ cursor: 'default' }}><td colSpan={9} className="muted" style={{ textAlign: 'center', padding: 26 }}>没有亲情车登记</td></tr> : null}
@@ -315,6 +277,45 @@ function FamilyList({ kw }: { kw: string }) {
           </table>
         </div>
       )}
+      {open && <Sheet open title={open.plate + ' · 办理详情'} subtitle={open.roomKey + ' · ' + open.statusLabel} width={660} onClose={() => { ++detailGeneration.current; setOpen(null); setNote(''); }}>
+        <section data-testid="family-cars-detail-panel" className="family-case-detail">
+          <p className="note2">{open.status === 'office' || open.status === 'returned' ? '下一步：办公室核对申请资料和期限，再提交经理。' : open.status === 'manager' ? '下一步：物业经理核对资料后通过或退回。' : open.status === 'opening' ? '审核已通过，正在办理停车库开通。可在下方核对执行结果。' : open.statusLabel}</p>
+          <h3>申请资料</h3><div className="np-files" style={{ marginBottom: 10 }}>
+            {(open.files ?? []).map(f => f.contentType.startsWith('image/')
+              ? <ImagePreviewButton key={f.index} fileUrl={f.fileUrl} fileName={f.fileName} files={open.files.filter(item => item.contentType.startsWith('image/'))}><img src={f.fileUrl} alt={f.fileName} /></ImagePreviewButton>
+              : <a key={f.index} href={f.fileUrl} target="_blank" rel="noreferrer" title={f.fileName}><span className="np-pdf"><Icon name="file" size={22} />{f.contentType === 'application/pdf' ? 'PDF' : '文件'}</span></a>)}
+            {!open.files.length ? <span className="muted">还没有资料</span> : null}
+          </div>
+          <div style={{ marginBottom: 12 }}><RegistrationTermSummary term={open.registrationTerm} /></div>
+          {canEdit && ['upload', 'office', 'returned'].includes(open.status) ? <div style={{ marginBottom: 12, maxWidth: 520 }}>
+            {editingTerm ? <>
+              <RegistrationTermEditor value={termDraft} onChange={setTermDraft} disabled={busy} />
+              <div className="muted" style={{ marginTop: 8 }}>修改期限后，原办公室确认与经理审批失效，需重新审核。</div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                <button className="btn p sm" disabled={busy} onClick={() => act('保存申请期限', () => request({ method: 'PATCH', url: `/family-cars/${open.id}`, data: { registrationTerm: termDraft } }))}>保存期限</button>
+                <button className="btn sm" disabled={busy} onClick={() => setEditingTerm(false)}>取消修改</button>
+              </div>
+            </> : <button className="btn sm" disabled={busy} onClick={() => { setTermDraft(open.registrationTerm ?? { mode: 'months', months: 12 }); setEditingTerm(true); }}>修改申请期限</button>}
+          </div> : null}
+          {open.lastError ? <div className="note2" style={{ color: 'var(--dang)', marginBottom: 8 }}><Icon name="alert" />{open.lastError}</div> : null}
+          <h3>审核与办理</h3><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            {((canEdit && ['office','returned','active'].includes(open.status)) || (canManager && open.status === 'manager')) && <input aria-label="办理备注或退回原因" className="in" style={{ maxWidth: '100%', width: 240, height: 38 }} value={note} onChange={(e) => setNote(e.target.value)} placeholder="备注 / 原因（退回、停用必填）" />}
+            {canEdit && ['office', 'returned'].includes(open.status) ? <>
+              <button className="btn p sm" disabled={busy || editingTerm} onClick={() => act('办公室审核', () => request({ method: 'POST', url: `/family-cars/${open.id}/office-review`, data: { decision: 'approve', note, expectedVersion: open.dataVersion } }))}>办公室审核通过</button>
+              <button className="btn sm" disabled={busy} onClick={() => act('要求补资料', () => request({ method: 'POST', url: `/family-cars/${open.id}/office-review`, data: { decision: 'reupload', note, expectedVersion: open.dataVersion } }))}>要求补资料</button>
+            </> : null}
+            {canManager && open.status === 'manager' ? <>
+              <button className="btn p sm" disabled={busy} onClick={() => act('经理审核', () => request({ method: 'POST', url: `/family-cars/${open.id}/manager-review`, data: { decision: 'approve', note, expectedVersion: open.dataVersion } }))}>经理审核通过（按申请期限）</button>
+              <button className="btn sm" disabled={busy || !note.trim()} onClick={() => act('退回办公室', () => request({ method: 'POST', url: `/family-cars/${open.id}/manager-review`, data: { decision: 'return', note, expectedVersion: open.dataVersion } }))}>退回办公室</button>
+            </> : null}
+            {canEdit && open.status === 'opening' && open.lastError && !open.lastError.includes('等待') ? <button className="btn sm" disabled={busy} onClick={() => act('重试', () => request({ method: 'POST', url: `/family-cars/${open.id}/retry` }))}><Icon name="refresh" size={15} />失败重试</button> : null}
+            {canEdit && (open.status === 'expired' || (open.status === 'active' && open.expiringSoon)) ? <button className="btn sm" disabled={busy} onClick={() => renew(open)}>{busy ? '处理中…' : '续登一年'}</button> : null}
+            {canEdit && open.status === 'active' ? <button className="btn sm d" disabled={busy || !note.trim()} onClick={() => act('停用', () => request({ method: 'POST', url: `/family-cars/${open.id}/stop`, data: { note } }))}>停用</button> : null}
+          </div>
+          {open.status === 'opening' && <button className="btn sm" disabled={busy} onClick={() => void detail(open.id)}>刷新开通进度</button>}
+          <h3>操作记录</h3>{!open.log?.length && <p>暂无操作记录</p>}<ol className="np-log">{sortTimelineNewestFirst(open.log, l => l.at).map((l, i) => <li key={i}><time>{formatBeijingDateTime(l.at, 'MM-DD HH:mm')}</time><b>{l.userName}</b>{l.action}{l.note ? <small> · {l.note}</small> : null}</li>)}</ol>
+        </section>
+      </Sheet>}
       <div data-testid="family-cars-pagination" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'center', marginTop: 18 }}>
         <span className="muted">{meta ? `共 ${meta.total} 辆 · 第 ${meta.page} / ${Math.max(1, Math.ceil(meta.total / meta.pageSize))} 页` : '总数未获取'}</span>
         <button className="btn sm" disabled={!meta || meta.page <= 1} onClick={() => meta && setPaging({ kw, page: meta.page - 1, pageSize })}>上一页</button>

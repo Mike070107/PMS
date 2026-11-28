@@ -808,6 +808,11 @@ export class FamilyCarService {
       if (!opId) continue;
       const op = await this.operationRepo.findOne({ where: { id: opId, tenantId: car.tenantId } });
       if (op?.status === 'failed') {
+        if (op.id === car.registrationOperationId && op.kind === 'add_vehicle' && !op.payload.startDate) {
+          const startDate = op.payload.approvalStartDate || car.startDate;
+          if (!startDate) throw new BadRequestException('缺少原审批生效日，请核对登记期限');
+          op.payload = { ...op.payload, startDate };
+        }
         op.status = 'pending'; op.attempt = 0; op.completedAt = null; op.lastError = null;
         op.leaseAgentKey = null; op.leaseExpiresAt = null; op.updatedBy = user.id;
         await this.operationRepo.save(op);
@@ -1031,7 +1036,7 @@ export class FamilyCarService {
             plate: car.plate, ownerName: car.ownerName || roomKey(car.lane, car.buildingNo, car.roomNo), ownerPhone: car.ownerPhone,
             ownerAddress: roomKey(car.lane, car.buildingNo, car.roomNo), identity: '亲情车', amount: 0,
             ...(term.mode === 'months' ? { months: term.months } : {}),
-            legacyDatePolicy: 1, approvalStartDate: car.startDate, ...(term.legacyStartDate ? { startDate: term.legacyStartDate } : {}), endDate: car.endDate, proofUploadId: proofId,
+            legacyDatePolicy: 1, approvalStartDate: car.startDate, startDate: term.legacyStartDate || car.startDate, endDate: car.endDate, proofUploadId: proofId,
             garages: car.garages, garageNumbers: car.garageNumbers, spaces: car.garageNumbers.main || '',
             requiresProofReview: true, duplicateCheckQueryId: car.duplicateCheckQueryId,
             note: ['亲情车经理审批后登记', car.remark, '操作来源：PMS系统'].filter(Boolean).join('；'),

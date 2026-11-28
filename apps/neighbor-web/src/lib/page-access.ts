@@ -6,7 +6,7 @@ export const PAGE_ACCESS = [
   { paths: ['/cashier', '/vehicles', '/access-cards', '/access-devices', '/parking/main', '/parking/civil', '/records', '/standards', '/devices'], keys: ['business'] },
   { paths: ['/plates'], keys: ['business', 'family-cars', 'app:approve-business-manager', 'app:approve-manager'] },
   { paths: ['/family-cars'], keys: ['family-cars', 'family-cars-approve', 'app:family-car-approve', 'app:approve-business-manager'] },
-  { paths: ['/pending'], keys: ['business', 'app:approve-business-manager', 'app:approve-manager'] },
+  { paths: ['/pending'], keys: ['family-cars', 'family-cars-approve', 'app:family-car-approve', 'business', 'app:approve-business-manager', 'app:approve-manager'] },
   { paths: ['/apartment', '/apartment-cashier'], keys: ['apartment-cashier'] },
   { paths: ['/meters'], keys: ['meters'] },
   // 新版收费报表调用 /fees/reports/summary，沿用费用模块权限，不是旧版统计报表。

@@ -118,7 +118,7 @@ for (const width of [1440, 375]) test(`staff no-attachment registration + garage
   const f = await fixture(width); const p = f.page;
   try {
     await button(p, '工作人员直接代填').click();
-    assert.equal(await button(p, '保存登记，继续授权').isDisabled(), true);
+    assert.equal(await button(p, '保存资料，进入预览').isDisabled(), true);
     await p.getByRole('button', { name: '点选车牌', exact: true }).click();
     for (const key of '沪A12345') await p.locator('.intake-plate-keys').getByRole('button', { name: key, exact: true }).click();
     assert.equal(await p.getByLabel('本车联系手机（必填）').inputValue(), '', 'owner phone must not be silently reused');
@@ -139,10 +139,10 @@ for (const width of [1440, 375]) test(`staff no-attachment registration + garage
     assert.equal(await category.getByRole('radio',{name:'产权车',exact:true}).isChecked(),false);
     assert.equal(await category.locator('input:checked').count(),1);
     await category.getByRole('radio',{name:'住户车1'}).check(); await p.waitForFunction(() => window.__rendered.vehicleClass === '住户车-1');
-    assert.equal(await button(p, '保存登记，继续授权').isEnabled(), true);
+    assert.equal(await button(p, '保存资料，进入预览').isEnabled(), true);
     await screenshot(p, `staff-optional-${width}.png`);
     await p.evaluate(() => { window.__holdSubmit = true; });
-    await button(p, '保存登记，继续授权').click(); await button(p, '保存中…').waitFor();
+    await button(p, '保存资料，进入预览').click(); await button(p, '保存中…').waitFor();
     assert.equal(await button(p, '保存中…').isDisabled(), true);
     await screenshot(p, `staff-waiting-${width}.png`);
     await p.evaluate(() => window.__releaseSubmit()); await p.waitForFunction(() => window.__rendered.status === 'submitted');
@@ -174,7 +174,8 @@ for (const width of [1440, 375]) test(`staff no-attachment registration + garage
     assert.match(await space.textContent(), /B12/); assert.equal(await p.evaluate(() => window.__rendered.plate), '沪A12345');
     await p.evaluate(() => { window.__failReview = false; }); await button(p, '资料无误，通过').click();
     await p.waitForFunction(() => window.__rendered.status === 'approved' && window.__cart?.intakeId === 71);
-    assert.equal(await p.evaluate(() => window.__cart.months), 6);
+    await button(p, '6 个月').click();
+    await p.waitForFunction(() => window.__cart?.months === 6);
     assert.equal(await p.getByText('新办月租', { exact: false }).count() > 0, true);
     assert.equal(await p.getByLabel('本页收费清单').textContent(), '待收款 · 登记 71 · 6 个月 · 600 元');
     await button(p, '1 个月').click(); await p.waitForFunction(() => window.__cart?.months === 1);
@@ -207,9 +208,9 @@ test('family choice keeps conversion safeguards and local submission needs no at
     await p.getByRole('button', { name: '点选车牌', exact: true }).click();
     for (const key of '沪A12345') await p.locator('.intake-plate-keys').getByRole('button', { name: key, exact: true }).click();
     await p.getByLabel('本车联系手机（必填）').fill('13711112222');
-    assert.equal(await button(p, '保存登记，继续授权').isEnabled(), true);
-    await button(p, '保存登记，继续授权').click(); await p.waitForFunction(() => window.__rendered.status === 'submitted');
-    assert.deepEqual(await p.evaluate(() => window.__current().registrationTerm), {mode:'months',months:5});
+    assert.equal(await button(p, '保存资料，进入预览').isEnabled(), true);
+    await button(p, '保存资料，进入预览').click(); await p.waitForFunction(() => window.__rendered.status === 'submitted');
+    assert.deepEqual(await p.evaluate(() => JSON.parse(JSON.stringify(window.__current().registrationTerm))), {mode:'months',months:5});
     assert.equal(await p.evaluate(() => window.__current().files.length), 0);
     assert.equal(await p.evaluate(() => window.__current().relation), '父母');
     assert.equal(await p.evaluate(() => window.__current().ownerPhone), '13900000000');
@@ -228,7 +229,10 @@ test('local click/drop/targeted paste uploads exactly once and QR stays availabl
     await p.locator('.intake-upload').evaluate(el => { el.focus(); const dt = new DataTransfer(); dt.items.add(new File(['fixture'], 'paste.png', { type: 'image/png' })); el.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: dt })); });
     await p.waitForFunction(() => window.__rendered.files.length === 3);
     assert.equal(await p.evaluate(() => window.__calls.filter(c => c.url.endsWith('/files')).length), 3);
-    assert.equal(await button(p, '放大扫码登记二维码').count(), 1);
+    assert.equal(await p.locator('details .intake-upload').count(), 0);
+    assert.equal(await p.getByText('办理记录', {exact:true}).count(), 0);
+    await button(p, '收起工作人员代填').click();
+    await button(p, '放大扫码登记二维码').waitFor();
     await screenshot(p, 'staff-local-upload-1440.png');
   } finally { await f.close(); }
 });

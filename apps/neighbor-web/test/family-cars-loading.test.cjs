@@ -19,7 +19,7 @@ function harness(allowDetails = false) {
   };
   const module = { exports: {} };
   const source = fs.readFileSync(path.resolve(__dirname, '../src/pages/FamilyCars.tsx'), 'utf8') + '\nexport { FamilyList };';
-  const sandbox = { module, exports: module.exports, Error, console, require(id) {
+  const sandbox = { module, exports: module.exports, URLSearchParams, window: {location: {search: ""}}, Error, console, require(id) {
     if (id === 'react') return react;
     if (id === 'react/jsx-runtime') return require(id);
     if (id === '@pms/api-client') return { request: o => { assert.ok(o.url === '/family-cars' || (allowDetails && /^\/family-cars\/\d+(\/materials)?$/.test(o.url)), 'never call sync/import'); assert.ok(!o.method || o.method === 'GET'); return new Promise((resolve, reject) => requests.push({ o, resolve, reject })); } };

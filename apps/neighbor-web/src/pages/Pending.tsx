@@ -88,6 +88,29 @@ export default function Pending() {
     window.addEventListener('focus', loadIntakes);
     return () => { alive = false; clearInterval(timer); window.removeEventListener('focus', loadIntakes); };
   }, [canViewIntakes, intakeRefresh]);
+  const canViewFamily = ['family-cars', 'family-cars-approve', 'app:family-car-approve', 'app:approve-business-manager'].some(key => can(key, 'view'));
+  type ReviewGroup = { status: string; label: string; total: number; rows: { id: number; plate: string; roomKey: string }[] };
+  const [familyGroups, setFamilyGroups] = useState<ReviewGroup[]>([]);
+  const [familyError, setFamilyError] = useState('');
+  const [familyLoaded, setFamilyLoaded] = useState(false);
+  useEffect(() => {
+    if (!canViewFamily) return;
+    let revision = 0;
+    async function refresh() {
+      const turn = ++revision;
+      try {
+        const groups = await Promise.all([['office', '办公室审核'], ['manager', '经理审核'], ['returned', '已退回办公室']].map(async ([status, label]) => {
+          const page = await request<Pick<ReviewGroup, 'rows' | 'total'>>({ url: '/family-cars', query: {status, page: 1, pageSize: 20} });
+          return {status, label, rows: page.rows, total: page.total};
+        }));
+        if (turn === revision) { setFamilyGroups(groups); setFamilyError(''); setFamilyLoaded(true); }
+      } catch { if (turn === revision) setFamilyError('亲情车审核列表读取失败'); }
+    }
+    void refresh();
+    const timer = window.setInterval(refresh, 15000);
+    window.addEventListener('focus', refresh);
+    return () => { ++revision; clearInterval(timer); window.removeEventListener('focus', refresh); };
+  }, [canViewFamily, intakeRefresh]);
   const [txns, setTxns] = useState<Txn[] | null>(null);
   const [mode, setMode] = useState<Mode | null>(null);
   const [ready, setReady] = useState<AccessCardReadiness | null>(null);
@@ -160,7 +183,7 @@ export default function Pending() {
     { icon: 'check' as IconName, tone: 'amber', v: groups.dry.length, k: '演练待正式写入' },
     { icon: 'cpu' as IconName, tone: 'red', v: badAgents.length + (deliyunDown ? 1 : 0), k: '设备 / 助手异常' },
   ];
-  const hasAny = (canViewIntakes && (intakeLoading || intakeError || intakes?.length || awaitingSubmission.length)) || groups.review.length || groups.docs.length || groups.needHand.length || groups.inFlight.length || groups.dry.length || badAgents.length || deliyunDown;
+  const hasAny = (canViewFamily && (!familyLoaded || familyError || familyGroups.some(group => group.total))) || (canViewIntakes && (intakeLoading || intakeError || intakes?.length || awaitingSubmission.length)) || groups.review.length || groups.docs.length || groups.needHand.length || groups.inFlight.length || groups.dry.length || badAgents.length || deliyunDown;
 
   const row = (t: Txn) => {
     const s = ST[t.externalSyncStatus] || ST.queued;
@@ -228,6 +251,16 @@ export default function Pending() {
         ))}
       </div>
 
+      {canViewFamily && <section className="card" aria-label="亲情车待审核" style={{padding:16, marginBottom:18}}>
+        <h2>亲情车待审核</h2>
+        {familyError && <p role="alert">{familyError} <button className="btn sm" onClick={() => setIntakeRefresh(n => n + 1)}>重试</button></p>}
+        {!familyLoaded && !familyError && <Loading />}
+        {familyGroups.map(group => <div key={group.status}>
+          <h3>{group.label} · {group.total} 笔</h3>
+          {group.rows.map(row => <button key={row.id} className="btn sm" style={{margin:'0 8px 8px 0'}} onClick={() => nav('/family-cars?detail=' + row.id + '&plate=' + encodeURIComponent(row.plate))}>{row.plate} · {row.roomKey}</button>)}
+          {group.total > group.rows.length && <button className="btn sm" onClick={() => nav('/family-cars?status=' + group.status)}>查看全部 {group.total} 笔</button>}
+        </div>)}
+      </section>}
       {canViewIntakes && <section aria-label="待提交资料" style={{ marginBottom: 18 }}>
         <h2 className="secTitle"><Icon name="file" size={18}/>待提交资料</h2>
         {awaitingSubmission.map(i => <div className="card" key={i.id} style={{padding:12,marginBottom:8}}>

@@ -605,3 +605,18 @@ input[data-money-input]::-webkit-outer-spin-button { -webkit-appearance: none; m
 .address-search-detail{flex:0 1 auto;text-align:left;font-weight:600;font-variant-numeric:tabular-nums}
 .address-search-location{flex:0 1 auto;text-align:right;color:var(--muted)}
 .address-search-match mark{background:#146c43;color:#fff;font-weight:800;border-radius:2px;padding-inline:1px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+
+.family-case-table { min-width: 1120px; }
+.family-case-detail { display: grid; gap: 12px; overflow-wrap: anywhere; padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+.family-case-detail h3 { margin: 6px 0 0; }
+@container (max-width: 760px) {
+  .family-case-table { display: block; min-width: 0; width: 100%; }
+  .family-case-table thead { display: none; }
+  .family-case-table tbody { display: block; }
+  .family-case-table tr { display: grid; grid-template-columns: minmax(0,1fr) auto; padding: 12px; gap: 6px 12px; border-bottom: 1px solid var(--line); }
+  .family-case-table.tbl td { display: block; padding: 2px 0; white-space: normal; border: 0; }
+  .family-case-table td[data-label], .family-case-table td[colspan], .family-case-table td:nth-child(8) { grid-column: 1 / -1; }
+  .family-case-table td[data-label]::before { content: attr(data-label) "　"; color: var(--ink2); }
+  .family-case-table td:nth-child(6) { grid-column: 2; grid-row: 1; }
+  .family-case-table td:nth-child(9) { grid-column: 2; grid-row: 7; }
+}

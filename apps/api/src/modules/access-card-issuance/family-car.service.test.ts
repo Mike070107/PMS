@@ -368,7 +368,13 @@ test('1个月登记按月末钳制期限执行，自定义未来起始日等待�
   await h.family.officeReview(car.id, 'approve', '', office);
   const approved = await h.family.managerReview(car.id, 'approve', '', manager);
   assert.equal(approved.startDate, '2026-01-31'); assert.equal(approved.endDate, '2026-02-27');
-  assert.equal(h.operations[0].payload.months, 1); assert.equal(h.operations[0].payload.startDate, undefined);
+  assert.equal(h.operations[0].payload.months, 1); assert.equal(h.operations[0].payload.startDate, approved.startDate);
+  const failed = h.operations[0];
+  delete failed.payload.startDate;
+  failed.status = 'failed';
+  await h.family.retry(car.id, office);
+  assert.equal(failed.payload.startDate, approved.startDate);
+  assert.equal(h.operations.filter(op => op.kind === 'add_vehicle').length, 1);
   h.complete(approved.operations.registration);
   await h.family.get(car.id, office);
   h.complete(h.operations.find(op => op.kind === 'update_garages').id);
