@@ -40,7 +40,9 @@ async function fixture(query=''){
 test('亲情车经理从待处理打开原单，核对时间线与审核操作',async()=>{
  const f=await fixture('?familyReview=1');try {
   await f.page.setViewportSize({width:375,height:640});
-  await f.page.getByRole('region',{name:'亲情车待审核'}).getByRole('button',{name:/沪F12345/}).click();
+  await f.page.getByRole('region',{name:'待经理审核'}).waitFor();
+  assert.equal(await f.page.locator('.stat').filter({hasText:'待经理审核'}).locator('.v').innerText(), '1');
+  await f.page.getByRole('region',{name:'待经理审核'}).getByRole('button',{name:/沪F12345/}).click();
   const detail=f.page.getByRole('dialog',{name:/沪F12345/});
   await detail.getByText('操作记录',{exact:true}).waitFor();
   await detail.getByText(/办公室已确认资料/).waitFor();

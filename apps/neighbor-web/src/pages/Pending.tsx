@@ -174,9 +174,24 @@ export default function Pending() {
 
   if (txns === null && ready === null) return <Loading />;
 
+  const familyGroup = (status: string) => canViewFamily ? familyGroups.find(group => group.status === status) : undefined;
+  const managerCount = groups.review.length + (familyGroup('manager')?.total ?? 0);
+  const familyRows = (status: string) => {
+    const group = familyGroup(status);
+    if (!group?.total) return null;
+    return <>
+      {group.rows.map(item => <div className="pendRow" key={item.id}>
+        <div className="pi ic amber"><Icon name="car" /></div>
+        <div className="pm"><b>亲情车 {item.plate} <span className="tag warn">{group.label}</span></b>
+          <small>{item.roomKey} · 申请 #{item.id}</small></div>
+        <button className="btn sm" aria-label={`查看亲情车申请 ${item.plate}`} onClick={() => nav('/family-cars?detail=' + item.id + '&plate=' + encodeURIComponent(item.plate))}>查看申请</button>
+      </div>)}
+      {group.total > group.rows.length && <button className="btn sm" onClick={() => nav('/family-cars?status=' + status)}>查看全部 {group.total} 笔亲情车申请</button>}
+    </>;
+  };
   const stats = [
-    ...(canViewIntakes ? [{ icon: 'file' as IconName, tone: 'amber', v: intakeError ? '—' : intakes === null ? '…' : intakes.length, k: '当前显示待审车牌' }] : []),
-    { icon: 'clock' as IconName, tone: 'amber', v: groups.review.length, k: '待经理审核' },
+    ...(canViewIntakes ? [{ icon: 'file' as IconName, tone: 'amber', v: intakeError ? '—' : intakes === null ? '…' : intakes.length + (familyGroup('office')?.rows.length ?? 0), k: '当前显示待审车牌' }] : []),
+    { icon: 'clock' as IconName, tone: 'amber', v: canViewFamily && (familyError || !familyLoaded) ? '—' : managerCount, k: '待经理审核' },
     { icon: 'file' as IconName, tone: 'amber', v: groups.docs.length, k: '新办等业主资料' },
     { icon: 'alert' as IconName, tone: 'red', v: groups.needHand.length, k: '需人工处理' },
     { icon: 'refresh' as IconName, tone: 'blue', v: groups.inFlight.length, k: '执行中 / 排队' },
@@ -251,16 +266,9 @@ export default function Pending() {
         ))}
       </div>
 
-      {canViewFamily && <section className="card" aria-label="亲情车待审核" style={{padding:16, marginBottom:18}}>
-        <h2>亲情车待审核</h2>
-        {familyError && <p role="alert">{familyError} <button className="btn sm" onClick={() => setIntakeRefresh(n => n + 1)}>重试</button></p>}
-        {!familyLoaded && !familyError && <Loading />}
-        {familyGroups.map(group => <div key={group.status}>
-          <h3>{group.label} · {group.total} 笔</h3>
-          {group.rows.map(row => <button key={row.id} className="btn sm" style={{margin:'0 8px 8px 0'}} onClick={() => nav('/family-cars?detail=' + row.id + '&plate=' + encodeURIComponent(row.plate))}>{row.plate} · {row.roomKey}</button>)}
-          {group.total > group.rows.length && <button className="btn sm" onClick={() => nav('/family-cars?status=' + group.status)}>查看全部 {group.total} 笔</button>}
-        </div>)}
-      </section>}
+      {canViewFamily && familyError && <p role="alert">{familyError} <button className="btn sm" onClick={() => setIntakeRefresh(n => n + 1)}>重试</button></p>}
+      {canViewFamily && !familyLoaded && !familyError && <Loading />}
+      {familyGroup('returned')?.total ? <section aria-label="待补正"><h2 className="secTitle">待补正</h2>{familyRows('returned')}</section> : null}
       {canViewIntakes && <section aria-label="待提交资料" style={{ marginBottom: 18 }}>
         <h2 className="secTitle"><Icon name="file" size={18}/>待提交资料</h2>
         {awaitingSubmission.map(i => <div className="card" key={i.id} style={{padding:12,marginBottom:8}}>
@@ -271,7 +279,7 @@ export default function Pending() {
         </div>)}
         {!awaitingSubmission.length && <div className="muted">{intakeError ? '待提交资料读取失败，请刷新重试' : intakeLoading ? '正在读取待提交资料…' : '暂无待提交资料'}</div>}
       </section>}
-      {canViewIntakes ? (
+      {canViewIntakes || familyGroup('office')?.total ? (
         <section aria-label="新办车牌待审核资料" style={{ marginBottom: 18 }}>
           <div className="secTitle" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
             <Icon name="file" size={18} style={{ color: 'var(--warn)' }} />新办车牌待审核资料
@@ -281,6 +289,7 @@ export default function Pending() {
           <p className="muted">业主已提交的付费新车及亲情车资料，不限是否收款；每 15 秒刷新，最多显示最近 200 条。资料通过不代表停车授权已生效。</p>
           {intakeLoading && intakes === null ? <div role="status" className="muted">正在读取待审核车牌…</div> : null}
           {intakeError ? <div className="note2" role="alert" style={{ color: 'var(--dang)' }}>{intakeError}。请刷新重试；{intakes === null ? '尚不能确认待审数量。' : '下方保留上次读取结果，进入登记后以最新状态为准。'}</div> : null}
+          {familyRows('office')}
           {(intakes ?? []).map(i => (
             <div className="pendRow" key={`intake-${i.id}`} style={{ flexWrap: 'wrap' }}>
               <div className="pi ic amber"><Icon name="car" /></div>
@@ -291,7 +300,7 @@ export default function Pending() {
               <button className="btn sm p" style={{ marginLeft: 'auto' }} aria-label={`${canReviewIntakes ? '查看并审核' : '查看'}登记 #${i.id}`} onClick={() => nav(`/plates?intakeId=${i.id}`)}>{canReviewIntakes ? '查看并审核' : '查看资料'}<Icon name="search" size={16} /></button>
             </div>
           ))}
-          {!intakeLoading && !intakeError && intakes?.length === 0 ? <p className="muted">暂无待审核的车牌资料</p> : null}
+          {!intakeLoading && !intakeError && intakes?.length === 0 && !familyGroup('office')?.total ? <p className="muted">暂无待审核的车牌资料</p> : null}
         </section>
       ) : null}
 
@@ -302,7 +311,7 @@ export default function Pending() {
         </div>
       ) : null}
 
-      {groups.review.length ? <><div className="secTitle"><Icon name="clock" size={18} style={{ color: 'var(--warn)' }} />待物业经理审核（非标准续期，通过后系统自动续期）</div>{groups.review.map(row)}</> : null}
+      {managerCount ? <section aria-label="待经理审核"><div className="secTitle"><Icon name="clock" size={18} style={{ color: 'var(--warn)' }} />待经理审核</div>{groups.review.map(row)}{familyRows('manager')}</section> : null}
       {groups.docs.length ? <><div className="secTitle"><Icon name="file" size={18} style={{ color: 'var(--warn)' }} />新办车牌：款已收，等业主资料（在「车牌登记审核」查看扫码进度）</div>{groups.docs.map(row)}</> : null}
       {groups.needHand.length ? <><div className="secTitle"><Icon name="alert" size={18} style={{ color: 'var(--dang)' }} />需人工处理</div>{groups.needHand.map(row)}</> : null}
       {groups.inFlight.length ? <><div className="secTitle"><Icon name="refresh" size={18} style={{ color: 'var(--acc)' }} />执行中</div>{groups.inFlight.map(row)}</> : null}
