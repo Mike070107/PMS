@@ -348,3 +348,5 @@ Web 金额控件隐藏步进并关闭滚轮改值；Chrome 合成原生与 Ant �
 物业 Web 2.0.20261128-091048（84d792b8），API api-735c575（含旧库商铺双字段匹配），助手 2.6.14。发布前后 API 环境文件指纹一致。Web/API 公网制品校验通过，/pending 返回 200。生产只读核对两笔指定亲情车均为 manager。Chrome 隔离回归 vehicle-staff-registration-browser 8/8、pending-plate-review-browser 7/7，现场账户登录后列表与真实商铺车牌匹配未验。回滚统一入口可恢复 /opt/pms-repair/web.bak.1795828303；回退整批使用 web.bak.1795828199 和 /opt/pms-backups/api/before-735c5754/dist.tar.gz，仅恢复应用制品。发布证据 artifacts/release-checks/publish-20261128-091014-48092-timings.json 和 publish-20261128-091157-32360-timings.json。
 
 2026-11-28 沪ADT788 申请 785：新增 336 回读成功，授权 337 因 Up_PakIssue 不接受 @Car_Zt 而失败。助手 2.6.15 修复为同事务更新目标发卡记录状态并回读授权与状态，API/Web 显示授权失败。原任务应在网关升级后重试；实际现场开通待核验。
+
+2026-11-28 09:51 待处理全流程工作清单已发布：Web 2.0.20261128-094939、API api-bba8394。亲情车按待资料、审核、补正、执行中及受阻归入现有处理入口；补充待收款、状态导航、下一步与操作摘要。浏览器 pending-plate-review-browser 8/8、API family-car-list 6/6，正式发布两端已核验制品。回退 Web /opt/pms-repair/web.bak.1795830637，API /opt/pms-backups/api/before-pending-20261128-0945/dist.tar.gz。发布计时 artifacts/release-checks/publish-20261128-095051-48332-timings.json。停车助手 2.6.15 已发布并验证真实 SCM 安装；沪ADT788 单785任务337等待现场心跳升级后重试，其他车牌没有批量重试授权。
