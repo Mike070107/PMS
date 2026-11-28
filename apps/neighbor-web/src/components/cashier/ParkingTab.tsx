@@ -661,7 +661,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
             <div className="note2" style={{ marginBottom: 10 }}><Icon name="alert" />本小区还没有给「{lots.map((l) => l.label).join('、') || '该停车场'}」建车辆类别，暂按通用规则「{rule?.name}」计价。</div>
           ) : null}
           {!lots.length && !intakeId ? <div className="muted">至少勾选一个要续期的系统</div> : (
-            <>
+            <div className={intakeId ? "intake-card" : undefined}>
               {!custom && hasLocal && <LegacyStartDate value={selectedStart} end={est?.endDate ?? undefined} onChange={v => { invalidateQuote(); setSelectedStart(v); }} />}
               <div className="quickMonths" style={{ marginTop: 0 }}>
                 <span style={{ fontSize: 14, color: 'var(--ink2)', marginRight: 4 }}>{intakeId ? '车牌授权期限' : '续：'}</span>
@@ -698,7 +698,7 @@ export function CarRenewal({ car: sel, rules, house, onCart, onRemove, intakeId,
                   <div className="note2" style={{ marginTop: 8 }}><Icon name="alert" />非标准续期先登记收款，提交物业经理审核；审核通过后系统才续期，驳回则不续期、由前台按原因退款或重办。</div>
                 </div>
               ) : null}
-            </>
+            </div>
           )}
         </div>
         );

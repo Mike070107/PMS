@@ -135,3 +135,34 @@
 .existing-plate-notice > div { flex: 1; min-width: 0; }
 .existing-plate-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .existing-plate-actions .btn { white-space: nowrap; }
+
+.intake-card,
+fieldset.np-garages.intake-card {
+  box-sizing: border-box;
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 12px 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--acc-w);
+}
+.intake-identity .registration-plate {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.intake-identity .registration-plate > :is(label, small, div) { flex-basis: 100%; }
+.intake-identity .plate-input-wrap { flex: 1 1 170px; margin: 0; }
+.intake-identity .plate-keypad-toggle { margin: 0; white-space: nowrap; }
+.intake-identity .registration-plate > small { order: 1; }
+.intake-identity :is(.registration-contacts, .np-fields) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 12px;
+  margin: 12px 0 0;
+}

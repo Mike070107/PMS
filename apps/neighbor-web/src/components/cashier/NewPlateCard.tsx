@@ -351,7 +351,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
     if (first) { document.getElementById(fieldId(first))?.focus(); return; }
     void staffSubmit();
   };
-  const garageFields = (<fieldset className="np-garages" aria-invalid={submitAttempted && (!picked.length || missingSpace)} aria-describedby={submitAttempted && (!picked.length || missingSpace) ? fieldId("garage-error") : undefined} aria-busy={savingGarages}>
+  const garageFields = (<fieldset className="np-garages intake-card" aria-invalid={submitAttempted && (!picked.length || missingSpace)} aria-describedby={submitAttempted && (!picked.length || missingSpace) ? fieldId("garage-error") : undefined} aria-busy={savingGarages}>
               <legend>开通车库授权 <span>可多选</span></legend>
               <p className="np-garage-help">大车库、人防车库需同时授权二期地面；取消二期地面会一并取消这两项。</p>
               <div className="np-garage-options">
@@ -399,32 +399,34 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
           {canStaff && !it.homeUpload ? <section className="intake-registration-form" aria-label="工作人员代填">
             <header className="intake-registration-heading"><div><h3>{staffMode ? '办公室填写资料' : `${scanRegistrant}扫码填写资料`}</h3></div><button type="button" className="btn" aria-expanded={staffMode} disabled={!!busy} onClick={() => setStaffMode(!staffMode)}>{staffMode ? defaultStaffMode ? `改由${scanRegistrant}扫码` : '收起工作人员代填' : '工作人员直接代填'}</button></header>
             {staffMode ? <fieldset disabled={!!busy || savingGarages} style={{ border: 0, padding: 0, minWidth: 0 }}>
-              <IntakePlatePicker inputId={fieldId('plate')} invalid={attempted && plateInvalid} value={edit.plate} onChange={plate => setEdit({ ...edit, plate })} disabled={!!busy} />
-              <div className="registration-contacts">
-                <div className="registration-field">
-                  <label htmlFor={fieldId('phone')}>本车联系手机（必填）</label>
-                  <input id={fieldId('phone')} className="in" inputMode="tel" autoComplete="off" maxLength={11}
-                    value={edit.contactPhone} onChange={e => setEdit({ ...edit, contactPhone: e.target.value })}
-                    aria-invalid={attempted && phoneInvalid}
-                    aria-describedby={[fieldId('phone-help'), attempted && phoneInvalid ? fieldId('phone-error') : ''].filter(Boolean).join(' ')} />
-                  {attempted && phoneInvalid && <small id={fieldId('phone-error')}>请输入本车联系人 11 位手机号</small>}
-                  <span id={fieldId('phone-help')} className="intake-contact-help">仅用于本车，房屋业主电话保持原值。</span>
+              <div className="intake-card intake-identity">
+                <IntakePlatePicker inputId={fieldId('plate')} invalid={attempted && plateInvalid} value={edit.plate} onChange={plate => setEdit({ ...edit, plate })} disabled={!!busy} />
+                <div className="registration-contacts">
+                  <div className="registration-field">
+                    <label htmlFor={fieldId('phone')}>本车联系手机（必填）</label>
+                    <input id={fieldId('phone')} className="in" inputMode="tel" autoComplete="off" maxLength={11}
+                      value={edit.contactPhone} onChange={e => setEdit({ ...edit, contactPhone: e.target.value })}
+                      aria-invalid={attempted && phoneInvalid}
+                      aria-describedby={[fieldId('phone-help'), attempted && phoneInvalid ? fieldId('phone-error') : ''].filter(Boolean).join(' ')} />
+                    {attempted && phoneInvalid && <small id={fieldId('phone-error')}>请输入本车联系人 11 位手机号</small>}
+                    <span id={fieldId('phone-help')} className="intake-contact-help">仅用于本车，房屋业主电话保持原值。</span>
+                  </div>
+                  <div className="registration-field">
+                    <label htmlFor={fieldId('contact-name')}>车主（选填）</label>
+                    <input id={fieldId('contact-name')} className="in" value={edit.contactName}
+                      onChange={e => setEdit({ ...edit, contactName: e.target.value })} />
+                  </div>
+                  {it.kind === 'family' && <div className="registration-field">
+                    <label htmlFor={fieldId('relation')}>与业主关系（必填）</label>
+                    <input id={fieldId('relation')} className="in" maxLength={12} value={edit.relation}
+                      onChange={e => setEdit({ ...edit, relation: e.target.value })}
+                      aria-invalid={attempted && relationInvalid}
+                      aria-describedby={attempted && relationInvalid ? fieldId('relation-error') : undefined} />
+                    {attempted && relationInvalid && <small id={fieldId('relation-error')}>请填写具体亲属关系</small>}
+                  </div>}
                 </div>
-                <div className="registration-field">
-                  <label htmlFor={fieldId('contact-name')}>车主（选填）</label>
-                  <input id={fieldId('contact-name')} className="in" value={edit.contactName}
-                    onChange={e => setEdit({ ...edit, contactName: e.target.value })} />
-                </div>
-                {it.kind === 'family' && <div className="registration-field">
-                  <label htmlFor={fieldId('relation')}>与业主关系（必填）</label>
-                  <input id={fieldId('relation')} className="in" maxLength={12} value={edit.relation}
-                    onChange={e => setEdit({ ...edit, relation: e.target.value })}
-                    aria-invalid={attempted && relationInvalid}
-                    aria-describedby={attempted && relationInvalid ? fieldId('relation-error') : undefined} />
-                  {attempted && relationInvalid && <small id={fieldId('relation-error')}>请填写具体亲属关系</small>}
-                </div>}
               </div>
-              {it.kind === 'family' && it.status !== 'submitted' && <div className="registration-term-field"><RegistrationTermEditor title="车牌授权期限" attempted={attempted} value={term} onChange={setDraftTerm} /></div>}
+              {it.kind === 'family' && it.status !== 'submitted' && <div className="registration-term-field intake-card"><RegistrationTermEditor title="车牌授权期限" attempted={attempted} value={term} onChange={setDraftTerm} /></div>}
               <div className="intake-upload" tabIndex={0} aria-label="本条登记附件上传区" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); void uploadFiles(e.dataTransfer.files); }} onPaste={e => { if (e.clipboardData.files.length) { e.preventDefault(); e.stopPropagation(); void uploadFiles(e.clipboardData.files); } }}>
                 <input ref={uploadInput} type="file" accept="image/*,application/pdf" multiple hidden onChange={e => { if (e.target.files) void uploadFiles(e.target.files); e.target.value = ''; }} />
                 <button type="button" className="btn" onClick={() => uploadInput.current?.click()}>本地上传附件（选填）</button>
@@ -509,15 +511,17 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
           {it.submittedAt && !canQr ? (
             <>
               <h3>资料预览与审核</h3>
-              {!(staffMode && canStaff) ? <IntakePlatePicker value={edit.plate} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={plate => setEdit({ ...edit, plate })} /> : null}
-              <div className="np-fields">
-                <label>车主（选填）<input className="in" value={edit.contactName} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={(e) => setEdit({ ...edit, contactName: e.target.value })} /></label>
-                <label>本车联系手机<input className="in" value={edit.contactPhone} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={(e) => setEdit({ ...edit, contactPhone: e.target.value })} /></label>
-                {it.kind === 'family' ? (
-                  <label>与业主关系<select aria-label="与业主关系" className="in" value={edit.relation} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={(e) => setEdit({ ...edit, relation: e.target.value })}>
-                    <option value="">请选择</option>{[...RELATIONS, ...(edit.relation && !RELATIONS.includes(edit.relation) ? [edit.relation] : [])].map((r) => <option key={r}>{r}</option>)}
-                  </select></label>
-                ) : null}
+              <div className="intake-card intake-identity">
+                {!(staffMode && canStaff) ? <IntakePlatePicker value={edit.plate} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={plate => setEdit({ ...edit, plate })} /> : null}
+                <div className="np-fields">
+                  <label>车主（选填）<input className="in" value={edit.contactName} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={(e) => setEdit({ ...edit, contactName: e.target.value })} /></label>
+                  <label>本车联系手机<input className="in" value={edit.contactPhone} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={(e) => setEdit({ ...edit, contactPhone: e.target.value })} /></label>
+                  {it.kind === 'family' ? (
+                    <label>与业主关系<select aria-label="与业主关系" className="in" value={edit.relation} disabled={!!busy || !['submitted', 'reupload'].includes(it.status)} onChange={(e) => setEdit({ ...edit, relation: e.target.value })}>
+                      <option value="">请选择</option>{[...RELATIONS, ...(edit.relation && !RELATIONS.includes(edit.relation) ? [edit.relation] : [])].map((r) => <option key={r}>{r}</option>)}
+                    </select></label>
+                  ) : null}
+                </div>
               </div>
               <div className="np-files">
                 {it.files.map(f => <IntakeAttachment key={f.fileUrl} file={f}/>)}
@@ -534,7 +538,7 @@ export default function NewPlateCard({ intake: it, house, rules, targets: target
             garageFields
           ) : null}
 
-              {it.kind === 'family' && it.status === 'submitted' && <div className="registration-term-field"><RegistrationTermEditor title="车牌授权期限" attempted={attempted} value={term} onChange={setDraftTerm} /></div>}
+              {it.kind === 'family' && it.status === 'submitted' && <div className="registration-term-field intake-card"><RegistrationTermEditor title="车牌授权期限" attempted={attempted} value={term} onChange={setDraftTerm} /></div>}
           {/* 审核 */}
           {canReview && ['submitted', 'reupload'].includes(it.status) && it.submittedAt ? (
             <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
