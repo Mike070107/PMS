@@ -8280,3 +8280,10 @@
 - 自上次（0198e722）以来上线的相关提交：
   - c73a3e6b parking-renewal-garage-deregistration-and-shop-search
 
+## 2026-11-28 08:39 · api · 3d3098ee
+
+- 包：`pms-api-fast-20261128-083747.tar.gz`
+- 提交：3d3098ee 修复亲情车开通日期并整合登记审核流程
+- 自上次（c73a3e6b）以来上线的相关提交：
+  - 3d3098ee 修复亲情车开通日期并整合登记审核流程
+
