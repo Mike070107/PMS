@@ -350,3 +350,5 @@ Web 金额控件隐藏步进并关闭滚轮改值；Chrome 合成原生与 Ant �
 2026-11-28 沪ADT788 申请 785：新增 336 回读成功，授权 337 因 Up_PakIssue 不接受 @Car_Zt 而失败。助手 2.6.15 修复为同事务更新目标发卡记录状态并回读授权与状态，API/Web 显示授权失败。原任务应在网关升级后重试；实际现场开通待核验。
 
 2026-11-28 09:51 待处理全流程工作清单已发布：Web 2.0.20261128-094939、API api-bba8394。亲情车按待资料、审核、补正、执行中及受阻归入现有处理入口；补充待收款、状态导航、下一步与操作摘要。浏览器 pending-plate-review-browser 8/8、API family-car-list 6/6，正式发布两端已核验制品。回退 Web /opt/pms-repair/web.bak.1795830637，API /opt/pms-backups/api/before-pending-20261128-0945/dist.tar.gz。发布计时 artifacts/release-checks/publish-20261128-095051-48332-timings.json。停车助手 2.6.15 已发布并验证真实 SCM 安装；沪ADT788 单785任务337等待现场心跳升级后重试，其他车牌没有批量重试授权。
+
+2026-11-28 待处理导航角标：426e79ae 修复 API 漏计未办结亲情车、已审待收款登记及经理角色可见范围，导航切页不再清零。业务计数 SQL 隔离回归、API 类型检查、Web 构建和 navigation-hierarchy-browser 通过。生产授权待确认，生产只读当时有 3 笔 opening。沪ADT788 的授权 337 和续期 346 均已回读 verified，申请状态待同步核对。
