@@ -259,7 +259,7 @@ export class VehicleIntakeService {
     };
   }
 
-  async list(query: { status?: string; kind?: string; q?: string; houseId?: number; shopBuildingId?: number; open?: boolean; reviewList?: string }, user: AuthUser, access?: ResolvedAccess) {
+  async list(query: { status?: string; kind?: string; q?: string; houseId?: number; shopBuildingId?: number; open?: boolean; reviewList?: string; beforeId?: string; awaitingPayment?: string }, user: AuthUser, access?: ResolvedAccess) {
     const tenantId = this.tenant(user);
     const scope = scopeCommunityIds(access);
     if (scope && !scope.length) return [];
@@ -296,6 +296,11 @@ export class VehicleIntakeService {
           .orWhere('i.contact_phone ILIKE :kw2').orWhere('i.owner_phone ILIKE :kw2');
       }));
     }
+    if (query.awaitingPayment === '1') qb.andWhere("i.kind='paid' AND i.status='approved' AND i.transaction_id IS NULL AND NOT i.log @> CAST(:released AS jsonb)", {
+      released: JSON.stringify([{ action: CANCELLED_PLATE_RELEASED }]),
+    });
+    const cursor = Number(query.beforeId);
+    if (Number.isSafeInteger(cursor) && cursor > 0) qb.andWhere('i.id < :cursor', { cursor });
     const rows = await qb.orderBy('i.id', 'DESC').take(200).getMany();
     return Promise.all(rows.map((row) => this.view(row, false, (row as VehicleIntake & { familyReview?: FamilyCar }).familyReview ?? null)));
   }
@@ -1068,7 +1073,7 @@ export class VehicleIntakeService {
       officeConfirmedVersion: row.officeConfirmedVersion ?? null,
       registrationTerm: row.registrationTerm ?? null, materialHistory: row.materialHistory ?? [],
       createdAt: row.createdAt, updatedAt: row.updatedAt,
-      ...(withLog ? { log: row.log } : {}),
+      ...(withLog ? { log: row.log } : { log: row.log?.slice(-1) ?? [] }),
     };
   }
 

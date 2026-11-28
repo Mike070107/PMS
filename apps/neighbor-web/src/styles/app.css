@@ -620,3 +620,13 @@ input[data-money-input]::-webkit-outer-spin-button { -webkit-appearance: none; m
   .family-case-table td:nth-child(6) { grid-column: 2; grid-row: 1; }
   .family-case-table td:nth-child(9) { grid-column: 2; grid-row: 7; }
 }
+
+.pending-next { margin-block: 4px; font-weight: 600; line-height: 1.5; color: var(--ink); }
+.pendRow:has(.pending-next) { flex-wrap: wrap; gap: 10px; }
+.pendRow:has(.pending-next) .pm { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
+
+.pending-shortcuts { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.pending-shortcuts .pending-shortcut { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; min-height: 44px; color: var(--ink); text-decoration: none; }
+.pending-shortcuts .pending-shortcut .v { font-size: 18px; margin: 0; }
+.pending-shortcuts .pending-shortcut.red { border-color: var(--dang); }
+[id^="pending-"] { scroll-margin-top: 76px; }

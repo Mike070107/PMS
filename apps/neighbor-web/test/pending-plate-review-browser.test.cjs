@@ -24,6 +24,10 @@ async function fixture(query=''){
  const item={id:87,plate:'沪F12345',roomKey:'228/6/501',dataVersion:2,status:window.familyApproved?'opening':'manager',statusLabel:window.familyApproved?'开通中':'待经理审核',garages:['phase2'],fileCount:0,files:[],log:[{at:'2026-11-28T00:08:00Z',action:'办公室已确认资料',userName:'办公室'}]};
  if(window.familyApproved)item.log.push({at:'2026-11-28T00:09:00Z',action:'物业经理审核通过',userName:'物业经理'});
  if(url.endsWith('/87'))return item;
+ if(p.has('openingQueue') && url==='/family-cars') {
+ const rows=query.status==='opening'?[{...item,id:88,plate:'沪TEST88',lastError:'等待原旧库登记任务完成'},{...item,id:89,plate:'沪TEST89',lastError:'车库授权失败：状态回读不一致'}]:[];
+ return {rows,total:rows.length};
+ }
  const rows=(p.has('familyReview') || location.pathname==='/family-cars') && (!query.status || query.status===item.status)?[item]:[];
  return {rows,total:rows.length,page:1,pageSize:20};
  }
@@ -98,4 +102,14 @@ test('待处理中先见待提交，点原单继续，提交后移入审核',asy
   await pending.getByText('暂无待提交资料').waitFor();
   await f.page.getByRole('region',{name:'新办车牌待审核资料'}).getByRole('button',{name:'查看并审核登记 #65'}).waitFor();
  } finally {await f.close();}
+});
+
+test('开通等待与授权失败分别留在执行中和需人工处理',async()=>{
+ const f=await fixture('?openingQueue=1&noTxn=1');try {
+  for(const [plate,label] of [['沪TEST88','执行中 / 排队'],['沪TEST89','需人工处理']]){
+   await f.page.getByRole('button',{name:'查看亲情车申请 '+plate}).waitFor();
+   assert.equal(await f.page.locator('.stat').filter({hasText:label}).locator('.v').innerText(),'1');
+  }
+  assert.match(await f.page.locator('.pendRow').filter({hasText:'沪TEST89'}).innerText(),/状态回读不一致/);
+ }finally{await f.close();}
 });

@@ -1362,6 +1362,7 @@ export class FamilyCarService {
   }
 
   private view(car: FamilyCar, today = shanghaiDate()) {
+    const latest = car.log?.[car.log.length - 1];
     return {
       id: car.id,
       houseId: car.houseId,
@@ -1388,6 +1389,7 @@ export class FamilyCarService {
       garages: car.garages,
       garageNumbers: car.garageNumbers,
       fileCount: car.files.length,
+      latestAction: latest ? { at: latest.at, action: latest.action, userName: latest.userName } : null,
       lastError: car.lastError,
       previousId: car.previousId,
       createdAt: car.createdAt,

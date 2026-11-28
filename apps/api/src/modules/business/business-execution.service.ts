@@ -694,11 +694,12 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
     return { count: Number(row.count) };
   }
 
-  async pending(tenantId: number, scope: number[] | null) {
+  async pending(tenantId: number, scope: number[] | null, beforeId?: number) {
     const where = {
       tenantId,
       serviceType: BusinessServiceType.PARKING_MONTHLY,
       externalSyncStatus: In(PENDING_STATUSES),
+      ...(beforeId && Number.isSafeInteger(beforeId) && beforeId > 0 ? { id: LessThan(beforeId) } : {}),
       ...(scope ? { communityId: In(scope) } : {}),
     };
     return this.txnRepo.find({ where, order: { id: 'DESC' }, take: 200 });

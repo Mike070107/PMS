@@ -185,8 +185,8 @@ export class BusinessController {
 
   @Get('execution/pending')
   @RequirePermission('business', 'view')
-  executionPending(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
-    return this.execution.pending(user.tenantId!, scopeCommunityIds(access));
+  executionPending(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess, @Query('beforeId') beforeId?: string) {
+    return this.execution.pending(user.tenantId!, scopeCommunityIds(access), Number(beforeId));
   }
 
   /** 执行层：当前同步模式（off / dry-run / on），前端据此提示 */
