@@ -185,6 +185,7 @@ export interface AccessCardReadiness {
 }
 
 export interface ParkingQueryRow {
+  matchedShop?: { houseId: number; address: string } | null;
   database: string;
   fields: Record<string, string | number | boolean | null>;
   pmsMatch?: {

@@ -290,6 +290,7 @@ function VehicleCard({ plate, rows, cloud, onChanged }: { plate: string; rows: P
   const identity = vehicleIdentity(field(first?.fields, 'identity'));
   const note = rows.map((r) => field(r.fields, 'note', true)).find(Boolean) || '';
   const expiry = rows.map((r) => field(r.fields, 'expiry')).find(Boolean) || '';
+  const shop = rows.find(row => row.matchedShop)?.matchedShop;
   const pms = rows.find((r) => r.pmsMatch)?.pmsMatch || null;
   const cloudKnown = cloud !== undefined && cloud !== 'loading';
   const civilAuthorized = cloudKnown && cloud ? (cloud as DeliyunVehicle).civilDefenseAuthorized : false;
@@ -370,10 +371,11 @@ function VehicleCard({ plate, rows, cloud, onChanged }: { plate: string; rows: P
             <dl className="veh-dl">
               <dt>业主</dt><dd>{pms.name || '—'}{pms.status === 'disabled' ? <span className="pill s-dang" style={{ marginLeft: 6 }}>已停用</span> : null}</dd>
               <dt>电话</dt><dd>{pms.phone || '—'}</dd>
-              <dt>房号</dt><dd>{pms.house ? `${pms.house.communityName || ''} ${pms.house.buildingNo}/${pms.house.roomNo}` : '—'}</dd>
+              <dt>房号</dt><dd>{shop && shop.houseId === pms.houseId ? shop.address : pms.house ? `${pms.house.communityName || ''} ${pms.house.buildingNo}/${pms.house.roomNo}` : '—'}</dd>
               <dt>匹配方式</dt><dd className="muted">按{pms.matchedBy === 'phone' ? '电话' : '房号'}匹配{pms.contactNote ? ` · ${pms.contactNote}` : ''}</dd>
             </dl>
           ) : (
+            shop ? <dl className="veh-dl"><dt>房号</dt><dd>{shop.address}</dd><dt>业主</dt><dd>该商铺尚未关联业主档案</dd></dl> :
             <div className="empty" style={{ padding: '14px 0' }}>未匹配到 PMS 房号 / 业主</div>
           )}
         </div>

@@ -218,6 +218,26 @@ test('真实住户匹配方法按数据库把裸房号关联到对应弄号，�
   assert.equal(result[1].pmsMatch?.house?.lane, '228');
 });
 
+test('商铺门牌从姓名或地址栏匹配同路同号，保留原值；无业主仍返回房产', async () => {
+  const { AccessCardIssuanceService } = await import('./access-card-issuance.service');
+  const service = Object.create(AccessCardIssuanceService.prototype);
+  const buildings = ['永德路', '宝秀路'].map((roadName, id) => ({ id: id+1, communityId: 2, buildingNo: '234', roadName }));
+  const houses = buildings.map(b => ({ id: b.id+10, buildingId: b.id, roomNo: '商铺' }));
+  let owners: any[] = [];
+  Object.assign(service, { buildingRepo: { find: async () => buildings }, houseRepo: { find: async () => houses },
+    communityRepo: { find: async () => [{id:2,name:'枫桦景苑二期'}] }, userRepo: { find: async () => owners } });
+  const rows = [{Owner__owner_Name:'永德路234商铺',Owner__owner_Add:''},{Owner__owner_Name:'合成住户',Owner__owner_Add:'永德路234号商铺'}]
+    .map(fields => ({database:'parking2',fields}));
+  for (const row of await service.matchParkingRowsToPms(1, rows)) assert.equal(row.matchedShop?.houseId, 11);
+  owners = [{id: 99, houseId:11, updatedAt:new Date(), status:'active'}];
+  for (const row of await service.matchParkingRowsToPms(1, rows)) {
+    assert.equal(row.pmsMatch?.userId, 99);
+    assert.equal(row.pmsMatch?.matchedBy, 'room');
+  }
+  houses.push({...houses[0],id:13});
+  for (const row of await service.matchParkingRowsToPms(1, rows)) assert.equal(row.matchedShop, null);
+});
+
 test('新增车牌查重按旧库车牌字段做精确匹配', () => {
   assert.equal(parkingPlateFromFields({ P_plate: ' 沪E·DK889 ' }), '沪EDK889');
   assert.equal(exactParkingPlateMatches(duplicateRows, '沪EDK889').length, 1);

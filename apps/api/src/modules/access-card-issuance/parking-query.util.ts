@@ -33,6 +33,12 @@ function parkingLaneForDatabase(database: string | null | undefined): '198' | '2
   return null;
 }
 
+export function parkingShopDoor(value: string | null | undefined) {
+  const text = (value ?? '').normalize('NFKC').replace(/\s+/g, '').replace(/^已隐藏/, '');
+  const match = /^([\u3400-\u9fff]{1,12}?(?:路|街|道))\/?(\d{1,5}(?:-\d{1,5})?)(?:号)?(?:商铺|店铺|门面)?$/.exec(text);
+  return match ? { road: match[1], number: match[2], key: match[1] + '/' + match[2] } : null;
+}
+
 export function parkingRoomAddress(
   value: string | null | undefined,
   database?: string | null,

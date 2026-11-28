@@ -131,6 +131,7 @@ import {
   parkingPmsBuildingKey,
   parkingPmsHouseKey,
   parkingRoomAddress,
+  parkingShopDoor,
   parseParkingSearch,
   parkingQueryReadiness,
   type ParkingQueryRequirement,
@@ -3375,18 +3376,22 @@ export class AccessCardIssuanceService {
       .map((row) => parkingOwnerJoinedFieldValue(row.fields, ['phone', 'mobile', 'telephone', 'tel', 'ptel', 'ownertel', 'ownermobile', 'ownerphone', '手机', '电话']))
       .map((value) => normalizeParkingPhone(value))
       .filter((value): value is string => Boolean(value))));
-    const rowRooms = rows.map((row) => parkingRoomAddress(parkingSnapshotValues(row.fields, row.database).room, row.database));
+    const rawRooms = rows.map(row => parkingSnapshotValues(row.fields, row.database).room);
+    const rowRooms = rawRooms.map((room, i) => parkingRoomAddress(room, rows[i].database));
+    const shopDoors = rawRooms.map(parkingShopDoor);
+    const shopKeys = new Set(shopDoors.flatMap(door => door ? [door.key] : []));
     const roomKeys = new Set(rowRooms.flatMap((address) => address ? [address.key] : []));
     const buildingKeys = new Set(rowRooms.flatMap((address) => address ? [`${address.lane}/${address.buildingNo}`] : []));
 
     // 房号查询量很小，但旧库与 PMS 的前导零写法不一致，不能依赖数据库字符串等值比较。
     // 先把当前租户楼栋收窄到目标弄号/楼号，再在内存里用统一房号键精确匹配。
-    const tenantBuildings = roomKeys.size
+    const tenantBuildings = roomKeys.size || shopKeys.size
       ? await this.buildingRepo.find({ where: { tenantId } })
       : [];
+    const shopBuildingKey = (b: Building) => [(b.roadName || b.lane || '').trim(), b.buildingNo.trim()].join('/');
     const roomBuildings = tenantBuildings.filter((building) => {
       const key = parkingPmsBuildingKey(building.lane, building.buildingNo);
-      return key ? buildingKeys.has(key) : false;
+      return (key != null && buildingKeys.has(key)) || shopKeys.has(shopBuildingKey(building));
     });
     const roomBuildingIds = roomBuildings.map((building) => building.id);
     const roomHouses = roomBuildingIds.length
@@ -3399,8 +3404,13 @@ export class AccessCardIssuanceService {
     const initialBuildingById = new Map(roomBuildings.map((building) => [building.id, building]));
     const initialCommunityById = new Map(roomCommunities.map((community) => [community.id, community]));
     const housesByRoomKey = new Map<string, House[]>();
+    const shopHouses = new Map<string, House[]>();
     for (const house of roomHouses) {
       const building = initialBuildingById.get(house.buildingId);
+      if (building && (house.roomNo === '商铺' || house.propertyType === '商铺' || building.buildingType === 'shop')) {
+        const doorKey = shopBuildingKey(building);
+        if (shopKeys.has(doorKey)) shopHouses.set(doorKey, [...(shopHouses.get(doorKey) ?? []), house]);
+      }
       const key = building ? parkingPmsHouseKey(building.lane, building.buildingNo, house.roomNo) : null;
       if (!key || !roomKeys.has(key)) continue;
       housesByRoomKey.set(key, [...(housesByRoomKey.get(key) ?? []), house]);
@@ -3417,6 +3427,9 @@ export class AccessCardIssuanceService {
         })
         : undefined;
       roomHouseByKey.set(key, preferred ?? candidates[0]);
+    }
+    for (const [key, candidates] of shopHouses) {
+      if (candidates.length === 1) roomHouseByKey.set(key, candidates[0]);
     }
     const roomHouseIds = Array.from(new Set(Array.from(roomHouseByKey.values()).map((house) => house.id)));
 
@@ -3471,17 +3484,19 @@ export class AccessCardIssuanceService {
     const houseById = new Map(houses.map((house) => [house.id, house]));
     const buildingById = new Map(buildings.map((building) => [building.id, building]));
     const communityById = new Map(communities.map((community) => [community.id, community]));
-    return rows.map((row) => {
+    return rows.map((row, index) => {
       const rawPhone = parkingOwnerJoinedFieldValue(row.fields, ['phone', 'mobile', 'telephone', 'tel', 'ptel', 'ownertel', 'ownermobile', 'ownerphone', '手机', '电话']);
-      const roomAddress = parkingRoomAddress(parkingSnapshotValues(row.fields, row.database).room, row.database);
-      const matchedHouse = roomAddress ? roomHouseByKey.get(roomAddress.key) : undefined;
+      const door = shopDoors[index];
+      const address = door ?? rowRooms[index];
+      const matchedHouse = address ? roomHouseByKey.get(address.key) : undefined;
       const phoneUser = rawPhone ? byPhone.get(normalizeParkingPhone(rawPhone) ?? '') : undefined;
       const roomUser = matchedHouse ? byHouse.get(matchedHouse.id) : undefined;
       // 旧停车库电话可能多年未更新；完整房号或由数据库确定弄号的两段房号更能定位房产。
       // 房号和电话冲突时优先房号，防止把车辆资料挂到同号码的其他业主名下。
-      const user = roomUser ?? phoneUser;
+      const user = roomUser ?? (door ? undefined : phoneUser);
       return {
         ...row,
+        matchedShop: door && matchedHouse ? { houseId: matchedHouse.id, address: door.road + door.number + '号商铺' } : null,
         pmsMatch: user ? (() => {
           const house = user.houseId ? houseById.get(user.houseId) : undefined;
           const building = house ? buildingById.get(house.buildingId) : undefined;

@@ -11,6 +11,12 @@ function normalizeAddressPart(value: string): string {
 }
 
 /** Recognize the legacy parking address and its known trailing annotations. */
+export function parkingShopDoor(value: string | null | undefined) {
+  const text = (value ?? '').normalize('NFKC').replace(/\s+/g, '').replace(/^已隐藏/, '');
+  const match = /^([\u3400-\u9fff]{1,12}?(?:路|街|道))\/?(\d{1,5}(?:-\d{1,5})?)(?:号)?(?:商铺|店铺|门面)?$/.exec(text);
+  return match ? { road: match[1], number: match[2], key: match[1] + '/' + match[2] } : null;
+}
+
 export function parkingRoomAddress(value: string | null | undefined, database?: string | null): ParkingRoomAddress | null {
   if (!value) return null;
   const normalized = value.trim()
@@ -53,6 +59,8 @@ export function legacyParkingRoomField(fields: Record<string, unknown>) {
     for (const entry of candidates) {
       if (entry.column.toLowerCase().replace(/[\s_./-]/g, '') !== alias) continue;
       // 展示层只取原值；两段房号在已知车库才生成完整房产键。
+      const shop = parkingShopDoor(entry.value);
+      if (shop) return { ...entry, lane: shop.road, building: shop.number, room: '商铺' };
       const full = parkingRoomAddress(entry.value);
       const parsed = full ?? parkingRoomAddress(entry.value, 'parking1');
       if (parsed) return { ...entry, lane: full?.lane, building: parsed.buildingNo, room: parsed.roomNo };

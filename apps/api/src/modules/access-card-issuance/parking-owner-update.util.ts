@@ -1,4 +1,4 @@
-import { parkingRoomAddress } from './parking-query.util';
+import { parkingRoomAddress, parkingShopDoor } from './parking-query.util';
 import type { ParkingHistoryChange } from '../../entities/parking-history.entity';
 import type { ParkingOwnerFieldHints, ParkingOwnerValues } from '../../entities/parking-owner-update.entity';
 import type { ParkingSnapshotValues } from './parking-history.util';
@@ -152,7 +152,7 @@ export function parkingLegacyOwnerValuesFromFields(
   let room: string | null = null;
   for (const alias of ['ownername', 'owneradd', 'roomno', 'houseno', 'owneraddress', 'address', 'proom', 'roomnumber', 'addr', 'room', '房号', '地址']) {
     const candidate = parkingOwnerJoinedFieldValue(fields, [alias]);
-    if (parkingRoomAddress(candidate, database)) {
+    if (parkingRoomAddress(candidate, database) || parkingShopDoor(candidate)) {
       room = candidate;
       break;
     }
