@@ -279,7 +279,7 @@ function FamilyList({ kw }: { kw: string }) {
       )}
       {open && <Sheet open title={open.plate + ' · 办理详情'} subtitle={open.roomKey + ' · ' + open.statusLabel} width={660} onClose={() => { ++detailGeneration.current; setOpen(null); setNote(''); }}>
         <section data-testid="family-cars-detail-panel" className="family-case-detail">
-          <p className="note2">{open.status === 'office' || open.status === 'returned' ? '下一步：办公室核对申请资料和期限，再提交经理。' : open.status === 'manager' ? '下一步：物业经理核对资料后通过或退回。' : open.status === 'opening' ? '审核已通过，正在办理停车库开通。可在下方核对执行结果。' : open.statusLabel}</p>
+          <p className="note2">{open.status === 'office' || open.status === 'returned' ? '下一步：办公室核对申请资料和期限，再提交经理。' : open.status === 'manager' ? '下一步：物业经理核对资料后通过或退回。' : open.status === 'opening' && open.lastError?.startsWith('车库授权失败') ? '经理已审核通过。车库授权失败，请核对下方原因后重试原申请。' : open.status === 'opening' ? '审核已通过，正在办理停车库开通。可在下方核对执行结果。' : open.statusLabel}</p>
           <h3>申请资料</h3><div className="np-files" style={{ marginBottom: 10 }}>
             {(open.files ?? []).map(f => f.contentType.startsWith('image/')
               ? <ImagePreviewButton key={f.index} fileUrl={f.fileUrl} fileName={f.fileName} files={open.files.filter(item => item.contentType.startsWith('image/'))}><img src={f.fileUrl} alt={f.fileName} /></ImagePreviewButton>

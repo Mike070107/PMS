@@ -1779,10 +1779,20 @@ SELECT id FROM @created;";
                                 command.Parameters["@P_Effective"].Value = nextEffective;
                                 command.Parameters["@P_Download"].Value = nextDownload;
                                 if (database == "parking2" && selectedMainSpace != null) command.Parameters["@P_Spaces"].Value = selectedMainSpace;
-                                if (Number(payload, "familyReviewId", 0) > 0) command.Parameters["@Car_Zt"].Value = 1;
                                 command.Parameters["@admin"].Value = admin;
                                 command.ExecuteNonQuery();
                             }
+                        }
+                        // Up_PakIssue only updates garage permissions. Activate the approved
+                        // existing vehicle in the same transaction and verify both changes below.
+                        if (before != null && Number(payload, "familyReviewId", 0) > 0 && Number(before, "Car_Zt", -1) != 1)
+                        using (var activate = connection.CreateCommand())
+                        {
+                            activate.Transaction = transaction;
+                            activate.CommandText = "UPDATE dbo.Car_Issue SET Car_Zt=1 WHERE P_id=@id AND P_plate=@plate";
+                            Add(activate, "@id", SqlDbType.Int, 0, before["P_id"]);
+                            Add(activate, "@plate", SqlDbType.VarChar, 50, plate);
+                            activate.ExecuteNonQuery();
                         }
                         var after = ReadBindingVehicle(connection, transaction, plate);
                         AssertGarageSelection(after, requested, database);
