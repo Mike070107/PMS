@@ -119,7 +119,7 @@ export default function Shell() {
   const [pendingCount, setPendingCount] = useState(0);
   useEffect(() => {
     setPendingCount(0);
-    if (!canViewPath('/pending', session.access) || !can('business', 'view') || !session.token) return;
+    if (!canViewPath('/pending', session.access) || !session.token) return;
     const identity = { token: session.token, generation: session.generation };
     let alive = true, loading = false;
     async function refresh() {
@@ -135,7 +135,7 @@ export default function Shell() {
     const timer = window.setInterval(refresh,15000);
     window.addEventListener('focus',refresh);
     return () => { alive = false; clearInterval(timer); window.removeEventListener('focus',refresh); };
-  }, [loc.pathname, session.token, session.generation, session.access]);
+  }, [session.token, session.generation, session.access]);
   const [counts, setCounts] = useState<{ dispatch: number; accept: number }>({ dispatch: 0, accept: 0 });
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackType, setFeedbackType] = useState<'suggestion' | 'error'>('suggestion');

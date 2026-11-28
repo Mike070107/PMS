@@ -1,4 +1,4 @@
-import { expiredDraftSql } from './vehicle-draft-expiry';
+import { CANCELLED_PLATE_RELEASED } from '../../common/vehicle-registration-claim';
 import { Injectable, Logger, NotFoundException, BadRequestException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -677,20 +677,26 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** 给前端的执行状态汇总（待处理页用） */
-  async pendingCount(tenantId: number, scope: number[] | null) {
+  async pendingCount(tenantId: number, scope: number[] | null, visible = { intakes: true, families: true, transactions: true, reviews: true }) {
     if (scope && !scope.length) return { count: 0 };
     const [row] = await this.txnRepo.query(`
       WITH visible_intakes AS (
         SELECT i.id FROM vehicle_intakes i WHERE i.tenant_id = $1 AND ($2::int[] IS NULL OR i.community_id = ANY($2))
-          AND i.status IN ('waiting','reupload','submitted') AND NOT ${expiredDraftSql('i')}
+          AND $4 AND (i.status IN ('waiting','reupload','submitted') OR
+            (i.kind='paid' AND i.status='approved' AND i.transaction_id IS NULL AND NOT i.log @> $8::jsonb))
       )
-      SELECT (SELECT count(*) FROM visible_intakes) + count(*) AS count
+      SELECT (SELECT count(*) FROM visible_intakes) + (
+        SELECT count(*) FROM family_cars f WHERE $5 AND f.tenant_id=$1
+          AND f.status IN ('upload','office','manager','returned','opening')
+          AND ($2::int[] IS NULL OR EXISTS (SELECT 1 FROM houses h JOIN buildings b ON b.id=h.building_id
+            WHERE h.id=f.house_id AND b.community_id=ANY($2)))
+      ) + count(*) AS count
       FROM business_transactions t
       WHERE t.tenant_id = $1 AND ($2::int[] IS NULL OR t.community_id = ANY($2))
-        AND t.service_type = 'parking_monthly' AND t.external_sync_status = ANY($3)
+        AND (($6 AND t.service_type = 'parking_monthly' AND t.external_sync_status = ANY($3)) OR ($7 AND t.external_sync_status='review'))
         AND (t.external_sync_status <> 'awaiting_docs' OR NOT EXISTS (
           SELECT 1 FROM visible_intakes i WHERE i.id::text = t.snapshot #>> '{intake,id}'
-        ))`, [tenantId, scope, PENDING_STATUSES]);
+        ))`, [tenantId, scope, PENDING_STATUSES, visible.intakes, visible.families, visible.transactions, visible.reviews, JSON.stringify([{ action: CANCELLED_PLATE_RELEASED }])]);
     return { count: Number(row.count) };
   }
 

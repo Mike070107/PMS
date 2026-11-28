@@ -178,9 +178,14 @@ export class BusinessController {
 
   /** 执行层：待处理（排队/执行中/重试/转人工/失败/演练）的停车同步 */
   @Get('execution/pending-count')
-  @RequirePermission('business', 'view')
+  @RequirePermission(['business','family-cars','family-cars-approve','app:family-car-approve','app:approve-business-manager','app:approve-manager'], 'view')
   pendingCount(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {
-    return this.execution.pendingCount(user.tenantId!, scopeCommunityIds(access));
+    const view = (...keys: string[]) => access.isPlatformAdmin || keys.some(key => access.pages[key]?.view);
+    return this.execution.pendingCount(user.tenantId!, scopeCommunityIds(access), {
+      intakes: view('business','family-cars','app:approve-business-manager','app:approve-manager'),
+      families: view('family-cars','family-cars-approve','app:family-car-approve','app:approve-business-manager'),
+      transactions: view('business'), reviews: view('business','app:approve-business-manager','app:approve-manager'),
+    });
   }
 
   @Get('execution/pending')
