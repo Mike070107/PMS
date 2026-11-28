@@ -1,3 +1,4 @@
+import { Interval } from '@nestjs/schedule';
 import { retireConfirmedPlate } from '../../common/vehicle-registration-claim';
 import { legacyRegistrationProfile } from '../business/parking-registration-profile';
 import { BusinessRule } from '../../entities/business-rule.entity';
@@ -11,7 +12,7 @@ import { StandardCardIssuanceService } from '../local-integrations/standard-card
 import { parkingReceiptCommitted } from './parking-receipts';
 import { requiresVehiclePreservation, validatePreservedOperation, assertPreservedReceipt, familyTypeExpiryDate, plateKey } from './parking-vehicle-preservation';
 import { hasLaterParkingPayment, LATER_PARKING_PAYMENT, type ParkingValidityReversal } from '../business/parking-validity-reversal';
-import { changeLinkedSpacePlate, moveLinkedSpace, preservePlateBilling, removeLinkedSpacePlate, syncLinkedSpaceDetails, syncPmsPlateBindings } from './parking-plate-billing';
+import { syncFamilyPlate, originalCivilCard, changeLinkedSpacePlate, moveLinkedSpace, preservePlateBilling, removeLinkedSpacePlate, syncLinkedSpaceDetails, syncPmsPlateBindings } from './parking-plate-billing';
 import { ParkingPlateTag } from '../../entities/parking-plate-tag.entity';
 import { loadAddressTreeLite, resolveAddressForTenant } from '../../common/address-lookup';
 import {
@@ -1822,7 +1823,114 @@ export class AccessCardIssuanceService {
     return this.parkingOperationResponse(await this.parkingOperationRepo.save(task));
   }
 
-  async changeDeliyunPlate(dto: ChangeDeliyunPlateDto, user: AuthUser) {
+  private assertPlateReviewScope(ids: number[], access: ResolvedAccess) {
+    const scope = scopeCommunityIds(access);
+    if (!ids.length || (scope && !ids.every(id => scope.includes(id)))) throw new ForbiddenException('换牌车辆不在当前管理范围');
+  }
+
+  async submitPlateReview(input: { plate: string; newPlate: string; sourceQueryId: number; batchId: string }, user: AuthUser, access: ResolvedAccess) {
+    const tenantId = this.requireTenant(user);
+    const plate = plateKey(input.plate), newPlate = plateKey(input.newPlate);
+    if (typeof input.batchId !== 'string' || !Number.isSafeInteger(input.sourceQueryId) || input.sourceQueryId < 1 || !/^[A-Za-z0-9_-]{8,70}$/.test(input.batchId) || !plate || !newPlate || plate === newPlate)
+      throw new BadRequestException('换牌申请信息无效');
+    const idempotencyKey = 'review-' + input.batchId;
+    const existing = await this.parkingOperationRepo.findOneBy({tenantId, idempotencyKey});
+    if (existing) {
+      this.assertPlateReviewScope(existing.expected.communityIds as number[] || [],access);
+      if (existing.database !== 'plate-review' || existing.createdBy !== user.id || existing.payload.plate !== plate || existing.payload.newPlate !== newPlate)
+        throw new BadRequestException('申请编号已被其他换牌占用');
+      return { id: existing.id, status: existing.status };
+    }
+    const query = await this.parkingQueryRepo.findOneBy({ tenantId, id: input.sourceQueryId });
+    if (!query || query.status !== 'completed' || query.database || plateKey(query.term) !== plate || !query.completedAt || Date.now()-query.completedAt.getTime()>300000)
+      throw new BadRequestException('请重新查询原车牌后提交');
+    const targets = query.rows.filter(r => plateKey(parkingSnapshotValues(r.fields).plate) === plate);
+    if (!targets.length) throw new BadRequestException('未查到原车辆');
+    const cloud = await this.deliyun.findVehiclesByPlate(plate, '枫桦景苑');
+    if (cloud.rows.length > 1) throw new BadRequestException('人防原车不唯一，请核对');
+    const names=new Set(targets.map(r=>r.database==='parking1'?'枫桦景苑一期':'枫桦景苑二期'));
+    if(cloud.rows.length) names.add('枫桦景苑二期');
+    const communities=await this.communityRepo.findBy({tenantId,name:In([...names])});
+    if(communities.length!==names.size) throw new BadRequestException('无法唯一确定换牌车库所属小区');
+    const communityIds=communities.map(c=>c.id);
+    this.assertPlateReviewScope(communityIds,access);
+    return this.parkingOperationRepo.manager.transaction(async manager => {
+      for (const key of [plate,newPlate].sort()) await manager.query('SELECT pg_advisory_xact_lock(hashtext($1),hashtext($2))',[String(tenantId),key]);
+      const repo=manager.getRepository(ParkingOperation);
+      const prior=await repo.findOneBy({tenantId,idempotencyKey});
+      if (prior) {
+        if (prior.createdBy !== user.id || prior.payload.plate !== plate || prior.payload.newPlate !== newPlate)
+          throw new BadRequestException('申请编号已绑定其他请求');
+        return {id:prior.id,status:prior.status};
+      }
+      const overlap=await repo.createQueryBuilder('t').where("t.tenant_id=:tenantId AND t.database='plate-review' AND t.status IN ('review','approved','failed') AND (t.payload->>'plate' IN (:...plates) OR t.payload->>'newPlate' IN (:...plates))",{tenantId,plates:[plate,newPlate]}).getCount();
+      if(overlap) throw new BadRequestException('该车牌已有未办结换牌申请，请在待处理核对原单');
+      const ids: number[] = [];
+      for (const target of targets) {
+        const task = await this.createParkingOperation({database: target.database as 'parking1'|'parking2', kind:'change_plate',
+          sourceRecordId: String(parkingSourceRecordId(target.fields)), idempotencyKey: input.batchId+'-'+target.database,
+          payload: {plate,newPlate,batchId:input.batchId,sourceQueryId:query.id}},user,access,true,manager);
+        if (task.status !== 'review') throw new BadRequestException('已有执行中的换牌，请核对原任务');
+        ids.push(task.id);
+      }
+      const task=await repo.save(repo.create({tenantId,database:'plate-review',kind:'change_plate',status:'review',idempotencyKey,
+        payload:{plate,newPlate,batchId:input.batchId,ids,cloudId:cloud.rows[0]?.id ?? null},expected:{communityIds},createdBy:user.id,updatedBy:user.id,requestedAt:new Date()}));
+      return {id:task.id,status:task.status};
+    });
+  }
+
+  async plateReviews(user: AuthUser,access: ResolvedAccess) {
+    const scope=scopeCommunityIds(access);
+    const qb=this.parkingOperationRepo.createQueryBuilder('t').where("t.tenant_id=:tenantId AND t.database='plate-review' AND t.status IN ('review','approved','failed')",{tenantId:this.requireTenant(user)});
+    if(scope) qb.andWhere("t.expected->'communityIds' <@ CAST(:scope AS jsonb)",{scope:JSON.stringify(scope)});
+    return qb.orderBy('t.updated_at','DESC').addOrderBy('t.id','DESC').getMany();
+  }
+
+  async decidePlateReview(id:number,approve:boolean,user:AuthUser,access:ResolvedAccess) {
+    if(typeof approve!=='boolean') throw new BadRequestException('请选择审核结果');
+    return this.parkingOperationRepo.manager.transaction(async manager=>{
+      const repo=manager.getRepository(ParkingOperation),tenantId=this.requireTenant(user);
+      const parent=await repo.findOne({where:{id,tenantId,database:'plate-review'},lock:{mode:'pessimistic_write'}});
+      if(!parent || parent.status!=='review') throw new BadRequestException('申请已处理，请刷新');
+      this.assertPlateReviewScope(parent.expected.communityIds as number[] || [],access);
+      const ids=parent.payload.ids as number[];
+      const changed=await repo.update({id:In(ids),tenantId,status:'review',kind:'change_plate'}, {status:approve?'pending':'cancelled'});
+      if(changed.affected!==ids.length) throw new BadRequestException('原车库任务状态已变化');
+      parent.status=approve?'approved':'cancelled';parent.updatedBy=user.id;
+      parent.result={reviewedAt:new Date().toISOString(),reviewerId:user.id,approved:approve};
+      return repo.save(parent);
+    });
+  }
+
+  @Interval(15000)
+  async finishApprovedPlateChanges() {
+    const pending=await this.parkingOperationRepo.findBy({database:'plate-review',status:'approved'});
+    for(const candidate of pending) await this.parkingOperationRepo.manager.transaction(async manager=>{
+      const repo=manager.getRepository(ParkingOperation);
+      const parent=await repo.findOne({where:{id:candidate.id,status:'approved'},lock:{mode:'pessimistic_write',onLocked:'skip_locked'}});
+      if(!parent) return;
+      const ids=parent.payload.ids as number[];
+      const children=await repo.findBy({tenantId:parent.tenantId,id:In(ids)});
+      try {
+        const failure=children.find(op=>op.status==='failed'||op.status==='cancelled');
+        if(failure) throw new Error(failure.lastError || '旧库换牌未成功');
+        if(children.length!==ids.length || children.some(op=>op.status!=='completed')) return;
+        if(parent.payload.cloudId) {
+          const op=await this.changeDeliyunPlate({vehicleId:String(parent.payload.cloudId),plate:String(parent.payload.plate),
+            newPlate:String(parent.payload.newPlate),idempotencyKey:parent.payload.batchId+'-deliyun'}, {id:parent.createdBy!,tenantId:parent.tenantId,role:'system'},true);
+          if(op.status!=='completed' || op.result?.verified!==true || (op.result?.pmsBindings as {status?:string})?.status==='review')
+            throw new Error(op.error || '请核对人防换牌和车位绑定');
+        }
+        if(children.some(op=>(op.result?.pmsBindings as {status?:string})?.status==='review')) throw new Error('请核对 PMS 车位和车辆档案');
+        await syncFamilyPlate(manager,parent);
+        parent.status='completed';parent.completedAt=new Date();
+      } catch(error){parent.status='failed';parent.lastError=error instanceof Error?error.message:'换牌未完成';}
+      await repo.save(parent);
+    });
+  }
+
+  async changeDeliyunPlate(dto: ChangeDeliyunPlateDto, user: AuthUser, approved = false) {
+    if (!approved) throw new BadRequestException('换牌须先提交经理审批');
     const tenantId = this.requireTenant(user);
     const idempotencyKey = dto.idempotencyKey.trim();
     const existing = await this.parkingOperationRepo.findOne({ where: { tenantId, idempotencyKey } });
@@ -1836,7 +1944,8 @@ export class AccessCardIssuanceService {
       createdBy: user.id, updatedBy: user.id,
     }));
     try {
-      task.result = await this.deliyun.changePlate(dto);
+      const originalSpace = await this.parkingOperationRepo.manager.transaction(m => originalCivilCard(m, tenantId, plateKey(dto.plate)));
+      task.result = await this.deliyun.changePlate({ ...dto, originalSpace });
       task.status = 'completed';
     } catch (error) {
       task.status = 'failed';
@@ -2156,14 +2265,16 @@ export class AccessCardIssuanceService {
     return { rows: parkingSpaceChoices(spaces) };
   }
 
-  async createParkingOperation(dto: CreateParkingOperationDto, user: AuthUser, access?: ResolvedAccess) {
+  async createParkingOperation(dto: CreateParkingOperationDto, user: AuthUser, access?: ResolvedAccess, stagePlateChange = false, manager?: EntityManager) {
+    const operationRepo = manager?.getRepository(ParkingOperation) ?? this.parkingOperationRepo;
+    if (dto.kind === 'change_plate' && !stagePlateChange) throw new BadRequestException('换牌须先提交经理审批');
     const tenantId = this.requireTenant(user);
     if (dto.idempotencyKey.trim().startsWith('parking-reversal:') ||
         (dto.expected && Object.prototype.hasOwnProperty.call(dto.expected, 'validityReversal')))
       throw new BadRequestException('停车有效期回退只能从原收款红冲发起');
     const idempotencyKey = dto.idempotencyKey.trim();
     validatePreservedOperation(dto.kind, { ...dto.payload }, dto.sourceRecordId);
-    const existing = await this.parkingOperationRepo.findOne({ where: { tenantId, idempotencyKey } });
+    const existing = await operationRepo.findOne({ where: { tenantId, idempotencyKey } });
     if (existing) {
       const supplied = normalizeParkingOperationPayload(dto.payload);
       if ((requiresVehiclePreservation(dto.kind) || requiresVehiclePreservation(existing.kind)) && (existing.kind !== dto.kind || existing.database !== dto.database || existing.sourceRecordId !== dto.sourceRecordId ||
@@ -2176,7 +2287,7 @@ export class AccessCardIssuanceService {
       throw new BadRequestException('收费续期请通过收银台登记实收，生成 PMS 办理流水后执行');
     const billingClass = payload.billingClass ?? payload.propertyBillingClass;
     if ((dto.kind === 'update_vehicle_type' || dto.kind === 'renew_vehicle') && billingClass) {
-      const rules = await this.parkingOperationRepo.manager.getRepository(BusinessRule).findBy({
+      const rules = await operationRepo.manager.getRepository(BusinessRule).findBy({
         tenantId, enabled:true, serviceType:BusinessServiceType.PARKING_MONTHLY,
       });
       const scope = access ? scopeCommunityIds(access) : null;
@@ -2223,11 +2334,11 @@ export class AccessCardIssuanceService {
     const expected: Record<string, unknown> = requiresVehiclePreservation(dto.kind) ? { preservationContract: 1 } : normalizeParkingOperationPayload(dto.expected ?? {});
     if (needsFamilyTypeExpiry) expected.familyTypeExpiryDate = familyTypeExpiryDate(now);
     if (dto.kind === 'change_plate') {
-      const tags = this.parkingOperationRepo.manager.getRepository(ParkingPlateTag);
+      const tags = operationRepo.manager.getRepository(ParkingPlateTag);
       const oldTag = await tags.findOne({ where: { tenantId, plate: String(payload.plate) } });
       const newTag = await tags.findOne({ where: { tenantId, plate: String(payload.newPlate) } });
       // Same batch, next database: retain the first task's server-owned snapshot after its tag moved.
-      const sibling = payload.batchId ? await this.parkingOperationRepo.createQueryBuilder('task')
+      const sibling = payload.batchId ? await operationRepo.createQueryBuilder('task')
         .where('task.tenant_id = :tenantId AND task.kind = :kind AND task.created_by = :userId', { tenantId, kind: 'change_plate', userId: user.id })
         .andWhere("task.payload->>'batchId' = :batchId AND task.payload->>'plate' = :plate AND task.payload->>'newPlate' = :newPlate", { batchId: String(payload.batchId), plate: payload.plate, newPlate: payload.newPlate })
         .orderBy('task.id', 'ASC').getOne() : null;
@@ -2249,7 +2360,7 @@ export class AccessCardIssuanceService {
       const targets = expected.batchTargets as Array<{ database: string; sourceRecordId: string }>;
       if (!Array.isArray(targets) || !targets.some(target => target.database === dto.database && target.sourceRecordId === dto.sourceRecordId))
         throw new BadRequestException('换牌目标不属于原查询批次，请恢复原任务，不要另建目标');
-      const duplicateTarget = await this.parkingOperationRepo.createQueryBuilder('task')
+      const duplicateTarget = await operationRepo.createQueryBuilder('task')
         .where('task.tenant_id = :tenantId AND task.kind = :kind AND task.created_by = :userId', { tenantId, kind: 'change_plate', userId: user.id })
         .andWhere("task.payload->>'batchId' = :batchId AND task.payload->>'plate' = :plate AND task.payload->>'newPlate' = :newPlate", { batchId: String(payload.batchId), plate: payload.plate, newPlate: payload.newPlate })
         .andWhere('task.database = :database AND task.source_record_id = :recordId', { database: dto.database, recordId: dto.sourceRecordId }).getOne();
@@ -2259,11 +2370,11 @@ export class AccessCardIssuanceService {
     }
     let familyProof: ParkingProofUpload | null = null;
     if (dto.kind === 'add_vehicle' && payload.identity === '亲情车') {
-      familyProof = await this.parkingOperationRepo.manager.getRepository(ParkingProofUpload).findOne({ where: { id: Number(payload.proofUploadId) || 0, tenantId } });
+      familyProof = await operationRepo.manager.getRepository(ParkingProofUpload).findOne({ where: { id: Number(payload.proofUploadId) || 0, tenantId } });
       prepareFamilyRegistration(payload, familyProof);
     }
     if (['update_garages', 'download_vehicle'].includes(dto.kind)) {
-      const proof = await this.parkingOperationRepo.manager.getRepository(ParkingProofUpload).findOne({ where: { tenantId, plate: String(payload.plate || '').trim().toUpperCase() }, order: { createdAt: 'DESC' } });
+      const proof = await operationRepo.manager.getRepository(ParkingProofUpload).findOne({ where: { tenantId, plate: String(payload.plate || '').trim().toUpperCase() }, order: { createdAt: 'DESC' } });
       if (proof?.registrationId && proof.reviewStatus !== 'approved') throw new BadRequestException('亲情车资料尚未审核通过，不允许授权或下发');
       if (payload.familyReviewId && (!proof || proof.id !== Number(payload.familyReviewId) || proof.reviewStatus !== 'approved')) throw new BadRequestException('亲情车审核凭证不匹配');
       if (payload.familyReviewId && !supportsFamilyActivation(gateway.version))
@@ -2309,15 +2420,15 @@ export class AccessCardIssuanceService {
       // 查重任务编号只用于 PMS 服务端校验，不传给现场助手的旧库存储过程。
       delete payload.duplicateCheckQueryId;
     }
-    const task = this.parkingOperationRepo.create({
+    const task = operationRepo.create({
       tenantId, kind: dto.kind, database: dto.database, idempotencyKey,
       sourceRecordId: dto.sourceRecordId?.trim() || null, pmsUserId: dto.pmsUserId ?? null,
-      payload, expected, result: null, status: 'pending', attempt: 0,
+      payload, expected, result: null, status: stagePlateChange ? 'review' : 'pending', attempt: 0,
       requestedAt: now, completedAt: null, leaseAgentKey: null, leaseExpiresAt: null,
       lastError: null, rollbackOfOperationId: null, createdBy: user.id, updatedBy: user.id,
     });
     if (familyProof) {
-      return this.parkingOperationRepo.manager.transaction(async (manager) => {
+      return operationRepo.manager.transaction(async (manager) => {
         const proofs = manager.getRepository(ParkingProofUpload);
         const locked = await proofs.findOne({ where: { id: familyProof!.id, tenantId }, lock: { mode: 'pessimistic_write' } });
         prepareFamilyRegistration(payload, locked);
@@ -2328,7 +2439,7 @@ export class AccessCardIssuanceService {
         return this.parkingOperationResponse(saved);
       });
     }
-    return this.parkingOperationResponse(await this.parkingOperationRepo.save(task));
+    return this.parkingOperationResponse(await operationRepo.save(task));
   }
 
   async reviewParkingProof(id: number, decision: 'approved' | 'rejected', reason: string | undefined, user: AuthUser) {

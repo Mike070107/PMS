@@ -690,7 +690,9 @@ export class BusinessExecutionService implements OnModuleInit, OnModuleDestroy {
           AND f.status IN ('upload','office','manager','returned','opening')
           AND ($2::int[] IS NULL OR EXISTS (SELECT 1 FROM houses h JOIN buildings b ON b.id=h.building_id
             WHERE h.id=f.house_id AND b.community_id=ANY($2)))
-      ) + count(*) AS count
+      ) + (SELECT count(*) FROM parking_operations p WHERE ($6 OR $7) AND p.tenant_id=$1
+        AND p.database='plate-review' AND p.status IN ('review','approved','failed')
+        AND ($2::int[] IS NULL OR p.expected->'communityIds' <@ to_jsonb($2::int[]))) + count(*) AS count
       FROM business_transactions t
       WHERE t.tenant_id = $1 AND ($2::int[] IS NULL OR t.community_id = ANY($2))
         AND (($6 AND t.service_type = 'parking_monthly' AND t.external_sync_status = ANY($3)) OR ($7 AND t.external_sync_status='review'))

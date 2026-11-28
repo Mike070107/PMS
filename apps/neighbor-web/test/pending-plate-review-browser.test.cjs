@@ -18,6 +18,8 @@ async function fixture(query=''){
  export const accessCardIssuance={readiness:async()=>({agents:[],deliyun:{configured:false,connected:false}})};
  export async function request({url,method='GET',query,data={}}){window.__calls.push({url,method,query,data});
  if(url.startsWith('/business/')&&p.has('manager'))throw Error('示例403：收费页面未授权');
+ if(url==='/access-card-issuance/plate-reviews')return p.has('plateReview')&&!window.__plateApproved?[{id:987,status:'review',payload:{plate:'鲁P1750F',newPlate:'沪APP2086'},createdAt:seed.createdAt}]:[];
+ if(url==='/access-card-issuance/plate-reviews/987/decision' && method==='POST'){window.__plateApproved=true;return {};}
  if(url==='/business/execution/pending')return p.has('noTxn')?[]:[{id:9,txnNo:'EXAMPLE',serviceType:'parking',amountCents:100,createdAt:seed.createdAt,endDate:null,externalSyncStatus:'awaiting_docs',snapshot:{intake:{id:61}}}];
  if(url==='/family-cars/87/manager-review' && method==='POST' && data.expectedVersion===2){window.familyApproved=true;return {};}
  if(url==='/family-cars' || url==='/family-cars/87'){
@@ -111,5 +113,15 @@ test('开通等待与授权失败分别留在执行中和需人工处理',async(
    assert.equal(await f.page.locator('.stat').filter({hasText:label}).locator('.v').innerText(),'1');
   }
   assert.match(await f.page.locator('.pendRow').filter({hasText:'沪TEST89'}).innerText(),/状态回读不一致/);
+ }finally{await f.close();}
+});
+
+test('换牌使用统一经理审核入口，核对新旧车牌并审核原申请',async()=>{
+ const f=await fixture('?plateReview=1');try{
+  const row=f.page.getByRole('region',{name:'待经理审核'}).locator('.pendRow').filter({hasText:'沪APP2086'});
+  await row.getByText(/鲁P1750F/).waitFor();
+  await row.getByRole('button',{name:'审核通过'}).click();
+  await row.waitFor({state:'detached'});
+  assert.equal(await f.page.evaluate(()=>window.__plateApproved),true);
  }finally{await f.close();}
 });

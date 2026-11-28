@@ -48,7 +48,7 @@ test('real new and legacy entries: preservation, isolated type, unknown recovery
       else if (entry === 'modern') { await dialog.getByLabel('修改停车库（仅所选库）').selectOption('parking2'); await dialog.getByRole('radio', { name: identity, exact: true }).check(); }
       else { await dialog.locator('.ant-select-selector').click(); await page.getByTitle(identity, { exact: true }).click(); }
     }
-    const submit = (dialog, entry, kind) => dialog.getByRole('button', { name: entry === 'legacy' ? '提交操作' : kind === 'plate' ? '确认换牌' : '确认修改车辆类型', exact: true }).click();
+    const submit = (dialog, entry, kind) => dialog.getByRole('button', { name: entry === 'legacy' ? '提交操作' : kind === 'plate' ? '提交经理审核' : '确认修改车辆类型', exact: true }).click();
     {
       const history = await open('modern','history','history',390);
       const events = history.locator('details');
@@ -86,11 +86,11 @@ test('real new and legacy entries: preservation, isolated type, unknown recovery
     }
     for (const entry of ['modern', 'legacy']) for (const kind of ['plate', 'type']) {
       const dialog = await open(entry, kind, 'success', 1440); await fill(dialog, entry, kind); await shot(`${entry}-${kind}-desktop`); await submit(dialog, entry, kind); await dialog.waitFor({ state: 'hidden' });
-      const data = await state(), writes = await posts(); assert.equal(writes.length, kind === 'plate' ? 2 : 1);
+      const data = await state(), writes = await posts(); assert.equal(writes.length, kind === 'plate' ? 0 : 1);
       assert.equal(data.rows[0].fields.Car_Lei, null); assert.equal(data.rows[1].fields.Car_Lei, '历史授权'); assert.equal(data.billed, entry === 'modern' && kind === 'type' ? '亲情车' : '住户车-1');
-      if (kind === 'plate') { assert.equal(data.rows[0].fields.Car_Brand, null); assert.equal(data.rows[1].fields.Car_Brand, '租户车'); assert.ok(writes.every(c => Object.keys(c.data.payload).sort().join(',') === 'batchId,newPlate,plate,sourceQueryId')); }
+      if (kind === 'plate') { const submitted=data.calls.filter(c=>c.name==='request' && c.data.url==='/access-card-issuance/plate-reviews'); assert.equal(submitted.length,1); assert.equal(submitted[0].data.data.newPlate,'沪BTEST02'); assert.equal(data.rows[0].fields.Car_Brand, null); assert.equal(data.rows[1].fields.Car_Brand, '租户车'); assert.ok(writes.every(c => Object.keys(c.data.payload).sort().join(',') === 'batchId,newPlate,plate,sourceQueryId')); }
       else { const selected = writes[0].data.database; for (const row of data.rows) assert.equal(row.fields.Car_Brand, row.database === selected ? '亲情车' : row.database === 'parking1' ? null : '租户车'); }
-      assert.ok(data.calls.filter(c => c.name === 'createParkingQuery').length >= (entry === 'modern' ? 3 : kind === 'plate' ? 2 : 1)); await shot(`${entry}-${kind}-success`); results.push({ entry, kind, writes: writes.length, independentReadback: true });
+      assert.ok(data.calls.filter(c => c.name === 'createParkingQuery').length >= (kind === 'plate' ? 1 : entry === 'modern' ? 3 : 1)); await shot(`${entry}-${kind}-success`); results.push({ entry, kind, writes: writes.length, independentReadback: true });
     }
     for (const entry of ['modern', 'legacy']) {
       const dialog = await open(entry, 'type', 'success', 390);
@@ -136,21 +136,18 @@ test('real new and legacy entries: preservation, isolated type, unknown recovery
       await (entry === 'legacy' ? dialog.locator('.ant-alert-error').first() : dialog.getByRole('alert')).waitFor(); assert.equal((await posts()).length, original.length);
       results.push({ entry, kind: 'type', scenario, noNewTask: true });
     }
-    for (const scenario of ['failed', 'partial', 'badReceipt']) {
-      const dialog = await open('modern', 'plate', scenario, 390); await fill(dialog, 'modern', 'plate'); await submit(dialog, 'modern', 'plate'); await dialog.getByRole('alert').waitFor(); await shot(`${scenario}-390`);
-      const original = await posts(); await dialog.getByRole('button', { name: '核对原请求（不重复办理）', exact: true }).click(); await dialog.getByRole('alert').waitFor(); assert.equal((await posts()).length, original.length); assert.equal(await dialog.getByLabel('新车牌', { exact: true }).inputValue(), '沪BTEST02'); results.push({ scenario, inputRetained: true, noNewTask: true });
-    }
-    for (const entry of ['modern', 'legacy']) for (const scenario of ['lostResponse', 'pollFailure']) {
-      const dialog = await open(entry, 'plate', scenario); await fill(dialog, entry, 'plate'); await submit(dialog, entry, 'plate'); await (entry === 'legacy' ? dialog.locator('.ant-alert-error').first() : dialog.getByRole('alert')).waitFor();
-      const original = (await posts())[0].data; await page.evaluate(() => { window.__preserveFixture.released = true; });
-      if (entry === 'modern') await dialog.getByRole('button', { name: '核对原请求（不重复办理）', exact: true }).click(); else await submit(dialog, entry, 'plate');
-      await dialog.waitFor({ state: 'hidden' }); const writes = await posts(), first = writes.filter(c => c.data.database === 'parking1'); assert.ok(first.every(c => c.data.idempotencyKey === original.idempotencyKey)); assert.equal(first.length, scenario === 'lostResponse' ? 2 : 1); results.push({ entry, scenario, sameOriginalKey: true });
-    }
-    {
-      const dialog = await open('modern', 'plate', 'waiting', 390); await fill(dialog, 'modern', 'plate'); await submit(dialog, 'modern', 'plate'); await dialog.getByRole('status').waitFor(); await shot('waiting-390'); assert.equal((await posts()).length, 1); await page.evaluate(() => { window.__preserveFixture.released = true; }); await dialog.waitFor({ state: 'hidden' }); results.push({ scenario: 'waiting', noEarlySuccess: true });
+    for (const entry of ['modern','legacy']) {
+      const dialog=await open(entry,'plate','lostResponse',390); await fill(dialog,entry,'plate'); await submit(dialog,entry,'plate');
+      await (entry==='legacy'?dialog.locator('.ant-alert-error').first():dialog.getByRole('alert')).waitFor();
+      await page.evaluate(()=>{window.__preserveFixture.released=true;});
+      if(entry==='modern') await dialog.getByRole('button',{name:'核对原请求（不重复办理）'}).click(); else await submit(dialog,entry,'plate');
+      await dialog.waitFor({state:'hidden'});
+      const attempts=(await state()).calls.filter(c=>c.name==='request' && c.data.url==='/access-card-issuance/plate-reviews');
+      assert.equal(attempts.length,2); assert.equal(attempts[0].data.data.batchId,attempts[1].data.data.batchId);
+      assert.equal((await posts()).length,0);
     }
     {
-      const dialog = await open('modern', 'plate', 'cloudUnknown'); assert.equal(await dialog.getByRole('button', { name: '确认换牌', exact: true }).isDisabled(), true); assert.equal((await posts()).length, 0); results.push({ scenario: 'cloudUnknown', blocked: true });
+      const dialog = await open('modern', 'plate', 'cloudUnknown'); assert.equal(await dialog.getByRole('button', { name: '提交经理审核', exact: true }).isDisabled(), true); assert.equal((await posts()).length, 0); results.push({ scenario: 'cloudUnknown', blocked: true });
     }
     for (const entry of ['modern', 'legacy']) {
       await page.setViewportSize({ width: 390, height: 1000 }); await page.goto(`${origin}/?entry=${entry}&scenario=readonly`); await page.evaluate(() => localStorage.clear());

@@ -28,6 +28,16 @@ function hasPlate(space: ParkingSpace, plate: string) {
   return plateKey(space.plate) === plate || Object.hasOwn(space.vehicleBindings ?? {}, plate);
 }
 
+export function civilCardNumber(value: string) {
+  const number = value.trim();
+  return /^\d+$/.test(number) ? 'MF' + number : number;
+}
+export async function originalCivilCard(manager: EntityManager, tenantId: number, plate: string) {
+  const rows = await matchingSpaces(manager, tenantId, 'civil', [plate]);
+  if (rows.length > 1) throw new BadRequestException('原车绑定多个人防车位，请先核对');
+  return rows.length ? civilCardNumber(rows[0].spaceNo) : undefined;
+}
+
 export async function changeLinkedSpacePlate(manager: EntityManager, input: {
   tenantId: number; operatorId: number | null; garage: 'main' | 'civil'; oldPlate: string; newPlate: string; spaceNumber?: string;
 }) {
@@ -36,7 +46,7 @@ export async function changeLinkedSpacePlate(manager: EntityManager, input: {
   const oldSpaces = candidates.filter(space => hasPlate(space, oldPlate));
   const newSpaces = candidates.filter(space => hasPlate(space, newPlate));
   const space = oldSpaces.length === 1 ? oldSpaces[0] : null;
-  if (space && (!spaceNumber || space.spaceNo === spaceNumber) && !newSpaces.length) {
+  if (space && (!spaceNumber || space.spaceNo === spaceNumber || (garage === 'civil' && civilCardNumber(space.spaceNo) === civilCardNumber(spaceNumber))) && !newSpaces.length) {
     const { [oldPlate]: binding, ...other } = space.vehicleBindings ?? {};
     if (binding) other[newPlate] = binding;
     await manager.getRepository(ParkingSpace).update({ id: space.id, tenantId },
@@ -242,4 +252,24 @@ export async function preservePlateBilling(task: ParkingOperation, tags: Reposit
     task.expected.billingTargetTagId = newTag.id;
     task.expected.billingFinalized = false;
   }
+}
+
+/** Move the current family registration only after all participating systems verified the change. */
+export async function syncFamilyPlate(manager: EntityManager, task: ParkingOperation) {
+  const { plate, newPlate } = task.payload;
+  const args=[task.tenantId,plate,newPlate];
+  for(const key of [String(plate),String(newPlate)].sort())
+    await manager.query("SELECT pg_advisory_xact_lock(hashtext('vehicle-registration:' || $1::text),hashtext($2))",[task.tenantId,key]);
+  const families=await manager.query("SELECT id,status FROM family_cars WHERE tenant_id=$1 AND plate=$2 AND status NOT IN ('expired','void') FOR UPDATE",args.slice(0,2));
+  if(!families.length) return;
+  if(families.length!==1 || families[0].status!=='active') throw new Error('亲情车有未结束的办理，请核对原申请');
+  const familyId=families[0].id;
+  const collision=await manager.query(`SELECT 1 FROM family_cars WHERE tenant_id=$1 AND plate=$3 AND status NOT IN ('expired','void')
+    UNION ALL SELECT 1 FROM vehicle_registration_claims WHERE tenant_id=$1 AND (plate=$3 OR (plate=$2 AND family_car_id IS DISTINCT FROM $4))
+    UNION ALL SELECT 1 FROM vehicle_intakes WHERE tenant_id=$1 AND plate=$3 AND status<>'void' LIMIT 1`,[...args,familyId]);
+  if(collision.length) throw new Error('新旧牌关联其他在办登记，请核对归属');
+  const audit=JSON.stringify([{at:new Date().toISOString(),userId:task.updatedBy,userName:'PMS',action:'经理批准变更车牌',note:plate+' → '+newPlate+' · 申请 #'+task.id}]);
+  await manager.query('UPDATE family_cars SET plate=$3,log=log || $5::jsonb,updated_at=now(),data_version=data_version+1 WHERE tenant_id=$1 AND plate=$2 AND id=$4',[...args,familyId,audit]);
+  await manager.query("UPDATE vehicle_intakes SET plate=$3,log=log || $5::jsonb,updated_at=now() WHERE tenant_id=$1 AND plate=$2 AND family_car_id=$4 AND status='approved'",[...args,familyId,audit]);
+  await manager.query('UPDATE vehicle_registration_claims SET plate=$3 WHERE tenant_id=$1 AND plate=$2 AND family_car_id=$4',[...args,familyId]);
 }

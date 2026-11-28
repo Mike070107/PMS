@@ -1,6 +1,6 @@
 import PlateNumberField from '@/components/PlateNumberField';
 import { useId, useRef, useState } from 'react';
-import { accessCardIssuance } from '@pms/api-client';
+import { accessCardIssuance, request } from '@pms/api-client';
 import type { ParkingOperation, ParkingQueryRow, DeliyunVehicle } from '@pms/api-client/src/endpoints/access-card-issuance';
 import { Sheet, toast } from '@/components/ui';
 import { useSession } from '@/lib/auth';
@@ -63,57 +63,18 @@ export function ChangePlateSheet({ plate, rows, cloud, onClose, onDone }: {
           cloudId: cloud ? cloud.id : null };
         store(active); // before POST: lost response must reuse the same request.
       }
-      const bindingWarnings = new Set<string>();
-      const collectBindingWarnings = (result: Record<string, unknown> | null | undefined) => {
-        const warnings = (result?.pmsBindings as { warnings?: unknown } | undefined)?.warnings;
-        if (Array.isArray(warnings)) for (const warning of warnings) if (typeof warning === 'string') bindingWarnings.add(warning);
-      };
-      for (const target of active.targets) {
-        setProgress(`${dbShort(target.database)}：正在核对原请求，等待现场读回…`);
-        let op = target.id ? await accessCardIssuance.parkingOperation(target.id) : await accessCardIssuance.createParkingOperation({
-          database: target.database, sourceRecordId: target.sourceRecordId, kind: 'change_plate',
-          idempotencyKey: `${active.batchId}-${target.database}`, payload: { plate: active.plate, newPlate: active.newPlate, batchId: active.batchId, sourceQueryId: active.sourceQueryId },
-        });
-        const check = (value: ParkingOperation) => {
-          if (value.kind !== 'change_plate' || value.database !== target.database || value.sourceRecordId !== target.sourceRecordId ||
-              value.payload.plate !== active!.plate || value.payload.newPlate !== active!.newPlate || value.payload.batchId !== active!.batchId)
-            throw new Error('原任务与车牌或记录编号不一致，已停止');
-        };
-        check(op); target.id = op.id; store(active);
-        for (let i = 0; ['pending', 'running'].includes(op.status) && i < 112; i++) { await wait(); op = await accessCardIssuance.parkingOperation(op.id); check(op); }
-        if (op.status !== 'completed') throw new Error(`任务 #${op.id} ${op.status === 'failed' ? `失败：${op.error || '未完成'}` : '结果尚未确认'}。已保留原请求；请核对原任务，不会重办已成功来源。`);
-        if (op.result?.verified !== true || op.result.preserved !== true || op.result.preservationContract !== 1 ||
-            op.result.plate !== active.newPlate || String(op.result.issueId) !== target.sourceRecordId)
-          throw new Error(`任务 #${op.id} 原值保护回执不完整，尚不能确认成功`);
-        collectBindingWarnings(op.result);
-      }
-      if (active.cloudId && !active.cloudDone) {
-        setProgress('旧库已完成，正在核对人防换牌；不会重办旧库…');
-        const cloudTask = await accessCardIssuance.changeDeliyunPlate({ vehicleId: active.cloudId, plate: active.plate, newPlate: active.newPlate, idempotencyKey: `${active.batchId}-deliyun` });
-        if (cloudTask.status !== 'completed' || cloudTask.result?.verified !== true || cloudTask.sourceRecordId !== active.cloudId ||
-            cloudTask.payload.plate !== active.plate || cloudTask.payload.newPlate !== active.newPlate)
-          throw new Error(`旧库已完成，人防原任务 #${cloudTask.id} 尚未成功：${cloudTask.error || '结果未知'}；已保留原请求，不会重办旧库`);
-        active.cloudDone = true; store(active);
-        collectBindingWarnings(cloudTask.result);
-      }
-      setProgress('写后独立查询新车牌…');
-      let query = await accessCardIssuance.createParkingQuery(active.newPlate);
-      for (let i = 0; !['completed', 'failed'].includes(query.status) && i < 30; i++) { await wait(); query = await accessCardIssuance.parkingQuery(query.id); }
-      if (query.status !== 'completed') throw new Error('新牌独立读回未完成，原请求已保留，请稍后核对');
-      for (const target of active.targets) {
-        const hits = query.rows.filter(r => r.database === target.database && normPlate(field(r.fields, 'plate')) === active!.newPlate);
-        if (hits.length !== 1 || pidOf(hits[0].fields) !== target.sourceRecordId) throw new Error('新牌车辆记录读回不一致，请核对原任务');
-      }
+      const review = await request<{id:number;status:string}>({method:'POST',url:'/access-card-issuance/plate-reviews',data:{
+        plate:active.plate,newPlate:active.newPlate,sourceQueryId:active.sourceQueryId,batchId:active.batchId,
+      }});
       localStorage.removeItem(key); setPlan(null);
-      toast(bindingWarnings.size ? `已换牌为 ${active.newPlate}。${[...bindingWarnings].join('；')}`
-        : `已换牌为 ${active.newPlate}，原车型及 PMS 类别保持`);
-      onDone(active.newPlate);
+      toast(`换牌申请 #${review.id} 已登记，请在待处理查看审核进度`);
+      onClose();
     } catch (e) { setErr(e instanceof Error ? e.message : '尚未确认成功；输入与原请求已保留'); }
     finally { lock.current = false; setBusy(false); setProgress(''); }
   };
   return <Sheet open onClose={() => { if (!lock.current) onClose(); }} title={`变更车牌 · ${plate}`} width={520}>
     <div style={{ display: 'grid', gap: 14, overflowWrap: 'anywhere' }}>
-      <div className="note">只改车牌号，逐库保留原车型、授权编码、期限、车位及 PMS 实际计费类别。两库原值不同也不会互相覆盖。</div>
+      <div className="note">经理审核通过后，系统按原车授权逐库换牌，并核对车位及亲情车档案。</div>
       <PlateNumberField label="新车牌" inputId={inputId} value={newPlate} invalid={!!plateError} errorMessage={plateError}
         disabled={busy || !!plan || !writable} onChange={value => { setNewPlate(value); setPlateError(''); }} />
       <div className="muted">办理来源：{(plan?.targets || targets).map(t => dbShort(t.database)).join(' + ') || '无旧库记录'}</div>
@@ -122,7 +83,7 @@ export function ChangePlateSheet({ plate, rows, cloud, onClose, onDone }: {
       {err ? <div role="alert" className="note" style={{ color: 'var(--dang)' }}>{err}</div> : null}
       {plan ? <div className="note">原请求已保留。再次核对只使用原任务和同一幂等键；已成功来源不重复办理。明确失败请到办理记录核对处理。</div> : null}
       {!writable ? <div role="alert">当前账号没有业务编辑权限。</div> : null}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}><button className="btn p" style={{ minHeight: 44 }} disabled={busy || !writable || !!initial.error || (!plan && !cloudKnown)} onClick={() => void run()}>{busy ? '现场核对中…' : plan ? '核对原请求（不重复办理）' : '确认换牌'}</button><button className="btn" style={{ minHeight: 44 }} disabled={busy} onClick={onClose}>关闭</button></div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}><button className="btn p" style={{ minHeight: 44 }} disabled={busy || !writable || !!initial.error || (!plan && !cloudKnown)} onClick={() => void run()}>{busy ? '现场核对中…' : plan ? '核对原请求（不重复办理）' : '提交经理审核'}</button><button className="btn" style={{ minHeight: 44 }} disabled={busy} onClick={onClose}>关闭</button></div>
     </div>
   </Sheet>;
 }

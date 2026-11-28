@@ -79,9 +79,17 @@ function creationHarness() {
   return { service, state, dto: { idempotencyKey: 'original-key', kind: 'change_plate', database: 'parking1', sourceRecordId: '5045', payload: payload() } };
 }
 
+test('直接换牌入口不能跳过经理审核',async()=>{
+  const {service,state,dto}=creationHarness();
+  await assert.rejects(service.createParkingOperation(dto,{id:3}),/经理审批/);
+  assert.equal(state.saved,null);
+  await assert.rejects(service.changeDeliyunPlate({plate:'沪AAAA11',newPlate:'沪BBBB22'},{id:3}),/经理审批/);
+});
+
 test('creation derives exact dual-database targets and ignores client-owned expected values', async () => {
   const { service, state, dto } = creationHarness();
-  const created = await service.createParkingOperation({ ...dto, expected: { preservationContract: 999, preservationAgentKey: 'attacker', billingTag: { vehicleClass: '伪造' } } }, { id: 3 });
+  const created = await service.createParkingOperation({ ...dto, expected: { preservationContract: 999, preservationAgentKey: 'attacker', billingTag: { vehicleClass: '伪造' } } }, { id: 3 }, undefined, true);
+  assert.equal(created.status,'review');
   assert.equal(created.expected.preservationContract, 1); assert.equal(created.expected.preservationAgentKey, undefined); assert.equal(created.expected.billingTag, null);
   assert.deepEqual(created.expected.batchTargets, [{ database: 'parking1', sourceRecordId: '5045' }, { database: 'parking2', sourceRecordId: '5046' }]);
   assert.equal(state.saved, created);
@@ -97,17 +105,17 @@ test('creation rejects incomplete/stale/foreign query targets and non-capable ga
     (s: any) => { s.capable = false; },
   ]) {
     const { service, state, dto } = creationHarness(); mutate(state);
-    await assert.rejects(() => service.createParkingOperation(dto, { id: 3 })); assert.equal(state.saved, null);
+    await assert.rejects(() => service.createParkingOperation(dto, { id: 3 }, undefined, true)); assert.equal(state.saved, null);
   }
 });
 
 test('immutable request keys cannot change sources, kind, payload, or create a duplicate batch target', async () => {
   for (const change of [{ database: 'parking2' }, { sourceRecordId: '5046' }, { payload: { ...payload(), newPlate: '测C12345' } }, { kind: 'renew_vehicle' }]) {
     const { service, state, dto } = creationHarness(); state.existing = task();
-    await assert.rejects(() => service.createParkingOperation({ ...dto, ...change }, { id: 3 })); assert.equal(state.saved, null);
+    await assert.rejects(() => service.createParkingOperation({ ...dto, ...change }, { id: 3 }, undefined, true)); assert.equal(state.saved, null);
   }
   const { service, state, dto } = creationHarness(); state.duplicate = { id: 44 };
-  await assert.rejects(() => service.createParkingOperation(dto, { id: 3 }), /原任务 #44/); assert.equal(state.saved, null);
+  await assert.rejects(() => service.createParkingOperation(dto, { id: 3 }, undefined, true), /原任务 #44/); assert.equal(state.saved, null);
 });
 
 test('plate allows only identifiers and a completed-query credential; raw null extras are rejected', () => {
@@ -299,4 +307,20 @@ for (const [key, vehicleClass, identity] of [
   await report(values);
   await report(values);
   assert.equal(updates, 1);
+});
+
+test('经理审核仅从待审原单释放所有子任务，重复审核无效；驳回不进入队列', async()=>{
+  for(const approve of [true,false]) {
+    const service:any=Object.create(AccessCardIssuanceService.prototype);
+    const parent:any={id:10,tenantId:1,status:'review',expected:{communityIds:[1]},payload:{ids:[20,21]}};
+    const repo={findOne:async()=>parent,update:async(where:any,patch:any)=>{
+      assert.equal(where.status,'review');assert.equal(where.tenantId,1);
+      assert.equal(patch.status,approve?'pending':'cancelled');return {affected:2};
+    },save:async(row:any)=>row};
+    service.requireTenant=()=>1;service.assertPlateReviewScope=()=>{};
+    service.parkingOperationRepo={manager:{transaction:(fn:any)=>fn({getRepository:()=>repo})}};
+    await service.decidePlateReview(10,approve,{id:4},{});
+    assert.equal(parent.status,approve?'approved':'cancelled');assert.equal(parent.result.reviewerId,4);
+    await assert.rejects(service.decidePlateReview(10,approve,{id:4},{}),/已处理/);
+  }
 });

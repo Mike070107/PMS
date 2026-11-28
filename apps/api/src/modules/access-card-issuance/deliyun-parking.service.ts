@@ -224,7 +224,7 @@ export class DeliyunParkingService {
     return { vehicleId, plate, previousEndDate: input.previousEndDate, endDate: input.endDate, verified: true };
   }
 
-  async changePlate(input: { vehicleId: string; plate: string; newPlate: string }) {
+  async changePlate(input: { vehicleId: string; plate: string; newPlate: string; originalSpace?: string }) {
     if (!this.writeEnabled()) throw new ServiceUnavailableException('德立云写入尚未启用');
     const plate = normalizePlate(input.plate), newPlate = normalizePlate(input.newPlate);
     if (!input.vehicleId.trim() || !isFullPlate(plate) || !isFullPlate(newPlate) || plate === newPlate)
@@ -233,17 +233,19 @@ export class DeliyunParkingService {
     const detail = await this.vehicleDetail(input.vehicleId, session);
     // 结果未知后的重试先查原车辆，已经换号则不再重复写。
     const currentPlate = normalizePlate(stringValue(detail.plateNum));
-    if (currentPlate === newPlate) return { vehicleId: input.vehicleId, plate, newPlate, verified: true,
+    const space = nullableString(detail.cardNo) || input.originalSpace;
+    if (currentPlate === newPlate && (!space || nullableString(detail.cardNo) === space)) return { vehicleId: input.vehicleId, plate, newPlate, verified: true,
       project: session.park.unitName, spaceNumber: nullableString(detail.cardNo) };
-    if (currentPlate !== plate) throw new BadRequestException('人防车辆已变化，请刷新后重新操作');
-    if ((await this.findVehiclesByPlate(newPlate)).rows.length)
+    if (currentPlate !== plate && currentPlate !== newPlate) throw new BadRequestException('人防车辆已变化，请刷新后重新操作');
+    if (currentPlate !== newPlate && (await this.findVehiclesByPlate(newPlate)).rows.length)
       throw new BadRequestException('新车牌已在人防车库登记，不能覆盖');
     const payload = buildDeliyunPlateChangePayload(detail, session.park.unitKey, input.vehicleId, newPlate);
+    if (space) payload.cardNo = space;
     const response = await this.h5Post('/pma/card/updateCard', payload, session.token);
     this.assertSuccess(response, '人防车牌更新失败');
     const verified = await this.vehicleDetail(input.vehicleId, session);
-    const preserved = ['cardNo', 'pgIds', 'cardTypeId', 'carTypeId', 'peopleId', 'cprtId', 'cardGroupId', 'poolId', 'money', 'beginTime', 'endTime', 'remark'];
-    if (normalizePlate(stringValue(verified.plateNum)) !== newPlate || preserved.some(key => stringValue(verified[key]) !== stringValue(detail[key])))
+    const preserved = ['pgIds', 'cardTypeId', 'carTypeId', 'peopleId', 'cprtId', 'cardGroupId', 'poolId', 'money', 'beginTime', 'endTime', 'remark'];
+    if (normalizePlate(stringValue(verified.plateNum)) !== newPlate || nullableString(verified.cardNo) !== (space || null) || preserved.some(key => stringValue(verified[key]) !== stringValue(detail[key])))
       throw new ServiceUnavailableException('人防已接受换牌，但车牌或原资料回读不一致，请刷新核对，勿重复提交');
     if ((await this.findVehiclesByPlate(plate)).rows.some(row => row.id === input.vehicleId))
       throw new ServiceUnavailableException('人防旧车牌仍可查到，请刷新核对');

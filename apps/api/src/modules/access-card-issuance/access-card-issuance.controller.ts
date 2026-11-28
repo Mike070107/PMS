@@ -67,6 +67,20 @@ export class AccessCardIssuanceController {
     private readonly parkingProof: ParkingProofService,
   ) {}
 
+  @Post('plate-reviews')
+  @RequirePermission('business','edit')
+  submitPlateReview(@Body() body: {plate:string;newPlate:string;sourceQueryId:number;batchId:string}, @CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess) {
+    return this.service.submitPlateReview(body,user,access);
+  }
+  @Get('plate-reviews')
+  @RequirePermission(['business','app:approve-manager','app:approve-business-manager'],'view')
+  plateReviews(@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess) { return this.service.plateReviews(user,access); }
+  @Post('plate-reviews/:id/decision')
+  @RequirePermission(['app:approve-manager','app:approve-business-manager'],'edit')
+  decidePlateReview(@Param('id',ParseIntPipe) id:number,@Body() body:{approve:boolean},@CurrentUser() user:AuthUser,@CurrentAccess() access:ResolvedAccess) {
+    return this.service.decidePlateReview(id,body.approve,user,access);
+  }
+
   @Get('readiness')
   @RequirePermission('business', 'view')
   readiness(@CurrentUser() user: AuthUser, @CurrentAccess() access: ResolvedAccess) {

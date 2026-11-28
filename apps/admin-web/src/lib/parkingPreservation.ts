@@ -1,5 +1,5 @@
 import { propertyCarBillingClass, readPlateBillingClass } from '../../../neighbor-web/src/components/vehicle-ops/propertyCarBilling';
-import { accessCardIssuance as api } from '@pms/api-client';
+import { accessCardIssuance as api, request } from '@pms/api-client';
 import { field } from '../../../neighbor-web/src/lib/parking-fields';
 import { normalizeParkingDate } from './parkingVehicleMerge';
 
@@ -54,6 +54,11 @@ export async function runPreservedParkingOperation(args: {
     persist(plan); // Must succeed before first POST.
   }
   let familyExpiry: string | null = null;
+  if (plan.kind === 'change_plate') {
+    await request({method:'POST',url:'/access-card-issuance/plate-reviews',data:plan.payload});
+    localStorage.removeItem(key);
+    return plate;
+  }
   for (const target of plan.targets) {
     let task = target.id ? await api.parkingOperation(target.id) : await api.createParkingOperation({
       database: target.database, kind: plan.kind, sourceRecordId: target.sourceRecordId,
@@ -71,14 +76,6 @@ export async function runPreservedParkingOperation(args: {
         task.result.database !== target.database || String(task.result.issueId) !== target.sourceRecordId ||
         task.result.plate !== (plan.payload.newPlate || plate)) throw new Error('原值保护回执不完整，原请求已保留');
     if (plan.kind === 'update_vehicle_type' && task.result.familyAuthorizationExpired === true) familyExpiry = String(task.result.endDate || '');
-  }
-  if (plan.cloudId && !plan.cloudDone) {
-    const cloudTask = await api.changeDeliyunPlate({ vehicleId: plan.cloudId, plate, newPlate: String(plan.payload.newPlate), idempotencyKey: `${plan.batchId}-deliyun` });
-    args.onTask(cloudTask);
-    if (cloudTask.status !== 'completed' || cloudTask.result?.verified !== true || cloudTask.sourceRecordId !== plan.cloudId ||
-        cloudTask.payload.plate !== plate || cloudTask.payload.newPlate !== plan.payload.newPlate)
-      throw new Error(`旧库已完成，人防原任务 #${cloudTask.id} 尚未成功：${cloudTask.error || '结果未知'}；请核对原任务，不会重办旧库`);
-    plan.cloudDone = true; persist(plan);
   }
   let query = await api.createParkingQuery(String(plan.payload.newPlate || plate));
   for (let i = 0; !['completed', 'failed'].includes(query.status) && i < 90; i++) { await wait(); query = await api.parkingQuery(query.id); }

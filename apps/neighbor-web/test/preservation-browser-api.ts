@@ -70,6 +70,10 @@ export const repairs = new Proxy({}, { get: () => unrelatedWrite });
 export class ApiError extends Error {}
 export function configure() { /* Controlled transport only. */ }
 export async function request(input: any) { record('request', input);
+  if (input.url === '/access-card-issuance/plate-reviews') {
+    if (scenario === 'lostResponse' && !fixture.released) throw new Error('提交结果未知');
+    return {id:801,status:'review'};
+  }
   if (input.url === '/business/rules') return ['住户车-1','住户车-2','住户车-3','租户车-1','租户车-2','亲情车','产权车位'].map(vehicleClass => ({ enabled:true, name:vehicleClass+'收费标准', serviceType:'parking_monthly', config:{vehicleClass} }));
   if (input.url === '/business/plate-tags') return [{ plate, vehicleClass: fixture.billed }];
   return { rows: [], total: 0 }; }

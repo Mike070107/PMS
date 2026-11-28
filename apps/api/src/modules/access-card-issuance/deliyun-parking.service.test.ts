@@ -102,6 +102,10 @@ test('人防直接换牌调用更新不删除；失败回读不报告成功', as
   internal.findVehiclesByPlate = async () => ({ rows: [] });
   internal.h5Post = async (path: string, payload: any) => { assert.equal(path, '/pma/card/updateCard'); saved = payload; return { ecode: 0 }; };
   assert.equal((await service.changePlate({ vehicleId: 'v1', plate: before.plateNum, newPlate: '沪BAU1900' })).verified, true);
+  saved = {...before, cardNo:''};
+  const restored = await service.changePlate({vehicleId:'v1',plate:before.plateNum,newPlate:'沪BAU1900',originalSpace:'MF46'});
+  assert.equal(restored.spaceNumber,'MF46');
+  assert.equal(saved.pgIds,before.pgIds);
   saved = undefined;
   internal.h5Post = async () => ({ ecode: 0 });
   await assert.rejects(service.changePlate({ vehicleId: 'v1', plate: before.plateNum, newPlate: '沪BAU1900' }), /回读不一致/);

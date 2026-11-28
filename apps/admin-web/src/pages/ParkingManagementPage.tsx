@@ -434,7 +434,7 @@ export default function ParkingManagementPage({
           recordOf: item => ({ database: parkingDatabase(item.database)!, sourceRecordId: parkingHistoryRef(item).sourceRecordId || '', plate: plateValue(item.fields) }),
           onTask: task => { setLastOperation(task); familyExpired = task.result?.familyAuthorizationExpired === true; },
         });
-        message.success(kind === 'change_plate' ? '全部原来源换牌及独立读回完成，车型、授权与 PMS 原类别保持' : familyExpired ? '车辆类型及亲情车旧有效期已读回' : payload.identity === '产权车' ? '已核对 PMS 产权车收费分类及所选停车库住户车身份' : '所选旧库车型已独立读回，PMS 收费档位保持原设置');
+        message.success(kind === 'change_plate' ? '已提交换牌申请，请在待处理中查看经理审核进度' : familyExpired ? '车辆类型及亲情车旧有效期已读回' : payload.identity === '产权车' ? '已核对 PMS 产权车收费分类及所选停车库住户车身份' : '所选旧库车型已独立读回，PMS 收费档位保持原设置');
         setOperationTarget(null);
         await searchParking(afterPlate);
         return;
@@ -1711,7 +1711,7 @@ function ParkingOperationModal({ open, kind, row, roomOptions, communitiesOverri
         : '两个旧库都会更新到期日；本次填写的金额只记入一期，二期同步金额为 0，避免报表重复计费。两边读回验证后才显示整体成功。'} />}
       <PlateNumberField label="车牌" value={plate} disabled={!row || kind === 'rebind_owner' || kind === 'change_plate'} onChange={setPlate} />
       {kind === 'change_plate' && <ParkingPlateEntry id="parking-change-plate-input" label="新车牌" value={newPlate} onChange={setNewPlate} />}
-      {kind === 'change_plate' && <Alert type="info" showIcon message="只改车牌号，保留本库原车型、授权类型、期限与 PMS 计费类别" />}
+      {kind === 'change_plate' && <Alert type="info" showIcon message="经理审核通过后，逐库换牌并核对授权、车位及亲情车档案" />}
       {kind === 'rebind_owner' && <ParkingOwnerPicker open={open} value={binding} onChange={setBinding} />}
       {kind === 'renew_vehicle' && <><label>缴费期限<Select value={months} options={[1, 2, 3, 6, 12].map((value) => ({ value, label: `${value}个月` }))} onChange={(value) => { changeMonths(value); setAmount(null); }} /></label><ParkingFeeFields rates={feeRates.rates} onSaved={feeRates.setRates} identity={identity} months={months} amount={amount} onAmountChange={setAmount} loading={feeRates.loading} error={feeRates.error} onRetry={feeRates.retry} /><label>到期日期<DatePicker value={endDate ? dayjs(endDate) : null} format="YYYY-MM-DD" allowClear={false} onChange={(value) => setEndDate(value ? value.format('YYYY-MM-DD') : '')} style={{ width: '100%' }} /><Text type="secondary">按自然月月底计算，可用日历自定义。</Text></label></>}
       {kind === 'update_garages' && <><Alert type="info" showIcon message="人防授权同步德立云"

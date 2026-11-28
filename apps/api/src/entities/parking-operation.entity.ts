@@ -11,7 +11,7 @@ export type ParkingOperationKind =
   | 'download_vehicle'
   | 'sync_vehicle_info'
   | 'delete_vehicle';
-export type ParkingOperationStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type ParkingOperationStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'review' | 'approved';
 
 /** 网页只写入任务，现场助手必须通过旧系统存储过程执行。 */
 @Entity('parking_operations')

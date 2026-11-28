@@ -151,6 +151,18 @@ export default function Pending() {
     window.addEventListener('focus', refresh);
     return () => { ++revision; clearInterval(timer); window.removeEventListener('focus', refresh); };
   }, [canViewFamily, intakeRefresh]);
+  type PlateReview = {id:number;status:string;payload:{plate:string;newPlate:string};createdAt:string;lastError?:string;result?:{reviewedAt?:string}};
+  const [plateReviews,setPlateReviews]=useState<PlateReview[]>([]);
+  const [plateError,setPlateError]=useState('');
+  const canReadPlates=['business','app:approve-manager','app:approve-business-manager'].some(key=>can(key,'view'));
+  const refreshPlates=()=>{if(canReadPlates) void request<PlateReview[]>({url:'/access-card-issuance/plate-reviews'}).then(rows=>{setPlateReviews(rows);setPlateError('');}).catch(e=>setPlateError(e instanceof Error?e.message:'换牌待办读取失败'));};
+  const plateRows=(status:string)=>plateReviews.filter(r=>r.status===status).map(r=><div className="pendRow" key={'plate-'+r.id}>
+    <div className="pm"><b>变更车牌 {r.payload.plate} → {r.payload.newPlate}</b>
+    <div className="pending-next">{status==='review'?'下一步 · 经理核对新旧车牌后审核':status==='approved'?'已通过 · 等待车库回读':'需核对 · '+r.lastError}</div>
+    <RecentAction entry={{at:r.result?.reviewedAt || r.createdAt,action:r.result?.reviewedAt?'经理审核通过':'提交换牌申请'}} /></div>
+    {status==='review' && canReview && [true,false].map(approve=><button key={String(approve)} className="btn sm" disabled={busy!==null} onClick={async()=>{
+      setBusy(r.id);try{await request({method:'POST',url:'/access-card-issuance/plate-reviews/'+r.id+'/decision',data:{approve}});refreshPlates();}catch(e){toast(e instanceof Error?e.message:'审核失败');}finally{setBusy(null);}
+    }}>{approve?'审核通过':'驳回'}</button>)}</div>);
   const [txns, setTxns] = useState<Txn[] | null>(null);
   const [mode, setMode] = useState<Mode | null>(null);
   const [ready, setReady] = useState<AccessCardReadiness | null>(null);
@@ -164,6 +176,7 @@ export default function Pending() {
   const [reviewError, setReviewError] = useState(false);
   const [deviceError, setDeviceError] = useState(false);
   const load = () => {
+    refreshPlates();
     pendingPages<Txn>('/business/execution/pending').then(rows => { setTxns(rows); setExecutionError(false); }).catch(() => setExecutionError(true));
     request<Txn[]>({ url: '/business/reviews' }).then(rows => { setReviews(rows); setReviewError(false); }).catch(() => setReviewError(true));
     request<{ mode: Mode }>({ url: '/business/execution/mode' }).then((r) => setMode(r.mode)).catch(() => setMode(null));
@@ -218,7 +231,7 @@ export default function Pending() {
   if (txns === null && ready === null && !executionError && !deviceError) return <Loading />;
 
   const familyGroup = (status: string) => canViewFamily ? familyGroups.find(group => group.status === status) : undefined;
-  const managerCount = groups.review.length + (familyGroup('manager')?.total ?? 0);
+  const managerCount = plateReviews.filter(r=>r.status==='review').length + groups.review.length + (familyGroup('manager')?.total ?? 0);
   const familyRows = (status: string) => {
     const group = familyGroup(status);
     if (!group?.total) return null;
@@ -240,12 +253,12 @@ export default function Pending() {
     ...(canViewIntakes ? [{ icon: 'file' as IconName, tone: 'amber', v: intakeError ? '—' : intakes === null ? '…' : intakes.length + (familyGroup('office')?.rows.length ?? 0), section: 'office', k: '当前显示待审车牌' }] : []),
     { icon: 'clock' as IconName, tone: 'amber', v: canViewFamily && (familyError || !familyLoaded) ? '—' : managerCount, section: 'manager', k: '待经理审核' },
     { icon: 'file' as IconName, tone: 'amber', v: groups.docs.length + awaitingSubmission.length + (familyGroup('upload')?.total ?? 0), section: 'docs', k: '待提交资料' },
-    { icon: 'alert' as IconName, tone: 'red', v: groups.needHand.length + (familyGroup('blocked')?.total ?? 0), section: 'manual', k: '需人工处理' },
-    { icon: 'refresh' as IconName, tone: 'blue', v: groups.inFlight.length + (familyGroup('opening')?.total ?? 0), section: 'running', k: '执行中 / 排队' },
+    { icon: 'alert' as IconName, tone: 'red', v: plateReviews.filter(r=>r.status==='failed').length + groups.needHand.length + (familyGroup('blocked')?.total ?? 0), section: 'manual', k: '需人工处理' },
+    { icon: 'refresh' as IconName, tone: 'blue', v: plateReviews.filter(r=>r.status==='approved').length + groups.inFlight.length + (familyGroup('opening')?.total ?? 0), section: 'running', k: '执行中 / 排队' },
     { icon: 'check' as IconName, tone: 'amber', v: groups.dry.length, section: 'dry', k: '演练待正式写入' },
     { icon: 'cpu' as IconName, tone: 'red', v: badAgents.length + (deliyunDown ? 1 : 0), section: 'devices', k: '设备 / 助手异常' },
   ];
-  const hasAny = executionError || reviewError || deviceError || txns === null || ready === null || (canViewFamily && (!familyLoaded || familyError || familyGroups.some(group => group.total))) || (canViewIntakes && (intakeLoading || intakeError || intakes?.length || awaitingPayment.length || awaitingSubmission.length)) || groups.review.length || groups.docs.length || groups.needHand.length || groups.inFlight.length || groups.dry.length || badAgents.length || deliyunDown;
+  const hasAny = plateReviews.length || plateError || executionError || reviewError || deviceError || txns === null || ready === null || (canViewFamily && (!familyLoaded || familyError || familyGroups.some(group => group.total))) || (canViewIntakes && (intakeLoading || intakeError || intakes?.length || awaitingPayment.length || awaitingSubmission.length)) || groups.review.length || groups.docs.length || groups.needHand.length || groups.inFlight.length || groups.dry.length || badAgents.length || deliyunDown;
 
   const row = (t: Txn) => {
     const s = ST[t.externalSyncStatus] || ST.queued;
@@ -312,9 +325,10 @@ export default function Pending() {
       </nav>
 
       {(executionError || reviewError || deviceError) && <p role="alert">部分待办读取失败：{[executionError && '收款执行', reviewError && '经理审核', deviceError && '设备状态'].filter(Boolean).join('、')}。<button className="btn sm" onClick={load}>重新读取</button></p>}
+      {plateError && <p role="alert">换牌待办：{plateError}</p>}
       {canViewFamily && familyError && <p role="alert">{familyError} <button className="btn sm" onClick={() => setIntakeRefresh(n => n + 1)}>重试</button></p>}
       {canViewFamily && !familyLoaded && !familyError && <Loading />}
-      {groups.needHand.length || familyGroup('blocked')?.total ? <><div id="pending-manual" className="secTitle"><Icon name="alert" size={18} style={{ color: 'var(--dang)' }} />需人工处理</div>{groups.needHand.map(row)}{familyRows('blocked')}</> : null}
+      {plateReviews.some(r=>r.status==='failed') || groups.needHand.length || familyGroup('blocked')?.total ? <><div id="pending-manual" className="secTitle"><Icon name="alert" size={18} style={{ color: 'var(--dang)' }} />需人工处理</div>{groups.needHand.map(row)}{familyRows('blocked')}{plateRows('failed')}</> : null}
       {awaitingPayment.length > 0 && <section id="pending-payment" aria-label="待收款"><h2 className="secTitle">待收款</h2>
         {awaitingPayment.map(i => <div className="pendRow" key={i.id}>
           <div className="pm"><b>{i.plate} <span className="tag warn">资料已通过 · 待收款</span></b>
@@ -370,10 +384,10 @@ export default function Pending() {
         </div>
       ) : null}
 
-      {managerCount ? <section id="pending-manager" aria-label="待经理审核"><div className="secTitle"><Icon name="clock" size={18} style={{ color: 'var(--warn)' }} />待经理审核</div>{groups.review.map(row)}{familyRows('manager')}</section> : null}
+      {managerCount ? <section id="pending-manager" aria-label="待经理审核"><div className="secTitle"><Icon name="clock" size={18} style={{ color: 'var(--warn)' }} />待经理审核</div>{groups.review.map(row)}{familyRows('manager')}{plateRows('review')}</section> : null}
 
 
-      {groups.inFlight.length || familyGroup('opening')?.total ? <><div id="pending-running" className="secTitle"><Icon name="refresh" size={18} style={{ color: 'var(--acc)' }} />执行中</div>{groups.inFlight.map(row)}{familyRows('opening')}</> : null}
+      {plateReviews.some(r=>r.status==='approved') || groups.inFlight.length || familyGroup('opening')?.total ? <><div id="pending-running" className="secTitle"><Icon name="refresh" size={18} style={{ color: 'var(--acc)' }} />执行中</div>{groups.inFlight.map(row)}{familyRows('opening')}{plateRows('approved')}</> : null}
       {groups.dry.length ? <><div id="pending-dry" className="secTitle"><Icon name="check" size={18} style={{ color: 'var(--warn)' }} />演练记录（未写入德立云）</div>{groups.dry.map(row)}</> : null}
 
       {badAgents.length || deliyunDown ? (
